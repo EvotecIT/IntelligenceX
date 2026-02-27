@@ -20,6 +20,16 @@ internal sealed partial class ChatServiceSession {
     internal const string PhaseHeartbeatSuppressionReasonCanceled = "canceled";
     internal const string PhaseHeartbeatSuppressionReasonHeartbeatCanceled = "heartbeat-canceled";
     internal const string PhaseHeartbeatSuppressionReasonRequestCanceled = "request-canceled";
+    private const string ProactiveVisualizationMarker = "ix:proactive-visualization:v1";
+    private const string MermaidFenceLanguage = "mermaid";
+    private const string ChartFenceLanguage = "ix-chart";
+    private const string NetworkFenceLanguage = "ix-network";
+    private const string LegacyNetworkFenceLanguage = "visnetwork";
+
+    private readonly record struct ProactiveVisualizationPolicy(
+        bool AllowNewVisuals,
+        bool DraftHasVisuals,
+        bool RequestHasVisualContract);
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -227,10 +237,23 @@ internal sealed partial class ChatServiceSession {
     internal static string BuildProactiveFollowUpReviewPrompt(string userRequest, string assistantDraft) {
         var requestText = TrimForPrompt(userRequest, 520);
         var draftText = TrimForPrompt(assistantDraft, 1800);
+        var visualPolicy = ResolveProactiveVisualizationPolicy(userRequest, assistantDraft);
+        var allowNewVisualsText = visualPolicy.AllowNewVisuals ? "true" : "false";
+        var draftHasVisualsText = visualPolicy.DraftHasVisuals ? "true" : "false";
+        var requestHasVisualContractText = visualPolicy.RequestHasVisualContract ? "true" : "false";
+        var visualRequirementLine = visualPolicy.AllowNewVisuals
+            ? "- If allow_new_visuals is true, include at most one new visual block and only when it materially compresses complex evidence."
+            : "- If allow_new_visuals is false, do not introduce new mermaid/ix-chart/ix-network blocks in this proactive rewrite.";
         return $$"""
             [Proactive follow-up review]
             {{ProactiveFollowUpMarker}}
             Expand the response with proactive intelligence based on current tool findings.
+
+            [Proactive visualization guidance]
+            {{ProactiveVisualizationMarker}}
+            allow_new_visuals: {{allowNewVisualsText}}
+            draft_has_visuals: {{draftHasVisualsText}}
+            request_has_visual_contract: {{requestHasVisualContractText}}
 
             User request:
             {{requestText}}
@@ -242,8 +265,10 @@ internal sealed partial class ChatServiceSession {
             - Keep all existing factual findings that are already supported by tool output.
             - Keep the response natural and conversational, not scripted.
             - Add proactive follow-ups only when they provide real value (typically 1-3 key items).
-            - You may present results in the format that best fits the findings: short paragraphs, bullets, compact tables, or simple diagrams/charts.
-            - If a diagram/chart improves clarity, include it directly without asking for permission first.
+            - Prefer concise prose/bullets by default; keep tables/diagrams/charts/networks optional.
+            - Use visuals only when they materially improve clarity over plain markdown.
+            {{visualRequirementLine}}
+            - Preserve existing visual blocks when they are already present and still accurate.
             - When listing checks/fixes, make each item actionable and specific.
             - Include "why it matters" context when the impact is not obvious, but do not force that label on every line.
             - Vary structure naturally across turns; avoid repeating rigid templates.
@@ -252,6 +277,42 @@ internal sealed partial class ChatServiceSession {
             - Do not invent tool outputs or claim completed actions that were not executed.
             Return only the revised assistant response text.
             """;
+    }
+
+    private static ProactiveVisualizationPolicy ResolveProactiveVisualizationPolicy(string userRequest, string assistantDraft) {
+        var requestHasVisualContract = ContainsVisualContractSignal(userRequest);
+        var draftHasVisuals = ContainsVisualContractSignal(assistantDraft);
+        return new ProactiveVisualizationPolicy(
+            AllowNewVisuals: requestHasVisualContract,
+            DraftHasVisuals: draftHasVisuals,
+            RequestHasVisualContract: requestHasVisualContract);
+    }
+
+    private static bool ContainsVisualContractSignal(string? text) {
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return false;
+        }
+
+        return ContainsFenceLanguage(value, MermaidFenceLanguage)
+               || ContainsFenceLanguage(value, ChartFenceLanguage)
+               || ContainsFenceLanguage(value, NetworkFenceLanguage)
+               || ContainsFenceLanguage(value, LegacyNetworkFenceLanguage)
+               || ContainsToken(value, MermaidFenceLanguage)
+               || ContainsToken(value, ChartFenceLanguage)
+               || ContainsToken(value, NetworkFenceLanguage)
+               || ContainsToken(value, LegacyNetworkFenceLanguage);
+    }
+
+    private static bool ContainsFenceLanguage(string text, string language) {
+        var fence = "```" + language;
+        return text.IndexOf(fence, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool ContainsToken(string text, string token) {
+        // Treat token as a structured signal only when used as an explicit backticked token.
+        var backticked = "`" + token + "`";
+        return text.IndexOf(backticked, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     internal Task RunPhaseProgressLoopAsync(

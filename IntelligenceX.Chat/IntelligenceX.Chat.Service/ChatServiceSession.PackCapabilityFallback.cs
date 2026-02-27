@@ -66,6 +66,22 @@ internal sealed partial class ChatServiceSession {
                 "hyperv_switch_list"
             },
             availableToolNames: availableToolNames);
+
+        AddPackCapabilityFallbackContract(
+            packId: "domaindetective",
+            candidateTools: new[] {
+                "domaindetective_domain_summary",
+                "domaindetective_network_probe"
+            },
+            availableToolNames: availableToolNames);
+
+        AddPackCapabilityFallbackContract(
+            packId: "testimox",
+            candidateTools: new[] {
+                "testimox_rules_list",
+                "testimox_rules_run"
+            },
+            availableToolNames: availableToolNames);
     }
 
     private void AddPackCapabilityFallbackContract(
@@ -75,6 +91,11 @@ internal sealed partial class ChatServiceSession {
         var normalizedPackId = NormalizePackId(packId);
         if (normalizedPackId.Length == 0 || candidateTools.Count == 0) {
             return;
+        }
+
+        var normalizedPackAliases = GetNormalizedPackAliases(packId);
+        if (normalizedPackAliases.Count == 0) {
+            normalizedPackAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { normalizedPackId };
         }
 
         var fallback = new List<string>(candidateTools.Count);
@@ -89,7 +110,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             var normalizedCandidatePackId = NormalizePackId(candidatePackId);
-            if (!string.Equals(normalizedCandidatePackId, normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+            if (!normalizedPackAliases.Contains(normalizedCandidatePackId)) {
                 continue;
             }
 
@@ -102,9 +123,12 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        _packCapabilityFallbackContractsByPackId[normalizedPackId] = new PackCapabilityFallbackContract(
+        var contract = new PackCapabilityFallbackContract(
             PackId: normalizedPackId,
             FallbackTools: fallback.ToArray());
+        foreach (var alias in normalizedPackAliases) {
+            _packCapabilityFallbackContractsByPackId[alias] = contract;
+        }
     }
 
     private bool TryBuildPackCapabilityFallbackToolCall(
@@ -124,6 +148,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var callNameById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var callArgumentsById = new Dictionary<string, JsonObject>(StringComparer.OrdinalIgnoreCase);
         var priorCalledTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolCalls.Count; i++) {
             var call = toolCalls[i];
@@ -136,6 +161,9 @@ internal sealed partial class ChatServiceSession {
             priorCalledTools.Add(name);
             if (callId.Length > 0) {
                 callNameById[callId] = name;
+                if (TryParseArgumentsObject(call.ArgumentsJson, out var callArguments)) {
+                    callArgumentsById[callId] = callArguments;
+                }
             }
         }
 
@@ -157,7 +185,8 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (!TryReadDiscoveryPartialScopeHints(output.Output, out var partialScopeHints, out var partialScopeReason)) {
+            var hasPartialScopeHints = TryReadDiscoveryPartialScopeHints(output.Output, out var partialScopeHints, out var partialScopeReason);
+            if (!hasPartialScopeHints) {
                 if (!TryReadPackCapabilityErrorFallbackHints(
                         sourcePackId: sourcePackId,
                         sourceTool: sourceTool,
@@ -166,8 +195,20 @@ internal sealed partial class ChatServiceSession {
                         userRequest: userRequest,
                         out partialScopeHints,
                         out partialScopeReason)) {
-                    continue;
+                    partialScopeHints = new JsonObject(StringComparer.Ordinal);
+                    partialScopeReason = "source_call_arguments";
                 }
+            }
+
+            if (callArgumentsById.TryGetValue(callId, out var sourceCallArguments)) {
+                CopyFallbackHintsFromToolArguments(sourceCallArguments, partialScopeHints);
+                if (partialScopeHints.Count > 0 && string.Equals(partialScopeReason, "source_call_arguments", StringComparison.Ordinal)) {
+                    hasPartialScopeHints = true;
+                }
+            }
+
+            if (!hasPartialScopeHints && partialScopeHints.Count == 0) {
+                continue;
             }
 
             if (TryBuildCrossDomainControllerDiscoveryFirstFallbackToolCall(
@@ -211,6 +252,10 @@ internal sealed partial class ChatServiceSession {
                     candidateTool: candidateTool,
                     partialScopeHints: partialScopeHints);
                 var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+                if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                    || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                    continue;
+                }
                 var serializedArguments = JsonLite.Serialize(normalizedArguments);
                 var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
                 var raw = new JsonObject()
@@ -260,10 +305,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var adPackId = NormalizePackId("active_directory");
-        if (adPackId.Length == 0
-            || !_packCapabilityFallbackContractsByPackId.TryGetValue(adPackId, out var adContract)
-            || adContract.FallbackTools.Length == 0) {
+        if (!TryGetPackCapabilityFallbackContract("active_directory", out var adContract)) {
             reason = "cross_dc_discovery_pack_unavailable";
             return false;
         }
@@ -279,7 +321,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
-                || !string.Equals(NormalizePackId(candidatePackIdRaw), adPackId, StringComparison.OrdinalIgnoreCase)) {
+                || !PackIdMatches(candidatePackIdRaw, "active_directory")) {
                 continue;
             }
 
@@ -293,10 +335,14 @@ internal sealed partial class ChatServiceSession {
             }
 
             var fallbackArguments = BuildPackFallbackArguments(
-                sourcePackId: adPackId,
+                sourcePackId: NormalizePackId("active_directory"),
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
+            }
             var serializedArguments = JsonLite.Serialize(normalizedArguments);
             var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
             var raw = new JsonObject()
@@ -328,7 +374,7 @@ internal sealed partial class ChatServiceSession {
         string sourcePackId,
         string partialScopeReason,
         string? userRequest) {
-        if (!string.Equals(sourcePackId, NormalizePackId("eventlog"), StringComparison.OrdinalIgnoreCase)) {
+        if (!PackIdMatches(sourcePackId, "eventlog")) {
             return false;
         }
 
@@ -366,16 +412,20 @@ internal sealed partial class ChatServiceSession {
         JsonObject partialScopeHints) {
         var args = new JsonObject(StringComparer.Ordinal);
 
+        var domain = ReadNonEmptyHint(partialScopeHints, "domain")
+                     ?? ReadNonEmptyHint(partialScopeHints, "domain_name")
+                     ?? ReadNonEmptyHint(partialScopeHints, "dns_domain_name");
         var domainName = ReadNonEmptyHint(partialScopeHints, "domain_name")
                          ?? ReadNonEmptyHint(partialScopeHints, "dns_domain_name");
         var forestName = ReadNonEmptyHint(partialScopeHints, "forest_name")
                          ?? ReadNonEmptyHint(partialScopeHints, "forest_dns_name");
+        var host = ReadNonEmptyHint(partialScopeHints, "host");
         var computerName = ReadNonEmptyHint(partialScopeHints, "computer_name")
                            ?? ReadNonEmptyHint(partialScopeHints, "machine_name");
         var logName = ReadNonEmptyHint(partialScopeHints, "log_name");
         var includeTrusts = ReadHintBoolean(partialScopeHints, "include_trusts");
 
-        if (string.Equals(sourcePackId, NormalizePackId("active_directory"), StringComparison.OrdinalIgnoreCase)) {
+        if (PackIdMatches(sourcePackId, "active_directory")) {
             if (string.Equals(candidateTool, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(candidateTool, "ad_forest_discover", StringComparison.OrdinalIgnoreCase)) {
                 args.Add("discovery_fallback", "current_forest");
@@ -412,7 +462,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        if (string.Equals(sourcePackId, NormalizePackId("eventlog"), StringComparison.OrdinalIgnoreCase)) {
+        if (PackIdMatches(sourcePackId, "eventlog")) {
             if (!string.IsNullOrWhiteSpace(logName)) {
                 args.Add("log_name", logName);
             }
@@ -436,12 +486,52 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        if (string.Equals(sourcePackId, NormalizePackId("system"), StringComparison.OrdinalIgnoreCase)) {
+        if (PackIdMatches(sourcePackId, "system")) {
             if (!string.IsNullOrWhiteSpace(computerName)) {
                 args.Add("computer_name", computerName);
             }
             if (string.Equals(candidateTool, "system_updates_installed", StringComparison.OrdinalIgnoreCase)) {
                 args.Add("include_pending_local", false);
+            }
+        }
+
+        if (PackIdMatches(sourcePackId, "domaindetective")) {
+            var hostOrDomain = host ?? computerName ?? domainName ?? domain;
+            if (string.Equals(candidateTool, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)) {
+                var preferredDomain = domainName ?? domain ?? hostOrDomain;
+                if (!string.IsNullOrWhiteSpace(preferredDomain) && IsLikelyDomainName(preferredDomain)) {
+                    args.Add("domain", preferredDomain);
+                }
+                return args;
+            }
+
+            if (string.Equals(candidateTool, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
+                if (!string.IsNullOrWhiteSpace(hostOrDomain)) {
+                    args.Add("host", hostOrDomain);
+                }
+                return args;
+            }
+        }
+
+        if (PackIdMatches(sourcePackId, "testimox")) {
+            if (string.Equals(candidateTool, "testimox_rules_list", StringComparison.OrdinalIgnoreCase)) {
+                CopyHintIfPresent(partialScopeHints, args, "search_text");
+                CopyHintIfPresent(partialScopeHints, args, "rule_origin");
+                CopyHintIfPresent(partialScopeHints, args, "categories");
+                CopyHintIfPresent(partialScopeHints, args, "tags");
+                CopyHintIfPresent(partialScopeHints, args, "source_types");
+                return args;
+            }
+
+            if (string.Equals(candidateTool, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)) {
+                CopyHintIfPresent(partialScopeHints, args, "search_text");
+                CopyHintIfPresent(partialScopeHints, args, "rule_origin");
+                CopyHintIfPresent(partialScopeHints, args, "rule_names");
+                CopyHintIfPresent(partialScopeHints, args, "rule_name_patterns");
+                CopyHintIfPresent(partialScopeHints, args, "categories");
+                CopyHintIfPresent(partialScopeHints, args, "tags");
+                CopyHintIfPresent(partialScopeHints, args, "source_types");
+                return args;
             }
         }
 
@@ -459,7 +549,7 @@ internal sealed partial class ChatServiceSession {
         hints = new JsonObject(StringComparer.Ordinal);
         reason = "no_error_fallback_signal";
 
-        if (!string.Equals(sourcePackId, NormalizePackId("eventlog"), StringComparison.OrdinalIgnoreCase)) {
+        if (!PackIdMatches(sourcePackId, "eventlog")) {
             reason = "source_pack_not_supported";
             return false;
         }
@@ -501,6 +591,238 @@ internal sealed partial class ChatServiceSession {
 
         reason = "evtx_access_denied_live_query_fallback";
         return true;
+    }
+
+    private static void CopyHintIfPresent(JsonObject source, JsonObject destination, string propertyName) {
+        if (!source.TryGetValue(propertyName, out var node) || node is null) {
+            return;
+        }
+
+        switch (node.Kind) {
+            case IntelligenceX.Json.JsonValueKind.String: {
+                    var value = (node.AsString() ?? string.Empty).Trim();
+                    if (value.Length > 0) {
+                        destination[propertyName] = JsonValue.From(value);
+                    }
+                    break;
+                }
+            case IntelligenceX.Json.JsonValueKind.Boolean:
+                destination[propertyName] = JsonValue.From(node.AsBoolean());
+                break;
+            case IntelligenceX.Json.JsonValueKind.Array: {
+                    var array = node.AsArray();
+                    if (array is null || array.Count == 0) {
+                        break;
+                    }
+
+                    var copied = new JsonArray();
+                    for (var i = 0; i < array.Count; i++) {
+                        var item = array[i];
+                        if (item is null || item.Kind != IntelligenceX.Json.JsonValueKind.String) {
+                            continue;
+                        }
+
+                        var text = (item.AsString() ?? string.Empty).Trim();
+                        if (text.Length > 0) {
+                            copied.Add(text);
+                        }
+                    }
+
+                    if (copied.Count > 0) {
+                        destination[propertyName] = JsonValue.From(copied);
+                    }
+                    break;
+                }
+        }
+    }
+
+    private static bool ShouldSkipFallbackCandidate(string candidateTool, JsonObject arguments) {
+        if (!string.Equals(candidateTool, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return !HasTestimoSelectionArguments(arguments);
+    }
+
+    private static bool HasTestimoSelectionArguments(JsonObject arguments) {
+        return HasNonEmptyStringArgument(arguments, "search_text")
+               || HasNonEmptyStringArrayArgument(arguments, "rule_names")
+               || HasNonEmptyStringArrayArgument(arguments, "rule_name_patterns")
+               || HasNonEmptyStringArrayArgument(arguments, "categories")
+               || HasNonEmptyStringArrayArgument(arguments, "tags")
+               || HasNonEmptyStringArrayArgument(arguments, "source_types")
+               || HasNonEmptyStringArgument(arguments, "rule_origin");
+    }
+
+    private static bool HasNonEmptyStringArgument(JsonObject arguments, string name) {
+        if (!arguments.TryGetValue(name, out var node) || node is null || node.Kind != IntelligenceX.Json.JsonValueKind.String) {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(node.AsString());
+    }
+
+    private static bool HasNonEmptyStringArrayArgument(JsonObject arguments, string name) {
+        if (!arguments.TryGetValue(name, out var node) || node is null || node.Kind != IntelligenceX.Json.JsonValueKind.Array) {
+            return false;
+        }
+
+        var array = node.AsArray();
+        if (array is null || array.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < array.Count; i++) {
+            var value = array[i];
+            if (value is null || value.Kind != IntelligenceX.Json.JsonValueKind.String) {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(value.AsString())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasRequiredToolArguments(ToolDefinition toolDefinition, JsonObject arguments) {
+        var required = toolDefinition.Parameters?.GetArray("required");
+        if (required is null || required.Count == 0) {
+            return true;
+        }
+
+        for (var i = 0; i < required.Count; i++) {
+            var name = (required[i]?.AsString() ?? string.Empty).Trim();
+            if (name.Length == 0) {
+                continue;
+            }
+
+            if (!arguments.TryGetValue(name, out var value) || value is null || value.Kind == IntelligenceX.Json.JsonValueKind.Null) {
+                return false;
+            }
+
+            if (value.Kind == IntelligenceX.Json.JsonValueKind.String && string.IsNullOrWhiteSpace(value.AsString())) {
+                return false;
+            }
+
+            if (value.Kind == IntelligenceX.Json.JsonValueKind.Array && (value.AsArray()?.Count ?? 0) == 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryParseArgumentsObject(string? argumentsJson, out JsonObject arguments) {
+        arguments = new JsonObject(StringComparer.Ordinal);
+        var payload = (argumentsJson ?? string.Empty).Trim();
+        if (payload.Length == 0 || payload[0] != '{') {
+            return false;
+        }
+
+        try {
+            var parsed = JsonLite.Parse(payload)?.AsObject();
+            if (parsed is null) {
+                return false;
+            }
+
+            arguments = parsed;
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private static void CopyFallbackHintsFromToolArguments(JsonObject sourceArguments, JsonObject destinationHints) {
+        CopyHintIfPresent(sourceArguments, destinationHints, "domain");
+        CopyHintIfPresent(sourceArguments, destinationHints, "domain_name");
+        CopyHintIfPresent(sourceArguments, destinationHints, "dns_domain_name");
+        CopyHintIfPresent(sourceArguments, destinationHints, "forest_name");
+        CopyHintIfPresent(sourceArguments, destinationHints, "host");
+        CopyHintIfPresent(sourceArguments, destinationHints, "machine_name");
+        CopyHintIfPresent(sourceArguments, destinationHints, "computer_name");
+        CopyHintIfPresent(sourceArguments, destinationHints, "domain_controller");
+        CopyHintIfPresent(sourceArguments, destinationHints, "log_name");
+        CopyHintIfPresent(sourceArguments, destinationHints, "include_trusts");
+
+        CopyHintIfPresent(sourceArguments, destinationHints, "search_text");
+        CopyHintIfPresent(sourceArguments, destinationHints, "rule_origin");
+        CopyHintIfPresent(sourceArguments, destinationHints, "rule_names");
+        CopyHintIfPresent(sourceArguments, destinationHints, "rule_name_patterns");
+        CopyHintIfPresent(sourceArguments, destinationHints, "categories");
+        CopyHintIfPresent(sourceArguments, destinationHints, "tags");
+        CopyHintIfPresent(sourceArguments, destinationHints, "source_types");
+    }
+
+    private bool TryGetPackCapabilityFallbackContract(string packId, out PackCapabilityFallbackContract contract) {
+        var aliases = GetNormalizedPackAliases(packId);
+        foreach (var alias in aliases) {
+            if (_packCapabilityFallbackContractsByPackId.TryGetValue(alias, out contract) && contract.FallbackTools.Length > 0) {
+                return true;
+            }
+        }
+
+        contract = default;
+        return false;
+    }
+
+    private static bool PackIdMatches(string? actualPackId, string expectedPackId) {
+        var normalizedActual = NormalizePackId(actualPackId);
+        if (normalizedActual.Length == 0) {
+            return false;
+        }
+
+        var aliases = GetNormalizedPackAliases(expectedPackId);
+        return aliases.Contains(normalizedActual);
+    }
+
+    private static HashSet<string> GetNormalizedPackAliases(string packId) {
+        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AddAlias(string value) {
+            var normalized = NormalizePackId(value);
+            if (normalized.Length > 0) {
+                aliases.Add(normalized);
+            }
+        }
+
+        AddAlias(packId);
+        switch (NormalizePackId(packId)) {
+            case "activedirectory":
+                AddAlias("ad");
+                AddAlias("adplayground");
+                break;
+            case "ad":
+                AddAlias("active_directory");
+                AddAlias("adplayground");
+                break;
+            case "system":
+                AddAlias("computerx");
+                break;
+            case "computerx":
+                AddAlias("system");
+                break;
+            case "eventlog":
+                AddAlias("event_log");
+                break;
+            case "domaindetective":
+                AddAlias("domain_detective");
+                break;
+            case "testimox":
+                AddAlias("testimo_x");
+                break;
+        }
+
+        return aliases;
+    }
+
+    private static bool IsLikelyDomainName(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length < 3 || normalized.Length > 255 || normalized.Contains(' ', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        return normalized.Contains('.', StringComparison.Ordinal) && !normalized.StartsWith(".", StringComparison.Ordinal) && !normalized.EndsWith(".", StringComparison.Ordinal);
     }
 
     private static bool TryReadDiscoveryPartialScopeHints(string? outputJson, out JsonObject hints, out string reason) {
