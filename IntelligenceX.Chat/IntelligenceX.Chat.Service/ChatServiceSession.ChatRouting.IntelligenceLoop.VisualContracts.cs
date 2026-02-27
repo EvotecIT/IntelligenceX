@@ -54,12 +54,14 @@ internal sealed partial class ChatServiceSession {
 
             var contentStart = fenceStart + fenceLength;
             if (contentStart >= value.Length) {
-                break;
+                index = fenceStart + 1;
+                continue;
             }
 
             var contentEnd = FindClosingRepeated(value, contentStart, '`', fenceLength);
             if (contentEnd < 0) {
-                break;
+                index = fenceStart + 1;
+                continue;
             }
 
             var content = value.Slice(contentStart, contentEnd - contentStart).Trim();
