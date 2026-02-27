@@ -318,10 +318,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             }
         };
 
-        var updateMethod = typeof(ChatServiceSession).GetMethod("UpdateToolRoutingStats", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(updateMethod);
-
-        updateMethod!.Invoke(session, new object[] { calls, outputs });
+        session.UpdateToolRoutingStatsForTesting(calls, outputs);
 
         var names = session.GetTrackedToolRoutingStatNamesForTesting();
         Assert.Contains(names, static name => string.Equals(name, "ad_replication_summary", StringComparison.OrdinalIgnoreCase));

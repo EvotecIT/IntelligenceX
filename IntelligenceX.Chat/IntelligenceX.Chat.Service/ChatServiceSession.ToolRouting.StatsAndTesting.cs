@@ -418,6 +418,10 @@ internal sealed partial class ChatServiceSession {
         PersistToolRoutingStatsSnapshot();
     }
 
+    internal void UpdateToolRoutingStatsForTesting(IReadOnlyList<ToolCall> calls, IReadOnlyList<ToolOutputDto> outputs) {
+        UpdateToolRoutingStats(calls, outputs);
+    }
+
     internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest) {
         return ExpandContinuationUserRequest(threadId, userRequest);
     }
