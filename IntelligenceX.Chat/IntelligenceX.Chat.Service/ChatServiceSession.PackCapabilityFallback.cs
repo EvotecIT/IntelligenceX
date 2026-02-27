@@ -1087,6 +1087,10 @@ internal sealed partial class ChatServiceSession {
                 AddAlias("active_directory");
                 AddAlias("adplayground");
                 break;
+            case "adplayground":
+                AddAlias("active_directory");
+                AddAlias("ad");
+                break;
             case "system":
                 AddAlias("computerx");
                 break;
