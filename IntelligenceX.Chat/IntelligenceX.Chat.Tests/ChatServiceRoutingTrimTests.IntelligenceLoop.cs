@@ -275,6 +275,33 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(enabled);
     }
 
+    [Fact]
+    public void TryReadProactiveModeFromRequestText_DoesNotCrossIntoNextStructuredSection() {
+        var requestText = """
+                          [Proactive execution mode]
+                          ix:proactive-mode:v1
+                          note: keep parsing local
+
+                          [Persistent memory]
+                          enabled: true
+                          """;
+
+        var result = ChatServiceSession.TryReadProactiveModeFromRequestText(requestText, out var enabled);
+
+        Assert.False(result);
+        Assert.False(enabled);
+    }
+
+    [Theory]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled: \"true")]
+    [InlineData("[Proactive execution mode]\nix:proactive-mode:v1\nenabled: true\"")]
+    public void TryReadProactiveModeFromRequestText_IgnoresMalformedQuotedValues(string requestText) {
+        var result = ChatServiceSession.TryReadProactiveModeFromRequestText(requestText, out var enabled);
+
+        Assert.False(result);
+        Assert.False(enabled);
+    }
+
     [Theory]
     [InlineData(true, true, false, false, false, "Findings summary without actions.", true)]
     [InlineData(true, true, false, false, false, "Findings summary. Do you want me to continue?", false)]
