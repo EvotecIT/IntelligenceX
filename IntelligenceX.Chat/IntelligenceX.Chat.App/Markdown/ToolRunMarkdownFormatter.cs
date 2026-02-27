@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -226,53 +228,68 @@ internal static class ToolRunMarkdownFormatter {
         JsonElement outputRoot = default;
         try {
             if (!string.IsNullOrWhiteSpace(output.Output)) {
-                outputDoc = JsonDocument.Parse(output.Output);
-                if (outputDoc.RootElement.ValueKind == JsonValueKind.Object) {
-                    outputRoot = outputDoc.RootElement;
+                try {
+                    outputDoc = JsonDocument.Parse(output.Output);
+                    if (outputDoc.RootElement.ValueKind == JsonValueKind.Object) {
+                        outputRoot = outputDoc.RootElement;
+                    }
+                } catch (Exception ex) {
+                    TraceRenderHintWarning(output.CallId, "Failed to parse tool output JSON while building render fences.", ex);
                 }
             }
 
-            using var renderDoc = JsonDocument.Parse(output.RenderJson);
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var renderHint in EnumerateRenderHints(renderDoc.RootElement)) {
-                var normalizedKind = NormalizeRenderKind(ReadStringProperty(renderHint, "kind"));
-                if (normalizedKind.Length == 0) {
-                    continue;
-                }
+            JsonDocument renderDoc;
+            try {
+                renderDoc = JsonDocument.Parse(output.RenderJson);
+            } catch (Exception ex) {
+                TraceRenderHintWarning(output.CallId, "Failed to parse render hints JSON.", ex);
+                return fences;
+            }
 
-                if (string.Equals(normalizedKind, "table", StringComparison.Ordinal)) {
-                    if (!TryBuildDataViewPayload(
-                            renderHint,
-                            outputRoot,
-                            output.CallId ?? string.Empty,
-                            out var dataViewPayloadJson)) {
-                        continue;
+            using (renderDoc) {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var renderHint in EnumerateRenderHints(renderDoc.RootElement)) {
+                    try {
+                        var normalizedKind = NormalizeRenderKind(ReadStringProperty(renderHint, "kind"));
+                        if (normalizedKind.Length == 0) {
+                            continue;
+                        }
+
+                        if (string.Equals(normalizedKind, "table", StringComparison.Ordinal)) {
+                            if (!TryBuildDataViewPayload(
+                                    renderHint,
+                                    outputRoot,
+                                    output.CallId ?? string.Empty,
+                                    out var dataViewPayloadJson)) {
+                                continue;
+                            }
+
+                            var dedupeKey = BuildRenderHintDeduplicationKey(DataViewPayloadFenceLanguage, dataViewPayloadJson);
+                            if (seen.Add(dedupeKey)) {
+                                fences.Add((DataViewPayloadFenceLanguage, dataViewPayloadJson));
+                            }
+                            continue;
+                        }
+
+                        if (!TryBuildCodeRenderFence(
+                                renderHint,
+                                normalizedKind,
+                                outputRoot,
+                                out var language,
+                                out var content)) {
+                            continue;
+                        }
+
+                        var key = BuildRenderHintDeduplicationKey(language, content);
+                        if (seen.Add(key)) {
+                            fences.Add((language, content));
+                        }
+                    } catch (Exception ex) {
+                        TraceRenderHintWarning(output.CallId, "Failed to process a render hint entry.", ex);
                     }
-
-                    var dedupeKey = DataViewPayloadFenceLanguage + "\n" + dataViewPayloadJson;
-                    if (seen.Add(dedupeKey)) {
-                        fences.Add((DataViewPayloadFenceLanguage, dataViewPayloadJson));
-                    }
-                    continue;
-                }
-
-                if (!TryBuildCodeRenderFence(
-                        renderHint,
-                        normalizedKind,
-                        outputRoot,
-                        out var language,
-                        out var content)) {
-                    continue;
-                }
-
-                var key = language + "\n" + content;
-                if (seen.Add(key)) {
-                    fences.Add((language, content));
                 }
             }
 
-            return fences;
-        } catch {
             return fences;
         } finally {
             outputDoc?.Dispose();
@@ -357,8 +374,7 @@ internal static class ToolRunMarkdownFormatter {
             content = inlineContentNode.ValueKind == JsonValueKind.String
                 ? (inlineContentNode.GetString() ?? string.Empty)
                 : inlineContentNode.GetRawText();
-            content = content.Trim();
-            return content.Length > 0;
+            return !string.IsNullOrWhiteSpace(content);
         }
 
         var contentPath = ReadStringProperty(render, "content_path");
@@ -374,8 +390,21 @@ internal static class ToolRunMarkdownFormatter {
         content = contentNode.ValueKind == JsonValueKind.String
             ? (contentNode.GetString() ?? string.Empty)
             : contentNode.GetRawText();
-        content = content.Trim();
-        return content.Length > 0;
+        return !string.IsNullOrWhiteSpace(content);
+    }
+
+    private static string BuildRenderHintDeduplicationKey(string language, string content) {
+        var normalizedLanguage = (language ?? string.Empty).Trim().ToLowerInvariant();
+        var value = content ?? string.Empty;
+        var payload = Encoding.UTF8.GetBytes(value);
+        var hash = Convert.ToHexString(SHA256.HashData(payload));
+        return normalizedLanguage + ":" + hash + ":" + value.Length;
+    }
+
+    private static void TraceRenderHintWarning(string? callId, string message, Exception ex) {
+        var id = string.IsNullOrWhiteSpace(callId) ? "<unknown>" : callId.Trim();
+        Trace.TraceWarning(
+            $"Tool render hint warning (call_id={id}): {message} ({ex.GetType().Name}: {ex.Message})");
     }
 
     private static bool TryBuildDataViewPayload(
