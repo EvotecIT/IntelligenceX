@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -290,10 +291,28 @@ internal sealed partial class ChatServiceSession {
         }
 
         await phaseTask.ConfigureAwait(false);
-        if (heartbeatFailure is not null) {
-            Trace.TraceWarning(
-                $"Phase heartbeat loop failed after phase completion: {heartbeatFailure.GetType().Name}: {heartbeatFailure.Message}");
+        if (heartbeatFailure is null) {
+            return;
         }
+
+        if (ShouldSuppressPhaseHeartbeatFailure(heartbeatFailure, heartbeatCts, cancellationToken)) {
+            Trace.TraceWarning(
+                $"Phase heartbeat loop suppressed failure after phase completion: phase={status}; request={requestId}; thread={threadId}; " +
+                $"error={heartbeatFailure.GetType().Name}: {heartbeatFailure.Message}");
+            return;
+        }
+
+        ExceptionDispatchInfo.Capture(heartbeatFailure).Throw();
+    }
+
+    private static bool ShouldSuppressPhaseHeartbeatFailure(Exception heartbeatFailure, CancellationTokenSource heartbeatCts,
+        CancellationToken cancellationToken) {
+        if (heartbeatFailure is IOException) {
+            return true;
+        }
+
+        return heartbeatFailure is OperationCanceledException
+               && (heartbeatCts.IsCancellationRequested || cancellationToken.IsCancellationRequested);
     }
 
     private async Task RunPhaseHeartbeatLoopAsync(

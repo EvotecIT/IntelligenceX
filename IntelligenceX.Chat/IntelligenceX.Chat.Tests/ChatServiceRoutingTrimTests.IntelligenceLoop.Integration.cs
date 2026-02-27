@@ -120,7 +120,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public async Task PhaseProgressLoop_HeartbeatFailureDoesNotOverridePhaseFailure() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
-        using var capture = new FailOnSecondWriteCaptureStream();
+        using var capture = new FailOnWriteNumberCaptureStream(2);
         using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
 
         async Task FailingPhaseAsync() {
@@ -294,10 +294,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
         return false;
     }
 
-    private sealed class FailOnSecondWriteCaptureStream : Stream {
+    private sealed class FailOnWriteNumberCaptureStream : Stream {
         private readonly MemoryStream _inner = new();
         private readonly object _sync = new();
+        private readonly int _failOnWriteNumber;
+        private readonly Func<Exception> _exceptionFactory;
         private int _writeCount;
+
+        public FailOnWriteNumberCaptureStream(int failOnWriteNumber, Func<Exception>? exceptionFactory = null) {
+            _failOnWriteNumber = Math.Max(1, failOnWriteNumber);
+            _exceptionFactory = exceptionFactory ?? (() => new IOException("Simulated heartbeat write failure."));
+        }
 
         public byte[] Snapshot() {
             lock (_sync) {
@@ -334,8 +341,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         public override void Write(byte[] buffer, int offset, int count) {
             lock (_sync) {
                 _writeCount++;
-                if (_writeCount > 1) {
-                    throw new IOException("Simulated heartbeat write failure.");
+                if (_writeCount >= _failOnWriteNumber) {
+                    throw _exceptionFactory();
                 }
 
                 _inner.Write(buffer, offset, count);
