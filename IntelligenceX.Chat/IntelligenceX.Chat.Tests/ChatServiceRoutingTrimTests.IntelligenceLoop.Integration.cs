@@ -326,15 +326,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         outerCts.Cancel();
         unrelatedCts.Cancel();
 
-        Assert.Equal("io", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+        Assert.Equal(ChatServiceSession.PhaseHeartbeatSuppressionReasonIo, ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
             new IOException("io"),
             heartbeatCts.Token,
             outerCts.Token));
-        Assert.Equal("heartbeat-canceled", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+        Assert.Equal(ChatServiceSession.PhaseHeartbeatSuppressionReasonHeartbeatCanceled, ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
             new OperationCanceledException("heartbeat", innerException: null, heartbeatCts.Token),
             heartbeatCts.Token,
             outerCts.Token));
-        Assert.Equal("request-canceled", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+        Assert.Equal(ChatServiceSession.PhaseHeartbeatSuppressionReasonRequestCanceled, ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
             new OperationCanceledException("outer", innerException: null, outerCts.Token),
             heartbeatCts.Token,
             outerCts.Token));
@@ -350,7 +350,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         using var outerCts = new CancellationTokenSource();
         heartbeatCts.Cancel();
 
-        Assert.Equal("canceled", ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
+        Assert.Equal(ChatServiceSession.PhaseHeartbeatSuppressionReasonCanceled, ChatServiceSession.GetPhaseHeartbeatSuppressionReason(
             new OperationCanceledException("canceled-without-token"),
             heartbeatCts.Token,
             outerCts.Token));
