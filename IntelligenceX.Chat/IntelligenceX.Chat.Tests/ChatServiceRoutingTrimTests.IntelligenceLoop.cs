@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Json;
@@ -469,6 +470,45 @@ public sealed partial class ChatServiceRoutingTrimTests {
             toolOutputs: Array.Empty<ToolOutputDto>());
 
         Assert.Equal("Already have final response.", text);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextFromToolOutputsFallback_IgnoresNullCallAndOutputEntries() {
+        var text = ChatServiceSession.ResolveAssistantTextFromToolOutputsFallback(
+            assistantDraft: string.Empty,
+            toolCalls: new List<ToolCallDto> {
+                null!,
+                new ToolCallDto {
+                    CallId = "call-2",
+                    Name = "ad_user_find",
+                    ArgumentsJson = "{}"
+                }
+            },
+            toolOutputs: new List<ToolOutputDto> {
+                null!,
+                new ToolOutputDto {
+                    CallId = "call-2",
+                    Output = "{\"ok\":true}",
+                    SummaryMarkdown = "Found 12 matching users in requested scope."
+                }
+            });
+
+        Assert.Contains("Recovered findings from executed tools", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad_user_find", text, StringComparison.Ordinal);
+        Assert.Contains("Found 12 matching users", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextFromToolOutputsFallback_ReturnsEmptyWhenOnlyNullOutputsArePresent() {
+        var text = ChatServiceSession.ResolveAssistantTextFromToolOutputsFallback(
+            assistantDraft: string.Empty,
+            toolCalls: Array.Empty<ToolCallDto>(),
+            toolOutputs: new List<ToolOutputDto> {
+                null!,
+                null!
+            });
+
+        Assert.Equal(string.Empty, text);
     }
 
     [Fact]
