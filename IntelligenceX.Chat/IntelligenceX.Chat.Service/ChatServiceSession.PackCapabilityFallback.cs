@@ -381,6 +381,21 @@ internal sealed partial class ChatServiceSession {
                 return true;
             }
 
+            if (TryBuildCrossHostSystemBaselineFallbackToolCall(
+                    toolDefinitions: toolDefinitions,
+                    priorCalledTools: priorCalledTools,
+                    sourcePackId: sourcePackId,
+                    sourceTool: sourceTool,
+                    partialScopeHints: partialScopeHints,
+                    partialScopeReason: partialScopeReason,
+                    userRequest: userRequest,
+                    hasSourceFailureSignal: hasSourceFailureSignal,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    out toolCall,
+                    out reason)) {
+                return true;
+            }
+
             for (var i = 0; i < packContract.FallbackTools.Length; i++) {
                 var candidateTool = packContract.FallbackTools[i];
                 if (string.Equals(candidateTool, sourceTool, StringComparison.OrdinalIgnoreCase)) {
@@ -734,6 +749,124 @@ internal sealed partial class ChatServiceSession {
                  + "->"
                  + candidateTool;
         return true;
+    }
+
+    private bool TryBuildCrossHostSystemBaselineFallbackToolCall(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string sourcePackId,
+        string sourceTool,
+        JsonObject partialScopeHints,
+        string partialScopeReason,
+        string? userRequest,
+        bool hasSourceFailureSignal,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        toolCall = null!;
+        reason = "cross_host_system_baseline_not_applicable";
+
+        if (!PackIdMatches(sourcePackId, "eventlog")
+            || !hasSourceFailureSignal) {
+            reason = "cross_host_system_baseline_source_not_eligible";
+            return false;
+        }
+
+        if (!IsEventlogSourceToolForSystemBaselineFallback(sourceTool)) {
+            reason = "cross_host_system_baseline_source_tool_not_supported";
+            return false;
+        }
+
+        const string candidateTool = "system_info";
+        if (priorCalledTools.Contains(candidateTool)) {
+            reason = "cross_host_system_baseline_candidate_already_called";
+            return false;
+        }
+
+        if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+            reason = "cross_host_system_baseline_candidate_unavailable";
+            return false;
+        }
+
+        if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
+            || !PackIdMatches(candidatePackIdRaw, "system")) {
+            reason = "cross_host_system_baseline_candidate_not_in_system_pack";
+            return false;
+        }
+
+        var mutability = ResolveStructuredNextActionMutability(
+            declaredMutability: ActionMutability.Unknown,
+            toolName: candidateTool,
+            toolDefinition: toolDefinition,
+            mutatingToolHintsByName: mutatingToolHintsByName);
+        if (mutability != ActionMutability.ReadOnly) {
+            reason = "cross_host_system_baseline_candidate_not_read_only";
+            return false;
+        }
+
+        var computerName = ResolveEventlogHostHint(partialScopeHints, userRequest);
+        if (string.IsNullOrWhiteSpace(computerName)) {
+            reason = "cross_host_system_baseline_missing_host_hint";
+            return false;
+        }
+
+        var fallbackArguments = new JsonObject(StringComparer.Ordinal)
+            .Add("computer_name", computerName);
+        var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+        if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+            || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+            reason = "cross_host_system_baseline_candidate_missing_required_args";
+            return false;
+        }
+
+        var serializedArguments = JsonLite.Serialize(normalizedArguments);
+        var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+        var raw = new JsonObject()
+            .Add("type", "tool_call")
+            .Add("call_id", fallbackCallId)
+            .Add("name", candidateTool)
+            .Add("arguments", serializedArguments);
+
+        toolCall = new ToolCall(
+            callId: fallbackCallId,
+            name: candidateTool,
+            input: serializedArguments,
+            arguments: normalizedArguments,
+            raw: raw);
+        reason = "pack_contract_cross_host_system_baseline:"
+                 + sourcePackId
+                 + ":"
+                 + partialScopeReason
+                 + "->"
+                 + candidateTool;
+        return true;
+    }
+
+    private static bool IsEventlogSourceToolForSystemBaselineFallback(string sourceTool) {
+        return string.Equals(sourceTool, "eventlog_live_query", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(sourceTool, "eventlog_live_stats", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(sourceTool, "eventlog_top_events", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(sourceTool, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(sourceTool, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(sourceTool, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(sourceTool, "eventlog_evtx_stats", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(sourceTool, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveEventlogHostHint(JsonObject hints, string? userRequest) {
+        var preferred = ReadNonEmptyHint(hints, "machine_name")
+                        ?? ReadNonEmptyHint(hints, "computer_name")
+                        ?? ReadNonEmptyHint(hints, "host");
+        if (string.IsNullOrWhiteSpace(preferred)) {
+            preferred = TryExtractHostHintFromUserRequest(userRequest);
+        }
+
+        if (string.IsNullOrWhiteSpace(preferred)) {
+            return null;
+        }
+
+        var normalized = preferred.Trim();
+        return normalized.IndexOf(' ', StringComparison.Ordinal) >= 0 ? null : normalized;
     }
 
     private static string? ResolveDnsClientXNameHint(JsonObject hints) {
