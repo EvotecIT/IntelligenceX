@@ -149,18 +149,55 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ContainsVisualContractSignal(string? text) {
+        return TryResolvePreferredVisualTypeFromVisualContractSignal(text, out _);
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromVisualContractSignal(
+        string? text,
+        out string preferredVisualType) {
+        preferredVisualType = string.Empty;
         var value = (text ?? string.Empty).Trim();
         if (value.Length == 0) {
             return false;
         }
 
+        var content = value.AsSpan();
+        var lineStart = 0;
+        while (lineStart < content.Length) {
+            var lineEnd = content.Slice(lineStart).IndexOf('\n');
+            if (lineEnd < 0) {
+                lineEnd = content.Length - lineStart;
+            }
+
+            var line = content.Slice(lineStart, lineEnd).TrimStart();
+            if (TryGetFenceLanguage(line, out var fenceLanguage)) {
+                if (TryResolvePreferredVisualTypeToken(fenceLanguage, out preferredVisualType)) {
+                    return true;
+                }
+
+                if (ContainsVisualContractFenceLanguage(fenceLanguage)) {
+                    return true;
+                }
+            }
+
+            lineStart += lineEnd + 1;
+        }
+
+        return TryResolvePreferredVisualTypeFromInlineTokenSignal(value, out preferredVisualType);
+    }
+
+    private static bool ContainsVisualContractFenceLanguage(ReadOnlySpan<char> language) {
+        if (language.IsEmpty) {
+            return false;
+        }
+
         for (var i = 0; i < VisualContractFenceLanguages.Length; i++) {
-            if (ContainsFenceLanguage(value, VisualContractFenceLanguages[i])) {
+            if (language.Equals(VisualContractFenceLanguages[i].AsSpan(), StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
         }
 
-        return ContainsVisualInlineTokenSignal(value);
+        return false;
     }
 
     private static string GetSupportedProactiveVisualBlockListText() {

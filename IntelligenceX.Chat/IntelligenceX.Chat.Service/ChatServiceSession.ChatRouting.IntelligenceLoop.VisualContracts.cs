@@ -265,6 +265,13 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ContainsVisualInlineTokenSignal(string text) {
+        return TryResolvePreferredVisualTypeFromInlineTokenSignal(text, out _);
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromInlineTokenSignal(
+        string text,
+        out string preferredVisualType) {
+        preferredVisualType = string.Empty;
         if (string.IsNullOrWhiteSpace(text) || VisualContractInlineTokenSignals.Count == 0) {
             return false;
         }
@@ -301,6 +308,12 @@ internal sealed partial class ChatServiceSession {
             var content = value.Slice(contentStart, contentEnd - contentStart).Trim();
             var normalizedToken = NormalizeCompactToken(content);
             if (normalizedToken.Length > 0 && VisualContractInlineTokenSignals.Contains(normalizedToken)) {
+                if (!PreferredVisualTypeByToken.TryGetValue(normalizedToken, out var resolvedPreferredVisualType)
+                    || string.IsNullOrWhiteSpace(resolvedPreferredVisualType)) {
+                    preferredVisualType = string.Empty;
+                } else {
+                    preferredVisualType = resolvedPreferredVisualType;
+                }
                 return true;
             }
 
