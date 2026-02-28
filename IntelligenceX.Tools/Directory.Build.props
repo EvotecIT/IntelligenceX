@@ -21,10 +21,12 @@
     <!-- Candidate roots:
          - root1: repo sibling layout
          - root2: worktree root (for C:\...\_wt\<branch>\IntelligenceX)
-         - root3: worktree parent root (for sibling repos next to _wt) -->
+         - root3: repo root when using .worktrees inside this repo
+         - root4: parent of repo root (where sibling repos typically live) -->
     <IxToolsSiblingsRoot1>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\'))</IxToolsSiblingsRoot1>
     <IxToolsSiblingsRoot2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\'))</IxToolsSiblingsRoot2>
     <IxToolsSiblingsRoot3>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\..\\'))</IxToolsSiblingsRoot3>
+    <IxToolsSiblingsRoot4>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\..\\..\\'))</IxToolsSiblingsRoot4>
     <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot1)</IxToolsSiblingsRoot>
     <IntelligenceXCoreProject Condition="'$(IntelligenceXCoreProject)'==''">$([System.IO.Path]::GetFullPath('$(IxToolsRepoRoot)..\\IntelligenceX\\IntelligenceX.csproj'))</IntelligenceXCoreProject>
     <!-- Minimum markers for private engine contracts. -->
@@ -77,11 +79,14 @@
   </PropertyGroup>
 
   <!-- Pick the best sibling root for local discovery (prefer broader parent roots when in worktrees). -->
-  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot2)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot2)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot2)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
+  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot2)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot2)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot2)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot2)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot2)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
     <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot2)</IxToolsSiblingsRoot>
   </PropertyGroup>
   <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot3)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot3)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot3)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot3)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot3)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot3)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
     <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot3)</IxToolsSiblingsRoot>
+  </PropertyGroup>
+  <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot4)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot4)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot4)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot4)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
+    <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot4)</IxToolsSiblingsRoot>
   </PropertyGroup>
 
   <!-- Prefer canonical repo names first, then legacy -master fallback. -->
