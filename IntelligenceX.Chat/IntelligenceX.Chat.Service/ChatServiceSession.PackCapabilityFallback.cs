@@ -339,6 +339,7 @@ internal sealed partial class ChatServiceSession {
             if (!hasFallbackHints && !hasSourceFailureSignal) {
                 continue;
             }
+            TryGetToolDefinitionByName(toolDefinitions, sourceTool, out var sourceToolDefinition);
 
             if (TryBuildCrossDomainControllerDiscoveryFirstFallbackToolCall(
                     toolDefinitions: toolDefinitions,
@@ -386,6 +387,7 @@ internal sealed partial class ChatServiceSession {
                     priorCalledTools: priorCalledTools,
                     sourcePackId: sourcePackId,
                     sourceTool: sourceTool,
+                    sourceToolDefinition: sourceToolDefinition,
                     partialScopeHints: partialScopeHints,
                     partialScopeReason: partialScopeReason,
                     userRequest: userRequest,
@@ -401,6 +403,7 @@ internal sealed partial class ChatServiceSession {
                     priorCalledTools: priorCalledTools,
                     sourcePackId: sourcePackId,
                     sourceTool: sourceTool,
+                    sourceToolDefinition: sourceToolDefinition,
                     partialScopeHints: partialScopeHints,
                     partialScopeReason: partialScopeReason,
                     userRequest: userRequest,
@@ -771,6 +774,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlySet<string> priorCalledTools,
         string sourcePackId,
         string sourceTool,
+        ToolDefinition? sourceToolDefinition,
         JsonObject partialScopeHints,
         string partialScopeReason,
         string? userRequest,
@@ -787,7 +791,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!IsEventlogSourceToolForSystemBaselineFallback(sourceTool)) {
+        if (!IsSourceToolEligibleForCrossHostSystemBaselineFallback(sourceTool, sourceToolDefinition)) {
             reason = "cross_host_system_baseline_source_tool_not_supported";
             return false;
         }
@@ -857,15 +861,71 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private static bool IsEventlogSourceToolForSystemBaselineFallback(string sourceTool) {
-        return string.Equals(sourceTool, "eventlog_live_query", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(sourceTool, "eventlog_live_stats", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(sourceTool, "eventlog_top_events", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(sourceTool, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(sourceTool, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(sourceTool, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(sourceTool, "eventlog_evtx_stats", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(sourceTool, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase);
+    private static bool IsSourceToolEligibleForCrossHostSystemBaselineFallback(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition) {
+        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)) {
+            return false;
+        }
+
+        var scope = (routingInfo.Scope ?? string.Empty).Trim();
+        if (!string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(scope, "file", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation);
+    }
+
+    private static bool IsSourceToolEligibleForCrossHostEventlogEvidenceFallback(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition) {
+        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)) {
+            return false;
+        }
+
+        var scope = (routingInfo.Scope ?? string.Empty).Trim();
+        if (!string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation);
+    }
+
+    private static bool TryResolveSourceRoutingInfo(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition,
+        out ToolSelectionMetadata.ToolSelectionRoutingInfo routingInfo) {
+        routingInfo = null!;
+
+        if (sourceToolDefinition?.WriteGovernance?.IsWriteCapable == true) {
+            return false;
+        }
+
+        var routingDefinition = sourceToolDefinition;
+        if (routingDefinition is null) {
+            var normalizedSourceTool = (sourceTool ?? string.Empty).Trim();
+            if (normalizedSourceTool.Length == 0) {
+                return false;
+            }
+
+            routingDefinition = new ToolDefinition(normalizedSourceTool);
+        }
+
+        routingInfo = ToolSelectionMetadata.ResolveRouting(routingDefinition, toolType: null);
+        return true;
+    }
+
+    private static bool IsCrossHostFallbackReadOnlyOperation(string? operation) {
+        var normalizedOperation = (operation ?? string.Empty).Trim();
+        return string.Equals(normalizedOperation, ToolRoutingTaxonomy.OperationRead, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedOperation, "query", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedOperation, "list", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedOperation, "search", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedOperation, "summarize", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedOperation, "probe", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedOperation, "discover", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedOperation, "resolve", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveEventlogHostHint(JsonObject hints, string? userRequest) {
@@ -889,6 +949,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlySet<string> priorCalledTools,
         string sourcePackId,
         string sourceTool,
+        ToolDefinition? sourceToolDefinition,
         JsonObject partialScopeHints,
         string partialScopeReason,
         string? userRequest,
@@ -905,7 +966,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!string.Equals(sourceTool, "system_info", StringComparison.OrdinalIgnoreCase)) {
+        if (!IsSourceToolEligibleForCrossHostEventlogEvidenceFallback(sourceTool, sourceToolDefinition)) {
             reason = "cross_host_eventlog_evidence_source_tool_not_supported";
             return false;
         }
