@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Text.Json.Serialization;
 using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.Abstractions.Protocol;
@@ -95,6 +97,9 @@ public sealed record ToolParameterDto {
 /// Tool call DTO emitted during a chat run.
 /// </summary>
 public sealed record ToolCallDto {
+    private string _argumentsJson = "{}";
+    private bool _argumentsJsonExplicitlySet;
+
     /// <summary>
     /// Tool call id.
     /// </summary>
@@ -106,7 +111,32 @@ public sealed record ToolCallDto {
     /// <summary>
     /// JSON-serialized arguments.
     /// </summary>
-    public string ArgumentsJson { get; init; } = "{}";
+    public string ArgumentsJson {
+        get => _argumentsJson;
+        init {
+            _argumentsJson = string.IsNullOrWhiteSpace(value) ? "{}" : value;
+            _argumentsJsonExplicitlySet = !string.IsNullOrWhiteSpace(value);
+        }
+    }
+
+    /// <summary>
+    /// Backward-compatible alias accepted from legacy payloads/object-initializers.
+    /// </summary>
+    [Obsolete("Use ArgumentsJson instead.")]
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [JsonPropertyName("input")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string? Input {
+        init {
+            if (string.IsNullOrWhiteSpace(value)) {
+                return;
+            }
+
+            if (!_argumentsJsonExplicitlySet) {
+                _argumentsJson = value;
+            }
+        }
+    }
 }
 
 /// <summary>
