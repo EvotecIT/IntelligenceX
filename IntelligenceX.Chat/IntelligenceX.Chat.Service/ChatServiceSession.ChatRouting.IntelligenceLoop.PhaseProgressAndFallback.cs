@@ -33,6 +33,11 @@ internal sealed partial class ChatServiceSession {
     private const int PreferredVisualSourceScoreRenderHint = 300;
     private const int PreferredVisualSourceScoreSummaryMarkdown = 200;
     private const int PreferredVisualSourceScoreOutputPayload = 100;
+    private const int RenderHintVisualTypePriorityDefault = 10;
+    private const int RenderHintVisualTypePriorityTable = 100;
+    private const int RenderHintVisualTypePriorityMermaid = 200;
+    private const int RenderHintVisualTypePriorityChart = 300;
+    private const int RenderHintVisualTypePriorityNetwork = 400;
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -488,21 +493,47 @@ internal sealed partial class ChatServiceSession {
                 return false;
             }
 
+            var bestPriority = int.MinValue;
+            var bestVisualType = string.Empty;
             foreach (var hint in document.RootElement.EnumerateArray()) {
                 if (hint.ValueKind != JsonValueKind.Object) {
                     continue;
                 }
 
-                if (TryResolvePreferredVisualTypeFromRenderHint(hint, out preferredVisualType)) {
-                    return true;
+                if (!TryResolvePreferredVisualTypeFromRenderHint(hint, out var candidateVisualType)
+                    || string.IsNullOrWhiteSpace(candidateVisualType)) {
+                    continue;
                 }
+
+                var candidatePriority = ResolveRenderHintVisualPriority(candidateVisualType);
+                if (candidatePriority <= bestPriority) {
+                    continue;
+                }
+
+                bestPriority = candidatePriority;
+                bestVisualType = candidateVisualType;
             }
 
-            return false;
+            if (string.IsNullOrWhiteSpace(bestVisualType)) {
+                return false;
+            }
+
+            preferredVisualType = bestVisualType;
+            return true;
         } catch (JsonException) {
             preferredVisualType = string.Empty;
             return false;
         }
+    }
+
+    private static int ResolveRenderHintVisualPriority(string preferredVisualType) {
+        return preferredVisualType switch {
+            NetworkVisualType => RenderHintVisualTypePriorityNetwork,
+            ChartVisualType => RenderHintVisualTypePriorityChart,
+            MermaidVisualType => RenderHintVisualTypePriorityMermaid,
+            TableVisualType => RenderHintVisualTypePriorityTable,
+            _ => RenderHintVisualTypePriorityDefault
+        };
     }
 
     private static bool TryResolvePreferredVisualTypeFromRenderHint(
