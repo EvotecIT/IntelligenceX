@@ -383,8 +383,11 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("Por favor revisar DNS publico", "public_domain")]
     [InlineData("Verifier DNS public du domaine", "public_domain")]
     [InlineData("Use adplayground for this domain", "ad_domain")]
+    [InlineData("active_directory diagnostics for this domain", "ad_domain")]
     [InlineData("Run domaindetective checks for this zone", "public_domain")]
+    [InlineData("Run domain_detective checks for this zone", "public_domain")]
     [InlineData("dnsclientx resolver baseline", "public_domain")]
+    [InlineData("dns_client_x resolver baseline", "public_domain")]
     [InlineData("act_domain_scope_public", "public_domain")]
     [InlineData("ad_domain", "ad_domain")]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesLanguageNeutralTechnicalSignals(
