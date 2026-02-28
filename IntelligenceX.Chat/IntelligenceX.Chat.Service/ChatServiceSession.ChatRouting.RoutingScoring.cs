@@ -309,10 +309,38 @@ internal sealed partial class ChatServiceSession {
             sb.Append(" pack:").Append(token);
         }
 
-        AppendPackToken(packHint);
-        foreach (var alias in GetNormalizedPackAliases(packHint)) {
+        foreach (var alias in BuildRoutingPackSearchTokens(packHint)) {
             AppendPackToken(alias);
         }
+    }
+
+    private static IEnumerable<string> BuildRoutingPackSearchTokens(string packHint) {
+        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AddToken(string value) {
+            var token = (value ?? string.Empty).Trim();
+            if (token.Length > 0) {
+                aliases.Add(token);
+            }
+        }
+
+        AddToken(packHint);
+        foreach (var alias in GetNormalizedPackAliases(packHint)) {
+            AddToken(alias);
+        }
+
+        switch (NormalizePackId(packHint)) {
+            case "domaindetective":
+                AddToken("domain_detective");
+                break;
+            case "dnsclientx":
+                AddToken("dns_client_x");
+                break;
+            case "testimox":
+                AddToken("testimo_x");
+                break;
+        }
+
+        return aliases;
     }
 
     private static string[] ExtractToolSchemaPropertyNames(ToolDefinition definition, int maxCount, out bool hasTableViewProjection) {

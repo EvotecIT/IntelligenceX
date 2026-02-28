@@ -240,6 +240,8 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("pack dnsclientx", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:dnsclientx", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack dns_client_x", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:dns_client_x", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -253,6 +255,24 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("pack domaindetective", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:domaindetective", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack domain_detective", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:domain_detective", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesTestimoXUnderscoreAliasTokens() {
+        var definition = new ToolDefinition(
+            "health_rules",
+            "Run TestimoX rules.",
+            ToolSchema.Object(("scope", ToolSchema.String("Scope."))).NoAdditionalProperties(),
+            category: "testimox");
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("pack testimox", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:testimox", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack testimo_x", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:testimo_x", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
