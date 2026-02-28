@@ -140,6 +140,64 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_PrefersExplicitRenderHintPriorityOverVisualTypePriority() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"ok\":true,\"events\":[]}",
+                RenderJson = """
+                    [
+                      {"kind":"network","priority":100},
+                      {"kind":"table","priority":900}
+                    ]
+                    """,
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...", outputs);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_FallsBackToVisualTypePriorityWhenRenderHintPriorityIsInvalid() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"ok\":true}",
+                RenderJson = """
+                    [
+                      {"kind":"table","priority":"high"},
+                      {"kind":"network"}
+                    ]
+                    """,
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...", outputs);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_InferPreferredVisualFromCodeRenderHintLanguageFallback() {
         var request = """
             [Proactive visualization guidance]
