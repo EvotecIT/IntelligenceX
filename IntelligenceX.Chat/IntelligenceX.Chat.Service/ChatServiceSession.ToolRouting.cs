@@ -390,12 +390,16 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool IsAdDomainIntentToolName(string toolName) {
-        return toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase);
+        return toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
+               || toolName.StartsWith("active_directory_", StringComparison.OrdinalIgnoreCase)
+               || toolName.StartsWith("adplayground_", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPublicDomainIntentToolName(string toolName) {
         return toolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
-               || toolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase);
+               || toolName.StartsWith("dns_client_x_", StringComparison.OrdinalIgnoreCase)
+               || toolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase)
+               || toolName.StartsWith("domain_detective_", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ResolveDomainIntentFamily(ToolDefinition definition) {
