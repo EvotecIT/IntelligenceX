@@ -587,4 +587,55 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackAdToTestimoXFallbackOnFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["ad_directory_discovery_diagnostics"] = "active_directory";
+        packMap["testimox_rules_list"] = "testimox";
+
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "ad_directory_discovery_diagnostics",
+                "Discover AD diagnostics.",
+                ToolSchema.Object(("domain_name", ToolSchema.String("Domain name."))).NoAdditionalProperties()),
+            new(
+                "testimox_rules_list",
+                "List TestimoX rules.",
+                ToolSchema.Object(
+                        ("domain_name", ToolSchema.String("Domain name.")),
+                        ("search_text", ToolSchema.String("Search text.")))
+                    .NoAdditionalProperties())
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-1", Name = "ad_directory_discovery_diagnostics" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-1",
+                Output = """
+                         {"discovery_status":{"domain_name":"contoso.local","forest_name":"contoso.local","limited_discovery":true}}
+                         """,
+                Ok = false,
+                ErrorCode = "timeout"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_directory_discovery_diagnostics"] = false,
+            ["testimox_rules_list"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run discovery", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("testimox_rules_list", toolCall.Name);
+        Assert.Contains("pack_contract_cross_ad_posture_evidence", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
 }
