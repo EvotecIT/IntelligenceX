@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Text;
@@ -38,6 +39,8 @@ internal sealed partial class ChatServiceSession {
     private const int RenderHintVisualTypePriorityMermaid = 200;
     private const int RenderHintVisualTypePriorityChart = 300;
     private const int RenderHintVisualTypePriorityNetwork = 400;
+    private const int RenderHintPriorityMin = -100000;
+    private const int RenderHintPriorityMax = 100000;
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -505,7 +508,7 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                var candidatePriority = ResolveRenderHintVisualPriority(candidateVisualType);
+                var candidatePriority = ResolveRenderHintPriority(hint, candidateVisualType);
                 if (candidatePriority <= bestPriority) {
                     continue;
                 }
@@ -534,6 +537,14 @@ internal sealed partial class ChatServiceSession {
             TableVisualType => RenderHintVisualTypePriorityTable,
             _ => RenderHintVisualTypePriorityDefault
         };
+    }
+
+    private static int ResolveRenderHintPriority(JsonElement renderHint, string preferredVisualType) {
+        if (!TryReadJsonInt32PropertyIgnoreCase(renderHint, "priority", out var explicitPriority)) {
+            return ResolveRenderHintVisualPriority(preferredVisualType);
+        }
+
+        return Math.Clamp(explicitPriority, RenderHintPriorityMin, RenderHintPriorityMax);
     }
 
     private static bool TryResolvePreferredVisualTypeFromRenderHint(
@@ -588,6 +599,52 @@ internal sealed partial class ChatServiceSession {
             }
 
             value = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryReadJsonInt32PropertyIgnoreCase(
+        JsonElement obj,
+        string propertyName,
+        out int value) {
+        value = 0;
+        if (obj.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(propertyName)) {
+            return false;
+        }
+
+        foreach (var property in obj.EnumerateObject()) {
+            if (!property.NameEquals(propertyName)
+                && !string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (property.Value.ValueKind == JsonValueKind.Number) {
+                if (property.Value.TryGetInt32(out var numericValue)) {
+                    value = numericValue;
+                    return true;
+                }
+
+                if (property.Value.TryGetInt64(out var longValue)) {
+                    value = longValue > int.MaxValue ? int.MaxValue : longValue < int.MinValue ? int.MinValue : (int)longValue;
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (property.Value.ValueKind != JsonValueKind.String) {
+                return false;
+            }
+
+            var numericText = (property.Value.GetString() ?? string.Empty).Trim();
+            if (numericText.Length == 0
+                || !int.TryParse(numericText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue)) {
+                return false;
+            }
+
+            value = parsedValue;
             return true;
         }
 
