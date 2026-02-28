@@ -87,6 +87,78 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_InferPreferredVisualFromToolOutputRenderHintsWhenVisualsAreAllowed() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"ok\":true,\"events\":[]}",
+                RenderJson = "{\"kind\":\"table\",\"rows_path\":\"events\"}",
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...", outputs);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_PrefersToolOutputRenderHintsOverPayloadAliasesWhenVisualsAreAllowed() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"nodes\":[{\"id\":\"AD0\"}],\"edges\":[{\"from\":\"AD0\",\"to\":\"AD1\"}]}",
+                RenderJson = "{\"kind\":\"code\",\"language\":\"chart\",\"content\":\"{}\"}",
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...", outputs);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_NormalizesLegacyNetworkRenderHintLanguageWhenVisualsAreAllowed() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"ok\":true}",
+                RenderJson = "{\"kind\":\"code\",\"language\":\"visnetwork\",\"content\":\"{}\"}",
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...", outputs);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_InferPreferredVisualFromToolOutputsUsingLinksAliasWhenVisualsAreAllowed() {
         var request = """
             [Proactive visualization guidance]
