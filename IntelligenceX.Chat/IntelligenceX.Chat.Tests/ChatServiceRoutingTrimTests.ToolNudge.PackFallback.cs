@@ -924,6 +924,62 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildCrossPackSystemToAdDiscoveryFallbackUsingIpDomainHintOnFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_bios_summary"] = "system";
+        packMap["ad_scope_discovery"] = "active_directory";
+
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "system_bios_summary",
+                "Summarize BIOS details for a target computer.",
+                ToolSchema.Object(
+                        ("computer_name", ToolSchema.String("Computer name.")),
+                        ("domain_name", ToolSchema.String("Domain name.")))
+                    .Required("computer_name")
+                    .NoAdditionalProperties()),
+            new(
+                "ad_scope_discovery",
+                "Discover AD scope.",
+                ToolSchema.Object(
+                        ("domain_name", ToolSchema.String("Domain name.")),
+                        ("discovery_fallback", ToolSchema.String("Fallback mode.")))
+                    .Required("domain_name")
+                    .NoAdditionalProperties())
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-1",
+                Name = "system_bios_summary",
+                Input = """
+                        {"computer_name":"dc01.contoso.local","domain_name":"10.0.0.5"}
+                        """
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-1",
+                Output = "{}",
+                Ok = false,
+                ErrorCode = "timeout"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["system_bios_summary"] = false,
+            ["ad_scope_discovery"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run follow-up discovery", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Null(args[5]);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDomainDetectiveToTestimoXFallbackOnFailure() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
