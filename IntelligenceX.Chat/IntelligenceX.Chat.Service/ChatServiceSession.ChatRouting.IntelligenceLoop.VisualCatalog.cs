@@ -222,16 +222,45 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!LooksLikeNetworkJsonVisualContract(text.AsSpan())) {
-            return false;
+        var value = text.AsSpan();
+        if (LooksLikeNetworkJsonVisualContract(value)) {
+            preferredVisualType = NetworkVisualType;
+            return true;
         }
 
-        preferredVisualType = NetworkVisualType;
-        return true;
+        if (LooksLikeChartJsonVisualContract(value)) {
+            preferredVisualType = ChartVisualType;
+            return true;
+        }
+
+        if (LooksLikeTableJsonVisualContract(value)) {
+            preferredVisualType = TableVisualType;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool LooksLikeNetworkJsonVisualContract(ReadOnlySpan<char> text) {
         return ContainsJsonArrayProperty(text, "nodes") && ContainsJsonArrayProperty(text, "edges");
+    }
+
+    private static bool LooksLikeChartJsonVisualContract(ReadOnlySpan<char> text) {
+        if (!ContainsJsonArrayProperty(text, "labels")) {
+            return false;
+        }
+
+        return ContainsJsonArrayProperty(text, "datasets") || ContainsJsonArrayProperty(text, "series");
+    }
+
+    private static bool LooksLikeTableJsonVisualContract(ReadOnlySpan<char> text) {
+        if (!ContainsJsonArrayProperty(text, "rows")) {
+            return false;
+        }
+
+        return ContainsJsonArrayProperty(text, "columns")
+               || ContainsJsonArrayProperty(text, "headers")
+               || ContainsJsonArrayProperty(text, "fields");
     }
 
     private static bool ContainsJsonArrayProperty(ReadOnlySpan<char> text, string propertyName) {
