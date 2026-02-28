@@ -21,6 +21,39 @@ using Xunit;
 namespace IntelligenceX.Tools.Tests;
 
 public class ToolPackInfoContractTests {
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> CrossPackHandoffToolAllowlistByPack =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase) {
+            ["active_directory"] = CreateCaseInsensitiveSet(
+                "eventlog_named_events_query",
+                "eventlog_timeline_query",
+                "system_whoami",
+                "powershell_run"),
+            ["eventlog"] = CreateCaseInsensitiveSet(
+                "ad_handoff_prepare",
+                "ad_scope_discovery",
+                "ad_search",
+                "ad_object_resolve"),
+            ["domaindetective"] = CreateCaseInsensitiveSet(
+                "ad_scope_discovery",
+                "ad_directory_discovery_diagnostics"),
+            ["system"] = CreateCaseInsensitiveSet(
+                "ad_scope_discovery",
+                "ad_domain_controller_facts",
+                "ad_object_resolve",
+                "ad_search",
+                "eventlog_live_query",
+                "eventlog_live_stats",
+                "eventlog_named_events_query"),
+            ["testimox"] = CreateCaseInsensitiveSet(
+                "ad_environment_discover",
+                "ad_scope_discovery",
+                "ad_forest_discover",
+                "ad_object_resolve",
+                "ad_search_facets",
+                "system_security_options",
+                "eventlog_live_stats")
+        };
+
     [Fact]
     public async Task PackInfoTools_ShouldExposeRegisteredToolCatalogs() {
         var cases = BuildPackCases();
@@ -192,6 +225,10 @@ public class ToolPackInfoContractTests {
 
             var entityHandoffs = root.GetProperty("entity_handoffs");
             Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+            AssertHandoffToolReferences(
+                @case.Pack,
+                entityHandoffs,
+                CreateCaseInsensitiveSet(catalogNames));
             foreach (var handoff in entityHandoffs.EnumerateArray()) {
                 var handoffId = handoff.GetProperty("id").GetString() ?? string.Empty;
                 var summary = handoff.GetProperty("summary").GetString() ?? string.Empty;
@@ -533,6 +570,38 @@ public class ToolPackInfoContractTests {
             .Select(static x => x!.Trim())
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static IReadOnlySet<string> CreateCaseInsensitiveSet(params string[] values) {
+        return CreateCaseInsensitiveSet(values.AsEnumerable());
+    }
+
+    private static IReadOnlySet<string> CreateCaseInsensitiveSet(IEnumerable<string>? values) {
+        return new HashSet<string>(
+            (values ?? Array.Empty<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void AssertHandoffToolReferences(string pack, JsonElement entityHandoffs, IReadOnlySet<string> localCatalogTools) {
+        var crossPackAllowlist = CrossPackHandoffToolAllowlistByPack.TryGetValue(pack, out var configured)
+            ? configured
+            : CreateCaseInsensitiveSet();
+        var handoffTools = new[] { "source_tools", "target_tools" };
+
+        foreach (var handoff in entityHandoffs.EnumerateArray()) {
+            foreach (var handoffToolKey in handoffTools) {
+                foreach (var toolName in ReadStringArray(handoff.GetProperty(handoffToolKey))) {
+                    var isLocalTool = localCatalogTools.Contains(toolName);
+                    var isAllowedCrossPackTool = crossPackAllowlist.Contains(toolName);
+                    Assert.True(
+                        isLocalTool || isAllowedCrossPackTool,
+                        $"Pack '{pack}' handoff '{handoff.GetProperty("id").GetString()}' references unknown {handoffToolKey} tool '{toolName}'. " +
+                        "Add the tool to the pack catalog or document it in the cross-pack allowlist.");
+                }
+            }
+        }
     }
 
     private static void AssertArgumentDetails(JsonElement actualArguments, IReadOnlyList<ToolPackToolArgumentModel> expectedArguments) {
