@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Serialization;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -72,5 +74,55 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal(3, ChatRequestOptionLimits.MaxReviewPasses);
         Assert.Equal(8, ChatRequestOptionLimits.DefaultModelHeartbeatSeconds);
         Assert.Equal(60, ChatRequestOptionLimits.MaxModelHeartbeatSeconds);
+    }
+
+    [Fact]
+    public void ToolCallDto_JsonContract_UsesArgumentsJsonAndOmitsLegacyInputOnWrite() {
+        var expectedArguments = """{"domain_name":"contoso.local"}""";
+        var dto = new ToolCallDto {
+            CallId = "call_001",
+            Name = "ad_scope_discovery",
+            ArgumentsJson = expectedArguments
+        };
+
+        var json = JsonSerializer.Serialize(dto, ChatServiceJsonContext.Default.ToolCallDto);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("call_001", root.GetProperty("callId").GetString());
+        Assert.Equal("ad_scope_discovery", root.GetProperty("name").GetString());
+        Assert.Contains(
+            root.EnumerateObject(),
+            static property => string.Equals(property.Value.GetString(), """{"domain_name":"contoso.local"}""", StringComparison.Ordinal));
+        Assert.DoesNotContain("\"input\":", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolCallDto_JsonContract_AcceptsLegacyInputAliasOnRead() {
+        var json = """
+            {
+              "callId": "call_legacy",
+              "name": "ad_scope_discovery",
+              "input": "{\"domain_name\":\"contoso.local\"}"
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ToolCallDto);
+        var dto = Assert.IsType<ToolCallDto>(parsed);
+        Assert.Equal("call_legacy", dto.CallId);
+        Assert.Equal("ad_scope_discovery", dto.Name);
+        Assert.Equal("""{"domain_name":"contoso.local"}""", dto.ArgumentsJson);
+    }
+
+    [Fact]
+    public void ToolCallDto_LegacyInputInitializer_MapsToArgumentsJson() {
+#pragma warning disable CS0618
+        var dto = new ToolCallDto {
+            CallId = "call_init",
+            Name = "ad_scope_discovery",
+            Input = """{"domain_name":"contoso.local"}"""
+        };
+#pragma warning restore CS0618
+
+        Assert.Equal("""{"domain_name":"contoso.local"}""", dto.ArgumentsJson);
     }
 }

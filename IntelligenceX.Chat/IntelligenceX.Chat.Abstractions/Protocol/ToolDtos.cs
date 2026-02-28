@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Text.Json.Serialization;
 using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.Abstractions.Protocol;
@@ -107,6 +109,25 @@ public sealed record ToolCallDto {
     /// JSON-serialized arguments.
     /// </summary>
     public string ArgumentsJson { get; init; } = "{}";
+
+    /// <summary>
+    /// Backward-compatible alias accepted from legacy payloads/object-initializers.
+    /// </summary>
+    [Obsolete("Use ArgumentsJson instead.")]
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [JsonPropertyName("input")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public string? Input {
+        init {
+            if (string.IsNullOrWhiteSpace(value)) {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(ArgumentsJson) || string.Equals(ArgumentsJson, "{}", StringComparison.Ordinal)) {
+                ArgumentsJson = value;
+            }
+        }
+    }
 }
 
 /// <summary>
