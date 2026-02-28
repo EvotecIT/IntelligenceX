@@ -190,6 +190,7 @@ internal sealed partial class ChatServiceSession {
 
         var tokens = new List<string>(Math.Min(12, maxTokens));
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var previousToken = string.Empty;
         var inToken = false;
         var tokenStart = 0;
         for (var i = 0; i <= normalized.Length; i++) {
@@ -214,25 +215,28 @@ internal sealed partial class ChatServiceSession {
             }
 
             var lower = token.ToLowerInvariant();
-            if (TryAddRoutingTokenCandidate(tokens, seen, lower, maxTokens)) {
+            var allowShortAsciiCandidate = string.Equals(previousToken, "pack", StringComparison.Ordinal);
+            if (TryAddRoutingTokenCandidate(tokens, seen, lower, maxTokens, allowShortAsciiCandidate)) {
                 break;
             }
 
             var separatorNormalized = NormalizeRoutingSeparatorToken(lower);
-            if (TryAddRoutingTokenCandidate(tokens, seen, separatorNormalized, maxTokens)) {
+            if (TryAddRoutingTokenCandidate(tokens, seen, separatorNormalized, maxTokens, allowShortAsciiCandidate)) {
                 break;
             }
 
             var compact = NormalizeCompactToken(lower.AsSpan());
-            if (TryAddRoutingTokenCandidate(tokens, seen, compact, maxTokens)) {
+            if (TryAddRoutingTokenCandidate(tokens, seen, compact, maxTokens, allowShortAsciiCandidate)) {
                 break;
             }
+
+            previousToken = lower;
         }
 
         return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
     }
 
-    private static bool TryAddRoutingTokenCandidate(List<string> tokens, HashSet<string> seen, string candidate, int maxTokens) {
+    private static bool TryAddRoutingTokenCandidate(List<string> tokens, HashSet<string> seen, string candidate, int maxTokens, bool allowShortAsciiCandidate) {
         var normalized = (candidate ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
@@ -246,7 +250,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var minLen = hasNonAscii ? 2 : 3;
+        var minLen = hasNonAscii ? 2 : allowShortAsciiCandidate ? 2 : 3;
         if (normalized.Length < minLen || !seen.Add(normalized)) {
             return false;
         }

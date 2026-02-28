@@ -346,6 +346,17 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void TokenizeRoutingTokens_PreservesShortPackAliasToken_WhenPrefixedByPackMarker() {
+        var result = TokenizeRoutingTokensMethod.Invoke(
+            null,
+            new object?[] { "Use pack:ad and pack:system for this task.", 16 });
+        var tokens = Assert.IsType<string[]>(result);
+
+        Assert.Contains(tokens, token => string.Equals(token, "ad", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "system", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void SelectWeightedToolSubset_UsesRequestedLimit_WhenPromptHasNoRoutingSignal() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var definitions = new List<ToolDefinition>();
