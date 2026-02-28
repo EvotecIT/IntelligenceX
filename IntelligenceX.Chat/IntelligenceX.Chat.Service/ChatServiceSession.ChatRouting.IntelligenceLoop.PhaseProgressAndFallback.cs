@@ -363,7 +363,10 @@ internal sealed partial class ChatServiceSession {
             }
 
             var suffix = trimmed.Slice(marker.Length).TrimStart();
-            if (suffix.IsEmpty || suffix[0] == '#') {
+            if (suffix.IsEmpty
+                || suffix[0] == '#'
+                || suffix[0] == ';'
+                || (suffix[0] == '/' && suffix.Length > 1 && suffix[1] == '/')) {
                 return true;
             }
         }
