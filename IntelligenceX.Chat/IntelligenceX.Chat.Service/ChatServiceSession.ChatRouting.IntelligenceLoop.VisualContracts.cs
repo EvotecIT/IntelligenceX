@@ -177,32 +177,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryNormalizePreferredVisualType(ReadOnlySpan<char> value, out string preferredVisualType) {
-        preferredVisualType = string.Empty;
-        var normalized = NormalizeCompactToken(value);
-        switch (normalized) {
-            case "auto":
-                preferredVisualType = "auto";
-                return true;
-            case "ixnetwork":
-            case "network":
-            case "visnetwork":
-                preferredVisualType = "ix-network";
-                return true;
-            case "ixchart":
-            case "chart":
-                preferredVisualType = "ix-chart";
-                return true;
-            case "mermaid":
-            case "diagram":
-                preferredVisualType = "mermaid";
-                return true;
-            case "table":
-            case "markdowntable":
-                preferredVisualType = "table";
-                return true;
-            default:
-                return false;
-        }
+        return TryResolvePreferredVisualTypeToken(value, out preferredVisualType);
     }
 
     private static ReadOnlySpan<char> StripInlineStructuredComment(ReadOnlySpan<char> value) {
