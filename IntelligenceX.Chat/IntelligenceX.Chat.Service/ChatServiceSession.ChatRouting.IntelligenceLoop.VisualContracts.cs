@@ -264,9 +264,8 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool ContainsToken(string text, string token) {
-        var expectedToken = (token ?? string.Empty).Trim();
-        if (expectedToken.Length == 0 || string.IsNullOrWhiteSpace(text)) {
+    private static bool ContainsVisualInlineTokenSignal(string text) {
+        if (string.IsNullOrWhiteSpace(text) || VisualContractInlineTokenSignals.Count == 0) {
             return false;
         }
 
@@ -300,7 +299,8 @@ internal sealed partial class ChatServiceSession {
             }
 
             var content = value.Slice(contentStart, contentEnd - contentStart).Trim();
-            if (content.Equals(expectedToken.AsSpan(), StringComparison.OrdinalIgnoreCase)) {
+            var normalizedToken = NormalizeCompactToken(content);
+            if (normalizedToken.Length > 0 && VisualContractInlineTokenSignals.Contains(normalizedToken)) {
                 return true;
             }
 
