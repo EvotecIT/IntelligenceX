@@ -1676,7 +1676,12 @@ internal sealed partial class ChatServiceSession {
     private static string? ResolveEventlogHostHint(JsonObject hints, string? userRequest) {
         var preferred = ReadNonEmptyHint(hints, "machine_name")
                         ?? ReadNonEmptyHint(hints, "computer_name")
-                        ?? ReadNonEmptyHint(hints, "host");
+                        ?? ReadNonEmptyHint(hints, "host")
+                        ?? ReadNonEmptyHint(hints, "domain_controller")
+                        ?? ReadNonEmptyHint(hints, "machine_names")
+                        ?? ReadNonEmptyHint(hints, "targets")
+                        ?? ReadNonEmptyHint(hints, "servers")
+                        ?? ReadNonEmptyHint(hints, "domain_controllers");
         if (string.IsNullOrWhiteSpace(preferred)) {
             preferred = TryExtractHostHintFromUserRequest(userRequest);
         }
@@ -2195,10 +2200,10 @@ internal sealed partial class ChatServiceSession {
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "host", "host", "machine_name", "computer_name");
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "name", "name", "target", "domain_name", "domain", "host", "machine_name", "computer_name");
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "target", "target", "host", "name", "machine_name", "computer_name", "domain_name", "domain");
-        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "targets", "target", "host", "name", "machine_name", "computer_name", "domain_name", "domain");
-        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "machine_names", "machine_name", "computer_name", "host", "name");
-        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "servers", "domain_controller", "machine_name", "computer_name", "host", "name");
-        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "domain_controllers", "domain_controller", "machine_name", "computer_name", "host", "name");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "targets", "targets", "target", "host", "name", "machine_names", "machine_name", "computer_name", "servers", "domain_controllers", "domain_name", "domain");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "machine_names", "machine_names", "machine_name", "computer_name", "host", "name", "targets", "servers", "domain_controllers");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "servers", "servers", "domain_controllers", "domain_controller", "machine_names", "machine_name", "computer_name", "host", "name", "targets");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "domain_controllers", "domain_controllers", "servers", "domain_controller", "machine_names", "machine_name", "computer_name", "host", "name", "targets");
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "log_name", "log_name");
         TryAddSchemaAwareBooleanHintArgument(toolDefinition, arguments, partialScopeHints, "include_trusts", "include_trusts");
         TryAddSchemaAwareBooleanHintArgument(toolDefinition, arguments, partialScopeHints, "include_forest_domains", "include_forest_domains");
@@ -2292,22 +2297,67 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        if (TryReadNonEmptyStringArrayHint(partialScopeHints, argumentName, out var directValues)) {
+            arguments[argumentName] = JsonValue.From(directValues);
+            return;
+        }
+
         for (var i = 0; i < hintKeys.Length; i++) {
             var hintKey = (hintKeys[i] ?? string.Empty).Trim();
             if (hintKey.Length == 0) {
                 continue;
             }
 
-            var value = ReadNonEmptyHint(partialScopeHints, hintKey);
-            if (string.IsNullOrWhiteSpace(value)) {
+            if (!TryReadNonEmptyStringArrayHint(partialScopeHints, hintKey, out var values)) {
                 continue;
             }
 
-            var array = new JsonArray();
-            array.Add(value);
-            arguments[argumentName] = JsonValue.From(array);
+            arguments[argumentName] = JsonValue.From(values);
             return;
         }
+    }
+
+    private static bool TryReadNonEmptyStringArrayHint(
+        JsonObject hints,
+        string propertyName,
+        out JsonArray values) {
+        values = new JsonArray();
+        if (!hints.TryGetValue(propertyName, out var node) || node is null) {
+            return false;
+        }
+
+        if (node.Kind == IntelligenceX.Json.JsonValueKind.String) {
+            var value = (node.AsString() ?? string.Empty).Trim();
+            if (value.Length == 0) {
+                return false;
+            }
+
+            values.Add(value);
+            return true;
+        }
+
+        if (node.Kind != IntelligenceX.Json.JsonValueKind.Array) {
+            return false;
+        }
+
+        var array = node.AsArray();
+        if (array is null || array.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < array.Count; i++) {
+            var item = array[i];
+            if (item is null || item.Kind != IntelligenceX.Json.JsonValueKind.String) {
+                continue;
+            }
+
+            var value = (item.AsString() ?? string.Empty).Trim();
+            if (value.Length > 0) {
+                values.Add(value);
+            }
+        }
+
+        return values.Count > 0;
     }
 
     private static void TryAddSchemaAwareStringDefaultArgument(
@@ -2582,6 +2632,10 @@ internal sealed partial class ChatServiceSession {
         CopyHintIfPresent(sourceArguments, destinationHints, "target");
         CopyHintIfPresent(sourceArguments, destinationHints, "name");
         CopyHintIfPresent(sourceArguments, destinationHints, "domain_controller");
+        CopyHintIfPresent(sourceArguments, destinationHints, "targets");
+        CopyHintIfPresent(sourceArguments, destinationHints, "machine_names");
+        CopyHintIfPresent(sourceArguments, destinationHints, "servers");
+        CopyHintIfPresent(sourceArguments, destinationHints, "domain_controllers");
         CopyHintIfPresent(sourceArguments, destinationHints, "log_name");
         CopyHintIfPresent(sourceArguments, destinationHints, "include_trusts");
 
@@ -2804,6 +2858,11 @@ internal sealed partial class ChatServiceSession {
                 CopyHintIfPresent(discoveryStatus, hints, "forest_dns_name");
                 CopyHintIfPresent(discoveryStatus, hints, "computer_name");
                 CopyHintIfPresent(discoveryStatus, hints, "machine_name");
+                CopyHintIfPresent(discoveryStatus, hints, "domain_controller");
+                CopyHintIfPresent(discoveryStatus, hints, "targets");
+                CopyHintIfPresent(discoveryStatus, hints, "machine_names");
+                CopyHintIfPresent(discoveryStatus, hints, "servers");
+                CopyHintIfPresent(discoveryStatus, hints, "domain_controllers");
                 CopyHintIfPresent(discoveryStatus, hints, "log_name");
                 CopyHintIfPresent(discoveryStatus, hints, "include_trusts");
 
@@ -2909,10 +2968,20 @@ internal sealed partial class ChatServiceSession {
             var root = doc.RootElement;
             CopyHintIfPresent(root, hints, "machine_name");
             CopyHintIfPresent(root, hints, "computer_name");
+            CopyHintIfPresent(root, hints, "domain_controller");
+            CopyHintIfPresent(root, hints, "targets");
+            CopyHintIfPresent(root, hints, "machine_names");
+            CopyHintIfPresent(root, hints, "servers");
+            CopyHintIfPresent(root, hints, "domain_controllers");
             CopyHintIfPresent(root, hints, "log_name");
             if (TryReadDiscoveryStatusObject(root, out var discoveryStatus)) {
                 CopyHintIfPresent(discoveryStatus, hints, "machine_name");
                 CopyHintIfPresent(discoveryStatus, hints, "computer_name");
+                CopyHintIfPresent(discoveryStatus, hints, "domain_controller");
+                CopyHintIfPresent(discoveryStatus, hints, "targets");
+                CopyHintIfPresent(discoveryStatus, hints, "machine_names");
+                CopyHintIfPresent(discoveryStatus, hints, "servers");
+                CopyHintIfPresent(discoveryStatus, hints, "domain_controllers");
                 CopyHintIfPresent(discoveryStatus, hints, "log_name");
             }
         } catch (JsonException) {

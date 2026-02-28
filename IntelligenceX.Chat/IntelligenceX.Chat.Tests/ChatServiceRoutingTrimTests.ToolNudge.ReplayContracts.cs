@@ -1394,6 +1394,106 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossHostEventlogEvidenceFromMachineNamesHintArray() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_inventory_query"] = "computerx";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var systemSchema = ToolSchema.Object(
+                ("machine_names", ToolSchema.Array(ToolSchema.String(), "machine names")))
+            .NoAdditionalProperties();
+        var eventlogSchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")),
+                ("log_name", ToolSchema.String("log name")))
+            .Required("machine_name")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("system_inventory_query", "system inventory query", systemSchema),
+            new("eventlog_live_query", "eventlog live query", eventlogSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-sys-machine-array",
+                Name = "system_inventory_query",
+                ArgumentsJson = """{"machine_names":["AD0","AD1"]}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-sys-machine-array",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_live_query", toolCall.Name);
+        Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossHostEventlogEvidencePreservingTargetsHintArray() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_inventory_query"] = "computerx";
+        packMap["eventlog_targets_query"] = "eventlog";
+
+        var systemSchema = ToolSchema.Object(
+                ("targets", ToolSchema.Array(ToolSchema.String(), "targets")))
+            .NoAdditionalProperties();
+        var eventlogSchema = ToolSchema.Object(
+                ("targets", ToolSchema.Array(ToolSchema.String(), "targets")),
+                ("log_name", ToolSchema.String("log name")))
+            .Required("targets")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("system_inventory_query", "system inventory query", systemSchema),
+            new("eventlog_targets_query", "eventlog targets query", eventlogSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-sys-target-array",
+                Name = "system_inventory_query",
+                ArgumentsJson = """{"targets":["AD0","AD1"]}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-sys-target-array",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_targets_query"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_targets_query", toolCall.Name);
+        Assert.Contains("\"targets\":[\"AD0\",\"AD1\"]", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildCrossHostEventlogEvidenceFromSystemPackInfoFailure() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
@@ -1477,6 +1577,59 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.False(Assert.IsType<bool>(result));
         Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[6]));
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackSystemToAdDiscoveryFromStringBooleanHint() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_bios_summary"] = "system";
+        packMap["ad_scope_discovery"] = "active_directory";
+
+        var systemSchema = ToolSchema.Object(
+                ("domain_name", ToolSchema.String("domain name")),
+                ("include_trusts", ToolSchema.String("include trusts")))
+            .Required("domain_name")
+            .NoAdditionalProperties();
+        var adSchema = ToolSchema.Object(
+                ("domain_name", ToolSchema.String("domain name")),
+                ("discovery_fallback", ToolSchema.String("fallback mode")),
+                ("include_trusts", ToolSchema.Boolean()))
+            .Required("domain_name")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("system_bios_summary", "system bios summary", systemSchema),
+            new("ad_scope_discovery", "ad scope discovery", adSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-sys-ad-bool",
+                Name = "system_bios_summary",
+                ArgumentsJson = """{"domain_name":"contoso.local","include_trusts":"false"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-sys-ad-bool",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_scope_discovery"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue discovery", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("ad_scope_discovery", toolCall.Name);
+        Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"include_trusts\":false", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
