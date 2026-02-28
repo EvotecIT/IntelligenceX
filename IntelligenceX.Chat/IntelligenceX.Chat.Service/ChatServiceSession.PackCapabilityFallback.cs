@@ -488,6 +488,21 @@ internal sealed partial class ChatServiceSession {
                 return true;
             }
 
+            if (TryBuildCrossSystemAdDiscoveryFallbackToolCall(
+                    toolDefinitions: toolDefinitions,
+                    priorCalledTools: priorCalledTools,
+                    sourcePackId: sourcePackId,
+                    sourceTool: sourceTool,
+                    sourceToolDefinition: sourceToolDefinition,
+                    partialScopeHints: partialScopeHints,
+                    partialScopeReason: partialScopeReason,
+                    hasSourceFailureSignal: hasSourceFailureSignal,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    out toolCall,
+                    out reason)) {
+                return true;
+            }
+
             for (var i = 0; i < packContract.FallbackTools.Length; i++) {
                 var candidateTool = packContract.FallbackTools[i];
                 if (string.Equals(candidateTool, sourceTool, StringComparison.OrdinalIgnoreCase)) {
@@ -1355,6 +1370,22 @@ internal sealed partial class ChatServiceSession {
         return IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation);
     }
 
+    private static bool IsSourceToolEligibleForCrossSystemAdDiscoveryFallback(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition) {
+        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)) {
+            return false;
+        }
+
+        var scope = (routingInfo.Scope ?? string.Empty).Trim();
+        if (!string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(scope, "file", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation);
+    }
+
     private bool TryResolveCrossPackCandidateToolByRouting(
         IReadOnlyList<ToolDefinition> toolDefinitions,
         IReadOnlySet<string> priorCalledTools,
@@ -1714,6 +1745,96 @@ internal sealed partial class ChatServiceSession {
         }
 
         reason = "cross_host_eventlog_evidence_candidate_missing_required_args";
+        return false;
+    }
+
+    private bool TryBuildCrossSystemAdDiscoveryFallbackToolCall(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string sourcePackId,
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition,
+        JsonObject partialScopeHints,
+        string partialScopeReason,
+        bool hasSourceFailureSignal,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        toolCall = null!;
+        reason = "cross_system_ad_discovery_not_applicable";
+
+        if (!PackIdMatches(sourcePackId, "system")
+            || !hasSourceFailureSignal) {
+            reason = "cross_system_ad_discovery_source_not_eligible";
+            return false;
+        }
+
+        if (!IsSourceToolEligibleForCrossSystemAdDiscoveryFallback(sourceTool, sourceToolDefinition)) {
+            reason = "cross_system_ad_discovery_source_tool_not_supported";
+            return false;
+        }
+
+        var domainName = ResolveDomainDetectiveDomainHint(partialScopeHints);
+        if (string.IsNullOrWhiteSpace(domainName)) {
+            reason = "cross_system_ad_discovery_missing_domain_hint";
+            return false;
+        }
+
+        if (!TryResolveCrossPackCandidateToolsByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "active_directory",
+                preferredScope: "domain",
+                preferredOperation: "discover",
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidates)) {
+            reason = "cross_system_ad_discovery_candidate_unavailable";
+            return false;
+        }
+
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
+            var fallbackArguments = BuildPackFallbackArguments(
+                sourcePackId: NormalizePackId("active_directory"),
+                candidateTool: candidateTool,
+                partialScopeHints: partialScopeHints);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, domainName, "domain_name", "dns_domain_name", "domain", "name")) {
+                fallbackArguments["domain_name"] = JsonValue.From(domainName);
+            }
+            AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
+            AddSchemaAwareFallbackDefaultArguments("active_directory", toolDefinition, fallbackArguments, partialScopeHints);
+
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
+            }
+
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_system_ad_discovery:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
+        }
+
+        reason = "cross_system_ad_discovery_candidate_missing_required_args";
         return false;
     }
 
