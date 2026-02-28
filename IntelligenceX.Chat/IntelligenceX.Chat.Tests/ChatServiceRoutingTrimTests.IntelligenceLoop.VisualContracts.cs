@@ -90,6 +90,49 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_UsesStructuredMaxNewVisualsOverride() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            max_new_visuals: 2
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_new_visuals: 2", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("include at most 2 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DisablesVisualsWhenMaxNewVisualsIsZero() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            max_new_visuals: 0
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_new_visuals: 0", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not introduce new mermaid/ix-chart/ix-network blocks", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_ClampsStructuredMaxNewVisualsToSupportedRange() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            max_new_visuals: 99
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_new_visuals: 3", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("include at most 3 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_IgnoresUnknownStructuredPreferredVisual() {
         var request = """
             [Proactive visualization guidance]
