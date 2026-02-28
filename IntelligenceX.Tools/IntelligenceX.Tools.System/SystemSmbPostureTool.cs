@@ -121,7 +121,7 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
                 NetbiosInterfacesNotDisabled: netbiosInterfacesNotDisabled,
                 Warnings: warnings);
 
-            return Task.FromResult(ToolResponse.OkFactsModel(
+            return Task.FromResult(ToolResponse.OkFactsModelWithRenderValue(
                 model: model,
                 title: "System SMB posture",
                 facts: new[] {
@@ -142,9 +142,46 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,
-                render: null));
+                render: BuildRenderHints(
+                    warningCount: warnings.Count,
+                    nullSessionShareCount: raw.NullSessionShares.Length,
+                    nullSessionPipeCount: raw.NullSessionPipes.Length)));
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "SMB posture query failed."));
         }
+    }
+
+    private static JsonValue? BuildRenderHints(
+        int warningCount,
+        int nullSessionShareCount,
+        int nullSessionPipeCount) {
+        var hints = new JsonArray();
+
+        if (warningCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "warnings",
+                    new ToolColumn("value", "Warning", "string"))
+                .Add("priority", 400));
+        }
+
+        if (nullSessionShareCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "configuration/null_session_shares",
+                    new ToolColumn("value", "Null session share", "string"))
+                .Add("priority", 300));
+        }
+
+        if (nullSessionPipeCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "configuration/null_session_pipes",
+                    new ToolColumn("value", "Null session pipe", "string"))
+                .Add("priority", 200));
+        }
+
+        if (hints.Count == 0) {
+            return null;
+        }
+
+        return JsonValue.From(hints);
     }
 }
