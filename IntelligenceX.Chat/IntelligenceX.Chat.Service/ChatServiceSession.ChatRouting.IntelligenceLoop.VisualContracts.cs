@@ -151,12 +151,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue)
+        if (!long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue)
             || parsedValue < 0) {
             return false;
         }
 
-        maxNewVisuals = parsedValue;
+        maxNewVisuals = parsedValue > int.MaxValue ? int.MaxValue : (int)parsedValue;
         return true;
     }
 
