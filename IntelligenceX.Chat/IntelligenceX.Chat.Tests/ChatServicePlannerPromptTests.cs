@@ -23,6 +23,9 @@ public sealed class ChatServicePlannerPromptTests {
     private static readonly MethodInfo BuildToolRoutingSearchTextMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolRoutingSearchText", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolRoutingSearchText not found.");
+    private static readonly MethodInfo TokenizeRoutingTokensMethod =
+        typeof(ChatServiceSession).GetMethod("TokenizeRoutingTokens", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TokenizeRoutingTokens not found.");
 
     private static readonly MethodInfo SelectWeightedToolSubsetMethod =
         typeof(ChatServiceSession).GetMethod("SelectWeightedToolSubset", BindingFlags.NonPublic | BindingFlags.Instance)
@@ -325,6 +328,21 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("pack:eventlog", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack event_log", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:event_log", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TokenizeRoutingTokens_PreservesSeparatorAwarePackAliasTokensAndCompactVariants() {
+        var result = TokenizeRoutingTokensMethod.Invoke(
+            null,
+            new object?[] { "Use pack:domain_detective and pack:dns-client-x with pack:testimo_x.", 16 });
+        var tokens = Assert.IsType<string[]>(result);
+
+        Assert.Contains(tokens, token => string.Equals(token, "domain_detective", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "domaindetective", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "dns_client_x", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "dnsclientx", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "testimo_x", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "testimox", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
