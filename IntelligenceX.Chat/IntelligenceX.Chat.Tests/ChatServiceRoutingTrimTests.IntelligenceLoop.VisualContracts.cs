@@ -308,6 +308,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_UsesGenericVisualOptionalityGuidanceText() {
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt("Analyze current findings.", "Current findings...");
+
+        Assert.Contains("keep visual blocks optional", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("tables/diagrams/charts/networks", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_UsesStructuredPreferredVisualAlias() {
         var request = """
             [Proactive visualization guidance]

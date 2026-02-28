@@ -292,7 +292,7 @@ internal sealed partial class ChatServiceSession {
             - Keep all existing factual findings that are already supported by tool output.
             - Keep the response natural and conversational, not scripted.
             - Add proactive follow-ups only when they provide real value (typically 1-3 key items).
-            - Prefer concise prose/bullets by default; keep tables/diagrams/charts/networks optional.
+            - Prefer concise prose/bullets by default; keep visual blocks optional.
             - Use visuals only when they materially improve clarity over plain markdown.
             {{visualRequirementLine}}
             {{preferredVisualRequirementLine}}
