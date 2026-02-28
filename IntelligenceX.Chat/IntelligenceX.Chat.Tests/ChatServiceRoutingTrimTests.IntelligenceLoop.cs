@@ -626,6 +626,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsWhenNodeEdgeTokensOnlyAppearInsideJsonStringValues() {
+        var request = """
+            Keep this payload as-is:
+            {"note":"Example text: \"nodes\": [\"dc01\"], \"edges\": []"}
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForPlainKeywordMentions() {
         var request = "Could you include a mermaid diagram if useful?";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
