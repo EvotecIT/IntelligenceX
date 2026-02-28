@@ -599,15 +599,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveCrossPackCandidateToolByRouting(
+        if (!TryResolveCrossPackCandidateToolsByRouting(
                 toolDefinitions: toolDefinitions,
                 priorCalledTools: priorCalledTools,
                 targetPackId: "dnsclientx",
                 preferredScope: preferredScope,
                 preferredOperation: preferredOperation,
                 mutatingToolHintsByName: mutatingToolHintsByName,
-                out var candidateTool,
-                out var toolDefinition)) {
+                out var candidates)) {
             reason = "cross_public_dns_candidate_unavailable";
             return false;
         }
@@ -618,46 +617,54 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
         var preferTarget = string.Equals(preferredScope, "host", StringComparison.OrdinalIgnoreCase)
                            || string.Equals(preferredOperation, "probe", StringComparison.OrdinalIgnoreCase);
-        if (preferTarget) {
-            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, name, "target", "host", "name", "domain")) {
-                fallbackArguments.Add("target", name);
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
+
+            var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+            if (preferTarget) {
+                if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, name, "target", "host", "name", "domain")) {
+                    fallbackArguments.Add("target", name);
+                }
+            } else {
+                if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, name, "name", "domain", "host", "target")) {
+                    fallbackArguments.Add("name", name);
+                }
             }
-        } else {
-            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, name, "name", "domain", "host", "target")) {
-                fallbackArguments.Add("name", name);
+
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
             }
-        }
-        var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
-        if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-            || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
-            reason = "cross_public_dns_candidate_missing_required_args";
-            return false;
+
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_public_dns_evidence:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
         }
 
-        var serializedArguments = JsonLite.Serialize(normalizedArguments);
-        var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
-        var raw = new JsonObject()
-            .Add("type", "tool_call")
-            .Add("call_id", fallbackCallId)
-            .Add("name", candidateTool)
-            .Add("arguments", serializedArguments);
-
-        toolCall = new ToolCall(
-            callId: fallbackCallId,
-            name: candidateTool,
-            input: serializedArguments,
-            arguments: normalizedArguments,
-            raw: raw);
-        reason = "pack_contract_cross_public_dns_evidence:"
-                 + sourcePackId
-                 + ":"
-                 + partialScopeReason
-                 + "->"
-                 + candidateTool;
-        return true;
+        reason = "cross_public_dns_candidate_missing_required_args";
+        return false;
     }
 
     private bool TryBuildCrossPublicDomainPostureFallbackToolCall(
@@ -686,70 +693,79 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveCrossPackCandidateToolByRouting(
+        if (!TryResolveCrossPackCandidateToolsByRouting(
                 toolDefinitions: toolDefinitions,
                 priorCalledTools: priorCalledTools,
                 targetPackId: "domaindetective",
                 preferredScope: preferredScope,
                 preferredOperation: preferredOperation,
                 mutatingToolHintsByName: mutatingToolHintsByName,
-                out var candidateTool,
-                out var toolDefinition)) {
+                out var candidates)) {
             reason = "cross_public_domain_candidate_unavailable";
             return false;
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
         var preferHostScope = string.Equals(preferredScope, "host", StringComparison.OrdinalIgnoreCase)
                               || string.Equals(preferredOperation, "probe", StringComparison.OrdinalIgnoreCase);
+        string fallbackValue;
+        string[] preferredKeys;
         if (preferHostScope) {
             var host = ResolveDnsClientXNameHint(partialScopeHints);
             if (string.IsNullOrWhiteSpace(host)) {
                 reason = "cross_public_domain_missing_host_hint";
                 return false;
             }
-            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, host, "host", "target", "name", "domain")) {
-                fallbackArguments.Add("host", host);
-            }
+            fallbackValue = host;
+            preferredKeys = new[] { "host", "target", "name", "domain" };
         } else {
             var domain = ResolveDomainDetectiveDomainHint(partialScopeHints);
             if (string.IsNullOrWhiteSpace(domain)) {
                 reason = "cross_public_domain_missing_domain_hint";
                 return false;
             }
-            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, domain, "domain", "name", "host", "target")) {
-                fallbackArguments.Add("domain", domain);
+            fallbackValue = domain;
+            preferredKeys = new[] { "domain", "name", "host", "target" };
+        }
+
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
+            var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, fallbackValue, preferredKeys)) {
+                fallbackArguments[preferredKeys[0]] = JsonValue.From(fallbackValue);
             }
+
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
+            }
+
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_public_domain_posture:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
         }
 
-        var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
-        if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-            || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
-            reason = "cross_public_domain_candidate_missing_required_args";
-            return false;
-        }
-
-        var serializedArguments = JsonLite.Serialize(normalizedArguments);
-        var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
-        var raw = new JsonObject()
-            .Add("type", "tool_call")
-            .Add("call_id", fallbackCallId)
-            .Add("name", candidateTool)
-            .Add("arguments", serializedArguments);
-
-        toolCall = new ToolCall(
-            callId: fallbackCallId,
-            name: candidateTool,
-            input: serializedArguments,
-            arguments: normalizedArguments,
-            raw: raw);
-        reason = "pack_contract_cross_public_domain_posture:"
-                 + sourcePackId
-                 + ":"
-                 + partialScopeReason
-                 + "->"
-                 + candidateTool;
-        return true;
+        reason = "cross_public_domain_candidate_missing_required_args";
+        return false;
     }
 
     private bool TryBuildCrossHostSystemBaselineFallbackToolCall(
@@ -779,15 +795,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveCrossPackCandidateToolByRouting(
+        if (!TryResolveCrossPackCandidateToolsByRouting(
                 toolDefinitions: toolDefinitions,
                 priorCalledTools: priorCalledTools,
                 targetPackId: "system",
                 preferredScope: "host",
                 preferredOperation: ToolRoutingTaxonomy.OperationRead,
                 mutatingToolHintsByName: mutatingToolHintsByName,
-                out var candidateTool,
-                out var toolDefinition)) {
+                out var candidates)) {
             reason = "cross_host_system_baseline_candidate_unavailable";
             return false;
         }
@@ -798,38 +813,45 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
-        if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, computerName, "computer_name", "machine_name", "host", "target", "name")) {
-            fallbackArguments.Add("computer_name", computerName);
-        }
-        var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
-        if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-            || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
-            reason = "cross_host_system_baseline_candidate_missing_required_args";
-            return false;
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
+            var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, computerName, "computer_name", "machine_name", "host", "target", "name")) {
+                fallbackArguments.Add("computer_name", computerName);
+            }
+
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
+            }
+
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_host_system_baseline:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
         }
 
-        var serializedArguments = JsonLite.Serialize(normalizedArguments);
-        var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
-        var raw = new JsonObject()
-            .Add("type", "tool_call")
-            .Add("call_id", fallbackCallId)
-            .Add("name", candidateTool)
-            .Add("arguments", serializedArguments);
-
-        toolCall = new ToolCall(
-            callId: fallbackCallId,
-            name: candidateTool,
-            input: serializedArguments,
-            arguments: normalizedArguments,
-            raw: raw);
-        reason = "pack_contract_cross_host_system_baseline:"
-                 + sourcePackId
-                 + ":"
-                 + partialScopeReason
-                 + "->"
-                 + candidateTool;
-        return true;
+        reason = "cross_host_system_baseline_candidate_missing_required_args";
+        return false;
     }
 
     private static bool IsSourceToolEligibleForCrossHostSystemBaselineFallback(
@@ -1160,15 +1182,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveCrossPackCandidateToolByRouting(
+        if (!TryResolveCrossPackCandidateToolsByRouting(
                 toolDefinitions: toolDefinitions,
                 priorCalledTools: priorCalledTools,
                 targetPackId: "eventlog",
                 preferredScope: "host",
                 preferredOperation: "query",
                 mutatingToolHintsByName: mutatingToolHintsByName,
-                out var candidateTool,
-                out var toolDefinition)) {
+                out var candidates)) {
             reason = "cross_host_eventlog_evidence_candidate_unavailable";
             return false;
         }
@@ -1179,44 +1200,51 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
-        if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, machineName, "machine_name", "computer_name", "host", "target", "name")) {
-            fallbackArguments.Add("machine_name", machineName);
-        }
-        if (ToolDefinitionHasInputProperty(toolDefinition, "log_name")) {
-            fallbackArguments.Add("log_name", "System");
-        }
-        if (ToolDefinitionHasInputProperty(toolDefinition, "max_events")) {
-            fallbackArguments.Add("max_events", 200);
-        }
-        var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
-        if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-            || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
-            reason = "cross_host_eventlog_evidence_candidate_missing_required_args";
-            return false;
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
+            var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, machineName, "machine_name", "computer_name", "host", "target", "name")) {
+                fallbackArguments.Add("machine_name", machineName);
+            }
+            if (ToolDefinitionHasInputProperty(toolDefinition, "log_name")) {
+                fallbackArguments.Add("log_name", "System");
+            }
+            if (ToolDefinitionHasInputProperty(toolDefinition, "max_events")) {
+                fallbackArguments.Add("max_events", 200);
+            }
+
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
+            }
+
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_host_eventlog_evidence:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
         }
 
-        var serializedArguments = JsonLite.Serialize(normalizedArguments);
-        var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
-        var raw = new JsonObject()
-            .Add("type", "tool_call")
-            .Add("call_id", fallbackCallId)
-            .Add("name", candidateTool)
-            .Add("arguments", serializedArguments);
-
-        toolCall = new ToolCall(
-            callId: fallbackCallId,
-            name: candidateTool,
-            input: serializedArguments,
-            arguments: normalizedArguments,
-            raw: raw);
-        reason = "pack_contract_cross_host_eventlog_evidence:"
-                 + sourcePackId
-                 + ":"
-                 + partialScopeReason
-                 + "->"
-                 + candidateTool;
-        return true;
+        reason = "cross_host_eventlog_evidence_candidate_missing_required_args";
+        return false;
     }
 
     private static string? ResolveDnsClientXNameHint(JsonObject hints) {
