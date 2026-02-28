@@ -181,15 +181,87 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
             dnsDomainName: effectiveDnsDomainName,
             forestDnsName: effectiveForestDnsName);
 
-        return Task.FromResult(ToolResponse.OkFactsModel(
-            model: model,
-            title: "Active Directory: Environment Discovery",
-            facts: facts,
+        var factRows = new List<IReadOnlyList<string>>(facts.Count);
+        for (var i = 0; i < facts.Count; i++) {
+            var fact = facts[i];
+            factRows.Add(new[] { fact.Key, fact.Value });
+        }
+
+        var summaryMarkdown = ToolMarkdownContract.Create()
+            .AddTable(
+                title: "Active Directory: Environment Discovery",
+                headers: new[] { "Field", "Value" },
+                rows: factRows,
+                totalCount: factRows.Count,
+                truncated: false)
+            .Build();
+
+        return Task.FromResult(ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: ToolJson.ToJsonObjectSnakeCase(model),
             meta: meta,
-            keyHeader: "Field",
-            valueHeader: "Value",
-            truncated: false,
-            render: null));
+            summaryMarkdown: summaryMarkdown,
+            render: BuildRenderHints(
+                domainControllerCount: discoveredDomainControllers.Count,
+                discoveredDomainCount: domainControllerDiscovery.DiscoveredDomains.Count,
+                discoverySourceCount: domainControllerDiscovery.Sources.Count,
+                nextActionCount: nextActions.Count,
+                missingReasonCount: domainControllerDiscovery.MissingReasons.Count)));
+    }
+
+    private static JsonValue? BuildRenderHints(
+        int domainControllerCount,
+        int discoveredDomainCount,
+        int discoverySourceCount,
+        int nextActionCount,
+        int missingReasonCount) {
+        var hints = new JsonArray();
+
+        if (discoverySourceCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controller_discovery/sources",
+                    new ToolColumn("source", "Source", "string"),
+                    new ToolColumn("ok", "Ok", "bool"),
+                    new ToolColumn("added", "Added", "int"),
+                    new ToolColumn("error_code", "Error code", "string"),
+                    new ToolColumn("error", "Error", "string"))
+                .Add("priority", 450));
+        }
+
+        if (domainControllerCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controllers",
+                    new ToolColumn("value", "Domain controller", "string"))
+                .Add("priority", 400));
+        }
+
+        if (nextActionCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "next_actions",
+                    new ToolColumn("tool", "Tool", "string"),
+                    new ToolColumn("reason", "Reason", "string"),
+                    new ToolColumn("mutating", "Mutating", "bool"))
+                .Add("priority", 300));
+        }
+
+        if (discoveredDomainCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controller_discovery/domains",
+                    new ToolColumn("value", "Domain", "string"))
+                .Add("priority", 200));
+        }
+
+        if (missingReasonCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controller_discovery/missing_reasons",
+                    new ToolColumn("value", "Missing reason", "string"))
+                .Add("priority", 100));
+        }
+
+        if (hints.Count == 0) {
+            return null;
+        }
+
+        return JsonValue.From(hints);
     }
 
     private static bool TryExtractDomainNameFromDistinguishedName(string? distinguishedName, out string domainName) {

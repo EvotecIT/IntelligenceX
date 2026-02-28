@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +11,10 @@ using Xunit;
 namespace IntelligenceX.Tools.Tests;
 
 public sealed class AdForestDiscoverToolTests {
+    private static readonly MethodInfo BuildRenderHintsMethod =
+        typeof(AdForestDiscoverTool).GetMethod("BuildRenderHints", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildRenderHints not found.");
+
     [Fact]
     public async Task InvokeAsync_WhenFallbackCurrentDomain_EmitsChainingContractFields() {
         var tool = new AdForestDiscoverTool(new ActiveDirectoryToolOptions());
@@ -99,5 +105,44 @@ public sealed class AdForestDiscoverToolTests {
         var typedArguments = expansionAction.Value.GetProperty("arguments");
         Assert.True(typedArguments.TryGetProperty("include_trusts", out var includeTrusts));
         Assert.True(includeTrusts.GetBoolean());
+    }
+
+    [Fact]
+    public void BuildRenderHints_WhenSectionsExist_EmitsPrioritizedHints() {
+        var result = BuildRenderHintsMethod.Invoke(
+            null,
+            new object?[] { 2, 5, 3, 1, 4, 2 });
+
+        Assert.NotNull(result);
+        using var doc = JsonDocument.Parse(result!.ToString()!);
+        var renderHints = doc.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(6, renderHints.Length);
+
+        Assert.Equal("domain_controllers_by_domain", renderHints[0].GetProperty("rows_path").GetString());
+        Assert.Equal(500, renderHints[0].GetProperty("priority").GetInt32());
+
+        Assert.Equal("domain_controllers", renderHints[1].GetProperty("rows_path").GetString());
+        Assert.Equal(450, renderHints[1].GetProperty("priority").GetInt32());
+
+        Assert.Equal("domains", renderHints[2].GetProperty("rows_path").GetString());
+        Assert.Equal(400, renderHints[2].GetProperty("priority").GetInt32());
+
+        Assert.Equal("trusts", renderHints[3].GetProperty("rows_path").GetString());
+        Assert.Equal(300, renderHints[3].GetProperty("priority").GetInt32());
+
+        Assert.Equal("receipt/steps", renderHints[4].GetProperty("rows_path").GetString());
+        Assert.Equal(200, renderHints[4].GetProperty("priority").GetInt32());
+
+        Assert.Equal("next_actions", renderHints[5].GetProperty("rows_path").GetString());
+        Assert.Equal(150, renderHints[5].GetProperty("priority").GetInt32());
+    }
+
+    [Fact]
+    public void BuildRenderHints_WhenNoSectionsExist_ReturnsNull() {
+        var result = BuildRenderHintsMethod.Invoke(
+            null,
+            new object?[] { 0, 0, 0, 0, 0, 0 });
+
+        Assert.Null(result);
     }
 }
