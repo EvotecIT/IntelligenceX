@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -145,5 +146,27 @@ public class AdScopeDiscoveryToolTests {
         var typedArguments = expansionAction.Value.GetProperty("arguments");
         Assert.True(typedArguments.TryGetProperty("include_trusts", out var includeTrusts));
         Assert.True(includeTrusts.GetBoolean());
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenFallbackCurrentDomain_EmitsPrioritizedRenderHints() {
+        var tool = new AdScopeDiscoveryTool(new ActiveDirectoryToolOptions());
+
+        var json = await tool.InvokeAsync(
+            arguments: new JsonObject()
+                .Add("discovery_fallback", "current_domain"),
+            cancellationToken: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        var renderHints = root.GetProperty("render").EnumerateArray().ToArray();
+        Assert.True(renderHints.Length >= 2);
+
+        Assert.Equal("receipt/steps", renderHints[0].GetProperty("rows_path").GetString());
+        Assert.Equal(500, renderHints[0].GetProperty("priority").GetInt32());
+
+        Assert.Equal("next_actions", renderHints[1].GetProperty("rows_path").GetString());
+        Assert.Equal(400, renderHints[1].GetProperty("priority").GetInt32());
     }
 }

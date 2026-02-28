@@ -473,7 +473,81 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
             $"Forest: `{effectiveForest ?? string.Empty}`; Domains: `{domains.Count}`; DCs: `{allDcs.Count}`; Gaps: `{gaps.Count}`.",
             "Use `receipt.steps` to review endpoints checked, timeouts, and failed probes.");
 
-        return ToolResponse.OkModel(model, summaryMarkdown: summary);
+        return ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: ToolJson.ToJsonObjectSnakeCase(model),
+            summaryMarkdown: summary,
+            render: BuildRenderHints(
+                stepCount: steps.Count,
+                nextActionCount: chain.NextActions.Count,
+                domainControllerByDomainCount: byDomain.Count,
+                domainControllerCount: allDcs.Count,
+                domainCount: domains.Count,
+                gapCount: gaps.Count));
+    }
+
+    private static JsonValue? BuildRenderHints(
+        int stepCount,
+        int nextActionCount,
+        int domainControllerByDomainCount,
+        int domainControllerCount,
+        int domainCount,
+        int gapCount) {
+        var hints = new JsonArray();
+
+        if (stepCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "receipt/steps",
+                    new ToolColumn("name", "Step", "string"),
+                    new ToolColumn("ok", "Ok", "bool"),
+                    new ToolColumn("duration_ms", "Duration (ms)", "int"),
+                    new ToolColumn("timeout_ms", "Timeout (ms)", "int"),
+                    new ToolColumn("error_type", "Error type", "string"))
+                .Add("priority", 500));
+        }
+
+        if (nextActionCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "next_actions",
+                    new ToolColumn("tool", "Tool", "string"),
+                    new ToolColumn("reason", "Reason", "string"),
+                    new ToolColumn("mutating", "Mutating", "bool"))
+                .Add("priority", 400));
+        }
+
+        if (domainControllerByDomainCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controllers_by_domain",
+                    new ToolColumn("domain_name", "Domain", "string"))
+                .Add("priority", 350));
+        }
+
+        if (domainControllerCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controllers",
+                    new ToolColumn("value", "Domain controller", "string"))
+                .Add("priority", 300));
+        }
+
+        if (domainCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domains",
+                    new ToolColumn("value", "Domain", "string"))
+                .Add("priority", 250));
+        }
+
+        if (gapCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "missing",
+                    new ToolColumn("area", "Area", "string"),
+                    new ToolColumn("reason", "Reason", "string"))
+                .Add("priority", 200));
+        }
+
+        if (hints.Count == 0) {
+            return null;
+        }
+
+        return JsonValue.From(hints);
     }
 
     private static ToolChainContractModel BuildChainContract(
