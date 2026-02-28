@@ -547,8 +547,17 @@ internal sealed partial class ChatServiceSession {
             return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 150, RetryOnTimeout: true, RetryOnTransport: true);
         }
         if (normalized.StartsWith("system_", StringComparison.Ordinal)
+            || normalized.StartsWith("computerx_", StringComparison.Ordinal)
             || normalized.StartsWith("wsl_", StringComparison.Ordinal)) {
             return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 120, RetryOnTimeout: true, RetryOnTransport: true);
+        }
+        if (normalized.StartsWith("domaindetective_", StringComparison.Ordinal)
+            || normalized.StartsWith("domain_detective_", StringComparison.Ordinal)
+            || normalized.StartsWith("dnsclientx_", StringComparison.Ordinal)
+            || normalized.StartsWith("dns_client_x_", StringComparison.Ordinal)
+            || normalized.StartsWith("testimox_", StringComparison.Ordinal)
+            || normalized.StartsWith("testimo_x_", StringComparison.Ordinal)) {
+            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true);
         }
         if (normalized.StartsWith("fs_", StringComparison.Ordinal)) {
             return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 90, RetryOnTimeout: true, RetryOnTransport: false);

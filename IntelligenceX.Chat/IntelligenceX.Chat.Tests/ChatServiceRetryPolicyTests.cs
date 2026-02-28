@@ -85,6 +85,70 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
+    public void ShouldRetryToolCall_RetriesTimeoutForDomainDetectiveProfile() {
+        var profile = InvokeResolveRetryProfile("domaindetective_domain_summary");
+        var output = new ToolOutputDto {
+            CallId = "call-3c",
+            Output = "{\"error\":\"Tool timed out.\"}",
+            Ok = false,
+            ErrorCode = "tool_timeout",
+            Error = "Tool timed out."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_RetriesTransportForDnsClientXProfile() {
+        var profile = InvokeResolveRetryProfile("dnsclientx_query");
+        var output = new ToolOutputDto {
+            CallId = "call-3d",
+            Output = "{\"error\":\"Service temporarily unavailable.\"}",
+            Ok = false,
+            ErrorCode = "transport_unavailable",
+            Error = "Service temporarily unavailable."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_RetriesTransportForTestimoXProfile() {
+        var profile = InvokeResolveRetryProfile("testimox_rules_run");
+        var output = new ToolOutputDto {
+            CallId = "call-3e",
+            Output = "{\"error\":\"Upstream connection reset.\"}",
+            Ok = false,
+            ErrorCode = "transport_unavailable",
+            Error = "Upstream connection reset."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_RetriesTimeoutForComputerXPrefixProfile() {
+        var profile = InvokeResolveRetryProfile("computerx_inventory_snapshot");
+        var output = new ToolOutputDto {
+            CallId = "call-3f",
+            Output = "{\"error\":\"Tool timed out.\"}",
+            Ok = false,
+            ErrorCode = "tool_timeout",
+            Error = "Tool timed out."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
     public void ShouldRetryToolCall_DoesNotRetryDomainScopeGuardrailFailure() {
         var profile = InvokeResolveRetryProfile("ad_replication_summary");
         var output = new ToolOutputDto {
