@@ -132,6 +132,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("include at most 3 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_ClampsLargeStructuredMaxNewVisualsToSupportedRange() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            max_new_visuals: 9999999999
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_new_visuals: 3", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("include at most 3 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("-1")]
     [InlineData("abc")]
