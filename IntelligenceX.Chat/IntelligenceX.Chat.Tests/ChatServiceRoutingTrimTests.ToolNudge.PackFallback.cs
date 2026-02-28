@@ -694,6 +694,63 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackAdToSystemHostBaselineFallbackOnFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["ad_domain_controllers"] = "active_directory";
+        packMap["system_bios_summary"] = "system";
+
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "ad_domain_controllers",
+                "List AD domain controllers.",
+                ToolSchema.Object(
+                        ("domain_name", ToolSchema.String("Domain name.")),
+                        ("computer_name", ToolSchema.String("Domain controller host name.")))
+                    .NoAdditionalProperties()),
+            new(
+                "system_bios_summary",
+                "Summarize BIOS details for a target computer.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Computer name.")))
+                    .Required("computer_name")
+                    .NoAdditionalProperties())
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-1",
+                Name = "ad_domain_controllers",
+                Input = """
+                        {"domain_name":"contoso.local","computer_name":"dc01.contoso.local"}
+                        """
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-1",
+                Output = "{}",
+                Ok = false,
+                ErrorCode = "timeout"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_domain_controllers"] = false,
+            ["system_bios_summary"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "check domain controllers and host baseline for dc01.contoso.local", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("system_bios_summary", toolCall.Name);
+        Assert.Contains("pack_contract_cross_ad_host_system_baseline", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"computer_name\":\"dc01.contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDomainDetectiveToTestimoXFallbackOnFailure() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));

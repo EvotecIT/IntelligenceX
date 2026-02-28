@@ -384,6 +384,22 @@ internal sealed partial class ChatServiceSession {
                 return true;
             }
 
+            if (TryBuildCrossAdHostSystemBaselineFallbackToolCall(
+                    toolDefinitions: toolDefinitions,
+                    priorCalledTools: priorCalledTools,
+                    sourcePackId: sourcePackId,
+                    sourceTool: sourceTool,
+                    sourceToolDefinition: sourceToolDefinition,
+                    partialScopeHints: partialScopeHints,
+                    partialScopeReason: partialScopeReason,
+                    userRequest: userRequest,
+                    hasSourceFailureSignal: hasSourceFailureSignal,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    out toolCall,
+                    out reason)) {
+                return true;
+            }
+
             if (TryBuildCrossPublicPostureEvidenceFallbackToTestimoX(
                     toolDefinitions: toolDefinitions,
                     priorCalledTools: priorCalledTools,
@@ -772,6 +788,94 @@ internal sealed partial class ChatServiceSession {
         }
 
         reason = "cross_testimox_ad_discovery_candidate_missing_required_args";
+        return false;
+    }
+
+    private bool TryBuildCrossAdHostSystemBaselineFallbackToolCall(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string sourcePackId,
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition,
+        JsonObject partialScopeHints,
+        string partialScopeReason,
+        string? userRequest,
+        bool hasSourceFailureSignal,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        toolCall = null!;
+        reason = "cross_ad_host_system_baseline_not_applicable";
+
+        if (!PackIdMatches(sourcePackId, "active_directory")
+            || !hasSourceFailureSignal) {
+            reason = "cross_ad_host_system_baseline_source_not_eligible";
+            return false;
+        }
+
+        if (!IsSourceToolEligibleForCrossAdHostSystemBaselineFallback(sourceTool, sourceToolDefinition)) {
+            reason = "cross_ad_host_system_baseline_source_tool_not_supported";
+            return false;
+        }
+
+        if (!TryResolveCrossPackCandidateToolsByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "system",
+                preferredScope: "host",
+                preferredOperation: ToolRoutingTaxonomy.OperationRead,
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidates)) {
+            reason = "cross_ad_host_system_baseline_candidate_unavailable";
+            return false;
+        }
+
+        var computerName = ResolveEventlogHostHint(partialScopeHints, userRequest);
+        if (string.IsNullOrWhiteSpace(computerName)) {
+            reason = "cross_ad_host_system_baseline_missing_host_hint";
+            return false;
+        }
+
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
+            var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, computerName, "computer_name", "machine_name", "host", "target", "name")) {
+                fallbackArguments.Add("computer_name", computerName);
+            }
+            AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
+            AddSchemaAwareFallbackDefaultArguments("system", toolDefinition, fallbackArguments, partialScopeHints);
+
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
+            }
+
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_ad_host_system_baseline:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
+        }
+
+        reason = "cross_ad_host_system_baseline_candidate_missing_required_args";
         return false;
     }
 
@@ -1214,6 +1318,22 @@ internal sealed partial class ChatServiceSession {
         var scope = (routingInfo.Scope ?? string.Empty).Trim();
         if (!string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(scope, "file", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation);
+    }
+
+    private static bool IsSourceToolEligibleForCrossAdHostSystemBaselineFallback(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition) {
+        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)) {
+            return false;
+        }
+
+        var scope = (routingInfo.Scope ?? string.Empty).Trim();
+        if (!string.Equals(scope, "domain", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
