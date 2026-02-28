@@ -194,7 +194,7 @@ internal sealed partial class ChatServiceSession {
         var tokenStart = 0;
         for (var i = 0; i <= normalized.Length; i++) {
             var ch = i < normalized.Length ? normalized[i] : '\0';
-            var isTokenChar = i < normalized.Length && char.IsLetterOrDigit(ch);
+            var isTokenChar = i < normalized.Length && (char.IsLetterOrDigit(ch) || ch is '_' or '-');
             if (isTokenChar) {
                 if (!inToken) {
                     inToken = true;
@@ -214,28 +214,72 @@ internal sealed partial class ChatServiceSession {
             }
 
             var lower = token.ToLowerInvariant();
-            var hasNonAscii = false;
-            for (var t = 0; t < lower.Length; t++) {
-                if (lower[t] > 127) {
-                    hasNonAscii = true;
-                    break;
-                }
+            if (TryAddRoutingTokenCandidate(tokens, seen, lower, maxTokens)) {
+                break;
             }
 
-            var minLen = hasNonAscii ? 2 : 3;
-            if (lower.Length < minLen) {
-                continue;
+            var separatorNormalized = NormalizeRoutingSeparatorToken(lower);
+            if (TryAddRoutingTokenCandidate(tokens, seen, separatorNormalized, maxTokens)) {
+                break;
             }
 
-            if (seen.Add(lower)) {
-                tokens.Add(lower);
-                if (tokens.Count >= maxTokens) {
-                    break;
-                }
+            var compact = NormalizeCompactToken(lower.AsSpan());
+            if (TryAddRoutingTokenCandidate(tokens, seen, compact, maxTokens)) {
+                break;
             }
         }
 
         return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
+    }
+
+    private static bool TryAddRoutingTokenCandidate(List<string> tokens, HashSet<string> seen, string candidate, int maxTokens) {
+        var normalized = (candidate ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var hasNonAscii = false;
+        for (var i = 0; i < normalized.Length; i++) {
+            if (normalized[i] > 127) {
+                hasNonAscii = true;
+                break;
+            }
+        }
+
+        var minLen = hasNonAscii ? 2 : 3;
+        if (normalized.Length < minLen || !seen.Add(normalized)) {
+            return false;
+        }
+
+        tokens.Add(normalized);
+        return tokens.Count >= maxTokens;
+    }
+
+    private static string NormalizeRoutingSeparatorToken(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(normalized.Length);
+        var previousWasSeparator = false;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch)) {
+                sb.Append(char.ToLowerInvariant(ch));
+                previousWasSeparator = false;
+                continue;
+            }
+
+            if (ch is '_' or '-') {
+                if (!previousWasSeparator && sb.Length > 0) {
+                    sb.Append('_');
+                    previousWasSeparator = true;
+                }
+            }
+        }
+
+        return sb.ToString().Trim('_');
     }
 
     private static string BuildToolRoutingSearchText(ToolDefinition definition) {
