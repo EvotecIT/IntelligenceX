@@ -75,6 +75,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_NormalizesMarkdownTablePreferredVisualAlias() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            preferred_visual_type: markdown-table
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("If preferred_visual is set, prefer that visual format", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_PreservesExplicitAutoPreferredVisualOverride() {
         var request = """
             [Proactive visualization guidance]

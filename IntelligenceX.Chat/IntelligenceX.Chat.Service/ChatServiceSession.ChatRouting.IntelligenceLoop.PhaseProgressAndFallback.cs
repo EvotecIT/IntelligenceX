@@ -20,12 +20,6 @@ internal sealed partial class ChatServiceSession {
     internal const string PhaseHeartbeatSuppressionReasonCanceled = "canceled";
     internal const string PhaseHeartbeatSuppressionReasonHeartbeatCanceled = "heartbeat-canceled";
     internal const string PhaseHeartbeatSuppressionReasonRequestCanceled = "request-canceled";
-    private const string ProactiveVisualizationMarker = "ix:proactive-visualization:v1";
-    private const string MermaidFenceLanguage = "mermaid";
-    private const string ChartFenceLanguage = "ix-chart";
-    private const string NetworkFenceLanguage = "ix-network";
-    private const string LegacyNetworkFenceLanguage = "visnetwork";
-    private const int MaxSupportedProactiveVisualBlocks = 3;
 
     private readonly record struct ProactiveVisualizationPolicy(
         bool AllowNewVisuals,
@@ -256,9 +250,10 @@ internal sealed partial class ChatServiceSession {
                 : "0";
         var hasSpecificPreferredVisualType = visualPolicy.HasPreferredVisualOverride
             && !string.Equals(visualPolicy.PreferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
+        var supportedVisualBlocks = GetSupportedProactiveVisualBlockListText();
         var visualRequirementLine = visualPolicy.AllowNewVisuals && visualPolicy.MaxNewVisuals > 0
             ? $"- If allow_new_visuals is true, include at most {visualPolicy.MaxNewVisuals} new visual block(s) and only when it materially compresses complex evidence."
-            : "- If allow_new_visuals is false, do not introduce new mermaid/ix-chart/ix-network blocks in this proactive rewrite.";
+            : $"- If allow_new_visuals is false, do not introduce new {supportedVisualBlocks} blocks in this proactive rewrite.";
         var preferredVisualRequirementLine = visualPolicy.AllowNewVisuals && hasSpecificPreferredVisualType
             ? "- If preferred_visual is set, prefer that visual format for any newly introduced visual block unless another supported format is clearly better."
             : string.Empty;
@@ -372,22 +367,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
-    }
-
-    private static bool ContainsVisualContractSignal(string? text) {
-        var value = (text ?? string.Empty).Trim();
-        if (value.Length == 0) {
-            return false;
-        }
-
-        return ContainsFenceLanguage(value, MermaidFenceLanguage)
-               || ContainsFenceLanguage(value, ChartFenceLanguage)
-               || ContainsFenceLanguage(value, NetworkFenceLanguage)
-               || ContainsFenceLanguage(value, LegacyNetworkFenceLanguage)
-               || ContainsToken(value, MermaidFenceLanguage)
-               || ContainsToken(value, ChartFenceLanguage)
-               || ContainsToken(value, NetworkFenceLanguage)
-               || ContainsToken(value, LegacyNetworkFenceLanguage);
     }
 
     internal Task RunPhaseProgressLoopAsync(

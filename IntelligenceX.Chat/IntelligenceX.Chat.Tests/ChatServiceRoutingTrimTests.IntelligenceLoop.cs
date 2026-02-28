@@ -592,6 +592,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedTableToken() {
+        var request = "If useful, return a compact `table` for quick comparison.";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForWhitespacePrefixedFenceLanguage() {
         var request = """
             Build a relationship summary with explicit contract:
