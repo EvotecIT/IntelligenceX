@@ -191,6 +191,10 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (TryResolvePreferredVisualTypeFromStructuredJsonSignal(value, out preferredVisualType)) {
+            return true;
+        }
+
         return false;
     }
 
@@ -208,6 +212,65 @@ internal sealed partial class ChatServiceSession {
 
         preferredVisualType = TableVisualType;
         return true;
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromStructuredJsonSignal(
+        string text,
+        out string preferredVisualType) {
+        preferredVisualType = string.Empty;
+        if (string.IsNullOrWhiteSpace(text)) {
+            return false;
+        }
+
+        if (!LooksLikeNetworkJsonVisualContract(text.AsSpan())) {
+            return false;
+        }
+
+        preferredVisualType = NetworkVisualType;
+        return true;
+    }
+
+    private static bool LooksLikeNetworkJsonVisualContract(ReadOnlySpan<char> text) {
+        return ContainsJsonArrayProperty(text, "nodes") && ContainsJsonArrayProperty(text, "edges");
+    }
+
+    private static bool ContainsJsonArrayProperty(ReadOnlySpan<char> text, string propertyName) {
+        if (text.IsEmpty || string.IsNullOrWhiteSpace(propertyName)) {
+            return false;
+        }
+
+        var token = $"\"{propertyName}\"".AsSpan();
+        var searchStart = 0;
+        while (searchStart < text.Length) {
+            var tokenIndex = text.Slice(searchStart).IndexOf(token, StringComparison.OrdinalIgnoreCase);
+            if (tokenIndex < 0) {
+                return false;
+            }
+
+            var propertyIndex = searchStart + tokenIndex;
+            var valueIndex = propertyIndex + token.Length;
+            while (valueIndex < text.Length && char.IsWhiteSpace(text[valueIndex])) {
+                valueIndex++;
+            }
+
+            if (valueIndex >= text.Length || text[valueIndex] != ':') {
+                searchStart = propertyIndex + token.Length;
+                continue;
+            }
+
+            valueIndex++;
+            while (valueIndex < text.Length && char.IsWhiteSpace(text[valueIndex])) {
+                valueIndex++;
+            }
+
+            if (valueIndex < text.Length && text[valueIndex] == '[') {
+                return true;
+            }
+
+            searchStart = propertyIndex + token.Length;
+        }
+
+        return false;
     }
 
     private static bool ContainsMarkdownTableContractSignal(ReadOnlySpan<char> text) {
