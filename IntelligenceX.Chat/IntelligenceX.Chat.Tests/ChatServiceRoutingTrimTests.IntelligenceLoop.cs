@@ -604,6 +604,34 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForMarkdownTableContract() {
+        var request = """
+            Use this table format if useful:
+            | server | status |
+            | --- | --- |
+            | DC01 | healthy |
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForPipeSeparatedTextWithoutMarkdownTableSeparator() {
+        var request = """
+            Keep this literal text:
+            server | status
+            DC01 | healthy
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedChartAliasToken() {
         var request = "If needed, include a compact `chart` for trend comparison.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
