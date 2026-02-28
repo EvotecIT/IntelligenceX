@@ -229,6 +229,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("family=pack_contract", reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("pack_contract_cross_public_posture_testimox:domaindetective:query_failed->testimox_rules_list", "public_domain")]
+    [InlineData("pack_contract_cross_host_eventlog_evidence:computerx:query_failed->eventlog_live_query", "host")]
+    [InlineData("pack_contract_cross_system_ad_discovery:system:query_failed->ad_scope_discovery", "ad_domain")]
+    [InlineData("pack_contract_failure_autofallback:customx:query_failed->customx_pack_info", "pack_contract")]
+    [InlineData("pack_contract_unclassified_path:customx:query_failed->customx_pack_info", "general")]
+    public void ResolvePackFallbackTelemetryFamily_UsesStableReasonTokens(string reason, string expectedFamily) {
+        var method = typeof(ChatServiceSession).GetMethod("ResolvePackFallbackTelemetryFamily", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(null, new object?[] { reason });
+        Assert.Equal(expectedFamily, Assert.IsType<string>(result), StringComparer.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsDomainDetectiveFallbackFromSourceArguments() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();

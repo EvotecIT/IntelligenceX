@@ -2557,6 +2557,26 @@ internal sealed partial class ChatServiceSession {
         return aliases.Contains(normalizedActual);
     }
 
+    private static readonly string[] PackFallbackTelemetryPublicDomainReasonTokens = {
+        "cross_public_"
+    };
+
+    private static readonly string[] PackFallbackTelemetryHostReasonTokens = {
+        "cross_host_"
+    };
+
+    private static readonly string[] PackFallbackTelemetryAdDomainReasonTokens = {
+        "cross_system_ad_",
+        "cross_dc_discovery_first",
+        "cross_ad_",
+        "_ad_discovery"
+    };
+
+    private static readonly string[] PackFallbackTelemetryPackContractReasonTokens = {
+        "pack_contract_partial_scope_autofallback",
+        "pack_contract_failure_autofallback"
+    };
+
     private static string AppendPackFallbackTelemetryMarker(string reason, string sourcePackId, string candidateTool) {
         var normalizedReason = (reason ?? string.Empty).Trim();
         if (normalizedReason.Length == 0
@@ -2593,27 +2613,38 @@ internal sealed partial class ChatServiceSession {
             return "general";
         }
 
-        if (normalized.IndexOf("cross_public_", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (ContainsPackFallbackTelemetryReasonToken(normalized, PackFallbackTelemetryPublicDomainReasonTokens)) {
             return "public_domain";
         }
 
-        if (normalized.IndexOf("cross_host_", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (ContainsPackFallbackTelemetryReasonToken(normalized, PackFallbackTelemetryHostReasonTokens)) {
             return "host";
         }
 
-        if (normalized.IndexOf("cross_system_ad_", StringComparison.OrdinalIgnoreCase) >= 0
-            || normalized.IndexOf("cross_dc_discovery_first", StringComparison.OrdinalIgnoreCase) >= 0
-            || normalized.IndexOf("cross_ad_", StringComparison.OrdinalIgnoreCase) >= 0
-            || normalized.IndexOf("_ad_discovery", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (ContainsPackFallbackTelemetryReasonToken(normalized, PackFallbackTelemetryAdDomainReasonTokens)) {
             return "ad_domain";
         }
 
-        if (normalized.IndexOf("pack_contract_partial_scope_autofallback", StringComparison.OrdinalIgnoreCase) >= 0
-            || normalized.IndexOf("pack_contract_failure_autofallback", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (ContainsPackFallbackTelemetryReasonToken(normalized, PackFallbackTelemetryPackContractReasonTokens)) {
             return "pack_contract";
         }
 
         return "general";
+    }
+
+    private static bool ContainsPackFallbackTelemetryReasonToken(string reason, IReadOnlyList<string> tokens) {
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = tokens[i];
+            if (string.IsNullOrWhiteSpace(token)) {
+                continue;
+            }
+
+            if (reason.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string EncodePackFallbackTelemetryFieldValue(string value) {
