@@ -1331,6 +1331,113 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsEventlogLiveQueryFallbackFromMetadataEligibleEvtxSource() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_custom_evtx_query"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var sourceSchema = ToolSchema.Object(
+                ("path", ToolSchema.String("Path to the .evtx file.")))
+            .Required("path")
+            .NoAdditionalProperties();
+        var liveQuerySchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")),
+                ("log_name", ToolSchema.String("log name")))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_custom_evtx_query", "custom evtx query", sourceSchema),
+            new("eventlog_live_query", "live query", liveQuerySchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evtx-meta",
+                Name = "eventlog_custom_evtx_query",
+                ArgumentsJson = """{"path":"C:\\Logs\\System.evtx"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evtx-meta",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Can you check AD0 for reboot evidence?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_live_query", toolCall.Name);
+        Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildEventlogLiveQueryFallbackFromEventlogPackInfoFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_custom_pack_info"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var liveQuerySchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_custom_pack_info", "custom pack info", schema),
+            new("eventlog_live_query", "live query", liveQuerySchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evtx-guide",
+                Name = "eventlog_custom_pack_info"
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evtx-guide",
+                Output = """{"ok":false,"error_code":"access_denied"}""",
+                Ok = false,
+                ErrorCode = "access_denied"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Can you check AD0 for reboot evidence?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("pack_contract_no_applicable_fallback", Assert.IsType<string>(args[6]));
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_ResolvesHostHintAgainstPriorDiscoveryOutputs() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));

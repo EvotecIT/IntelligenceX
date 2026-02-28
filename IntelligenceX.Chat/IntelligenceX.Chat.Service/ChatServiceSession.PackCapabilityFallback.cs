@@ -311,12 +311,14 @@ internal sealed partial class ChatServiceSession {
                 || packContract.FallbackTools.Length == 0) {
                 continue;
             }
+            TryGetToolDefinitionByName(toolDefinitions, sourceTool, out var sourceToolDefinition);
 
             var hasPartialScopeHints = TryReadDiscoveryPartialScopeHints(output.Output, out var partialScopeHints, out var partialScopeReason);
             if (!hasPartialScopeHints) {
                 if (!TryReadPackCapabilityErrorFallbackHints(
                         sourcePackId: sourcePackId,
                         sourceTool: sourceTool,
+                        sourceToolDefinition: sourceToolDefinition,
                         output: output,
                         toolOutputs: toolOutputs,
                         userRequest: userRequest,
@@ -339,7 +341,6 @@ internal sealed partial class ChatServiceSession {
             if (!hasFallbackHints && !hasSourceFailureSignal) {
                 continue;
             }
-            TryGetToolDefinitionByName(toolDefinitions, sourceTool, out var sourceToolDefinition);
 
             if (TryBuildCrossDomainControllerDiscoveryFirstFallbackToolCall(
                     toolDefinitions: toolDefinitions,
@@ -1311,6 +1312,7 @@ internal sealed partial class ChatServiceSession {
     private static bool TryReadPackCapabilityErrorFallbackHints(
         string sourcePackId,
         string sourceTool,
+        ToolDefinition? sourceToolDefinition,
         ToolOutputDto output,
         IReadOnlyList<ToolOutputDto> toolOutputs,
         string? userRequest,
@@ -1324,10 +1326,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!string.Equals(sourceTool, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(sourceTool, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(sourceTool, "eventlog_evtx_stats", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(sourceTool, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)) {
+        if (!IsSourceToolEligibleForEvtxAccessDeniedFallback(sourceTool, sourceToolDefinition)) {
             reason = "source_tool_not_evtx";
             return false;
         }
@@ -1361,6 +1360,23 @@ internal sealed partial class ChatServiceSession {
 
         reason = "evtx_access_denied_live_query_fallback";
         return true;
+    }
+
+    private static bool IsSourceToolEligibleForEvtxAccessDeniedFallback(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition) {
+        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)
+            || !IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation)) {
+            return false;
+        }
+
+        var scope = (routingInfo.Scope ?? string.Empty).Trim();
+        if (string.Equals(scope, "file", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        var normalizedSourceTool = (sourceTool ?? string.Empty).Trim();
+        return normalizedSourceTool.IndexOf("_evtx_", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static void CopyHintIfPresent(JsonObject source, JsonObject destination, string propertyName) {
