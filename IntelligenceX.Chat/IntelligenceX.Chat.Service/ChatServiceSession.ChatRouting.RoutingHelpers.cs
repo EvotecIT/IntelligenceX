@@ -16,6 +16,12 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const double WeightedRoutingAmbiguousSecondScoreRatioThreshold = 0.92d;
+    private const double WeightedRoutingAmbiguousClusterScoreRatioThreshold = 0.82d;
+    private const int WeightedRoutingAmbiguousClusterMinCount = 3;
+    private const int WeightedRoutingAmbiguousSelectionFloor = 10;
+    private const int WeightedRoutingAmbiguousSelectionCap = 12;
+
     private static void TraceNoToolExecutionWatchdogDecision(
         string userRequest,
         bool executionContractApplies,
@@ -473,7 +479,7 @@ internal sealed partial class ChatServiceSession {
             return SelectDeterministicToolSubset(definitions, limit);
         }
 
-        var minSelection = Math.Min(definitions.Count, Math.Max(8, Math.Min(limit, 12)));
+        var minSelection = ResolveWeightedRoutingMinSelection(scored, limit, definitions.Count);
         if (selectedDefs.Count < minSelection) {
             for (var i = selectedDefs.Count; i < scored.Count && selectedDefs.Count < minSelection; i++) {
                 var definition = scored[i].Definition;
@@ -490,6 +496,52 @@ internal sealed partial class ChatServiceSession {
 
         insights = BuildRoutingInsights(scored, selectedDefs);
         return selectedDefs;
+    }
+
+    private static int ResolveWeightedRoutingMinSelection(IReadOnlyList<ToolScore> scored, int limit, int definitionCount) {
+        var baseline = Math.Min(definitionCount, Math.Max(8, Math.Min(limit, 12)));
+        if (scored.Count < 2 || definitionCount <= baseline) {
+            return baseline;
+        }
+
+        var topScore = scored[0].Score;
+        if (topScore <= 0d) {
+            return baseline;
+        }
+
+        var secondScoreRatio = scored[1].Score / topScore;
+        if (secondScoreRatio < WeightedRoutingAmbiguousSecondScoreRatioThreshold) {
+            return baseline;
+        }
+
+        var ambiguousClusterSize = 0;
+        for (var i = 0; i < scored.Count; i++) {
+            var score = scored[i].Score;
+            if (score <= 0.01d) {
+                break;
+            }
+
+            var scoreRatio = score / topScore;
+            if (scoreRatio < WeightedRoutingAmbiguousClusterScoreRatioThreshold) {
+                break;
+            }
+
+            ambiguousClusterSize++;
+            if (ambiguousClusterSize >= WeightedRoutingAmbiguousSelectionCap) {
+                break;
+            }
+        }
+
+        if (ambiguousClusterSize < WeightedRoutingAmbiguousClusterMinCount) {
+            return baseline;
+        }
+
+        var widened = Math.Max(
+            baseline,
+            Math.Min(
+                WeightedRoutingAmbiguousSelectionCap,
+                Math.Max(WeightedRoutingAmbiguousSelectionFloor, ambiguousClusterSize)));
+        return Math.Min(definitionCount, widened);
     }
 
 }

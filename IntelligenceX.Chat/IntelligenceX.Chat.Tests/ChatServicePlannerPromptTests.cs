@@ -449,6 +449,37 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void SelectWeightedToolSubset_WidensSelection_WhenTopScoresAreAmbiguous() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 10; i++) {
+            definitions.Add(new ToolDefinition(
+                $"signal_tool_{i:D2}",
+                "Collect telemetryx diagnostics.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        for (var i = 0; i < 10; i++) {
+            definitions.Add(new ToolDefinition(
+                $"other_tool_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        var args = new object?[] {
+            definitions,
+            "Please summarize telemetryx for this environment.",
+            8,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.Equal(10, selected.Count);
+        Assert.Equal("signal_tool_00", selected[0].Name);
+        Assert.Equal("signal_tool_09", selected[9].Name);
+    }
+
+    [Fact]
     public void ResolveMaxCandidateToolsSetting_DefaultsCompatibleHttpToEight() {
         var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { null, OpenAITransportKind.CompatibleHttp });
         var value = Assert.IsType<int>(result);
