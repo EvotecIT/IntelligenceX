@@ -234,9 +234,16 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static string BuildProactiveFollowUpReviewPrompt(string userRequest, string assistantDraft) {
+        return BuildProactiveFollowUpReviewPrompt(userRequest, assistantDraft, toolOutputs: null);
+    }
+
+    internal static string BuildProactiveFollowUpReviewPrompt(
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolOutputDto>? toolOutputs) {
         var requestText = TrimForPrompt(userRequest, 520);
         var draftText = TrimForPrompt(assistantDraft, 1800);
-        var visualPolicy = ResolveProactiveVisualizationPolicy(userRequest, assistantDraft);
+        var visualPolicy = ResolveProactiveVisualizationPolicy(userRequest, assistantDraft, toolOutputs);
         var allowNewVisualsText = visualPolicy.AllowNewVisuals ? "true" : "false";
         var draftHasVisualsText = visualPolicy.DraftHasVisuals ? "true" : "false";
         var requestHasVisualContractText = visualPolicy.RequestHasVisualContract ? "true" : "false";
@@ -295,7 +302,10 @@ internal sealed partial class ChatServiceSession {
             """;
     }
 
-    private static ProactiveVisualizationPolicy ResolveProactiveVisualizationPolicy(string userRequest, string assistantDraft) {
+    private static ProactiveVisualizationPolicy ResolveProactiveVisualizationPolicy(
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolOutputDto>? toolOutputs) {
         var requestHasProactiveVisualizationMarker = ContainsProactiveVisualizationMarker(userRequest);
         var requestHasVisualContractSignal = ContainsVisualContractSignal(userRequest);
         var hasStructuredOverrides = TryReadProactiveVisualizationOverridesFromRequestText(userRequest, out var hasAllowNewVisualsOverride,
@@ -324,17 +334,30 @@ internal sealed partial class ChatServiceSession {
             : hasMaxNewVisualsOverride
                     ? maxNewVisualsOverride > 0
                     : requestHasVisualContractSignal;
+        var hasInferredPreferredVisualTypeFromToolOutputs = false;
+        if (baseAllowNewVisuals
+            && requestHasVisualContract
+            && !hasPreferredVisualDirectiveFromRequest
+            && TryResolvePreferredVisualTypeFromToolOutputs(toolOutputs, out var inferredPreferredVisualTypeFromToolOutputs)
+            && !string.IsNullOrWhiteSpace(inferredPreferredVisualTypeFromToolOutputs)) {
+            effectivePreferredVisualType = inferredPreferredVisualTypeFromToolOutputs;
+            hasInferredPreferredVisualTypeFromToolOutputs = true;
+        }
+
         var hasInferredPreferredVisualTypeFromDraft = false;
         if (baseAllowNewVisuals
             && requestHasVisualContract
             && !hasPreferredVisualDirectiveFromRequest
+            && !hasInferredPreferredVisualTypeFromToolOutputs
             && TryResolvePreferredVisualTypeFromVisualContractSignal(assistantDraft, out var inferredPreferredVisualTypeFromDraft)
             && !string.IsNullOrWhiteSpace(inferredPreferredVisualTypeFromDraft)) {
             effectivePreferredVisualType = inferredPreferredVisualTypeFromDraft;
             hasInferredPreferredVisualTypeFromDraft = true;
         }
 
-        var hasPreferredVisualDirective = hasPreferredVisualDirectiveFromRequest || hasInferredPreferredVisualTypeFromDraft;
+        var hasPreferredVisualDirective = hasPreferredVisualDirectiveFromRequest
+                                          || hasInferredPreferredVisualTypeFromToolOutputs
+                                          || hasInferredPreferredVisualTypeFromDraft;
         var maxNewVisuals = hasMaxNewVisualsOverride
             ? Math.Clamp(maxNewVisualsOverride, 0, MaxSupportedProactiveVisualBlocks)
             : baseAllowNewVisuals
@@ -350,6 +373,53 @@ internal sealed partial class ChatServiceSession {
             PreferredVisualType: effectivePreferredVisualType,
             HasMaxNewVisualsOverride: hasMaxNewVisualsOverride,
             MaxNewVisuals: maxNewVisuals);
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromToolOutputs(
+        IReadOnlyList<ToolOutputDto>? toolOutputs,
+        out string preferredVisualType) {
+        preferredVisualType = string.Empty;
+        if (toolOutputs is null || toolOutputs.Count == 0) {
+            return false;
+        }
+
+        for (var i = toolOutputs.Count - 1; i >= 0; i--) {
+            var output = toolOutputs[i];
+            if (output is null) {
+                continue;
+            }
+
+            if (TryResolvePreferredVisualTypeFromVisualContractSignal(output.SummaryMarkdown, out preferredVisualType)
+                && !string.IsNullOrWhiteSpace(preferredVisualType)) {
+                return true;
+            }
+
+            if (TryResolvePreferredVisualTypeFromToolOutputPayload(output.Output, out preferredVisualType)
+                && !string.IsNullOrWhiteSpace(preferredVisualType)) {
+                return true;
+            }
+        }
+
+        preferredVisualType = string.Empty;
+        return false;
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromToolOutputPayload(
+        string? outputPayload,
+        out string preferredVisualType) {
+        preferredVisualType = string.Empty;
+        var payload = (outputPayload ?? string.Empty).Trim();
+        if (payload.Length < 2) {
+            return false;
+        }
+
+        try {
+            using var document = JsonDocument.Parse(payload);
+            return TryResolvePreferredVisualTypeFromJsonElement(document.RootElement, out preferredVisualType);
+        } catch (JsonException) {
+            preferredVisualType = string.Empty;
+            return false;
+        }
     }
 
     private static bool ContainsProactiveVisualizationMarker(string? text) {

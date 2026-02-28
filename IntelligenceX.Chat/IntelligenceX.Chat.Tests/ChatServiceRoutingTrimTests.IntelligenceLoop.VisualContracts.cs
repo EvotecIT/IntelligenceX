@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using Xunit;
 
@@ -52,6 +54,51 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_InferPreferredVisualFromToolOutputsWhenVisualsAreAllowed() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var draft = """
+            Current findings:
+            | host | status |
+            | --- | --- |
+            | AD0 | healthy |
+            """;
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"nodes\":[{\"id\":\"AD0\"}],\"edges\":[]}",
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, draft, outputs);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsFromToolOutputsWithoutVisualContract() {
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"labels\":[\"Jan\",\"Feb\"],\"series\":[1,2]}",
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt("analyze logons", "Current findings...", outputs);
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: auto", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
