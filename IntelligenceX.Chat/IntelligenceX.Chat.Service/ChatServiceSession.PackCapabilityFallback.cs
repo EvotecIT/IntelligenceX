@@ -550,26 +550,34 @@ internal sealed partial class ChatServiceSession {
         reason = "cross_public_dns_not_applicable";
 
         if (!PackIdMatches(sourcePackId, "domaindetective")
-            || !string.Equals(sourceTool, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)
             || !hasSourceFailureSignal) {
             reason = "cross_public_dns_source_not_eligible";
             return false;
         }
 
-        const string candidateTool = "dnsclientx_query";
+        var candidateTool = string.Equals(sourceTool, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)
+            ? "dnsclientx_ping"
+            : string.Equals(sourceTool, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)
+                ? "dnsclientx_query"
+                : string.Empty;
+        if (candidateTool.Length == 0) {
+            reason = "cross_public_dns_source_tool_not_supported";
+            return false;
+        }
+
         if (priorCalledTools.Contains(candidateTool)) {
-            reason = "cross_public_dns_query_already_called";
+            reason = "cross_public_dns_candidate_already_called";
             return false;
         }
 
         if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
-            reason = "cross_public_dns_query_unavailable";
+            reason = "cross_public_dns_candidate_unavailable";
             return false;
         }
 
         if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
             || !PackIdMatches(candidatePackIdRaw, "dnsclientx")) {
-            reason = "cross_public_dns_query_not_in_dnsclientx_pack";
+            reason = "cross_public_dns_candidate_not_in_dnsclientx_pack";
             return false;
         }
 
@@ -579,7 +587,7 @@ internal sealed partial class ChatServiceSession {
             toolDefinition: toolDefinition,
             mutatingToolHintsByName: mutatingToolHintsByName);
         if (mutability != ActionMutability.ReadOnly) {
-            reason = "cross_public_dns_query_not_read_only";
+            reason = "cross_public_dns_candidate_not_read_only";
             return false;
         }
 
@@ -589,12 +597,16 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal)
-            .Add("name", name);
+        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+        if (string.Equals(candidateTool, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)) {
+            fallbackArguments.Add("target", name);
+        } else {
+            fallbackArguments.Add("name", name);
+        }
         var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
         if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
             || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
-            reason = "cross_public_dns_query_missing_required_args";
+            reason = "cross_public_dns_candidate_missing_required_args";
             return false;
         }
 
@@ -636,26 +648,34 @@ internal sealed partial class ChatServiceSession {
         reason = "cross_public_domain_not_applicable";
 
         if (!PackIdMatches(sourcePackId, "dnsclientx")
-            || !string.Equals(sourceTool, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)
             || !hasSourceFailureSignal) {
             reason = "cross_public_domain_source_not_eligible";
             return false;
         }
 
-        const string candidateTool = "domaindetective_domain_summary";
+        var candidateTool = string.Equals(sourceTool, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)
+            ? "domaindetective_network_probe"
+            : string.Equals(sourceTool, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)
+                ? "domaindetective_domain_summary"
+                : string.Empty;
+        if (candidateTool.Length == 0) {
+            reason = "cross_public_domain_source_tool_not_supported";
+            return false;
+        }
+
         if (priorCalledTools.Contains(candidateTool)) {
-            reason = "cross_public_domain_summary_already_called";
+            reason = "cross_public_domain_candidate_already_called";
             return false;
         }
 
         if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
-            reason = "cross_public_domain_summary_unavailable";
+            reason = "cross_public_domain_candidate_unavailable";
             return false;
         }
 
         if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
             || !PackIdMatches(candidatePackIdRaw, "domaindetective")) {
-            reason = "cross_public_domain_summary_not_in_domaindetective_pack";
+            reason = "cross_public_domain_candidate_not_in_domaindetective_pack";
             return false;
         }
 
@@ -665,22 +685,31 @@ internal sealed partial class ChatServiceSession {
             toolDefinition: toolDefinition,
             mutatingToolHintsByName: mutatingToolHintsByName);
         if (mutability != ActionMutability.ReadOnly) {
-            reason = "cross_public_domain_summary_not_read_only";
+            reason = "cross_public_domain_candidate_not_read_only";
             return false;
         }
 
-        var domain = ResolveDomainDetectiveDomainHint(partialScopeHints);
-        if (string.IsNullOrWhiteSpace(domain)) {
-            reason = "cross_public_domain_missing_domain_hint";
-            return false;
+        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+        if (string.Equals(candidateTool, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
+            var host = ResolveDnsClientXNameHint(partialScopeHints);
+            if (string.IsNullOrWhiteSpace(host)) {
+                reason = "cross_public_domain_missing_host_hint";
+                return false;
+            }
+            fallbackArguments.Add("host", host);
+        } else {
+            var domain = ResolveDomainDetectiveDomainHint(partialScopeHints);
+            if (string.IsNullOrWhiteSpace(domain)) {
+                reason = "cross_public_domain_missing_domain_hint";
+                return false;
+            }
+            fallbackArguments.Add("domain", domain);
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal)
-            .Add("domain", domain);
         var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
         if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
             || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
-            reason = "cross_public_domain_summary_missing_required_args";
+            reason = "cross_public_domain_candidate_missing_required_args";
             return false;
         }
 
