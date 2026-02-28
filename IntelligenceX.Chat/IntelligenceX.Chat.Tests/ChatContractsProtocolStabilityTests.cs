@@ -90,9 +90,7 @@ public sealed class ChatContractsProtocolStabilityTests {
         var root = document.RootElement;
         Assert.Equal("call_001", root.GetProperty("callId").GetString());
         Assert.Equal("ad_scope_discovery", root.GetProperty("name").GetString());
-        Assert.Contains(
-            root.EnumerateObject(),
-            static property => string.Equals(property.Value.GetString(), """{"domain_name":"contoso.local"}""", StringComparison.Ordinal));
+        Assert.Equal(expectedArguments, root.GetProperty("argumentsJson").GetString());
         Assert.DoesNotContain("\"input\":", json, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -124,5 +122,54 @@ public sealed class ChatContractsProtocolStabilityTests {
 #pragma warning restore CS0618
 
         Assert.Equal("""{"domain_name":"contoso.local"}""", dto.ArgumentsJson);
+    }
+
+    [Fact]
+    public void ToolCallDto_CanonicalArgumentsJson_WinsOverLegacyInputRegardlessOfOrder() {
+        const string canonical = """{"domain_name":"canonical.local"}""";
+        const string legacy = """{"domain_name":"legacy.local"}""";
+        const string callId = "call_precedence";
+        const string toolName = "ad_scope_discovery";
+
+#pragma warning disable CS0618
+        var initializerCanonicalFirst = new ToolCallDto {
+            CallId = callId,
+            Name = toolName,
+            ArgumentsJson = canonical,
+            Input = legacy
+        };
+        var initializerInputFirst = new ToolCallDto {
+            CallId = callId,
+            Name = toolName,
+            Input = legacy,
+            ArgumentsJson = canonical
+        };
+#pragma warning restore CS0618
+
+        var jsonCanonicalFirst = """
+            {
+              "callId": "call_precedence_json_a",
+              "name": "ad_scope_discovery",
+              "argumentsJson": "{\"domain_name\":\"canonical.local\"}",
+              "input": "{\"domain_name\":\"legacy.local\"}"
+            }
+            """;
+        var jsonInputFirst = """
+            {
+              "callId": "call_precedence_json_b",
+              "name": "ad_scope_discovery",
+              "input": "{\"domain_name\":\"legacy.local\"}",
+              "argumentsJson": "{\"domain_name\":\"canonical.local\"}"
+            }
+            """;
+        var fromJsonCanonicalFirst = Assert.IsType<ToolCallDto>(
+            JsonSerializer.Deserialize(jsonCanonicalFirst, ChatServiceJsonContext.Default.ToolCallDto));
+        var fromJsonInputFirst = Assert.IsType<ToolCallDto>(
+            JsonSerializer.Deserialize(jsonInputFirst, ChatServiceJsonContext.Default.ToolCallDto));
+
+        Assert.Equal(canonical, initializerCanonicalFirst.ArgumentsJson);
+        Assert.Equal(canonical, initializerInputFirst.ArgumentsJson);
+        Assert.Equal(canonical, fromJsonCanonicalFirst.ArgumentsJson);
+        Assert.Equal(canonical, fromJsonInputFirst.ArgumentsJson);
     }
 }
