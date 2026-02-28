@@ -395,7 +395,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var bestScore = int.MinValue;
+        var bestSourceScore = int.MinValue;
+        var bestRecencyScore = -1;
         for (var i = 0; i < toolOutputs.Count; i++) {
             var output = toolOutputs[i];
             if (output is null) {
@@ -409,7 +410,8 @@ internal sealed partial class ChatServiceSession {
                     sourceScore: PreferredVisualSourceScoreRenderHint,
                     recencyIndex: i,
                     ref preferredVisualType,
-                    ref bestScore)) {
+                    ref bestSourceScore,
+                    ref bestRecencyScore)) {
                 continue;
             }
 
@@ -420,7 +422,8 @@ internal sealed partial class ChatServiceSession {
                     sourceScore: PreferredVisualSourceScoreSummaryMarkdown,
                     recencyIndex: i,
                     ref preferredVisualType,
-                    ref bestScore)) {
+                    ref bestSourceScore,
+                    ref bestRecencyScore)) {
                 continue;
             }
 
@@ -431,7 +434,8 @@ internal sealed partial class ChatServiceSession {
                     sourceScore: PreferredVisualSourceScoreOutputPayload,
                     recencyIndex: i,
                     ref preferredVisualType,
-                    ref bestScore);
+                    ref bestSourceScore,
+                    ref bestRecencyScore);
             }
         }
 
@@ -443,19 +447,25 @@ internal sealed partial class ChatServiceSession {
         int sourceScore,
         int recencyIndex,
         ref string preferredVisualType,
-        ref int bestScore) {
+        ref int bestSourceScore,
+        ref int bestRecencyScore) {
         var normalizedVisualType = (candidateVisualType ?? string.Empty).Trim();
         if (normalizedVisualType.Length == 0) {
             return false;
         }
 
-        var score = sourceScore + Math.Max(0, recencyIndex);
-        if (score < bestScore) {
+        var normalizedRecency = Math.Max(0, recencyIndex);
+        if (sourceScore < bestSourceScore) {
+            return false;
+        }
+
+        if (sourceScore == bestSourceScore && normalizedRecency < bestRecencyScore) {
             return false;
         }
 
         preferredVisualType = normalizedVisualType;
-        bestScore = score;
+        bestSourceScore = sourceScore;
+        bestRecencyScore = normalizedRecency;
         return true;
     }
 
