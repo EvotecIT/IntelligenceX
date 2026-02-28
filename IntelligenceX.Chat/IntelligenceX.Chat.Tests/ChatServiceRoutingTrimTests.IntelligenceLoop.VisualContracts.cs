@@ -54,6 +54,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: draft", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -82,6 +83,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -99,6 +101,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: auto", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: none", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -224,6 +227,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: request", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("If preferred_visual is set, prefer that visual format", text, StringComparison.OrdinalIgnoreCase);
     }
 
