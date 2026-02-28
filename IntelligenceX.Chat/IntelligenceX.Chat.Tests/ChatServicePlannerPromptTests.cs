@@ -148,6 +148,42 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesPackHintFromHyphenatedAliasPrefixWhenTagMissing() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "domain-detective-domain-summary",
+                "Domain posture summary.",
+                ToolSchema.Object(("domain", ToolSchema.String("Domain name."))).NoAdditionalProperties())
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "summarize contoso.com",
+            definitions,
+            4
+        }));
+
+        Assert.Contains("pack: domaindetective", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesPackHintFromHyphenatedComputerXAliasPrefixWhenTagMissing() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "computerx-inventory-snapshot",
+                "ComputerX inventory snapshot.",
+                ToolSchema.Object().NoAdditionalProperties())
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "collect host baseline",
+            definitions,
+            4
+        }));
+
+        Assert.Contains("pack: system", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildToolRoutingSearchText_IncludesSchemaTokens() {
         var definition = new ToolDefinition(
             "eventlog_top_events",
@@ -204,6 +240,19 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("pack dnsclientx", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:dnsclientx", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesDomainDetectivePackTokensFromHyphenatedToolNamePrefixFallback() {
+        var definition = new ToolDefinition(
+            "domain-detective-query",
+            "Query domain evidence.",
+            ToolSchema.Object(("name", ToolSchema.String("Name."))).NoAdditionalProperties());
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("pack domaindetective", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:domaindetective", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

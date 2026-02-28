@@ -420,40 +420,32 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (normalizedToolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("active_directory_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("adplayground_", StringComparison.OrdinalIgnoreCase)) {
+        if (IsAdDomainIntentToolName(normalizedToolName)) {
             packHint = "active_directory";
             return true;
         }
 
-        if (normalizedToolName.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("event_log_", StringComparison.OrdinalIgnoreCase)) {
+        if (IsEventLogToolName(normalizedToolName)) {
             packHint = "eventlog";
             return true;
         }
 
-        if (normalizedToolName.StartsWith("system_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("computerx_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("wsl_", StringComparison.OrdinalIgnoreCase)) {
+        if (IsSystemToolName(normalizedToolName)) {
             packHint = "system";
             return true;
         }
 
-        if (normalizedToolName.StartsWith("testimox_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("testimo_x_", StringComparison.OrdinalIgnoreCase)) {
+        if (IsTestimoXToolName(normalizedToolName)) {
             packHint = "testimox";
             return true;
         }
 
-        if (normalizedToolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("domain_detective_", StringComparison.OrdinalIgnoreCase)) {
+        if (IsDomainDetectiveToolName(normalizedToolName)) {
             packHint = "domaindetective";
             return true;
         }
 
-        if (normalizedToolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
-            || normalizedToolName.StartsWith("dns_client_x_", StringComparison.OrdinalIgnoreCase)) {
+        if (IsDnsClientXToolName(normalizedToolName)) {
             packHint = "dnsclientx";
             return true;
         }
