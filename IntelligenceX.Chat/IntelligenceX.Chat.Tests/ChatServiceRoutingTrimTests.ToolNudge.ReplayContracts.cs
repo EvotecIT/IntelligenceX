@@ -274,6 +274,63 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDnsClientXFallbackFromSecondCandidateWhenTopCandidateMissingRequiredArgs() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["domaindetective_domain_summary"] = "domaindetective";
+        packMap["dnsclientx_a_query_requires_ticket"] = "dnsclientx";
+        packMap["dnsclientx_b_query"] = "dnsclientx";
+
+        var sourceSchema = ToolSchema.Object(
+                ("domain", ToolSchema.String("domain")))
+            .Required("domain")
+            .NoAdditionalProperties();
+        var dnsPrimarySchema = ToolSchema.Object(
+                ("name", ToolSchema.String("name")),
+                ("ticket_id", ToolSchema.String("ticket id")))
+            .Required("ticket_id")
+            .NoAdditionalProperties();
+        var dnsSecondarySchema = ToolSchema.Object(
+                ("name", ToolSchema.String("name")))
+            .Required("name")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("domaindetective_domain_summary", "domain summary", sourceSchema),
+            new("dnsclientx_a_query_requires_ticket", "dns query primary", dnsPrimarySchema),
+            new("dnsclientx_b_query", "dns query secondary", dnsSecondarySchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-dd-fallback-loop",
+                Name = "domaindetective_domain_summary",
+                ArgumentsJson = """{"domain":"contoso.com"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-dd-fallback-loop",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["dnsclientx_a_query_requires_ticket"] = false,
+            ["dnsclientx_b_query"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("dnsclientx_b_query", toolCall.Name);
+        Assert.Contains("\"name\":\"contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDnsClientXQueryFallbackFromMetadataEligibleDomainDetectiveSource() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
@@ -568,6 +625,63 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("domaindetective_domain_summary", toolCall.Name);
         Assert.Contains("\"domain\":\"contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_public_domain", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDomainDetectiveFallbackFromSecondCandidateWhenTopCandidateMissingRequiredArgs() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["dnsclientx_query"] = "dnsclientx";
+        packMap["domaindetective_a_domain_summary_requires_ticket"] = "domaindetective";
+        packMap["domaindetective_b_domain_summary"] = "domaindetective";
+
+        var sourceSchema = ToolSchema.Object(
+                ("name", ToolSchema.String("name")))
+            .Required("name")
+            .NoAdditionalProperties();
+        var primarySchema = ToolSchema.Object(
+                ("domain", ToolSchema.String("domain")),
+                ("ticket_id", ToolSchema.String("ticket id")))
+            .Required("ticket_id")
+            .NoAdditionalProperties();
+        var secondarySchema = ToolSchema.Object(
+                ("domain", ToolSchema.String("domain")))
+            .Required("domain")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("dnsclientx_query", "dns query", sourceSchema),
+            new("domaindetective_a_domain_summary_requires_ticket", "domain summary primary", primarySchema),
+            new("domaindetective_b_domain_summary", "domain summary secondary", secondarySchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-dns-fallback-loop",
+                Name = "dnsclientx_query",
+                ArgumentsJson = """{"name":"contoso.com"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-dns-fallback-loop",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["domaindetective_a_domain_summary_requires_ticket"] = false,
+            ["domaindetective_b_domain_summary"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("domaindetective_b_domain_summary", toolCall.Name);
+        Assert.Contains("\"domain\":\"contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -992,6 +1106,62 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_host_eventlog_evidence", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossHostEventlogEvidenceFromSecondCandidateWhenTopCandidateMissingRequiredArgs() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_info"] = "computerx";
+        packMap["eventlog_a_live_query_requires_ticket"] = "eventlog";
+        packMap["eventlog_b_live_query"] = "eventlog";
+
+        var systemSchema = ToolSchema.Object(
+                ("computer_name", ToolSchema.String("computer name")))
+            .NoAdditionalProperties();
+        var eventlogPrimarySchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")),
+                ("ticket_id", ToolSchema.String("ticket id")))
+            .Required("ticket_id")
+            .NoAdditionalProperties();
+        var eventlogSecondarySchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")))
+            .Required("machine_name")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("system_info", "system info", systemSchema),
+            new("eventlog_a_live_query_requires_ticket", "eventlog query primary", eventlogPrimarySchema),
+            new("eventlog_b_live_query", "eventlog query secondary", eventlogSecondarySchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-sys-eventlog-loop",
+                Name = "system_info",
+                ArgumentsJson = """{"computer_name":"AD0"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-sys-eventlog-loop",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_a_live_query_requires_ticket"] = false,
+            ["eventlog_b_live_query"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_b_live_query", toolCall.Name);
+        Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1494,6 +1664,62 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("system_info", toolCall.Name);
         Assert.Contains("\"computer_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_host_system_baseline", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossHostSystemBaselineFromSecondCandidateWhenTopCandidateMissingRequiredArgs() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_live_query"] = "eventlog";
+        packMap["system_a_inventory_requires_ticket"] = "computerx";
+        packMap["system_b_info"] = "computerx";
+
+        var eventlogSchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")))
+            .NoAdditionalProperties();
+        var systemPrimarySchema = ToolSchema.Object(
+                ("computer_name", ToolSchema.String("computer name")),
+                ("ticket_id", ToolSchema.String("ticket id")))
+            .Required("ticket_id")
+            .NoAdditionalProperties();
+        var systemSecondarySchema = ToolSchema.Object(
+                ("computer_name", ToolSchema.String("computer name")))
+            .Required("computer_name")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_query", "live query", eventlogSchema),
+            new("system_a_inventory_requires_ticket", "system inventory primary", systemPrimarySchema),
+            new("system_b_info", "system info secondary", systemSecondarySchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-ev-system-loop",
+                Name = "eventlog_live_query",
+                ArgumentsJson = """{"machine_name":"AD0"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ev-system-loop",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["system_a_inventory_requires_ticket"] = false,
+            ["system_b_info"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("system_b_info", toolCall.Name);
+        Assert.Contains("\"computer_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
