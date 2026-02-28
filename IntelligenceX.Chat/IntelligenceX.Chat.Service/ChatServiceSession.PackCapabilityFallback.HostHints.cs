@@ -366,16 +366,57 @@ internal sealed partial class ChatServiceSession {
             case JsonValueKind.False:
                 destination.Add(propertyName, node.GetBoolean());
                 break;
+            case JsonValueKind.Array: {
+                    var copied = new JsonArray();
+                    foreach (var item in node.EnumerateArray()) {
+                        if (item.ValueKind != JsonValueKind.String) {
+                            continue;
+                        }
+
+                        var value = (item.GetString() ?? string.Empty).Trim();
+                        if (value.Length > 0) {
+                            copied.Add(value);
+                        }
+                    }
+
+                    if (copied.Count > 0) {
+                        destination[propertyName] = JsonValue.From(copied);
+                    }
+                    break;
+                }
         }
     }
 
     private static string? ReadNonEmptyHint(JsonObject hints, string propertyName) {
-        if (!hints.TryGetValue(propertyName, out var node) || node is null || node.Kind != IntelligenceX.Json.JsonValueKind.String) {
+        if (!hints.TryGetValue(propertyName, out var node) || node is null) {
             return null;
         }
 
-        var value = (node.AsString() ?? string.Empty).Trim();
-        return value.Length == 0 ? null : value;
+        if (node.Kind == IntelligenceX.Json.JsonValueKind.String) {
+            var value = (node.AsString() ?? string.Empty).Trim();
+            return value.Length == 0 ? null : value;
+        }
+
+        if (node.Kind == IntelligenceX.Json.JsonValueKind.Array) {
+            var values = node.AsArray();
+            if (values is null || values.Count == 0) {
+                return null;
+            }
+
+            for (var i = 0; i < values.Count; i++) {
+                var item = values[i];
+                if (item is null || item.Kind != IntelligenceX.Json.JsonValueKind.String) {
+                    continue;
+                }
+
+                var value = (item.AsString() ?? string.Empty).Trim();
+                if (value.Length > 0) {
+                    return value;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static bool? ReadHintBoolean(JsonObject hints, string propertyName) {
@@ -383,10 +424,53 @@ internal sealed partial class ChatServiceSession {
             return null;
         }
 
-        return node.Kind switch {
-            IntelligenceX.Json.JsonValueKind.Boolean => node.AsBoolean(),
-            _ => null
-        };
+        if (node.Kind == IntelligenceX.Json.JsonValueKind.Boolean) {
+            return node.AsBoolean();
+        }
+
+        if (node.Kind == IntelligenceX.Json.JsonValueKind.String
+            && TryParseProtocolBoolean((node.AsString() ?? string.Empty).Trim(), out var parsedString)) {
+            return parsedString;
+        }
+
+        if (node.Kind == IntelligenceX.Json.JsonValueKind.Number) {
+            var numeric = node.AsInt64();
+            if (numeric.HasValue && TryMapIntegerBoolean(numeric.Value, out var parsedNumber)) {
+                return parsedNumber;
+            }
+        }
+
+        if (node.Kind == IntelligenceX.Json.JsonValueKind.Array) {
+            var values = node.AsArray();
+            if (values is null || values.Count == 0) {
+                return null;
+            }
+
+            for (var i = 0; i < values.Count; i++) {
+                var item = values[i];
+                if (item is null) {
+                    continue;
+                }
+
+                if (item.Kind == IntelligenceX.Json.JsonValueKind.Boolean) {
+                    return item.AsBoolean();
+                }
+
+                if (item.Kind == IntelligenceX.Json.JsonValueKind.String
+                    && TryParseProtocolBoolean((item.AsString() ?? string.Empty).Trim(), out var parsedStringItem)) {
+                    return parsedStringItem;
+                }
+
+                if (item.Kind == IntelligenceX.Json.JsonValueKind.Number) {
+                    var numeric = item.AsInt64();
+                    if (numeric.HasValue && TryMapIntegerBoolean(numeric.Value, out var parsedNumberItem)) {
+                        return parsedNumberItem;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     private static bool TryReadPositiveIntProperty(JsonElement source, string propertyName, out int value) {
