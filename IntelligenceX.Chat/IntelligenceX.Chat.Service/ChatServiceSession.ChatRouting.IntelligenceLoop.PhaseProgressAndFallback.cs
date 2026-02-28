@@ -301,11 +301,24 @@ internal sealed partial class ChatServiceSession {
         var hasStructuredOverrides = TryReadProactiveVisualizationOverridesFromRequestText(userRequest, out var hasAllowNewVisualsOverride,
             out var allowNewVisualsFromOverride, out var hasPreferredVisualOverride, out var preferredVisualType,
             out var hasMaxNewVisualsOverride, out var maxNewVisualsOverride);
+        var inferredPreferredVisualType = string.Empty;
+        var hasInferredPreferredVisualType = !hasPreferredVisualOverride
+                                             && TryResolvePreferredVisualTypeFromVisualContractSignal(userRequest, out inferredPreferredVisualType);
+        var hasPreferredVisualDirective = hasPreferredVisualOverride || hasInferredPreferredVisualType;
+        var effectivePreferredVisualType = hasPreferredVisualOverride
+            ? preferredVisualType
+            : hasInferredPreferredVisualType
+                ? inferredPreferredVisualType
+                : string.Empty;
+        var hasExplicitAutoPreferredVisualOverride = hasPreferredVisualOverride
+            && string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var requestHasVisualContract = requestHasProactiveVisualizationMarker || requestHasVisualContractSignal || hasStructuredOverrides;
-        var hasSpecificPreferredVisualType = hasPreferredVisualOverride
-            && !string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
+        var hasSpecificPreferredVisualType = hasPreferredVisualDirective
+            && !string.Equals(effectivePreferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var baseAllowNewVisuals = hasAllowNewVisualsOverride
             ? allowNewVisualsFromOverride
+            : hasExplicitAutoPreferredVisualOverride
+                ? false
             : hasSpecificPreferredVisualType
                 ? true
                 : hasMaxNewVisualsOverride
@@ -322,8 +335,8 @@ internal sealed partial class ChatServiceSession {
             AllowNewVisuals: allowNewVisuals,
             DraftHasVisuals: draftHasVisuals,
             RequestHasVisualContract: requestHasVisualContract,
-            HasPreferredVisualOverride: hasPreferredVisualOverride,
-            PreferredVisualType: preferredVisualType,
+            HasPreferredVisualOverride: hasPreferredVisualDirective,
+            PreferredVisualType: effectivePreferredVisualType,
             HasMaxNewVisualsOverride: hasMaxNewVisualsOverride,
             MaxNewVisuals: maxNewVisuals);
     }

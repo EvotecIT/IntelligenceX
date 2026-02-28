@@ -570,6 +570,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("include at most one new visual block", text, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -589,6 +590,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -598,6 +600,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -607,6 +610,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -616,6 +620,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: mermaid", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -625,6 +630,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -639,6 +645,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -653,6 +660,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -662,6 +670,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

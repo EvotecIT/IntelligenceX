@@ -104,6 +104,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_KeepsExplicitAutoPreferredVisualOverrideWhenSignalExists() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            preferred_visual: auto
+            Use `visnetwork` only if required.
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: auto", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_UsesStructuredMaxNewVisualsOverride() {
         var request = """
             [Proactive visualization guidance]
