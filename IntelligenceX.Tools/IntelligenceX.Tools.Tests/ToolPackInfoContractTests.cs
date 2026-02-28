@@ -24,6 +24,8 @@ public class ToolPackInfoContractTests {
     [Fact]
     public async Task PackInfoTools_ShouldExposeRegisteredToolCatalogs() {
         var cases = BuildPackCases();
+        var knownToolNames = CreateCaseInsensitiveSet(
+            cases.SelectMany(static @case => @case.ExpectedTools));
 
         foreach (var @case in cases) {
             var json = await @case.Tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
@@ -192,6 +194,11 @@ public class ToolPackInfoContractTests {
 
             var entityHandoffs = root.GetProperty("entity_handoffs");
             Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+            AssertHandoffToolReferences(
+                @case.Pack,
+                entityHandoffs,
+                CreateCaseInsensitiveSet(catalogNames),
+                knownToolNames);
             foreach (var handoff in entityHandoffs.EnumerateArray()) {
                 var handoffId = handoff.GetProperty("id").GetString() ?? string.Empty;
                 var summary = handoff.GetProperty("summary").GetString() ?? string.Empty;
@@ -217,7 +224,9 @@ public class ToolPackInfoContractTests {
 
             if (string.Equals(@case.Pack, "active_directory", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(@case.Pack, "eventlog", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(@case.Pack, "domaindetective", StringComparison.OrdinalIgnoreCase)) {
+                || string.Equals(@case.Pack, "domaindetective", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(@case.Pack, "system", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(@case.Pack, "testimox", StringComparison.OrdinalIgnoreCase)) {
                 Assert.True(entityHandoffs.GetArrayLength() > 0);
             }
         }
@@ -250,6 +259,60 @@ public class ToolPackInfoContractTests {
         var targetTools = ReadStringArray(handoff.GetProperty("target_tools"));
         Assert.Contains("ad_scope_discovery", targetTools, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_directory_discovery_diagnostics", targetTools, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SystemPackInfo_ShouldExposeStructuredCrossPackHandoffs() {
+        var tool = new SystemPackInfoTool(new SystemToolOptions());
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("system", root.GetProperty("pack").GetString());
+
+        var entityHandoffs = root.GetProperty("entity_handoffs");
+        Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+        Assert.True(entityHandoffs.GetArrayLength() > 0);
+
+        var hostScope = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "ad_or_eventlog_host_to_system_scope", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, hostScope.ValueKind);
+        Assert.Contains("ad_scope_discovery", ReadStringArray(hostScope.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_info", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+
+        var patchFollowUp = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "system_patch_findings_to_ad_eventlog_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, patchFollowUp.ValueKind);
+        Assert.Contains("system_patch_compliance", ReadStringArray(patchFollowUp.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_object_resolve", ReadStringArray(patchFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TestimoXPackInfo_ShouldExposeStructuredCrossPackHandoffs() {
+        var tool = new TestimoXPackInfoTool(new TestimoXToolOptions { Enabled = true });
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("testimox", root.GetProperty("pack").GetString());
+
+        var entityHandoffs = root.GetProperty("entity_handoffs");
+        Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+        Assert.True(entityHandoffs.GetArrayLength() > 0);
+
+        var scopeHandoff = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "ad_scope_to_testimox_execution_scope", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, scopeHandoff.ValueKind);
+        Assert.Contains("ad_scope_discovery", ReadStringArray(scopeHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("testimox_rules_run", ReadStringArray(scopeHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+
+        var followUpHandoff = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "testimox_findings_to_ad_system_eventlog_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, followUpHandoff.ValueKind);
+        Assert.Contains("testimox_rules_run", ReadStringArray(followUpHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_object_resolve", ReadStringArray(followUpHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -477,6 +540,53 @@ public class ToolPackInfoContractTests {
             .Select(static x => x!.Trim())
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static IReadOnlySet<string> CreateCaseInsensitiveSet(params string[] values) {
+        return CreateCaseInsensitiveSet(values.AsEnumerable());
+    }
+
+    private static IReadOnlySet<string> CreateCaseInsensitiveSet(IEnumerable<string>? values) {
+        return new HashSet<string>(
+            (values ?? Array.Empty<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void AssertHandoffToolReferences(
+        string pack,
+        JsonElement entityHandoffs,
+        IReadOnlySet<string> localCatalogTools,
+        IReadOnlySet<string> globalKnownTools) {
+        var handoffTools = new[] { "source_tools", "target_tools" };
+
+        foreach (var handoff in entityHandoffs.EnumerateArray()) {
+            foreach (var handoffToolKey in handoffTools) {
+                foreach (var toolNode in handoff.GetProperty(handoffToolKey).EnumerateArray()) {
+                    Assert.Equal(
+                        JsonValueKind.String,
+                        toolNode.ValueKind);
+
+                    var rawToolName = toolNode.GetString();
+                    Assert.False(
+                        string.IsNullOrWhiteSpace(rawToolName),
+                        $"Pack '{pack}' handoff '{handoff.GetProperty("id").GetString()}' contains an empty {handoffToolKey} entry.");
+
+                    var normalizedToolName = rawToolName!.Trim();
+                    Assert.Equal(
+                        normalizedToolName,
+                        rawToolName);
+
+                    var isLocalTool = localCatalogTools.Contains(normalizedToolName);
+                    var isKnownCrossPackTool = globalKnownTools.Contains(normalizedToolName);
+                    Assert.True(
+                        isLocalTool || isKnownCrossPackTool,
+                        $"Pack '{pack}' handoff '{handoff.GetProperty("id").GetString()}' references unknown {handoffToolKey} tool '{normalizedToolName}'. " +
+                        "Tool references must resolve to the local pack catalog or a known registered tool across pack catalogs.");
+                }
+            }
+        }
     }
 
     private static void AssertArgumentDetails(JsonElement actualArguments, IReadOnlyList<ToolPackToolArgumentModel> expectedArguments) {

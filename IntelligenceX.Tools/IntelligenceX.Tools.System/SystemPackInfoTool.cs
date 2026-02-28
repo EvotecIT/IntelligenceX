@@ -40,6 +40,7 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                 "Use system_time_sync for quick skew checks and w32time runtime status (local or remote).",
                 "Use system_patch_details for monthly MSRC patch intelligence (CVE/KB/severity details, defaulting to current UTC month).",
                 "Use system_patch_compliance to correlate monthly MSRC KB coverage with installed updates and prioritize missing exploited CVEs.",
+                "Use AD/TestimoX/EventLog handoff evidence (computer/host identifiers) to drive focused ComputerX follow-up rather than broad host scans.",
                 "Use optional projection arguments only when the user asks for specific columns or sorting."
             },
             flowSteps: new[] {
@@ -73,6 +74,32 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     id: "patch_intelligence",
                     summary: "Provide month-scoped MSRC patch intelligence with CVE/KB metadata and severity/exploitation prioritization.",
                     primaryTools: new[] { "system_patch_details", "system_patch_compliance", "system_updates_installed" })
+            },
+            entityHandoffs: new[] {
+                ToolPackGuidance.EntityHandoff(
+                    id: "ad_or_eventlog_host_to_system_scope",
+                    summary: "Promote AD/EventLog host indicators into ComputerX remote host-scoping arguments.",
+                    entityKinds: new[] { "computer", "host", "domain_controller" },
+                    sourceTools: new[] { "ad_scope_discovery", "ad_domain_controller_facts", "ad_object_resolve", "eventlog_live_stats", "eventlog_named_events_query" },
+                    targetTools: new[] { "system_info", "system_process_list", "system_service_list", "system_ports_list", "system_security_options", "system_time_sync", "system_updates_installed" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("rows[].dns_host_name", "computer_name", "Prefer canonical FQDN/hostname values and deduplicate before fan-out."),
+                        ToolPackGuidance.EntityFieldMapping("rows[].computer", "computer_name", "Normalize and deduplicate host aliases for remote ComputerX calls."),
+                        ToolPackGuidance.EntityFieldMapping("rows[].host", "computer_name", "Map generic host indicators to ComputerX computer_name scope.")
+                    },
+                    notes: "Use focused host batches from AD/EventLog evidence to reduce noisy host-wide diagnostics."),
+                ToolPackGuidance.EntityHandoff(
+                    id: "system_patch_findings_to_ad_eventlog_followup",
+                    summary: "Route patch compliance findings into AD identity ownership and EventLog correlation workflows.",
+                    entityKinds: new[] { "computer", "kb", "cve" },
+                    sourceTools: new[] { "system_patch_compliance", "system_patch_details" },
+                    targetTools: new[] { "ad_object_resolve", "ad_search", "eventlog_live_query", "eventlog_named_events_query" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("rows[].computer_name", "identity", "Resolve impacted hosts in AD before assigning remediation ownership."),
+                        ToolPackGuidance.EntityFieldMapping("rows[].missing_kbs[]", "query", "Use KB identifiers for follow-up evidence searches and ticket correlation."),
+                        ToolPackGuidance.EntityFieldMapping("rows[].cve_id", "query", "Use CVE identifiers to correlate host telemetry and incident timelines.")
+                    },
+                    notes: "After patch gap detection, pivot into AD ownership context and EventLog timeline evidence.")
             },
             toolCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Preserve raw engine arrays/objects. Do not rely only on *_view fields.",
