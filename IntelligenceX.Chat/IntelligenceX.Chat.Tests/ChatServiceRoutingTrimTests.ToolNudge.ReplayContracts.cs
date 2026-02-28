@@ -1149,6 +1149,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_host_eventlog_evidence", reason, StringComparison.OrdinalIgnoreCase);
+        AssertPackFallbackTelemetry(reason, "computerx", "eventlog_live_query", "host");
     }
 
     [Fact]
@@ -2559,6 +2560,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("call_b", replayedCallIds);
         Assert.Contains("call_a", outputCallIds);
         Assert.DoesNotContain("call_b", outputCallIds);
+    }
+
+    private static void AssertPackFallbackTelemetry(string reason, string expectedSourcePack, string expectedTargetTool, string expectedFamily) {
+        Assert.Contains("ix:pack-fallback:v1", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("source_pack=" + expectedSourcePack, reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target_tool=" + expectedTargetTool, reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("family=" + expectedFamily, reason, StringComparison.OrdinalIgnoreCase);
     }
 
 }
