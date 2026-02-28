@@ -13,6 +13,9 @@ internal sealed partial class ChatServiceSession {
     private readonly record struct PackCapabilityFallbackContract(
         string PackId,
         string[] FallbackTools);
+    private readonly record struct CrossPackFallbackCandidate(
+        string ToolName,
+        ToolDefinition Definition);
 
     private void RebuildPackCapabilityFallbackContracts(IReadOnlyList<ToolDefinition> definitions) {
         _packCapabilityFallbackContractsByPackId.Clear();
@@ -511,29 +514,26 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        for (var i = 0; i < adContract.FallbackTools.Length; i++) {
-            var candidateTool = adContract.FallbackTools[i];
-            if (priorCalledTools.Contains(candidateTool)) {
-                continue;
-            }
+        if (adContract.FallbackTools.Length == 0) {
+            reason = "cross_dc_discovery_pack_unavailable";
+            return false;
+        }
 
-            if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
-                continue;
-            }
+        if (!TryResolveCrossPackCandidateToolsByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "active_directory",
+                preferredScope: "domain",
+                preferredOperation: "discover",
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidates)) {
+            reason = "cross_dc_discovery_first_no_ad_candidate";
+            return false;
+        }
 
-            if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
-                || !PackIdMatches(candidatePackIdRaw, "active_directory")) {
-                continue;
-            }
-
-            var mutability = ResolveStructuredNextActionMutability(
-                declaredMutability: ActionMutability.Unknown,
-                toolName: candidateTool,
-                toolDefinition: toolDefinition,
-                mutatingToolHintsByName: mutatingToolHintsByName);
-            if (mutability != ActionMutability.ReadOnly) {
-                continue;
-            }
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
 
             var fallbackArguments = BuildPackFallbackArguments(
                 sourcePackId: NormalizePackId("active_directory"),
@@ -873,7 +873,34 @@ internal sealed partial class ChatServiceSession {
         candidateTool = string.Empty;
         toolDefinition = null!;
 
-        var bestScore = int.MinValue;
+        if (!TryResolveCrossPackCandidateToolsByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: targetPackId,
+                preferredScope: preferredScope,
+                preferredOperation: preferredOperation,
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidates)
+            || candidates.Count == 0) {
+            return false;
+        }
+
+        candidateTool = candidates[0].ToolName;
+        toolDefinition = candidates[0].Definition;
+        return true;
+    }
+
+    private bool TryResolveCrossPackCandidateToolsByRouting(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string targetPackId,
+        string preferredScope,
+        string preferredOperation,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out IReadOnlyList<CrossPackFallbackCandidate> candidates) {
+        candidates = Array.Empty<CrossPackFallbackCandidate>();
+
+        var rankedCandidates = new List<(CrossPackFallbackCandidate Candidate, int Score)>(toolDefinitions.Count);
         for (var i = 0; i < toolDefinitions.Count; i++) {
             var candidateDefinition = toolDefinitions[i];
             var name = (candidateDefinition.Name ?? string.Empty).Trim();
@@ -919,6 +946,17 @@ internal sealed partial class ChatServiceSession {
             } else if (string.Equals(preferredOperation, "query", StringComparison.OrdinalIgnoreCase)
                        && string.Equals(operation, "probe", StringComparison.OrdinalIgnoreCase)) {
                 score += 120;
+            } else if (string.Equals(preferredOperation, "discover", StringComparison.OrdinalIgnoreCase)
+                       && (string.Equals(operation, "query", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(operation, "list", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(operation, "search", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(operation, ToolRoutingTaxonomy.OperationRead, StringComparison.OrdinalIgnoreCase))) {
+                score += 120;
+            } else if ((string.Equals(preferredOperation, "query", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(preferredOperation, "list", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(preferredOperation, "search", StringComparison.OrdinalIgnoreCase))
+                       && string.Equals(operation, "discover", StringComparison.OrdinalIgnoreCase)) {
+                score += 120;
             }
 
             if (TryGetToolRequiredArgumentCount(candidateDefinition, out var requiredArgumentCount)) {
@@ -939,22 +977,37 @@ internal sealed partial class ChatServiceSession {
                 score += 50;
             }
 
-            if (score < bestScore) {
-                continue;
-            }
-
-            if (score == bestScore
-                && candidateTool.Length > 0
-                && StringComparer.OrdinalIgnoreCase.Compare(name, candidateTool) >= 0) {
-                continue;
-            }
-
-            bestScore = score;
-            candidateTool = name;
-            toolDefinition = candidateDefinition;
+            rankedCandidates.Add((new CrossPackFallbackCandidate(name, candidateDefinition), score));
         }
 
-        return candidateTool.Length > 0;
+        if (rankedCandidates.Count == 0) {
+            return false;
+        }
+
+        rankedCandidates.Sort(static (left, right) => {
+            var scoreCompare = right.Score.CompareTo(left.Score);
+            if (scoreCompare != 0) {
+                return scoreCompare;
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(left.Candidate.ToolName, right.Candidate.ToolName);
+        });
+
+        var orderedCandidates = new List<CrossPackFallbackCandidate>(rankedCandidates.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < rankedCandidates.Count; i++) {
+            var candidate = rankedCandidates[i].Candidate;
+            if (seen.Add(candidate.ToolName)) {
+                orderedCandidates.Add(candidate);
+            }
+        }
+
+        if (orderedCandidates.Count == 0) {
+            return false;
+        }
+
+        candidates = orderedCandidates;
+        return true;
     }
 
     private static bool TryResolveCrossPublicRoutingPreference(
