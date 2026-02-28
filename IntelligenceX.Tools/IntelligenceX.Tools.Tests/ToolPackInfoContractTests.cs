@@ -563,12 +563,26 @@ public class ToolPackInfoContractTests {
 
         foreach (var handoff in entityHandoffs.EnumerateArray()) {
             foreach (var handoffToolKey in handoffTools) {
-                foreach (var toolName in ReadStringArray(handoff.GetProperty(handoffToolKey))) {
-                    var isLocalTool = localCatalogTools.Contains(toolName);
-                    var isKnownCrossPackTool = globalKnownTools.Contains(toolName);
+                foreach (var toolNode in handoff.GetProperty(handoffToolKey).EnumerateArray()) {
+                    Assert.Equal(
+                        JsonValueKind.String,
+                        toolNode.ValueKind);
+
+                    var rawToolName = toolNode.GetString();
+                    Assert.False(
+                        string.IsNullOrWhiteSpace(rawToolName),
+                        $"Pack '{pack}' handoff '{handoff.GetProperty("id").GetString()}' contains an empty {handoffToolKey} entry.");
+
+                    var normalizedToolName = rawToolName!.Trim();
+                    Assert.Equal(
+                        normalizedToolName,
+                        rawToolName);
+
+                    var isLocalTool = localCatalogTools.Contains(normalizedToolName);
+                    var isKnownCrossPackTool = globalKnownTools.Contains(normalizedToolName);
                     Assert.True(
                         isLocalTool || isKnownCrossPackTool,
-                        $"Pack '{pack}' handoff '{handoff.GetProperty("id").GetString()}' references unknown {handoffToolKey} tool '{toolName}'. " +
+                        $"Pack '{pack}' handoff '{handoff.GetProperty("id").GetString()}' references unknown {handoffToolKey} tool '{normalizedToolName}'. " +
                         "Tool references must resolve to the local pack catalog or a known registered tool across pack catalogs.");
                 }
             }
