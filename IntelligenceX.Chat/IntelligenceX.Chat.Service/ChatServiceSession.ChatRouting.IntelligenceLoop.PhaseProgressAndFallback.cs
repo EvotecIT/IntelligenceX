@@ -25,13 +25,16 @@ internal sealed partial class ChatServiceSession {
     private const string ChartFenceLanguage = "ix-chart";
     private const string NetworkFenceLanguage = "ix-network";
     private const string LegacyNetworkFenceLanguage = "visnetwork";
+    private const int MaxSupportedProactiveVisualBlocks = 3;
 
     private readonly record struct ProactiveVisualizationPolicy(
         bool AllowNewVisuals,
         bool DraftHasVisuals,
         bool RequestHasVisualContract,
         bool HasPreferredVisualOverride,
-        string PreferredVisualType);
+        string PreferredVisualType,
+        bool HasMaxNewVisualsOverride,
+        int MaxNewVisuals);
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -246,10 +249,15 @@ internal sealed partial class ChatServiceSession {
         var preferredVisualTypeText = visualPolicy.HasPreferredVisualOverride
             ? visualPolicy.PreferredVisualType
             : "auto";
+        var maxNewVisualsText = visualPolicy.HasMaxNewVisualsOverride
+            ? visualPolicy.MaxNewVisuals.ToString()
+            : visualPolicy.AllowNewVisuals
+                ? "1"
+                : "0";
         var hasSpecificPreferredVisualType = visualPolicy.HasPreferredVisualOverride
             && !string.Equals(visualPolicy.PreferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
-        var visualRequirementLine = visualPolicy.AllowNewVisuals
-            ? "- If allow_new_visuals is true, include at most one new visual block and only when it materially compresses complex evidence."
+        var visualRequirementLine = visualPolicy.AllowNewVisuals && visualPolicy.MaxNewVisuals > 0
+            ? $"- If allow_new_visuals is true, include at most {visualPolicy.MaxNewVisuals} new visual block(s) and only when it materially compresses complex evidence."
             : "- If allow_new_visuals is false, do not introduce new mermaid/ix-chart/ix-network blocks in this proactive rewrite.";
         var preferredVisualRequirementLine = visualPolicy.AllowNewVisuals && hasSpecificPreferredVisualType
             ? "- If preferred_visual is set, prefer that visual format for any newly introduced visual block unless another supported format is clearly better."
@@ -265,6 +273,7 @@ internal sealed partial class ChatServiceSession {
             draft_has_visuals: {{draftHasVisualsText}}
             request_has_visual_contract: {{requestHasVisualContractText}}
             preferred_visual: {{preferredVisualTypeText}}
+            max_new_visuals: {{maxNewVisualsText}}
 
             User request:
             {{requestText}}
@@ -294,22 +303,33 @@ internal sealed partial class ChatServiceSession {
     private static ProactiveVisualizationPolicy ResolveProactiveVisualizationPolicy(string userRequest, string assistantDraft) {
         var requestHasVisualContractSignal = ContainsVisualContractSignal(userRequest);
         var hasStructuredOverrides = TryReadProactiveVisualizationOverridesFromRequestText(userRequest, out var hasAllowNewVisualsOverride,
-            out var allowNewVisualsFromOverride, out var hasPreferredVisualOverride, out var preferredVisualType);
+            out var allowNewVisualsFromOverride, out var hasPreferredVisualOverride, out var preferredVisualType,
+            out var hasMaxNewVisualsOverride, out var maxNewVisualsOverride);
         var requestHasVisualContract = requestHasVisualContractSignal || hasStructuredOverrides;
         var hasSpecificPreferredVisualType = hasPreferredVisualOverride
             && !string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
-        var allowNewVisuals = hasAllowNewVisualsOverride
+        var baseAllowNewVisuals = hasAllowNewVisualsOverride
             ? allowNewVisualsFromOverride
             : hasSpecificPreferredVisualType
                 ? true
-                : requestHasVisualContractSignal;
+                : hasMaxNewVisualsOverride
+                    ? maxNewVisualsOverride > 0
+                    : requestHasVisualContractSignal;
+        var maxNewVisuals = hasMaxNewVisualsOverride
+            ? Math.Clamp(maxNewVisualsOverride, 0, MaxSupportedProactiveVisualBlocks)
+            : baseAllowNewVisuals
+                ? 1
+                : 0;
+        var allowNewVisuals = baseAllowNewVisuals && maxNewVisuals > 0;
         var draftHasVisuals = ContainsVisualContractSignal(assistantDraft);
         return new ProactiveVisualizationPolicy(
             AllowNewVisuals: allowNewVisuals,
             DraftHasVisuals: draftHasVisuals,
             RequestHasVisualContract: requestHasVisualContract,
             HasPreferredVisualOverride: hasPreferredVisualOverride,
-            PreferredVisualType: preferredVisualType);
+            PreferredVisualType: preferredVisualType,
+            HasMaxNewVisualsOverride: hasMaxNewVisualsOverride,
+            MaxNewVisuals: maxNewVisuals);
     }
 
     private static bool ContainsVisualContractSignal(string? text) {

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -10,11 +11,15 @@ internal sealed partial class ChatServiceSession {
         out bool hasAllowNewVisualsOverride,
         out bool allowNewVisuals,
         out bool hasPreferredVisualOverride,
-        out string preferredVisualType) {
+        out string preferredVisualType,
+        out bool hasMaxNewVisualsOverride,
+        out int maxNewVisualsOverride) {
         hasAllowNewVisualsOverride = false;
         allowNewVisuals = false;
         hasPreferredVisualOverride = false;
         preferredVisualType = string.Empty;
+        hasMaxNewVisualsOverride = false;
+        maxNewVisualsOverride = 0;
         var text = requestText ?? string.Empty;
         if (text.Length == 0) {
             return false;
@@ -36,7 +41,9 @@ internal sealed partial class ChatServiceSession {
             out hasAllowNewVisualsOverride,
             out allowNewVisuals,
             out hasPreferredVisualOverride,
-            out preferredVisualType);
+            out preferredVisualType,
+            out hasMaxNewVisualsOverride,
+            out maxNewVisualsOverride);
     }
 
     private static bool TryReadStructuredProactiveVisualizationOverrides(
@@ -44,11 +51,15 @@ internal sealed partial class ChatServiceSession {
         out bool hasAllowNewVisualsOverride,
         out bool allowNewVisuals,
         out bool hasPreferredVisualOverride,
-        out string preferredVisualType) {
+        out string preferredVisualType,
+        out bool hasMaxNewVisualsOverride,
+        out int maxNewVisualsOverride) {
         hasAllowNewVisualsOverride = false;
         allowNewVisuals = false;
         hasPreferredVisualOverride = false;
         preferredVisualType = string.Empty;
+        hasMaxNewVisualsOverride = false;
+        maxNewVisualsOverride = 0;
         var markerLineSeen = false;
         var hasAnyOverride = false;
         while (!text.IsEmpty) {
@@ -88,6 +99,12 @@ internal sealed partial class ChatServiceSession {
                 preferredVisualType = parsedPreferredVisualType;
                 hasPreferredVisualOverride = true;
                 hasAnyOverride = true;
+                continue;
+            }
+
+            if (TryParseStructuredMaxNewVisualsLine(line, out maxNewVisualsOverride)) {
+                hasMaxNewVisualsOverride = true;
+                hasAnyOverride = true;
             }
         }
 
@@ -126,6 +143,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool TryParseStructuredMaxNewVisualsLine(ReadOnlySpan<char> line, out int maxNewVisuals) {
+        maxNewVisuals = 0;
+        if (!TryParseStructuredKeyValueLine(line, "max_new_visuals", out var value)) {
+            return false;
+        }
+
+        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedValue)
+            || parsedValue < 0) {
+            return false;
+        }
+
+        maxNewVisuals = parsedValue;
+        return true;
     }
 
     private static bool TryParseStructuredKeyValueLine(ReadOnlySpan<char> line, string key, out ReadOnlySpan<char> value) {
