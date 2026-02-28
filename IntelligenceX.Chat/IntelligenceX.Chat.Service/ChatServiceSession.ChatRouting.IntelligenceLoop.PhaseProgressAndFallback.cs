@@ -27,6 +27,7 @@ internal sealed partial class ChatServiceSession {
         bool RequestHasVisualContract,
         bool HasPreferredVisualOverride,
         string PreferredVisualType,
+        string PreferredVisualSource,
         bool HasMaxNewVisualsOverride,
         int MaxNewVisuals);
 
@@ -250,6 +251,9 @@ internal sealed partial class ChatServiceSession {
         var preferredVisualTypeText = visualPolicy.HasPreferredVisualOverride
             ? visualPolicy.PreferredVisualType
             : "auto";
+        var preferredVisualSourceText = visualPolicy.HasPreferredVisualOverride
+            ? visualPolicy.PreferredVisualSource
+            : "none";
         var maxNewVisualsText = visualPolicy.HasMaxNewVisualsOverride
             ? visualPolicy.MaxNewVisuals.ToString()
             : visualPolicy.AllowNewVisuals
@@ -275,6 +279,7 @@ internal sealed partial class ChatServiceSession {
             draft_has_visuals: {{draftHasVisualsText}}
             request_has_visual_contract: {{requestHasVisualContractText}}
             preferred_visual: {{preferredVisualTypeText}}
+            preferred_visual_source: {{preferredVisualSourceText}}
             max_new_visuals: {{maxNewVisualsText}}
 
             User request:
@@ -320,6 +325,7 @@ internal sealed partial class ChatServiceSession {
             : hasInferredPreferredVisualTypeFromRequest
                 ? inferredPreferredVisualTypeFromRequest
                 : string.Empty;
+        var preferredVisualSource = hasPreferredVisualDirectiveFromRequest ? "request" : "none";
         var hasExplicitAutoPreferredVisualOverride = hasPreferredVisualOverride
             && string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var requestHasVisualContract = requestHasProactiveVisualizationMarker || requestHasVisualContractSignal || hasStructuredOverrides;
@@ -341,6 +347,7 @@ internal sealed partial class ChatServiceSession {
             && TryResolvePreferredVisualTypeFromToolOutputs(toolOutputs, out var inferredPreferredVisualTypeFromToolOutputs)
             && !string.IsNullOrWhiteSpace(inferredPreferredVisualTypeFromToolOutputs)) {
             effectivePreferredVisualType = inferredPreferredVisualTypeFromToolOutputs;
+            preferredVisualSource = "tool_outputs";
             hasInferredPreferredVisualTypeFromToolOutputs = true;
         }
 
@@ -352,6 +359,7 @@ internal sealed partial class ChatServiceSession {
             && TryResolvePreferredVisualTypeFromVisualContractSignal(assistantDraft, out var inferredPreferredVisualTypeFromDraft)
             && !string.IsNullOrWhiteSpace(inferredPreferredVisualTypeFromDraft)) {
             effectivePreferredVisualType = inferredPreferredVisualTypeFromDraft;
+            preferredVisualSource = "draft";
             hasInferredPreferredVisualTypeFromDraft = true;
         }
 
@@ -371,6 +379,7 @@ internal sealed partial class ChatServiceSession {
             RequestHasVisualContract: requestHasVisualContract,
             HasPreferredVisualOverride: hasPreferredVisualDirective,
             PreferredVisualType: effectivePreferredVisualType,
+            PreferredVisualSource: preferredVisualSource,
             HasMaxNewVisualsOverride: hasMaxNewVisualsOverride,
             MaxNewVisuals: maxNewVisuals);
     }
