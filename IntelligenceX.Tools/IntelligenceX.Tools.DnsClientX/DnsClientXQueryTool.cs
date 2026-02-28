@@ -227,7 +227,15 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
             meta.Add("error_code", result.ErrorCode);
         }
 
-        return ToolResponse.OkModel(result, meta: meta, summaryMarkdown: summary);
+        return ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: ToolJson.ToJsonObjectSnakeCase(result),
+            meta: meta,
+            summaryMarkdown: summary,
+            render: BuildRenderHints(
+                answerCount: result.Answers.Count,
+                authorityCount: result.Authorities.Count,
+                additionalCount: result.Additional.Count,
+                questionCount: result.Questions.Count));
 #endif
     }
 
@@ -287,6 +295,58 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
                && answerCount <= 0
                && authorityCount <= 0
                && additionalCount <= 0;
+    }
+
+    private static JsonValue? BuildRenderHints(
+        int answerCount,
+        int authorityCount,
+        int additionalCount,
+        int questionCount) {
+        var hints = new JsonArray();
+
+        if (answerCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "answers",
+                    new ToolColumn("name", "Name", "string"),
+                    new ToolColumn("type", "Type", "string"),
+                    new ToolColumn("ttl", "TTL", "int"),
+                    new ToolColumn("data", "Data", "string"))
+                .Add("priority", 400));
+        }
+
+        if (authorityCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "authorities",
+                    new ToolColumn("name", "Name", "string"),
+                    new ToolColumn("type", "Type", "string"),
+                    new ToolColumn("ttl", "TTL", "int"),
+                    new ToolColumn("data", "Data", "string"))
+                .Add("priority", 300));
+        }
+
+        if (additionalCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "additional",
+                    new ToolColumn("name", "Name", "string"),
+                    new ToolColumn("type", "Type", "string"),
+                    new ToolColumn("ttl", "TTL", "int"),
+                    new ToolColumn("data", "Data", "string"))
+                .Add("priority", 200));
+        }
+
+        if (questionCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "questions",
+                    new ToolColumn("name", "Name", "string"),
+                    new ToolColumn("type", "Type", "string"))
+                .Add("priority", 100));
+        }
+
+        if (hints.Count == 0) {
+            return null;
+        }
+
+        return JsonValue.From(hints);
     }
 
     private sealed class DnsClientXQueryResultModel {
