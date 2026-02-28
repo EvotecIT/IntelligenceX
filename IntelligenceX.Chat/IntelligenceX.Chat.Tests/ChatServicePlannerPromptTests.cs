@@ -88,6 +88,7 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("category: dns", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack: domaindetective", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_aliases: domain_detective", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("family: public_domain", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tags: intent:public_domain", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:domaindetective", prompt, StringComparison.OrdinalIgnoreCase);
@@ -109,6 +110,26 @@ public sealed class ChatServicePlannerPromptTests {
         }));
 
         Assert.Contains("pack: system", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesPackAliasesForEventLogCategoryAlias() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "event_log_query",
+                "Query event log entries.",
+                ToolSchema.Object(("log_name", ToolSchema.String("Log name."))).NoAdditionalProperties(),
+                category: "event_log")
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "collect system log evidence",
+            definitions,
+            4
+        }));
+
+        Assert.Contains("pack: eventlog", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_aliases: event_log", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
