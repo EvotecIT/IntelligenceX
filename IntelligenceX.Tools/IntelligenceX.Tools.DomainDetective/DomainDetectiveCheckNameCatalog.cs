@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,7 +11,7 @@ using DomainDetective;
 namespace IntelligenceX.Tools.DomainDetective;
 
 internal static class DomainDetectiveCheckNameCatalog {
-    private static readonly string[] DefaultChecksValue = {
+    private static readonly IReadOnlyList<string> DefaultChecksValue = Array.AsReadOnly(new[] {
         "DNSHEALTH",
         "SOA",
         "NS",
@@ -19,28 +20,29 @@ internal static class DomainDetectiveCheckNameCatalog {
         "DMARC",
         "DNSSEC",
         "TTL"
-    };
+    });
 
-    private static readonly IReadOnlyDictionary<string, string> CheckAliasByToken = new Dictionary<string, string>(StringComparer.Ordinal) {
-        ["NAMESERVER"] = "NS",
-        ["NAMESERVERS"] = "NS",
-        ["NAMESERVERRECORD"] = "NS",
-        ["NAMESERVERRECORDS"] = "NS",
-        ["NSRECORD"] = "NS",
-        ["NSRECORDS"] = "NS",
-        ["MXRECORD"] = "MX",
-        ["MXRECORDS"] = "MX",
-        ["MAILSERVER"] = "MX",
-        ["MAILSERVERS"] = "MX",
-        ["SPFRECORD"] = "SPF",
-        ["SPFRECORDS"] = "SPF",
-        ["DMARCRECORD"] = "DMARC",
-        ["DMARCRECORDS"] = "DMARC",
-        ["DKIMRECORD"] = "DKIM",
-        ["DKIMRECORDS"] = "DKIM",
-        ["CAARECORD"] = "CAA",
-        ["CAARECORDS"] = "CAA"
-    };
+    private static readonly IReadOnlyDictionary<string, string> CheckAliasByToken = new ReadOnlyDictionary<string, string>(
+        new Dictionary<string, string>(StringComparer.Ordinal) {
+            ["NAMESERVER"] = "NS",
+            ["NAMESERVERS"] = "NS",
+            ["NAMESERVERRECORD"] = "NS",
+            ["NAMESERVERRECORDS"] = "NS",
+            ["NSRECORD"] = "NS",
+            ["NSRECORDS"] = "NS",
+            ["MXRECORD"] = "MX",
+            ["MXRECORDS"] = "MX",
+            ["MAILSERVER"] = "MX",
+            ["MAILSERVERS"] = "MX",
+            ["SPFRECORD"] = "SPF",
+            ["SPFRECORDS"] = "SPF",
+            ["DMARCRECORD"] = "DMARC",
+            ["DMARCRECORDS"] = "DMARC",
+            ["DKIMRECORD"] = "DKIM",
+            ["DKIMRECORDS"] = "DKIM",
+            ["CAARECORD"] = "CAA",
+            ["CAARECORDS"] = "CAA"
+        });
 
     internal static IReadOnlyList<string> DefaultChecks => DefaultChecksValue;
     internal static IReadOnlyDictionary<string, string> AliasByToken => CheckAliasByToken;
