@@ -920,8 +920,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         packMap["domaindetective_host_probe_custom"] = "domaindetective";
 
         var sourceSchema = ToolSchema.Object(
-                ("target", ToolSchema.String("target")))
-            .Required("target")
+                ("host", ToolSchema.String("host")))
+            .Required("host")
             .NoAdditionalProperties();
         var targetSchema = ToolSchema.Object(
                 ("host", ToolSchema.String("host")))
@@ -937,7 +937,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-dns-custom-target",
                 Name = "dnsclientx_reachability_probe",
-                ArgumentsJson = """{"target":"mail.contoso.com"}"""
+                ArgumentsJson = """{"host":"mail.contoso.com"}"""
             }
         };
         var toolOutputs = new List<ToolOutputDto> {

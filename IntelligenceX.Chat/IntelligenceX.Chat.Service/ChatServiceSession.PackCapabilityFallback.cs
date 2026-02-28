@@ -1469,30 +1469,37 @@ internal sealed partial class ChatServiceSession {
 
             var score = 0;
             var scope = (routing.Scope ?? string.Empty).Trim();
+            var hasScopeAffinity = false;
             if (string.Equals(scope, preferredScope, StringComparison.OrdinalIgnoreCase)) {
+                hasScopeAffinity = true;
                 score += 500;
             } else if (string.Equals(scope, "general", StringComparison.OrdinalIgnoreCase)) {
                 score += 50;
             }
 
+            var hasOperationAffinity = false;
             if (string.Equals(operation, preferredOperation, StringComparison.OrdinalIgnoreCase)) {
+                hasOperationAffinity = true;
                 score += 300;
             } else if (string.Equals(preferredOperation, "probe", StringComparison.OrdinalIgnoreCase)
                        && string.Equals(operation, "query", StringComparison.OrdinalIgnoreCase)) {
+                hasOperationAffinity = true;
                 score += 120;
             } else if (string.Equals(preferredOperation, "query", StringComparison.OrdinalIgnoreCase)
                        && string.Equals(operation, "probe", StringComparison.OrdinalIgnoreCase)) {
+                hasOperationAffinity = true;
                 score += 120;
             } else if (string.Equals(preferredOperation, "discover", StringComparison.OrdinalIgnoreCase)
                        && (string.Equals(operation, "query", StringComparison.OrdinalIgnoreCase)
                            || string.Equals(operation, "list", StringComparison.OrdinalIgnoreCase)
-                           || string.Equals(operation, "search", StringComparison.OrdinalIgnoreCase)
-                           || string.Equals(operation, ToolRoutingTaxonomy.OperationRead, StringComparison.OrdinalIgnoreCase))) {
+                           || string.Equals(operation, "search", StringComparison.OrdinalIgnoreCase))) {
+                hasOperationAffinity = true;
                 score += 120;
             } else if ((string.Equals(preferredOperation, "query", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(preferredOperation, "list", StringComparison.OrdinalIgnoreCase)
                         || string.Equals(preferredOperation, "search", StringComparison.OrdinalIgnoreCase))
                        && string.Equals(operation, "discover", StringComparison.OrdinalIgnoreCase)) {
+                hasOperationAffinity = true;
                 score += 120;
             }
 
@@ -1520,6 +1527,9 @@ internal sealed partial class ChatServiceSession {
             }
 
             score += 50;
+            if (!hasScopeAffinity && !hasOperationAffinity) {
+                continue;
+            }
 
             rankedCandidates.Add((new CrossPackFallbackCandidate(name, candidateDefinition), score));
         }
