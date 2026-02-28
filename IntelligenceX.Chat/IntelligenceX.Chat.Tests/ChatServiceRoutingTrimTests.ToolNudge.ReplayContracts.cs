@@ -128,6 +128,49 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCustomAdFallbackUsingSchemaAwareDefaults() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["ad_environment_discover"] = "active_directory";
+        packMap["ad_domain_inventory_custom"] = "active_directory";
+
+        var sourceSchema = ToolSchema.Object().NoAdditionalProperties();
+        var targetSchema = ToolSchema.Object(
+                ("domain_name", ToolSchema.String("domain name")),
+                ("max_results", ToolSchema.Integer("max results")))
+            .Required("domain_name", "max_results")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("ad_environment_discover", "discover", sourceSchema),
+            new("ad_domain_inventory_custom", "custom ad inventory", targetSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-ad-defaults", Name = "ad_environment_discover" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ad-defaults",
+                Output = """{"ok":true,"discovery_status":{"limited_discovery":true,"domain_name":"contoso.local"}}""",
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_domain_inventory_custom"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue AD discovery", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("ad_domain_inventory_custom", toolCall.Name);
+        Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"max_results\":500", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsDynamicPackInfoFallbackForNonHardcodedPackId() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
@@ -1506,6 +1549,64 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var reason = Assert.IsType<string>(args[6]);
         Assert.Equal("ad_dc_discovery_custom", toolCall.Name);
         Assert.Contains("\"domain_name\":\"ad.evotec.xyz\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross_dc_discovery_first", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_PrefersCustomAdDiscoveryRequiringSchemaDefaultBeforeCrossDcEventlogFanOut() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_live_stats"] = "eventlog";
+        packMap["eventlog_live_query"] = "eventlog";
+        packMap["ad_dc_discovery_with_default_custom"] = "active_directory";
+
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var adSchema = ToolSchema.Object(
+                ("domain_name", ToolSchema.String("domain name")),
+                ("discovery_fallback", ToolSchema.String("fallback mode")))
+            .Required("domain_name", "discovery_fallback")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", "live stats", schema),
+            new("eventlog_live_query", "live query", schema),
+            new("ad_dc_discovery_with_default_custom", "custom scope", adSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() { CallId = "call-ev-default", Name = "eventlog_live_stats" }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ev-default",
+                Output = """
+                         {"ok":true,"discovery_status":{"limited_discovery":true,"machine_name":"AD0","domain_name":"ad.evotec.xyz"}}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false,
+            ["ad_dc_discovery_with_default_custom"] = false
+        };
+
+        var args = new object?[] {
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            "Could you check other domain controllers for the same issue?",
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("ad_dc_discovery_with_default_custom", toolCall.Name);
+        Assert.Contains("\"domain_name\":\"ad.evotec.xyz\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"discovery_fallback\":\"current_forest\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_dc_discovery_first", reason, StringComparison.OrdinalIgnoreCase);
     }
 
