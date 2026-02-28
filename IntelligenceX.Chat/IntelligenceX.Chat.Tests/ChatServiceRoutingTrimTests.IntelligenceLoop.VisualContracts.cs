@@ -222,6 +222,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_TreatsMarkerLineWithSlashSlashCommentAsVisualContract() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1 // from orchestrator
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_new_visuals: 0", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_TreatsMarkerLineWithSemicolonCommentAndCrLfAsVisualContract() {
+        const string request = "[Proactive visualization guidance]\r\n\r\nix:proactive-visualization:v1 ; from orchestrator\r\n";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_new_visuals: 0", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_IgnoresUnknownStructuredPreferredVisual() {
         var request = """
             [Proactive visualization guidance]
