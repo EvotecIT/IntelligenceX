@@ -332,6 +332,108 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDnsClientXPingFallbackFromDomainDetectiveProbeFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["domaindetective_network_probe"] = "domaindetective";
+        packMap["dnsclientx_ping"] = "dnsclientx";
+
+        var networkProbeSchema = ToolSchema.Object(
+                ("host", ToolSchema.String("host")))
+            .Required("host")
+            .NoAdditionalProperties();
+        var dnsPingSchema = ToolSchema.Object(
+                ("target", ToolSchema.String("target")))
+            .Required("target")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("domaindetective_network_probe", "network probe", networkProbeSchema),
+            new("dnsclientx_ping", "dns ping", dnsPingSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-dd-probe",
+                Name = "domaindetective_network_probe",
+                ArgumentsJson = """{"host":"mail.contoso.com"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-dd-probe",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["dnsclientx_ping"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue probe investigation", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("dnsclientx_ping", toolCall.Name);
+        Assert.Contains("\"target\":\"mail.contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross_public_dns", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDomainDetectiveProbeFallbackFromDnsClientXPingFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["dnsclientx_ping"] = "dnsclientx";
+        packMap["domaindetective_network_probe"] = "domaindetective";
+
+        var dnsPingSchema = ToolSchema.Object(
+                ("target", ToolSchema.String("target")))
+            .Required("target")
+            .NoAdditionalProperties();
+        var networkProbeSchema = ToolSchema.Object(
+                ("host", ToolSchema.String("host")))
+            .Required("host")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("dnsclientx_ping", "dns ping", dnsPingSchema),
+            new("domaindetective_network_probe", "network probe", networkProbeSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-dns-ping",
+                Name = "dnsclientx_ping",
+                ArgumentsJson = """{"target":"mail.contoso.com"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-dns-ping",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["domaindetective_network_probe"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue dns investigation", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("domaindetective_network_probe", toolCall.Name);
+        Assert.Contains("\"host\":\"mail.contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross_public_domain", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsTestimoXRunFallbackUsingSelectorHints() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
