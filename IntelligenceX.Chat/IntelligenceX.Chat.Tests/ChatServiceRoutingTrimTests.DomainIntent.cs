@@ -42,6 +42,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldRequestDomainIntentClarification_TrueForMixedAliasPrefixedAdAndPublicDomainSubset() {
+        var selectedTools = new List<ToolDefinition> {
+            new("active_directory_scope_discovery", description: "AD scope"),
+            new("adplayground_domain_controllers", description: "AD DCs"),
+            new("dns_client_x_query", description: "DNS query"),
+            new("domain_detective_domain_summary", description: "Domain summary"),
+            new("eventlog_live_query", description: "Event log")
+        };
+
+        var result = ShouldRequestDomainIntentClarificationMethod.Invoke(
+            null,
+            new object?[] {
+                true,
+                false,
+                false,
+                selectedTools.Count,
+                24,
+                selectedTools
+            });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldRequestDomainIntentClarification_FalseWhenOneFamilyDominates() {
         var selectedTools = new List<ToolDefinition> {
             new("ad_scope_discovery", description: "AD scope"),
