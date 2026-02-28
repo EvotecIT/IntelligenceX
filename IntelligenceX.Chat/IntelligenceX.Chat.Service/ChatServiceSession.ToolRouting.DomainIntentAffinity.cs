@@ -235,9 +235,15 @@ internal sealed partial class ChatServiceSession {
         int? requestedMaxCandidateTools,
         int? effectiveMaxCandidateTools,
         long? effectiveContextLength,
-        bool contextAwareBudgetApplied) {
+        bool contextAwareBudgetApplied,
+        string? domainIntentSource,
+        string? domainIntentFamily) {
         var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
         var normalizedContextLength = effectiveContextLength is > 0 ? effectiveContextLength : null;
+        var normalizedDomainIntentSource = NormalizeRoutingDomainIntentSource(domainIntentSource);
+        var normalizedDomainIntentFamily = TryNormalizeDomainIntentFamily(domainIntentFamily, out var parsedDomainIntentFamily)
+            ? parsedDomainIntentFamily
+            : string.Empty;
         return JsonSerializer.Serialize(new {
             strategy = (strategy ?? string.Empty).Trim(),
             weightedToolRouting,
@@ -253,8 +259,23 @@ internal sealed partial class ChatServiceSession {
                 effective = effectiveMaxCandidateTools,
                 contextAwareBudgetApplied,
                 effectiveModelContextLength = normalizedContextLength
+            },
+            domainIntent = new {
+                source = normalizedDomainIntentSource.Length > 0 ? normalizedDomainIntentSource : null,
+                family = normalizedDomainIntentFamily.Length > 0 ? normalizedDomainIntentFamily : null
             }
         });
+    }
+
+    private static string NormalizeRoutingDomainIntentSource(string? source) {
+        var normalized = NormalizeCompactToken((source ?? string.Empty).AsSpan());
+        return normalized switch {
+            "signalhint" => "signal_hint",
+            "domainsignalhint" => "signal_hint",
+            "affinity" => "affinity",
+            "domainfamilyaffinity" => "affinity",
+            _ => string.Empty
+        };
     }
 
     private static (int SelectedToolCount, int TotalToolCount) NormalizeRoutingToolCounts(int selectedToolCount, int totalToolCount) {
