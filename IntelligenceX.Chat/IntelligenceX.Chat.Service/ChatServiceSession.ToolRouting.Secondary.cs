@@ -382,28 +382,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         var toolName = (definition.Name ?? string.Empty).Trim();
-        if (toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)) {
-            return "active_directory";
-        }
-
-        if (toolName.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase)) {
-            return "eventlog";
-        }
-
-        if (toolName.StartsWith("system_", StringComparison.OrdinalIgnoreCase)) {
-            return "system";
-        }
-
-        if (toolName.StartsWith("testimox_", StringComparison.OrdinalIgnoreCase)) {
-            return "testimox";
-        }
-
-        if (toolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase)) {
-            return "domaindetective";
-        }
-
-        if (toolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)) {
-            return "dnsclientx";
+        if (TryResolvePackHintFromToolNamePrefix(toolName, out var packHintFromPrefix)) {
+            return packHintFromPrefix;
         }
 
         if (PackIdMatches(category, "active_directory")) {
@@ -431,6 +411,54 @@ internal sealed partial class ChatServiceSession {
         }
 
         return string.Empty;
+    }
+
+    private static bool TryResolvePackHintFromToolNamePrefix(string toolName, out string packHint) {
+        packHint = string.Empty;
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return false;
+        }
+
+        if (normalizedToolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("active_directory_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("adplayground_", StringComparison.OrdinalIgnoreCase)) {
+            packHint = "active_directory";
+            return true;
+        }
+
+        if (normalizedToolName.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("event_log_", StringComparison.OrdinalIgnoreCase)) {
+            packHint = "eventlog";
+            return true;
+        }
+
+        if (normalizedToolName.StartsWith("system_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("computerx_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("wsl_", StringComparison.OrdinalIgnoreCase)) {
+            packHint = "system";
+            return true;
+        }
+
+        if (normalizedToolName.StartsWith("testimox_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("testimo_x_", StringComparison.OrdinalIgnoreCase)) {
+            packHint = "testimox";
+            return true;
+        }
+
+        if (normalizedToolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("domain_detective_", StringComparison.OrdinalIgnoreCase)) {
+            packHint = "domaindetective";
+            return true;
+        }
+
+        if (normalizedToolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
+            || normalizedToolName.StartsWith("dns_client_x_", StringComparison.OrdinalIgnoreCase)) {
+            packHint = "dnsclientx";
+            return true;
+        }
+
+        return false;
     }
 
     private static string[] ExtractPlannerTags(ToolDefinition definition, int maxCount) {
