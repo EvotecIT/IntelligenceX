@@ -216,6 +216,21 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildToolRoutingSearchText_IncludesActiveDirectoryLiteralAliasWhenPackCategoryIsAd() {
+        var definition = new ToolDefinition(
+            "directory_scope_probe",
+            "Directory scope probe.",
+            ToolSchema.Object(("domain", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties(),
+            category: "ad");
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("pack ad", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack active_directory", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:active_directory", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildToolRoutingSearchText_IncludesComputerXAliasForSystemPack() {
         var definition = new ToolDefinition(
             "inventory_collect",
@@ -273,6 +288,22 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("pack:testimox", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack testimo_x", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:testimo_x", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesEventLogUnderscoreAliasTokens() {
+        var definition = new ToolDefinition(
+            "event_log_query",
+            "Query event log entries.",
+            ToolSchema.Object(("log_name", ToolSchema.String("Log name."))).NoAdditionalProperties(),
+            category: "event_log");
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("pack eventlog", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:eventlog", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack event_log", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:event_log", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
