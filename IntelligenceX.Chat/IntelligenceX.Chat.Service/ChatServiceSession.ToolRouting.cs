@@ -44,6 +44,7 @@ internal sealed partial class ChatServiceSession {
         "gpo",
         "kerberos",
         "adplayground",
+        "active_directory",
         "ad_domain",
         "act_domain_scope_ad"
     };
@@ -55,7 +56,9 @@ internal sealed partial class ChatServiceSession {
         "dkim",
         "ns",
         "dnsclientx",
+        "dns_client_x",
         "domaindetective",
+        "domain_detective",
         "public_domain",
         "act_domain_scope_public"
     };
