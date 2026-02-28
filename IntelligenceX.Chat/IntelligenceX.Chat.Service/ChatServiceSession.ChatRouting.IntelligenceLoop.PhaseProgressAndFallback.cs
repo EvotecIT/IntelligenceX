@@ -335,7 +335,40 @@ internal sealed partial class ChatServiceSession {
 
     private static bool ContainsProactiveVisualizationMarker(string? text) {
         var value = text ?? string.Empty;
-        return value.IndexOf(ProactiveVisualizationMarker, StringComparison.OrdinalIgnoreCase) >= 0;
+        if (value.Length == 0) {
+            return false;
+        }
+
+        var marker = ProactiveVisualizationMarker.AsSpan();
+        var remaining = value.AsSpan();
+        while (!remaining.IsEmpty) {
+            var lineBreakIndex = remaining.IndexOfAny('\r', '\n');
+            ReadOnlySpan<char> line;
+            if (lineBreakIndex < 0) {
+                line = remaining;
+                remaining = ReadOnlySpan<char>.Empty;
+            } else {
+                line = remaining.Slice(0, lineBreakIndex);
+                var nextIndex = lineBreakIndex + 1;
+                if (nextIndex < remaining.Length && remaining[lineBreakIndex] == '\r' && remaining[nextIndex] == '\n') {
+                    nextIndex++;
+                }
+
+                remaining = remaining.Slice(nextIndex);
+            }
+
+            var trimmed = line.Trim();
+            if (!trimmed.StartsWith(marker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var suffix = trimmed.Slice(marker.Length).TrimStart();
+            if (suffix.IsEmpty || suffix[0] == '#') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ContainsVisualContractSignal(string? text) {
