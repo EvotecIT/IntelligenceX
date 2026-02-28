@@ -1390,7 +1390,8 @@ internal sealed partial class ChatServiceSession {
 
         var scope = (routingInfo.Scope ?? string.Empty).Trim();
         if (!string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(scope, "file", StringComparison.OrdinalIgnoreCase)) {
+            && !string.Equals(scope, "file", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(scope, "domain", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
