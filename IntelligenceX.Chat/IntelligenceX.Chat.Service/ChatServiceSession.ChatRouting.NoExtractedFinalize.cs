@@ -524,7 +524,7 @@ internal sealed partial class ChatServiceSession {
 
                 if (!noResultWatchdogTriggered && proactiveDecision.ShouldAttempt) {
                     proactiveFollowUpUsed = true;
-                    var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text);
+                    var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text, toolOutputs);
                     turn = await RunReviewOnlyModelPhaseWithProgressAsync(
                             client,
                             writer,
