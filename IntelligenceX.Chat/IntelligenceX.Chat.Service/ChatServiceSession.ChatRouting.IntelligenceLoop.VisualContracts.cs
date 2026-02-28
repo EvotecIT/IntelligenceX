@@ -89,7 +89,8 @@ internal sealed partial class ChatServiceSession {
                 break;
             }
 
-            if (TryParseStructuredAllowNewVisualsLine(line, out allowNewVisuals)) {
+            if (TryParseStructuredAllowNewVisualsLine(line, out var parsedAllowNewVisuals)) {
+                allowNewVisuals = parsedAllowNewVisuals;
                 hasAllowNewVisualsOverride = true;
                 hasAnyOverride = true;
                 continue;
@@ -102,7 +103,8 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (TryParseStructuredMaxNewVisualsLine(line, out maxNewVisualsOverride)) {
+            if (TryParseStructuredMaxNewVisualsLine(line, out var parsedMaxNewVisuals)) {
+                maxNewVisualsOverride = parsedMaxNewVisuals;
                 hasMaxNewVisualsOverride = true;
                 hasAnyOverride = true;
             }

@@ -301,29 +301,40 @@ internal sealed partial class ChatServiceSession {
         var hasStructuredOverrides = TryReadProactiveVisualizationOverridesFromRequestText(userRequest, out var hasAllowNewVisualsOverride,
             out var allowNewVisualsFromOverride, out var hasPreferredVisualOverride, out var preferredVisualType,
             out var hasMaxNewVisualsOverride, out var maxNewVisualsOverride);
-        var inferredPreferredVisualType = string.Empty;
-        var hasInferredPreferredVisualType = !hasPreferredVisualOverride
-                                             && TryResolvePreferredVisualTypeFromVisualContractSignal(userRequest, out inferredPreferredVisualType);
-        var hasPreferredVisualDirective = hasPreferredVisualOverride || hasInferredPreferredVisualType;
+        var inferredPreferredVisualTypeFromRequest = string.Empty;
+        var hasInferredPreferredVisualTypeFromRequest = !hasPreferredVisualOverride
+                                                        && TryResolvePreferredVisualTypeFromVisualContractSignal(userRequest, out inferredPreferredVisualTypeFromRequest);
+        var hasPreferredVisualDirectiveFromRequest = hasPreferredVisualOverride || hasInferredPreferredVisualTypeFromRequest;
         var effectivePreferredVisualType = hasPreferredVisualOverride
             ? preferredVisualType
-            : hasInferredPreferredVisualType
-                ? inferredPreferredVisualType
+            : hasInferredPreferredVisualTypeFromRequest
+                ? inferredPreferredVisualTypeFromRequest
                 : string.Empty;
         var hasExplicitAutoPreferredVisualOverride = hasPreferredVisualOverride
             && string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var requestHasVisualContract = requestHasProactiveVisualizationMarker || requestHasVisualContractSignal || hasStructuredOverrides;
-        var hasSpecificPreferredVisualType = hasPreferredVisualDirective
+        var hasSpecificPreferredVisualTypeFromRequest = hasPreferredVisualDirectiveFromRequest
             && !string.Equals(effectivePreferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var baseAllowNewVisuals = hasAllowNewVisualsOverride
             ? allowNewVisualsFromOverride
             : hasExplicitAutoPreferredVisualOverride
                 ? false
-            : hasSpecificPreferredVisualType
+            : hasSpecificPreferredVisualTypeFromRequest
                 ? true
-                : hasMaxNewVisualsOverride
+            : hasMaxNewVisualsOverride
                     ? maxNewVisualsOverride > 0
                     : requestHasVisualContractSignal;
+        var hasInferredPreferredVisualTypeFromDraft = false;
+        if (baseAllowNewVisuals
+            && requestHasVisualContract
+            && !hasPreferredVisualDirectiveFromRequest
+            && TryResolvePreferredVisualTypeFromVisualContractSignal(assistantDraft, out var inferredPreferredVisualTypeFromDraft)
+            && !string.IsNullOrWhiteSpace(inferredPreferredVisualTypeFromDraft)) {
+            effectivePreferredVisualType = inferredPreferredVisualTypeFromDraft;
+            hasInferredPreferredVisualTypeFromDraft = true;
+        }
+
+        var hasPreferredVisualDirective = hasPreferredVisualDirectiveFromRequest || hasInferredPreferredVisualTypeFromDraft;
         var maxNewVisuals = hasMaxNewVisualsOverride
             ? Math.Clamp(maxNewVisualsOverride, 0, MaxSupportedProactiveVisualBlocks)
             : baseAllowNewVisuals
