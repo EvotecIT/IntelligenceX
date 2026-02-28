@@ -471,11 +471,15 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!element.TryGetProperty(propertyName, out var value)) {
-            return false;
+        foreach (var property in element.EnumerateObject()) {
+            if (!property.NameEquals(propertyName) && !string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            return property.Value.ValueKind == JsonValueKind.Array;
         }
 
-        return value.ValueKind == JsonValueKind.Array;
+        return false;
     }
 
     private static bool ContainsLikelyJsonEnvelope(ReadOnlySpan<char> text) {
