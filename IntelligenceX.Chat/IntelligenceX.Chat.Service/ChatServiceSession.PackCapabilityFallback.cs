@@ -451,6 +451,7 @@ internal sealed partial class ChatServiceSession {
                     sourcePackId: sourcePackId,
                     candidateTool: candidateTool,
                     partialScopeHints: partialScopeHints);
+                AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
                 var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
                 if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
                     || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
@@ -539,6 +540,7 @@ internal sealed partial class ChatServiceSession {
                 sourcePackId: NormalizePackId("active_directory"),
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
+            AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
                 || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
@@ -1437,6 +1439,71 @@ internal sealed partial class ChatServiceSession {
         }
 
         return args;
+    }
+
+    private static void AddSchemaAwareFallbackHintArguments(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        JsonObject partialScopeHints) {
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "domain_name", "domain_name", "dns_domain_name", "domain");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "domain", "domain", "domain_name", "dns_domain_name");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "dns_domain_name", "dns_domain_name", "domain_name", "domain");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "forest_name", "forest_name", "forest_dns_name");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "forest_dns_name", "forest_dns_name", "forest_name");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "machine_name", "machine_name", "computer_name", "host");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "computer_name", "computer_name", "machine_name", "host");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "host", "host", "machine_name", "computer_name");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "name", "name", "target", "domain_name", "domain", "host", "machine_name", "computer_name");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "target", "target", "host", "name", "machine_name", "computer_name", "domain_name", "domain");
+        TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "log_name", "log_name");
+        TryAddSchemaAwareBooleanHintArgument(toolDefinition, arguments, partialScopeHints, "include_trusts", "include_trusts");
+        TryAddSchemaAwareBooleanHintArgument(toolDefinition, arguments, partialScopeHints, "include_forest_domains", "include_forest_domains");
+    }
+
+    private static void TryAddSchemaAwareStringHintArgument(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        JsonObject partialScopeHints,
+        string argumentName,
+        params string[] hintKeys) {
+        if (arguments.TryGetValue(argumentName, out _)
+            || !ToolDefinitionHasInputProperty(toolDefinition, argumentName)) {
+            return;
+        }
+
+        for (var i = 0; i < hintKeys.Length; i++) {
+            var hintKey = (hintKeys[i] ?? string.Empty).Trim();
+            if (hintKey.Length == 0) {
+                continue;
+            }
+
+            var value = ReadNonEmptyHint(partialScopeHints, hintKey);
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            arguments[argumentName] = JsonValue.From(value);
+            return;
+        }
+    }
+
+    private static void TryAddSchemaAwareBooleanHintArgument(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        JsonObject partialScopeHints,
+        string argumentName,
+        string hintKey) {
+        if (arguments.TryGetValue(argumentName, out _)
+            || !ToolDefinitionHasInputProperty(toolDefinition, argumentName)) {
+            return;
+        }
+
+        var value = ReadHintBoolean(partialScopeHints, hintKey);
+        if (!value.HasValue) {
+            return;
+        }
+
+        arguments[argumentName] = JsonValue.From(value.Value);
     }
 
     private static bool TryReadPackCapabilityErrorFallbackHints(
