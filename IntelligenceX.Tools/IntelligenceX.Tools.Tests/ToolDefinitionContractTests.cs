@@ -574,6 +574,7 @@ public class ToolDefinitionContractTests {
         Assert.Contains("dnsclientx_query", names);
         Assert.Contains("dnsclientx_ping", names);
         Assert.Contains("domaindetective_pack_info", names);
+        Assert.Contains("domaindetective_checks_catalog", names);
         Assert.Contains("domaindetective_domain_summary", names);
         Assert.Contains("domaindetective_network_probe", names);
     }

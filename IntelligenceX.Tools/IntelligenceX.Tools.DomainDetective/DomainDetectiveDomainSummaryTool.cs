@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -20,37 +19,6 @@ namespace IntelligenceX.Tools.DomainDetective;
 /// Runs selected DomainDetective checks and returns a condensed domain posture summary.
 /// </summary>
 public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, ITool {
-    private static readonly string[] DefaultChecks = {
-        "DNSHEALTH",
-        "SOA",
-        "NS",
-        "MX",
-        "SPF",
-        "DMARC",
-        "DNSSEC",
-        "TTL"
-    };
-    private static readonly IReadOnlyDictionary<string, string> CheckAliasByToken = new Dictionary<string, string>(StringComparer.Ordinal) {
-        ["NAMESERVER"] = "NS",
-        ["NAMESERVERS"] = "NS",
-        ["NAMESERVERRECORD"] = "NS",
-        ["NAMESERVERRECORDS"] = "NS",
-        ["NSRECORD"] = "NS",
-        ["NSRECORDS"] = "NS",
-        ["MXRECORD"] = "MX",
-        ["MXRECORDS"] = "MX",
-        ["MAILSERVER"] = "MX",
-        ["MAILSERVERS"] = "MX",
-        ["SPFRECORD"] = "SPF",
-        ["SPFRECORDS"] = "SPF",
-        ["DMARCRECORD"] = "DMARC",
-        ["DMARCRECORDS"] = "DMARC",
-        ["DKIMRECORD"] = "DKIM",
-        ["DKIMRECORDS"] = "DKIM",
-        ["CAARECORD"] = "CAA",
-        ["CAARECORDS"] = "CAA"
-    };
-
     private static readonly ToolDefinition DefinitionValue = new(
         "domaindetective_domain_summary",
         "Run selected DomainDetective checks for a domain and return a condensed DNS/email/security posture summary.",
@@ -85,7 +53,7 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
 
         var requestedChecks = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("checks"));
         if (requestedChecks.Count == 0) {
-            requestedChecks.AddRange(DefaultChecks);
+            requestedChecks.AddRange(DomainDetectiveCheckNameCatalog.DefaultChecks);
         }
 
         var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", Options.DefaultTimeoutMs, 1000, Options.MaxTimeoutMs);
@@ -232,55 +200,16 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
     }
 
     private static bool TryResolveHealthCheckType(string check, out HealthCheckType parsed) {
-        parsed = default;
-        if (string.IsNullOrWhiteSpace(check)) {
-            return false;
-        }
-
-        var trimmed = check.Trim();
-        if (Enum.TryParse<HealthCheckType>(trimmed, ignoreCase: true, out parsed)) {
-            return true;
-        }
-
-        var normalized = NormalizeDomainDetectiveCheckName(trimmed);
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        return Enum.TryParse<HealthCheckType>(normalized, ignoreCase: true, out parsed);
+        return DomainDetectiveCheckNameCatalog.TryResolveHealthCheckType(check, out parsed);
     }
 #endif
 
     private static string NormalizeDomainDetectiveCheckName(string check) {
-        var token = NormalizeCheckLookupToken(check);
-        if (token.Length == 0) {
-            return string.Empty;
-        }
-
-        if (CheckAliasByToken.TryGetValue(token, out var alias)) {
-            return alias;
-        }
-
-        return token;
+        return DomainDetectiveCheckNameCatalog.NormalizeDomainDetectiveCheckName(check);
     }
 
     private static string NormalizeCheckLookupToken(string value) {
-        var input = (value ?? string.Empty).Trim();
-        if (input.Length == 0) {
-            return string.Empty;
-        }
-
-        var builder = new StringBuilder(input.Length);
-        for (var i = 0; i < input.Length; i++) {
-            var ch = input[i];
-            if (!char.IsLetterOrDigit(ch)) {
-                continue;
-            }
-
-            builder.Append(char.ToUpperInvariant(ch));
-        }
-
-        return builder.ToString();
+        return DomainDetectiveCheckNameCatalog.NormalizeCheckLookupToken(value);
     }
 
 #if DOMAINDETECTIVE_ENABLED

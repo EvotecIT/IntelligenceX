@@ -231,6 +231,9 @@ public class ToolPackInfoContractTests {
         var root = document.RootElement;
         Assert.Equal("domaindetective", root.GetProperty("pack").GetString());
 
+        var tools = ReadStringArray(root.GetProperty("tools"));
+        Assert.Contains("domaindetective_checks_catalog", tools, StringComparer.OrdinalIgnoreCase);
+
         var entityHandoffs = root.GetProperty("entity_handoffs");
         Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
         Assert.True(entityHandoffs.GetArrayLength() > 0);
