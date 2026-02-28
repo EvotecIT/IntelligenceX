@@ -20,12 +20,12 @@ internal sealed partial class ChatServiceSession {
     private const string TableVisualType = "table";
     private const string LegacyNetworkVisualType = "visnetwork";
     private const int MaxSupportedProactiveVisualBlocks = 3;
-    private static readonly string[] NetworkJsonNodeAliases = new[] { "nodes", "vertices" };
-    private static readonly string[] NetworkJsonEdgeAliases = new[] { "edges", "links" };
-    private static readonly string[] ChartJsonLabelAliases = new[] { "labels", "categories" };
-    private static readonly string[] ChartJsonSeriesAliases = new[] { "datasets", "series", "data", "values" };
-    private static readonly string[] TableJsonRowAliases = new[] { "rows", "data", "items" };
-    private static readonly string[] TableJsonColumnAliases = new[] { "columns", "headers", "fields" };
+    private static readonly string[] NetworkJsonNodeAliases = new[] { "nodes", "vertices", "entities" };
+    private static readonly string[] NetworkJsonEdgeAliases = new[] { "edges", "links", "relationships", "connections" };
+    private static readonly string[] ChartJsonLabelAliases = new[] { "labels", "categories", "x", "x_axis" };
+    private static readonly string[] ChartJsonSeriesAliases = new[] { "datasets", "series", "data", "values", "points", "metrics" };
+    private static readonly string[] TableJsonRowAliases = new[] { "rows", "data", "items", "records", "entries" };
+    private static readonly string[] TableJsonColumnAliases = new[] { "columns", "headers", "fields", "keys" };
 
     private static readonly VisualTypeCatalogEntry[] VisualTypeCatalog = {
         new(
