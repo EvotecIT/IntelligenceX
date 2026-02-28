@@ -501,6 +501,23 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Equal(10, selected.Count);
         Assert.Equal("signal_tool_00", selected[0].Name);
         Assert.Equal("signal_tool_09", selected[9].Name);
+
+        var insights = Assert.IsAssignableFrom<System.Collections.IEnumerable>(args[3]);
+        var hasAmbiguityMarker = false;
+        foreach (var insight in insights) {
+            if (insight is null) {
+                continue;
+            }
+
+            var reasonProperty = insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance);
+            var reason = reasonProperty?.GetValue(insight)?.ToString() ?? string.Empty;
+            if (reason.IndexOf("ix:routing-ambiguity:v1", StringComparison.OrdinalIgnoreCase) >= 0) {
+                hasAmbiguityMarker = true;
+                break;
+            }
+        }
+
+        Assert.True(hasAmbiguityMarker);
     }
 
     [Fact]

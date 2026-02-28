@@ -139,7 +139,10 @@ internal sealed partial class ChatServiceSession {
         return normalized.ToLowerInvariant();
     }
 
-    private static List<ToolRoutingInsight> BuildRoutingInsights(IReadOnlyList<ToolScore> scored, IReadOnlyList<ToolDefinition> selectedDefs) {
+    private static List<ToolRoutingInsight> BuildRoutingInsights(
+        IReadOnlyList<ToolScore> scored,
+        IReadOnlyList<ToolDefinition> selectedDefs,
+        WeightedRoutingSelectionDiagnostics selectionDiagnostics) {
         if (selectedDefs.Count == 0 || scored.Count == 0) {
             return new List<ToolRoutingInsight>();
         }
@@ -151,6 +154,8 @@ internal sealed partial class ChatServiceSession {
 
         var maxScore = scored[0].Score <= 0 ? 1d : scored[0].Score;
         var insights = new List<ToolRoutingInsight>();
+        var ambiguityReason = BuildWeightedRoutingAmbiguityReason(selectionDiagnostics);
+        var emittedAmbiguityReason = false;
         for (var i = 0; i < scored.Count; i++) {
             var toolScore = scored[i];
             if (!selectedNames.Contains(toolScore.Definition.Name)) {
@@ -176,6 +181,12 @@ internal sealed partial class ChatServiceSession {
                 reasons.Add("general relevance");
             }
 
+            if (!emittedAmbiguityReason && ambiguityReason.Length > 0) {
+                reasons.Add("ambiguous top-score cluster");
+                reasons.Add(ambiguityReason);
+                emittedAmbiguityReason = true;
+            }
+
             insights.Add(new ToolRoutingInsight(
                 ToolName: toolScore.Definition.Name,
                 Confidence: confidence,
@@ -190,6 +201,14 @@ internal sealed partial class ChatServiceSession {
         }
 
         return insights;
+    }
+
+    private static string BuildWeightedRoutingAmbiguityReason(WeightedRoutingSelectionDiagnostics diagnostics) {
+        if (!diagnostics.AmbiguityWidened) {
+            return string.Empty;
+        }
+
+        return $"{WeightedRoutingAmbiguityMarker} baseline={diagnostics.BaselineMinSelection} effective={diagnostics.EffectiveMinSelection} cluster={diagnostics.AmbiguousClusterSize} second_ratio={diagnostics.SecondScoreRatio:0.###}";
     }
 
     private static string[] TokenizeRoutingTokens(string text, int maxTokens) {

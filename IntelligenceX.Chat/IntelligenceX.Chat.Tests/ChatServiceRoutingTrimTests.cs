@@ -236,6 +236,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildRoutingMetaPayloadMethod =
         typeof(ChatServiceSession).GetMethod("BuildRoutingMetaPayload", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildRoutingMetaPayload not found.");
+    private static readonly MethodInfo TryResolveWeightedRoutingAmbiguityTelemetryMethod =
+        typeof(ChatServiceSession).GetMethod("TryResolveWeightedRoutingAmbiguityTelemetry", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("TryResolveWeightedRoutingAmbiguityTelemetry not found.");
     private static readonly MethodInfo NormalizeRoutingToolCountsMethod =
         typeof(ChatServiceSession).GetMethod("NormalizeRoutingToolCounts", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("NormalizeRoutingToolCounts not found.");

@@ -190,6 +190,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             false,
             null,
+            null,
+            false,
+            null,
+            null,
+            null,
             null
         });
         var payload = Assert.IsType<string>(payloadResult);
@@ -215,6 +220,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             false,
+            null,
+            null,
+            false,
+            null,
+            null,
             null,
             null
         });
@@ -246,6 +256,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             false,
             null,
+            null,
+            false,
+            null,
+            null,
+            null,
             null
         });
         var payload = Assert.IsType<string>(result);
@@ -272,6 +287,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             false,
+            null,
+            null,
+            false,
+            null,
+            null,
             null,
             null
         });
@@ -300,6 +320,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
             4,
             8192L,
             true,
+            null,
+            null,
+            false,
+            null,
+            null,
             null,
             null
         });
@@ -330,7 +355,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
             16384L,
             false,
             "signal_hint",
-            "public_domain"
+            "public_domain",
+            false,
+            null,
+            null,
+            null,
+            null
         });
         var payload = Assert.IsType<string>(result);
 
@@ -339,6 +369,67 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var domainIntent = root.GetProperty("domainIntent");
         Assert.Equal("signal_hint", domainIntent.GetProperty("source").GetString());
         Assert.Equal("public_domain", domainIntent.GetProperty("family").GetString());
+    }
+
+    [Fact]
+    public void BuildRoutingMetaPayload_IncludesWeightedAmbiguityContextWhenProvided() {
+        var result = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
+            "weighted_heuristic",
+            true,
+            false,
+            false,
+            10,
+            21,
+            7,
+            false,
+            null,
+            8,
+            8192L,
+            true,
+            null,
+            null,
+            true,
+            8,
+            10,
+            10,
+            0.94d
+        });
+        var payload = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        var weightedAmbiguity = root.GetProperty("weightedAmbiguity");
+        Assert.True(weightedAmbiguity.GetProperty("widened").GetBoolean());
+        Assert.Equal(8, weightedAmbiguity.GetProperty("baselineSelection").GetInt32());
+        Assert.Equal(10, weightedAmbiguity.GetProperty("effectiveSelection").GetInt32());
+        Assert.Equal(10, weightedAmbiguity.GetProperty("clusterSize").GetInt32());
+        Assert.Equal(0.94d, weightedAmbiguity.GetProperty("secondScoreRatio").GetDouble());
+    }
+
+    [Fact]
+    public void TryResolveWeightedRoutingAmbiguityTelemetry_ParsesStructuredMarkerFromInsightReason() {
+        var insight = CreateToolRoutingInsight(
+            toolName: "signal_tool_00",
+            confidence: "high",
+            score: 9.0d,
+            reason: "token match, ix:routing-ambiguity:v1 baseline=8 effective=10 cluster=10 second_ratio=0.938",
+            strategyName: "WeightedHeuristic");
+        var insights = CreateRoutingInsightsArray(insight);
+
+        var args = new object?[] {
+            insights,
+            null,
+            null,
+            null,
+            null
+        };
+        var result = TryResolveWeightedRoutingAmbiguityTelemetryMethod.Invoke(null, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal(8, Assert.IsType<int>(args[1]));
+        Assert.Equal(10, Assert.IsType<int>(args[2]));
+        Assert.Equal(10, Assert.IsType<int>(args[3]));
+        Assert.Equal(0.938d, Assert.IsType<double>(args[4]), 3);
     }
 
     private static object CreateToolRoutingInsight(string toolName, string confidence, double score, string reason, string strategyName) {
