@@ -749,4 +749,58 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("\"domain_name\":\"contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackTestimoXToDomainDetectiveFallbackOnFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["testimox_rules_list"] = "testimox";
+        packMap["domaindetective_domain_summary"] = "domaindetective";
+
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "testimox_rules_list",
+                "List TestimoX rules.",
+                ToolSchema.Object(("domain_name", ToolSchema.String("Domain name."))).NoAdditionalProperties()),
+            new(
+                "domaindetective_domain_summary",
+                "Summarize public domain posture.",
+                ToolSchema.Object(("domain", ToolSchema.String("Domain name.")))
+                    .Required("domain")
+                    .NoAdditionalProperties())
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-1",
+                Name = "testimox_rules_list",
+                Input = """
+                        {"domain_name":"contoso.com"}
+                        """
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-1",
+                Output = "{}",
+                Ok = false,
+                ErrorCode = "timeout"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["testimox_rules_list"] = false,
+            ["domaindetective_domain_summary"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run public posture checks", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("domaindetective_domain_summary", toolCall.Name);
+        Assert.Contains("pack_contract_cross_public_posture_domaindetective", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"domain\":\"contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
 }
