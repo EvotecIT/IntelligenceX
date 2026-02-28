@@ -571,7 +571,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("include at most one new visual block", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("include at most 1 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
