@@ -59,12 +59,9 @@ public sealed class DomainDetectiveChecksCatalogToolTests {
     [Fact]
     public async Task InvokeAsync_AllowsAliasAndDefaultSuppressionFlags() {
         var tool = new DomainDetectiveChecksCatalogTool(new DomainDetectiveToolOptions());
-        var arguments = JsonNode.Parse("""
-            {
-              "include_aliases": false,
-              "include_default_checks": false
-            }
-            """) as JsonObject;
+        var arguments = new JsonObject()
+            .Add("include_aliases", false)
+            .Add("include_default_checks", false);
 
         var json = await tool.InvokeAsync(arguments, CancellationToken.None);
         using var document = JsonDocument.Parse(json);
