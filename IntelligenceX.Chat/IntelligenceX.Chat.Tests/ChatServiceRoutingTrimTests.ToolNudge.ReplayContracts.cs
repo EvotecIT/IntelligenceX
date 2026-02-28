@@ -210,6 +210,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void AppendPackFallbackTelemetryMarker_EncodesFieldValuesForMachineParsing() {
+        var method = typeof(ChatServiceSession).GetMethod("AppendPackFallbackTelemetryMarker", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var result = method!.Invoke(
+            null,
+            new object?[] {
+                "pack_contract_failure_autofallback:customx:query_failed->custom tool",
+                "active directory",
+                "custom tool/diag"
+            });
+
+        var reason = Assert.IsType<string>(result);
+        Assert.Contains("ix:pack-fallback:v1", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("source_pack=activedirectory", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target_tool=custom%20tool%2Fdiag", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("family=pack_contract", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsDomainDetectiveFallbackFromSourceArguments() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
@@ -1149,6 +1169,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_host_eventlog_evidence", reason, StringComparison.OrdinalIgnoreCase);
+        AssertPackFallbackTelemetry(reason, "computerx", "eventlog_live_query", "host");
     }
 
     [Fact]
@@ -2559,6 +2580,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("call_b", replayedCallIds);
         Assert.Contains("call_a", outputCallIds);
         Assert.DoesNotContain("call_b", outputCallIds);
+    }
+
+    private static void AssertPackFallbackTelemetry(string reason, string expectedSourcePack, string expectedTargetTool, string expectedFamily) {
+        Assert.Contains("ix:pack-fallback:v1", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("source_pack=" + expectedSourcePack, reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target_tool=" + expectedTargetTool, reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("family=" + expectedFamily, reason, StringComparison.OrdinalIgnoreCase);
     }
 
 }

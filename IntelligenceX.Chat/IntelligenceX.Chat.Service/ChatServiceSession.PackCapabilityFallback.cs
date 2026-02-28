@@ -566,6 +566,7 @@ internal sealed partial class ChatServiceSession {
                          + reasonDetail
                          + "->"
                          + candidateTool;
+                reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
                 return true;
             }
         }
@@ -652,6 +653,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -726,6 +728,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -800,6 +803,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -888,6 +892,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -962,6 +967,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -1036,6 +1042,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -1130,6 +1137,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -1231,6 +1239,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -1317,6 +1326,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -1742,6 +1752,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -1834,6 +1845,7 @@ internal sealed partial class ChatServiceSession {
                      + partialScopeReason
                      + "->"
                      + candidateTool;
+            reason = AppendPackFallbackTelemetryMarker(reason, sourcePackId, candidateTool);
             return true;
         }
 
@@ -2543,6 +2555,70 @@ internal sealed partial class ChatServiceSession {
 
         var aliases = GetNormalizedPackAliases(expectedPackId);
         return aliases.Contains(normalizedActual);
+    }
+
+    private static string AppendPackFallbackTelemetryMarker(string reason, string sourcePackId, string candidateTool) {
+        var normalizedReason = (reason ?? string.Empty).Trim();
+        if (normalizedReason.Length == 0
+            || normalizedReason.IndexOf("ix:pack-fallback:v1", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return normalizedReason;
+        }
+
+        var normalizedSourcePack = NormalizePackId(sourcePackId);
+        if (normalizedSourcePack.Length == 0) {
+            normalizedSourcePack = "unknown";
+        }
+
+        var normalizedCandidateTool = (candidateTool ?? string.Empty).Trim();
+        if (normalizedCandidateTool.Length == 0) {
+            normalizedCandidateTool = "unknown";
+        }
+
+        var family = ResolvePackFallbackTelemetryFamily(normalizedReason);
+        var telemetrySourcePack = EncodePackFallbackTelemetryFieldValue(normalizedSourcePack);
+        var telemetryCandidateTool = EncodePackFallbackTelemetryFieldValue(normalizedCandidateTool);
+        var telemetryFamily = EncodePackFallbackTelemetryFieldValue(family);
+        return normalizedReason
+               + " ix:pack-fallback:v1 source_pack="
+               + telemetrySourcePack
+               + " target_tool="
+               + telemetryCandidateTool
+               + " family="
+               + telemetryFamily;
+    }
+
+    private static string ResolvePackFallbackTelemetryFamily(string reason) {
+        var normalized = (reason ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "general";
+        }
+
+        if (normalized.IndexOf("cross_public_", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "public_domain";
+        }
+
+        if (normalized.IndexOf("cross_host_", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "host";
+        }
+
+        if (normalized.IndexOf("cross_system_ad_", StringComparison.OrdinalIgnoreCase) >= 0
+            || normalized.IndexOf("cross_dc_discovery_first", StringComparison.OrdinalIgnoreCase) >= 0
+            || normalized.IndexOf("cross_ad_", StringComparison.OrdinalIgnoreCase) >= 0
+            || normalized.IndexOf("_ad_discovery", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "ad_domain";
+        }
+
+        if (normalized.IndexOf("pack_contract_partial_scope_autofallback", StringComparison.OrdinalIgnoreCase) >= 0
+            || normalized.IndexOf("pack_contract_failure_autofallback", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "pack_contract";
+        }
+
+        return "general";
+    }
+
+    private static string EncodePackFallbackTelemetryFieldValue(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? "unknown" : Uri.EscapeDataString(normalized);
     }
 
     private static HashSet<string> GetNormalizedPackAliases(string packId) {

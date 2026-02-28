@@ -583,6 +583,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var reason = Assert.IsType<string>(args[6]);
         Assert.Equal("ad_scope_discovery", toolCall.Name);
         Assert.Contains("pack_contract_partial_scope_autofallback", reason, StringComparison.OrdinalIgnoreCase);
+        AssertPackFallbackTelemetry(reason, "activedirectory", "ad_scope_discovery", "pack_contract");
         Assert.Contains("\"discovery_fallback\":\"current_forest\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
@@ -807,6 +808,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var reason = Assert.IsType<string>(args[6]);
         Assert.Equal("ad_scope_discovery", toolCall.Name);
         Assert.Contains("pack_contract_cross_system_ad_discovery", reason, StringComparison.OrdinalIgnoreCase);
+        AssertPackFallbackTelemetry(reason, "system", "ad_scope_discovery", "ad_domain");
         Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"discovery_fallback\":\"current_forest\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
@@ -1032,6 +1034,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var reason = Assert.IsType<string>(args[6]);
         Assert.Equal("testimox_rules_list", toolCall.Name);
         Assert.Contains("pack_contract_cross_public_posture_testimox", reason, StringComparison.OrdinalIgnoreCase);
+        AssertPackFallbackTelemetry(reason, "domaindetective", "testimox_rules_list", "public_domain");
         Assert.Contains("\"domain_name\":\"contoso.com\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
