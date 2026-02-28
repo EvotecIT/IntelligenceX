@@ -21,81 +21,194 @@ internal sealed partial class ChatServiceSession {
         }
 
         var availableToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var definitionsByToolName = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
+        var packIdByToolName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var toolNamesByPackId = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < definitions.Count; i++) {
             var name = (definitions[i].Name ?? string.Empty).Trim();
-            if (name.Length > 0) {
-                availableToolNames.Add(name);
+            if (name.Length == 0 || !availableToolNames.Add(name)) {
+                continue;
+            }
+
+            definitionsByToolName[name] = definitions[i];
+            if (!_toolPackIdsByToolName.TryGetValue(name, out var packIdRaw)) {
+                continue;
+            }
+
+            var normalizedPackId = NormalizePackId(packIdRaw);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            packIdByToolName[name] = normalizedPackId;
+            if (!toolNamesByPackId.TryGetValue(normalizedPackId, out var packTools)) {
+                packTools = new List<string>();
+                toolNamesByPackId[normalizedPackId] = packTools;
+            }
+
+            packTools.Add(name);
+        }
+
+        foreach (var entry in toolNamesByPackId) {
+            var packId = entry.Key;
+            var candidateTools = BuildPackCapabilityFallbackCandidates(packId, entry.Value, definitionsByToolName, packIdByToolName);
+            AddPackCapabilityFallbackContract(
+                packId: packId,
+                candidateTools: candidateTools,
+                availableToolNames: availableToolNames);
+        }
+    }
+
+    private static IReadOnlyList<string> BuildPackCapabilityFallbackCandidates(
+        string packId,
+        IReadOnlyList<string> packToolNames,
+        IReadOnlyDictionary<string, ToolDefinition> definitionsByToolName,
+        IReadOnlyDictionary<string, string> packIdByToolName) {
+        if (packToolNames.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var ranked = new List<(string Name, int Priority)>(packToolNames.Count);
+        var packInfoName = string.Empty;
+        for (var i = 0; i < packToolNames.Count; i++) {
+            var toolName = (packToolNames[i] ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                continue;
+            }
+
+            if (!definitionsByToolName.TryGetValue(toolName, out var definition)) {
+                continue;
+            }
+
+            if (!packIdByToolName.TryGetValue(toolName, out var candidatePackId)
+                || !PackIdMatches(candidatePackId, packId)) {
+                continue;
+            }
+
+            if (IsHintlessSafeFallbackCandidate(toolName)) {
+                packInfoName = toolName;
+            }
+
+            var priority = GetPackCapabilityFallbackToolPriority(toolName, definition);
+            ranked.Add((toolName, priority));
+        }
+
+        if (ranked.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        ranked.Sort(static (left, right) => {
+            var priorityCompare = right.Priority.CompareTo(left.Priority);
+            if (priorityCompare != 0) {
+                return priorityCompare;
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name);
+        });
+
+        var result = new List<string>(ranked.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < ranked.Count; i++) {
+            if (seen.Add(ranked[i].Name)) {
+                result.Add(ranked[i].Name);
             }
         }
 
-        AddPackCapabilityFallbackContract(
-            packId: "active_directory",
-            candidateTools: new[] {
-                "ad_scope_discovery",
-                "ad_forest_discover",
-                "ad_domain_controllers",
-                "ad_directory_discovery_diagnostics",
-                "ad_pack_info"
-            },
-            availableToolNames: availableToolNames);
+        if (packInfoName.Length > 0 && seen.Add(packInfoName)) {
+            result.Add(packInfoName);
+        }
 
-        AddPackCapabilityFallbackContract(
-            packId: "eventlog",
-            candidateTools: new[] {
-                "eventlog_live_query",
-                "eventlog_live_stats",
-                "eventlog_top_events",
-                "eventlog_timeline_query",
-                "eventlog_pack_info"
-            },
-            availableToolNames: availableToolNames);
+        return result.Count == 0 ? Array.Empty<string>() : result.ToArray();
+    }
 
-        AddPackCapabilityFallbackContract(
-            packId: "system",
-            candidateTools: new[] {
-                "system_updates_installed",
-                "system_patch_compliance",
-                "system_security_options",
-                "system_info",
-                "system_pack_info"
-            },
-            availableToolNames: availableToolNames);
+    private static int GetPackCapabilityFallbackToolPriority(string toolName, ToolDefinition definition) {
+        var normalizedName = (toolName ?? string.Empty).Trim();
+        if (normalizedName.Length == 0) {
+            return int.MinValue;
+        }
 
-        AddPackCapabilityFallbackContract(
-            packId: "hyperv",
-            candidateTools: new[] {
-                "hyperv_host_info",
-                "hyperv_vm_list",
-                "hyperv_switch_list"
-            },
-            availableToolNames: availableToolNames);
+        var priority = 0;
+        var normalizedLower = normalizedName.ToLowerInvariant();
+        if (normalizedLower.EndsWith("_scope_discovery", StringComparison.Ordinal)
+            || normalizedLower.EndsWith("_environment_discover", StringComparison.Ordinal)
+            || normalizedLower.EndsWith("_forest_discover", StringComparison.Ordinal)) {
+            priority += 500;
+        } else if (normalizedLower.Contains("_discover", StringComparison.Ordinal)
+                   || normalizedLower.EndsWith("_domain_controllers", StringComparison.Ordinal)) {
+            priority += 420;
+        } else if (normalizedLower.Contains("_query", StringComparison.Ordinal)) {
+            priority += 360;
+        } else if (normalizedLower.Contains("_stats", StringComparison.Ordinal)
+                   || normalizedLower.Contains("_summary", StringComparison.Ordinal)) {
+            priority += 320;
+        } else if (normalizedLower.Contains("_list", StringComparison.Ordinal)
+                   || normalizedLower.Contains("_catalog", StringComparison.Ordinal)
+                   || normalizedLower.Contains("_status", StringComparison.Ordinal)) {
+            priority += 280;
+        } else if (normalizedLower.Contains("_probe", StringComparison.Ordinal)
+                   || normalizedLower.Contains("_diagnostics", StringComparison.Ordinal)) {
+            priority += 260;
+        } else if (normalizedLower.Contains("_run", StringComparison.Ordinal)) {
+            priority += 200;
+        }
 
-        AddPackCapabilityFallbackContract(
-            packId: "domaindetective",
-            candidateTools: new[] {
-                "domaindetective_domain_summary",
-                "domaindetective_network_probe",
-                "domaindetective_pack_info"
-            },
-            availableToolNames: availableToolNames);
+        var routing = ToolSelectionMetadata.ResolveRouting(definition, toolType: null);
+        var operation = (routing.Operation ?? string.Empty).Trim();
+        if (string.Equals(operation, "query", StringComparison.OrdinalIgnoreCase)) {
+            priority += 120;
+        } else if (string.Equals(operation, "list", StringComparison.OrdinalIgnoreCase)) {
+            priority += 100;
+        } else if (string.Equals(operation, "search", StringComparison.OrdinalIgnoreCase)) {
+            priority += 95;
+        } else if (string.Equals(operation, "probe", StringComparison.OrdinalIgnoreCase)) {
+            priority += 80;
+        } else if (string.Equals(operation, "read", StringComparison.OrdinalIgnoreCase)) {
+            priority += 70;
+        } else if (string.Equals(operation, "guide", StringComparison.OrdinalIgnoreCase)) {
+            priority += 10;
+        }
 
-        AddPackCapabilityFallbackContract(
-            packId: "dnsclientx",
-            candidateTools: new[] {
-                "dnsclientx_query",
-                "dnsclientx_ping",
-                "dnsclientx_pack_info"
-            },
-            availableToolNames: availableToolNames);
+        if (definition.WriteGovernance?.IsWriteCapable == true) {
+            priority -= 1_000;
+        }
 
-        AddPackCapabilityFallbackContract(
-            packId: "testimox",
-            candidateTools: new[] {
-                "testimox_rules_list",
-                "testimox_rules_run",
-                "testimox_pack_info"
-            },
-            availableToolNames: availableToolNames);
+        if (TryGetToolRequiredArgumentCount(definition, out var requiredCount)) {
+            if (requiredCount == 0) {
+                priority += 40;
+            } else if (requiredCount == 1) {
+                priority += 10;
+            } else {
+                priority -= requiredCount * 10;
+            }
+        }
+
+        if (IsHintlessSafeFallbackCandidate(normalizedName)) {
+            priority -= 900;
+        }
+
+        return priority;
+    }
+
+    private static bool TryGetToolRequiredArgumentCount(ToolDefinition definition, out int count) {
+        count = 0;
+        if (definition.Parameters is null) {
+            return false;
+        }
+
+        var required = definition.Parameters.GetArray("required");
+        if (required is null || required.Count == 0) {
+            count = 0;
+            return true;
+        }
+
+        for (var i = 0; i < required.Count; i++) {
+            var name = (required[i]?.AsString() ?? string.Empty).Trim();
+            if (name.Length > 0) {
+                count++;
+            }
+        }
+
+        return true;
     }
 
     private void AddPackCapabilityFallbackContract(
