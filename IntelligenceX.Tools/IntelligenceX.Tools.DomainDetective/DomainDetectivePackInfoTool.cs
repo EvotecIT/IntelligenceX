@@ -32,12 +32,17 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
             engine: "DomainDetective",
             tools: ToolRegistryDomainDetectiveExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
+                "Use domaindetective_checks_catalog first when you need canonical check names or alias normalization guidance.",
                 "Use domaindetective_domain_summary for broad domain posture checks (DNS/email/security).",
                 "Use domaindetective_network_probe for host-level ping/traceroute diagnostics.",
                 "When you need resolver-specific evidence, pair with dnsclientx_query.",
                 "When the request is AD directory-scoped (domains/DCs/LDAP), route to AD pack tools instead of DomainDetective."
             },
             flowSteps: new[] {
+                ToolPackGuidance.FlowStep(
+                    goal: "Discover supported check names and aliases",
+                    suggestedTools: new[] { "domaindetective_checks_catalog" },
+                    notes: "Use catalog output to build valid checks[] sets before running summaries."),
                 ToolPackGuidance.FlowStep(
                     goal: "Run bounded domain posture checks",
                     suggestedTools: new[] { "domaindetective_domain_summary" },
@@ -56,6 +61,10 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
                     notes: "Use AD pack for Active Directory topology/context; DomainDetective is internet/domain posture focused.")
             },
             capabilities: new[] {
+                ToolPackGuidance.Capability(
+                    id: "check_catalog_discovery",
+                    summary: "List supported check names, baseline defaults, and alias normalization guidance for deterministic checks[] selection.",
+                    primaryTools: new[] { "domaindetective_checks_catalog" }),
                 ToolPackGuidance.Capability(
                     id: "domain_posture_summary",
                     summary: "Run selected DomainDetective health checks and return condensed DNS/email/security posture summary.",

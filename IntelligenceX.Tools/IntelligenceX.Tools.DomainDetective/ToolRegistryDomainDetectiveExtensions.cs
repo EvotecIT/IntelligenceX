@@ -31,6 +31,7 @@ public static class ToolRegistryDomainDetectiveExtensions {
 
     private static IEnumerable<ITool> CreateTools(DomainDetectiveToolOptions options) {
         yield return new DomainDetectivePackInfoTool(options);
+        yield return new DomainDetectiveChecksCatalogTool(options);
         yield return new DomainDetectiveDomainSummaryTool(options);
         yield return new DomainDetectiveNetworkProbeTool(options);
     }
