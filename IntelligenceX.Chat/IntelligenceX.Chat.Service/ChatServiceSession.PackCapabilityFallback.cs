@@ -397,6 +397,19 @@ internal sealed partial class ChatServiceSession {
                 return true;
             }
 
+            if (TryBuildCrossPublicPostureEvidenceFallbackToDomainDetective(
+                    toolDefinitions: toolDefinitions,
+                    priorCalledTools: priorCalledTools,
+                    sourcePackId: sourcePackId,
+                    partialScopeHints: partialScopeHints,
+                    partialScopeReason: partialScopeReason,
+                    hasSourceFailureSignal: hasSourceFailureSignal,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    out toolCall,
+                    out reason)) {
+                return true;
+            }
+
             if (TryBuildCrossPublicDnsEvidenceFallbackToolCall(
                     toolDefinitions: toolDefinitions,
                     priorCalledTools: priorCalledTools,
@@ -833,6 +846,80 @@ internal sealed partial class ChatServiceSession {
         }
 
         reason = "cross_public_posture_testimox_candidate_missing_required_args";
+        return false;
+    }
+
+    private bool TryBuildCrossPublicPostureEvidenceFallbackToDomainDetective(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string sourcePackId,
+        JsonObject partialScopeHints,
+        string partialScopeReason,
+        bool hasSourceFailureSignal,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        toolCall = null!;
+        reason = "cross_public_posture_domaindetective_not_applicable";
+
+        if (!PackIdMatches(sourcePackId, "testimox")
+            || !hasSourceFailureSignal) {
+            reason = "cross_public_posture_domaindetective_source_not_eligible";
+            return false;
+        }
+
+        if (!TryResolveCrossPackCandidateToolsByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "domaindetective",
+                preferredScope: "domain",
+                preferredOperation: "query",
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidates)) {
+            reason = "cross_public_posture_domaindetective_candidate_unavailable";
+            return false;
+        }
+
+        for (var i = 0; i < candidates.Count; i++) {
+            var candidateTool = candidates[i].ToolName;
+            var toolDefinition = candidates[i].Definition;
+
+            var fallbackArguments = BuildPackFallbackArguments(
+                sourcePackId: NormalizePackId("domaindetective"),
+                candidateTool: candidateTool,
+                partialScopeHints: partialScopeHints);
+            AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
+            AddSchemaAwareFallbackDefaultArguments("domaindetective", toolDefinition, fallbackArguments, partialScopeHints);
+            var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
+            if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
+                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                continue;
+            }
+
+            var serializedArguments = JsonLite.Serialize(normalizedArguments);
+            var fallbackCallId = "host_pack_fallback_" + Guid.NewGuid().ToString("N");
+            var raw = new JsonObject()
+                .Add("type", "tool_call")
+                .Add("call_id", fallbackCallId)
+                .Add("name", candidateTool)
+                .Add("arguments", serializedArguments);
+
+            toolCall = new ToolCall(
+                callId: fallbackCallId,
+                name: candidateTool,
+                input: serializedArguments,
+                arguments: normalizedArguments,
+                raw: raw);
+            reason = "pack_contract_cross_public_posture_domaindetective:"
+                     + sourcePackId
+                     + ":"
+                     + partialScopeReason
+                     + "->"
+                     + candidateTool;
+            return true;
+        }
+
+        reason = "cross_public_posture_domaindetective_candidate_missing_required_args";
         return false;
     }
 
