@@ -183,6 +183,67 @@ public static class ToolResponse {
     }
 
     /// <summary>
+    /// Serializes a success envelope (<c>ok=true</c>) from a typed model and a key/value facts summary table,
+    /// allowing <c>render</c> to be either an object or an array.
+    /// </summary>
+    /// <typeparam name="T">Model type.</typeparam>
+    /// <param name="model">Typed model mapped to snake_case root payload fields.</param>
+    /// <param name="title">Summary table title.</param>
+    /// <param name="facts">Ordered fact rows as <c>(key,value)</c> tuples.</param>
+    /// <param name="meta">Optional metadata. When omitted, a default meta object is produced.</param>
+    /// <param name="keyHeader">Optional first-column header label.</param>
+    /// <param name="valueHeader">Optional second-column header label.</param>
+    /// <param name="truncated">Optional summary truncation marker.</param>
+    /// <param name="render">Optional render hint override as object or array.</param>
+    public static string OkFactsModelWithRenderValue<T>(
+        T model,
+        string title,
+        IReadOnlyList<(string Key, string Value)> facts,
+        JsonObject? meta = null,
+        string keyHeader = "Field",
+        string valueHeader = "Value",
+        bool truncated = false,
+        JsonValue? render = null) {
+        var items = facts ?? Array.Empty<(string Key, string Value)>();
+
+        var rows = new List<IReadOnlyList<string>>(items.Count);
+        for (var i = 0; i < items.Count; i++) {
+            var item = items[i];
+            rows.Add(new[] { item.Key ?? string.Empty, item.Value ?? string.Empty });
+        }
+
+        var summaryMarkdown = ToolMarkdownContract.Create()
+            .AddTable(
+                title: title,
+                headers: new[] { keyHeader, valueHeader },
+                rows: rows,
+                totalCount: rows.Count,
+                truncated: truncated)
+            .Build();
+
+        var resolvedMeta = meta ?? ToolOutputHints.Meta(
+            count: rows.Count,
+            truncated: truncated,
+            scanned: null,
+            previewCount: rows.Count);
+
+        JsonObject root;
+        if (model is null) {
+            root = new JsonObject(StringComparer.Ordinal);
+        } else if (model is JsonObject obj) {
+            root = obj;
+        } else {
+            root = ToolJson.ToJsonObjectSnakeCase(model);
+        }
+
+        return ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: root,
+            meta: resolvedMeta,
+            summaryMarkdown: summaryMarkdown,
+            render: render);
+    }
+
+    /// <summary>
     /// Serializes a success envelope for mutating tools with a standardized dry-run/apply summary and metadata.
     /// </summary>
     /// <typeparam name="T">Model type.</typeparam>

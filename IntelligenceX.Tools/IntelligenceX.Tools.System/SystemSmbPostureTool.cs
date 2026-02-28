@@ -121,7 +121,7 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
                 NetbiosInterfacesNotDisabled: netbiosInterfacesNotDisabled,
                 Warnings: warnings);
 
-            return Task.FromResult(ToolResponse.OkFactsModel(
+            return Task.FromResult(ToolResponse.OkFactsModelWithRenderValue(
                 model: model,
                 title: "System SMB posture",
                 facts: new[] {
@@ -142,7 +142,10 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,
-                render: null));
+                render: SystemRenderHintBuilders.BuildSmbPostureHints(
+                    warningCount: warnings.Count,
+                    nullSessionShareCount: raw.NullSessionShares.Length,
+                    nullSessionPipeCount: raw.NullSessionPipes.Length)));
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "SMB posture query failed."));
         }

@@ -50,6 +50,29 @@ public static class ToolResultV2 {
     }
 
     /// <summary>
+    /// Creates a facts-table success envelope from a typed model, allowing render hints as object or array.
+    /// </summary>
+    public static string OkFactsModelWithRenderValue<T>(
+        T model,
+        string title,
+        IReadOnlyList<(string Key, string Value)> facts,
+        JsonObject? meta = null,
+        string keyHeader = "Field",
+        string valueHeader = "Value",
+        bool truncated = false,
+        JsonValue? render = null) {
+        return ToolResponse.OkFactsModelWithRenderValue(
+            model: model,
+            title: title,
+            facts: facts,
+            meta: CloneObject(meta),
+            keyHeader: keyHeader,
+            valueHeader: valueHeader,
+            truncated: truncated,
+            render: render is null ? null : CloneValue(render));
+    }
+
+    /// <summary>
     /// Creates a standardized mutating-tool success envelope.
     /// </summary>
     public static string OkWriteActionModel<T>(

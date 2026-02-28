@@ -88,7 +88,7 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
                 WeakEncryptionLevel: weakEncryptionLevel,
                 Warnings: warnings);
 
-            return Task.FromResult(ToolResponse.OkFactsModel(
+            return Task.FromResult(ToolResponse.OkFactsModelWithRenderValue(
                 model: model,
                 title: "System RDP posture",
                 facts: new[] {
@@ -108,7 +108,7 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,
-                render: null));
+                render: SystemRenderHintBuilders.BuildWarningListHints(warnings.Count)));
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "RDP posture query failed."));
         }

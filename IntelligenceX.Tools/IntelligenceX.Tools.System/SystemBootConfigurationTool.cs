@@ -71,7 +71,7 @@ public sealed class SystemBootConfigurationTool : SystemToolBase, ITool {
                 InsecureBootFlags: insecureFlags,
                 Warnings: warnings);
 
-            return Task.FromResult(ToolResponse.OkFactsModel(
+            return Task.FromResult(ToolResponse.OkFactsModelWithRenderValue(
                 model: model,
                 title: "System boot configuration",
                 facts: new[] {
@@ -91,7 +91,7 @@ public sealed class SystemBootConfigurationTool : SystemToolBase, ITool {
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,
-                render: null));
+                render: SystemRenderHintBuilders.BuildWarningListHints(warnings.Count)));
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "Boot configuration query failed."));
         }
