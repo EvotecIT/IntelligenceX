@@ -108,22 +108,9 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,
-                render: BuildRenderHints(warnings.Count)));
+                render: SystemRenderHintBuilders.BuildWarningListHints(warnings.Count)));
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "RDP posture query failed."));
         }
-    }
-
-    private static JsonValue? BuildRenderHints(int warningCount) {
-        if (warningCount <= 0) {
-            return null;
-        }
-
-        var hints = new JsonArray()
-            .Add(ToolOutputHints.RenderTable(
-                    "warnings",
-                    new ToolColumn("value", "Warning", "string"))
-                .Add("priority", 300));
-        return JsonValue.From(hints);
     }
 }
