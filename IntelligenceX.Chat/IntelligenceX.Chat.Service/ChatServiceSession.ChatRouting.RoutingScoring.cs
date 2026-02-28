@@ -16,6 +16,16 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private static readonly HashSet<string> CompoundPackRoutingTokenCompacts = new(StringComparer.OrdinalIgnoreCase) {
+        "activedirectory",
+        "adplayground",
+        "computerx",
+        "domaindetective",
+        "dnsclientx",
+        "eventlog",
+        "testimox"
+    };
+
 
     private static IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
         if (definitions.Count == 0 || limit <= 0) {
@@ -190,6 +200,7 @@ internal sealed partial class ChatServiceSession {
 
         var tokens = new List<string>(Math.Min(12, maxTokens));
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tokenBeforePrevious = string.Empty;
         var previousToken = string.Empty;
         var inToken = false;
         var tokenStart = 0;
@@ -230,10 +241,82 @@ internal sealed partial class ChatServiceSession {
                 break;
             }
 
+            if (TryAddCompoundPackRoutingTokenCandidates(tokens, seen, tokenBeforePrevious, previousToken, lower, maxTokens)) {
+                break;
+            }
+
+            tokenBeforePrevious = previousToken;
             previousToken = lower;
         }
 
         return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
+    }
+
+    private static bool TryAddCompoundPackRoutingTokenCandidates(
+        List<string> tokens,
+        HashSet<string> seen,
+        string tokenBeforePrevious,
+        string previousToken,
+        string currentToken,
+        int maxTokens) {
+        if (TryAddKnownCompoundPackRoutingTokenCandidate(tokens, seen, previousToken, currentToken, maxTokens)) {
+            return true;
+        }
+
+        if (TryAddKnownCompoundPackRoutingTokenCandidate(tokens, seen, tokenBeforePrevious, previousToken, currentToken, maxTokens)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryAddKnownCompoundPackRoutingTokenCandidate(
+        List<string> tokens,
+        HashSet<string> seen,
+        string firstToken,
+        string secondToken,
+        int maxTokens) {
+        if (string.IsNullOrWhiteSpace(firstToken) || string.IsNullOrWhiteSpace(secondToken)) {
+            return false;
+        }
+
+        var combined = $"{firstToken}_{secondToken}";
+        return TryAddKnownCompoundPackRoutingTokenCandidate(tokens, seen, combined, maxTokens);
+    }
+
+    private static bool TryAddKnownCompoundPackRoutingTokenCandidate(
+        List<string> tokens,
+        HashSet<string> seen,
+        string firstToken,
+        string secondToken,
+        string thirdToken,
+        int maxTokens) {
+        if (string.IsNullOrWhiteSpace(firstToken)
+            || string.IsNullOrWhiteSpace(secondToken)
+            || string.IsNullOrWhiteSpace(thirdToken)) {
+            return false;
+        }
+
+        var combined = $"{firstToken}_{secondToken}_{thirdToken}";
+        return TryAddKnownCompoundPackRoutingTokenCandidate(tokens, seen, combined, maxTokens);
+    }
+
+    private static bool TryAddKnownCompoundPackRoutingTokenCandidate(
+        List<string> tokens,
+        HashSet<string> seen,
+        string combined,
+        int maxTokens) {
+        var compact = NormalizeCompactToken(combined.AsSpan());
+        if (compact.Length == 0 || !CompoundPackRoutingTokenCompacts.Contains(compact)) {
+            return false;
+        }
+
+        var separatorNormalized = NormalizeRoutingSeparatorToken(combined);
+        if (TryAddRoutingTokenCandidate(tokens, seen, separatorNormalized, maxTokens, allowShortAsciiCandidate: false)) {
+            return true;
+        }
+
+        return TryAddRoutingTokenCandidate(tokens, seen, compact, maxTokens, allowShortAsciiCandidate: false);
     }
 
     private static bool TryAddRoutingTokenCandidate(List<string> tokens, HashSet<string> seen, string candidate, int maxTokens, bool allowShortAsciiCandidate) {
