@@ -336,6 +336,10 @@ internal sealed partial class ChatServiceSession {
             }
             if (packHint.Length > 0) {
                 sb.Append(" | pack: ").Append(packHint);
+                var packAliases = ResolvePlannerPackAliases(packHint);
+                if (packAliases.Length > 0) {
+                    sb.Append(" | pack_aliases: ").Append(string.Join(", ", packAliases));
+                }
             }
             if (domainIntentFamily.Length > 0) {
                 sb.Append(" | family: ").Append(domainIntentFamily);
@@ -411,6 +415,31 @@ internal sealed partial class ChatServiceSession {
         }
 
         return string.Empty;
+    }
+
+    private static string[] ResolvePlannerPackAliases(string packHint) {
+        var normalizedPackHint = (packHint ?? string.Empty).Trim();
+        if (normalizedPackHint.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var aliases = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { normalizedPackHint };
+        foreach (var token in BuildRoutingPackSearchTokens(normalizedPackHint)) {
+            var alias = (token ?? string.Empty).Trim();
+            if (alias.Length == 0 || !seen.Add(alias)) {
+                continue;
+            }
+
+            aliases.Add(alias);
+        }
+
+        if (aliases.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        aliases.Sort(StringComparer.OrdinalIgnoreCase);
+        return aliases.ToArray();
     }
 
     private static bool TryResolvePackHintFromToolNamePrefix(string toolName, out string packHint) {
