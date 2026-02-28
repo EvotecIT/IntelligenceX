@@ -157,10 +157,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
             max_new_visuals: {{value}}
             """;
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+        var userRequestHeaderIndex = text.IndexOf("User request:", StringComparison.Ordinal);
+        Assert.True(userRequestHeaderIndex >= 0, "Prompt should include a User request section.");
+        var contractHeader = text.Substring(0, userRequestHeaderIndex);
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("max_new_visuals: 3", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("include at most 3 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain($"max_new_visuals: {value}", contractHeader, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -178,6 +182,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("max_new_visuals: 1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("include at most 1 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_TreatsMarkerAsVisualContractWhenOverridesAreInvalid() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            max_new_visuals:
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_new_visuals: 0", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

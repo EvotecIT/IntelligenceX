@@ -301,11 +301,12 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static ProactiveVisualizationPolicy ResolveProactiveVisualizationPolicy(string userRequest, string assistantDraft) {
+        var requestHasProactiveVisualizationMarker = ContainsProactiveVisualizationMarker(userRequest);
         var requestHasVisualContractSignal = ContainsVisualContractSignal(userRequest);
         var hasStructuredOverrides = TryReadProactiveVisualizationOverridesFromRequestText(userRequest, out var hasAllowNewVisualsOverride,
             out var allowNewVisualsFromOverride, out var hasPreferredVisualOverride, out var preferredVisualType,
             out var hasMaxNewVisualsOverride, out var maxNewVisualsOverride);
-        var requestHasVisualContract = requestHasVisualContractSignal || hasStructuredOverrides;
+        var requestHasVisualContract = requestHasProactiveVisualizationMarker || requestHasVisualContractSignal || hasStructuredOverrides;
         var hasSpecificPreferredVisualType = hasPreferredVisualOverride
             && !string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var baseAllowNewVisuals = hasAllowNewVisualsOverride
@@ -330,6 +331,11 @@ internal sealed partial class ChatServiceSession {
             PreferredVisualType: preferredVisualType,
             HasMaxNewVisualsOverride: hasMaxNewVisualsOverride,
             MaxNewVisuals: maxNewVisuals);
+    }
+
+    private static bool ContainsProactiveVisualizationMarker(string? text) {
+        var value = text ?? string.Empty;
+        return value.IndexOf(ProactiveVisualizationMarker, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static bool ContainsVisualContractSignal(string? text) {
