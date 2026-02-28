@@ -224,6 +224,7 @@ internal sealed partial class ChatServiceSession {
     private static bool ContainsDomainSignalToken(string text, string token) {
         var normalizedText = (text ?? string.Empty).Trim();
         var normalizedToken = NormalizeDomainSignalTokenValue(token);
+        var compactToken = NormalizeCompactToken(normalizedToken.AsSpan());
         if (normalizedText.Length == 0 || normalizedToken.Length == 0) {
             return false;
         }
@@ -254,6 +255,11 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (string.Equals(candidate, normalizedToken, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+
+            if (compactToken.Length > 0
+                && string.Equals(NormalizeCompactToken(candidate.AsSpan()), compactToken, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
         }
