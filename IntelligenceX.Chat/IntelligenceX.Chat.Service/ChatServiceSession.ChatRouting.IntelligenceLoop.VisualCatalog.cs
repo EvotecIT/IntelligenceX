@@ -77,6 +77,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return PreferredVisualTypeByToken.TryGetValue(normalized, out preferredVisualType);
+        if (!PreferredVisualTypeByToken.TryGetValue(normalized, out var resolved) || string.IsNullOrWhiteSpace(resolved)) {
+            return false;
+        }
+
+        preferredVisualType = resolved;
+        return true;
     }
 }
