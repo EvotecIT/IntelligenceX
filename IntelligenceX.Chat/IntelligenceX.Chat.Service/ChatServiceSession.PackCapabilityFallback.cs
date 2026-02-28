@@ -1874,13 +1874,83 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string? TryExtractDomainHintFromUserRequest(string? userRequest) {
-        var preferred = TryExtractHostHintFromUserRequest(userRequest);
-        if (string.IsNullOrWhiteSpace(preferred)) {
+        var text = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
+        if (text.Length == 0) {
             return null;
         }
 
-        var normalized = preferred.Trim().TrimEnd('.');
-        return IsLikelyDomainName(normalized) ? normalized : null;
+        var bestCandidate = string.Empty;
+        var bestScore = 0;
+        var tokenStart = -1;
+        for (var i = 0; i <= text.Length; i++) {
+            var ch = i < text.Length ? text[i] : '\0';
+            var tokenChar = i < text.Length
+                            && (char.IsLetterOrDigit(ch) || ch == '.' || ch == '-' || ch == '_');
+            if (tokenChar) {
+                if (tokenStart < 0) {
+                    tokenStart = i;
+                }
+                continue;
+            }
+
+            if (tokenStart < 0) {
+                continue;
+            }
+
+            var candidate = text.Substring(tokenStart, i - tokenStart).Trim().TrimEnd('.');
+            tokenStart = -1;
+            var score = ScoreDomainHintCandidate(candidate);
+            if (score <= bestScore) {
+                continue;
+            }
+
+            bestScore = score;
+            bestCandidate = candidate;
+        }
+
+        return bestScore > 0 ? bestCandidate : null;
+    }
+
+    private static int ScoreDomainHintCandidate(string candidate) {
+        var normalized = (candidate ?? string.Empty).Trim().TrimEnd('.');
+        if (!IsLikelyDomainName(normalized) || LooksLikeHostFqdnCandidate(normalized)) {
+            return 0;
+        }
+
+        var score = 1;
+        var labels = normalized.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (labels.Length >= 2) {
+            score += Math.Min(labels.Length, 3);
+        }
+
+        var rootLabel = labels.Length > 0 ? labels[0] : string.Empty;
+        if (rootLabel.Length >= 4) {
+            score += 1;
+        }
+
+        var tldLabel = labels.Length > 1 ? labels[^1] : string.Empty;
+        if (tldLabel.Length is >= 2 and <= 6) {
+            score += 1;
+        }
+
+        return score;
+    }
+
+    private static bool LooksLikeHostFqdnCandidate(string candidate) {
+        var normalized = (candidate ?? string.Empty).Trim().TrimEnd('.');
+        var dotIndex = normalized.IndexOf('.', StringComparison.Ordinal);
+        if (dotIndex <= 0) {
+            return false;
+        }
+
+        var leftLabel = normalized[..dotIndex];
+        for (var i = 0; i < leftLabel.Length; i++) {
+            if (char.IsDigit(leftLabel[i])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ShouldPreferAdDiscoveryBeforeEventlogFanOut(
