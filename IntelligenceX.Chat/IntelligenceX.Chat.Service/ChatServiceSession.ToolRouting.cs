@@ -62,6 +62,25 @@ internal sealed partial class ChatServiceSession {
         "public_domain",
         "act_domain_scope_public"
     };
+    private static readonly string[] ActiveDirectoryToolNamePrefixes = new[] { "ad_", "active_directory_", "adplayground_" };
+    private static readonly string[] ActiveDirectoryToolNameCompactPrefixes = new[] { "activedirectory", "adplayground" };
+    private static readonly string[] PublicDomainToolNamePrefixes = new[] {
+        "dnsclientx_",
+        "dns_client_x_",
+        "domaindetective_",
+        "domain_detective_"
+    };
+    private static readonly string[] PublicDomainToolNameCompactPrefixes = new[] { "dnsclientx", "domaindetective" };
+    private static readonly string[] EventLogToolNamePrefixes = new[] { "eventlog_", "event_log_" };
+    private static readonly string[] EventLogToolNameCompactPrefixes = new[] { "eventlog" };
+    private static readonly string[] SystemToolNamePrefixes = new[] { "system_", "computerx_", "wsl_" };
+    private static readonly string[] SystemToolNameCompactPrefixes = new[] { "computerx", "wsl" };
+    private static readonly string[] TestimoXToolNamePrefixes = new[] { "testimox_", "testimo_x_" };
+    private static readonly string[] TestimoXToolNameCompactPrefixes = new[] { "testimox" };
+    private static readonly string[] DomainDetectiveToolNamePrefixes = new[] { "domaindetective_", "domain_detective_" };
+    private static readonly string[] DomainDetectiveToolNameCompactPrefixes = new[] { "domaindetective" };
+    private static readonly string[] DnsClientXToolNamePrefixes = new[] { "dnsclientx_", "dns_client_x_" };
+    private static readonly string[] DnsClientXToolNameCompactPrefixes = new[] { "dnsclientx" };
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
         var list = new List<ToolRoutingInsight>(selectedDefs.Count);
@@ -393,16 +412,83 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool IsAdDomainIntentToolName(string toolName) {
-        return toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
-               || toolName.StartsWith("active_directory_", StringComparison.OrdinalIgnoreCase)
-               || toolName.StartsWith("adplayground_", StringComparison.OrdinalIgnoreCase);
+        return MatchesToolNameLiteralOrCompactPrefix(toolName, ActiveDirectoryToolNamePrefixes, ActiveDirectoryToolNameCompactPrefixes);
     }
 
     private static bool IsPublicDomainIntentToolName(string toolName) {
-        return toolName.StartsWith("dnsclientx_", StringComparison.OrdinalIgnoreCase)
-               || toolName.StartsWith("dns_client_x_", StringComparison.OrdinalIgnoreCase)
-               || toolName.StartsWith("domaindetective_", StringComparison.OrdinalIgnoreCase)
-               || toolName.StartsWith("domain_detective_", StringComparison.OrdinalIgnoreCase);
+        return MatchesToolNameLiteralOrCompactPrefix(toolName, PublicDomainToolNamePrefixes, PublicDomainToolNameCompactPrefixes);
+    }
+
+    private static bool IsEventLogToolName(string toolName) {
+        return MatchesToolNameLiteralOrCompactPrefix(toolName, EventLogToolNamePrefixes, EventLogToolNameCompactPrefixes);
+    }
+
+    private static bool IsSystemToolName(string toolName) {
+        return MatchesToolNameLiteralOrCompactPrefix(toolName, SystemToolNamePrefixes, SystemToolNameCompactPrefixes);
+    }
+
+    private static bool IsTestimoXToolName(string toolName) {
+        return MatchesToolNameLiteralOrCompactPrefix(toolName, TestimoXToolNamePrefixes, TestimoXToolNameCompactPrefixes);
+    }
+
+    private static bool IsDomainDetectiveToolName(string toolName) {
+        return MatchesToolNameLiteralOrCompactPrefix(toolName, DomainDetectiveToolNamePrefixes, DomainDetectiveToolNameCompactPrefixes);
+    }
+
+    private static bool IsDnsClientXToolName(string toolName) {
+        return MatchesToolNameLiteralOrCompactPrefix(toolName, DnsClientXToolNamePrefixes, DnsClientXToolNameCompactPrefixes);
+    }
+
+    private static bool MatchesToolNameLiteralOrCompactPrefix(string toolName, string[] literalPrefixes, string[] compactPrefixes) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return false;
+        }
+
+        if (StartsWithAnyPrefix(normalizedToolName, literalPrefixes)) {
+            return true;
+        }
+
+        if (compactPrefixes.Length == 0) {
+            return false;
+        }
+
+        var compactToolName = NormalizeCompactToken(normalizedToolName.AsSpan());
+        if (compactToolName.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < compactPrefixes.Length; i++) {
+            var compactPrefix = compactPrefixes[i];
+            if (compactPrefix.Length == 0) {
+                continue;
+            }
+
+            if (compactToolName.StartsWith(compactPrefix, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool StartsWithAnyPrefix(string value, string[] prefixes) {
+        if (string.IsNullOrWhiteSpace(value) || prefixes is null || prefixes.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < prefixes.Length; i++) {
+            var prefix = prefixes[i];
+            if (string.IsNullOrWhiteSpace(prefix)) {
+                continue;
+            }
+
+            if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string ResolveDomainIntentFamily(ToolDefinition definition) {
