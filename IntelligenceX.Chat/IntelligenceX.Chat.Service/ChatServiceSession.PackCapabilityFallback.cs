@@ -592,34 +592,21 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveCrossPublicDnsCandidateTool(sourceTool, sourceToolDefinition, out var candidateTool)) {
+        if (!TryResolveCrossPublicRoutingPreference(sourceTool, sourceToolDefinition, out var preferredScope, out var preferredOperation)) {
             reason = "cross_public_dns_source_tool_not_supported";
             return false;
         }
 
-        if (priorCalledTools.Contains(candidateTool)) {
-            reason = "cross_public_dns_candidate_already_called";
-            return false;
-        }
-
-        if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+        if (!TryResolveCrossPackCandidateToolByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "dnsclientx",
+                preferredScope: preferredScope,
+                preferredOperation: preferredOperation,
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidateTool,
+                out var toolDefinition)) {
             reason = "cross_public_dns_candidate_unavailable";
-            return false;
-        }
-
-        if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
-            || !PackIdMatches(candidatePackIdRaw, "dnsclientx")) {
-            reason = "cross_public_dns_candidate_not_in_dnsclientx_pack";
-            return false;
-        }
-
-        var mutability = ResolveStructuredNextActionMutability(
-            declaredMutability: ActionMutability.Unknown,
-            toolName: candidateTool,
-            toolDefinition: toolDefinition,
-            mutatingToolHintsByName: mutatingToolHintsByName);
-        if (mutability != ActionMutability.ReadOnly) {
-            reason = "cross_public_dns_candidate_not_read_only";
             return false;
         }
 
@@ -630,10 +617,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         var fallbackArguments = new JsonObject(StringComparer.Ordinal);
-        if (string.Equals(candidateTool, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)) {
-            fallbackArguments.Add("target", name);
+        var preferTarget = string.Equals(preferredScope, "host", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(preferredOperation, "probe", StringComparison.OrdinalIgnoreCase);
+        if (preferTarget) {
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, name, "target", "host", "name", "domain")) {
+                fallbackArguments.Add("target", name);
+            }
         } else {
-            fallbackArguments.Add("name", name);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, name, "name", "domain", "host", "target")) {
+                fallbackArguments.Add("name", name);
+            }
         }
         var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
         if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
@@ -686,52 +679,45 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveCrossPublicDomainCandidateTool(sourceTool, sourceToolDefinition, out var candidateTool)) {
+        if (!TryResolveCrossPublicRoutingPreference(sourceTool, sourceToolDefinition, out var preferredScope, out var preferredOperation)) {
             reason = "cross_public_domain_source_tool_not_supported";
             return false;
         }
 
-        if (priorCalledTools.Contains(candidateTool)) {
-            reason = "cross_public_domain_candidate_already_called";
-            return false;
-        }
-
-        if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+        if (!TryResolveCrossPackCandidateToolByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "domaindetective",
+                preferredScope: preferredScope,
+                preferredOperation: preferredOperation,
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidateTool,
+                out var toolDefinition)) {
             reason = "cross_public_domain_candidate_unavailable";
             return false;
         }
 
-        if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
-            || !PackIdMatches(candidatePackIdRaw, "domaindetective")) {
-            reason = "cross_public_domain_candidate_not_in_domaindetective_pack";
-            return false;
-        }
-
-        var mutability = ResolveStructuredNextActionMutability(
-            declaredMutability: ActionMutability.Unknown,
-            toolName: candidateTool,
-            toolDefinition: toolDefinition,
-            mutatingToolHintsByName: mutatingToolHintsByName);
-        if (mutability != ActionMutability.ReadOnly) {
-            reason = "cross_public_domain_candidate_not_read_only";
-            return false;
-        }
-
         var fallbackArguments = new JsonObject(StringComparer.Ordinal);
-        if (string.Equals(candidateTool, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
+        var preferHostScope = string.Equals(preferredScope, "host", StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(preferredOperation, "probe", StringComparison.OrdinalIgnoreCase);
+        if (preferHostScope) {
             var host = ResolveDnsClientXNameHint(partialScopeHints);
             if (string.IsNullOrWhiteSpace(host)) {
                 reason = "cross_public_domain_missing_host_hint";
                 return false;
             }
-            fallbackArguments.Add("host", host);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, host, "host", "target", "name", "domain")) {
+                fallbackArguments.Add("host", host);
+            }
         } else {
             var domain = ResolveDomainDetectiveDomainHint(partialScopeHints);
             if (string.IsNullOrWhiteSpace(domain)) {
                 reason = "cross_public_domain_missing_domain_hint";
                 return false;
             }
-            fallbackArguments.Add("domain", domain);
+            if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, domain, "domain", "name", "host", "target")) {
+                fallbackArguments.Add("domain", domain);
+            }
         }
 
         var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
@@ -887,11 +873,106 @@ internal sealed partial class ChatServiceSession {
         return IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation);
     }
 
-    private static bool TryResolveCrossPublicDnsCandidateTool(
+    private bool TryResolveCrossPackCandidateToolByRouting(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string> priorCalledTools,
+        string targetPackId,
+        string preferredScope,
+        string preferredOperation,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out string candidateTool,
+        out ToolDefinition toolDefinition) {
+        candidateTool = string.Empty;
+        toolDefinition = null!;
+
+        var bestScore = int.MinValue;
+        for (var i = 0; i < toolDefinitions.Count; i++) {
+            var candidateDefinition = toolDefinitions[i];
+            var name = (candidateDefinition.Name ?? string.Empty).Trim();
+            if (name.Length == 0
+                || priorCalledTools.Contains(name)
+                || IsHintlessSafeFallbackCandidate(name)) {
+                continue;
+            }
+
+            if (!_toolPackIdsByToolName.TryGetValue(name, out var candidatePackIdRaw)
+                || !PackIdMatches(candidatePackIdRaw, targetPackId)) {
+                continue;
+            }
+
+            var mutability = ResolveStructuredNextActionMutability(
+                declaredMutability: ActionMutability.Unknown,
+                toolName: name,
+                toolDefinition: candidateDefinition,
+                mutatingToolHintsByName: mutatingToolHintsByName);
+            if (mutability != ActionMutability.ReadOnly) {
+                continue;
+            }
+
+            var routing = ToolSelectionMetadata.ResolveRouting(candidateDefinition, toolType: null);
+            var operation = (routing.Operation ?? string.Empty).Trim();
+            if (!IsCrossHostFallbackReadOnlyOperation(operation)) {
+                continue;
+            }
+
+            var score = 0;
+            var scope = (routing.Scope ?? string.Empty).Trim();
+            if (string.Equals(scope, preferredScope, StringComparison.OrdinalIgnoreCase)) {
+                score += 500;
+            } else if (string.Equals(scope, "general", StringComparison.OrdinalIgnoreCase)) {
+                score += 50;
+            }
+
+            if (string.Equals(operation, preferredOperation, StringComparison.OrdinalIgnoreCase)) {
+                score += 300;
+            } else if (string.Equals(preferredOperation, "probe", StringComparison.OrdinalIgnoreCase)
+                       && string.Equals(operation, "query", StringComparison.OrdinalIgnoreCase)) {
+                score += 120;
+            } else if (string.Equals(preferredOperation, "query", StringComparison.OrdinalIgnoreCase)
+                       && string.Equals(operation, "probe", StringComparison.OrdinalIgnoreCase)) {
+                score += 120;
+            }
+
+            if (TryGetToolRequiredArgumentCount(candidateDefinition, out var requiredArgumentCount)) {
+                if (requiredArgumentCount == 0) {
+                    score += 50;
+                } else if (requiredArgumentCount == 1) {
+                    score += 25;
+                }
+            }
+
+            if (ToolDefinitionHasInputProperty(candidateDefinition, "name")
+                || ToolDefinitionHasInputProperty(candidateDefinition, "target")
+                || ToolDefinitionHasInputProperty(candidateDefinition, "domain")
+                || ToolDefinitionHasInputProperty(candidateDefinition, "host")) {
+                score += 50;
+            }
+
+            if (score < bestScore) {
+                continue;
+            }
+
+            if (score == bestScore
+                && candidateTool.Length > 0
+                && StringComparer.OrdinalIgnoreCase.Compare(name, candidateTool) >= 0) {
+                continue;
+            }
+
+            bestScore = score;
+            candidateTool = name;
+            toolDefinition = candidateDefinition;
+        }
+
+        return candidateTool.Length > 0;
+    }
+
+    private static bool TryResolveCrossPublicRoutingPreference(
         string sourceTool,
         ToolDefinition? sourceToolDefinition,
-        out string candidateTool) {
-        candidateTool = string.Empty;
+        out string preferredScope,
+        out string preferredOperation) {
+        preferredScope = string.Empty;
+        preferredOperation = string.Empty;
         if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)
             || !IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation)) {
             return false;
@@ -899,46 +980,59 @@ internal sealed partial class ChatServiceSession {
 
         var scope = (routingInfo.Scope ?? string.Empty).Trim();
         if (string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)) {
-            candidateTool = "dnsclientx_ping";
+            preferredScope = "host";
+            preferredOperation = "probe";
             return true;
         }
 
         if (string.Equals(scope, "domain", StringComparison.OrdinalIgnoreCase)) {
-            candidateTool = "dnsclientx_query";
+            preferredScope = "domain";
+            preferredOperation = "query";
             return true;
         }
 
-        candidateTool = string.Equals((routingInfo.Operation ?? string.Empty).Trim(), "probe", StringComparison.OrdinalIgnoreCase)
-            ? "dnsclientx_ping"
-            : "dnsclientx_query";
+        preferredOperation = string.Equals((routingInfo.Operation ?? string.Empty).Trim(), "probe", StringComparison.OrdinalIgnoreCase)
+            ? "probe"
+            : "query";
+        preferredScope = string.Equals(preferredOperation, "probe", StringComparison.OrdinalIgnoreCase)
+            ? "host"
+            : "domain";
         return true;
     }
 
-    private static bool TryResolveCrossPublicDomainCandidateTool(
-        string sourceTool,
-        ToolDefinition? sourceToolDefinition,
-        out string candidateTool) {
-        candidateTool = string.Empty;
-        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)
-            || !IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation)) {
+    private static bool TryAddFallbackHintArgumentForCandidate(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        string value,
+        params string[] preferredKeys) {
+        if (toolDefinition.Parameters?.GetObject("properties") is not JsonObject properties) {
             return false;
         }
 
-        var scope = (routingInfo.Scope ?? string.Empty).Trim();
-        if (string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)) {
-            candidateTool = "domaindetective_network_probe";
+        for (var i = 0; i < preferredKeys.Length; i++) {
+            var key = (preferredKeys[i] ?? string.Empty).Trim();
+            if (key.Length == 0 || !TryGetToolSchemaProperty(properties, key, out _)) {
+                continue;
+            }
+
+            arguments[key] = JsonValue.From(value);
             return true;
         }
 
-        if (string.Equals(scope, "domain", StringComparison.OrdinalIgnoreCase)) {
-            candidateTool = "domaindetective_domain_summary";
-            return true;
+        return false;
+    }
+
+    private static bool ToolDefinitionHasInputProperty(ToolDefinition toolDefinition, string propertyName) {
+        var key = (propertyName ?? string.Empty).Trim();
+        if (key.Length == 0) {
+            return false;
         }
 
-        candidateTool = string.Equals((routingInfo.Operation ?? string.Empty).Trim(), "probe", StringComparison.OrdinalIgnoreCase)
-            ? "domaindetective_network_probe"
-            : "domaindetective_domain_summary";
-        return true;
+        if (toolDefinition.Parameters?.GetObject("properties") is not JsonObject properties) {
+            return false;
+        }
+
+        return TryGetToolSchemaProperty(properties, key, out _);
     }
 
     private static bool TryResolveSourceRoutingInfo(
