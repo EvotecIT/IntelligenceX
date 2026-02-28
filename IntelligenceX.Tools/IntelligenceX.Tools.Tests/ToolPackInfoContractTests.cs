@@ -217,7 +217,9 @@ public class ToolPackInfoContractTests {
 
             if (string.Equals(@case.Pack, "active_directory", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(@case.Pack, "eventlog", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(@case.Pack, "domaindetective", StringComparison.OrdinalIgnoreCase)) {
+                || string.Equals(@case.Pack, "domaindetective", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(@case.Pack, "system", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(@case.Pack, "testimox", StringComparison.OrdinalIgnoreCase)) {
                 Assert.True(entityHandoffs.GetArrayLength() > 0);
             }
         }
@@ -250,6 +252,60 @@ public class ToolPackInfoContractTests {
         var targetTools = ReadStringArray(handoff.GetProperty("target_tools"));
         Assert.Contains("ad_scope_discovery", targetTools, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_directory_discovery_diagnostics", targetTools, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SystemPackInfo_ShouldExposeStructuredCrossPackHandoffs() {
+        var tool = new SystemPackInfoTool(new SystemToolOptions());
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("system", root.GetProperty("pack").GetString());
+
+        var entityHandoffs = root.GetProperty("entity_handoffs");
+        Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+        Assert.True(entityHandoffs.GetArrayLength() > 0);
+
+        var hostScope = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "ad_or_eventlog_host_to_system_scope", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, hostScope.ValueKind);
+        Assert.Contains("ad_scope_discovery", ReadStringArray(hostScope.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_info", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+
+        var patchFollowUp = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "system_patch_findings_to_ad_eventlog_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, patchFollowUp.ValueKind);
+        Assert.Contains("system_patch_compliance", ReadStringArray(patchFollowUp.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_object_resolve", ReadStringArray(patchFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TestimoXPackInfo_ShouldExposeStructuredCrossPackHandoffs() {
+        var tool = new TestimoXPackInfoTool(new TestimoXToolOptions { Enabled = true });
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("testimox", root.GetProperty("pack").GetString());
+
+        var entityHandoffs = root.GetProperty("entity_handoffs");
+        Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
+        Assert.True(entityHandoffs.GetArrayLength() > 0);
+
+        var scopeHandoff = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "ad_scope_to_testimox_execution_scope", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, scopeHandoff.ValueKind);
+        Assert.Contains("ad_scope_discovery", ReadStringArray(scopeHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("testimox_rules_run", ReadStringArray(scopeHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+
+        var followUpHandoff = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "testimox_findings_to_ad_system_eventlog_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, followUpHandoff.ValueKind);
+        Assert.Contains("testimox_rules_run", ReadStringArray(followUpHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_object_resolve", ReadStringArray(followUpHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
