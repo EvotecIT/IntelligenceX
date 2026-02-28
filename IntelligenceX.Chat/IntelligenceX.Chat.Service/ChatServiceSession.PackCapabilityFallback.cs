@@ -496,6 +496,7 @@ internal sealed partial class ChatServiceSession {
                     sourceToolDefinition: sourceToolDefinition,
                     partialScopeHints: partialScopeHints,
                     partialScopeReason: partialScopeReason,
+                    userRequest: userRequest,
                     hasSourceFailureSignal: hasSourceFailureSignal,
                     mutatingToolHintsByName: mutatingToolHintsByName,
                     out toolCall,
@@ -1756,6 +1757,7 @@ internal sealed partial class ChatServiceSession {
         ToolDefinition? sourceToolDefinition,
         JsonObject partialScopeHints,
         string partialScopeReason,
+        string? userRequest,
         bool hasSourceFailureSignal,
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out ToolCall toolCall,
@@ -1774,7 +1776,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var domainName = ResolveDomainDetectiveDomainHint(partialScopeHints);
+        var domainName = ResolveDomainDetectiveDomainHint(partialScopeHints)
+                         ?? TryExtractDomainHintFromUserRequest(userRequest);
         if (string.IsNullOrWhiteSpace(domainName)) {
             reason = "cross_system_ad_discovery_missing_domain_hint";
             return false;
@@ -1862,6 +1865,16 @@ internal sealed partial class ChatServiceSession {
                         ?? ReadNonEmptyHint(hints, "name")
                         ?? ReadNonEmptyHint(hints, "target")
                         ?? ReadNonEmptyHint(hints, "host");
+        if (string.IsNullOrWhiteSpace(preferred)) {
+            return null;
+        }
+
+        var normalized = preferred.Trim().TrimEnd('.');
+        return IsLikelyDomainName(normalized) ? normalized : null;
+    }
+
+    private static string? TryExtractDomainHintFromUserRequest(string? userRequest) {
+        var preferred = TryExtractHostHintFromUserRequest(userRequest);
         if (string.IsNullOrWhiteSpace(preferred)) {
             return null;
         }
