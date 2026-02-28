@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -222,7 +223,19 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (TryResolvePreferredVisualTypeFromParsedJsonSignal(text, out preferredVisualType, out var parsedJsonCandidate)) {
+            return true;
+        }
+
+        if (parsedJsonCandidate) {
+            return false;
+        }
+
         var value = text.AsSpan();
+        if (!ContainsLikelyJsonEnvelope(value)) {
+            return false;
+        }
+
         if (LooksLikeNetworkJsonVisualContract(value)) {
             preferredVisualType = NetworkVisualType;
             return true;
@@ -241,8 +254,107 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
+    private static bool TryResolvePreferredVisualTypeFromParsedJsonSignal(
+        string text,
+        out string preferredVisualType,
+        out bool parsedJsonCandidate) {
+        preferredVisualType = string.Empty;
+        parsedJsonCandidate = false;
+        var value = (text ?? string.Empty).Trim();
+        if (value.Length < 2) {
+            return false;
+        }
+
+        if (TryResolvePreferredVisualTypeFromJsonCandidate(value.AsSpan(), out preferredVisualType, out var parsedCandidate)) {
+            parsedJsonCandidate = parsedCandidate;
+            return true;
+        }
+
+        parsedJsonCandidate = parsedCandidate;
+
+        var lineStart = 0;
+        var content = value.AsSpan();
+        while (lineStart < content.Length) {
+            ReadOnlySpan<char> line;
+            lineStart = ReadNextLine(content, lineStart, out line);
+            if (TryResolvePreferredVisualTypeFromJsonCandidate(line.Trim(), out preferredVisualType, out parsedCandidate)) {
+                parsedJsonCandidate = true;
+                return true;
+            }
+
+            parsedJsonCandidate = parsedJsonCandidate || parsedCandidate;
+        }
+
+        return false;
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromJsonCandidate(
+        ReadOnlySpan<char> candidate,
+        out string preferredVisualType,
+        out bool parsedSuccessfully) {
+        preferredVisualType = string.Empty;
+        parsedSuccessfully = false;
+        if (!LooksLikeJsonContainer(candidate)) {
+            return false;
+        }
+
+        try {
+            using var document = JsonDocument.Parse(candidate.ToString());
+            parsedSuccessfully = true;
+            return TryResolvePreferredVisualTypeFromJsonElement(document.RootElement, out preferredVisualType);
+        } catch (JsonException) {
+            return false;
+        }
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromJsonElement(
+        JsonElement element,
+        out string preferredVisualType) {
+        preferredVisualType = string.Empty;
+        if (element.ValueKind == JsonValueKind.Object) {
+            if (LooksLikeNetworkJsonVisualContract(element)) {
+                preferredVisualType = NetworkVisualType;
+                return true;
+            }
+
+            if (LooksLikeChartJsonVisualContract(element)) {
+                preferredVisualType = ChartVisualType;
+                return true;
+            }
+
+            if (LooksLikeTableJsonVisualContract(element)) {
+                preferredVisualType = TableVisualType;
+                return true;
+            }
+
+            foreach (var property in element.EnumerateObject()) {
+                if (TryResolvePreferredVisualTypeFromJsonElement(property.Value, out preferredVisualType)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (element.ValueKind != JsonValueKind.Array) {
+            return false;
+        }
+
+        foreach (var item in element.EnumerateArray()) {
+            if (TryResolvePreferredVisualTypeFromJsonElement(item, out preferredVisualType)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool LooksLikeNetworkJsonVisualContract(ReadOnlySpan<char> text) {
         return ContainsJsonArrayProperty(text, "nodes") && ContainsJsonArrayProperty(text, "edges");
+    }
+
+    private static bool LooksLikeNetworkJsonVisualContract(JsonElement element) {
+        return HasJsonArrayProperty(element, "nodes") && HasJsonArrayProperty(element, "edges");
     }
 
     private static bool LooksLikeChartJsonVisualContract(ReadOnlySpan<char> text) {
@@ -253,6 +365,14 @@ internal sealed partial class ChatServiceSession {
         return ContainsJsonArrayProperty(text, "datasets") || ContainsJsonArrayProperty(text, "series");
     }
 
+    private static bool LooksLikeChartJsonVisualContract(JsonElement element) {
+        if (!HasJsonArrayProperty(element, "labels")) {
+            return false;
+        }
+
+        return HasJsonArrayProperty(element, "datasets") || HasJsonArrayProperty(element, "series");
+    }
+
     private static bool LooksLikeTableJsonVisualContract(ReadOnlySpan<char> text) {
         if (!ContainsJsonArrayProperty(text, "rows")) {
             return false;
@@ -261,6 +381,16 @@ internal sealed partial class ChatServiceSession {
         return ContainsJsonArrayProperty(text, "columns")
                || ContainsJsonArrayProperty(text, "headers")
                || ContainsJsonArrayProperty(text, "fields");
+    }
+
+    private static bool LooksLikeTableJsonVisualContract(JsonElement element) {
+        if (!HasJsonArrayProperty(element, "rows")) {
+            return false;
+        }
+
+        return HasJsonArrayProperty(element, "columns")
+               || HasJsonArrayProperty(element, "headers")
+               || HasJsonArrayProperty(element, "fields");
     }
 
     private static bool ContainsJsonArrayProperty(ReadOnlySpan<char> text, string propertyName) {
@@ -300,6 +430,45 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool HasJsonArrayProperty(JsonElement element, string propertyName) {
+        if (element.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(propertyName)) {
+            return false;
+        }
+
+        if (!element.TryGetProperty(propertyName, out var value)) {
+            return false;
+        }
+
+        return value.ValueKind == JsonValueKind.Array;
+    }
+
+    private static bool ContainsLikelyJsonEnvelope(ReadOnlySpan<char> text) {
+        if (LooksLikeJsonContainer(text.Trim())) {
+            return true;
+        }
+
+        var lineStart = 0;
+        while (lineStart < text.Length) {
+            ReadOnlySpan<char> line;
+            lineStart = ReadNextLine(text, lineStart, out line);
+            if (LooksLikeJsonContainer(line.Trim())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeJsonContainer(ReadOnlySpan<char> value) {
+        if (value.Length < 2) {
+            return false;
+        }
+
+        var first = value[0];
+        var last = value[^1];
+        return (first == '{' && last == '}') || (first == '[' && last == ']');
     }
 
     private static bool ContainsMarkdownTableContractSignal(ReadOnlySpan<char> text) {
