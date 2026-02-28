@@ -2575,13 +2575,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         var family = ResolvePackFallbackTelemetryFamily(normalizedReason);
+        var telemetrySourcePack = EncodePackFallbackTelemetryFieldValue(normalizedSourcePack);
+        var telemetryCandidateTool = EncodePackFallbackTelemetryFieldValue(normalizedCandidateTool);
+        var telemetryFamily = EncodePackFallbackTelemetryFieldValue(family);
         return normalizedReason
                + " ix:pack-fallback:v1 source_pack="
-               + normalizedSourcePack
+               + telemetrySourcePack
                + " target_tool="
-               + normalizedCandidateTool
+               + telemetryCandidateTool
                + " family="
-               + family;
+               + telemetryFamily;
     }
 
     private static string ResolvePackFallbackTelemetryFamily(string reason) {
@@ -2611,6 +2614,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         return "general";
+    }
+
+    private static string EncodePackFallbackTelemetryFieldValue(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? "unknown" : Uri.EscapeDataString(normalized);
     }
 
     private static HashSet<string> GetNormalizedPackAliases(string packId) {
