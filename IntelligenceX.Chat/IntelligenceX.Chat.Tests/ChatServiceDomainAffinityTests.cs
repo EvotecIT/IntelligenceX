@@ -383,6 +383,8 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("Por favor revisar DNS publico", "public_domain")]
     [InlineData("Verifier DNS public du domaine", "public_domain")]
     [InlineData("Use adplayground for this domain", "ad_domain")]
+    [InlineData("Use ad_playground for this domain", "ad_domain")]
+    [InlineData("Use ad-playground for this domain", "ad_domain")]
     [InlineData("active_directory diagnostics for this domain", "ad_domain")]
     [InlineData("Run domaindetective checks for this zone", "public_domain")]
     [InlineData("Run domain_detective checks for this zone", "public_domain")]
