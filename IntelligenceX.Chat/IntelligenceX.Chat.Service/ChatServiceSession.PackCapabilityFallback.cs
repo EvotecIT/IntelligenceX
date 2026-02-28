@@ -2303,7 +2303,9 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            arguments[argumentName] = JsonValue.From(new JsonArray().Add(value));
+            var array = new JsonArray();
+            array.Add(value);
+            arguments[argumentName] = JsonValue.From(array);
             return;
         }
     }
