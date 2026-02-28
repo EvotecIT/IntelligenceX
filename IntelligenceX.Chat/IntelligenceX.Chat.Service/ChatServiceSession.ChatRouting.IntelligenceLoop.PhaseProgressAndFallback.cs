@@ -30,6 +30,9 @@ internal sealed partial class ChatServiceSession {
         string PreferredVisualSource,
         bool HasMaxNewVisualsOverride,
         int MaxNewVisuals);
+    private const int PreferredVisualSourceScoreRenderHint = 300;
+    private const int PreferredVisualSourceScoreSummaryMarkdown = 200;
+    private const int PreferredVisualSourceScoreOutputPayload = 100;
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -392,24 +395,171 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        for (var i = toolOutputs.Count - 1; i >= 0; i--) {
+        var bestSourceScore = int.MinValue;
+        var bestRecencyScore = -1;
+        for (var i = 0; i < toolOutputs.Count; i++) {
             var output = toolOutputs[i];
             if (output is null) {
                 continue;
             }
 
-            if (TryResolvePreferredVisualTypeFromVisualContractSignal(output.SummaryMarkdown, out preferredVisualType)
-                && !string.IsNullOrWhiteSpace(preferredVisualType)) {
-                return true;
+            if (TryResolvePreferredVisualTypeFromToolOutputRenderHints(output.RenderJson, out var preferredVisualFromRenderHints)
+                && !string.IsNullOrWhiteSpace(preferredVisualFromRenderHints)
+                && TrySetPreferredVisualTypeCandidate(
+                    candidateVisualType: preferredVisualFromRenderHints,
+                    sourceScore: PreferredVisualSourceScoreRenderHint,
+                    recencyIndex: i,
+                    ref preferredVisualType,
+                    ref bestSourceScore,
+                    ref bestRecencyScore)) {
+                continue;
             }
 
-            if (TryResolvePreferredVisualTypeFromToolOutputPayload(output.Output, out preferredVisualType)
-                && !string.IsNullOrWhiteSpace(preferredVisualType)) {
-                return true;
+            if (TryResolvePreferredVisualTypeFromVisualContractSignal(output.SummaryMarkdown, out var preferredVisualFromSummary)
+                && !string.IsNullOrWhiteSpace(preferredVisualFromSummary)
+                && TrySetPreferredVisualTypeCandidate(
+                    candidateVisualType: preferredVisualFromSummary,
+                    sourceScore: PreferredVisualSourceScoreSummaryMarkdown,
+                    recencyIndex: i,
+                    ref preferredVisualType,
+                    ref bestSourceScore,
+                    ref bestRecencyScore)) {
+                continue;
+            }
+
+            if (TryResolvePreferredVisualTypeFromToolOutputPayload(output.Output, out var preferredVisualFromOutput)
+                && !string.IsNullOrWhiteSpace(preferredVisualFromOutput)) {
+                TrySetPreferredVisualTypeCandidate(
+                    candidateVisualType: preferredVisualFromOutput,
+                    sourceScore: PreferredVisualSourceScoreOutputPayload,
+                    recencyIndex: i,
+                    ref preferredVisualType,
+                    ref bestSourceScore,
+                    ref bestRecencyScore);
             }
         }
 
+        return !string.IsNullOrWhiteSpace(preferredVisualType);
+    }
+
+    private static bool TrySetPreferredVisualTypeCandidate(
+        string candidateVisualType,
+        int sourceScore,
+        int recencyIndex,
+        ref string preferredVisualType,
+        ref int bestSourceScore,
+        ref int bestRecencyScore) {
+        var normalizedVisualType = (candidateVisualType ?? string.Empty).Trim();
+        if (normalizedVisualType.Length == 0) {
+            return false;
+        }
+
+        var normalizedRecency = Math.Max(0, recencyIndex);
+        if (sourceScore < bestSourceScore) {
+            return false;
+        }
+
+        if (sourceScore == bestSourceScore && normalizedRecency < bestRecencyScore) {
+            return false;
+        }
+
+        preferredVisualType = normalizedVisualType;
+        bestSourceScore = sourceScore;
+        bestRecencyScore = normalizedRecency;
+        return true;
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromToolOutputRenderHints(
+        string? renderJson,
+        out string preferredVisualType) {
         preferredVisualType = string.Empty;
+        var payload = (renderJson ?? string.Empty).Trim();
+        if (payload.Length < 2) {
+            return false;
+        }
+
+        try {
+            using var document = JsonDocument.Parse(payload);
+            if (document.RootElement.ValueKind == JsonValueKind.Object) {
+                return TryResolvePreferredVisualTypeFromRenderHint(document.RootElement, out preferredVisualType);
+            }
+
+            if (document.RootElement.ValueKind != JsonValueKind.Array) {
+                return false;
+            }
+
+            foreach (var hint in document.RootElement.EnumerateArray()) {
+                if (hint.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+
+                if (TryResolvePreferredVisualTypeFromRenderHint(hint, out preferredVisualType)) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (JsonException) {
+            preferredVisualType = string.Empty;
+            return false;
+        }
+    }
+
+    private static bool TryResolvePreferredVisualTypeFromRenderHint(
+        JsonElement renderHint,
+        out string preferredVisualType) {
+        preferredVisualType = string.Empty;
+        if (renderHint.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        if (!TryReadJsonStringPropertyIgnoreCase(renderHint, "kind", out var kind)) {
+            return false;
+        }
+
+        if (TryResolvePreferredVisualTypeToken(kind.AsSpan(), out preferredVisualType)) {
+            return true;
+        }
+
+        if (!kind.Equals("code", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!TryReadJsonStringPropertyIgnoreCase(renderHint, "language", out var language)) {
+            return false;
+        }
+
+        return TryResolvePreferredVisualTypeToken(language.AsSpan(), out preferredVisualType);
+    }
+
+    private static bool TryReadJsonStringPropertyIgnoreCase(
+        JsonElement obj,
+        string propertyName,
+        out string value) {
+        value = string.Empty;
+        if (obj.ValueKind != JsonValueKind.Object || string.IsNullOrWhiteSpace(propertyName)) {
+            return false;
+        }
+
+        foreach (var property in obj.EnumerateObject()) {
+            if (!property.NameEquals(propertyName)
+                && !string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (property.Value.ValueKind != JsonValueKind.String) {
+                return false;
+            }
+
+            var candidate = (property.Value.GetString() ?? string.Empty).Trim();
+            if (candidate.Length == 0) {
+                return false;
+            }
+
+            value = candidate;
+            return true;
+        }
+
         return false;
     }
 
