@@ -166,7 +166,14 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
             .Add("dns_endpoint", result.DnsEndpoint)
             .Add("hints_count", result.Summary.Hints.Count);
 
-        return ToolResponse.OkModel(result, meta: meta, summaryMarkdown: summaryMarkdown);
+        return ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: ToolJson.ToJsonObjectSnakeCase(result),
+            meta: meta,
+            summaryMarkdown: summaryMarkdown,
+            render: BuildRenderHints(
+                analysisOverviewCount: result.AnalysisOverview.Count,
+                checksRequestedCount: result.ChecksRequested.Count,
+                hintCount: result.Summary.Hints.Count));
 #endif
     }
 
@@ -210,6 +217,42 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
 
     private static string NormalizeCheckLookupToken(string value) {
         return DomainDetectiveCheckNameCatalog.NormalizeCheckLookupToken(value);
+    }
+
+    private static JsonValue? BuildRenderHints(
+        int analysisOverviewCount,
+        int checksRequestedCount,
+        int hintCount) {
+        var hints = new JsonArray();
+
+        if (analysisOverviewCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "analysis_overview",
+                    new ToolColumn("check", "Check", "string"),
+                    new ToolColumn("has_result", "Has result", "bool"),
+                    new ToolColumn("result_type", "Result type", "string"))
+                .Add("priority", 400));
+        }
+
+        if (checksRequestedCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "checks_requested",
+                    new ToolColumn("value", "Requested check", "string"))
+                .Add("priority", 300));
+        }
+
+        if (hintCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "summary/hints",
+                    new ToolColumn("value", "Hint", "string"))
+                .Add("priority", 200));
+        }
+
+        if (hints.Count == 0) {
+            return null;
+        }
+
+        return JsonValue.From(hints);
     }
 
 #if DOMAINDETECTIVE_ENABLED
