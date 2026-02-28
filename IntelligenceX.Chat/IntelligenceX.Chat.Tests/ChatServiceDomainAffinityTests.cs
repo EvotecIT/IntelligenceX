@@ -388,6 +388,11 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("Run domain_detective checks for this zone", "public_domain")]
     [InlineData("dnsclientx resolver baseline", "public_domain")]
     [InlineData("dns_client_x resolver baseline", "public_domain")]
+    [InlineData("Run SYSVOL replication health checks", "ad_domain")]
+    [InlineData("Check forest trust posture for this domain", "ad_domain")]
+    [InlineData("Run DNSSEC and CAA checks", "public_domain")]
+    [InlineData("Validate WHOIS and BIMI posture", "public_domain")]
+    [InlineData("Check mta-sts and dkim records", "public_domain")]
     [InlineData("act_domain_scope_public", "public_domain")]
     [InlineData("ad_domain", "ad_domain")]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesLanguageNeutralTechnicalSignals(
@@ -509,6 +514,7 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("Need LDAP + MX checks")]
     [InlineData("kerberos DNS MX")]
     [InlineData("act_domain_scope_ad with dns checks")]
+    [InlineData("replication with DNSSEC checks")]
     public void HasConflictingDomainIntentSignalsForTesting_ReturnsTrueForMixedSignals(string input) {
         Assert.True(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
     }
