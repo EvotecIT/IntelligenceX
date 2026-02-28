@@ -20,6 +20,12 @@ internal sealed partial class ChatServiceSession {
     private const string TableVisualType = "table";
     private const string LegacyNetworkVisualType = "visnetwork";
     private const int MaxSupportedProactiveVisualBlocks = 3;
+    private static readonly string[] NetworkJsonNodeAliases = new[] { "nodes", "vertices" };
+    private static readonly string[] NetworkJsonEdgeAliases = new[] { "edges", "links" };
+    private static readonly string[] ChartJsonLabelAliases = new[] { "labels", "categories" };
+    private static readonly string[] ChartJsonSeriesAliases = new[] { "datasets", "series", "data", "values" };
+    private static readonly string[] TableJsonRowAliases = new[] { "rows", "data", "items" };
+    private static readonly string[] TableJsonColumnAliases = new[] { "columns", "headers", "fields" };
 
     private static readonly VisualTypeCatalogEntry[] VisualTypeCatalog = {
         new(
@@ -350,47 +356,75 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeNetworkJsonVisualContract(ReadOnlySpan<char> text) {
-        return ContainsJsonArrayProperty(text, "nodes") && ContainsJsonArrayProperty(text, "edges");
+        return ContainsAnyJsonArrayProperty(text, NetworkJsonNodeAliases)
+               && ContainsAnyJsonArrayProperty(text, NetworkJsonEdgeAliases);
     }
 
     private static bool LooksLikeNetworkJsonVisualContract(JsonElement element) {
-        return HasJsonArrayProperty(element, "nodes") && HasJsonArrayProperty(element, "edges");
+        return HasAnyJsonArrayProperty(element, NetworkJsonNodeAliases)
+               && HasAnyJsonArrayProperty(element, NetworkJsonEdgeAliases);
     }
 
     private static bool LooksLikeChartJsonVisualContract(ReadOnlySpan<char> text) {
-        if (!ContainsJsonArrayProperty(text, "labels")) {
+        if (!ContainsAnyJsonArrayProperty(text, ChartJsonLabelAliases)) {
             return false;
         }
 
-        return ContainsJsonArrayProperty(text, "datasets") || ContainsJsonArrayProperty(text, "series");
+        return ContainsAnyJsonArrayProperty(text, ChartJsonSeriesAliases);
     }
 
     private static bool LooksLikeChartJsonVisualContract(JsonElement element) {
-        if (!HasJsonArrayProperty(element, "labels")) {
+        if (!HasAnyJsonArrayProperty(element, ChartJsonLabelAliases)) {
             return false;
         }
 
-        return HasJsonArrayProperty(element, "datasets") || HasJsonArrayProperty(element, "series");
+        return HasAnyJsonArrayProperty(element, ChartJsonSeriesAliases);
     }
 
     private static bool LooksLikeTableJsonVisualContract(ReadOnlySpan<char> text) {
-        if (!ContainsJsonArrayProperty(text, "rows")) {
+        if (!ContainsAnyJsonArrayProperty(text, TableJsonRowAliases)) {
             return false;
         }
 
-        return ContainsJsonArrayProperty(text, "columns")
-               || ContainsJsonArrayProperty(text, "headers")
-               || ContainsJsonArrayProperty(text, "fields");
+        return ContainsAnyJsonArrayProperty(text, TableJsonColumnAliases);
     }
 
     private static bool LooksLikeTableJsonVisualContract(JsonElement element) {
-        if (!HasJsonArrayProperty(element, "rows")) {
+        if (!HasAnyJsonArrayProperty(element, TableJsonRowAliases)) {
             return false;
         }
 
-        return HasJsonArrayProperty(element, "columns")
-               || HasJsonArrayProperty(element, "headers")
-               || HasJsonArrayProperty(element, "fields");
+        return HasAnyJsonArrayProperty(element, TableJsonColumnAliases);
+    }
+
+    private static bool ContainsAnyJsonArrayProperty(ReadOnlySpan<char> text, string[] propertyNames) {
+        if (propertyNames is null || propertyNames.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < propertyNames.Length; i++) {
+            var propertyName = propertyNames[i];
+            if (ContainsJsonArrayProperty(text, propertyName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasAnyJsonArrayProperty(JsonElement element, string[] propertyNames) {
+        if (propertyNames is null || propertyNames.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < propertyNames.Length; i++) {
+            var propertyName = propertyNames[i];
+            if (HasJsonArrayProperty(element, propertyName)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ContainsJsonArrayProperty(ReadOnlySpan<char> text, string propertyName) {
