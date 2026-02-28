@@ -324,11 +324,38 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_NormalizesGraphPreferredVisualAlias() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            preferred_visual: graph
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: request", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_ParsesPreferredVisualTypeWithInlineComment() {
         var request = """
             [Proactive visualization guidance]
             ix:proactive-visualization:v1
             preferred_visual_type: chart # keep compact
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_NormalizesPlotPreferredVisualAlias() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            preferred_visual_type: plot
             """;
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
@@ -348,6 +375,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("If preferred_visual is set, prefer that visual format", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_NormalizesDatatablePreferredVisualAlias() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            preferred_visual: datatable
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: request", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
