@@ -503,13 +503,15 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (TryReadJsonStringPropertyIgnoreCase(renderHint, "kind", out var kind)
-            && TryResolvePreferredVisualTypeToken(kind.AsSpan(), out preferredVisualType)) {
+        if (!TryReadJsonStringPropertyIgnoreCase(renderHint, "kind", out var kind)) {
+            return false;
+        }
+
+        if (TryResolvePreferredVisualTypeToken(kind.AsSpan(), out preferredVisualType)) {
             return true;
         }
 
-        if (!TryReadJsonStringPropertyIgnoreCase(renderHint, "kind", out kind)
-            || !kind.Equals("code", StringComparison.OrdinalIgnoreCase)) {
+        if (!kind.Equals("code", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 

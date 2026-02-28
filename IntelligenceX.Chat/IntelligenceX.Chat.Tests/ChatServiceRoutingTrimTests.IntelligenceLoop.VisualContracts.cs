@@ -111,6 +111,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_InferPreferredVisualFromCodeRenderHintLanguageFallback() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var outputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "c1",
+                Output = "{\"ok\":true}",
+                RenderJson = "{\"kind\":\"code\",\"language\":\"chart\",\"content\":\"{}\"}",
+                Ok = true
+            }
+        };
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...", outputs);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_PrefersToolOutputRenderHintsOverPayloadAliasesWhenVisualsAreAllowed() {
         var request = """
             [Proactive visualization guidance]
