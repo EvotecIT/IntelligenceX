@@ -46,6 +46,41 @@ public sealed class DomainDetectiveChecksCatalogToolTests {
             aliases,
             static node => string.Equals(node.GetProperty("token").GetString(), "NAMESERVERS", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(node.GetProperty("canonical").GetString(), "NS", StringComparison.OrdinalIgnoreCase));
+        var checkRows = root.GetProperty("check_rows").EnumerateArray().ToArray();
+        Assert.Equal(supportedChecks.Length, checkRows.Length);
+        Assert.Contains(checkRows, static node => node.GetProperty("is_default").GetBoolean());
+
+        var renderHints = root.GetProperty("render").EnumerateArray().ToArray();
+        Assert.NotEmpty(renderHints);
+
+        var primaryTable = renderHints[0];
+        Assert.Equal("table", primaryTable.GetProperty("kind").GetString());
+        Assert.Equal("check_rows", primaryTable.GetProperty("rows_path").GetString());
+        var primaryColumns = primaryTable.GetProperty("columns")
+            .EnumerateArray()
+            .Select(static node => node.GetProperty("key").GetString())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value!.Trim())
+            .ToArray();
+        Assert.NotEmpty(primaryColumns);
+
+        foreach (var key in primaryColumns) {
+            Assert.True(checkRows[0].TryGetProperty(key, out _), $"Missing check_rows property for column key '{key}'.");
+        }
+
+        var aliasTable = renderHints.Single(static hint =>
+            string.Equals(hint.GetProperty("rows_path").GetString(), "aliases", StringComparison.OrdinalIgnoreCase));
+        var aliasColumns = aliasTable.GetProperty("columns")
+            .EnumerateArray()
+            .Select(static node => node.GetProperty("key").GetString())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value!.Trim())
+            .ToArray();
+        Assert.NotEmpty(aliasColumns);
+
+        foreach (var key in aliasColumns) {
+            Assert.True(aliases[0].TryGetProperty(key, out _), $"Missing aliases property for column key '{key}'.");
+        }
 
         var normalizationRules = root.GetProperty("normalization_rules")
             .EnumerateArray()
@@ -71,5 +106,14 @@ public sealed class DomainDetectiveChecksCatalogToolTests {
         Assert.Equal(0, root.GetProperty("aliases").GetArrayLength());
         Assert.Equal(0, root.GetProperty("default_checks").GetArrayLength());
         Assert.True(root.GetProperty("supported_checks").GetArrayLength() > 0);
+
+        var checkRows = root.GetProperty("check_rows").EnumerateArray().ToArray();
+        Assert.NotEmpty(checkRows);
+        Assert.DoesNotContain(checkRows, static node => node.GetProperty("is_default").GetBoolean());
+
+        var renderHints = root.GetProperty("render").EnumerateArray().ToArray();
+        Assert.Single(renderHints);
+        Assert.Equal("table", renderHints[0].GetProperty("kind").GetString());
+        Assert.Equal("check_rows", renderHints[0].GetProperty("rows_path").GetString());
     }
 }

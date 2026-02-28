@@ -51,12 +51,20 @@ public sealed class DomainDetectiveChecksCatalogTool : DomainDetectiveToolBase, 
                 })
                 .ToArray()
             : Array.Empty<DomainDetectiveCheckAliasModel>();
+        var defaultCheckLookup = new HashSet<string>(defaultChecks, StringComparer.OrdinalIgnoreCase);
+        var checkRows = supportedChecks
+            .Select(check => new DomainDetectiveCheckRowModel {
+                Check = check,
+                IsDefault = defaultCheckLookup.Contains(check)
+            })
+            .ToArray();
 
         var result = new DomainDetectiveChecksCatalogResultModel {
             Source = ResolveCatalogSource(),
             MaxChecksPerRun = Options.MaxChecks,
             SupportedChecks = supportedChecks,
             DefaultChecks = defaultChecks,
+            CheckRows = checkRows,
             Aliases = aliases,
             NormalizationRules = new[] {
                 "Input is case-insensitive and non-alphanumeric separators are ignored.",
@@ -78,8 +86,23 @@ public sealed class DomainDetectiveChecksCatalogTool : DomainDetectiveToolBase, 
             .Add("default_checks", result.DefaultChecks.Count)
             .Add("aliases", result.Aliases.Count)
             .Add("max_checks_per_run", result.MaxChecksPerRun);
+        var renderHints = new JsonArray()
+            .Add(ToolOutputHints.RenderTable(
+                "check_rows",
+                new ToolColumn("check", "Check", "string"),
+                new ToolColumn("is_default", "Default", "bool")));
+        if (result.Aliases.Count > 0) {
+            renderHints.Add(ToolOutputHints.RenderTable(
+                "aliases",
+                new ToolColumn("token", "Alias", "string"),
+                new ToolColumn("canonical", "Canonical", "string")));
+        }
 
-        return Task.FromResult(ToolResponse.OkModel(result, meta: meta, summaryMarkdown: summary));
+        return Task.FromResult(ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: ToolJson.ToJsonObjectSnakeCase(result),
+            meta: meta,
+            summaryMarkdown: summary,
+            render: JsonValue.From(renderHints)));
     }
 
     private static string ResolveCatalogSource() {
@@ -95,8 +118,14 @@ public sealed class DomainDetectiveChecksCatalogTool : DomainDetectiveToolBase, 
         public int MaxChecksPerRun { get; init; }
         public IReadOnlyList<string> SupportedChecks { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DefaultChecks { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<DomainDetectiveCheckRowModel> CheckRows { get; init; } = Array.Empty<DomainDetectiveCheckRowModel>();
         public IReadOnlyList<DomainDetectiveCheckAliasModel> Aliases { get; init; } = Array.Empty<DomainDetectiveCheckAliasModel>();
         public IReadOnlyList<string> NormalizationRules { get; init; } = Array.Empty<string>();
+    }
+
+    private sealed class DomainDetectiveCheckRowModel {
+        public string Check { get; init; } = string.Empty;
+        public bool IsDefault { get; init; }
     }
 
     private sealed class DomainDetectiveCheckAliasModel {
