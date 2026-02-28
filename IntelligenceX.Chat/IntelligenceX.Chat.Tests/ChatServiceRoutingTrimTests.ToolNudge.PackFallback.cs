@@ -1035,6 +1035,59 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildCrossPackSystemToAdDiscoveryFallbackUsingGeneralReadTargetOnlyTool() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_bios_summary"] = "system";
+        packMap["inventory_snapshot"] = "active_directory";
+
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "system_bios_summary",
+                "Summarize BIOS details for a target computer.",
+                ToolSchema.Object(
+                        ("computer_name", ToolSchema.String("Computer name.")))
+                    .Required("computer_name")
+                    .NoAdditionalProperties()),
+            new(
+                "inventory_snapshot",
+                "Return a generic AD inventory snapshot.",
+                ToolSchema.Object(("target", ToolSchema.String("Target identifier."))).NoAdditionalProperties())
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-1",
+                Name = "system_bios_summary",
+                ArgumentsJson = """
+                        {"computer_name":"dc01.contoso.local"}
+                        """
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-1",
+                Output = "{}",
+                Ok = false,
+                ErrorCode = "timeout"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["system_bios_summary"] = false,
+            ["inventory_snapshot"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run domain discovery for contoso.local", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Null(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("pack_contract_no_applicable_fallback", reason);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackDomainDetectiveToTestimoXFallbackOnFailure() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
