@@ -237,13 +237,30 @@ internal sealed partial class ChatServiceSession {
         long? effectiveContextLength,
         bool contextAwareBudgetApplied,
         string? domainIntentSource,
-        string? domainIntentFamily) {
+        string? domainIntentFamily,
+        bool weightedAmbiguityWidened,
+        int? weightedAmbiguityBaselineSelection,
+        int? weightedAmbiguityEffectiveSelection,
+        int? weightedAmbiguityClusterSize,
+        double? weightedAmbiguitySecondScoreRatio) {
         var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
         var normalizedContextLength = effectiveContextLength is > 0 ? effectiveContextLength : null;
         var normalizedDomainIntentSource = NormalizeRoutingDomainIntentSource(domainIntentSource);
         var normalizedDomainIntentFamily = TryNormalizeDomainIntentFamily(domainIntentFamily, out var parsedDomainIntentFamily)
             ? parsedDomainIntentFamily
             : string.Empty;
+        var normalizedWeightedAmbiguityBaseline = weightedAmbiguityWidened && weightedAmbiguityBaselineSelection is > 0
+            ? weightedAmbiguityBaselineSelection
+            : null;
+        var normalizedWeightedAmbiguityEffective = weightedAmbiguityWidened && weightedAmbiguityEffectiveSelection is > 0
+            ? weightedAmbiguityEffectiveSelection
+            : null;
+        var normalizedWeightedAmbiguityCluster = weightedAmbiguityWidened && weightedAmbiguityClusterSize is > 0
+            ? weightedAmbiguityClusterSize
+            : null;
+        var normalizedWeightedAmbiguitySecondRatio = weightedAmbiguityWidened && weightedAmbiguitySecondScoreRatio is > 0d
+            ? Math.Round(weightedAmbiguitySecondScoreRatio.Value, 3)
+            : null;
         return JsonSerializer.Serialize(new {
             strategy = (strategy ?? string.Empty).Trim(),
             weightedToolRouting,
@@ -263,8 +280,117 @@ internal sealed partial class ChatServiceSession {
             domainIntent = new {
                 source = normalizedDomainIntentSource.Length > 0 ? normalizedDomainIntentSource : null,
                 family = normalizedDomainIntentFamily.Length > 0 ? normalizedDomainIntentFamily : null
+            },
+            weightedAmbiguity = new {
+                widened = weightedAmbiguityWidened,
+                baselineSelection = normalizedWeightedAmbiguityBaseline,
+                effectiveSelection = normalizedWeightedAmbiguityEffective,
+                clusterSize = normalizedWeightedAmbiguityCluster,
+                secondScoreRatio = normalizedWeightedAmbiguitySecondRatio
             }
         });
+    }
+
+    private static bool TryResolveWeightedRoutingAmbiguityTelemetry(
+        IReadOnlyList<ToolRoutingInsight> insights,
+        out int baselineSelection,
+        out int effectiveSelection,
+        out int clusterSize,
+        out double secondScoreRatio) {
+        baselineSelection = 0;
+        effectiveSelection = 0;
+        clusterSize = 0;
+        secondScoreRatio = 0d;
+        if (insights is null || insights.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < insights.Count; i++) {
+            var reason = (insights[i].Reason ?? string.Empty).Trim();
+            if (reason.Length == 0) {
+                continue;
+            }
+
+            if (!TryParseWeightedRoutingAmbiguityMarker(reason, out baselineSelection, out effectiveSelection, out clusterSize, out secondScoreRatio)) {
+                continue;
+            }
+
+            return baselineSelection > 0
+                   && effectiveSelection > baselineSelection
+                   && clusterSize > 0
+                   && secondScoreRatio > 0d;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseWeightedRoutingAmbiguityMarker(
+        string reason,
+        out int baselineSelection,
+        out int effectiveSelection,
+        out int clusterSize,
+        out double secondScoreRatio) {
+        baselineSelection = 0;
+        effectiveSelection = 0;
+        clusterSize = 0;
+        secondScoreRatio = 0d;
+
+        var markerIndex = reason.IndexOf(WeightedRoutingAmbiguityMarker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0) {
+            return false;
+        }
+
+        var markerTail = reason[(markerIndex + WeightedRoutingAmbiguityMarker.Length)..].Trim();
+        if (markerTail.Length == 0) {
+            return false;
+        }
+
+        var segments = markerTail.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (var i = 0; i < segments.Length; i++) {
+            var segment = segments[i];
+            var separator = segment.IndexOf('=');
+            if (separator <= 0 || separator >= segment.Length - 1) {
+                continue;
+            }
+
+            var key = segment[..separator].Trim();
+            var value = segment[(separator + 1)..].Trim().TrimEnd(',', ';');
+            if (key.Length == 0 || value.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(key, "baseline", StringComparison.OrdinalIgnoreCase)) {
+                if (int.TryParse(value, out var parsed) && parsed > 0) {
+                    baselineSelection = parsed;
+                }
+                continue;
+            }
+
+            if (string.Equals(key, "effective", StringComparison.OrdinalIgnoreCase)) {
+                if (int.TryParse(value, out var parsed) && parsed > 0) {
+                    effectiveSelection = parsed;
+                }
+                continue;
+            }
+
+            if (string.Equals(key, "cluster", StringComparison.OrdinalIgnoreCase)) {
+                if (int.TryParse(value, out var parsed) && parsed > 0) {
+                    clusterSize = parsed;
+                }
+                continue;
+            }
+
+            if (string.Equals(key, "second_ratio", StringComparison.OrdinalIgnoreCase)) {
+                if (double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed) && parsed > 0d) {
+                    secondScoreRatio = parsed;
+                }
+            }
+        }
+
+        return baselineSelection > 0
+               && effectiveSelection > 0
+               && clusterSize > 0
+               && secondScoreRatio > 0d;
     }
 
     private static string NormalizeRoutingDomainIntentSource(string? source) {

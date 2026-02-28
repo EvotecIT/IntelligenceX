@@ -140,6 +140,12 @@ internal sealed partial class ChatServiceSession {
         var requestedModelHeartbeatSeconds = request.Options?.ModelHeartbeatSeconds;
 
         var (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
+        var weightedAmbiguityWidened = TryResolveWeightedRoutingAmbiguityTelemetry(
+            routingInsights,
+            out var weightedAmbiguityBaselineSelection,
+            out var weightedAmbiguityEffectiveSelection,
+            out var weightedAmbiguityClusterSize,
+            out var weightedAmbiguitySecondScoreRatio);
         if (ShouldEmitRoutingTransparency(routingSelectedToolCount, routingTotalToolCount)) {
             var plannerInsightsDetected = HasPlannerInsight(routingInsights);
             var routingStrategy = ResolveRoutingStrategy(
@@ -172,7 +178,12 @@ internal sealed partial class ChatServiceSession {
                 effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
                 contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
                 domainIntentSource: null,
-                domainIntentFamily: null);
+                domainIntentFamily: null,
+                weightedAmbiguityWidened,
+                weightedAmbiguityBaselineSelection,
+                weightedAmbiguityEffectiveSelection,
+                weightedAmbiguityClusterSize,
+                weightedAmbiguitySecondScoreRatio);
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
@@ -238,7 +249,12 @@ internal sealed partial class ChatServiceSession {
                     effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
                     contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
                     domainIntentSource: "signal_hint",
-                    domainIntentFamily: signaledFamily);
+                    domainIntentFamily: signaledFamily,
+                    weightedAmbiguityWidened,
+                    weightedAmbiguityBaselineSelection,
+                    weightedAmbiguityEffectiveSelection,
+                    weightedAmbiguityClusterSize,
+                    weightedAmbiguitySecondScoreRatio);
                 await TryWriteStatusAsync(
                         writer,
                         request.RequestId,
@@ -272,7 +288,12 @@ internal sealed partial class ChatServiceSession {
                     effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
                     contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
                     domainIntentSource: "affinity",
-                    domainIntentFamily: affinityFamily);
+                    domainIntentFamily: affinityFamily,
+                    weightedAmbiguityWidened,
+                    weightedAmbiguityBaselineSelection,
+                    weightedAmbiguityEffectiveSelection,
+                    weightedAmbiguityClusterSize,
+                    weightedAmbiguitySecondScoreRatio);
                 await TryWriteStatusAsync(
                         writer,
                         request.RequestId,

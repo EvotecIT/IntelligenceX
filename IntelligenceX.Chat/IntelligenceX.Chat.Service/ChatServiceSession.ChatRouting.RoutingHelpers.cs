@@ -16,11 +16,19 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const string WeightedRoutingAmbiguityMarker = "ix:routing-ambiguity:v1";
     private const double WeightedRoutingAmbiguousSecondScoreRatioThreshold = 0.92d;
     private const double WeightedRoutingAmbiguousClusterScoreRatioThreshold = 0.82d;
     private const int WeightedRoutingAmbiguousClusterMinCount = 3;
     private const int WeightedRoutingAmbiguousSelectionFloor = 10;
     private const int WeightedRoutingAmbiguousSelectionCap = 12;
+
+    private readonly record struct WeightedRoutingSelectionDiagnostics(
+        bool AmbiguityWidened,
+        int BaselineMinSelection,
+        int EffectiveMinSelection,
+        int AmbiguousClusterSize,
+        double SecondScoreRatio);
 
     private static void TraceNoToolExecutionWatchdogDecision(
         string userRequest,
@@ -479,7 +487,8 @@ internal sealed partial class ChatServiceSession {
             return SelectDeterministicToolSubset(definitions, limit);
         }
 
-        var minSelection = ResolveWeightedRoutingMinSelection(scored, limit, definitions.Count);
+        var selectionDiagnostics = ResolveWeightedRoutingSelectionDiagnostics(scored, limit, definitions.Count);
+        var minSelection = selectionDiagnostics.EffectiveMinSelection;
         if (selectedDefs.Count < minSelection) {
             for (var i = selectedDefs.Count; i < scored.Count && selectedDefs.Count < minSelection; i++) {
                 var definition = scored[i].Definition;
@@ -494,24 +503,42 @@ internal sealed partial class ChatServiceSession {
             return definitions;
         }
 
-        insights = BuildRoutingInsights(scored, selectedDefs);
+        insights = BuildRoutingInsights(scored, selectedDefs, selectionDiagnostics);
         return selectedDefs;
     }
 
-    private static int ResolveWeightedRoutingMinSelection(IReadOnlyList<ToolScore> scored, int limit, int definitionCount) {
+    private static WeightedRoutingSelectionDiagnostics ResolveWeightedRoutingSelectionDiagnostics(
+        IReadOnlyList<ToolScore> scored,
+        int limit,
+        int definitionCount) {
         var baseline = Math.Min(definitionCount, Math.Max(8, Math.Min(limit, 12)));
         if (scored.Count < 2 || definitionCount <= baseline) {
-            return baseline;
+            return new WeightedRoutingSelectionDiagnostics(
+                AmbiguityWidened: false,
+                BaselineMinSelection: baseline,
+                EffectiveMinSelection: baseline,
+                AmbiguousClusterSize: 0,
+                SecondScoreRatio: 0d);
         }
 
         var topScore = scored[0].Score;
         if (topScore <= 0d) {
-            return baseline;
+            return new WeightedRoutingSelectionDiagnostics(
+                AmbiguityWidened: false,
+                BaselineMinSelection: baseline,
+                EffectiveMinSelection: baseline,
+                AmbiguousClusterSize: 0,
+                SecondScoreRatio: 0d);
         }
 
         var secondScoreRatio = scored[1].Score / topScore;
         if (secondScoreRatio < WeightedRoutingAmbiguousSecondScoreRatioThreshold) {
-            return baseline;
+            return new WeightedRoutingSelectionDiagnostics(
+                AmbiguityWidened: false,
+                BaselineMinSelection: baseline,
+                EffectiveMinSelection: baseline,
+                AmbiguousClusterSize: 0,
+                SecondScoreRatio: Math.Round(secondScoreRatio, 3));
         }
 
         var ambiguousClusterSize = 0;
@@ -533,7 +560,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (ambiguousClusterSize < WeightedRoutingAmbiguousClusterMinCount) {
-            return baseline;
+            return new WeightedRoutingSelectionDiagnostics(
+                AmbiguityWidened: false,
+                BaselineMinSelection: baseline,
+                EffectiveMinSelection: baseline,
+                AmbiguousClusterSize: ambiguousClusterSize,
+                SecondScoreRatio: Math.Round(secondScoreRatio, 3));
         }
 
         var widened = Math.Max(
@@ -541,7 +573,13 @@ internal sealed partial class ChatServiceSession {
             Math.Min(
                 WeightedRoutingAmbiguousSelectionCap,
                 Math.Max(WeightedRoutingAmbiguousSelectionFloor, ambiguousClusterSize)));
-        return Math.Min(definitionCount, widened);
+        var effective = Math.Min(definitionCount, widened);
+        return new WeightedRoutingSelectionDiagnostics(
+            AmbiguityWidened: effective > baseline,
+            BaselineMinSelection: baseline,
+            EffectiveMinSelection: effective,
+            AmbiguousClusterSize: ambiguousClusterSize,
+            SecondScoreRatio: Math.Round(secondScoreRatio, 3));
     }
 
 }
