@@ -1005,6 +1005,56 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossHostEventlogEvidenceWithCustomCandidateName() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["system_inventory_query"] = "computerx";
+        packMap["eventlog_host_query_custom"] = "eventlog";
+
+        var systemSchema = ToolSchema.Object(
+                ("computer_name", ToolSchema.String("computer name")))
+            .NoAdditionalProperties();
+        var eventlogSchema = ToolSchema.Object(
+                ("host", ToolSchema.String("host")),
+                ("log_name", ToolSchema.String("log name")))
+            .Required("host")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("system_inventory_query", "system inventory query", systemSchema),
+            new("eventlog_host_query_custom", "eventlog host query custom", eventlogSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-sys-custom",
+                Name = "system_inventory_query",
+                ArgumentsJson = """{"computer_name":"AD0"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-sys-custom",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_host_query_custom"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("eventlog_host_query_custom", toolCall.Name);
+        Assert.Contains("\"host\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"log_name\":\"System\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryBuildPackCapabilityFallbackToolCall_DoesNotBuildCrossHostEventlogEvidenceFromSystemPackInfoFailure() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
@@ -1288,6 +1338,54 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("system_info", toolCall.Name);
         Assert.Contains("\"computer_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_host_system_baseline", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossHostSystemBaselineWithCustomCandidateName() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["eventlog_named_events_query"] = "eventlog";
+        packMap["system_host_inventory_custom"] = "computerx";
+
+        var eventlogSchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")))
+            .NoAdditionalProperties();
+        var systemSchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")))
+            .Required("machine_name")
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_named_events_query", "named events query", eventlogSchema),
+            new("system_host_inventory_custom", "system host inventory custom", systemSchema)
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-ev-custom",
+                Name = "eventlog_named_events_query",
+                ArgumentsJson = """{"machine_name":"AD0"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-ev-custom",
+                Output = """{"ok":false,"error_code":"query_failed"}""",
+                Ok = false,
+                ErrorCode = "query_failed"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["system_host_inventory_custom"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue host diagnostics", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        Assert.Equal("system_host_inventory_custom", toolCall.Name);
+        Assert.Contains("\"machine_name\":\"AD0\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

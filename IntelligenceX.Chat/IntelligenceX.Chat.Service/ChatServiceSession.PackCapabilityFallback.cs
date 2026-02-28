@@ -777,30 +777,16 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        const string candidateTool = "system_info";
-        if (priorCalledTools.Contains(candidateTool)) {
-            reason = "cross_host_system_baseline_candidate_already_called";
-            return false;
-        }
-
-        if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+        if (!TryResolveCrossPackCandidateToolByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "system",
+                preferredScope: "host",
+                preferredOperation: ToolRoutingTaxonomy.OperationRead,
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidateTool,
+                out var toolDefinition)) {
             reason = "cross_host_system_baseline_candidate_unavailable";
-            return false;
-        }
-
-        if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
-            || !PackIdMatches(candidatePackIdRaw, "system")) {
-            reason = "cross_host_system_baseline_candidate_not_in_system_pack";
-            return false;
-        }
-
-        var mutability = ResolveStructuredNextActionMutability(
-            declaredMutability: ActionMutability.Unknown,
-            toolName: candidateTool,
-            toolDefinition: toolDefinition,
-            mutatingToolHintsByName: mutatingToolHintsByName);
-        if (mutability != ActionMutability.ReadOnly) {
-            reason = "cross_host_system_baseline_candidate_not_read_only";
             return false;
         }
 
@@ -810,8 +796,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal)
-            .Add("computer_name", computerName);
+        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+        if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, computerName, "computer_name", "machine_name", "host", "target", "name")) {
+            fallbackArguments.Add("computer_name", computerName);
+        }
         var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
         if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
             || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
@@ -944,7 +932,10 @@ internal sealed partial class ChatServiceSession {
             if (ToolDefinitionHasInputProperty(candidateDefinition, "name")
                 || ToolDefinitionHasInputProperty(candidateDefinition, "target")
                 || ToolDefinitionHasInputProperty(candidateDefinition, "domain")
-                || ToolDefinitionHasInputProperty(candidateDefinition, "host")) {
+                || ToolDefinitionHasInputProperty(candidateDefinition, "host")
+                || ToolDefinitionHasInputProperty(candidateDefinition, "computer_name")
+                || ToolDefinitionHasInputProperty(candidateDefinition, "machine_name")
+                || ToolDefinitionHasInputProperty(candidateDefinition, "log_name")) {
                 score += 50;
             }
 
@@ -1114,30 +1105,16 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        const string candidateTool = "eventlog_live_query";
-        if (priorCalledTools.Contains(candidateTool)) {
-            reason = "cross_host_eventlog_evidence_candidate_already_called";
-            return false;
-        }
-
-        if (!TryGetToolDefinitionByName(toolDefinitions, candidateTool, out var toolDefinition)) {
+        if (!TryResolveCrossPackCandidateToolByRouting(
+                toolDefinitions: toolDefinitions,
+                priorCalledTools: priorCalledTools,
+                targetPackId: "eventlog",
+                preferredScope: "host",
+                preferredOperation: "query",
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                out var candidateTool,
+                out var toolDefinition)) {
             reason = "cross_host_eventlog_evidence_candidate_unavailable";
-            return false;
-        }
-
-        if (!_toolPackIdsByToolName.TryGetValue(candidateTool, out var candidatePackIdRaw)
-            || !PackIdMatches(candidatePackIdRaw, "eventlog")) {
-            reason = "cross_host_eventlog_evidence_candidate_not_in_eventlog_pack";
-            return false;
-        }
-
-        var mutability = ResolveStructuredNextActionMutability(
-            declaredMutability: ActionMutability.Unknown,
-            toolName: candidateTool,
-            toolDefinition: toolDefinition,
-            mutatingToolHintsByName: mutatingToolHintsByName);
-        if (mutability != ActionMutability.ReadOnly) {
-            reason = "cross_host_eventlog_evidence_candidate_not_read_only";
             return false;
         }
 
@@ -1147,10 +1124,16 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var fallbackArguments = new JsonObject(StringComparer.Ordinal)
-            .Add("machine_name", machineName)
-            .Add("log_name", "System")
-            .Add("max_events", 200);
+        var fallbackArguments = new JsonObject(StringComparer.Ordinal);
+        if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, machineName, "machine_name", "computer_name", "host", "target", "name")) {
+            fallbackArguments.Add("machine_name", machineName);
+        }
+        if (ToolDefinitionHasInputProperty(toolDefinition, "log_name")) {
+            fallbackArguments.Add("log_name", "System");
+        }
+        if (ToolDefinitionHasInputProperty(toolDefinition, "max_events")) {
+            fallbackArguments.Add("max_events", 200);
+        }
         var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
         if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
             || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
