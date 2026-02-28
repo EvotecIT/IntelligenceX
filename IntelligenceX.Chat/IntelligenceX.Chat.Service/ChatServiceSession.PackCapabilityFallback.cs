@@ -359,6 +359,7 @@ internal sealed partial class ChatServiceSession {
                     priorCalledTools: priorCalledTools,
                     sourcePackId: sourcePackId,
                     sourceTool: sourceTool,
+                    sourceToolDefinition: sourceToolDefinition,
                     partialScopeHints: partialScopeHints,
                     partialScopeReason: partialScopeReason,
                     hasSourceFailureSignal: hasSourceFailureSignal,
@@ -373,6 +374,7 @@ internal sealed partial class ChatServiceSession {
                     priorCalledTools: priorCalledTools,
                     sourcePackId: sourcePackId,
                     sourceTool: sourceTool,
+                    sourceToolDefinition: sourceToolDefinition,
                     partialScopeHints: partialScopeHints,
                     partialScopeReason: partialScopeReason,
                     hasSourceFailureSignal: hasSourceFailureSignal,
@@ -573,6 +575,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlySet<string> priorCalledTools,
         string sourcePackId,
         string sourceTool,
+        ToolDefinition? sourceToolDefinition,
         JsonObject partialScopeHints,
         string partialScopeReason,
         bool hasSourceFailureSignal,
@@ -588,12 +591,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var candidateTool = string.Equals(sourceTool, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)
-            ? "dnsclientx_ping"
-            : string.Equals(sourceTool, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)
-                ? "dnsclientx_query"
-                : string.Empty;
-        if (candidateTool.Length == 0) {
+        if (!TryResolveCrossPublicDnsCandidateTool(sourceTool, sourceToolDefinition, out var candidateTool)) {
             reason = "cross_public_dns_source_tool_not_supported";
             return false;
         }
@@ -671,6 +669,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlySet<string> priorCalledTools,
         string sourcePackId,
         string sourceTool,
+        ToolDefinition? sourceToolDefinition,
         JsonObject partialScopeHints,
         string partialScopeReason,
         bool hasSourceFailureSignal,
@@ -686,12 +685,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var candidateTool = string.Equals(sourceTool, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)
-            ? "domaindetective_network_probe"
-            : string.Equals(sourceTool, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)
-                ? "domaindetective_domain_summary"
-                : string.Empty;
-        if (candidateTool.Length == 0) {
+        if (!TryResolveCrossPublicDomainCandidateTool(sourceTool, sourceToolDefinition, out var candidateTool)) {
             reason = "cross_public_domain_source_tool_not_supported";
             return false;
         }
@@ -890,6 +884,60 @@ internal sealed partial class ChatServiceSession {
         }
 
         return IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation);
+    }
+
+    private static bool TryResolveCrossPublicDnsCandidateTool(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition,
+        out string candidateTool) {
+        candidateTool = string.Empty;
+        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)
+            || !IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation)) {
+            return false;
+        }
+
+        var scope = (routingInfo.Scope ?? string.Empty).Trim();
+        if (string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)) {
+            candidateTool = "dnsclientx_ping";
+            return true;
+        }
+
+        if (string.Equals(scope, "domain", StringComparison.OrdinalIgnoreCase)) {
+            candidateTool = "dnsclientx_query";
+            return true;
+        }
+
+        candidateTool = string.Equals((routingInfo.Operation ?? string.Empty).Trim(), "probe", StringComparison.OrdinalIgnoreCase)
+            ? "dnsclientx_ping"
+            : "dnsclientx_query";
+        return true;
+    }
+
+    private static bool TryResolveCrossPublicDomainCandidateTool(
+        string sourceTool,
+        ToolDefinition? sourceToolDefinition,
+        out string candidateTool) {
+        candidateTool = string.Empty;
+        if (!TryResolveSourceRoutingInfo(sourceTool, sourceToolDefinition, out var routingInfo)
+            || !IsCrossHostFallbackReadOnlyOperation(routingInfo.Operation)) {
+            return false;
+        }
+
+        var scope = (routingInfo.Scope ?? string.Empty).Trim();
+        if (string.Equals(scope, "host", StringComparison.OrdinalIgnoreCase)) {
+            candidateTool = "domaindetective_network_probe";
+            return true;
+        }
+
+        if (string.Equals(scope, "domain", StringComparison.OrdinalIgnoreCase)) {
+            candidateTool = "domaindetective_domain_summary";
+            return true;
+        }
+
+        candidateTool = string.Equals((routingInfo.Operation ?? string.Empty).Trim(), "probe", StringComparison.OrdinalIgnoreCase)
+            ? "domaindetective_network_probe"
+            : "domaindetective_domain_summary";
+        return true;
     }
 
     private static bool TryResolveSourceRoutingInfo(
