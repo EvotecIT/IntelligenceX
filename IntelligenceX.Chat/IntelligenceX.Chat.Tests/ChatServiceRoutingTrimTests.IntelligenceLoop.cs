@@ -588,6 +588,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForStructuredJsonNetworkContractUsingLinksAlias() {
+        var request = """
+            Use this structured visual contract if useful:
+            {"nodes":[{"id":"DC01"},{"id":"DC02"}],"links":[{"source":"DC01","target":"DC02"}]}
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForStructuredJsonChartContractWithoutFence() {
         var request = """
             Use this structured visual contract if useful:
@@ -601,10 +614,36 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForStructuredJsonChartContractUsingCategoriesAndDataAliases() {
+        var request = """
+            Use this structured visual contract if useful:
+            {"categories":["Jan","Feb"],"data":[12,18]}
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForStructuredJsonTableContractWithoutFence() {
         var request = """
             Use this structured visual contract if useful:
             {"columns":["host","status"],"rows":[["dc01","healthy"]]}
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForStructuredJsonTableContractUsingDataAlias() {
+        var request = """
+            Use this structured visual contract if useful:
+            {"headers":["host","status"],"data":[["dc01","healthy"]]}
             """;
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
