@@ -31,25 +31,25 @@ internal sealed partial class ChatServiceSession {
         new(
             CanonicalType: MermaidVisualType,
             SupportsProactiveFenceGuidance: true,
-            PreferredAliases: new[] { "diagram" },
+            PreferredAliases: new[] { "diagram", "flowchart" },
             FenceLanguageSignals: new[] { MermaidVisualType },
             InlineTokenSignals: new[] { MermaidVisualType, "diagram" }),
         new(
             CanonicalType: ChartVisualType,
             SupportsProactiveFenceGuidance: true,
-            PreferredAliases: new[] { "chart" },
+            PreferredAliases: new[] { "chart", "plot" },
             FenceLanguageSignals: new[] { ChartVisualType },
             InlineTokenSignals: new[] { ChartVisualType, "chart" }),
         new(
             CanonicalType: NetworkVisualType,
             SupportsProactiveFenceGuidance: true,
-            PreferredAliases: new[] { "network", LegacyNetworkVisualType },
+            PreferredAliases: new[] { "network", "graph", "node-link", LegacyNetworkVisualType },
             FenceLanguageSignals: new[] { NetworkVisualType, LegacyNetworkVisualType },
             InlineTokenSignals: new[] { NetworkVisualType, "network", LegacyNetworkVisualType }),
         new(
             CanonicalType: TableVisualType,
             SupportsProactiveFenceGuidance: false,
-            PreferredAliases: new[] { "markdown-table", "markdown_table" },
+            PreferredAliases: new[] { "markdown-table", "markdown_table", "data-table", "datatable", "grid" },
             FenceLanguageSignals: Array.Empty<string>(),
             InlineTokenSignals: new[] { TableVisualType, "markdown-table", "markdown_table" })
     };
