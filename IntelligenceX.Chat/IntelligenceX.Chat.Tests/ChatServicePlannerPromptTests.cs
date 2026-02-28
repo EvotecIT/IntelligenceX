@@ -237,6 +237,7 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("pack active_directory", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack adplayground", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack ad_playground", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -252,6 +253,8 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("pack ad", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack active_directory", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:active_directory", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack ad_playground", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:ad_playground", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -266,6 +269,8 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("pack system", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack computerx", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack computer_x", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack:computer_x", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

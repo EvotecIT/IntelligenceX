@@ -379,12 +379,21 @@ internal sealed partial class ChatServiceSession {
         switch (NormalizePackId(packHint)) {
             case "activedirectory":
                 AddToken("active_directory");
+                AddToken("ad_playground");
                 break;
             case "ad":
                 AddToken("active_directory");
+                AddToken("ad_playground");
                 break;
             case "adplayground":
                 AddToken("active_directory");
+                AddToken("ad_playground");
+                break;
+            case "system":
+                AddToken("computer_x");
+                break;
+            case "computerx":
+                AddToken("computer_x");
                 break;
             case "eventlog":
                 AddToken("event_log");
