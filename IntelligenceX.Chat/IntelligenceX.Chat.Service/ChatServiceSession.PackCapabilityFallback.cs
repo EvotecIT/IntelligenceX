@@ -2597,7 +2597,19 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return normalized.Contains('.', StringComparison.Ordinal) && !normalized.StartsWith(".", StringComparison.Ordinal) && !normalized.EndsWith(".", StringComparison.Ordinal);
+        if (!normalized.Contains('.', StringComparison.Ordinal)
+            || normalized.StartsWith(".", StringComparison.Ordinal)
+            || normalized.EndsWith(".", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            if (char.IsLetter(normalized[i])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryReadDiscoveryPartialScopeHints(string? outputJson, out JsonObject hints, out string reason) {
