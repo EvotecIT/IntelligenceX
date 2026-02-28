@@ -452,6 +452,7 @@ internal sealed partial class ChatServiceSession {
                     candidateTool: candidateTool,
                     partialScopeHints: partialScopeHints);
                 AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
+                AddSchemaAwareFallbackDefaultArguments(sourcePackId, toolDefinition, fallbackArguments, partialScopeHints);
                 var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
                 if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
                     || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
@@ -541,6 +542,7 @@ internal sealed partial class ChatServiceSession {
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
+            AddSchemaAwareFallbackDefaultArguments("active_directory", toolDefinition, fallbackArguments, partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
                 || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
@@ -1488,6 +1490,37 @@ internal sealed partial class ChatServiceSession {
         TryAddSchemaAwareBooleanHintArgument(toolDefinition, arguments, partialScopeHints, "include_forest_domains", "include_forest_domains");
     }
 
+    private static void AddSchemaAwareFallbackDefaultArguments(
+        string sourcePackId,
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        JsonObject partialScopeHints) {
+        if (PackIdMatches(sourcePackId, "active_directory")) {
+            var includeTrusts = ReadHintBoolean(partialScopeHints, "include_trusts") ?? true;
+            TryAddSchemaAwareStringDefaultArgument(toolDefinition, arguments, "discovery_fallback", "current_forest");
+            TryAddSchemaAwareBooleanDefaultArgument(toolDefinition, arguments, "include_forest_domains", true);
+            TryAddSchemaAwareBooleanDefaultArgument(toolDefinition, arguments, "include_trusts", includeTrusts);
+            TryAddSchemaAwareIntegerDefaultArgument(toolDefinition, arguments, "max_domain_controllers_total", 5000);
+            TryAddSchemaAwareIntegerDefaultArgument(toolDefinition, arguments, "max_domain_controllers_per_domain", 500);
+            TryAddSchemaAwareIntegerDefaultArgument(toolDefinition, arguments, "max_results", 500);
+            TryAddSchemaAwareIntegerDefaultArgument(toolDefinition, arguments, "max_issues", 2000);
+            TryAddSchemaAwareBooleanDefaultArgument(toolDefinition, arguments, "include_dns_srv_comparison", true);
+            TryAddSchemaAwareBooleanDefaultArgument(toolDefinition, arguments, "include_host_resolution", true);
+            TryAddSchemaAwareBooleanDefaultArgument(toolDefinition, arguments, "include_directory_topology", true);
+            return;
+        }
+
+        if (PackIdMatches(sourcePackId, "eventlog")) {
+            TryAddSchemaAwareIntegerDefaultArgument(toolDefinition, arguments, "max_events", 200);
+            TryAddSchemaAwareIntegerDefaultArgument(toolDefinition, arguments, "max_events_scanned", 1200);
+            return;
+        }
+
+        if (PackIdMatches(sourcePackId, "system")) {
+            TryAddSchemaAwareBooleanDefaultArgument(toolDefinition, arguments, "include_pending_local", false);
+        }
+    }
+
     private static void TryAddSchemaAwareStringHintArgument(
         ToolDefinition toolDefinition,
         JsonObject arguments,
@@ -1532,6 +1565,45 @@ internal sealed partial class ChatServiceSession {
         }
 
         arguments[argumentName] = JsonValue.From(value.Value);
+    }
+
+    private static void TryAddSchemaAwareStringDefaultArgument(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        string argumentName,
+        string defaultValue) {
+        if (arguments.TryGetValue(argumentName, out _)
+            || !ToolDefinitionHasInputProperty(toolDefinition, argumentName)) {
+            return;
+        }
+
+        arguments[argumentName] = JsonValue.From(defaultValue);
+    }
+
+    private static void TryAddSchemaAwareBooleanDefaultArgument(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        string argumentName,
+        bool defaultValue) {
+        if (arguments.TryGetValue(argumentName, out _)
+            || !ToolDefinitionHasInputProperty(toolDefinition, argumentName)) {
+            return;
+        }
+
+        arguments[argumentName] = JsonValue.From(defaultValue);
+    }
+
+    private static void TryAddSchemaAwareIntegerDefaultArgument(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        string argumentName,
+        int defaultValue) {
+        if (arguments.TryGetValue(argumentName, out _)
+            || !ToolDefinitionHasInputProperty(toolDefinition, argumentName)) {
+            return;
+        }
+
+        arguments[argumentName] = JsonValue.From(defaultValue);
     }
 
     private static bool TryReadPackCapabilityErrorFallbackHints(
