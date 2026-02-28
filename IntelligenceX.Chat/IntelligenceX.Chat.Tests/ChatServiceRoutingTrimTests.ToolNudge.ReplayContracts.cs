@@ -1438,10 +1438,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
         packMap["ad_scope_discovery"] = "active_directory";
 
         var schema = ToolSchema.Object().NoAdditionalProperties();
+        var eventlogSchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")),
+                ("log_name", ToolSchema.String("log name")))
+            .NoAdditionalProperties();
+        var adSchema = ToolSchema.Object(
+                ("domain_name", ToolSchema.String("domain name")))
+            .NoAdditionalProperties();
         var toolDefinitions = new List<ToolDefinition> {
             new("eventlog_live_stats", "live stats", schema),
-            new("eventlog_live_query", "live query", schema),
-            new("ad_scope_discovery", "scope", schema)
+            new("eventlog_live_query", "live query", eventlogSchema),
+            new("ad_scope_discovery", "scope", adSchema)
         };
         RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
 
@@ -1489,10 +1496,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
         packMap["ad_dc_fabric_discover"] = "active_directory";
 
         var schema = ToolSchema.Object().NoAdditionalProperties();
+        var eventlogSchema = ToolSchema.Object(
+                ("machine_name", ToolSchema.String("machine name")),
+                ("log_name", ToolSchema.String("log name")))
+            .NoAdditionalProperties();
+        var adSchema = ToolSchema.Object(
+                ("domain_name", ToolSchema.String("domain name")))
+            .NoAdditionalProperties();
         var toolDefinitions = new List<ToolDefinition> {
             new("eventlog_live_stats", "live stats", schema),
-            new("eventlog_live_query", "live query", schema),
-            new("ad_dc_fabric_discover", "custom scope", schema)
+            new("eventlog_live_query", "live query", eventlogSchema),
+            new("ad_dc_fabric_discover", "custom scope", adSchema)
         };
         RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
 

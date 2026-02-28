@@ -1503,15 +1503,22 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            if (ToolDefinitionHasInputProperty(candidateDefinition, "name")
-                || ToolDefinitionHasInputProperty(candidateDefinition, "target")
-                || ToolDefinitionHasInputProperty(candidateDefinition, "domain")
-                || ToolDefinitionHasInputProperty(candidateDefinition, "host")
-                || ToolDefinitionHasInputProperty(candidateDefinition, "computer_name")
-                || ToolDefinitionHasInputProperty(candidateDefinition, "machine_name")
-                || ToolDefinitionHasInputProperty(candidateDefinition, "log_name")) {
-                score += 50;
+            var hasTargetableInputProperty = ToolDefinitionHasInputProperty(candidateDefinition, "name")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "target")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "domain")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "domain_name")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "dns_domain_name")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "forest_name")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "host")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "computer_name")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "machine_name")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "domain_controller")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "log_name");
+            if (!hasTargetableInputProperty) {
+                continue;
             }
+
+            score += 50;
 
             rankedCandidates.Add((new CrossPackFallbackCandidate(name, candidateDefinition), score));
         }
