@@ -76,6 +76,25 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_InferNetworkPreferredVisualFromAssistantDraftStructuredJsonWhenVisualsAreAllowed() {
+        var request = """
+            [Proactive visualization guidance]
+            ix:proactive-visualization:v1
+            allow_new_visuals: true
+            """;
+        var draft = """
+            Current findings:
+            {"nodes":[{"id":"AD0"}],"edges":[{"from":"AD0","to":"AD1"}]}
+            """;
+
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, draft);
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_DoesNotInferPreferredVisualFromDraftWhenVisualsRemainDisabled() {
         var request = """
             [Proactive visualization guidance]

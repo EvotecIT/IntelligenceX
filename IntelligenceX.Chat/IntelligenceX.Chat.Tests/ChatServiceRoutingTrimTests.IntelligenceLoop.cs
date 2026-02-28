@@ -575,6 +575,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForStructuredJsonNetworkContractWithoutFence() {
+        var request = """
+            Use this structured visual contract if useful:
+            {"nodes":[{"id":"DC01"},{"id":"DC02"}],"edges":[{"from":"DC01","to":"DC02"}]}
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForNonArrayJsonNodeEdgeMentions() {
+        var request = """
+            Keep this as plain metadata:
+            {"nodes":"2","edges":"1"}
+            """;
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForPlainKeywordMentions() {
         var request = "Could you include a mermaid diagram if useful?";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
