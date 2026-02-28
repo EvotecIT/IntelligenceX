@@ -362,6 +362,30 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void TokenizeRoutingTokens_EmitsCompoundPackTokensForSpacedPackPhrases() {
+        var result = TokenizeRoutingTokensMethod.Invoke(
+            null,
+            new object?[] {
+                "Run domain detective and dns client x checks, then active directory, ad playground, computer x, and testimo x posture.",
+                48
+            });
+        var tokens = Assert.IsType<string[]>(result);
+
+        Assert.Contains(tokens, token => string.Equals(token, "domain_detective", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "domaindetective", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "dns_client_x", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "dnsclientx", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "activedirectory", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "ad_playground", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "adplayground", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "computer_x", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "computerx", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "testimo_x", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(tokens, token => string.Equals(token, "testimox", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void SelectWeightedToolSubset_UsesRequestedLimit_WhenPromptHasNoRoutingSignal() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var definitions = new List<ToolDefinition>();
