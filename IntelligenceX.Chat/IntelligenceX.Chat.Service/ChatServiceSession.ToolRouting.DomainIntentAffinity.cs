@@ -259,7 +259,7 @@ internal sealed partial class ChatServiceSession {
             ? weightedAmbiguityClusterSize
             : null;
         var normalizedWeightedAmbiguitySecondRatio = weightedAmbiguityWidened && weightedAmbiguitySecondScoreRatio is > 0d
-            ? Math.Round(weightedAmbiguitySecondScoreRatio.Value, 3)
+            ? (double?)Math.Round(weightedAmbiguitySecondScoreRatio.Value, 3)
             : null;
         return JsonSerializer.Serialize(new {
             strategy = (strategy ?? string.Empty).Trim(),

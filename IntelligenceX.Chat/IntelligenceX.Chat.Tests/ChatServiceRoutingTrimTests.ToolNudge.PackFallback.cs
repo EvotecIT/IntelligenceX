@@ -665,7 +665,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "testimox_rules_run",
-                Input = """
+                ArgumentsJson = """
                         {"domain_name":"contoso.local","search_text":"kerberos"}
                         """
             }
@@ -722,7 +722,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "ad_domain_controllers",
-                Input = """
+                ArgumentsJson = """
                         {"domain_name":"contoso.local","computer_name":"dc01.contoso.local"}
                         """
             }
@@ -782,7 +782,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "system_bios_summary",
-                Input = """
+                ArgumentsJson = """
                         {"computer_name":"dc01.contoso.local","domain_name":"contoso.local"}
                         """
             }
@@ -842,7 +842,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "system_bios_summary",
-                Input = """
+                ArgumentsJson = """
                         {"computer_name":"dc01.contoso.local"}
                         """
             }
@@ -900,7 +900,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "system_bios_summary",
-                Input = """
+                ArgumentsJson = """
                         {"computer_name":"dc01.contoso.local"}
                         """
             }
@@ -956,7 +956,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "system_bios_summary",
-                Input = """
+                ArgumentsJson = """
                         {"computer_name":"dc01.contoso.local","domain_name":"10.0.0.5"}
                         """
             }
@@ -1008,7 +1008,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "domaindetective_domain_summary",
-                Input = """
+                ArgumentsJson = """
                         {"domain":"contoso.com"}
                         """
             }
@@ -1063,7 +1063,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "call-1",
                 Name = "testimox_rules_list",
-                Input = """
+                ArgumentsJson = """
                         {"domain_name":"contoso.com"}
                         """
             }
