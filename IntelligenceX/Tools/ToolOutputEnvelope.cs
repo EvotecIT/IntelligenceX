@@ -24,6 +24,22 @@ public static class ToolOutputEnvelope {
     /// <param name="summaryMarkdown">Optional human-readable markdown summary for UI display.</param>
     /// <param name="render">Optional UI render hints (tables, columns, types, etc.).</param>
     public static JsonObject OkFlatObject(JsonObject? root = null, JsonObject? meta = null, string? summaryMarkdown = null, JsonObject? render = null) {
+        return OkFlatObjectWithRenderValue(
+            root: root,
+            meta: meta,
+            summaryMarkdown: summaryMarkdown,
+            render: render is null ? null : JsonValue.From(render));
+    }
+
+    /// <summary>
+    /// Creates a success envelope (<c>ok=true</c>) where tool-specific fields are placed at the root level
+    /// and <c>render</c> can be either an object or an array.
+    /// </summary>
+    public static JsonObject OkFlatObjectWithRenderValue(
+        JsonObject? root = null,
+        JsonObject? meta = null,
+        string? summaryMarkdown = null,
+        JsonValue? render = null) {
         var obj = new JsonObject().Add("ok", true);
 
         if (root is not null) {
@@ -38,9 +54,7 @@ public static class ToolOutputEnvelope {
         if (!string.IsNullOrWhiteSpace(summaryMarkdown)) {
             obj.Add("summary_markdown", summaryMarkdown);
         }
-        if (render is not null) {
-            obj.Add("render", render);
-        }
+        TryAddRenderValue(obj, render);
 
         return obj;
     }
@@ -52,6 +66,16 @@ public static class ToolOutputEnvelope {
         => JsonLite.Serialize(OkFlatObject(root, meta, summaryMarkdown, render));
 
     /// <summary>
+    /// Serializes a flat success envelope (<c>ok=true</c>) as JSON where <c>render</c> can be either an object or an array.
+    /// </summary>
+    public static string OkFlatWithRenderValue(
+        JsonObject? root = null,
+        JsonObject? meta = null,
+        string? summaryMarkdown = null,
+        JsonValue? render = null)
+        => JsonLite.Serialize(OkFlatObjectWithRenderValue(root, meta, summaryMarkdown, render));
+
+    /// <summary>
     /// Creates a success envelope (<c>ok=true</c>).
     /// </summary>
     /// <param name="data">Optional data payload.</param>
@@ -59,6 +83,21 @@ public static class ToolOutputEnvelope {
     /// <param name="summaryMarkdown">Optional human-readable markdown summary for UI display.</param>
     /// <param name="render">Optional UI render hints (tables, columns, types, etc.).</param>
     public static JsonObject OkObject(JsonObject? data = null, JsonObject? meta = null, string? summaryMarkdown = null, JsonObject? render = null) {
+        return OkObjectWithRenderValue(
+            data: data,
+            meta: meta,
+            summaryMarkdown: summaryMarkdown,
+            render: render is null ? null : JsonValue.From(render));
+    }
+
+    /// <summary>
+    /// Creates a success envelope (<c>ok=true</c>) where <c>render</c> can be either an object or an array.
+    /// </summary>
+    public static JsonObject OkObjectWithRenderValue(
+        JsonObject? data = null,
+        JsonObject? meta = null,
+        string? summaryMarkdown = null,
+        JsonValue? render = null) {
         var obj = new JsonObject().Add("ok", true);
         if (data is not null) {
             obj.Add("data", data);
@@ -69,9 +108,7 @@ public static class ToolOutputEnvelope {
         if (!string.IsNullOrWhiteSpace(summaryMarkdown)) {
             obj.Add("summary_markdown", summaryMarkdown);
         }
-        if (render is not null) {
-            obj.Add("render", render);
-        }
+        TryAddRenderValue(obj, render);
         return obj;
     }
 
@@ -80,6 +117,16 @@ public static class ToolOutputEnvelope {
     /// </summary>
     public static string Ok(JsonObject? data = null, JsonObject? meta = null, string? summaryMarkdown = null, JsonObject? render = null)
         => JsonLite.Serialize(OkObject(data, meta, summaryMarkdown, render));
+
+    /// <summary>
+    /// Serializes a success envelope (<c>ok=true</c>) as JSON where <c>render</c> can be either an object or an array.
+    /// </summary>
+    public static string OkWithRenderValue(
+        JsonObject? data = null,
+        JsonObject? meta = null,
+        string? summaryMarkdown = null,
+        JsonValue? render = null)
+        => JsonLite.Serialize(OkObjectWithRenderValue(data, meta, summaryMarkdown, render));
 
     /// <summary>
     /// Creates an error envelope (<c>ok=false</c>).
@@ -149,4 +196,12 @@ public static class ToolOutputEnvelope {
         bool isTransient = false,
         JsonObject? meta = null)
         => JsonLite.Serialize(ErrorObject(errorCode, error, hints, isTransient, meta));
+
+    private static void TryAddRenderValue(JsonObject destination, JsonValue? render) {
+        if (render is null || render.Kind == JsonValueKind.Null) {
+            return;
+        }
+
+        destination.Add("render", render);
+    }
 }
