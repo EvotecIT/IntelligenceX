@@ -188,7 +188,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
-            false
+            false,
+            null,
+            null
         });
         var payload = Assert.IsType<string>(payloadResult);
         using var doc = JsonDocument.Parse(payload);
@@ -212,7 +214,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
-            false
+            false,
+            null,
+            null
         });
         var payload = Assert.IsType<string>(result);
 
@@ -240,7 +244,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
-            false
+            false,
+            null,
+            null
         });
         var payload = Assert.IsType<string>(result);
 
@@ -265,7 +271,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
-            false
+            false,
+            null,
+            null
         });
         var payload = Assert.IsType<string>(result);
 
@@ -291,7 +299,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             4,
             8192L,
-            true
+            true,
+            null,
+            null
         });
         var payload = Assert.IsType<string>(result);
 
@@ -302,6 +312,33 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(budget.GetProperty("contextAwareBudgetApplied").GetBoolean());
         Assert.Equal(8192L, budget.GetProperty("effectiveModelContextLength").GetInt64());
         Assert.Equal(JsonValueKind.Null, budget.GetProperty("requested").ValueKind);
+    }
+
+    [Fact]
+    public void BuildRoutingMetaPayload_IncludesDomainIntentContextWhenProvided() {
+        var result = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
+            "domain_signal_hint",
+            true,
+            false,
+            false,
+            3,
+            9,
+            1,
+            false,
+            null,
+            5,
+            16384L,
+            false,
+            "signal_hint",
+            "public_domain"
+        });
+        var payload = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        var domainIntent = root.GetProperty("domainIntent");
+        Assert.Equal("signal_hint", domainIntent.GetProperty("source").GetString());
+        Assert.Equal("public_domain", domainIntent.GetProperty("family").GetString());
     }
 
     private static object CreateToolRoutingInsight(string toolName, string confidence, double score, string reason, string strategyName) {

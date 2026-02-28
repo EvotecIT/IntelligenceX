@@ -170,7 +170,9 @@ internal sealed partial class ChatServiceSession {
                 requestedMaxCandidateTools: requestedMaxCandidateTools,
                 effectiveMaxCandidateTools: maxCandidateTools,
                 effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
-                contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied);
+                contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
+                domainIntentSource: null,
+                domainIntentFamily: null);
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
@@ -234,7 +236,9 @@ internal sealed partial class ChatServiceSession {
                     requestedMaxCandidateTools: requestedMaxCandidateTools,
                     effectiveMaxCandidateTools: maxCandidateTools,
                     effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
-                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied);
+                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
+                    domainIntentSource: "signal_hint",
+                    domainIntentFamily: signaledFamily);
                 await TryWriteStatusAsync(
                         writer,
                         request.RequestId,
@@ -266,7 +270,9 @@ internal sealed partial class ChatServiceSession {
                     requestedMaxCandidateTools: requestedMaxCandidateTools,
                     effectiveMaxCandidateTools: maxCandidateTools,
                     effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
-                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied);
+                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
+                    domainIntentSource: "affinity",
+                    domainIntentFamily: affinityFamily);
                 await TryWriteStatusAsync(
                         writer,
                         request.RequestId,
