@@ -638,4 +638,59 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("\"domain_name\":\"contoso.local\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void TryBuildPackCapabilityFallbackToolCall_BuildsCrossPackTestimoXToAdFallbackOnFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var packMap = Assert.IsType<Dictionary<string, string>>(ToolPackIdsByToolNameField.GetValue(session));
+        packMap["testimox_rules_run"] = "testimox";
+        packMap["ad_scope_discovery"] = "active_directory";
+
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "testimox_rules_run",
+                "Run selected TestimoX rules.",
+                ToolSchema.Object(("search_text", ToolSchema.String("Search text."))).NoAdditionalProperties()),
+            new(
+                "ad_scope_discovery",
+                "Discover AD scope.",
+                ToolSchema.Object(
+                        ("domain_name", ToolSchema.String("Domain name.")),
+                        ("discovery_fallback", ToolSchema.String("Fallback mode.")))
+                    .NoAdditionalProperties())
+        };
+        RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
+
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-1",
+                Name = "testimox_rules_run",
+                Input = """
+                        {"domain_name":"contoso.local","search_text":"kerberos"}
+                        """
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-1",
+                Output = "{}",
+                Ok = false,
+                ErrorCode = "timeout"
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["testimox_rules_run"] = false,
+            ["ad_scope_discovery"] = false
+        };
+
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "run posture checks", mutabilityHints, null, null };
+        var result = TryBuildPackCapabilityFallbackToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
+        var reason = Assert.IsType<string>(args[6]);
+        Assert.Equal("ad_scope_discovery", toolCall.Name);
+        Assert.Contains("pack_contract_cross_testimox_ad_discovery", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"discovery_fallback\":\"current_forest\"", toolCall.Input, StringComparison.OrdinalIgnoreCase);
+    }
+
 }
