@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -14,6 +16,9 @@ public sealed class AdEnvironmentDiscoverToolTests {
     private static readonly MethodInfo TryExtractDomainNameFromDistinguishedNameMethod =
         typeof(AdEnvironmentDiscoverTool).GetMethod("TryExtractDomainNameFromDistinguishedName", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("TryExtractDomainNameFromDistinguishedName not found.");
+    private static readonly MethodInfo BuildRenderHintsMethod =
+        typeof(AdEnvironmentDiscoverTool).GetMethod("BuildRenderHints", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildRenderHints not found.");
 
     [Fact]
     public void BuildReadOnlyEnvironmentNextActions_WhenNotLimited_ReturnsEmpty() {
@@ -66,5 +71,41 @@ public sealed class AdEnvironmentDiscoverToolTests {
 
         Assert.True(result is bool value && !value);
         Assert.Equal(string.Empty, args[1] as string);
+    }
+
+    [Fact]
+    public void BuildRenderHints_WhenSectionsExist_EmitsPrioritizedHints() {
+        var result = BuildRenderHintsMethod.Invoke(
+            null,
+            new object?[] { 4, 2, 3, 2, 1 });
+
+        Assert.NotNull(result);
+        using var doc = JsonDocument.Parse(result!.ToString()!);
+        var renderHints = doc.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(5, renderHints.Length);
+
+        Assert.Equal("domain_controller_discovery/sources", renderHints[0].GetProperty("rows_path").GetString());
+        Assert.Equal(450, renderHints[0].GetProperty("priority").GetInt32());
+
+        Assert.Equal("domain_controllers", renderHints[1].GetProperty("rows_path").GetString());
+        Assert.Equal(400, renderHints[1].GetProperty("priority").GetInt32());
+
+        Assert.Equal("next_actions", renderHints[2].GetProperty("rows_path").GetString());
+        Assert.Equal(300, renderHints[2].GetProperty("priority").GetInt32());
+
+        Assert.Equal("domain_controller_discovery/domains", renderHints[3].GetProperty("rows_path").GetString());
+        Assert.Equal(200, renderHints[3].GetProperty("priority").GetInt32());
+
+        Assert.Equal("domain_controller_discovery/missing_reasons", renderHints[4].GetProperty("rows_path").GetString());
+        Assert.Equal(100, renderHints[4].GetProperty("priority").GetInt32());
+    }
+
+    [Fact]
+    public void BuildRenderHints_WhenNoSectionsExist_ReturnsNull() {
+        var result = BuildRenderHintsMethod.Invoke(
+            null,
+            new object?[] { 0, 0, 0, 0, 0 });
+
+        Assert.Null(result);
     }
 }

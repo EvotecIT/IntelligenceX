@@ -472,7 +472,84 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
             $"Forest: `{effectiveForest ?? string.Empty}`; Domains: `{domains.Count}`; DCs: `{allDcs.Count}`; Trusts: `{trusts.Count}`.",
             "Receipt includes discovery steps and per-domain DC source attempts.");
 
-        return ToolResponse.OkModel(model, summaryMarkdown: summary);
+        return ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: ToolJson.ToJsonObjectSnakeCase(model),
+            summaryMarkdown: summary,
+            render: BuildRenderHints(
+                domainControllersByDomainCount: dcByDomain.Count,
+                domainControllerCount: allDcs.Count,
+                domainCount: domains.Count,
+                trustCount: trusts.Count,
+                receiptStepCount: receipt.Count,
+                nextActionCount: chain.NextActions.Count));
+    }
+
+    private static JsonValue? BuildRenderHints(
+        int domainControllersByDomainCount,
+        int domainControllerCount,
+        int domainCount,
+        int trustCount,
+        int receiptStepCount,
+        int nextActionCount) {
+        var hints = new JsonArray();
+
+        if (domainControllersByDomainCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controllers_by_domain",
+                    new ToolColumn("domain_name", "Domain", "string"),
+                    new ToolColumn("domain_controller_count", "DC count", "int"))
+                .Add("priority", 500));
+        }
+
+        if (domainControllerCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domain_controllers",
+                    new ToolColumn("value", "Domain controller", "string"))
+                .Add("priority", 450));
+        }
+
+        if (domainCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "domains",
+                    new ToolColumn("value", "Domain", "string"))
+                .Add("priority", 400));
+        }
+
+        if (trustCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "trusts",
+                    new ToolColumn("scope", "Scope", "string"),
+                    new ToolColumn("source_name", "Source", "string"),
+                    new ToolColumn("target_name", "Target", "string"),
+                    new ToolColumn("trust_type", "Type", "string"),
+                    new ToolColumn("trust_direction", "Direction", "string"))
+                .Add("priority", 300));
+        }
+
+        if (receiptStepCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "receipt/steps",
+                    new ToolColumn("name", "Step", "string"),
+                    new ToolColumn("ok", "Ok", "bool"),
+                    new ToolColumn("duration_ms", "Duration (ms)", "int"),
+                    new ToolColumn("error_type", "Error type", "string"))
+                .Add("priority", 200));
+        }
+
+        if (nextActionCount > 0) {
+            hints.Add(ToolOutputHints.RenderTable(
+                    "next_actions",
+                    new ToolColumn("tool", "Tool", "string"),
+                    new ToolColumn("reason", "Reason", "string"),
+                    new ToolColumn("mutating", "Mutating", "bool"))
+                .Add("priority", 150));
+        }
+
+        if (hints.Count == 0) {
+            return null;
+        }
+
+        return JsonValue.From(hints);
     }
 
     private static ToolChainContractModel BuildChainContract(
