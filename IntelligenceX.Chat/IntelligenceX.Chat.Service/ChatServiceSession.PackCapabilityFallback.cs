@@ -1513,6 +1513,7 @@ internal sealed partial class ChatServiceSession {
 
             var hasTargetableInputProperty = ToolDefinitionHasInputProperty(candidateDefinition, "name")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "target")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "targets")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "domain")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "domain_name")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "dns_domain_name")
@@ -1520,7 +1521,10 @@ internal sealed partial class ChatServiceSession {
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "host")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "computer_name")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "machine_name")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "machine_names")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "domain_controller")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "domain_controllers")
+                                             || ToolDefinitionHasInputProperty(candidateDefinition, "servers")
                                              || ToolDefinitionHasInputProperty(candidateDefinition, "log_name");
             if (!hasTargetableInputProperty) {
                 continue;
@@ -1737,12 +1741,16 @@ internal sealed partial class ChatServiceSession {
             if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, machineName, "machine_name", "computer_name", "host", "target", "name")) {
                 fallbackArguments.Add("machine_name", machineName);
             }
-            if (ToolDefinitionHasInputProperty(toolDefinition, "log_name")) {
+            AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
+            if (!fallbackArguments.TryGetValue("log_name", out _)
+                && ToolDefinitionHasInputProperty(toolDefinition, "log_name")) {
                 fallbackArguments.Add("log_name", "System");
             }
-            if (ToolDefinitionHasInputProperty(toolDefinition, "max_events")) {
+            if (!fallbackArguments.TryGetValue("max_events", out _)
+                && ToolDefinitionHasInputProperty(toolDefinition, "max_events")) {
                 fallbackArguments.Add("max_events", 200);
             }
+            AddSchemaAwareFallbackDefaultArguments("eventlog", toolDefinition, fallbackArguments, partialScopeHints);
 
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
@@ -2187,6 +2195,10 @@ internal sealed partial class ChatServiceSession {
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "host", "host", "machine_name", "computer_name");
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "name", "name", "target", "domain_name", "domain", "host", "machine_name", "computer_name");
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "target", "target", "host", "name", "machine_name", "computer_name", "domain_name", "domain");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "targets", "target", "host", "name", "machine_name", "computer_name", "domain_name", "domain");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "machine_names", "machine_name", "computer_name", "host", "name");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "servers", "domain_controller", "machine_name", "computer_name", "host", "name");
+        TryAddSchemaAwareStringArrayHintArgument(toolDefinition, arguments, partialScopeHints, "domain_controllers", "domain_controller", "machine_name", "computer_name", "host", "name");
         TryAddSchemaAwareStringHintArgument(toolDefinition, arguments, partialScopeHints, "log_name", "log_name");
         TryAddSchemaAwareBooleanHintArgument(toolDefinition, arguments, partialScopeHints, "include_trusts", "include_trusts");
         TryAddSchemaAwareBooleanHintArgument(toolDefinition, arguments, partialScopeHints, "include_forest_domains", "include_forest_domains");
@@ -2267,6 +2279,35 @@ internal sealed partial class ChatServiceSession {
         }
 
         arguments[argumentName] = JsonValue.From(value.Value);
+    }
+
+    private static void TryAddSchemaAwareStringArrayHintArgument(
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        JsonObject partialScopeHints,
+        string argumentName,
+        params string[] hintKeys) {
+        if (arguments.TryGetValue(argumentName, out _)
+            || !ToolDefinitionHasInputProperty(toolDefinition, argumentName)) {
+            return;
+        }
+
+        for (var i = 0; i < hintKeys.Length; i++) {
+            var hintKey = (hintKeys[i] ?? string.Empty).Trim();
+            if (hintKey.Length == 0) {
+                continue;
+            }
+
+            var value = ReadNonEmptyHint(partialScopeHints, hintKey);
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            var array = new JsonArray();
+            array.Add(value);
+            arguments[argumentName] = JsonValue.From(array);
+            return;
+        }
     }
 
     private static void TryAddSchemaAwareStringDefaultArgument(
