@@ -271,7 +271,7 @@ internal sealed partial class ChatServiceSession {
         if (_registry.TryGetDefinition(call.Name, out var registeredDefinition) && registeredDefinition is not null) {
             toolDefinition = ToolSelectionMetadata.Enrich(registeredDefinition, tool.GetType());
         }
-        var profile = ResolveRetryProfile(call.Name, toolDefinition);
+        var profile = ResolveRetryProfile(toolDefinition);
         var currentCall = call;
         var projectionFallbackAttempted = false;
         ToolOutputDto? lastFailure = null;
@@ -546,12 +546,7 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static ToolRetryProfile ResolveRetryProfile(string? toolName) {
-        return ResolveRetryProfile(toolName, definition: null);
-    }
-
-    private static ToolRetryProfile ResolveRetryProfile(string? toolName, ToolDefinition? definition) {
-        _ = toolName;
+    private static ToolRetryProfile ResolveRetryProfile(ToolDefinition? definition) {
         var recovery = definition?.Recovery;
         if (recovery is not { IsRecoveryAware: true } || !recovery.SupportsTransientRetry || recovery.MaxRetryAttempts <= 0) {
             return new ToolRetryProfile(

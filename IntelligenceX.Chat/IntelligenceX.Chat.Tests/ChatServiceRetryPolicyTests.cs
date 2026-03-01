@@ -19,16 +19,9 @@ public sealed class ChatServiceRetryPolicyTests {
         "ResolveRetryProfile",
         BindingFlags.NonPublic | BindingFlags.Static,
         binder: null,
-        types: new[] { typeof(string) },
+        types: new[] { typeof(ToolDefinition) },
         modifiers: null)
-        ?? throw new InvalidOperationException("ResolveRetryProfile not found.");
-    private static readonly MethodInfo ResolveRetryProfileWithDefinitionMethod = ChatServiceSessionType.GetMethod(
-        "ResolveRetryProfile",
-        BindingFlags.NonPublic | BindingFlags.Static,
-        binder: null,
-        types: new[] { typeof(string), typeof(ToolDefinition) },
-        modifiers: null)
-        ?? throw new InvalidOperationException("ResolveRetryProfile(string, ToolDefinition) not found.");
+        ?? throw new InvalidOperationException("ResolveRetryProfile(ToolDefinition) not found.");
 
     private static readonly MethodInfo ShouldRetryToolCallMethod = ChatServiceSessionType.GetMethod(
         "ShouldRetryToolCall",
@@ -613,13 +606,15 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     private static object InvokeResolveRetryProfile(string toolName) {
-        var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { toolName });
+        _ = toolName;
+        var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { null });
         return profile ?? throw new InvalidOperationException("ResolveRetryProfile returned null.");
     }
 
     private static object InvokeResolveRetryProfile(string toolName, ToolDefinition definition) {
-        var profile = ResolveRetryProfileWithDefinitionMethod.Invoke(null, new object?[] { toolName, definition });
-        return profile ?? throw new InvalidOperationException("ResolveRetryProfile(string, ToolDefinition) returned null.");
+        _ = toolName;
+        var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { definition });
+        return profile ?? throw new InvalidOperationException("ResolveRetryProfile(ToolDefinition) returned null.");
     }
 
     private static ToolDefinition BuildRecoveryAwareDefinition(string toolName, int maxRetryAttempts, params string[] retryableErrorCodes) {
