@@ -52,7 +52,7 @@ public sealed class AdGroupMembersTool : ActiveDirectoryToolBase, ITool {
     private ToolRequestBindingResult<GroupMembersRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
             if (!reader.TryReadRequiredString("identity", out var identity, out var identityError)) {
-                return ToolRequestBindingResult<GroupMembersRequest>.Failure(identityError, errorCode: "error");
+                return ToolRequestBindingResult<GroupMembersRequest>.Failure(identityError);
             }
 
             var requestedMax = reader.OptionalInt64("max_members");
