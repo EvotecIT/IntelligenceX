@@ -1049,6 +1049,18 @@
       return null;
     }
 
+    var hasOwn = Object.prototype.hasOwnProperty;
+    var hasIsHealthy = hasOwn.call(value, "isHealthy");
+    var hasIsExplicitRoutingReady = hasOwn.call(value, "isExplicitRoutingReady");
+    var hasMissingRoutingContractTools = hasOwn.call(value, "missingRoutingContractTools");
+    var hasMissingPackIdTools = hasOwn.call(value, "missingPackIdTools");
+    var hasMissingRoleTools = hasOwn.call(value, "missingRoleTools");
+    var hasInferredRoutingTools = hasOwn.call(value, "inferredRoutingTools");
+    var hasExpectedDomainFamilyMissingTools = hasOwn.call(value, "expectedDomainFamilyMissingTools");
+    var hasDomainFamilyMissingActionTools = hasOwn.call(value, "domainFamilyMissingActionTools");
+    var hasActionWithoutFamilyTools = hasOwn.call(value, "actionWithoutFamilyTools");
+    var hasFamilyActionConflictFamilies = hasOwn.call(value, "familyActionConflictFamilies");
+
     var familyActionsRaw = Array.isArray(value.familyActions) ? value.familyActions : [];
     var familyActions = [];
     for (var i = 0; i < familyActionsRaw.length; i++) {
@@ -1086,17 +1098,29 @@
       domainFamilyMissingActionTools: toNonNegativeInt(value.domainFamilyMissingActionTools),
       actionWithoutFamilyTools: toNonNegativeInt(value.actionWithoutFamilyTools),
       familyActionConflictFamilies: toNonNegativeInt(value.familyActionConflictFamilies),
-      isHealthy: value.isHealthy === true,
-      isExplicitRoutingReady: value.isExplicitRoutingReady === true,
+      // Keep version-skew payloads neutral by default; derive degraded states only when required counters are present.
+      isHealthy: hasIsHealthy ? value.isHealthy === true : true,
+      isExplicitRoutingReady: hasIsExplicitRoutingReady ? value.isExplicitRoutingReady === true : true,
       familyActions: familyActions
     };
 
+    var canDeriveHealth = hasMissingRoutingContractTools
+      && hasMissingPackIdTools
+      && hasMissingRoleTools
+      && hasExpectedDomainFamilyMissingTools
+      && hasDomainFamilyMissingActionTools
+      && hasActionWithoutFamilyTools
+      && hasFamilyActionConflictFamilies;
+    var canDeriveExplicitReadiness = hasMissingRoutingContractTools
+      && hasMissingPackIdTools
+      && hasMissingRoleTools
+      && hasInferredRoutingTools;
     var issueCount = computeRoutingCatalogIssueCount(routingCatalog);
     var explicitReadinessIssueCount = computeExplicitRoutingReadinessIssueCount(routingCatalog);
-    if (issueCount > 0) {
+    if (canDeriveHealth && issueCount > 0) {
       routingCatalog.isHealthy = false;
     }
-    if (explicitReadinessIssueCount > 0) {
+    if (canDeriveExplicitReadiness && explicitReadinessIssueCount > 0) {
       routingCatalog.isExplicitRoutingReady = false;
     }
 
