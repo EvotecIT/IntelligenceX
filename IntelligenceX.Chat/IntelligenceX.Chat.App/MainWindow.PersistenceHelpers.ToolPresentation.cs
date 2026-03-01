@@ -21,7 +21,7 @@ public sealed partial class MainWindow : Window {
         ArgumentNullException.ThrowIfNull(resolveToolDisplayName);
         return debugMode
             ? ToolRunMarkdownFormatter.Format(tools, resolveToolDisplayName)
-            : ToolRunMarkdownFormatter.FormatVisualsOnly(tools, resolveToolDisplayName);
+            : string.Empty;
     }
 
     private string BuildToolRunTranscriptMarkdown(ToolRunDto tools) {

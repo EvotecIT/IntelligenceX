@@ -415,14 +415,14 @@
 .msg-actions {
   position: absolute;
   top: 22px;
-  right: -34px;
+  right: 6px;
   opacity: 0;
   z-index: 2;
 }
 
 .msg-row.user .msg-actions {
   right: auto;
-  left: -34px;
+  left: 6px;
 }
 
 .msg-row:hover .msg-actions {

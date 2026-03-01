@@ -43,10 +43,10 @@ public sealed class MainWindowToolTranscriptMarkdownTests {
     }
 
     /// <summary>
-    /// Ensures non-debug transcript formatting emits only first-party visual markdown.
+    /// Ensures non-debug transcript formatting does not append tool transcript bubbles.
     /// </summary>
     [Fact]
-    public void BuildToolRunTranscriptMarkdown_UsesVisualsOnlyFormatterWhenDebugModeDisabled() {
+    public void BuildToolRunTranscriptMarkdown_ReturnsEmptyWhenDebugModeDisabled() {
         var tools = new ToolRunDto {
             Calls = new[] {
                 new ToolCallDto {
@@ -67,9 +67,6 @@ public sealed class MainWindowToolTranscriptMarkdownTests {
 
         var markdown = MainWindow.BuildToolRunTranscriptMarkdown(tools, debugMode: false, _ => "Chart Pack");
 
-        Assert.Contains("**Tool visuals:**", markdown);
-        Assert.Contains("```ix-chart", markdown);
-        Assert.DoesNotContain("failure descriptor:", markdown);
-        Assert.DoesNotContain("debug-only error", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(string.Empty, markdown);
     }
 }
