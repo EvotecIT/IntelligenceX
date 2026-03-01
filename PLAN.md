@@ -9,9 +9,16 @@ Build a contract-first architecture where:
 - Adding a new pack/tool does not require Chat hardcoded logic edits.
 - Legacy fallback heuristics in Chat are removed.
 
+## Checkpoint Updates (2026-03-01)
+
+- [x] PR #974 merged: replace reflection/object retry-policy test hooks with typed test contract (`RetryProfileSnapshot`).
+- [x] PR #975 merged: centralize pack-id normalization in `ToolSelectionMetadata.NormalizePackId(...)` and delegate Chat bootstrap normalization to Tools.
+- [x] PR #976 merged: make planner candidate selection core static with explicit `ToolOrchestrationCatalog` input (keep compatibility wrapper for existing test reflection contract).
+- [x] Architecture guardrails active in Chat to prevent reintroduction of legacy pack-capability fallback source files/symbols.
+
 ## Hard Decisions (Locked)
 
-- [ ] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).
+- [x] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).
 - [x] `D2` Keep resilience only inside tools/engines (for example CIM -> WMI), not in Chat routing.
 - [ ] `D3` Make routing metadata explicit and contract-validated for every tool.
 - [ ] `D4` Prefer typed request/response models in tools; keep JSON/text as transport envelope only.
@@ -19,8 +26,8 @@ Build a contract-first architecture where:
 
 ## Current Gaps To Eliminate
 
-- [ ] `G1` Chat has hardcoded cross-pack fallback builders in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.PackCapabilityFallback.cs`.
-- [ ] `G2` Chat triggers fallback replay in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.
+- [x] `G1` Chat has hardcoded cross-pack fallback builders in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.PackCapabilityFallback.cs`.
+- [x] `G2` Chat triggers fallback replay in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.
 - [ ] `G3` Chat uses suffix/name heuristics for pack preflight in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.PackPreflight.cs`.
 - [ ] `G4` Chat deterministic routing still uses suffix/prefix name heuristics in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ChatRouting.RoutingScoring.cs`.
 - [ ] `G5` Tools metadata enrichment still contains hardcoded pack/category inference maps in `IntelligenceX/Tools/ToolSelectionMetadata.cs`.
@@ -49,7 +56,7 @@ Build a contract-first architecture where:
 
 ## Phase 2 - Build Runtime Orchestration Catalog (Chat Reads Contracts, Not Names)
 
-1. [ ] Introduce `ToolOrchestrationCatalog` in Chat bootstrapping built from `ToolRegistry.GetDefinitions()`.
+1. [x] Introduce `ToolOrchestrationCatalog` in Chat bootstrapping built from `ToolRegistry.GetDefinitions()`.
 2. [ ] Include in catalog: pack id, role, scope/operation/entity/risk, domain family/action, setup requirements, handoff edges, recovery policy.
 3. [ ] Replace direct `_toolPackIdsByToolName` and suffix inference consumers with catalog queries.
 4. [x] Keep Chat startup diagnostics but add new contract health metrics (missing role, missing handoff schema, invalid setup contracts).
@@ -58,11 +65,11 @@ Build a contract-first architecture where:
 
 ## Phase 3 - Remove Chat Fallback Engine
 
-1. [ ] Delete cross-pack fallback builders from `ChatServiceSession.PackCapabilityFallback.cs`.
-2. [ ] Delete fallback host-hint helpers tied to that flow from `ChatServiceSession.PackCapabilityFallback.HostHints.cs`.
-3. [ ] Remove `_packCapabilityFallbackContractsByPackId` state from `ChatServiceSession.cs`.
-4. [ ] Remove `RebuildPackCapabilityFallbackContracts(...)` call in `ChatServiceSession.ProfilesAndModels.cs`.
-5. [ ] Remove fallback replay branch in `ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.
+1. [x] Delete cross-pack fallback builders from `ChatServiceSession.PackCapabilityFallback.cs`.
+2. [x] Delete fallback host-hint helpers tied to that flow from `ChatServiceSession.PackCapabilityFallback.HostHints.cs`.
+3. [x] Remove `_packCapabilityFallbackContractsByPackId` state from `ChatServiceSession.cs`.
+4. [x] Remove `RebuildPackCapabilityFallbackContracts(...)` call in `ChatServiceSession.ProfilesAndModels.cs`.
+5. [x] Remove fallback replay branch in `ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.
 6. [ ] Keep normal model-driven retries/review loops; do not auto-run substitute tools in Chat.
 7. [ ] For resilience use-case support, route it into tool internals (engine/tool package), not Chat orchestration.
 
@@ -117,7 +124,7 @@ Build a contract-first architecture where:
 
 ## Definition Of Done
 
-- [ ] `DoD1` No Chat file contains cross-pack fallback execution methods.
+- [x] `DoD1` No Chat file contains cross-pack fallback execution methods.
 - [ ] `DoD2` Chat does not decide substitute tools based on hardcoded pack names.
 - [ ] `DoD3` Pack preflight/routing relies on contracts, not suffix/prefix naming.
 - [ ] `DoD4` Every registered tool has explicit routing role + pack metadata.
