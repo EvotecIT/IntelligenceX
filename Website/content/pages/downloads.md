@@ -9,6 +9,8 @@ meta.raw_html: true
 
 Download IntelligenceX release assets directly from this page. Source of truth remains [GitHub Releases](https://github.com/EvotecIT/IntelligenceX/releases).
 
+If the cards below show `No releases found`, no desktop artifacts have been published yet. In the meantime, start with [Getting Started](/docs/getting-started/) and project docs.
+
 <div class="ix-release-cta">
 {{< release-button placement="downloads.chat_stable" >}}
 {{< release-button placement="downloads.chat_preview" >}}
