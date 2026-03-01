@@ -225,7 +225,12 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        return ShouldAppendFinalAssistantAfterInterim(finalAssistantText, streamedAssistantText);
+        // Streamed draft bubbles should converge into a single finalized assistant entry.
+        // Appending a second "final" bubble after streaming causes near-duplicate transcript
+        // rows and confusing exports; finalize by replacing the draft instead.
+        _ = finalAssistantText;
+        _ = streamedAssistantText;
+        return false;
     }
 
     private static string NormalizeAssistantSnapshotForAppendDecision(string? text) {

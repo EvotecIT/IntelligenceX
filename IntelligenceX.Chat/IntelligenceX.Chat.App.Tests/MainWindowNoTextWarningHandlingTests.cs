@@ -88,17 +88,17 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
-    /// Ensures materially different finalized text is appended after streamed draft content.
+    /// Ensures finalized text replaces streamed draft content instead of creating duplicate assistant bubbles.
     /// </summary>
     [Fact]
-    public void ShouldAppendFinalAssistantAfterStreamedDraft_AppendsWhenFinalDiffersFromStreamedDraft() {
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_DoesNotAppendWhenFinalDiffersFromStreamedDraft() {
         var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
             activeTurnReceivedDelta: true,
             activeTurnInterimResultSeen: false,
             finalAssistantText: "Confirmed reboot evidence on AD0: 41 + 6008 at 2026-02-17T07:41Z.",
             streamedAssistantText: "Running checks now.");
 
-        Assert.True(append);
+        Assert.False(append);
     }
 
     /// <summary>
@@ -144,17 +144,17 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
-    /// Ensures long synthesized final summaries still append after streamed drafts.
+    /// Ensures long synthesized final summaries still replace streamed drafts (single final bubble).
     /// </summary>
     [Fact]
-    public void ShouldAppendFinalAssistantAfterStreamedDraft_AppendsWhenSuffixExceedsNearDuplicateThreshold() {
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_DoesNotAppendWhenSuffixExceedsNearDuplicateThreshold() {
         var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
             activeTurnReceivedDelta: true,
             activeTurnInterimResultSeen: false,
             finalAssistantText: "Running checks now. Confirmed replication lag on AD0, AD1, and AD2.",
             streamedAssistantText: "Running checks now.");
 
-        Assert.True(append);
+        Assert.False(append);
     }
 
     /// <summary>

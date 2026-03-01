@@ -96,10 +96,20 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
         RunPerTargetCollection(
             targets: targetDomains,
             collect: domain => {
-                var view = FleetPostureService.Evaluate(domain, cancellationToken: cancellationToken);
+                var domainDn = TryResolveDomainDistinguishedName(domain);
+                var domainControllersDn = TryBuildDomainControllersDn(domainDn);
+                var view = FleetPostureService.Evaluate(
+                    domain,
+                    domainDn: domainDn,
+                    domainControllersDn: domainControllersDn,
+                    cancellationToken: cancellationToken);
+                var discoveredFactsCount = TryGetDiscoveredDomainControllerCount(domain);
+                var resolvedDomainControllerCount = ResolveDomainControllerCount(
+                    view.DomainControllerCount,
+                    discoveredFactsCount);
                 summaryRows.Add(new DcFleetPostureRow(
                     DomainName: view.DomainName,
-                    DomainControllerCount: view.DomainControllerCount,
+                    DomainControllerCount: resolvedDomainControllerCount,
                     InactiveCount: view.InactiveCount,
                     OldPasswordCount: view.OldPasswordCount,
                     DisabledCount: view.DisabledCount,
@@ -152,5 +162,44 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("error_count", errors.Count);
                 AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
+    }
+
+    internal static string? TryResolveDomainDistinguishedName(string domainName) {
+        if (string.IsNullOrWhiteSpace(domainName)) {
+            return null;
+        }
+
+        try {
+            return DomainHelper.DomainNameToDistinguishedName(domainName);
+        } catch {
+            return null;
+        }
+    }
+
+    internal static string? TryBuildDomainControllersDn(string? domainDn) {
+        var normalized = (domainDn ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        return $"OU=Domain Controllers,{normalized}";
+    }
+
+    internal static int TryGetDiscoveredDomainControllerCount(string domainName) {
+        if (string.IsNullOrWhiteSpace(domainName)) {
+            return 0;
+        }
+
+        try {
+            return DomainControllerFactsService.GetFacts(domainName, timeoutMs: 2000).Count;
+        } catch {
+            return 0;
+        }
+    }
+
+    internal static int ResolveDomainControllerCount(int reportedCount, int discoveredFactsCount) {
+        var normalizedReported = Math.Max(0, reportedCount);
+        var normalizedDiscovered = Math.Max(0, discoveredFactsCount);
+        return Math.Max(normalizedReported, normalizedDiscovered);
     }
 }
