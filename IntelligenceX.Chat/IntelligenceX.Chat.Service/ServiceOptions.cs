@@ -65,6 +65,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public ToolWriteAuditSinkMode WriteAuditSinkMode { get; set; } = ToolWriteAuditSinkMode.None;
     public string? WriteAuditSinkPath { get; set; }
     public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; set; } = ToolAuthenticationRuntimePreset.Default;
+    public bool RequireExplicitRoutingMetadata { get; set; }
     public bool RequireAuthenticationRuntime { get; set; }
     public string? RunAsProfilePath { get; set; }
     public string? AuthenticationProfilePath { get; set; }
@@ -119,6 +120,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                     setWriteAuditSinkMode: mode => options.WriteAuditSinkMode = mode,
                     setWriteAuditSinkPath: path => options.WriteAuditSinkPath = path,
                     setAuthenticationRuntimePreset: preset => options.AuthenticationRuntimePreset = preset,
+                    setRequireExplicitRoutingMetadata: required => options.RequireExplicitRoutingMetadata = required,
                     setRequireAuthenticationRuntime: required => options.RequireAuthenticationRuntime = required,
                     setRunAsProfilePath: path => options.RunAsProfilePath = path,
                     setAuthenticationProfilePath: path => options.AuthenticationProfilePath = path,

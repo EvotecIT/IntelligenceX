@@ -15,6 +15,19 @@ namespace IntelligenceX.Tools.TestimoX;
 /// Lists TestimoX rules and exposes stable metadata for tool planning.
 /// </summary>
 public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
+    private sealed record RulesListRequest(
+        bool IncludeDisabled,
+        bool IncludeHidden,
+        bool IncludeDeprecated,
+        string? SearchText,
+        HashSet<string>? SourceTypeFilter,
+        string RuleOrigin,
+        IReadOnlyList<string> RequestedCategories,
+        IReadOnlyList<string> RequestedTags,
+        string? PowerShellRulesDirectory,
+        int? PageSize,
+        int Offset);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "testimox_rules_list",
         "List TestimoX rules with metadata (scope, source_type, origin, categories, tags, cost, visibility).",
@@ -50,37 +63,77 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync).ConfigureAwait(false);
+    }
+
+    private ToolRequestBindingResult<RulesListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var includeDisabled = reader.Boolean("include_disabled", defaultValue: false);
+            var includeHidden = reader.Boolean("include_hidden", defaultValue: false);
+            var includeDeprecated = reader.Boolean("include_deprecated", defaultValue: true);
+            var searchText = reader.OptionalString("search_text");
+
+            var requestedSourceTypes = reader.DistinctStringArray("source_types");
+            if (!TestimoXRuleSelectionHelper.TryParseSourceTypes(requestedSourceTypes, out var sourceTypeFilter, out var sourceTypeError)) {
+                return ToolRequestBindingResult<RulesListRequest>.Failure(sourceTypeError ?? "Invalid source_types argument.");
+            }
+
+            if (!TestimoXRuleSelectionHelper.TryParseRuleOrigin(
+                    reader.OptionalString("rule_origin"),
+                    out var ruleOrigin,
+                    out var ruleOriginError)) {
+                return ToolRequestBindingResult<RulesListRequest>.Failure(ruleOriginError ?? "Invalid rule_origin argument.");
+            }
+
+            var requestedCategories = reader.DistinctStringArray("categories");
+            var requestedTags = reader.DistinctStringArray("tags");
+            var powerShellRulesDirectory = reader.OptionalString("powershell_rules_directory");
+            var pageSize = ResolvePageSize(arguments);
+            if (!TryReadOffset(arguments, out var offset, out var offsetError)) {
+                return ToolRequestBindingResult<RulesListRequest>.Failure(offsetError ?? "Invalid offset argument.");
+            }
+
+            return ToolRequestBindingResult<RulesListRequest>.Success(new RulesListRequest(
+                IncludeDisabled: includeDisabled,
+                IncludeHidden: includeHidden,
+                IncludeDeprecated: includeDeprecated,
+                SearchText: searchText,
+                SourceTypeFilter: sourceTypeFilter,
+                RuleOrigin: ruleOrigin,
+                RequestedCategories: requestedCategories,
+                RequestedTags: requestedTags,
+                PowerShellRulesDirectory: powerShellRulesDirectory,
+                PageSize: pageSize,
+                Offset: offset));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<RulesListRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (!Options.Enabled) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "disabled",
                 error: "IX.TestimoX pack is disabled by policy.",
                 hints: new[] { "Enable the TestimoX pack in host/service options before calling testimox_rules_list." },
                 isTransient: false);
         }
 
-        var includeDisabled = ToolArgs.GetBoolean(arguments, "include_disabled", defaultValue: false);
-        var includeHidden = ToolArgs.GetBoolean(arguments, "include_hidden", defaultValue: false);
-        var includeDeprecated = ToolArgs.GetBoolean(arguments, "include_deprecated", defaultValue: true);
-        var searchText = ToolArgs.GetOptionalTrimmed(arguments, "search_text");
-        var requestedSourceTypes = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("source_types"));
-        if (!TestimoXRuleSelectionHelper.TryParseSourceTypes(requestedSourceTypes, out var sourceTypeFilter, out var sourceTypeError)) {
-            return ToolResponse.Error("invalid_argument", sourceTypeError ?? "Invalid source_types argument.");
-        }
-        if (!TestimoXRuleSelectionHelper.TryParseRuleOrigin(
-                ToolArgs.GetOptionalTrimmed(arguments, "rule_origin"),
-                out var ruleOrigin,
-                out var ruleOriginError)) {
-            return ToolResponse.Error("invalid_argument", ruleOriginError ?? "Invalid rule_origin argument.");
-        }
-        var requestedCategories = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("categories"));
-        var requestedTags = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("tags"));
-        var powerShellRulesDirectory = ToolArgs.GetOptionalTrimmed(arguments, "powershell_rules_directory");
-        var pageSize = ResolvePageSize(arguments);
-        if (!TryReadOffset(arguments, out var offset, out var offsetError)) {
-            return ToolResponse.Error("invalid_argument", offsetError ?? "Invalid offset argument.");
-        }
+        var includeDisabled = context.Request.IncludeDisabled;
+        var includeHidden = context.Request.IncludeHidden;
+        var includeDeprecated = context.Request.IncludeDeprecated;
+        var searchText = context.Request.SearchText;
+        var sourceTypeFilter = context.Request.SourceTypeFilter;
+        var ruleOrigin = context.Request.RuleOrigin;
+        var requestedCategories = context.Request.RequestedCategories;
+        var requestedTags = context.Request.RequestedTags;
+        var powerShellRulesDirectory = context.Request.PowerShellRulesDirectory;
+        var pageSize = context.Request.PageSize;
+        var offset = context.Request.Offset;
 
         List<Rule> discovered;
         var usingExternalDirectory = !string.IsNullOrWhiteSpace(powerShellRulesDirectory);
@@ -166,15 +219,14 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
             Truncated: truncated,
             Rules: rows);
 
-        ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: model,
             sourceRows: rows,
             viewRowsPath: "rules_view",
             title: "TestimoX rules (preview)",
             maxTop: Math.Max(Options.MaxRulesInCatalog, matchedRows.Count),
             baseTruncated: truncated,
-            response: out var response,
             scanned: discovered.Count,
             metaMutate: meta => {
                 meta.Add("matched_count", matchedRows.Count);
@@ -263,24 +315,46 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
             cursorOffset = (int)decoded;
         }
 
-        var rawOffset = arguments?.GetInt64("offset");
-        if (!rawOffset.HasValue) {
+        if (!TryGetInt64Argument(arguments, "offset", out var rawOffset)) {
             offset = cursorOffset;
             return true;
         }
 
-        if (rawOffset.Value < 0 || rawOffset.Value > int.MaxValue) {
+        if (rawOffset < 0 || rawOffset > int.MaxValue) {
             error = "offset must be between 0 and 2147483647.";
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(rawCursor) && rawOffset.Value != cursorOffset) {
+        if (!string.IsNullOrWhiteSpace(rawCursor) && rawOffset != cursorOffset) {
             error = "Provide either cursor or offset (or keep them aligned), not conflicting values.";
             return false;
         }
 
-        offset = (int)rawOffset.Value;
+        offset = (int)rawOffset;
         return true;
+    }
+
+    private static bool TryGetInt64Argument(JsonObject? arguments, string name, out long value) {
+        value = 0;
+        if (arguments is null || string.IsNullOrWhiteSpace(name)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals((kv.Key ?? string.Empty).Trim(), name, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var parsed = kv.Value.AsInt64();
+            if (!parsed.HasValue) {
+                return false;
+            }
+
+            value = parsed.Value;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasArgument(JsonObject? arguments, string name) {

@@ -18,6 +18,12 @@ namespace IntelligenceX.Tools.EventLog;
 public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
     private const int MaxDefaultResults = 20;
     private const int MaxMaxResults = 80;
+    private const int MaxViewTop = 5000;
+
+    private sealed record EvtxFindRequest(
+        string Query,
+        string LogHint,
+        int MaxResults);
 
     // EVTX discovery can touch a lot of the filesystem; cap concurrent scans to avoid threadpool/disk contention.
     private static readonly SemaphoreSlim ScanConcurrency = new(initialCount: 2, maxCount: 2);
@@ -52,23 +58,39 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<EvtxFindRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<EvtxFindRequest>.Success(
+            new EvtxFindRequest(
+                Query: reader.OptionalString("query") ?? string.Empty,
+                LogHint: reader.OptionalString("log_name") ?? string.Empty,
+                MaxResults: ResolveCappedMaxResults(arguments, defaultValue: MaxDefaultResults, maxInclusive: MaxMaxResults))));
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<EvtxFindRequest> context, CancellationToken cancellationToken) {
         await ScanConcurrency.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
             cancellationToken.ThrowIfCancellationRequested();
             // Filesystem enumeration is synchronous; keep it bounded (budgets) and concurrency-limited (semaphore)
             // rather than consuming extra threadpool threads via Task.Run.
-            return InvokeCore(arguments, cancellationToken);
+            return ExecuteCore(context.Arguments, context.Request, cancellationToken);
         } finally {
             ScanConcurrency.Release();
         }
     }
 
-    private string InvokeCore(JsonObject? arguments, CancellationToken cancellationToken) {
+    private string ExecuteCore(JsonObject? arguments, EvtxFindRequest request, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (Options.AllowedRoots.Count == 0) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 "access_denied",
                 "EVTX file scanning is disabled (AllowedRoots is empty).",
                 hints: new[] { "Enable EVTX access by configuring AllowedRoots / --allow-root." },
@@ -78,16 +100,16 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
         try {
             Options.Validate();
         } catch (ArgumentOutOfRangeException ex) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 "invalid_configuration",
                 $"Event log tool options are invalid: {ex.Message}",
                 hints: new[] { "Fix configuration values for EventLogToolOptions and restart." },
                 isTransient: false);
         }
 
-        var query = (arguments?.GetString("query") ?? string.Empty).Trim();
-        var logHint = (arguments?.GetString("log_name") ?? string.Empty).Trim();
-        var maxResults = ResolveCappedMaxResults(arguments, defaultValue: MaxDefaultResults, maxInclusive: MaxMaxResults);
+        var query = request.Query.Trim();
+        var logHint = request.LogHint.Trim();
+        var maxResults = request.MaxResults;
         var maxDepth = Options.EvtxFindMaxDepth;
         var maxDirsScanned = Options.EvtxFindMaxDirsScanned;
         var maxFilesScanned = Options.EvtxFindMaxFilesScanned;
@@ -251,34 +273,20 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             ScannedFiles: scannedFiles,
             Truncated: truncated);
 
-        var preview = ToolPreview.Table(maxRows: 20, maxCellChars: 120);
-        foreach (var row in selected) {
-            preview.TryAdd(
-                row.FileName,
-                row.LastWriteTimeUtc.ToString("u"),
-                row.SizeBytes.ToString(),
-                row.Path);
-        }
-
-        return ToolResponse.OkTablePreviewModel(
+        return ToolResultV2.OkAutoTableResponse(
+            arguments: arguments,
             model: result,
+            sourceRows: selected,
+            viewRowsPath: "files_view",
             title: "EVTX files (preview)",
-            rowsPath: "files",
-            headers: new[] { "File", "LastWriteUtc", "Size", "Path" },
-            previewRows: preview.Rows,
-            count: selected.Count,
-            truncated: truncated,
+            baseTruncated: truncated,
             scanned: scannedFiles,
+            maxTop: MaxViewTop,
             metaMutate: meta => {
                 meta["scanned_directories"] = JsonValue.From(scannedDirs);
                 meta["scan_budget_hit"] = JsonValue.From(hitScanBudget);
                 meta["total_matches"] = JsonValue.From(totalMatches);
-            },
-            columns: new[] {
-                new ToolColumn("file_name", "File", "string"),
-                new ToolColumn("last_write_time_utc", "LastWriteUtc", "datetime"),
-                new ToolColumn("size_bytes", "Size", "number"),
-                new ToolColumn("path", "Path", "string")
+                AddMaxResultsMeta(meta, maxResults);
             });
     }
 

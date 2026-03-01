@@ -14,6 +14,21 @@ namespace IntelligenceX.Tools.System;
 /// Returns MSRC monthly patch details (CVE/KB/severity/product) with optional filters.
 /// </summary>
 public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
+    private sealed record PatchDetailsRequest(
+        int Year,
+        int Month,
+        string? ProductFamily,
+        string? ProductVersion,
+        string? ProductBuild,
+        string? ProductEdition,
+        IReadOnlyList<string> ProductNameContains,
+        IReadOnlyList<string> Severity,
+        bool ExploitedOnly,
+        bool PubliclyDisclosedOnly,
+        string? CveContains,
+        string? KbContains,
+        int MaxResults);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -66,92 +81,149 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync).ConfigureAwait(false);
+    }
+
+    private ToolRequestBindingResult<PatchDetailsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var nowUtc = DateTime.UtcNow;
+            var year = nowUtc.Year;
+            var month = nowUtc.Month;
+
+            var yearRaw = reader.OptionalInt64("year");
+            if (yearRaw.HasValue) {
+                if (yearRaw.Value < 2000 || yearRaw.Value > 2100) {
+                    return ToolRequestBindingResult<PatchDetailsRequest>.Failure("year must be between 2000 and 2100.");
+                }
+
+                year = (int)yearRaw.Value;
+            }
+
+            var monthRaw = reader.OptionalInt64("month");
+            if (monthRaw.HasValue) {
+                if (monthRaw.Value < 1 || monthRaw.Value > 12) {
+                    return ToolRequestBindingResult<PatchDetailsRequest>.Failure("month must be between 1 and 12.");
+                }
+
+                month = (int)monthRaw.Value;
+            }
+
+            var productFamily = reader.OptionalString("product_family");
+            var productVersion = reader.OptionalString("product_version");
+            var productBuild = reader.OptionalString("product_build");
+            var productEdition = reader.OptionalString("product_edition");
+            if (string.IsNullOrWhiteSpace(productFamily)
+                && (!string.IsNullOrWhiteSpace(productVersion)
+                    || !string.IsNullOrWhiteSpace(productBuild)
+                    || !string.IsNullOrWhiteSpace(productEdition))) {
+                return ToolRequestBindingResult<PatchDetailsRequest>.Failure(
+                    "product_family is required when product_version/product_build/product_edition is provided.");
+            }
+
+            var productNameContains = reader.DistinctStringArray("product_name_contains");
+            if (productNameContains.Count > 20) {
+                productNameContains = productNameContains.Take(20).ToList();
+            }
+
+            var severityRaw = reader.DistinctStringArray("severity");
+            var severity = new List<string>(severityRaw.Count);
+            for (var i = 0; i < severityRaw.Count; i++) {
+                var item = severityRaw[i];
+                if (string.Equals(item, "Critical", StringComparison.OrdinalIgnoreCase)) {
+                    severity.Add("Critical");
+                } else if (string.Equals(item, "Important", StringComparison.OrdinalIgnoreCase)) {
+                    severity.Add("Important");
+                } else if (string.Equals(item, "Moderate", StringComparison.OrdinalIgnoreCase)) {
+                    severity.Add("Moderate");
+                } else if (string.Equals(item, "Low", StringComparison.OrdinalIgnoreCase)) {
+                    severity.Add("Low");
+                } else {
+                    return ToolRequestBindingResult<PatchDetailsRequest>.Failure(
+                        "severity contains unsupported value. Allowed: Critical, Important, Moderate, Low.");
+                }
+            }
+
+            return ToolRequestBindingResult<PatchDetailsRequest>.Success(new PatchDetailsRequest(
+                Year: year,
+                Month: month,
+                ProductFamily: productFamily,
+                ProductVersion: productVersion,
+                ProductBuild: productBuild,
+                ProductEdition: productEdition,
+                ProductNameContains: productNameContains,
+                Severity: severity,
+                ExploitedOnly: reader.Boolean("exploited_only", defaultValue: false),
+                PubliclyDisclosedOnly: reader.Boolean("publicly_disclosed_only", defaultValue: false),
+                CveContains: reader.OptionalString("cve_contains"),
+                KbContains: reader.OptionalString("kb_contains"),
+                MaxResults: ResolveMaxResults(arguments)));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<PatchDetailsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!TryResolvePatchReleaseWindow(arguments, out var year, out var month, out var releaseError)) {
-            return releaseError!;
-        }
-        if (!TryResolvePatchProductFilter(
-                arguments,
-                out var productFamily,
-                out var productVersion,
-                out var productBuild,
-                out var productEdition,
-                out var productError)) {
-            return productError!;
-        }
-
-        var productNameContains = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("product_name_contains"));
-        if (productNameContains.Count > 20) {
-            productNameContains = productNameContains.Take(20).ToList();
-        }
-        if (!TryResolvePatchSeverityAllowlist(arguments, out var severity, out var severityError)) {
-            return severityError!;
-        }
-
-        var exploitedOnly = ToolArgs.GetBoolean(arguments, "exploited_only", defaultValue: false);
-        var publiclyDisclosedOnly = ToolArgs.GetBoolean(arguments, "publicly_disclosed_only", defaultValue: false);
-        var cveContains = ToolArgs.GetOptionalTrimmed(arguments, "cve_contains");
-        var kbContains = ToolArgs.GetOptionalTrimmed(arguments, "kb_contains");
-        var maxResults = ResolveMaxResults(arguments);
-
+        var request = context.Request;
         var (monthly, patchError) = await TryGetMonthlyPatchDetailsAsync(
-            year: year,
-            month: month,
-            productFamily: productFamily,
-            productVersion: productVersion,
-            productBuild: productBuild,
-            productEdition: productEdition,
+            year: request.Year,
+            month: request.Month,
+            productFamily: request.ProductFamily,
+            productVersion: request.ProductVersion,
+            productBuild: request.ProductBuild,
+            productEdition: request.ProductEdition,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (patchError is not null) {
             return patchError;
         }
 
-        var severitySet = severity.Count == 0
+        var severitySet = request.Severity.Count == 0
             ? null
-            : new HashSet<string>(severity, StringComparer.OrdinalIgnoreCase);
+            : new HashSet<string>(request.Severity, StringComparer.OrdinalIgnoreCase);
 
         var filtered = monthly
             .Where(x => severitySet is null || severitySet.Contains(x.Severity))
-            .Where(x => !exploitedOnly || x.IsExploited)
-            .Where(x => !publiclyDisclosedOnly || x.PubliclyDisclosed)
-            .Where(x => string.IsNullOrWhiteSpace(cveContains)
-                || x.CveId.Contains(cveContains, StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(kbContains)
-                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, kbContains))
-            .Where(x => productNameContains.Count == 0
+            .Where(x => !request.ExploitedOnly || x.IsExploited)
+            .Where(x => !request.PubliclyDisclosedOnly || x.PubliclyDisclosed)
+            .Where(x => string.IsNullOrWhiteSpace(request.CveContains)
+                || x.CveId.Contains(request.CveContains, StringComparison.OrdinalIgnoreCase))
+            .Where(x => string.IsNullOrWhiteSpace(request.KbContains)
+                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, request.KbContains))
+            .Where(x => request.ProductNameContains.Count == 0
                 || (x.Products?.Any(product =>
-                    productNameContains.Any(filter => product.Contains(filter, StringComparison.OrdinalIgnoreCase))) ?? false))
+                    request.ProductNameContains.Any(filter => product.Contains(filter, StringComparison.OrdinalIgnoreCase))) ?? false))
             .OrderByDescending(static x => x.Published ?? DateTime.MinValue)
             .ThenBy(static x => x.CveId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
+        var rows = CapRows(filtered, request.MaxResults, out var scanned, out var truncated);
         var summary = BuildSummary(filtered);
-        var release = new DateTime(year, month, 1).ToString("yyyy-MM");
+        var release = new DateTime(request.Year, request.Month, 1).ToString("yyyy-MM");
 
         var result = new SystemPatchDetailsResult(
-            Year: year,
-            Month: month,
+            Year: request.Year,
+            Month: request.Month,
             Release: release,
-            ProductMappedFilterApplied: !string.IsNullOrWhiteSpace(productFamily),
-            ProductFamily: productFamily,
-            ProductVersion: productVersion,
-            ProductBuild: productBuild,
-            ProductEdition: productEdition,
-            ProductNameContains: productNameContains,
-            Severity: severity,
-            ExploitedOnly: exploitedOnly,
-            PubliclyDisclosedOnly: publiclyDisclosedOnly,
-            CveContains: cveContains,
-            KbContains: kbContains,
+            ProductMappedFilterApplied: !string.IsNullOrWhiteSpace(request.ProductFamily),
+            ProductFamily: request.ProductFamily,
+            ProductVersion: request.ProductVersion,
+            ProductBuild: request.ProductBuild,
+            ProductEdition: request.ProductEdition,
+            ProductNameContains: request.ProductNameContains,
+            Severity: request.Severity,
+            ExploitedOnly: request.ExploitedOnly,
+            PubliclyDisclosedOnly: request.PubliclyDisclosedOnly,
+            CveContains: request.CveContains,
+            KbContains: request.KbContains,
             Scanned: scanned,
             Truncated: truncated,
             Summary: summary,
             Patches: rows);
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "patches_view",
@@ -160,23 +232,23 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddMaxResultsMeta(meta, maxResults);
+                AddMaxResultsMeta(meta, request.MaxResults);
                 AddPatchFilterMeta(
                     meta: meta,
-                    year: year,
-                    month: month,
+                    year: request.Year,
+                    month: request.Month,
                     release: release,
-                    productFamily: productFamily,
-                    productVersion: productVersion,
-                    productBuild: productBuild,
-                    productEdition: productEdition,
-                    severity: severity,
-                    exploitedOnly: exploitedOnly,
-                    publiclyDisclosedOnly: publiclyDisclosedOnly,
-                    cveContains: cveContains,
-                    kbContains: kbContains);
-                if (productNameContains.Count > 0) {
-                    meta.Add("product_name_contains", string.Join(", ", productNameContains));
+                    productFamily: request.ProductFamily,
+                    productVersion: request.ProductVersion,
+                    productBuild: request.ProductBuild,
+                    productEdition: request.ProductEdition,
+                    severity: request.Severity,
+                    exploitedOnly: request.ExploitedOnly,
+                    publiclyDisclosedOnly: request.PubliclyDisclosedOnly,
+                    cveContains: request.CveContains,
+                    kbContains: request.KbContains);
+                if (request.ProductNameContains.Count > 0) {
+                    meta.Add("product_name_contains", string.Join(", ", request.ProductNameContains));
                 }
             });
 

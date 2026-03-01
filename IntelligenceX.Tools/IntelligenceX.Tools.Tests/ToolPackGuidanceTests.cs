@@ -295,7 +295,7 @@ public class ToolPackGuidanceTests {
         Assert.Equal("query", item.Routing.Operation);
         Assert.Equal("event", item.Routing.Entity);
         Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
-        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, item.Routing.Source);
+        Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
     }
 
     [Fact]

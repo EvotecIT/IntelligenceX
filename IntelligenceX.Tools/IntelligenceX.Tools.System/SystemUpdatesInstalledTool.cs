@@ -14,6 +14,15 @@ namespace IntelligenceX.Tools.System;
 /// Lists installed updates (and optional pending local updates) from ComputerX (read-only, capped).
 /// </summary>
 public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
+    private sealed record UpdatesInstalledRequest(
+        string? ComputerName,
+        string Target,
+        bool IncludePendingLocal,
+        string? TitleContains,
+        string? KbContains,
+        DateTime? InstalledAfterUtc,
+        int MaxResults);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -50,33 +59,50 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<UpdatesInstalledRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
+            var installedAfterRaw = reader.OptionalString("installed_after_utc");
+
+            DateTime? installedAfterUtc = null;
+            if (!string.IsNullOrWhiteSpace(installedAfterRaw)) {
+                if (!DateTime.TryParse(installedAfterRaw, out var parsed)) {
+                    return ToolRequestBindingResult<UpdatesInstalledRequest>.Failure("installed_after_utc must be a valid ISO-8601 datetime.");
+                }
+
+                installedAfterUtc = parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
+            }
+
+            return ToolRequestBindingResult<UpdatesInstalledRequest>.Success(new UpdatesInstalledRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
+                IncludePendingLocal: reader.Boolean("include_pending_local", defaultValue: false),
+                TitleContains: reader.OptionalString("title_contains"),
+                KbContains: reader.OptionalString("kb_contains"),
+                InstalledAfterUtc: installedAfterUtc,
+                MaxResults: ResolveMaxResults(arguments)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<UpdatesInstalledRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         var windowsError = ValidateWindowsSupport("system_updates_installed");
         if (windowsError is not null) {
             return Task.FromResult(windowsError);
         }
-
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = ResolveTargetComputerName(computerName);
-        var includePendingLocal = ToolArgs.GetBoolean(arguments, "include_pending_local", defaultValue: false);
-        var titleContains = ToolArgs.GetOptionalTrimmed(arguments, "title_contains");
-        var kbContains = ToolArgs.GetOptionalTrimmed(arguments, "kb_contains");
-        var installedAfterRaw = ToolArgs.GetOptionalTrimmed(arguments, "installed_after_utc");
-        var maxResults = ResolveMaxResults(arguments);
-
-        DateTime? installedAfterUtc = null;
-        if (!string.IsNullOrWhiteSpace(installedAfterRaw)) {
-            if (!DateTime.TryParse(installedAfterRaw, out var parsed)) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "installed_after_utc must be a valid ISO-8601 datetime."));
-            }
-            installedAfterUtc = parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
-        }
-
         if (!TryGetInstalledAndPendingUpdates(
-                computerName: computerName,
-                target: target,
-                includePendingLocal: includePendingLocal,
+                computerName: request.ComputerName,
+                target: request.Target,
+                includePendingLocal: request.IncludePendingLocal,
                 updates: out var rows,
                 pendingIncluded: out var pendingIncluded,
                 errorResponse: out var updateError)) {
@@ -84,31 +110,31 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
         }
 
         var filtered = rows
-            .Where(x => string.IsNullOrWhiteSpace(titleContains)
-                || x.Title.Contains(titleContains, StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(kbContains)
+            .Where(x => string.IsNullOrWhiteSpace(request.TitleContains)
+                || x.Title.Contains(request.TitleContains, StringComparison.OrdinalIgnoreCase))
+            .Where(x => string.IsNullOrWhiteSpace(request.KbContains)
                 || SystemPatchKbNormalization.MatchesContainsFilter(
                     SystemPatchKbNormalization.NormalizeDistinct(new[] { x.Kb, x.Title }),
-                    kbContains))
-            .Where(x => !installedAfterUtc.HasValue
-                || (x.InstalledOn.HasValue && x.InstalledOn.Value.ToUniversalTime() >= installedAfterUtc.Value))
+                    request.KbContains))
+            .Where(x => !request.InstalledAfterUtc.HasValue
+                || (x.InstalledOn.HasValue && x.InstalledOn.Value.ToUniversalTime() >= request.InstalledAfterUtc.Value))
             .ToArray();
 
-        var viewRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
+        var viewRows = CapRows(filtered, request.MaxResults, out var scanned, out var truncated);
 
         var result = new SystemUpdatesInstalledResult(
-            ComputerName: target,
-            IncludePendingLocal: includePendingLocal,
+            ComputerName: request.Target,
+            IncludePendingLocal: request.IncludePendingLocal,
             PendingIncluded: pendingIncluded,
-            TitleContains: titleContains,
-            KbContains: kbContains,
-            InstalledAfterUtc: installedAfterUtc?.ToString("O"),
+            TitleContains: request.TitleContains,
+            KbContains: request.KbContains,
+            InstalledAfterUtc: request.InstalledAfterUtc?.ToString("O"),
             Scanned: scanned,
             Truncated: truncated,
             Updates: viewRows);
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: viewRows,
             viewRowsPath: "updates_view",
@@ -117,23 +143,23 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddComputerNameMeta(meta, target);
-                AddPendingLocalMeta(meta, includePendingLocal, pendingIncluded);
-                AddMaxResultsMeta(meta, maxResults);
-                if (!string.IsNullOrWhiteSpace(titleContains)) {
-                    meta.Add("title_contains", titleContains);
+                AddComputerNameMeta(meta, request.Target);
+                AddPendingLocalMeta(meta, request.IncludePendingLocal, pendingIncluded);
+                AddMaxResultsMeta(meta, request.MaxResults);
+                if (!string.IsNullOrWhiteSpace(request.TitleContains)) {
+                    meta.Add("title_contains", request.TitleContains);
                 }
-                if (!string.IsNullOrWhiteSpace(kbContains)) {
-                    meta.Add("kb_contains", kbContains);
+                if (!string.IsNullOrWhiteSpace(request.KbContains)) {
+                    meta.Add("kb_contains", request.KbContains);
                 }
-                if (installedAfterUtc.HasValue) {
-                    meta.Add("installed_after_utc", installedAfterUtc.Value.ToString("O"));
+                if (request.InstalledAfterUtc.HasValue) {
+                    meta.Add("installed_after_utc", request.InstalledAfterUtc.Value.ToString("O"));
                 }
                 AddReadOnlyPostureChainingMeta(
                     meta: meta,
                     currentTool: "system_updates_installed",
-                    targetComputer: target,
-                    isRemoteScope: !IsLocalTarget(computerName, target),
+                    targetComputer: request.Target,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
                     scanned: scanned,
                     truncated: truncated);
             });

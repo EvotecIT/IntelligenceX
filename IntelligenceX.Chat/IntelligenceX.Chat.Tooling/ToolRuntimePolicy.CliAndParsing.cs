@@ -63,6 +63,7 @@ public static partial class ToolRuntimePolicyBootstrap {
     /// <param name="setWriteAuditSinkMode">Setter for write-audit-sink mode.</param>
     /// <param name="setWriteAuditSinkPath">Setter for write-audit-sink path.</param>
     /// <param name="setAuthenticationRuntimePreset">Setter for auth runtime preset.</param>
+    /// <param name="setRequireExplicitRoutingMetadata">Setter for explicit-routing metadata requirement.</param>
     /// <param name="setRequireAuthenticationRuntime">Setter for auth runtime requirement.</param>
     /// <param name="setRunAsProfilePath">Setter for run-as profile path.</param>
     /// <param name="setAuthenticationProfilePath">Setter for auth profile path.</param>
@@ -78,6 +79,7 @@ public static partial class ToolRuntimePolicyBootstrap {
         Action<ToolWriteAuditSinkMode> setWriteAuditSinkMode,
         Action<string?> setWriteAuditSinkPath,
         Action<ToolAuthenticationRuntimePreset> setAuthenticationRuntimePreset,
+        Action<bool> setRequireExplicitRoutingMetadata,
         Action<bool> setRequireAuthenticationRuntime,
         Action<string?> setRunAsProfilePath,
         Action<string?> setAuthenticationProfilePath,
@@ -103,6 +105,9 @@ public static partial class ToolRuntimePolicyBootstrap {
         }
         if (setAuthenticationRuntimePreset is null) {
             throw new ArgumentNullException(nameof(setAuthenticationRuntimePreset));
+        }
+        if (setRequireExplicitRoutingMetadata is null) {
+            throw new ArgumentNullException(nameof(setRequireExplicitRoutingMetadata));
         }
         if (setRequireAuthenticationRuntime is null) {
             throw new ArgumentNullException(nameof(setRequireAuthenticationRuntime));
@@ -173,6 +178,12 @@ public static partial class ToolRuntimePolicyBootstrap {
                 }
                 setAuthenticationRuntimePreset(authPreset);
                 return true;
+            case "--require-explicit-routing-metadata":
+                setRequireExplicitRoutingMetadata(true);
+                return true;
+            case "--allow-inferred-routing-metadata":
+                setRequireExplicitRoutingMetadata(false);
+                return true;
             case "--require-auth-runtime":
                 setRequireAuthenticationRuntime(true);
                 return true;
@@ -210,6 +221,7 @@ public static partial class ToolRuntimePolicyBootstrap {
     /// <param name="writeAuditSinkMode">Persisted write-audit-sink mode token.</param>
     /// <param name="writeAuditSinkPath">Persisted write-audit-sink path.</param>
     /// <param name="authenticationRuntimePreset">Persisted auth runtime preset token.</param>
+    /// <param name="requireExplicitRoutingMetadata">Persisted explicit-routing metadata requirement.</param>
     /// <param name="requireAuthenticationRuntime">Persisted auth runtime requirement.</param>
     /// <param name="runAsProfilePath">Persisted run-as profile path.</param>
     /// <param name="authenticationProfilePath">Persisted auth profile path.</param>
@@ -219,6 +231,7 @@ public static partial class ToolRuntimePolicyBootstrap {
     /// <param name="setWriteAuditSinkMode">Setter for parsed write-audit-sink mode.</param>
     /// <param name="setWriteAuditSinkPath">Setter for write-audit-sink path.</param>
     /// <param name="setAuthenticationRuntimePreset">Setter for parsed auth runtime preset.</param>
+    /// <param name="setRequireExplicitRoutingMetadata">Setter for explicit-routing metadata requirement.</param>
     /// <param name="setRequireAuthenticationRuntime">Setter for auth runtime requirement.</param>
     /// <param name="setRunAsProfilePath">Setter for run-as profile path.</param>
     /// <param name="setAuthenticationProfilePath">Setter for auth profile path.</param>
@@ -229,6 +242,7 @@ public static partial class ToolRuntimePolicyBootstrap {
         string? writeAuditSinkMode,
         string? writeAuditSinkPath,
         string? authenticationRuntimePreset,
+        bool requireExplicitRoutingMetadata,
         bool requireAuthenticationRuntime,
         string? runAsProfilePath,
         string? authenticationProfilePath,
@@ -238,6 +252,7 @@ public static partial class ToolRuntimePolicyBootstrap {
         Action<ToolWriteAuditSinkMode> setWriteAuditSinkMode,
         Action<string?> setWriteAuditSinkPath,
         Action<ToolAuthenticationRuntimePreset> setAuthenticationRuntimePreset,
+        Action<bool> setRequireExplicitRoutingMetadata,
         Action<bool> setRequireAuthenticationRuntime,
         Action<string?> setRunAsProfilePath,
         Action<string?> setAuthenticationProfilePath) {
@@ -258,6 +273,9 @@ public static partial class ToolRuntimePolicyBootstrap {
         }
         if (setAuthenticationRuntimePreset is null) {
             throw new ArgumentNullException(nameof(setAuthenticationRuntimePreset));
+        }
+        if (setRequireExplicitRoutingMetadata is null) {
+            throw new ArgumentNullException(nameof(setRequireExplicitRoutingMetadata));
         }
         if (setRequireAuthenticationRuntime is null) {
             throw new ArgumentNullException(nameof(setRequireAuthenticationRuntime));
@@ -286,6 +304,7 @@ public static partial class ToolRuntimePolicyBootstrap {
             setAuthenticationRuntimePreset(parsedAuthPreset);
         }
 
+        setRequireExplicitRoutingMetadata(requireExplicitRoutingMetadata);
         setRequireAuthenticationRuntime(requireAuthenticationRuntime);
         setRunAsProfilePath(runAsProfilePath);
         setAuthenticationProfilePath(authenticationProfilePath);
@@ -337,6 +356,8 @@ public static partial class ToolRuntimePolicyBootstrap {
         writeLine("  --write-audit-sink-mode <MODE>  Write audit sink mode: none|file|sqlite (default: none).");
         writeLine("  --write-audit-sink-path <PATH>  Write audit sink path (JSONL file or SQLite db).");
         writeLine("  --auth-runtime-preset <MODE>  Auth runtime preset: default|strict|lab (default: default).");
+        writeLine("  --require-explicit-routing-metadata  Require explicit routing metadata during tool registration.");
+        writeLine("  --allow-inferred-routing-metadata  Allow inferred routing metadata during tool registration (default).");
         writeLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
         writeLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
         writeLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");

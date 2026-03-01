@@ -79,6 +79,11 @@ public sealed record ToolRuntimePolicyOptions {
     public ToolAuthenticationRuntimePreset AuthenticationPreset { get; init; } = ToolAuthenticationRuntimePreset.Default;
 
     /// <summary>
+    /// When true, tool registration requires explicit routing metadata.
+    /// </summary>
+    public bool RequireExplicitRoutingMetadata { get; init; }
+
+    /// <summary>
     /// When true, strict auth-runtime behavior is required.
     /// </summary>
     public bool RequireAuthenticationRuntime { get; init; }
@@ -147,6 +152,11 @@ public interface IToolRuntimePolicySettings {
     /// Authentication preset used to shape pack-level auth behavior.
     /// </summary>
     ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; }
+
+    /// <summary>
+    /// When true, tool registration requires explicit routing metadata.
+    /// </summary>
+    bool RequireExplicitRoutingMetadata { get; }
 
     /// <summary>
     /// When true, strict auth-runtime behavior is required.
@@ -236,6 +246,10 @@ public sealed record ToolRuntimePolicyDiagnostics {
     /// </summary>
     public required ToolAuthenticationRuntimePreset AuthenticationPreset { get; init; }
     /// <summary>
+    /// When true, tool registration requires explicit routing metadata.
+    /// </summary>
+    public required bool RequireExplicitRoutingMetadata { get; init; }
+    /// <summary>
     /// When true, strict authentication runtime behavior is required.
     /// </summary>
     public required bool RequireAuthenticationRuntime { get; init; }
@@ -301,6 +315,7 @@ public static partial class ToolRuntimePolicyBootstrap {
             WriteAuditSinkMode = settings.WriteAuditSinkMode,
             WriteAuditSinkPath = settings.WriteAuditSinkPath,
             AuthenticationPreset = settings.AuthenticationRuntimePreset,
+            RequireExplicitRoutingMetadata = settings.RequireExplicitRoutingMetadata,
             RequireAuthenticationRuntime = settings.RequireAuthenticationRuntime,
             RunAsProfilePath = settings.RunAsProfilePath,
             AuthenticationProfilePath = settings.AuthenticationProfilePath
@@ -395,6 +410,7 @@ public static partial class ToolRuntimePolicyBootstrap {
         registry.WriteGovernanceMode = context.Options.WriteGovernanceMode;
         registry.RequireWriteGovernanceRuntime = context.Options.RequireWriteGovernanceRuntime;
         registry.RequireWriteAuditSinkForWriteOperations = context.Options.RequireWriteAuditSinkForWriteOperations;
+        registry.RequireExplicitRoutingMetadata = context.Options.RequireExplicitRoutingMetadata;
         registry.WriteGovernanceRuntime = context.WriteGovernanceRuntime;
         registry.WriteAuditSink = context.WriteAuditSink;
 
@@ -420,6 +436,7 @@ public static partial class ToolRuntimePolicyBootstrap {
             WriteAuditSinkConfigured = context.WriteAuditSink is not null,
             WriteAuditSinkPath = context.Options.WriteAuditSinkPath,
             AuthenticationPreset = context.Options.AuthenticationPreset,
+            RequireExplicitRoutingMetadata = context.Options.RequireExplicitRoutingMetadata,
             RequireAuthenticationRuntime = context.Options.RequireAuthenticationRuntime,
             AuthenticationRuntimeConfigured = context.AuthenticationProbeStore is not null,
             RequireSuccessfulSmtpProbeForSend = context.RequireSuccessfulSmtpProbeForSend,

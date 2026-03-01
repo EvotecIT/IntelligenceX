@@ -73,8 +73,9 @@ public sealed class ToolPackBootstrapMetadataTests {
 
     [Theory]
     [InlineData("system", "system")]
-    [InlineData("ad", "ad")]
-    [InlineData("reviewer_setup", "reviewersetup")]
+    [InlineData("ad", "active_directory")]
+    [InlineData("adplayground", "active_directory")]
+    [InlineData("reviewer_setup", "reviewer_setup")]
     [InlineData("event-log", "eventlog")]
     [InlineData("file system", "filesystem")]
     public void NormalizePackId_UsesCanonicalShape(string input, string expected) {
@@ -206,7 +207,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("eventlog", eventLogPackId);
 
         Assert.True(toolPackIdsByToolName.TryGetValue("reviewer_setup_pack_info", out var reviewerPackId));
-        Assert.Equal("reviewersetup", reviewerPackId);
+        Assert.Equal("reviewer_setup", reviewerPackId);
     }
 
     [Fact]

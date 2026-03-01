@@ -9,14 +9,13 @@ using IntelligenceX.Tools;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private const string PackInfoToolSuffix = "_pack_info";
-    private const string EnvironmentDiscoverToolSuffix = "_environment_discover";
     private const string HostPackPreflightCallIdPrefix = "host_pack_preflight_";
 
     private readonly record struct PackPreflightCatalog(
-        Dictionary<string, ToolDefinition> PackInfoByPrefix,
-        Dictionary<string, ToolDefinition> EnvironmentDiscoverByPrefix,
-        string[] PrefixesByLengthDescending);
+        Dictionary<string, ToolDefinition> PackInfoByPackId,
+        Dictionary<string, ToolDefinition> EnvironmentDiscoverByPackId,
+        Dictionary<string, string> OperationalPackIdByToolName,
+        HashSet<string> PreflightToolNames);
 
     private IReadOnlyList<ToolCall> BuildHostPackPreflightCalls(
         string threadId,
@@ -28,11 +27,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         var catalog = BuildPackPreflightCatalog(allToolDefinitions);
-        if (catalog.PackInfoByPrefix.Count == 0) {
+        if (catalog.PackInfoByPackId.Count == 0) {
             return Array.Empty<ToolCall>();
         }
 
-        var operationalPrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var operationalPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var explicitRoundPreflightNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < extractedCalls.Count; i++) {
             var callName = (extractedCalls[i].Name ?? string.Empty).Trim();
@@ -40,38 +39,37 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (TryExtractPackPrefixFromPackInfoTool(callName, out _)
-                || TryExtractPackPrefixFromEnvironmentDiscoverTool(callName, out _)) {
+            if (catalog.PreflightToolNames.Contains(callName)) {
                 explicitRoundPreflightNames.Add(callName);
                 continue;
             }
 
-            if (TryResolvePackPrefixForOperationalTool(callName, catalog.PrefixesByLengthDescending, out var prefix)) {
-                operationalPrefixes.Add(prefix);
+            if (catalog.OperationalPackIdByToolName.TryGetValue(callName, out var packId)) {
+                operationalPackIds.Add(packId);
             }
         }
 
-        if (operationalPrefixes.Count == 0) {
+        if (operationalPackIds.Count == 0) {
             return Array.Empty<ToolCall>();
         }
 
         var rememberedPreflightTools = SnapshotRememberedPackPreflightTools(normalizedThreadId);
         var preflightCalls = new List<ToolCall>();
-        var orderedPrefixes = operationalPrefixes
-            .OrderBy(static prefix => prefix, StringComparer.OrdinalIgnoreCase)
+        var orderedPackIds = operationalPackIds
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        for (var i = 0; i < orderedPrefixes.Length; i++) {
-            var prefix = orderedPrefixes[i];
-            if (catalog.PackInfoByPrefix.TryGetValue(prefix, out var packInfoDefinition)) {
+        for (var i = 0; i < orderedPackIds.Length; i++) {
+            var packId = orderedPackIds[i];
+            if (catalog.PackInfoByPackId.TryGetValue(packId, out var packInfoDefinition)) {
                 var packInfoName = (packInfoDefinition.Name ?? string.Empty).Trim();
                 if (packInfoName.Length > 0
                     && !explicitRoundPreflightNames.Contains(packInfoName)
                     && !rememberedPreflightTools.Contains(packInfoName)) {
-                    preflightCalls.Add(BuildHostPackPreflightCall(packInfoName, "pack_info"));
+                    preflightCalls.Add(BuildHostPackPreflightCall(packInfoName, ToolRoutingTaxonomy.RolePackInfo));
                 }
             }
 
-            if (!catalog.EnvironmentDiscoverByPrefix.TryGetValue(prefix, out var discoverDefinition)
+            if (!catalog.EnvironmentDiscoverByPackId.TryGetValue(packId, out var discoverDefinition)
                 || ToolDefinitionHasRequiredArguments(discoverDefinition)) {
                 continue;
             }
@@ -83,7 +81,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            preflightCalls.Add(BuildHostPackPreflightCall(discoverName, "environment_discover"));
+            preflightCalls.Add(BuildHostPackPreflightCall(discoverName, ToolRoutingTaxonomy.RoleEnvironmentDiscover));
         }
 
         return preflightCalls.Count == 0 ? Array.Empty<ToolCall>() : preflightCalls;
@@ -170,9 +168,11 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private static PackPreflightCatalog BuildPackPreflightCatalog(IReadOnlyList<ToolDefinition> definitions) {
-        var packInfoByPrefix = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
-        var discoverByPrefix = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
+    private PackPreflightCatalog BuildPackPreflightCatalog(IReadOnlyList<ToolDefinition> definitions) {
+        var packInfoByPackId = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
+        var discoverByPackId = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
+        var operationalPackIdByToolName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var preflightToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
             if (definition is null) {
@@ -184,34 +184,39 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (TryExtractPackPrefixFromPackInfoTool(name, out var packInfoPrefix)) {
-                if (!packInfoByPrefix.ContainsKey(packInfoPrefix)) {
-                    packInfoByPrefix[packInfoPrefix] = definition;
-                }
-
+            if (!_toolOrchestrationCatalog.TryGetEntry(name, out var orchestrationEntry)
+                || orchestrationEntry.PackId.Length == 0) {
                 continue;
             }
 
-            if (TryExtractPackPrefixFromEnvironmentDiscoverTool(name, out var discoverPrefix)
-                && !discoverByPrefix.ContainsKey(discoverPrefix)) {
-                discoverByPrefix[discoverPrefix] = definition;
+            if (string.Equals(orchestrationEntry.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+                if (!packInfoByPackId.ContainsKey(orchestrationEntry.PackId)) {
+                    packInfoByPackId[orchestrationEntry.PackId] = definition;
+                }
+
+                preflightToolNames.Add(name);
+                continue;
+            }
+
+            if (string.Equals(orchestrationEntry.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+                if (!discoverByPackId.ContainsKey(orchestrationEntry.PackId)) {
+                    discoverByPackId[orchestrationEntry.PackId] = definition;
+                }
+
+                preflightToolNames.Add(name);
+                continue;
+            }
+
+            if (!operationalPackIdByToolName.ContainsKey(name)) {
+                operationalPackIdByToolName[name] = orchestrationEntry.PackId;
             }
         }
 
-        if (packInfoByPrefix.Count == 0 && discoverByPrefix.Count == 0) {
-            return new PackPreflightCatalog(
-                PackInfoByPrefix: packInfoByPrefix,
-                EnvironmentDiscoverByPrefix: discoverByPrefix,
-                PrefixesByLengthDescending: Array.Empty<string>());
-        }
-
-        var prefixes = packInfoByPrefix.Keys
-            .Concat(discoverByPrefix.Keys)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(static prefix => prefix.Length)
-            .ThenBy(static prefix => prefix, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        return new PackPreflightCatalog(packInfoByPrefix, discoverByPrefix, prefixes);
+        return new PackPreflightCatalog(
+            PackInfoByPackId: packInfoByPackId,
+            EnvironmentDiscoverByPackId: discoverByPackId,
+            OperationalPackIdByToolName: operationalPackIdByToolName,
+            PreflightToolNames: preflightToolNames);
     }
 
     private HashSet<string> SnapshotRememberedPackPreflightTools(string normalizedThreadId) {
@@ -226,34 +231,6 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private static bool TryResolvePackPrefixForOperationalTool(
-        string toolName,
-        IReadOnlyList<string> knownPrefixes,
-        out string prefix) {
-        prefix = string.Empty;
-        var normalizedName = (toolName ?? string.Empty).Trim();
-        if (normalizedName.Length == 0 || knownPrefixes.Count == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < knownPrefixes.Count; i++) {
-            var candidate = knownPrefixes[i];
-            if (candidate.Length == 0 || normalizedName.Length <= candidate.Length) {
-                continue;
-            }
-
-            if (!normalizedName.StartsWith(candidate, StringComparison.OrdinalIgnoreCase)
-                || normalizedName[candidate.Length] != '_') {
-                continue;
-            }
-
-            prefix = candidate;
-            return true;
-        }
-
-        return false;
-    }
-
     private static bool ToolDefinitionHasRequiredArguments(ToolDefinition definition) {
         if (definition?.Parameters is null) {
             return false;
@@ -263,33 +240,18 @@ internal sealed partial class ChatServiceSession {
         return required is { Count: > 0 };
     }
 
-    private static bool TryExtractPackPrefixFromPackInfoTool(string toolName, out string prefix) {
-        return TryExtractPackPrefixFromPreflightTool(toolName, PackInfoToolSuffix, out prefix);
-    }
-
-    private static bool TryExtractPackPrefixFromEnvironmentDiscoverTool(string toolName, out string prefix) {
-        return TryExtractPackPrefixFromPreflightTool(toolName, EnvironmentDiscoverToolSuffix, out prefix);
-    }
-
-    private static bool TryExtractPackPrefixFromPreflightTool(string toolName, string suffix, out string prefix) {
-        prefix = string.Empty;
-        var normalized = (toolName ?? string.Empty).Trim();
-        if (normalized.Length <= suffix.Length || !normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) {
-            return false;
-        }
-
-        prefix = normalized[..^suffix.Length].Trim();
-        return prefix.Length > 0;
-    }
-
-    private static bool IsHostPackPreflightToolName(string toolName) {
+    private bool IsHostPackPreflightToolName(string toolName) {
         var normalized = (toolName ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
         }
 
-        return normalized.EndsWith(PackInfoToolSuffix, StringComparison.OrdinalIgnoreCase)
-               || normalized.EndsWith(EnvironmentDiscoverToolSuffix, StringComparison.OrdinalIgnoreCase);
+        if (!_toolOrchestrationCatalog.TryGetEntry(normalized, out var entry)) {
+            return false;
+        }
+
+        return string.Equals(entry.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(entry.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
     }
 
     private static ToolCall BuildHostPackPreflightCall(string toolName, string role) {

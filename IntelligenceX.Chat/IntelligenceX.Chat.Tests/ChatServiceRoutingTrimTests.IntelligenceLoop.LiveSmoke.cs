@@ -48,7 +48,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
 
         // Keep smoke deterministic: no tools, one direct response.
-        RegistryField.SetValue(session, new ToolRegistry());
+        SetSessionRegistry(session, new ToolRegistry());
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,

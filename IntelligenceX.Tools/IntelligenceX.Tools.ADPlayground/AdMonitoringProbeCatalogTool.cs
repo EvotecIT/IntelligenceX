@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns available AD monitoring probe kinds and usage hints.
 /// </summary>
 public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, ITool {
+    private sealed record MonitoringProbeCatalogRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_monitoring_probe_catalog",
         "List available AD monitoring probe kinds (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping) with scope and argument hints.",
@@ -25,6 +27,20 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<MonitoringProbeCatalogRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<MonitoringProbeCatalogRequest>.Success(new MonitoringProbeCatalogRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<MonitoringProbeCatalogRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var model = new {
@@ -121,6 +137,6 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
             "Use `ad_monitoring_probe_run` with `probe_kind` set to one of: ldap, dns, kerberos, ntp, replication, port, https, dns_service, adws, directory, ping.",
             "Prefer `domain_controller` for single-server diagnostics, `domain_name` for domain-wide checks, and `discovery_fallback=current_forest` for forest-level discovery.");
 
-        return Task.FromResult(ToolResponse.OkModel(model, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(model, summaryMarkdown: summary));
     }
 }

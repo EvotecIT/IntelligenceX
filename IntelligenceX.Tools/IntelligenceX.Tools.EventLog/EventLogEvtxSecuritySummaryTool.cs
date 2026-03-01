@@ -154,7 +154,7 @@ public sealed class EventLogEvtxSecuritySummaryTool : EventLogToolBase, ITool {
     private Task<string> ExecuteAsync(ToolPipelineContext<SecuritySummaryRequest> context, CancellationToken cancellationToken) {
         var request = context.Request;
         if (!TryResolveEvtxPath(request.Path, out var fullPath, out var errCode, out var err, out var hints)) {
-            return Task.FromResult(ToolResponse.Error(errCode, err, hints: hints, isTransient: false));
+            return Task.FromResult(ToolResultV2.Error(errCode, err, hints: hints, isTransient: false));
         }
 
         var queryRequest = new SecurityEvtxQueryRequest {
@@ -171,7 +171,7 @@ public sealed class EventLogEvtxSecuritySummaryTool : EventLogToolBase, ITool {
             SecurityReportKind.UserLogons => Task.FromResult(ExecuteUserLogons(context.Arguments, request, queryRequest, cancellationToken)),
             SecurityReportKind.FailedLogons => Task.FromResult(ExecuteFailedLogons(context.Arguments, request, queryRequest, cancellationToken)),
             SecurityReportKind.AccountLockouts => Task.FromResult(ExecuteAccountLockouts(context.Arguments, request, queryRequest, cancellationToken)),
-            _ => Task.FromResult(ToolResponse.Error("invalid_argument", $"report_kind must be one of: {string.Join(", ", ReportKinds)}."))
+            _ => Task.FromResult(ToolResultV2.Error("invalid_argument", $"report_kind must be one of: {string.Join(", ", ReportKinds)}."))
         };
     }
 
@@ -277,7 +277,7 @@ public sealed class EventLogEvtxSecuritySummaryTool : EventLogToolBase, ITool {
         int matchedEvents,
         bool truncated,
         JsonObject entityHandoff) {
-        return BuildAutoTableResponse(
+        return ToolResultV2.OkAutoTableResponse(
             arguments: arguments,
             model: model,
             sourceRows: topRows,

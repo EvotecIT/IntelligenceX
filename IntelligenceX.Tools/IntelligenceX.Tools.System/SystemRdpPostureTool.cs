@@ -13,6 +13,11 @@ namespace IntelligenceX.Tools.System;
 /// Returns RDP runtime and policy posture details (read-only).
 /// </summary>
 public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
+    private sealed record RdpPostureRequest(
+        string? ComputerName,
+        string Target,
+        bool IncludePolicy);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_rdp_posture",
         "Return RDP runtime and policy posture (enabled/NLA/port/TLS/policy levels) for local or remote host (read-only).",
@@ -40,6 +45,24 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<RdpPostureRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
+            return ToolRequestBindingResult<RdpPostureRequest>.Success(new RdpPostureRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
+                IncludePolicy: reader.Boolean("include_policy", defaultValue: true)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<RdpPostureRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var windowsError = ValidateWindowsSupport("system_rdp_posture");
@@ -47,13 +70,11 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
             return Task.FromResult(windowsError);
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var includePolicy = ToolArgs.GetBoolean(arguments, "include_policy", defaultValue: true);
-        var target = ResolveTargetComputerName(computerName);
+        var request = context.Request;
 
         try {
-            var runtime = RdpQuery.Get(computerName);
-            var policy = includePolicy ? RdpPolicyQuery.Get(computerName) : null;
+            var runtime = RdpQuery.Get(request.ComputerName);
+            var policy = request.IncludePolicy ? RdpPolicyQuery.Get(request.ComputerName) : null;
             var warnings = new List<string>();
 
             var effectiveTlsRequired =
@@ -80,7 +101,7 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
             }
 
             var model = new SystemRdpPostureResult(
-                ComputerName: target,
+                ComputerName: request.Target,
                 Runtime: runtime,
                 Policy: policy,
                 TlsRequired: effectiveTlsRequired,
@@ -88,11 +109,11 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
                 WeakEncryptionLevel: weakEncryptionLevel,
                 Warnings: warnings);
 
-            return Task.FromResult(ToolResponse.OkFactsModelWithRenderValue(
+            return Task.FromResult(ToolResultV2.OkFactsModelWithRenderValue(
                 model: model,
                 title: "System RDP posture",
                 facts: new[] {
-                    ("Computer", target),
+                    ("Computer", request.Target),
                     ("RdpEnabled", (runtime.IsEnabled ?? policy?.AllowConnections)?.ToString() ?? string.Empty),
                     ("NlaRequired", (runtime.NlaRequired ?? policy?.NlaRequired)?.ToString() ?? string.Empty),
                     ("Port", runtime.Port?.ToString() ?? string.Empty),
@@ -103,8 +124,8 @@ public sealed class SystemRdpPostureTool : SystemToolBase, ITool {
                 meta: BuildFactsMeta(
                     count: warnings.Count,
                     truncated: false,
-                    target: target,
-                    mutate: meta => meta.Add("include_policy", includePolicy)),
+                    target: request.Target,
+                    mutate: meta => meta.Add("include_policy", request.IncludePolicy)),
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,

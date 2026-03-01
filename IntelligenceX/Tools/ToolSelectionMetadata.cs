@@ -341,7 +341,7 @@ public static class ToolSelectionMetadata {
             : definition.Category);
         var routing = ResolveRouting(definition, category, explicitOverride);
         var tags = BuildSelectionTags(definition, category, routing, explicitOverride);
-        var routingContract = BuildRoutingContract(definition, category, tags);
+        var routingContract = BuildRoutingContract(definition, category, routing, tags);
 
         if (string.Equals(category, definition.Category, StringComparison.Ordinal) &&
             SequenceEqual(definition.Tags, tags) &&
@@ -360,7 +360,10 @@ public static class ToolSelectionMetadata {
             aliases: definition.Aliases,
             aliasOf: definition.AliasOf,
             authentication: definition.Authentication,
-            routing: routingContract);
+            routing: routingContract,
+            setup: definition.Setup,
+            handoff: definition.Handoff,
+            recovery: definition.Recovery);
     }
 
     /// <summary>
@@ -1284,6 +1287,7 @@ public static class ToolSelectionMetadata {
     private static ToolRoutingContract BuildRoutingContract(
         ToolDefinition definition,
         string category,
+        ToolSelectionRoutingInfo routing,
         IReadOnlyList<string> enrichedTags) {
         var existing = definition.Routing;
 
@@ -1293,6 +1297,15 @@ public static class ToolSelectionMetadata {
         } else {
             TryNormalizePackId(packId, out packId);
         }
+
+        var role = ResolveRoutingRole(
+            toolName: definition.Name,
+            existingRole: existing?.Role,
+            tags: enrichedTags);
+        var source = ResolveRoutingSource(
+            existingSource: existing?.RoutingSource,
+            tags: enrichedTags,
+            routing: routing);
 
         var family = NormalizeToken(existing?.DomainIntentFamily, fallback: string.Empty);
         if (!TryNormalizeDomainIntentFamilyToken(family, out family)) {
@@ -1335,7 +1348,9 @@ public static class ToolSelectionMetadata {
             RoutingContractId = string.IsNullOrWhiteSpace(existing?.RoutingContractId)
                 ? ToolRoutingContract.DefaultContractId
                 : existing!.RoutingContractId.Trim(),
+            RoutingSource = source,
             PackId = packId,
+            Role = role,
             DomainIntentFamily = family,
             DomainIntentActionId = actionId,
             DomainSignalTokens = domainSignals,
@@ -1356,13 +1371,79 @@ public static class ToolSelectionMetadata {
 
         return left.IsRoutingAware == right.IsRoutingAware
                && string.Equals(left.RoutingContractId, right.RoutingContractId, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.RoutingSource, right.RoutingSource, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.PackId, right.PackId, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.DomainIntentFamily, right.DomainIntentFamily, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.DomainIntentActionId, right.DomainIntentActionId, StringComparison.OrdinalIgnoreCase)
                && SequenceEqual(left.DomainSignalTokens, right.DomainSignalTokens)
                && left.RequiresSelectionForFallback == right.RequiresSelectionForFallback
                && SequenceEqual(left.FallbackSelectionKeys, right.FallbackSelectionKeys)
                && SequenceEqual(left.FallbackHintKeys, right.FallbackHintKeys);
+    }
+
+    private static string ResolveRoutingRole(string toolName, string? existingRole, IReadOnlyList<string> tags) {
+        var normalizedExistingRole = NormalizeToken(existingRole, fallback: string.Empty);
+        if (normalizedExistingRole.Length > 0 && ToolRoutingTaxonomy.IsAllowedRole(normalizedExistingRole)) {
+            return normalizedExistingRole;
+        }
+
+        if (ContainsTag(tags, "pack_info")) {
+            return ToolRoutingTaxonomy.RolePackInfo;
+        }
+
+        var normalizedName = (toolName ?? string.Empty).Trim();
+        if (normalizedName.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RolePackInfo;
+        }
+
+        if (normalizedName.EndsWith("_environment_discover", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleEnvironmentDiscover;
+        }
+
+        return ToolRoutingTaxonomy.RoleOperational;
+    }
+
+    private static string ResolveRoutingSource(
+        string? existingSource,
+        IReadOnlyList<string> tags,
+        ToolSelectionRoutingInfo routing) {
+        var normalizedExistingSource = NormalizeToken(existingSource, fallback: string.Empty);
+        if (normalizedExistingSource.Length > 0 && ToolRoutingTaxonomy.IsAllowedSource(normalizedExistingSource)) {
+            return normalizedExistingSource;
+        }
+
+        if (ContainsTag(tags, $"{ToolRoutingTaxonomy.RoutingTagPrefix}{ToolRoutingTaxonomy.SourceExplicit}")) {
+            return ToolRoutingTaxonomy.SourceExplicit;
+        }
+
+        if (ContainsTag(tags, $"{ToolRoutingTaxonomy.RoutingTagPrefix}{ToolRoutingTaxonomy.SourceInferred}")) {
+            return ToolRoutingTaxonomy.SourceInferred;
+        }
+
+        return routing.IsExplicit
+            ? ToolRoutingTaxonomy.SourceExplicit
+            : ToolRoutingTaxonomy.SourceInferred;
+    }
+
+    private static bool ContainsTag(IReadOnlyList<string>? tags, string expectedTag) {
+        if (tags is null || tags.Count == 0 || string.IsNullOrWhiteSpace(expectedTag)) {
+            return false;
+        }
+
+        var normalizedExpectedTag = expectedTag.Trim();
+        for (var i = 0; i < tags.Count; i++) {
+            var tag = (tags[i] ?? string.Empty).Trim();
+            if (tag.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(tag, normalizedExpectedTag, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeCategory(string? value) {

@@ -36,9 +36,17 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         });
 
         Assert.True(diagnostics.IsHealthy);
+        Assert.True(diagnostics.IsExplicitRoutingReady);
         Assert.Equal(3, diagnostics.TotalTools);
         Assert.Equal(3, diagnostics.RoutingAwareTools);
+        Assert.Equal(3, diagnostics.ExplicitRoutingTools);
+        Assert.Equal(0, diagnostics.InferredRoutingTools);
         Assert.Equal(0, diagnostics.MissingRoutingContractTools);
+        Assert.Equal(0, diagnostics.MissingPackIdTools);
+        Assert.Equal(0, diagnostics.MissingRoleTools);
+        Assert.Equal(0, diagnostics.SetupAwareTools);
+        Assert.Equal(0, diagnostics.HandoffAwareTools);
+        Assert.Equal(0, diagnostics.RecoveryAwareTools);
         Assert.Equal(3, diagnostics.DomainFamilyTools);
         Assert.Equal(0, diagnostics.ExpectedDomainFamilyMissingTools);
         Assert.Equal(0, diagnostics.DomainFamilyMissingActionTools);
@@ -47,6 +55,8 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
 
         var summary = ToolRoutingCatalogDiagnosticsBuilder.FormatSummary(diagnostics);
         Assert.Contains("tools=3", summary, StringComparison.Ordinal);
+        Assert.Contains("routing_explicit=3", summary, StringComparison.Ordinal);
+        Assert.Contains("routing_inferred=0", summary, StringComparison.Ordinal);
         Assert.Contains("conflicts=0", summary, StringComparison.Ordinal);
 
         var familySummaries = ToolRoutingCatalogDiagnosticsBuilder.FormatFamilySummaries(diagnostics, maxItems: 8);
@@ -67,6 +77,42 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
             });
         // Simulate accidental runtime mutation after registration/enrichment.
         missingActionDefinition.Routing!.DomainIntentActionId = string.Empty;
+
+        var inferredRoutingDefinition = CreateDefinition(
+            name: "system_contract_probe",
+            category: "system",
+            routing: new ToolRoutingContract {
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational,
+                RoutingSource = ToolRoutingTaxonomy.SourceInferred
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupHintKeys = new[] { "host" }
+            },
+            handoff: new ToolHandoffContract {
+                IsHandoffAware = true,
+                OutboundRoutes = new[] {
+                    new ToolHandoffRoute {
+                        TargetPackId = "dnsclientx",
+                        TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "host",
+                                TargetArgument = "target"
+                            }
+                        }
+                    }
+                }
+            },
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                SupportsTransientRetry = true,
+                MaxRetryAttempts = 1
+            });
+
+        inferredRoutingDefinition.Routing!.PackId = string.Empty;
+        inferredRoutingDefinition.Routing.Role = string.Empty;
 
         var diagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(new[] {
             CreateDefinition(
@@ -92,6 +138,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
                 routing: new ToolRoutingContract {
                     DomainIntentActionId = "act_orphan_action"
                 }),
+            inferredRoutingDefinition,
             CreateDefinition(
                 name: "dnsclientx_no_routing",
                 category: "dns",
@@ -99,9 +146,17 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         });
 
         Assert.False(diagnostics.IsHealthy);
-        Assert.Equal(5, diagnostics.TotalTools);
-        Assert.Equal(4, diagnostics.RoutingAwareTools);
+        Assert.False(diagnostics.IsExplicitRoutingReady);
+        Assert.Equal(6, diagnostics.TotalTools);
+        Assert.Equal(5, diagnostics.RoutingAwareTools);
+        Assert.Equal(4, diagnostics.ExplicitRoutingTools);
+        Assert.Equal(1, diagnostics.InferredRoutingTools);
         Assert.Equal(1, diagnostics.MissingRoutingContractTools);
+        Assert.Equal(2, diagnostics.MissingPackIdTools);
+        Assert.Equal(1, diagnostics.MissingRoleTools);
+        Assert.Equal(1, diagnostics.SetupAwareTools);
+        Assert.Equal(1, diagnostics.HandoffAwareTools);
+        Assert.Equal(1, diagnostics.RecoveryAwareTools);
         Assert.Equal(3, diagnostics.DomainFamilyTools);
         Assert.Equal(1, diagnostics.ExpectedDomainFamilyMissingTools);
         Assert.Equal(1, diagnostics.DomainFamilyMissingActionTools);
@@ -110,6 +165,9 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
 
         var warnings = ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(diagnostics, maxWarnings: 12);
         Assert.Contains(warnings, static line => line.Contains("missing routing contracts", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static line => line.Contains("inferred routing metadata", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static line => line.Contains("missing routing pack id", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static line => line.Contains("missing routing role", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("missing domain intent family", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("miss action id", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("action id without a domain intent family", StringComparison.OrdinalIgnoreCase));
@@ -117,11 +175,20 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Contains(warnings, static line => line.Contains("conflict ad_domain", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static ToolDefinition CreateDefinition(string name, string? category, ToolRoutingContract? routing) {
+    private static ToolDefinition CreateDefinition(
+        string name,
+        string? category,
+        ToolRoutingContract? routing,
+        ToolSetupContract? setup = null,
+        ToolHandoffContract? handoff = null,
+        ToolRecoveryContract? recovery = null) {
         return new ToolDefinition(
             name: name,
             description: "test tool",
             category: category,
-            routing: routing);
+            routing: routing,
+            setup: setup,
+            handoff: handoff,
+            recovery: recovery);
     }
 }

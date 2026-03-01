@@ -17,6 +17,21 @@ namespace IntelligenceX.Tools.EventLog;
 /// </summary>
 public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record EvtxQueryToolRequest(
+        string FullPath,
+        List<int>? EventIds,
+        string? ProviderName,
+        DateTime? StartUtc,
+        DateTime? EndUtc,
+        Level? Level,
+        Keywords? Keywords,
+        string? UserId,
+        List<long>? RecordIds,
+        Hashtable? NamedDataFilter,
+        Hashtable? NamedDataExcludeFilter,
+        int MaxEvents,
+        bool OldestFirst,
+        bool IncludeMessage);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_evtx_query",
@@ -54,90 +69,122 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
     /// Invokes the tool.
     /// </summary>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<EvtxQueryToolRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("path", out var inputPath, out var pathError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(pathError);
+            }
+
+            if (!TryResolveEvtxPath(inputPath, out var fullPath, out var errCode, out var err, out var hints)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(
+                    error: err,
+                    errorCode: errCode,
+                    hints: hints,
+                    isTransient: false);
+            }
+
+            if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
+                    arguments,
+                    "provider_name",
+                    EventLogStructuredFilters.MaxProviderNameLength,
+                    out var providerName,
+                    out var providerNameError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(
+                    providerNameError ?? "provider_name is invalid.");
+            }
+
+            if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(timeErr ?? "Invalid time range.");
+            }
+
+            if (!EventLogStructuredFilters.TryParseOptionalEventIds(
+                    arguments,
+                    "event_ids",
+                    EventLogStructuredFilters.MaxEventIds,
+                    out var eventIds,
+                    out var eventIdsError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(eventIdsError ?? "event_ids is invalid.");
+            }
+
+            if (!EventLogStructuredFilters.TryParseOptionalLevel(arguments, "level", out var level, out var levelError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(levelError ?? "level is invalid.");
+            }
+
+            if (!EventLogStructuredFilters.TryParseOptionalKeywords(arguments, "keywords", out var keywords, out var keywordsError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(keywordsError ?? "keywords is invalid.");
+            }
+
+            if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
+                    arguments,
+                    "user_id",
+                    EventLogStructuredFilters.MaxUserIdLength,
+                    out var userId,
+                    out var userIdError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(userIdError ?? "user_id is invalid.");
+            }
+
+            if (!EventLogStructuredFilters.TryParseOptionalRecordIds(
+                    arguments,
+                    "event_record_ids",
+                    EventLogStructuredFilters.MaxRecordIds,
+                    out var eventRecordIds,
+                    out var eventRecordIdsError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(eventRecordIdsError ?? "event_record_ids is invalid.");
+            }
+
+            if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
+                    arguments,
+                    "named_data_filter",
+                    out var namedDataFilter,
+                    out var namedDataFilterError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(namedDataFilterError ?? "named_data_filter is invalid.");
+            }
+
+            if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
+                    arguments,
+                    "named_data_exclude_filter",
+                    out var namedDataExcludeFilter,
+                    out var namedDataExcludeFilterError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(namedDataExcludeFilterError ?? "named_data_exclude_filter is invalid.");
+            }
+
+            var request = new EvtxQueryToolRequest(
+                FullPath: fullPath,
+                EventIds: eventIds,
+                ProviderName: providerName,
+                StartUtc: startUtc,
+                EndUtc: endUtc,
+                Level: level,
+                Keywords: keywords,
+                UserId: userId,
+                RecordIds: eventRecordIds,
+                NamedDataFilter: namedDataFilter,
+                NamedDataExcludeFilter: namedDataExcludeFilter,
+                MaxEvents: ResolveBoundedOptionLimit(arguments, "max_events"),
+                OldestFirst: reader.Boolean("oldest_first", defaultValue: false),
+                IncludeMessage: reader.Boolean("include_message", defaultValue: false));
+            return ToolRequestBindingResult<EvtxQueryToolRequest>.Success(request);
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<EvtxQueryToolRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var inputPath = arguments?.GetString("path") ?? string.Empty;
-        if (!TryResolveEvtxPath(inputPath, out var fullPath, out var errCode, out var err, out var hints)) {
-            return Task.FromResult(ToolResponse.Error(errCode, err, hints: hints, isTransient: false));
-        }
-
-        if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
-                arguments,
-                "provider_name",
-                EventLogStructuredFilters.MaxProviderNameLength,
-                out var providerName,
-                out var providerNameError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", providerNameError ?? "provider_name is invalid."));
-        }
-
-        var oldestFirst = arguments?.GetBoolean("oldest_first") ?? false;
-        var includeMessage = arguments?.GetBoolean("include_message") ?? false;
-
-        if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", timeErr ?? "Invalid time range."));
-        }
-
-        var maxEvents = ResolveBoundedOptionLimit(arguments, "max_events");
-
-        if (!EventLogStructuredFilters.TryParseOptionalEventIds(
-                arguments,
-                "event_ids",
-                EventLogStructuredFilters.MaxEventIds,
-                out var eventIds,
-                out var eventIdsError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", eventIdsError ?? "event_ids is invalid."));
-        }
-
-        if (!EventLogStructuredFilters.TryParseOptionalLevel(arguments, "level", out var level, out var levelError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", levelError ?? "level is invalid."));
-        }
-
-        if (!EventLogStructuredFilters.TryParseOptionalKeywords(arguments, "keywords", out var keywords, out var keywordsError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", keywordsError ?? "keywords is invalid."));
-        }
-
-        if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
-                arguments,
-                "user_id",
-                EventLogStructuredFilters.MaxUserIdLength,
-                out var userId,
-                out var userIdError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", userIdError ?? "user_id is invalid."));
-        }
-
-        if (!EventLogStructuredFilters.TryParseOptionalRecordIds(
-                arguments,
-                "event_record_ids",
-                EventLogStructuredFilters.MaxRecordIds,
-                out var eventRecordIds,
-                out var eventRecordIdsError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", eventRecordIdsError ?? "event_record_ids is invalid."));
-        }
-
-        if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
-                arguments,
-                "named_data_filter",
-                out var namedDataFilter,
-                out var namedDataFilterError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", namedDataFilterError ?? "named_data_filter is invalid."));
-        }
-
-        if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
-                arguments,
-                "named_data_exclude_filter",
-                out var namedDataExcludeFilter,
-                out var namedDataExcludeFilterError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", namedDataExcludeFilterError ?? "named_data_exclude_filter is invalid."));
-        }
-
         var request = new EvtxQueryRequest {
-            FilePath = fullPath,
-            EventIds = eventIds,
-            ProviderName = providerName,
-            StartTimeUtc = startUtc,
-            EndTimeUtc = endUtc,
-            MaxEvents = maxEvents,
-            OldestFirst = oldestFirst
+            FilePath = context.Request.FullPath,
+            EventIds = context.Request.EventIds,
+            ProviderName = context.Request.ProviderName,
+            StartTimeUtc = context.Request.StartUtc,
+            EndTimeUtc = context.Request.EndUtc,
+            MaxEvents = context.Request.MaxEvents,
+            OldestFirst = context.Request.OldestFirst
         };
 
         var hasAdvancedFilters = EventLogStructuredFilters.HasAnyStructuredFilter(
@@ -145,19 +192,19 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
             providerName: null,
             startTimeUtc: null,
             endTimeUtc: null,
-            level: level,
-            keywords: keywords,
-            userId: userId,
-            eventRecordIds: eventRecordIds,
-            namedDataFilter: namedDataFilter,
-            namedDataExcludeFilter: namedDataExcludeFilter);
+            level: context.Request.Level,
+            keywords: context.Request.Keywords,
+            userId: context.Request.UserId,
+            eventRecordIds: context.Request.RecordIds,
+            namedDataFilter: context.Request.NamedDataFilter,
+            namedDataExcludeFilter: context.Request.NamedDataExcludeFilter);
 
         EvtxEventReportResult root;
         EvtxQueryFailure? failure;
         if (!hasAdvancedFilters) {
             if (!EvtxEventReportBuilder.TryBuild(
                     request: request,
-                    includeMessage: includeMessage,
+                    includeMessage: context.Request.IncludeMessage,
                     maxMessageChars: Options.MaxMessageChars,
                     report: out root,
                     failure: out failure,
@@ -167,13 +214,13 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
         } else {
             if (!TryBuildAdvancedReport(
                     request: request,
-                    level: level,
-                    keywords: keywords,
-                    userId: userId,
-                    eventRecordIds: eventRecordIds,
-                    namedDataFilter: namedDataFilter,
-                    namedDataExcludeFilter: namedDataExcludeFilter,
-                    includeMessage: includeMessage,
+                    level: context.Request.Level,
+                    keywords: context.Request.Keywords,
+                    userId: context.Request.UserId,
+                    eventRecordIds: context.Request.RecordIds,
+                    namedDataFilter: context.Request.NamedDataFilter,
+                    namedDataExcludeFilter: context.Request.NamedDataExcludeFilter,
+                    includeMessage: context.Request.IncludeMessage,
                     maxMessageChars: Options.MaxMessageChars,
                     report: out root,
                     failure: out failure,
@@ -182,8 +229,8 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
             }
         }
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: root,
             sourceRows: root.Events,
             viewRowsPath: "events_view",

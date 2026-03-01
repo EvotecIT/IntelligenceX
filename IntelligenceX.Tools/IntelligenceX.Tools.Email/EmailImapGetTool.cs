@@ -16,6 +16,11 @@ namespace IntelligenceX.Tools.Email;
 /// Fetches a single IMAP message by UID, including bodies (truncated).
 /// </summary>
 public sealed class EmailImapGetTool : EmailToolBase, ITool {
+    private sealed record GetRequest(
+        long Uid,
+        string? Folder,
+        long MaxBodyBytes);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "email_imap_get",
         "Fetch a single IMAP message by UID (returns headers + text/html bodies, truncated).",
@@ -43,27 +48,44 @@ public sealed class EmailImapGetTool : EmailToolBase, ITool {
     /// <param name="arguments">Tool arguments.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<GetRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!TryReadPositiveInt64(arguments, "uid", out var uid)) {
+                return ToolRequestBindingResult<GetRequest>.Failure("uid must be a positive integer.");
+            }
+
+            return ToolRequestBindingResult<GetRequest>.Success(new GetRequest(
+                Uid: uid,
+                Folder: reader.OptionalString("folder"),
+                MaxBodyBytes: reader.CappedInt64("max_body_bytes", Options.MaxBodyBytes, 1, Options.MaxBodyBytes)));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<GetRequest> context, CancellationToken cancellationToken) {
         try {
             var imap = Options.Imap;
             if (imap is null) {
-                return ToolResponse.Error("not_configured", "IMAP is not configured.");
+                return ToolResultV2.Error("not_configured", "IMAP is not configured.");
             }
             imap.Validate();
 
-            var uidValue = arguments?.GetInt64("uid");
-            if (!uidValue.HasValue || uidValue.Value <= 0) {
-                return ToolResponse.Error("invalid_argument", "uid must be a positive integer.");
-            }
-
-            var folder = arguments?.GetString("folder") ?? imap.DefaultFolder;
-            var maxBodyBytes = ToolArgs.GetCappedInt64(arguments, "max_body_bytes", Options.MaxBodyBytes, 1, Options.MaxBodyBytes);
+            var request = context.Request;
+            var folder = request.Folder ?? imap.DefaultFolder;
+            var maxBodyBytes = request.MaxBodyBytes;
 
             using var client = await ImapClientFactory.ConnectAsync(imap, cancellationToken).ConfigureAwait(false);
             try {
                 var mailFolder = ResolveFolder(client, folder);
                 await mailFolder.OpenAsync(FolderAccess.ReadOnly, cancellationToken).ConfigureAwait(false);
-                var uid = new UniqueId((uint)uidValue.Value);
+                var uid = new UniqueId((uint)request.Uid);
                 var message = await mailFolder.GetMessageAsync(uid, cancellationToken).ConfigureAwait(false);
 
                 var attachments = message.Attachments.Select(static a => a is MimePart part
@@ -124,7 +146,7 @@ public sealed class EmailImapGetTool : EmailToolBase, ITool {
                     .Add("html_truncated", htmlTruncated)
                     .Add("attachments_count", attachments.Length);
 
-                return ToolResponse.OkModel(
+                return ToolResultV2.OkModel(
                     model: root,
                     meta: meta,
                     summaryMarkdown: summaryMarkdown,
@@ -139,8 +161,31 @@ public sealed class EmailImapGetTool : EmailToolBase, ITool {
                 }
             }
         } catch (FolderNotFoundException ex) {
-            return ToolResponse.Error("not_found", $"Folder not found: {ex.Message}");
+            return ToolResultV2.Error("not_found", $"Folder not found: {ex.Message}");
         }
+    }
+
+    private static bool TryReadPositiveInt64(JsonObject? arguments, string key, out long value) {
+        value = 0;
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var parsed = kv.Value.AsInt64();
+            if (parsed.HasValue && parsed.Value > 0) {
+                value = parsed.Value;
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
     }
 
     private static IMailFolder ResolveFolder(ImapClient client, string? folder) {

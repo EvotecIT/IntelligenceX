@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Helpers;
@@ -13,6 +14,13 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Resolves a batch of Active Directory objects by DN or SID (read-only).
 /// </summary>
 public sealed class AdObjectResolveTool : ActiveDirectoryToolBase, ITool {
+    private sealed record ObjectResolveRequest(
+        IReadOnlyList<string> Identities,
+        string? IdentityKind,
+        string? Kind,
+        int MaxInputs,
+        int MaxValuesPerAttribute);
+
     private const int DefaultMaxInputs = 200;
     private const int MaxMaxInputs = 5000;
     private const int DefaultMaxValuesPerAttribute = 25;
@@ -77,48 +85,66 @@ public sealed class AdObjectResolveTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<ObjectResolveRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var identities = reader.StringArray("identities");
+            if (identities.Count == 0) {
+                return ToolRequestBindingResult<ObjectResolveRequest>.Failure("identities is required.");
+            }
+
+            var requestedMaxInputs = reader.OptionalInt64("max_inputs");
+            var maxInputs = requestedMaxInputs.HasValue && requestedMaxInputs.Value > 0
+                ? (int)Math.Min(requestedMaxInputs.Value, MaxMaxInputs)
+                : DefaultMaxInputs;
+
+            var requestedMaxValues = reader.OptionalInt64("max_values_per_attribute");
+            var maxValuesPerAttribute = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
+                ? (int)Math.Min(requestedMaxValues.Value, 200)
+                : DefaultMaxValuesPerAttribute;
+
+            return ToolRequestBindingResult<ObjectResolveRequest>.Success(new ObjectResolveRequest(
+                Identities: identities,
+                IdentityKind: reader.OptionalString("identity_kind"),
+                Kind: reader.OptionalString("kind"),
+                MaxInputs: maxInputs,
+                MaxValuesPerAttribute: maxValuesPerAttribute));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ObjectResolveRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var identitiesArray = arguments?.GetArray("identities");
-        if (identitiesArray is null || identitiesArray.Count == 0) {
-            return Task.FromResult(Error("invalid_argument", "identities is required."));
-        }
-
-        var identityKind = LdapToolResolveHelper.ParseIdentityKind(ToolArgs.GetOptionalTrimmed(arguments, "identity_kind"));
-        var kind = LdapToolKinds.ParseObjectKind(ToolArgs.GetOptionalTrimmed(arguments, "kind"));
-        var kindToolString = LdapToolKinds.ToToolString(kind);
-
-        var requestedMaxInputs = arguments?.GetInt64("max_inputs");
-        var maxInputs = requestedMaxInputs.HasValue && requestedMaxInputs.Value > 0
-            ? (int)Math.Min(requestedMaxInputs.Value, MaxMaxInputs)
-            : DefaultMaxInputs;
-
-        var requestedMaxValues = arguments?.GetInt64("max_values_per_attribute");
-        var maxValuesPerAttribute = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
-            ? (int)Math.Min(requestedMaxValues.Value, 200)
-            : DefaultMaxValuesPerAttribute;
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
+        var request = context.Request;
+        var identityKind = LdapToolResolveHelper.ParseIdentityKind(request.IdentityKind);
+        var kind = LdapToolKinds.ParseObjectKind(request.Kind);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         var attributes = ResolveAttributes(
-            arguments: arguments,
+            arguments: context.Arguments,
             attributesKey: "attributes",
             allowedAttributes: AllowedAttributes,
             defaultAttributes: DefaultAttributes,
             requiredAttributes: new[] { "distinguishedName", "objectSid", "objectClass" });
 
-        var input = ToolArgs.ReadStringArrayCapped(identitiesArray, maxInputs);
+        var input = request.Identities.Take(request.MaxInputs).ToArray();
+        var kindToolString = LdapToolKinds.ToToolString(kind);
         if (!LdapToolObjectResolveService.TryExecute(
                 request: new LdapToolObjectResolveQueryRequest {
                     Identities = input,
-                    InputsTotal = identitiesArray.Count,
-                    MaxInputs = maxInputs,
-                    InputsTruncated = identitiesArray.Count > input.Count,
+                    InputsTotal = request.Identities.Count,
+                    MaxInputs = request.MaxInputs,
+                    InputsTruncated = request.Identities.Count > input.Length,
                     IdentityKind = identityKind,
                     Kind = kindToolString,
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
                     Attributes = attributes
                 },
                 result: out var output,
@@ -128,14 +154,14 @@ public sealed class AdObjectResolveTool : ActiveDirectoryToolBase, ITool {
         }
 
         var result = output!;
-        return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Results,
             viewRowsPath: "results_view",
             title: "Active Directory: Object Resolve (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.InputsTruncated,
-            scanned: identitiesArray.Count));
+            scanned: request.Identities.Count));
     }
 }

@@ -233,8 +233,12 @@ internal sealed partial class ChatServiceSession {
         if (availableDefinitions is not null && availableDefinitions.Count > 0) {
             for (var i = 0; i < availableDefinitions.Count; i++) {
                 var definition = availableDefinitions[i];
-                if (definition is null
-                    || !ToolSelectionMetadata.TryResolveDomainIntentFamily(definition, out var family)) {
+                if (definition is null) {
+                    continue;
+                }
+
+                var family = ResolveDomainIntentFamily(definition);
+                if (family.Length == 0) {
                     continue;
                 }
 
@@ -244,6 +248,12 @@ internal sealed partial class ChatServiceSession {
                         ? publicSignals
                         : null;
                 if (signalSet is null) {
+                    continue;
+                }
+
+                var routingSignals = definition.Routing?.DomainSignalTokens;
+                if (routingSignals is { Count: > 0 }) {
+                    AddDomainSignalTokens(signalSet, routingSignals);
                     continue;
                 }
 

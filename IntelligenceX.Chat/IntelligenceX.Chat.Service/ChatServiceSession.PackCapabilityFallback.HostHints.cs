@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using JsonValueKind = System.Text.Json.JsonValueKind;
-using IntelligenceX.Chat.Abstractions.Protocol;
-using IntelligenceX.Json;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -36,50 +33,6 @@ internal sealed partial class ChatServiceSession {
             var candidate = text.Substring(tokenStart, i - tokenStart);
             tokenStart = -1;
             var score = ScoreHostHintCandidate(candidate);
-            if (score <= bestScore) {
-                continue;
-            }
-
-            bestScore = score;
-            bestCandidate = candidate;
-        }
-
-        return bestScore > 0 ? bestCandidate : null;
-    }
-
-    private static string? TryResolveHostHintFromPriorDiscoveryOutputs(string hostHint, IReadOnlyList<ToolOutputDto> toolOutputs) {
-        var normalizedHint = (hostHint ?? string.Empty).Trim();
-        if (normalizedHint.Length == 0 || toolOutputs.Count == 0) {
-            return null;
-        }
-
-        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = toolOutputs.Count - 1; i >= 0; i--) {
-            var payload = (toolOutputs[i].Output ?? string.Empty).Trim();
-            if (payload.Length == 0 || payload[0] != '{') {
-                continue;
-            }
-
-            try {
-                using var doc = JsonDocument.Parse(payload, ActionSelectionJsonOptions);
-                if (doc.RootElement.ValueKind != JsonValueKind.Object) {
-                    continue;
-                }
-
-                CollectHostCandidates(doc.RootElement, candidates, depth: 0, maxDepth: 4, budget: 256);
-            } catch (JsonException) {
-                // Best-effort host discovery only.
-            }
-        }
-
-        if (candidates.Count == 0) {
-            return null;
-        }
-
-        var bestCandidate = string.Empty;
-        var bestScore = 0;
-        foreach (var candidate in candidates) {
-            var score = ScoreHostHintMatch(normalizedHint, candidate);
             if (score <= bestScore) {
                 continue;
             }
@@ -131,98 +84,6 @@ internal sealed partial class ChatServiceSession {
 
         var dot = normalized.IndexOf('.', StringComparison.Ordinal);
         return dot > 0 ? normalized[..dot] : normalized;
-    }
-
-    private static void CollectHostCandidates(JsonElement node, HashSet<string> candidates, int depth, int maxDepth, int budget) {
-        if (depth > maxDepth || budget <= 0) {
-            return;
-        }
-
-        switch (node.ValueKind) {
-            case JsonValueKind.Object:
-                foreach (var property in node.EnumerateObject()) {
-                    if (budget-- <= 0) {
-                        return;
-                    }
-
-                    var name = property.Name;
-                    if (LooksLikeHostFieldName(name)) {
-                        AddHostCandidateFromNode(property.Value, candidates);
-                    }
-
-                    CollectHostCandidates(property.Value, candidates, depth + 1, maxDepth, budget);
-                }
-                break;
-            case JsonValueKind.Array:
-                foreach (var item in node.EnumerateArray()) {
-                    if (budget-- <= 0) {
-                        return;
-                    }
-
-                    AddHostCandidateFromNode(item, candidates);
-                    CollectHostCandidates(item, candidates, depth + 1, maxDepth, budget);
-                }
-                break;
-        }
-    }
-
-    private static bool LooksLikeHostFieldName(string name) {
-        var normalized = (name ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        return normalized.Equals("machine_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("computer_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("host", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("hostname", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("host_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("dns_host_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("dnshostname", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("server", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("server_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domain_controller", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domain_controllers", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domainControllers", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void AddHostCandidateFromNode(JsonElement node, HashSet<string> candidates) {
-        if (node.ValueKind == JsonValueKind.String) {
-            var value = (node.GetString() ?? string.Empty).Trim();
-            if (IsHostLikeCandidate(value)) {
-                candidates.Add(value);
-            }
-            return;
-        }
-
-        if (node.ValueKind != JsonValueKind.Object) {
-            return;
-        }
-
-        if (node.TryGetProperty("machine_name", out var machineNameNode) && machineNameNode.ValueKind == JsonValueKind.String) {
-            var value = (machineNameNode.GetString() ?? string.Empty).Trim();
-            if (IsHostLikeCandidate(value)) {
-                candidates.Add(value);
-            }
-        }
-        if (node.TryGetProperty("computer_name", out var computerNameNode) && computerNameNode.ValueKind == JsonValueKind.String) {
-            var value = (computerNameNode.GetString() ?? string.Empty).Trim();
-            if (IsHostLikeCandidate(value)) {
-                candidates.Add(value);
-            }
-        }
-        if (node.TryGetProperty("dns_host_name", out var dnsHostNode) && dnsHostNode.ValueKind == JsonValueKind.String) {
-            var value = (dnsHostNode.GetString() ?? string.Empty).Trim();
-            if (IsHostLikeCandidate(value)) {
-                candidates.Add(value);
-            }
-        }
-        if (node.TryGetProperty("dNSHostName", out var dnsHostCaseNode) && dnsHostCaseNode.ValueKind == JsonValueKind.String) {
-            var value = (dnsHostCaseNode.GetString() ?? string.Empty).Trim();
-            if (IsHostLikeCandidate(value)) {
-                candidates.Add(value);
-            }
-        }
     }
 
     private static bool IsHostLikeCandidate(string value) {
@@ -332,207 +193,95 @@ internal sealed partial class ChatServiceSession {
         return score;
     }
 
-    private static bool TryReadDiscoveryStatusObject(JsonElement root, out JsonElement discoveryStatus) {
-        if (root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty("discovery_status", out discoveryStatus)
-            && discoveryStatus.ValueKind == JsonValueKind.Object) {
-            return true;
-        }
-
-        if (root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty("discoveryStatus", out discoveryStatus)
-            && discoveryStatus.ValueKind == JsonValueKind.Object) {
-            return true;
-        }
-
-        discoveryStatus = default;
-        return false;
-    }
-
-    private static void CopyHintIfPresent(JsonElement source, JsonObject destination, string propertyName) {
-        if (!source.TryGetProperty(propertyName, out var node)) {
+    private static void CollectHostCandidates(JsonElement node, HashSet<string> candidates, int depth, int maxDepth, int budget) {
+        if (depth > maxDepth || budget <= 0) {
             return;
         }
 
         switch (node.ValueKind) {
-            case JsonValueKind.String: {
-                    var value = (node.GetString() ?? string.Empty).Trim();
-                    if (value.Length > 0) {
-                        destination.Add(propertyName, value);
+            case JsonValueKind.Object:
+                foreach (var property in node.EnumerateObject()) {
+                    if (budget-- <= 0) {
+                        return;
                     }
-                    break;
+
+                    var name = property.Name;
+                    if (LooksLikeHostFieldName(name)) {
+                        AddHostCandidateFromNode(property.Value, candidates);
+                    }
+
+                    CollectHostCandidates(property.Value, candidates, depth + 1, maxDepth, budget);
                 }
-            case JsonValueKind.True:
-            case JsonValueKind.False:
-                destination.Add(propertyName, node.GetBoolean());
                 break;
-            case JsonValueKind.Array: {
-                    var copied = new JsonArray();
-                    foreach (var item in node.EnumerateArray()) {
-                        if (item.ValueKind != JsonValueKind.String) {
-                            continue;
-                        }
-
-                        var value = (item.GetString() ?? string.Empty).Trim();
-                        if (value.Length > 0) {
-                            copied.Add(value);
-                        }
+            case JsonValueKind.Array:
+                foreach (var item in node.EnumerateArray()) {
+                    if (budget-- <= 0) {
+                        return;
                     }
 
-                    if (copied.Count > 0) {
-                        destination[propertyName] = JsonValue.From(copied);
-                    }
-                    break;
+                    AddHostCandidateFromNode(item, candidates);
+                    CollectHostCandidates(item, candidates, depth + 1, maxDepth, budget);
                 }
+                break;
         }
     }
 
-    private static string? ReadNonEmptyHint(JsonObject hints, string propertyName) {
-        if (!hints.TryGetValue(propertyName, out var node) || node is null) {
-            return null;
-        }
-
-        if (node.Kind == IntelligenceX.Json.JsonValueKind.String) {
-            var value = (node.AsString() ?? string.Empty).Trim();
-            return value.Length == 0 ? null : value;
-        }
-
-        if (node.Kind == IntelligenceX.Json.JsonValueKind.Array) {
-            var values = node.AsArray();
-            if (values is null || values.Count == 0) {
-                return null;
-            }
-
-            for (var i = 0; i < values.Count; i++) {
-                var item = values[i];
-                if (item is null || item.Kind != IntelligenceX.Json.JsonValueKind.String) {
-                    continue;
-                }
-
-                var value = (item.AsString() ?? string.Empty).Trim();
-                if (value.Length > 0) {
-                    return value;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static bool? ReadHintBoolean(JsonObject hints, string propertyName) {
-        if (!hints.TryGetValue(propertyName, out var node) || node is null) {
-            return null;
-        }
-
-        if (node.Kind == IntelligenceX.Json.JsonValueKind.Boolean) {
-            return node.AsBoolean();
-        }
-
-        if (node.Kind == IntelligenceX.Json.JsonValueKind.String
-            && TryParseProtocolBoolean((node.AsString() ?? string.Empty).Trim(), out var parsedString)) {
-            return parsedString;
-        }
-
-        if (node.Kind == IntelligenceX.Json.JsonValueKind.Number) {
-            var numeric = node.AsInt64();
-            if (numeric.HasValue && TryMapIntegerBoolean(numeric.Value, out var parsedNumber)) {
-                return parsedNumber;
-            }
-        }
-
-        if (node.Kind == IntelligenceX.Json.JsonValueKind.Array) {
-            var values = node.AsArray();
-            if (values is null || values.Count == 0) {
-                return null;
-            }
-
-            for (var i = 0; i < values.Count; i++) {
-                var item = values[i];
-                if (item is null) {
-                    continue;
-                }
-
-                if (item.Kind == IntelligenceX.Json.JsonValueKind.Boolean) {
-                    return item.AsBoolean();
-                }
-
-                if (item.Kind == IntelligenceX.Json.JsonValueKind.String
-                    && TryParseProtocolBoolean((item.AsString() ?? string.Empty).Trim(), out var parsedStringItem)) {
-                    return parsedStringItem;
-                }
-
-                if (item.Kind == IntelligenceX.Json.JsonValueKind.Number) {
-                    var numeric = item.AsInt64();
-                    if (numeric.HasValue && TryMapIntegerBoolean(numeric.Value, out var parsedNumberItem)) {
-                        return parsedNumberItem;
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static bool TryReadPositiveIntProperty(JsonElement source, string propertyName, out int value) {
-        value = 0;
-        if (!source.TryGetProperty(propertyName, out var node) || node.ValueKind != JsonValueKind.Number) {
+    private static bool LooksLikeHostFieldName(string name) {
+        var normalized = (name ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
             return false;
         }
 
-        if (!node.TryGetInt32(out value)) {
-            return false;
-        }
-
-        return value > 0;
+        return normalized.Equals("machine_name", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("computer_name", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("host", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("hostname", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("host_name", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("dns_host_name", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("dnshostname", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("server", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("server_name", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("domain_controller", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("domain_controllers", StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals("domainControllers", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool TryReadArrayLength(JsonElement source, string propertyName, out int length) {
-        length = 0;
-        if (!source.TryGetProperty(propertyName, out var node) || node.ValueKind != JsonValueKind.Array) {
-            return false;
+    private static void AddHostCandidateFromNode(JsonElement node, HashSet<string> candidates) {
+        if (node.ValueKind == JsonValueKind.String) {
+            var value = (node.GetString() ?? string.Empty).Trim();
+            if (IsHostLikeCandidate(value)) {
+                candidates.Add(value);
+            }
+            return;
         }
 
-        length = node.GetArrayLength();
-        return true;
-    }
-
-    private static bool TryReadBooleanProperty(JsonElement source, string propertyName, out bool value) {
-        value = false;
-        if (!source.TryGetProperty(propertyName, out var node)) {
-            return false;
+        if (node.ValueKind != JsonValueKind.Object) {
+            return;
         }
 
-        return node.ValueKind switch {
-            JsonValueKind.True => value = true,
-            JsonValueKind.False => true,
-            JsonValueKind.String => TryParseProtocolBoolean((node.GetString() ?? string.Empty).Trim(), out value),
-            JsonValueKind.Number => node.TryGetInt64(out var numeric)
-                                    && TryMapIntegerBoolean(numeric, out value),
-            _ => false
-        };
-    }
-
-    private static bool TryMapIntegerBoolean(long numeric, out bool value) {
-        value = false;
-        if (numeric == 0) {
-            return true;
-        }
-
-        if (numeric == 1) {
-            value = true;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool ContainsToolName(IReadOnlyList<string> tools, string toolName) {
-        for (var i = 0; i < tools.Count; i++) {
-            if (string.Equals(tools[i], toolName, StringComparison.OrdinalIgnoreCase)) {
-                return true;
+        if (node.TryGetProperty("machine_name", out var machineNameNode) && machineNameNode.ValueKind == JsonValueKind.String) {
+            var value = (machineNameNode.GetString() ?? string.Empty).Trim();
+            if (IsHostLikeCandidate(value)) {
+                candidates.Add(value);
             }
         }
-
-        return false;
+        if (node.TryGetProperty("computer_name", out var computerNameNode) && computerNameNode.ValueKind == JsonValueKind.String) {
+            var value = (computerNameNode.GetString() ?? string.Empty).Trim();
+            if (IsHostLikeCandidate(value)) {
+                candidates.Add(value);
+            }
+        }
+        if (node.TryGetProperty("dns_host_name", out var dnsHostNode) && dnsHostNode.ValueKind == JsonValueKind.String) {
+            var value = (dnsHostNode.GetString() ?? string.Empty).Trim();
+            if (IsHostLikeCandidate(value)) {
+                candidates.Add(value);
+            }
+        }
+        if (node.TryGetProperty("dNSHostName", out var dnsHostCaseNode) && dnsHostCaseNode.ValueKind == JsonValueKind.String) {
+            var value = (dnsHostCaseNode.GetString() ?? string.Empty).Trim();
+            if (IsHostLikeCandidate(value)) {
+                candidates.Add(value);
+            }
+        }
     }
 }

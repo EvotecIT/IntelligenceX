@@ -19,6 +19,15 @@ namespace IntelligenceX.Tools.DomainDetective;
 /// Runs bounded network diagnostics (ping/traceroute) via DomainDetective.
 /// </summary>
 public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, ITool {
+    private sealed record NetworkProbeRequest(
+        string Host,
+        bool RunPing,
+        bool RunTraceroute,
+        int TimeoutMs,
+        int MaxHops,
+        long? RequestedTimeoutMs,
+        long? RequestedMaxHops);
+
     private const int DefaultNetworkTimeoutMs = 4000;
     private const int MaxNetworkTimeoutMs = 15000;
     private const int DefaultTracerouteMaxHops = 16;
@@ -51,40 +60,50 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var host = ToolArgs.GetOptionalTrimmed(arguments, "host");
-        if (string.IsNullOrWhiteSpace(host)) {
-            return ToolResponse.Error(
-                errorCode: "invalid_argument",
-                error: "host is required.",
-                hints: new[] { "Provide a host name or IP address, for example: dc01.contoso.local or 1.1.1.1." },
-                isTransient: false);
-        }
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync).ConfigureAwait(false);
+    }
 
-        var runPing = ToolArgs.GetBoolean(arguments, "run_ping", defaultValue: true);
-        var runTraceroute = ToolArgs.GetBoolean(arguments, "run_traceroute", defaultValue: false);
-        if (!runPing && !runTraceroute) {
-            return ToolResponse.Error(
-                errorCode: "invalid_argument",
-                error: "At least one probe must be enabled (run_ping or run_traceroute).",
-                hints: new[] { "Set run_ping=true and/or run_traceroute=true." },
-                isTransient: false);
-        }
+    private ToolRequestBindingResult<NetworkProbeRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var host = reader.OptionalString("host");
+            if (string.IsNullOrWhiteSpace(host)) {
+                return ToolRequestBindingResult<NetworkProbeRequest>.Failure("host is required.");
+            }
 
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", DefaultNetworkTimeoutMs, 100, MaxNetworkTimeoutMs);
-        var maxHops = ToolArgs.GetCappedInt32(arguments, "max_hops", DefaultTracerouteMaxHops, 1, MaxTracerouteMaxHops);
+            var runPing = reader.Boolean("run_ping", defaultValue: true);
+            var runTraceroute = reader.Boolean("run_traceroute", defaultValue: false);
+            if (!runPing && !runTraceroute) {
+                return ToolRequestBindingResult<NetworkProbeRequest>.Failure(
+                    "At least one probe must be enabled (run_ping or run_traceroute).");
+            }
 
+            return ToolRequestBindingResult<NetworkProbeRequest>.Success(new NetworkProbeRequest(
+                Host: host,
+                RunPing: runPing,
+                RunTraceroute: runTraceroute,
+                TimeoutMs: reader.CappedInt32("timeout_ms", DefaultNetworkTimeoutMs, 100, MaxNetworkTimeoutMs),
+                MaxHops: reader.CappedInt32("max_hops", DefaultTracerouteMaxHops, 1, MaxTracerouteMaxHops),
+                RequestedTimeoutMs: reader.OptionalInt64("timeout_ms"),
+                RequestedMaxHops: reader.OptionalInt64("max_hops")));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<NetworkProbeRequest> context, CancellationToken cancellationToken) {
+        var request = context.Request;
         var warnings = new List<string>();
-        var requestedTimeout = arguments?.GetInt64("timeout_ms");
-        if (requestedTimeout.HasValue && requestedTimeout.Value > MaxNetworkTimeoutMs) {
+        if (request.RequestedTimeoutMs.HasValue && request.RequestedTimeoutMs.Value > MaxNetworkTimeoutMs) {
             warnings.Add($"timeout_ms was capped to {MaxNetworkTimeoutMs}.");
         }
-        var requestedMaxHops = arguments?.GetInt64("max_hops");
-        if (requestedMaxHops.HasValue && requestedMaxHops.Value > MaxTracerouteMaxHops) {
+        if (request.RequestedMaxHops.HasValue && request.RequestedMaxHops.Value > MaxTracerouteMaxHops) {
             warnings.Add($"max_hops was capped to {MaxTracerouteMaxHops}.");
         }
 
 #if !DOMAINDETECTIVE_ENABLED
-        return ToolResponse.Error(
+        return ToolResultV2.Error(
             errorCode: "dependency_unavailable",
             error: "DomainDetective dependency is not available in this build.",
             hints: new[] {
@@ -95,9 +114,9 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
 #else
         DomainDetectivePingResultModel? ping = null;
         string? pingError = null;
-        if (runPing) {
+        if (request.RunPing) {
             try {
-                var reply = await PingTraceroute.PingAsync(host, timeoutMs).ConfigureAwait(false);
+                var reply = await PingTraceroute.PingAsync(request.Host, request.TimeoutMs).ConfigureAwait(false);
                 ping = new DomainDetectivePingResultModel {
                     Status = reply.Status.ToString(),
                     Address = reply.Address?.ToString(),
@@ -112,9 +131,9 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
         IReadOnlyList<DomainDetectiveTracerouteHopModel> traceroute = Array.Empty<DomainDetectiveTracerouteHopModel>();
         string? tracerouteError = null;
         var tracerouteCompleted = false;
-        if (runTraceroute) {
+        if (request.RunTraceroute) {
             try {
-                var hops = await PingTraceroute.TracerouteAsync(host, maxHops, timeoutMs).ConfigureAwait(false);
+                var hops = await PingTraceroute.TracerouteAsync(request.Host, request.MaxHops, request.TimeoutMs).ConfigureAwait(false);
                 traceroute = hops
                     .Select(static hop => new DomainDetectiveTracerouteHopModel {
                         Hop = hop.Hop,
@@ -130,8 +149,8 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
         }
 
         var allRequestedProbesFailed =
-            (!runPing || ping is null)
-            && (!runTraceroute || traceroute.Count == 0)
+            (!request.RunPing || ping is null)
+            && (!request.RunTraceroute || traceroute.Count == 0)
             && (!string.IsNullOrWhiteSpace(pingError) || !string.IsNullOrWhiteSpace(tracerouteError));
         if (allRequestedProbesFailed) {
             var combinedError = new List<string>(2);
@@ -142,7 +161,7 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
                 combinedError.Add("traceroute: " + tracerouteError.Trim());
             }
 
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "probe_failed",
                 error: "Network probe failed: " + string.Join("; ", combinedError),
                 hints: new[] {
@@ -153,11 +172,11 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
         }
 
         var result = new DomainDetectiveNetworkProbeResultModel {
-            Host = host,
-            RunPing = runPing,
-            RunTraceroute = runTraceroute,
-            TimeoutMs = timeoutMs,
-            MaxHops = maxHops,
+            Host = request.Host,
+            RunPing = request.RunPing,
+            RunTraceroute = request.RunTraceroute,
+            TimeoutMs = request.TimeoutMs,
+            MaxHops = request.MaxHops,
             Ping = ping,
             PingError = pingError,
             Traceroute = traceroute,
@@ -170,7 +189,7 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
         if (ping is not null && string.Equals(ping.Status, IPStatus.Success.ToString(), StringComparison.OrdinalIgnoreCase)) {
             successCount++;
         }
-        if (runTraceroute && tracerouteCompleted) {
+        if (request.RunTraceroute && tracerouteCompleted) {
             successCount++;
         }
 
@@ -178,10 +197,10 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
             title: "DomainDetective network probe",
             facts: new[] {
                 ("Host", result.Host),
-                ("Ping", result.Ping?.Status ?? (runPing ? "error" : "skipped")),
-                ("Traceroute hops", runTraceroute ? result.Traceroute.Count.ToString(CultureInfo.InvariantCulture) : "skipped"),
-                ("Traceroute complete", runTraceroute ? (result.TracerouteCompleted ? "yes" : "no") : "skipped"),
-                ("Timeout (ms)", timeoutMs.ToString(CultureInfo.InvariantCulture))
+                ("Ping", result.Ping?.Status ?? (request.RunPing ? "error" : "skipped")),
+                ("Traceroute hops", request.RunTraceroute ? result.Traceroute.Count.ToString(CultureInfo.InvariantCulture) : "skipped"),
+                ("Traceroute complete", request.RunTraceroute ? (result.TracerouteCompleted ? "yes" : "no") : "skipped"),
+                ("Timeout (ms)", request.TimeoutMs.ToString(CultureInfo.InvariantCulture))
             });
 
         var meta = ToolOutputHints.Meta(count: Math.Max(1, traceroute.Count), truncated: false)
@@ -191,7 +210,7 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
             .Add("run_traceroute", result.RunTraceroute)
             .Add("traceroute_hops", result.Traceroute.Count);
 
-        return ToolResponse.OkModel(result, meta: meta, summaryMarkdown: summary);
+        return ToolResultV2.OkModel(result, meta: meta, summaryMarkdown: summary);
 #endif
     }
 

@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   write_governance_mode TEXT NOT NULL DEFAULT 'enforced',
   require_write_governance_runtime INTEGER NOT NULL DEFAULT 1,
   require_write_audit_sink INTEGER NOT NULL DEFAULT 0,
+  require_explicit_routing_metadata INTEGER NOT NULL DEFAULT 0,
   write_audit_sink_mode TEXT NOT NULL DEFAULT 'none',
   write_audit_sink_path TEXT NULL,
   authentication_runtime_preset TEXT NOT NULL DEFAULT 'default',
@@ -119,6 +120,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         EnsureColumnExists(ProfileTable, knownProfileColumns, "write_governance_mode", "TEXT NOT NULL DEFAULT 'enforced'");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "require_write_governance_runtime", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "require_write_audit_sink", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "require_explicit_routing_metadata", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "write_audit_sink_mode", "TEXT NOT NULL DEFAULT 'none'");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "write_audit_sink_path", "TEXT NULL");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_account_id", "TEXT NULL");
@@ -294,6 +296,7 @@ LIMIT 1;",
             WriteGovernanceMode = NormalizeWriteGovernanceMode(ReadString(r, "write_governance_mode")),
             RequireWriteGovernanceRuntime = ReadBool(r, "require_write_governance_runtime", defaultValue: true),
             RequireWriteAuditSinkForWriteOperations = ReadBool(r, "require_write_audit_sink", defaultValue: false),
+            RequireExplicitRoutingMetadata = ReadBool(r, "require_explicit_routing_metadata", defaultValue: false),
             WriteAuditSinkMode = NormalizeWriteAuditSinkMode(ReadString(r, "write_audit_sink_mode")),
             WriteAuditSinkPath = NormalizeOptionalPath(ReadString(r, "write_audit_sink_path")),
             AuthenticationRuntimePreset = NormalizeAuthenticationRuntimePreset(ReadString(r, "authentication_runtime_preset")),
@@ -337,7 +340,7 @@ INSERT INTO {ProfileTable} (
   ad_domain_controller, ad_default_search_base_dn, ad_max_results,
   enable_powershell_pack, powershell_allow_write, enable_testimox_pack, enable_officeimo_pack,
   enable_default_plugin_paths,
-  write_governance_mode, require_write_governance_runtime, require_write_audit_sink,
+  write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata,
   write_audit_sink_mode, write_audit_sink_path,
   authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path,
   updated_utc
@@ -351,7 +354,7 @@ VALUES (
   @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
   @enable_powershell_pack, @powershell_allow_write, @enable_testimox_pack, @enable_officeimo_pack,
   @enable_default_plugin_paths,
-  @write_governance_mode, @require_write_governance_runtime, @require_write_audit_sink,
+  @write_governance_mode, @require_write_governance_runtime, @require_write_audit_sink, @require_explicit_routing_metadata,
   @write_audit_sink_mode, @write_audit_sink_path,
   @authentication_runtime_preset, @require_authentication_runtime, @run_as_profile_path, @authentication_profile_path,
   @updated_utc
@@ -392,6 +395,7 @@ ON CONFLICT(name) DO UPDATE SET
   write_governance_mode = excluded.write_governance_mode,
   require_write_governance_runtime = excluded.require_write_governance_runtime,
   require_write_audit_sink = excluded.require_write_audit_sink,
+  require_explicit_routing_metadata = excluded.require_explicit_routing_metadata,
   write_audit_sink_mode = excluded.write_audit_sink_mode,
   write_audit_sink_path = excluded.write_audit_sink_path,
   authentication_runtime_preset = excluded.authentication_runtime_preset,
@@ -437,6 +441,7 @@ ON CONFLICT(name) DO UPDATE SET
                     ["@write_governance_mode"] = NormalizeWriteGovernanceMode(profile.WriteGovernanceMode),
                     ["@require_write_governance_runtime"] = profile.RequireWriteGovernanceRuntime ? 1 : 0,
                     ["@require_write_audit_sink"] = profile.RequireWriteAuditSinkForWriteOperations ? 1 : 0,
+                    ["@require_explicit_routing_metadata"] = profile.RequireExplicitRoutingMetadata ? 1 : 0,
                     ["@write_audit_sink_mode"] = NormalizeWriteAuditSinkMode(profile.WriteAuditSinkMode),
                     ["@write_audit_sink_path"] = NormalizeOptionalPath(profile.WriteAuditSinkPath),
                     ["@authentication_runtime_preset"] = NormalizeAuthenticationRuntimePreset(profile.AuthenticationRuntimePreset),

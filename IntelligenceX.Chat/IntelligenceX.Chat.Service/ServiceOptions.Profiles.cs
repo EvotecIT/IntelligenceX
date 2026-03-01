@@ -66,6 +66,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             writeAuditSinkMode: profile.WriteAuditSinkMode,
             writeAuditSinkPath: profile.WriteAuditSinkPath,
             authenticationRuntimePreset: profile.AuthenticationRuntimePreset,
+            requireExplicitRoutingMetadata: profile.RequireExplicitRoutingMetadata,
             requireAuthenticationRuntime: profile.RequireAuthenticationRuntime,
             runAsProfilePath: profile.RunAsProfilePath,
             authenticationProfilePath: profile.AuthenticationProfilePath,
@@ -75,6 +76,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             setWriteAuditSinkMode: mode => WriteAuditSinkMode = mode,
             setWriteAuditSinkPath: path => WriteAuditSinkPath = path,
             setAuthenticationRuntimePreset: preset => AuthenticationRuntimePreset = preset,
+            setRequireExplicitRoutingMetadata: required => RequireExplicitRoutingMetadata = required,
             setRequireAuthenticationRuntime: required => RequireAuthenticationRuntime = required,
             setRunAsProfilePath: path => RunAsProfilePath = path,
             setAuthenticationProfilePath: path => AuthenticationProfilePath = path);
@@ -123,6 +125,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             WriteAuditSinkMode = ToolRuntimePolicyBootstrap.FormatWriteAuditSinkMode(WriteAuditSinkMode),
             WriteAuditSinkPath = WriteAuditSinkPath,
             AuthenticationRuntimePreset = ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(AuthenticationRuntimePreset),
+            RequireExplicitRoutingMetadata = RequireExplicitRoutingMetadata,
             RequireAuthenticationRuntime = RequireAuthenticationRuntime,
             RunAsProfilePath = RunAsProfilePath,
             AuthenticationProfilePath = AuthenticationProfilePath,

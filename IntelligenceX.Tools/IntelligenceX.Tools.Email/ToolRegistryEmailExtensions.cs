@@ -37,6 +37,12 @@ public static class ToolRegistryEmailExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(EmailToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return EmailToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(EmailToolOptions options) {
         yield return new EmailPackInfoTool(options);
         yield return new EmailImapSearchTool(options);
         yield return new EmailImapGetTool(options);

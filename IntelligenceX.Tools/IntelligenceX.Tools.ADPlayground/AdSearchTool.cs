@@ -14,6 +14,12 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Searches Active Directory using LDAP filters (read-only).
 /// </summary>
 public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
+    private sealed record SearchRequest(
+        string Query,
+        string? Kind,
+        int MaxValuesPerAttribute,
+        IReadOnlyList<string> Attributes);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_search",
         "Search Active Directory for users/groups/computers by query (read-only).",
@@ -44,38 +50,47 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
     /// Invokes the tool.
     /// </summary>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<SearchRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("query", out var query, out var queryError)) {
+                return ToolRequestBindingResult<SearchRequest>.Failure(queryError);
+            }
+
+            return ToolRequestBindingResult<SearchRequest>.Success(new SearchRequest(
+                Query: query,
+                Kind: reader.OptionalString("kind"),
+                MaxValuesPerAttribute: reader.CappedInt32(
+                    "max_values_per_attribute",
+                    LdapQueryPolicy.DefaultMaxValuesPerAttribute,
+                    1,
+                    LdapQueryPolicy.MaxValuesPerAttributeCap),
+                Attributes: reader.StringArray("attributes")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SearchRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var query = ToolArgs.GetOptionalTrimmed(arguments, "query") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(query)) {
-            return Task.FromResult(Error("invalid_argument", "query is required."));
-        }
-
-        var kindArg = ToolArgs.GetOptionalTrimmed(arguments, "kind");
-        var kind = string.IsNullOrWhiteSpace(kindArg) ? "any" : kindArg.Trim().ToLowerInvariant();
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var maxValuesPerAttribute = ToolArgs.GetCappedInt32(
-            arguments,
-            "max_values_per_attribute",
-            LdapQueryPolicy.DefaultMaxValuesPerAttribute,
-            1,
-            LdapQueryPolicy.MaxValuesPerAttributeCap);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-
-        var attributes = ToolArgs.ReadStringArray(arguments?.GetArray("attributes"));
+        var request = context.Request;
+        var kind = string.IsNullOrWhiteSpace(request.Kind) ? "any" : request.Kind.Trim().ToLowerInvariant();
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         if (!LdapToolSearchService.TryExecute(
                 request: new LdapToolSearchQueryRequest {
-                    Query = query,
+                    Query = request.Query,
                     Kind = kind,
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
                     MaxResults = maxResults,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
-                    Attributes = attributes
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
+                    Attributes = request.Attributes
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -97,17 +112,20 @@ public sealed class AdSearchTool : ActiveDirectoryToolBase, ITool {
             result.Results
         };
         var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
-            arguments,
+            context.Arguments,
             BuildAvailableProjectionColumns(result.Results));
 
-        AdDynamicTableView.TryBuildResponseFromQueryRows(
-            arguments: shapedArguments,
-            model: root,
-            rows: result.Results,
-            title: "Active Directory: Search (preview)",
-            rowsPath: "results_view",
-            baseTruncated: result.IsTruncated,
-            response: out var response);
+        if (!AdDynamicTableView.TryBuildResponseFromQueryRows(
+                arguments: shapedArguments,
+                model: root,
+                rows: result.Results,
+                title: "Active Directory: Search (preview)",
+                rowsPath: "results_view",
+                baseTruncated: result.IsTruncated,
+                response: out var response)) {
+            return Task.FromResult(ToolResultV2.Error("query_failed", "Failed to build AD search table view response."));
+        }
+
         return Task.FromResult(response);
     }
 

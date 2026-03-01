@@ -13,6 +13,14 @@ namespace IntelligenceX.Tools.EventLog;
 /// Lists EventViewerX named-event rules that can be queried by the named-events tool surface.
 /// </summary>
 public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
+    private sealed record NamedEventsCatalogRequest(
+        string? Filter,
+        IReadOnlyList<string> Categories,
+        bool AvailableOnly,
+        bool IncludeEventIds,
+        int MaxEventIdsPerRow,
+        int MaxResults);
+
     private const int MaxViewTop = 5000;
     private const int MaxCategoryFilters = 16;
     private const int MaxEventIdsPerRowCap = 256;
@@ -58,23 +66,54 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var filter = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var availableOnly = ToolArgs.GetBoolean(arguments, "available_only");
-        var includeEventIds = arguments?.GetBoolean("include_event_ids") ?? true;
-        var maxEventIdsPerRow = ToolArgs.GetCappedInt32(arguments, "max_event_ids_per_row", 32, 1, MaxEventIdsPerRowCap);
-        var maxResults = ResolveOptionBoundedMaxResults(arguments);
+    private ToolRequestBindingResult<NamedEventsCatalogRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var filter = reader.OptionalString("name_contains");
+            var availableOnly = reader.Boolean("available_only", defaultValue: false);
+            var includeEventIds = reader.Boolean("include_event_ids", defaultValue: true);
+            var maxEventIdsPerRow = reader.CappedInt32(
+                key: "max_event_ids_per_row",
+                defaultValue: 32,
+                minInclusive: 1,
+                maxInclusive: MaxEventIdsPerRowCap);
+            var maxResults = ResolveOptionBoundedMaxResults(arguments);
 
-        var categoriesFilter = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("categories"));
-        List<string>? categories = null;
-        if (categoriesFilter.Count > 0) {
-            if (!EventLogNamedEventsHelper.TryParseCategories(categoriesFilter, MaxCategoryFilters, out var parsedCategories, out var categoryError)) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", categoryError ?? "Invalid categories argument."));
+            var categoriesFilter = reader.DistinctStringArray("categories");
+            IReadOnlyList<string> categories = Array.Empty<string>();
+            if (categoriesFilter.Count > 0) {
+                if (!EventLogNamedEventsHelper.TryParseCategories(categoriesFilter, MaxCategoryFilters, out var parsedCategories, out var categoryError)) {
+                    return ToolRequestBindingResult<NamedEventsCatalogRequest>.Failure(categoryError ?? "Invalid categories argument.");
+                }
+
+                categories = parsedCategories;
             }
 
-            categories = parsedCategories;
-        }
+            return ToolRequestBindingResult<NamedEventsCatalogRequest>.Success(new NamedEventsCatalogRequest(
+                Filter: filter,
+                Categories: categories,
+                AvailableOnly: availableOnly,
+                IncludeEventIds: includeEventIds,
+                MaxEventIdsPerRow: maxEventIdsPerRow,
+                MaxResults: maxResults));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<NamedEventsCatalogRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var filter = context.Request.Filter;
+        var availableOnly = context.Request.AvailableOnly;
+        var includeEventIds = context.Request.IncludeEventIds;
+        var maxEventIdsPerRow = context.Request.MaxEventIdsPerRow;
+        var maxResults = context.Request.MaxResults;
+        var categories = context.Request.Categories;
 
         var all = EventLogNamedEventsHelper.GetCatalogRows();
         IEnumerable<EventLogNamedEventCatalogRow> query = all;
@@ -84,7 +123,7 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
                 row.QueryName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
                 row.Category.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0);
         }
-        if (categories is not null && categories.Count > 0) {
+        if (categories.Count > 0) {
             var set = new HashSet<string>(categories, StringComparer.OrdinalIgnoreCase);
             query = query.Where(row => set.Contains(row.Category));
         }
@@ -114,8 +153,8 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
             MaxEventIdsPerRow: maxEventIdsPerRow,
             Items: selectedRows);
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: selectedRows,
             viewRowsPath: "items_view",
@@ -135,7 +174,7 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(filter)) {
                     meta.Add("name_contains", filter);
                 }
-                if (categories is not null && categories.Count > 0) {
+                if (categories.Count > 0) {
                     meta.Add("categories", ToolJson.ToJsonArray(categories));
                 }
             });

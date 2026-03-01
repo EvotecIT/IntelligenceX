@@ -79,6 +79,7 @@ internal static partial class Program {
         public ToolWriteAuditSinkMode WriteAuditSinkMode { get; set; } = ToolWriteAuditSinkMode.None;
         public string? WriteAuditSinkPath { get; set; }
         public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; set; } = ToolAuthenticationRuntimePreset.Default;
+        public bool RequireExplicitRoutingMetadata { get; set; }
         public bool RequireAuthenticationRuntime { get; set; }
         public string? RunAsProfilePath { get; set; }
         public string? AuthenticationProfilePath { get; set; }
@@ -123,6 +124,7 @@ internal static partial class Program {
                         setWriteAuditSinkMode: mode => options.WriteAuditSinkMode = mode,
                         setWriteAuditSinkPath: path => options.WriteAuditSinkPath = path,
                         setAuthenticationRuntimePreset: preset => options.AuthenticationRuntimePreset = preset,
+                        setRequireExplicitRoutingMetadata: required => options.RequireExplicitRoutingMetadata = required,
                         setRequireAuthenticationRuntime: required => options.RequireAuthenticationRuntime = required,
                         setRunAsProfilePath: path => options.RunAsProfilePath = path,
                         setAuthenticationProfilePath: path => options.AuthenticationProfilePath = path,
@@ -541,6 +543,7 @@ internal static partial class Program {
                 writeAuditSinkMode: profile.WriteAuditSinkMode,
                 writeAuditSinkPath: profile.WriteAuditSinkPath,
                 authenticationRuntimePreset: profile.AuthenticationRuntimePreset,
+                requireExplicitRoutingMetadata: profile.RequireExplicitRoutingMetadata,
                 requireAuthenticationRuntime: profile.RequireAuthenticationRuntime,
                 runAsProfilePath: profile.RunAsProfilePath,
                 authenticationProfilePath: profile.AuthenticationProfilePath,
@@ -550,6 +553,7 @@ internal static partial class Program {
                 setWriteAuditSinkMode: mode => WriteAuditSinkMode = mode,
                 setWriteAuditSinkPath: path => WriteAuditSinkPath = path,
                 setAuthenticationRuntimePreset: preset => AuthenticationRuntimePreset = preset,
+                setRequireExplicitRoutingMetadata: required => RequireExplicitRoutingMetadata = required,
                 setRequireAuthenticationRuntime: required => RequireAuthenticationRuntime = required,
                 setRunAsProfilePath: path => RunAsProfilePath = path,
                 setAuthenticationProfilePath: path => AuthenticationProfilePath = path);
@@ -610,6 +614,7 @@ internal static partial class Program {
                 WriteAuditSinkMode = WriteAuditSinkMode,
                 WriteAuditSinkPath = WriteAuditSinkPath,
                 AuthenticationRuntimePreset = AuthenticationRuntimePreset,
+                RequireExplicitRoutingMetadata = RequireExplicitRoutingMetadata,
                 RequireAuthenticationRuntime = RequireAuthenticationRuntime,
                 RunAsProfilePath = RunAsProfilePath,
                 AuthenticationProfilePath = AuthenticationProfilePath

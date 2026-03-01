@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Helpers;
@@ -12,6 +13,12 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Gets a single Active Directory object by a common identifier (read-only).
 /// </summary>
 public sealed class AdObjectGetTool : ActiveDirectoryToolBase, ITool {
+    private sealed record ObjectGetRequest(
+        string Identity,
+        string? Kind,
+        int MaxValuesPerAttribute,
+        IReadOnlyList<string> Attributes);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_object_get",
         "Get a single Active Directory object by identity (DN, sAMAccountName, UPN, mail, DNS hostname, cn/name) (read-only).",
@@ -35,33 +42,46 @@ public sealed class AdObjectGetTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<ObjectGetRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("identity", out var identity, out var identityError)) {
+                return ToolRequestBindingResult<ObjectGetRequest>.Failure(identityError);
+            }
+
+            var requestedMaxValues = reader.OptionalInt64("max_values_per_attribute");
+            var maxValuesPerAttribute = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
+                ? (int)Math.Min(requestedMaxValues.Value, 200)
+                : 50;
+
+            return ToolRequestBindingResult<ObjectGetRequest>.Success(new ObjectGetRequest(
+                Identity: identity,
+                Kind: reader.OptionalString("kind"),
+                MaxValuesPerAttribute: maxValuesPerAttribute,
+                Attributes: reader.StringArray("attributes")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ObjectGetRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var identity = ToolArgs.GetOptionalTrimmed(arguments, "identity") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(identity)) {
-            return Task.FromResult(Error("invalid_argument", "identity is required."));
-        }
-
-        var kindArg = ToolArgs.GetOptionalTrimmed(arguments, "kind");
-        var kind = string.IsNullOrWhiteSpace(kindArg) ? "any" : kindArg.Trim().ToLowerInvariant();
-
-        var requestedMaxValues = arguments?.GetInt64("max_values_per_attribute");
-        var maxValuesPerAttribute = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
-            ? (int)Math.Min(requestedMaxValues.Value, 200)
-            : 50;
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-
-        var attributes = ToolArgs.ReadStringArray(arguments?.GetArray("attributes"));
+        var request = context.Request;
+        var kind = string.IsNullOrWhiteSpace(request.Kind) ? "any" : request.Kind.Trim().ToLowerInvariant();
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         if (!LdapToolObjectGetService.TryExecute(
                 request: new LdapToolObjectGetQueryRequest {
-                    Identity = identity,
+                    Identity = request.Identity,
                     Kind = kind,
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
-                    Attributes = attributes
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
+                    Attributes = request.Attributes
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -82,7 +102,7 @@ public sealed class AdObjectGetTool : ActiveDirectoryToolBase, ITool {
                 ("Domain controller", queryResult.DomainController)
             };
 
-            return Task.FromResult(ToolResponse.OkFactsModel(
+            return Task.FromResult(ToolResultV2.OkFactsModel(
                 model: queryResult,
                 title: title,
                 facts: facts,
@@ -126,7 +146,7 @@ public sealed class AdObjectGetTool : ActiveDirectoryToolBase, ITool {
             ("Domain controller", queryResult.DomainController)
         };
 
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: root,
             title: "Active Directory: Object Get",
             facts: factsFound,
@@ -137,4 +157,3 @@ public sealed class AdObjectGetTool : ActiveDirectoryToolBase, ITool {
             render: null));
     }
 }
-

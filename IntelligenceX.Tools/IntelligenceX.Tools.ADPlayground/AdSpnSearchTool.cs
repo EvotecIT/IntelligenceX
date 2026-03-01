@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,14 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Searches Active Directory objects by servicePrincipalName (SPN) (read-only).
 /// </summary>
 public sealed class AdSpnSearchTool : ActiveDirectoryToolBase, ITool {
+    private sealed record SpnSearchRequest(
+        string? SpnContains,
+        string? SpnExact,
+        string? Kind,
+        bool EnabledOnly,
+        int MaxValuesPerAttribute,
+        IReadOnlyList<string> Attributes);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_spn_search",
         "Search Active Directory accounts by servicePrincipalName (SPN) (read-only). Useful for auditing Kerberos service exposure.",
@@ -39,42 +48,54 @@ public sealed class AdSpnSearchTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<SpnSearchRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var spnContains = reader.OptionalString("spn_contains");
+            var spnExact = reader.OptionalString("spn_exact");
+            if (!string.IsNullOrWhiteSpace(spnContains) && !string.IsNullOrWhiteSpace(spnExact)) {
+                return ToolRequestBindingResult<SpnSearchRequest>.Failure("spn_contains and spn_exact are mutually exclusive.");
+            }
+
+            return ToolRequestBindingResult<SpnSearchRequest>.Success(new SpnSearchRequest(
+                SpnContains: spnContains,
+                SpnExact: spnExact,
+                Kind: reader.OptionalString("kind"),
+                EnabledOnly: reader.Boolean("enabled_only"),
+                MaxValuesPerAttribute: reader.CappedInt32(
+                    "max_values_per_attribute",
+                    LdapQueryPolicy.DefaultMaxValuesPerAttribute,
+                    1,
+                    LdapQueryPolicy.MaxValuesPerAttributeCap),
+                Attributes: reader.StringArray("attributes")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SpnSearchRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
-        var spnContains = ToolArgs.GetOptionalTrimmed(arguments, "spn_contains");
-        var spnExact = ToolArgs.GetOptionalTrimmed(arguments, "spn_exact");
-        if (!string.IsNullOrWhiteSpace(spnContains) && !string.IsNullOrWhiteSpace(spnExact)) {
-            return Task.FromResult(Error("invalid_argument", "spn_contains and spn_exact are mutually exclusive."));
-        }
-
-        var kindArg = ToolArgs.GetOptionalTrimmed(arguments, "kind");
-        var kind = string.IsNullOrWhiteSpace(kindArg) ? "any" : kindArg.Trim().ToLowerInvariant();
-        var enabledOnly = ToolArgs.GetBoolean(arguments, "enabled_only");
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var maxValuesPerAttribute = ToolArgs.GetCappedInt32(
-            arguments,
-            "max_values_per_attribute",
-            LdapQueryPolicy.DefaultMaxValuesPerAttribute,
-            1,
-            LdapQueryPolicy.MaxValuesPerAttributeCap);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-
-        var attributes = ToolArgs.ReadStringArray(arguments?.GetArray("attributes"));
+        var kind = string.IsNullOrWhiteSpace(request.Kind) ? "any" : request.Kind.Trim().ToLowerInvariant();
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         if (!LdapToolSpnSearchService.TryExecute(
                 request: new LdapToolSpnSearchQueryRequest {
-                    SpnContains = spnContains,
-                    SpnExact = spnExact,
+                    SpnContains = request.SpnContains,
+                    SpnExact = request.SpnExact,
                     Kind = kind,
-                    EnabledOnly = enabledOnly,
+                    EnabledOnly = request.EnabledOnly,
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
                     MaxResults = maxResults,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
-                    Attributes = attributes
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
+                    Attributes = request.Attributes
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -98,15 +119,17 @@ public sealed class AdSpnSearchTool : ActiveDirectoryToolBase, ITool {
             result.Results
         };
 
-        AdDynamicTableView.TryBuildResponseFromQueryRows(
-            arguments: arguments,
-            model: root,
-            rows: result.Results,
-            title: "Active Directory: SPN Search (preview)",
-            rowsPath: "results_view",
-            baseTruncated: result.IsTruncated,
-            response: out var response);
+        if (!AdDynamicTableView.TryBuildResponseFromQueryRows(
+                arguments: context.Arguments,
+                model: root,
+                rows: result.Results,
+                title: "Active Directory: SPN Search (preview)",
+                rowsPath: "results_view",
+                baseTruncated: result.IsTruncated,
+                response: out var response)) {
+            return Task.FromResult(ToolResultV2.Error("query_failed", "Failed to build SPN search table view response."));
+        }
+
         return Task.FromResult(response);
     }
 }
-

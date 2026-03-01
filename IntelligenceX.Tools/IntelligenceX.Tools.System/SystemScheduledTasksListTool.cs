@@ -13,6 +13,12 @@ namespace IntelligenceX.Tools.System;
 /// Lists Windows scheduled tasks via schtasks.exe (read-only, capped).
 /// </summary>
 public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
+    private sealed record ScheduledTasksListRequest(
+        string? NameContains,
+        int MaxTasks,
+        bool Suspicious,
+        bool OnlySuspicious);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -36,27 +42,40 @@ public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<ScheduledTasksListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            return ToolRequestBindingResult<ScheduledTasksListRequest>.Success(new ScheduledTasksListRequest(
+                NameContains: reader.OptionalString("name_contains"),
+                MaxTasks: ResolveBoundedOptionLimit(arguments, "max_tasks"),
+                Suspicious: reader.Boolean("suspicious", defaultValue: false),
+                OnlySuspicious: reader.Boolean("only_suspicious", defaultValue: false)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ScheduledTasksListRequest> context, CancellationToken cancellationToken) {
         // schtasks.exe queries can be slow; keep the tool runner responsive by not blocking the caller thread.
         return Task.Run(() => {
             cancellationToken.ThrowIfCancellationRequested();
+            var request = context.Request;
 
             var unsupported = ValidateWindowsSupport("The scheduled tasks tool");
             if (!string.IsNullOrWhiteSpace(unsupported)) {
                 return unsupported;
             }
 
-            var nameContains = arguments?.GetString("name_contains");
-            var max = ResolveBoundedOptionLimit(arguments, "max_tasks");
-
-            var suspicious = arguments?.GetBoolean("suspicious") ?? false;
-            var onlySuspicious = arguments?.GetBoolean("only_suspicious") ?? false;
-
             if (!TaskSchedulerListQueryExecutor.TryExecute(
                     request: new TaskSchedulerListQueryRequest {
-                        PathContains = string.IsNullOrWhiteSpace(nameContains) ? null : nameContains.Trim(),
-                        Suspicious = suspicious,
-                        OnlySuspicious = onlySuspicious,
-                        MaxResults = max
+                        PathContains = request.NameContains,
+                        Suspicious = request.Suspicious,
+                        OnlySuspicious = request.OnlySuspicious,
+                        MaxResults = request.MaxTasks
                     },
                     result: out var queryResult,
                     failure: out var failure,
@@ -65,8 +84,8 @@ public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
             }
 
             var result = queryResult ?? new TaskSchedulerListQueryResult();
-            var response = BuildAutoTableResponse(
-                arguments: arguments,
+            var response = ToolResultV2.OkAutoTableResponse(
+                arguments: context.Arguments,
                 model: result,
                 sourceRows: result.Tasks,
                 viewRowsPath: "tasks_view",
@@ -75,11 +94,10 @@ public sealed class SystemScheduledTasksListTool : SystemToolBase, ITool {
                 baseTruncated: result.Truncated,
                 scanned: result.Scanned,
                 metaMutate: meta => {
-                    meta.Add("suspicious", suspicious);
-                    meta.Add("only_suspicious", onlySuspicious);
+                    meta.Add("suspicious", request.Suspicious);
+                    meta.Add("only_suspicious", request.OnlySuspicious);
                 });
             return response;
         }, cancellationToken);
     }
 }
-

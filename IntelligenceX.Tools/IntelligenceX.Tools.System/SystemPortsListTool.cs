@@ -13,6 +13,13 @@ namespace IntelligenceX.Tools.System;
 /// Lists local TCP/UDP ports and owning processes (read-only, capped).
 /// </summary>
 public sealed class SystemPortsListTool : SystemToolBase, ITool {
+    private sealed record PortsListRequest(
+        PortInventoryProtocol Protocol,
+        int? LocalPort,
+        string? State,
+        string? ProcessNameContains,
+        int MaxEntries);
+
     private const int MaxViewTop = 5000;
 
     private static readonly IReadOnlyDictionary<string, PortInventoryProtocol> ProtocolByName =
@@ -51,38 +58,53 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
-                ProtocolByName,
-                "protocol",
-                out PortInventoryProtocol? parsedProtocol,
-                out var protocolError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", protocolError ?? "Invalid protocol value."));
-        }
-        var protocol = parsedProtocol ?? PortInventoryProtocol.Any;
-
-        var localPortArg = arguments?.GetInt64("local_port");
-        int? localPort = null;
-        if (localPortArg.HasValue) {
-            if (localPortArg.Value < 1 || localPortArg.Value > 65535) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "local_port must be between 1 and 65535."));
+    private ToolRequestBindingResult<PortsListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("protocol"),
+                    ProtocolByName,
+                    "protocol",
+                    out PortInventoryProtocol? parsedProtocol,
+                    out var protocolError)) {
+                return ToolRequestBindingResult<PortsListRequest>.Failure(protocolError ?? "Invalid protocol value.");
             }
-            localPort = (int)localPortArg.Value;
-        }
 
-        var processNameContains = ToolArgs.GetOptionalTrimmed(arguments, "process_name_contains");
-        var state = ToolArgs.GetOptionalTrimmed(arguments, "state");
-        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
+            var localPortArg = reader.OptionalInt64("local_port");
+            int? localPort = null;
+            if (localPortArg.HasValue) {
+                if (localPortArg.Value < 1 || localPortArg.Value > 65535) {
+                    return ToolRequestBindingResult<PortsListRequest>.Failure("local_port must be between 1 and 65535.");
+                }
 
+                localPort = (int)localPortArg.Value;
+            }
+
+            return ToolRequestBindingResult<PortsListRequest>.Success(new PortsListRequest(
+                Protocol: parsedProtocol ?? PortInventoryProtocol.Any,
+                LocalPort: localPort,
+                State: reader.OptionalString("state"),
+                ProcessNameContains: reader.OptionalString("process_name_contains"),
+                MaxEntries: ResolveBoundedOptionLimit(arguments, "max_entries")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PortsListRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
         if (!PortInventoryQueryExecutor.TryExecute(
                 request: new PortInventoryQueryRequest {
-                    Protocol = protocol,
-                    LocalPort = localPort,
-                    ProcessNameContains = processNameContains,
-                    State = state,
-                    MaxResults = max
+                    Protocol = request.Protocol,
+                    LocalPort = request.LocalPort,
+                    ProcessNameContains = request.ProcessNameContains,
+                    State = request.State,
+                    MaxResults = request.MaxEntries
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -91,8 +113,8 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult!;
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Rows,
             viewRowsPath: "rows_view",
@@ -101,15 +123,15 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                meta.Add("protocol", ProtocolToString(protocol));
-                if (localPort.HasValue) {
-                    meta.Add("local_port", localPort.Value);
+                meta.Add("protocol", ProtocolToString(request.Protocol));
+                if (request.LocalPort.HasValue) {
+                    meta.Add("local_port", request.LocalPort.Value);
                 }
-                if (!string.IsNullOrWhiteSpace(state)) {
-                    meta.Add("state", state);
+                if (!string.IsNullOrWhiteSpace(request.State)) {
+                    meta.Add("state", request.State);
                 }
-                if (!string.IsNullOrWhiteSpace(processNameContains)) {
-                    meta.Add("process_name_contains", processNameContains);
+                if (!string.IsNullOrWhiteSpace(request.ProcessNameContains)) {
+                    meta.Add("process_name_contains", request.ProcessNameContains);
                 }
             });
         return Task.FromResult(response);
@@ -119,4 +141,3 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
         return ToolEnumBinders.ToName(protocol, ProtocolNames);
     }
 }
-

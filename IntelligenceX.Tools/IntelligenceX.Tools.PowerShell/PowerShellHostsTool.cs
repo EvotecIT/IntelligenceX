@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.PowerShell;
 /// Lists available PowerShell runtime hosts on the local machine.
 /// </summary>
 public sealed class PowerShellHostsTool : PowerShellToolBase, ITool {
+    private sealed record HostsRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "powershell_hosts",
         "List available local shell hosts (pwsh/windows_powershell/cmd).",
@@ -25,6 +27,20 @@ public sealed class PowerShellHostsTool : PowerShellToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<HostsRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<HostsRequest>.Success(new HostsRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<HostsRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var hosts = GetAvailableRuntimeHosts();
@@ -42,7 +58,7 @@ public sealed class PowerShellHostsTool : PowerShellToolBase, ITool {
                 ("Available", hosts.Count.ToString())
             });
 
-        return Task.FromResult(ToolResponse.OkModel(
+        return Task.FromResult(ToolResultV2.OkModel(
             model: model,
             meta: ToolOutputHints.Meta(count: hosts.Count, truncated: false),
             summaryMarkdown: summary));

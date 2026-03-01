@@ -96,7 +96,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
         };
     }
 
-    private static HashSet<string> NormalizeExtensions(List<string> extensions) {
+    private static HashSet<string> NormalizeExtensions(IReadOnlyList<string> extensions) {
         var set = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         IEnumerable<string> source = (extensions is null || extensions.Count == 0) ? DefaultOfficeExtensions : extensions;
         foreach (var e in source) {

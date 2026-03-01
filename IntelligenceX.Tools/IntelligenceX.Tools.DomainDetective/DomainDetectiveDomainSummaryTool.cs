@@ -19,6 +19,14 @@ namespace IntelligenceX.Tools.DomainDetective;
 /// Runs selected DomainDetective checks and returns a condensed domain posture summary.
 /// </summary>
 public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, ITool {
+    private sealed record DomainSummaryRequest(
+        string Domain,
+        IReadOnlyList<string> RequestedChecks,
+        int TimeoutMs,
+        int MaxHints,
+        bool IncludeAnalysisOverview,
+        string EndpointText);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "domaindetective_domain_summary",
         "Run selected DomainDetective checks for a domain and return a condensed DNS/email/security posture summary.",
@@ -47,27 +55,40 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var domain = ToolArgs.GetOptionalTrimmed(arguments, "domain");
-        if (string.IsNullOrWhiteSpace(domain)) {
-            return ToolResponse.Error(
-                errorCode: "invalid_argument",
-                error: "domain is required.",
-                hints: new[] { "Provide a registrable domain name such as contoso.com." },
-                isTransient: false);
-        }
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync).ConfigureAwait(false);
+    }
 
-        var requestedChecks = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("checks"));
-        if (requestedChecks.Count == 0) {
-            requestedChecks.AddRange(DomainDetectiveCheckNameCatalog.DefaultChecks);
-        }
+    private ToolRequestBindingResult<DomainSummaryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var domain = reader.OptionalString("domain");
+            if (string.IsNullOrWhiteSpace(domain)) {
+                return ToolRequestBindingResult<DomainSummaryRequest>.Failure("domain is required.");
+            }
 
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", Options.DefaultTimeoutMs, 1000, Options.MaxTimeoutMs);
-        var maxHints = ToolArgs.GetCappedInt32(arguments, "max_hints", Options.MaxHints, 1, Options.MaxHints);
-        var includeAnalysisOverview = ToolArgs.GetBoolean(arguments, "include_analysis_overview", defaultValue: true);
-        var endpointText = ToolArgs.GetTrimmedOrDefault(arguments, "dns_endpoint", "System");
+            var requestedChecks = reader.DistinctStringArray("checks");
+            if (requestedChecks.Count == 0) {
+                requestedChecks = DomainDetectiveCheckNameCatalog.DefaultChecks.ToArray();
+            }
+
+            return ToolRequestBindingResult<DomainSummaryRequest>.Success(new DomainSummaryRequest(
+                Domain: domain,
+                RequestedChecks: requestedChecks,
+                TimeoutMs: reader.CappedInt32("timeout_ms", Options.DefaultTimeoutMs, 1000, Options.MaxTimeoutMs),
+                MaxHints: reader.CappedInt32("max_hints", Options.MaxHints, 1, Options.MaxHints),
+                IncludeAnalysisOverview: reader.Boolean("include_analysis_overview", defaultValue: true),
+                EndpointText: reader.OptionalString("dns_endpoint") ?? "System"));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<DomainSummaryRequest> context, CancellationToken cancellationToken) {
+        var request = context.Request;
 
 #if !DOMAINDETECTIVE_ENABLED
-        return ToolResponse.Error(
+        return ToolResultV2.Error(
             errorCode: "dependency_unavailable",
             error: "DomainDetective dependency is not available in this build.",
             hints: new[] {
@@ -76,16 +97,16 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
             },
             isTransient: false);
 #else
-        if (!Enum.TryParse<DnsEndpoint>(endpointText, ignoreCase: true, out var endpoint)) {
-            return ToolResponse.Error(
+        if (!Enum.TryParse<DnsEndpoint>(request.EndpointText, ignoreCase: true, out var endpoint)) {
+            return ToolResultV2.Error(
                 errorCode: "invalid_argument",
-                error: $"Unsupported dns_endpoint '{endpointText}'.",
+                error: $"Unsupported dns_endpoint '{request.EndpointText}'.",
                 hints: new[] { "Use a known DnsClientX endpoint such as System, Cloudflare, Google, or Quad9." },
                 isTransient: false);
         }
 
-        if (!TryResolveChecks(requestedChecks, out var checks, out var invalidChecks)) {
-            return ToolResponse.Error(
+        if (!TryResolveChecks(request.RequestedChecks, out var checks, out var invalidChecks)) {
+            return ToolResultV2.Error(
                 errorCode: "invalid_argument",
                 error: $"Unsupported check names: {string.Join(", ", invalidChecks)}.",
                 hints: new[] { "Use DomainDetective.HealthCheckType enum names (for example DNSHEALTH, SOA, NS, MX, SPF, DMARC, DNSSEC, TTL)." },
@@ -101,29 +122,29 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
         var healthCheck = new DomainHealthCheck(endpoint);
         try {
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            linkedCts.CancelAfter(timeoutMs);
+            linkedCts.CancelAfter(request.TimeoutMs);
 
             await healthCheck.Verify(
-                domainName: domain,
+                domainName: request.Domain,
                 healthCheckTypes: checks,
                 cancellationToken: linkedCts.Token);
         } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "timeout",
-                error: $"DomainDetective run timed out after timeout_ms={timeoutMs}.",
+                error: $"DomainDetective run timed out after timeout_ms={request.TimeoutMs}.",
                 hints: new[] {
                     "Lower the number of checks in checks[] for faster runs.",
                     "Increase timeout_ms for slower networks/domains."
                 },
                 isTransient: true);
         } catch (ArgumentException ex) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "invalid_argument",
                 error: ex.Message,
                 hints: new[] { "Verify domain format and requested check names." },
                 isTransient: false);
         } catch (Exception ex) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "query_failed",
                 error: $"DomainDetective execution failed: {ex.Message}",
                 hints: new[] {
@@ -134,21 +155,21 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
         }
 
         var summary = healthCheck.BuildSummary();
-        var mappedSummary = MapSummary(summary, maxHints, out var hintsTruncated);
+        var mappedSummary = MapSummary(summary, request.MaxHints, out var hintsTruncated);
         if (hintsTruncated) {
-            warnings.Add($"Summary hints were capped to {maxHints}.");
+            warnings.Add($"Summary hints were capped to {request.MaxHints}.");
         }
 
-        var analysisOverview = includeAnalysisOverview
+        var analysisOverview = request.IncludeAnalysisOverview
             ? BuildAnalysisOverview(healthCheck)
             : Array.Empty<DomainDetectiveAnalysisOverviewModel>();
 
         var result = new DomainDetectiveDomainSummaryResultModel {
-            Domain = domain,
+            Domain = request.Domain,
             DnsEndpoint = endpoint.ToString(),
-            TimeoutMs = timeoutMs,
+            TimeoutMs = request.TimeoutMs,
             ChecksRequested = checks.Select(static check => check.ToString()).ToArray(),
-            ChecksTruncated = requestedChecks.Count > checks.Length,
+            ChecksTruncated = request.RequestedChecks.Count > checks.Length,
             Summary = mappedSummary,
             AnalysisOverview = analysisOverview,
             Warnings = warnings

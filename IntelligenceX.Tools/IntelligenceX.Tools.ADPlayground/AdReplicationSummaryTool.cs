@@ -13,6 +13,18 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Summarizes Active Directory replication health (read-only).
 /// </summary>
 public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
+    private sealed record ReplicationSummaryRequest(
+        string? DomainController,
+        string? DomainName,
+        bool Outbound,
+        bool BySource,
+        int StaleThresholdHours,
+        IReadOnlyList<int> BucketHours,
+        bool IncludeDetails,
+        int MaxDetails,
+        int MaxDomainControllers,
+        int MaxErrors);
+
     private const int DefaultStaleThresholdHours = 24;
     private const int MaxStaleThresholdHours = 24 * 14;
     private const int DefaultMaxDetails = 1000;
@@ -55,53 +67,73 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<ReplicationSummaryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var requestedStale = reader.OptionalInt64("stale_threshold_hours");
+            var staleThresholdHours = requestedStale.HasValue && requestedStale.Value > 0
+                ? (int)Math.Min(requestedStale.Value, MaxStaleThresholdHours)
+                : DefaultStaleThresholdHours;
+
+            var requestedMaxDetails = reader.OptionalInt64("max_details");
+            var maxDetails = requestedMaxDetails.HasValue && requestedMaxDetails.Value > 0
+                ? (int)Math.Min(requestedMaxDetails.Value, Options.MaxResults)
+                : Math.Min(DefaultMaxDetails, Options.MaxResults);
+
+            var requestedMaxDcs = reader.OptionalInt64("max_domain_controllers");
+            var maxDomainControllers = requestedMaxDcs.HasValue && requestedMaxDcs.Value > 0
+                ? (int)Math.Min(requestedMaxDcs.Value, 10_000)
+                : DefaultMaxDomainControllers;
+
+            var requestedMaxErrors = reader.OptionalInt64("max_errors");
+            var maxErrors = requestedMaxErrors.HasValue && requestedMaxErrors.Value > 0
+                ? (int)Math.Min(requestedMaxErrors.Value, 10_000)
+                : DefaultMaxErrors;
+
+            return ToolRequestBindingResult<ReplicationSummaryRequest>.Success(new ReplicationSummaryRequest(
+                DomainController: reader.OptionalString("domain_controller"),
+                DomainName: reader.OptionalString("domain_name"),
+                Outbound: reader.Boolean("outbound"),
+                BySource: reader.Boolean("by_source"),
+                StaleThresholdHours: staleThresholdHours,
+                BucketHours: reader.PositiveInt32ArrayCapped("bucket_hours", maxInclusive: 24 * 30),
+                IncludeDetails: reader.Boolean("include_details"),
+                MaxDetails: maxDetails,
+                MaxDomainControllers: maxDomainControllers,
+                MaxErrors: maxErrors));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ReplicationSummaryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var outbound = arguments?.GetBoolean("outbound") ?? false;
-        var bySource = arguments?.GetBoolean("by_source") ?? false;
-
-        var requestedStale = arguments?.GetInt64("stale_threshold_hours");
-        var staleThresholdHours = requestedStale.HasValue && requestedStale.Value > 0
-            ? (int)Math.Min(requestedStale.Value, MaxStaleThresholdHours)
-            : DefaultStaleThresholdHours;
-
-        var includeDetails = arguments?.GetBoolean("include_details") ?? false;
-
-        var requestedMaxDetails = arguments?.GetInt64("max_details");
-        var maxDetails = requestedMaxDetails.HasValue && requestedMaxDetails.Value > 0
-            ? (int)Math.Min(requestedMaxDetails.Value, Options.MaxResults)
-            : Math.Min(DefaultMaxDetails, Options.MaxResults);
-
-        var requestedMaxDcs = arguments?.GetInt64("max_domain_controllers");
-        var maxDomainControllers = requestedMaxDcs.HasValue && requestedMaxDcs.Value > 0
-            ? (int)Math.Min(requestedMaxDcs.Value, 10_000)
-            : DefaultMaxDomainControllers;
-
-        var requestedMaxErrors = arguments?.GetInt64("max_errors");
-        var maxErrors = requestedMaxErrors.HasValue && requestedMaxErrors.Value > 0
-            ? (int)Math.Min(requestedMaxErrors.Value, 10_000)
-            : DefaultMaxErrors;
+        var request = context.Request;
 
         var result = ReplicationSummaryQueryService.Query(
             new ReplicationSummaryQueryOptions {
-                DomainController = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller"),
-                DomainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name"),
-                Outbound = outbound,
-                BySource = bySource,
-                StaleThresholdHours = staleThresholdHours,
-                BucketHours = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("bucket_hours"), maxInclusive: 24 * 30),
-                IncludeDetails = includeDetails,
-                MaxDetails = maxDetails,
-                MaxDomainControllers = maxDomainControllers,
-                MaxErrors = maxErrors
+                DomainController = request.DomainController,
+                DomainName = request.DomainName,
+                Outbound = request.Outbound,
+                BySource = request.BySource,
+                StaleThresholdHours = request.StaleThresholdHours,
+                BucketHours = request.BucketHours,
+                IncludeDetails = request.IncludeDetails,
+                MaxDetails = request.MaxDetails,
+                MaxDomainControllers = request.MaxDomainControllers,
+                MaxErrors = request.MaxErrors
             },
             cancellationToken);
 
         var anyTruncated = result.DetailsTruncated == true || result.ErrorsTruncated == true;
         var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
-            arguments,
+            context.Arguments,
             SupportedProjectionColumns);
-        return Task.FromResult(BuildAutoTableResponse(
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
             arguments: shapedArguments,
             model: result,
             sourceRows: result.Summary,

@@ -13,6 +13,20 @@ namespace IntelligenceX.Tools.EventLog;
 /// Aggregates basic statistics from a local Windows Event Log channel (read-only).
 /// </summary>
 public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
+    private sealed record LiveStatsRequest(
+        string LogName,
+        string? MachineName,
+        string XPath,
+        bool OldestFirst,
+        DateTime? StartUtc,
+        DateTime? EndUtc,
+        int MaxEventsScanned,
+        int TopEventIds,
+        int TopProviders,
+        int TopLevels,
+        int TopComputers,
+        int? SessionTimeoutMs);
+
     private const int DefaultTop = 10;
     private const int MaxTop = 50;
     private const int MaxScanCap = 5000;
@@ -48,58 +62,75 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<LiveStatsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("log_name", out var logName, out var logNameError)) {
+                return ToolRequestBindingResult<LiveStatsRequest>.Failure(logNameError);
+            }
+
+            if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
+                return ToolRequestBindingResult<LiveStatsRequest>.Failure(timeErr ?? "Invalid time range.");
+            }
+
+            // Preserve existing behavior: default scales with Options.MaxResults; caller value is capped.
+            var maxScanDefault = Math.Min(MaxScanCap, Options.MaxResults * 10);
+            var request = new LiveStatsRequest(
+                LogName: logName,
+                MachineName: reader.OptionalString("machine_name"),
+                XPath: ResolveXPathOrDefault(reader.OptionalString("xpath")),
+                OldestFirst: reader.Boolean("oldest_first", defaultValue: false),
+                StartUtc: startUtc,
+                EndUtc: endUtc,
+                MaxEventsScanned: reader.CappedInt32("max_events_scanned", maxScanDefault, 1, MaxScanCap),
+                TopEventIds: ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_event_ids", DefaultTop, MaxTop),
+                TopProviders: ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_providers", DefaultTop, MaxTop),
+                TopLevels: ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_levels", DefaultTop, MaxTop),
+                TopComputers: ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_computers", DefaultTop, MaxTop),
+                SessionTimeoutMs: ResolveSessionTimeoutMs(
+                    TryReadOptionalInt64(arguments, "session_timeout_ms"),
+                    minInclusive: MinSessionTimeoutMs,
+                    maxInclusive: MaxSessionTimeoutMs));
+            return ToolRequestBindingResult<LiveStatsRequest>.Success(request);
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<LiveStatsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var logName = arguments?.GetString("log_name") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(logName)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "log_name is required."));
-        }
-
-        var xpath = ResolveXPathOrDefault(arguments);
-
-        var oldestFirst = arguments?.GetBoolean("oldest_first") ?? false;
-        var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
-        var sessionTimeoutMs = ResolveSessionTimeoutMs(arguments, minInclusive: MinSessionTimeoutMs, maxInclusive: MaxSessionTimeoutMs);
-
-        if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", timeErr ?? "Invalid time range."));
-        }
-
-        // Preserve existing behavior: default scales with Options.MaxResults; caller value is capped.
-        var maxScanDefault = Math.Min(MaxScanCap, Options.MaxResults * 10);
-        var maxScan = ToolArgs.GetCappedInt32(arguments, "max_events_scanned", maxScanDefault, 1, MaxScanCap);
-
-        var topEventIds = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_event_ids", DefaultTop, MaxTop);
-        var topProviders = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_providers", DefaultTop, MaxTop);
-        var topLevels = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_levels", DefaultTop, MaxTop);
-        var topComputers = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_computers", DefaultTop, MaxTop);
+        var request = context.Request;
 
         if (!LiveStatsQueryExecutor.TryBuild(
                 request: new LiveStatsQueryRequest {
-                    LogName = logName,
-                    MachineName = machineName,
-                    XPath = xpath,
-                    MaxEventsScanned = maxScan,
-                    OldestFirst = oldestFirst,
-                    StartTimeUtc = startUtc,
-                    EndTimeUtc = endUtc,
-                    TopEventIds = topEventIds,
-                    TopProviders = topProviders,
-                    TopLevels = topLevels,
-                    TopComputers = topComputers,
-                    SessionTimeoutMs = sessionTimeoutMs
+                    LogName = request.LogName,
+                    MachineName = request.MachineName,
+                    XPath = request.XPath,
+                    MaxEventsScanned = request.MaxEventsScanned,
+                    OldestFirst = request.OldestFirst,
+                    StartTimeUtc = request.StartUtc,
+                    EndTimeUtc = request.EndUtc,
+                    TopEventIds = request.TopEventIds,
+                    TopProviders = request.TopProviders,
+                    TopLevels = request.TopLevels,
+                    TopComputers = request.TopComputers,
+                    SessionTimeoutMs = request.SessionTimeoutMs
                 },
                 result: out var result,
                 failure: out var failure,
                 cancellationToken: cancellationToken)) {
             return Task.FromResult(ErrorFromLiveStatsFailure(
                 failure: failure,
-                machineName: machineName,
-                logName: logName));
+                machineName: request.MachineName,
+                logName: request.LogName));
         }
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.TopEventIds,
             viewRowsPath: "top_event_ids_view",
@@ -114,13 +145,33 @@ public sealed class EventLogLiveStatsTool : EventLogToolBase, ITool {
                 AddReadOnlyTriageChainingMeta(
                     meta: meta,
                     currentTool: "eventlog_live_stats",
-                    logName: logName,
-                    machineName: machineName,
-                    suggestedMaxEvents: maxScan,
+                    logName: request.LogName,
+                    machineName: request.MachineName,
+                    suggestedMaxEvents: request.MaxEventsScanned,
                     scanned: result.ScannedEvents,
                     truncated: result.Truncated,
                     queryMode: "stats");
             });
         return Task.FromResult(response);
+    }
+
+    private static long? TryReadOptionalInt64(JsonObject? arguments, string key) {
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return null;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            return kv.Value.AsInt64();
+        }
+
+        return null;
+    }
+
+    private static string ResolveXPathOrDefault(string? xpath) {
+        return string.IsNullOrWhiteSpace(xpath) ? "*" : xpath;
     }
 }

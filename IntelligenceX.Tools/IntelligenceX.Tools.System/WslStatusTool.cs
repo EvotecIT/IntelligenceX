@@ -13,6 +13,9 @@ namespace IntelligenceX.Tools.System;
 /// Tool that reports Windows Subsystem for Linux (WSL) distribution status.
 /// </summary>
 public sealed class WslStatusTool : SystemToolBase, ITool {
+    private sealed record WslStatusRequest(
+        string? Name);
+
     private const int MaxViewTop = 500;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -33,11 +36,23 @@ public sealed class WslStatusTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var nameFilter = arguments?.GetString("name");
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
+    private static ToolRequestBindingResult<WslStatusRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<WslStatusRequest>.Success(
+            new WslStatusRequest(Name: reader.OptionalString("name"))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<WslStatusRequest> context, CancellationToken cancellationToken) {
+        var request = context.Request;
         var attempt = WslStatusQueryExecutor.TryExecute(
             request: new WslStatusQueryRequest {
-                NameFilter = nameFilter,
+                NameFilter = request.Name,
                 TimeoutMs = WslStatusQuery.DefaultTimeoutMs
             },
             cancellationToken: cancellationToken);
@@ -47,22 +62,22 @@ public sealed class WslStatusTool : SystemToolBase, ITool {
         var result = attempt.Result?.Status ?? new WslStatusInfo();
 
         if (string.IsNullOrWhiteSpace(result.RawOutput) && result.Distributions.Count == 0) {
-            return Task.FromResult(ToolResponse.Error("process_error", "WSL returned no output."));
+            return Task.FromResult(ToolResultV2.Error("process_error", "WSL returned no output."));
         }
 
         if (result.Distributions.Count == 0) {
             var summaryRaw = ToolMarkdown.SummaryText(
                 title: "WSL status",
                 "No distributions were parsed. Raw output returned.");
-            return Task.FromResult(ToolResponse.OkModel(
+            return Task.FromResult(ToolResultV2.OkModel(
                 model: result,
                 meta: ToolOutputHints.Meta(count: 0, truncated: false),
                 summaryMarkdown: summaryRaw,
                 render: ToolOutputHints.RenderCode(language: "text", contentPath: "raw_output")));
         }
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Distributions,
             viewRowsPath: "distributions_view",
@@ -79,13 +94,13 @@ public sealed class WslStatusTool : SystemToolBase, ITool {
         }
 
         return failure?.Code switch {
-            WslStatusQueryFailureCode.InvalidRequest => ToolResponse.Error("invalid_argument", failure.Message),
-            WslStatusQueryFailureCode.PlatformNotSupported => ToolResponse.Error(
+            WslStatusQueryFailureCode.InvalidRequest => ToolResultV2.Error("invalid_argument", failure.Message),
+            WslStatusQueryFailureCode.PlatformNotSupported => ToolResultV2.Error(
                 errorCode: "unsupported_platform",
                 error: failure.Message,
                 hints: new[] { "Run this tool on Windows." },
                 isTransient: false),
-            _ => ToolResponse.Error(
+            _ => ToolResultV2.Error(
                 errorCode: "process_error",
                 error: failure?.Message ?? "WSL status query failed.",
                 hints: new[] { "Ensure WSL is installed and accessible from PATH." },

@@ -13,6 +13,11 @@ namespace IntelligenceX.Tools.System;
 /// Lists Windows Firewall profile settings (read-only, capped).
 /// </summary>
 public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
+    private sealed record FirewallProfilesRequest(
+        FirewallProfileKind? Profile,
+        bool? Enabled,
+        int MaxEntries);
+
     private const int MaxViewTop = 5000;
 
     private static readonly IReadOnlyDictionary<string, FirewallProfileKind> ProfileByName =
@@ -50,25 +55,42 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<FirewallProfilesRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("profile"),
+                    ProfileByName,
+                    "profile",
+                    out FirewallProfileKind? profile,
+                    out var profileError)) {
+                return ToolRequestBindingResult<FirewallProfilesRequest>.Failure(profileError ?? "Invalid profile value.");
+            }
+
+            // Keep compatibility with prior behavior: null when arguments object is absent,
+            // otherwise missing key resolves to false via JsonObject.GetBoolean default.
+            bool? enabled = arguments is null ? null : reader.Boolean("enabled");
+            return ToolRequestBindingResult<FirewallProfilesRequest>.Success(new FirewallProfilesRequest(
+                Profile: profile,
+                Enabled: enabled,
+                MaxEntries: ResolveBoundedOptionLimit(arguments, "max_entries")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<FirewallProfilesRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "profile"),
-                ProfileByName,
-                "profile",
-                out FirewallProfileKind? profile,
-                out var profileError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", profileError ?? "Invalid profile value."));
-        }
-
-        var enabled = arguments?.GetBoolean("enabled");
-        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
-
+        var request = context.Request;
         if (!FirewallProfileListQueryExecutor.TryExecute(
                 request: new FirewallProfileListQueryRequest {
-                    Profile = profile,
-                    Enabled = enabled,
-                    MaxResults = max
+                    Profile = request.Profile,
+                    Enabled = request.Enabled,
+                    MaxResults = request.MaxEntries
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -77,8 +99,8 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new FirewallProfileListQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Profiles,
             viewRowsPath: "profiles_view",
@@ -87,11 +109,11 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                if (profile.HasValue) {
-                    meta.Add("profile", ProfileToString(profile.Value));
+                if (request.Profile.HasValue) {
+                    meta.Add("profile", ProfileToString(request.Profile.Value));
                 }
-                if (enabled.HasValue) {
-                    meta.Add("enabled", enabled.Value);
+                if (request.Enabled.HasValue) {
+                    meta.Add("enabled", request.Enabled.Value);
                 }
             });
         return Task.FromResult(response);
@@ -102,4 +124,3 @@ public sealed class SystemFirewallProfilesTool : SystemToolBase, ITool {
     }
 
 }
-

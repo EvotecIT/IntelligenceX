@@ -298,8 +298,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public async Task ExecuteToolWithStatusAsync_DoesNotEmitHeartbeatAfterCancellation() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
-        var registryField = typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(registryField);
 
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
@@ -308,7 +306,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 await Task.Delay(250);
                 return """{"ok":true}""";
             }));
-        registryField!.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var executeToolWithStatusMethod = typeof(ChatServiceSession).GetMethod(
             "ExecuteToolWithStatusAsync",
@@ -339,15 +337,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public async Task ExecuteToolWithStatusAsync_CancelsPromptlyForNonCooperativeTool() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
-        var registryField = typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(registryField);
 
         var toolGate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
             "hung_tool",
             (_, _) => toolGate.Task));
-        registryField!.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var executeToolWithStatusMethod = typeof(ChatServiceSession).GetMethod(
             "ExecuteToolWithStatusAsync",

@@ -353,7 +353,7 @@ internal sealed partial class ChatServiceSession {
         return (fallback, fallbackInsights);
     }
 
-    private static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(IReadOnlyList<ToolDefinition> definitions, int limit) {
+    private IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(IReadOnlyList<ToolDefinition> definitions, int limit) {
         if (definitions.Count <= 64) {
             return definitions;
         }

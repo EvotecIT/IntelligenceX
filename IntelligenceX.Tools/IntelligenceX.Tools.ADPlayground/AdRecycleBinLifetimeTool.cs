@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Reads Active Directory tombstone/deleted-object lifetime settings (read-only).
 /// </summary>
 public sealed class AdRecycleBinLifetimeTool : ActiveDirectoryToolBase, ITool {
+    private sealed record RecycleBinLifetimeRequest(string? ForestName);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_recycle_bin_lifetime",
         "Read AD tombstone lifetime and msDS-deletedObjectLifetime settings for current or specified forest (read-only).",
@@ -28,9 +30,22 @@ public sealed class AdRecycleBinLifetimeTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
+    private static ToolRequestBindingResult<RecycleBinLifetimeRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<RecycleBinLifetimeRequest>.Success(new RecycleBinLifetimeRequest(
+                ForestName: reader.OptionalString("forest_name"))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<RecycleBinLifetimeRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var forestName = context.Request.ForestName;
 
         if (!TryExecute(
                 action: () => new RecycleBinLifetimeReader().GetDeletedObjectLifetime(forestName),
@@ -55,7 +70,7 @@ public sealed class AdRecycleBinLifetimeTool : ActiveDirectoryToolBase, ITool {
             ("Deleted object lifetime (days)", lifetime.MsDsDeletedObjectLifetime.ToString(System.Globalization.CultureInfo.InvariantCulture))
         };
 
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: model,
             title: "Active Directory: Recycle Bin Lifetime",
             facts: facts,
@@ -66,4 +81,3 @@ public sealed class AdRecycleBinLifetimeTool : ActiveDirectoryToolBase, ITool {
             render: null));
     }
 }
-

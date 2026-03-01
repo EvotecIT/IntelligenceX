@@ -14,6 +14,14 @@ namespace IntelligenceX.Tools.System;
 /// Lists logical disks/volumes (read-only, capped).
 /// </summary>
 public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
+    private sealed record LogicalDisksListRequest(
+        string? NameContains,
+        string? FileSystem,
+        DriveType? DriveType,
+        long? MinSizeBytes,
+        long? MinFreeBytes,
+        int MaxEntries);
+
     private const int MaxViewTop = 5000;
 
     private static readonly IReadOnlyDictionary<string, DriveType> DriveTypeByName =
@@ -61,47 +69,58 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<LogicalDisksListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var minSize = reader.OptionalInt64("min_size_bytes");
+            if (minSize.HasValue && minSize.Value < 0) {
+                return ToolRequestBindingResult<LogicalDisksListRequest>.Failure(
+                    "min_size_bytes must be greater than or equal to zero.");
+            }
+
+            var minFree = reader.OptionalInt64("min_free_bytes");
+            if (minFree.HasValue && minFree.Value < 0) {
+                return ToolRequestBindingResult<LogicalDisksListRequest>.Failure(
+                    "min_free_bytes must be greater than or equal to zero.");
+            }
+
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("drive_type"),
+                    DriveTypeByName,
+                    "drive_type",
+                    out DriveType? driveType,
+                    out var driveTypeError)) {
+                return ToolRequestBindingResult<LogicalDisksListRequest>.Failure(
+                    driveTypeError ?? "Invalid drive_type value.");
+            }
+
+            return ToolRequestBindingResult<LogicalDisksListRequest>.Success(new LogicalDisksListRequest(
+                NameContains: reader.OptionalString("name_contains"),
+                FileSystem: reader.OptionalString("file_system"),
+                DriveType: driveType,
+                MinSizeBytes: minSize,
+                MinFreeBytes: minFree,
+                MaxEntries: ResolveBoundedOptionLimit(arguments, "max_entries")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<LogicalDisksListRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var fileSystem = ToolArgs.GetOptionalTrimmed(arguments, "file_system");
-        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
-
-        var minSizeArg = arguments?.GetInt64("min_size_bytes");
-        long? minSize = null;
-        if (minSizeArg.HasValue) {
-            if (minSizeArg.Value < 0) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "min_size_bytes must be greater than or equal to zero."));
-            }
-            minSize = minSizeArg.Value;
-        }
-
-        var minFreeArg = arguments?.GetInt64("min_free_bytes");
-        long? minFree = null;
-        if (minFreeArg.HasValue) {
-            if (minFreeArg.Value < 0) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "min_free_bytes must be greater than or equal to zero."));
-            }
-            minFree = minFreeArg.Value;
-        }
-
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "drive_type"),
-                DriveTypeByName,
-                "drive_type",
-                out DriveType? driveType,
-                out var driveTypeError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", driveTypeError ?? "Invalid drive_type value."));
-        }
-
+        var request = context.Request;
         if (!LogicalDiskInventoryQueryExecutor.TryExecute(
                 request: new LogicalDiskInventoryQueryRequest {
-                    NameContains = nameContains,
-                    FileSystem = fileSystem,
-                    DriveType = driveType,
-                    MinSizeBytes = minSize,
-                    MinFreeBytes = minFree,
-                    MaxResults = max
+                    NameContains = request.NameContains,
+                    FileSystem = request.FileSystem,
+                    DriveType = request.DriveType,
+                    MinSizeBytes = request.MinSizeBytes,
+                    MinFreeBytes = request.MinFreeBytes,
+                    MaxResults = request.MaxEntries
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -110,8 +129,8 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new LogicalDiskInventoryQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Disks,
             viewRowsPath: "disks_view",
@@ -120,23 +139,22 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                if (!string.IsNullOrWhiteSpace(nameContains)) {
-                    meta.Add("name_contains", nameContains);
+                if (!string.IsNullOrWhiteSpace(request.NameContains)) {
+                    meta.Add("name_contains", request.NameContains);
                 }
-                if (!string.IsNullOrWhiteSpace(fileSystem)) {
-                    meta.Add("file_system", fileSystem);
+                if (!string.IsNullOrWhiteSpace(request.FileSystem)) {
+                    meta.Add("file_system", request.FileSystem);
                 }
-                if (driveType.HasValue) {
-                    meta.Add("drive_type", ToolEnumBinders.ToName(driveType.Value, DriveTypeNames));
+                if (request.DriveType.HasValue) {
+                    meta.Add("drive_type", ToolEnumBinders.ToName(request.DriveType.Value, DriveTypeNames));
                 }
-                if (minSize.HasValue) {
-                    meta.Add("min_size_bytes", minSize.Value);
+                if (request.MinSizeBytes.HasValue) {
+                    meta.Add("min_size_bytes", request.MinSizeBytes.Value);
                 }
-                if (minFree.HasValue) {
-                    meta.Add("min_free_bytes", minFree.Value);
+                if (request.MinFreeBytes.HasValue) {
+                    meta.Add("min_free_bytes", request.MinFreeBytes.Value);
                 }
             });
         return Task.FromResult(response);
     }
 }
-

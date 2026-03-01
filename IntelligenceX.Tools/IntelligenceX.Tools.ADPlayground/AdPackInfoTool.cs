@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns Active Directory pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_pack_info",
         "Return Active Directory pack capabilities, output contract, and recommended usage patterns. Call this first when planning AD investigations.",
@@ -51,6 +53,20 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -216,6 +232,6 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
             "Use raw payloads for reasoning/correlation; use `*_view` only for presentation.",
             "Prefer `ad_object_resolve` and paged queries to reduce repeated lookups.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

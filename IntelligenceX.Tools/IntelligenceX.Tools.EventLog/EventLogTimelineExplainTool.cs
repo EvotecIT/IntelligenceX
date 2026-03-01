@@ -201,7 +201,7 @@ public sealed class EventLogTimelineExplainTool : EventLogToolBase, ITool {
         var summary = ToolMarkdown.SummaryText(
             title: "Timeline Guidance",
             "Use `timeline_query` recommendation to re-run `eventlog_timeline_query`, then continue with follow-up tools.");
-        return Task.FromResult(ToolResponse.OkModel(model: result, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(model: result, summaryMarkdown: summary));
     }
 
     private static string ResolveProfileForGoal(string goal) {

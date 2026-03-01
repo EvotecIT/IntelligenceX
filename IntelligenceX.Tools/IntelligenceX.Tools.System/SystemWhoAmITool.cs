@@ -12,6 +12,8 @@ namespace IntelligenceX.Tools.System;
 /// Returns current user identity information.
 /// </summary>
 public sealed class SystemWhoAmITool : SystemToolBase, ITool {
+    private sealed record WhoAmIRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_whoami",
         "Return current user identity information (read-only).",
@@ -28,6 +30,18 @@ public sealed class SystemWhoAmITool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<WhoAmIRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, static _ => ToolRequestBindingResult<WhoAmIRequest>.Success(new WhoAmIRequest()));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<WhoAmIRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var attempt = CurrentIdentityQueryExecutor.TryExecute(
@@ -43,7 +57,7 @@ public sealed class SystemWhoAmITool : SystemToolBase, ITool {
             ("SID", identity.UserSid)
         };
 
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: identity,
             title: "Identity",
             facts: facts,
@@ -54,4 +68,3 @@ public sealed class SystemWhoAmITool : SystemToolBase, ITool {
             render: null));
     }
 }
-

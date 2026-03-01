@@ -47,55 +47,68 @@ public sealed class EventLogEvtxStatsTool : EventLogToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<EvtxStatsQueryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("path", out var inputPath, out var pathError)) {
+                return ToolRequestBindingResult<EvtxStatsQueryRequest>.Failure(pathError);
+            }
+
+            if (!TryResolveEvtxPath(inputPath, out var fullPath, out var errCode, out var err, out var hints)) {
+                return ToolRequestBindingResult<EvtxStatsQueryRequest>.Failure(
+                    error: err,
+                    errorCode: errCode,
+                    hints: hints,
+                    isTransient: false);
+            }
+
+            if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
+                return ToolRequestBindingResult<EvtxStatsQueryRequest>.Failure(timeErr ?? "Invalid time range.");
+            }
+
+            // Preserve existing behavior: default scales with Options.MaxResults; caller value is capped.
+            var maxScanCap = Math.Min(MaxScanCap, Options.MaxResults * 500);
+            var maxScanDefault = Math.Min(MaxScanCap, Options.MaxResults * 50);
+            var maxScan = reader.CappedInt32("max_events_scanned", maxScanDefault, 1, maxScanCap);
+
+            if (!TryReadPositiveInt32Array(arguments, "event_ids", out var eventIds, out var eventIdsError)) {
+                return ToolRequestBindingResult<EvtxStatsQueryRequest>.Failure(eventIdsError ?? "event_ids is invalid.");
+            }
+
+            var request = new EvtxStatsQueryRequest {
+                FilePath = fullPath,
+                EventIds = eventIds,
+                ProviderName = reader.OptionalString("provider_name"),
+                StartTimeUtc = startUtc,
+                EndTimeUtc = endUtc,
+                MaxEventsScanned = maxScan,
+                OldestFirst = reader.Boolean("oldest_first", defaultValue: false),
+                TopEventIds = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_event_ids", DefaultTop, MaxTop),
+                TopProviders = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_providers", DefaultTop, MaxTop),
+                TopLevels = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_levels", DefaultTop, MaxTop),
+                TopComputers = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_computers", DefaultTop, MaxTop)
+            };
+
+            return ToolRequestBindingResult<EvtxStatsQueryRequest>.Success(request);
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<EvtxStatsQueryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var inputPath = arguments?.GetString("path") ?? string.Empty;
-        if (!TryResolveEvtxPath(inputPath, out var fullPath, out var errCode, out var err, out var hints)) {
-            return Task.FromResult(ToolResponse.Error(errCode, err, hints: hints, isTransient: false));
-        }
-
-        var providerName = arguments?.GetString("provider_name");
-        var oldestFirst = arguments?.GetBoolean("oldest_first") ?? false;
-
-        if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", timeErr ?? "Invalid time range."));
-        }
-
-        // Preserve existing behavior: default scales with Options.MaxResults; caller value is capped.
-        var maxScanCap = Math.Min(MaxScanCap, Options.MaxResults * 500);
-        var maxScanDefault = Math.Min(MaxScanCap, Options.MaxResults * 50);
-        var maxScan = ToolArgs.GetCappedInt32(arguments, "max_events_scanned", maxScanDefault, 1, maxScanCap);
-
-        var eventIds = ToolArgs.TryReadPositiveInt32Array(arguments?.GetArray("event_ids"), "event_ids", out var eventIdsError);
-        if (!string.IsNullOrWhiteSpace(eventIdsError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", eventIdsError));
-        }
-
-        var topEventIds = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_event_ids", DefaultTop, MaxTop);
-        var topProviders = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_providers", DefaultTop, MaxTop);
-        var topLevels = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_levels", DefaultTop, MaxTop);
-        var topComputers = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "top_computers", DefaultTop, MaxTop);
-
-        var request = new EvtxStatsQueryRequest {
-            FilePath = fullPath,
-            EventIds = eventIds,
-            ProviderName = providerName,
-            StartTimeUtc = startUtc,
-            EndTimeUtc = endUtc,
-            MaxEventsScanned = maxScan,
-            OldestFirst = oldestFirst,
-            TopEventIds = topEventIds,
-            TopProviders = topProviders,
-            TopLevels = topLevels,
-            TopComputers = topComputers
-        };
-
+        var request = context.Request;
         if (!EvtxStatsQueryExecutor.TryBuild(request, out var result, out var failure, cancellationToken)) {
             return Task.FromResult(ErrorFromEvtxFailure(failure));
         }
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.TopEventIds,
             viewRowsPath: "top_event_ids_view",
@@ -105,5 +118,39 @@ public sealed class EventLogEvtxStatsTool : EventLogToolBase, ITool {
             maxTop: MaxViewTop,
             metaMutate: meta => meta.Add("max_events_scanned", result.MaxEventsScanned));
         return Task.FromResult(response);
+    }
+
+    private static bool TryReadPositiveInt32Array(
+        JsonObject? arguments,
+        string key,
+        out IReadOnlyList<int>? values,
+        out string? error) {
+        values = null;
+        error = null;
+
+        if (!TryGetArray(arguments, key, out var array)) {
+            return true;
+        }
+
+        values = ToolArgs.TryReadPositiveInt32Array(array, key, out error);
+        return string.IsNullOrWhiteSpace(error);
+    }
+
+    private static bool TryGetArray(JsonObject? arguments, string key, out JsonArray? array) {
+        array = null;
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            array = kv.Value.AsArray();
+            return array is not null;
+        }
+
+        return false;
     }
 }

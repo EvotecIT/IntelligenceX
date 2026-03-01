@@ -12,6 +12,10 @@ namespace IntelligenceX.Tools.FileSystem;
 /// Reads a text file (safe-by-default; requires AllowedRoots).
 /// </summary>
 public sealed class FsReadTool : FileSystemToolBase, ITool {
+    private sealed record ReadRequest(
+        string Path,
+        long MaxBytes);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "fs_read",
         "Read a UTF-8 text file from disk (restricted to allowed roots).",
@@ -39,16 +43,40 @@ public sealed class FsReadTool : FileSystemToolBase, ITool {
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var path = arguments?.GetString("path") ?? string.Empty;
-        if (!TryResolveExistingFile(path, out var fullPath, out var pathError)) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<ReadRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("path", out var path, out var pathError)) {
+                return ToolRequestBindingResult<ReadRequest>.Failure(pathError);
+            }
+
+            var maxBytes = reader.CappedInt64(
+                key: "max_bytes",
+                defaultValue: Options.MaxReadBytes,
+                minInclusive: 1,
+                maxInclusive: Options.MaxReadBytes);
+
+            return ToolRequestBindingResult<ReadRequest>.Success(new ReadRequest(
+                Path: path,
+                MaxBytes: maxBytes));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ReadRequest> context, CancellationToken cancellationToken) {
+        if (!TryResolveExistingFile(context.Request.Path, out var fullPath, out var pathError)) {
             return Task.FromResult(pathError);
         }
 
-        var maxBytes = ToolArgs.GetCappedInt64(arguments, "max_bytes", Options.MaxReadBytes, 1, Options.MaxReadBytes);
         var root = FileSystemQuery.ReadText(
             request: new FileTextReadRequest {
                 Path = fullPath,
-                MaxBytes = maxBytes
+                MaxBytes = context.Request.MaxBytes
             },
             cancellationToken: cancellationToken);
 
@@ -60,7 +88,7 @@ public sealed class FsReadTool : FileSystemToolBase, ITool {
 
         var meta = ToolOutputHints.Meta(count: 1, truncated: root.Truncated)
             .Add("bytes_read", root.BytesRead)
-            .Add("max_bytes", maxBytes);
+            .Add("max_bytes", context.Request.MaxBytes);
 
         var summaryMarkdown = ToolMarkdown.SummaryFacts(
             title: "File read (preview)",
@@ -72,7 +100,7 @@ public sealed class FsReadTool : FileSystemToolBase, ITool {
             codeLanguage: "text",
             codeContent: preview);
 
-        return Task.FromResult(ToolResponse.OkModel(
+        return Task.FromResult(ToolResultV2.OkModel(
             model: root,
             meta: meta,
             summaryMarkdown: summaryMarkdown,

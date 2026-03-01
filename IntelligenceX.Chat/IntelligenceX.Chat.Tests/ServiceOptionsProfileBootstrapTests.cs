@@ -232,6 +232,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             "--write-audit-sink-mode", "file",
             "--write-audit-sink-path", "C:/temp/ix-audit.jsonl",
             "--auth-runtime-preset", "strict",
+            "--require-explicit-routing-metadata",
             "--require-auth-runtime",
             "--run-as-profile-path", "C:/temp/runas-profiles.json",
             "--auth-profile-path", "C:/temp/auth-profiles.json"
@@ -245,6 +246,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.Equal(ToolWriteAuditSinkMode.FileAppendOnly, options.WriteAuditSinkMode);
         Assert.Equal("C:/temp/ix-audit.jsonl", options.WriteAuditSinkPath);
         Assert.Equal(ToolAuthenticationRuntimePreset.Strict, options.AuthenticationRuntimePreset);
+        Assert.True(options.RequireExplicitRoutingMetadata);
         Assert.True(options.RequireAuthenticationRuntime);
         Assert.Equal("C:/temp/runas-profiles.json", options.RunAsProfilePath);
         Assert.Equal("C:/temp/auth-profiles.json", options.AuthenticationProfilePath);
@@ -352,6 +354,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
                 "--write-audit-sink-mode", "jsonl",
                 "--write-audit-sink-path", "C:/temp/ix-audit.jsonl",
                 "--auth-runtime-preset", "strict",
+                "--require-explicit-routing-metadata",
                 "--require-auth-runtime",
                 "--run-as-profile-path", "C:/temp/runas-profiles.json",
                 "--auth-profile-path", "C:/temp/auth-profiles.json"
@@ -374,6 +377,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.Equal(ToolWriteAuditSinkMode.FileAppendOnly, loaded.WriteAuditSinkMode);
             Assert.Equal("C:/temp/ix-audit.jsonl", loaded.WriteAuditSinkPath);
             Assert.Equal(ToolAuthenticationRuntimePreset.Strict, loaded.AuthenticationRuntimePreset);
+            Assert.True(loaded.RequireExplicitRoutingMetadata);
             Assert.True(loaded.RequireAuthenticationRuntime);
             Assert.Equal("C:/temp/runas-profiles.json", loaded.RunAsProfilePath);
             Assert.Equal("C:/temp/auth-profiles.json", loaded.AuthenticationProfilePath);

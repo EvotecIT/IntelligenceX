@@ -79,6 +79,23 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void ApplyProfile_PropagatesExplicitRoutingMetadataRequirement() {
+        var options = CreateHostOptionsInstance();
+        Assert.NotNull(options);
+
+        var replOptionsType = options!.GetType();
+        var applyProfile = replOptionsType.GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(applyProfile);
+
+        var profile = new ServiceProfile {
+            RequireExplicitRoutingMetadata = true
+        };
+
+        applyProfile!.Invoke(options, new object?[] { profile });
+        Assert.True(ReadBoolProperty(options, "RequireExplicitRoutingMetadata"));
+    }
+
+    [Fact]
     public void Parse_ProfileDefaultMutatingParallelTrue_IsAppliedWithoutCliOverride() {
         var dbPath = CreateTempProfileDbPath();
         try {
@@ -143,6 +160,26 @@ public sealed class HostOptionsProfileBootstrapTests {
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error), error);
         Assert.True(ReadBoolProperty(options!, "AllowMutatingParallelToolCalls"));
+    }
+
+    [Fact]
+    public void Parse_CliRequireExplicitRoutingMetadata_SetsFlag() {
+        var options = ParseHostOptions(new[] { "--require-explicit-routing-metadata" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.True(ReadBoolProperty(options!, "RequireExplicitRoutingMetadata"));
+    }
+
+    [Fact]
+    public void Parse_CliAllowInferredRoutingMetadata_AfterRequire_LastFlagWins() {
+        var options = ParseHostOptions(
+            new[] { "--require-explicit-routing-metadata", "--allow-inferred-routing-metadata" },
+            out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.False(ReadBoolProperty(options!, "RequireExplicitRoutingMetadata"));
     }
 
     [Fact]

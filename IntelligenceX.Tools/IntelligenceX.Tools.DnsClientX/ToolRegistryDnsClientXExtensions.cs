@@ -30,9 +30,14 @@ public static class ToolRegistryDnsClientXExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(DnsClientXToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return DnsClientXToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(DnsClientXToolOptions options) {
         yield return new DnsClientXPackInfoTool(options);
         yield return new DnsClientXQueryTool(options);
         yield return new DnsClientXPingTool(options);
     }
 }
-

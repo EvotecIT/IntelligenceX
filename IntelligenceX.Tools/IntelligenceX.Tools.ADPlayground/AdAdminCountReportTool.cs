@@ -38,6 +38,13 @@ public sealed class AdAdminCountReportTool : ActiveDirectoryToolBase, ITool {
             .WithTableViewOptions()
             .NoAdditionalProperties());
 
+    private sealed record AdminCountReportRequest(
+        string? ForestNameContains,
+        string? DomainNameContains,
+        string? SamAccountNameContains,
+        int? StaleDays,
+        DateTime ReferenceTimeUtc);
+
     private sealed record AdminCountRow(
         string ForestName,
         string DomainName,
@@ -67,22 +74,36 @@ public sealed class AdAdminCountReportTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<AdminCountReportRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolTime.TryParseUtcOptional(
+                    reader.OptionalString("reference_time_utc"),
+                    out var referenceTimeUtc,
+                    out var referenceTimeError)) {
+                return ToolRequestBindingResult<AdminCountReportRequest>.Failure(
+                    $"reference_time_utc: {referenceTimeError}");
+            }
+
+            return ToolRequestBindingResult<AdminCountReportRequest>.Success(new AdminCountReportRequest(
+                ForestNameContains: reader.OptionalString("forest_name_contains"),
+                DomainNameContains: reader.OptionalString("domain_name_contains"),
+                SamAccountNameContains: reader.OptionalString("sam_account_name_contains"),
+                StaleDays: ToolArgs.ToPositiveInt32OrNull(reader.OptionalInt64("stale_days")),
+                ReferenceTimeUtc: referenceTimeUtc ?? DateTime.UtcNow));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<AdminCountReportRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var forestNameContains = ToolArgs.GetOptionalTrimmed(arguments, "forest_name_contains");
-        var domainNameContains = ToolArgs.GetOptionalTrimmed(arguments, "domain_name_contains");
-        var samAccountNameContains = ToolArgs.GetOptionalTrimmed(arguments, "sam_account_name_contains");
-        var staleDays = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("stale_days"));
-        var maxResults = ResolveMaxResults(arguments);
-
-        if (!ToolTime.TryParseUtcOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "reference_time_utc"),
-                out var referenceTimeUtc,
-                out var referenceTimeError)) {
-            return Task.FromResult(Error("invalid_argument", $"reference_time_utc: {referenceTimeError}"));
-        }
-
-        var referenceUtc = referenceTimeUtc ?? DateTime.UtcNow;
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments);
 
         if (!TryExecute(
                 action: static () => new AdminCountReporter().GetReport().ToArray(),
@@ -95,11 +116,11 @@ public sealed class AdAdminCountReportTool : ActiveDirectoryToolBase, ITool {
         }
 
         var projected = reportRows
-            .Where(row => MatchesText(row.ForestName, forestNameContains))
-            .Where(row => MatchesText(row.DomainName, domainNameContains))
-            .Where(row => MatchesText(row.SamAccountName, samAccountNameContains))
-            .Select(row => ProjectRow(row, referenceUtc))
-            .Where(row => !staleDays.HasValue || row.NeverLoggedOn || (row.DaysSinceLastLogon.HasValue && row.DaysSinceLastLogon.Value >= staleDays.Value))
+            .Where(row => MatchesText(row.ForestName, request.ForestNameContains))
+            .Where(row => MatchesText(row.DomainName, request.DomainNameContains))
+            .Where(row => MatchesText(row.SamAccountName, request.SamAccountNameContains))
+            .Select(row => ProjectRow(row, request.ReferenceTimeUtc))
+            .Where(row => !request.StaleDays.HasValue || row.NeverLoggedOn || (row.DaysSinceLastLogon.HasValue && row.DaysSinceLastLogon.Value >= request.StaleDays.Value))
             .OrderByDescending(static row => row.DaysSinceLastLogon ?? int.MaxValue)
             .ThenBy(static row => row.ForestName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static row => row.DomainName, StringComparer.OrdinalIgnoreCase)
@@ -113,20 +134,20 @@ public sealed class AdAdminCountReportTool : ActiveDirectoryToolBase, ITool {
             truncated: out var truncated);
 
         var result = new AdAdminCountReportResult(
-            ForestNameContains: forestNameContains,
-            DomainNameContains: domainNameContains,
-            SamAccountNameContains: samAccountNameContains,
-            StaleDays: staleDays,
-            ReferenceTimeUtc: referenceUtc,
+            ForestNameContains: request.ForestNameContains,
+            DomainNameContains: request.DomainNameContains,
+            SamAccountNameContains: request.SamAccountNameContains,
+            StaleDays: request.StaleDays,
+            ReferenceTimeUtc: request.ReferenceTimeUtc,
             Scanned: scanned,
             Truncated: truncated,
             Accounts: rows);
 
         var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
-            arguments,
+            context.Arguments,
             availableColumns: SupportedProjectionColumns);
 
-        return Task.FromResult(BuildAutoTableResponse(
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
             arguments: shapedArguments,
             model: result,
             sourceRows: rows,
@@ -136,13 +157,13 @@ public sealed class AdAdminCountReportTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                AddOptionalStringMeta(meta, "forest_name_contains", forestNameContains);
-                AddOptionalStringMeta(meta, "domain_name_contains", domainNameContains);
-                AddOptionalStringMeta(meta, "sam_account_name_contains", samAccountNameContains);
-                if (staleDays.HasValue) {
-                    meta.Add("stale_days", staleDays.Value);
+                AddOptionalStringMeta(meta, "forest_name_contains", request.ForestNameContains);
+                AddOptionalStringMeta(meta, "domain_name_contains", request.DomainNameContains);
+                AddOptionalStringMeta(meta, "sam_account_name_contains", request.SamAccountNameContains);
+                if (request.StaleDays.HasValue) {
+                    meta.Add("stale_days", request.StaleDays.Value);
                 }
-                meta.Add("reference_time_utc", ToolTime.FormatUtc(referenceUtc));
+                meta.Add("reference_time_utc", ToolTime.FormatUtc(request.ReferenceTimeUtc));
                 AddMaxResultsMeta(meta, maxResults);
             }));
     }

@@ -45,6 +45,11 @@ public sealed class ToolRegistry {
     public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
 
     /// <summary>
+    /// When true, registration rejects inferred routing metadata and requires explicit routing source.
+    /// </summary>
+    public bool RequireExplicitRoutingMetadata { get; set; }
+
+    /// <summary>
     /// Registers a tool.
     /// </summary>
     /// <param name="tool">Tool instance.</param>
@@ -130,6 +135,9 @@ public sealed class ToolRegistry {
         ValidateWriteGovernanceContract(definition);
         ValidateAuthenticationContract(definition);
         ValidateRoutingContract(definition);
+        ValidateSetupContract(definition);
+        ValidateHandoffContract(definition);
+        ValidateRecoveryContract(definition);
 
         _tools[definition.Name] = tool;
         _definitions[definition.Name] = definition;
@@ -263,7 +271,67 @@ public sealed class ToolRegistry {
         }
 
         contract.Validate();
+        if (RequireExplicitRoutingMetadata) {
+            if (string.IsNullOrWhiteSpace(contract.PackId)) {
+                throw new InvalidOperationException(
+                    $"Tool '{definition.Name}' must declare Routing.PackId when RequireExplicitRoutingMetadata is enabled.");
+            }
+
+            if (!string.Equals(
+                    (contract.RoutingSource ?? string.Empty).Trim(),
+                    ToolRoutingTaxonomy.SourceExplicit,
+                    StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException(
+                    $"Tool '{definition.Name}' must declare explicit RoutingSource when RequireExplicitRoutingMetadata is enabled.");
+            }
+        }
+
         ValidateDomainIntentActionCatalogConsistency(definition, contract);
+    }
+
+    private static void ValidateSetupContract(ToolDefinition definition) {
+        ToolSetupContract? contract = definition.Setup;
+        if (contract is null || !contract.IsSetupAware) {
+            return;
+        }
+
+        contract.Validate();
+        if (string.IsNullOrWhiteSpace(contract.SetupContractId)) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is setup-aware and must declare SetupContractId.");
+        }
+    }
+
+    private static void ValidateHandoffContract(ToolDefinition definition) {
+        ToolHandoffContract? contract = definition.Handoff;
+        if (contract is null || !contract.IsHandoffAware) {
+            return;
+        }
+
+        contract.Validate();
+        if (string.IsNullOrWhiteSpace(contract.HandoffContractId)) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is handoff-aware and must declare HandoffContractId.");
+        }
+
+        ToolRoutingContract? routing = definition.Routing;
+        if (routing is null || string.IsNullOrWhiteSpace(routing.PackId)) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is handoff-aware and must declare Routing.PackId.");
+        }
+    }
+
+    private static void ValidateRecoveryContract(ToolDefinition definition) {
+        ToolRecoveryContract? contract = definition.Recovery;
+        if (contract is null || !contract.IsRecoveryAware) {
+            return;
+        }
+
+        contract.Validate();
+        if (string.IsNullOrWhiteSpace(contract.RecoveryContractId)) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' is recovery-aware and must declare RecoveryContractId.");
+        }
     }
 
     private void ValidateDomainIntentActionCatalogConsistency(ToolDefinition definition, ToolRoutingContract contract) {

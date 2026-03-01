@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.PowerShell;
 /// Returns IX.PowerShell pack capabilities and usage guidance for model-driven planning.
 /// </summary>
 public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "powershell_pack_info",
         "Return IX.PowerShell pack capabilities, output contract, and safe usage guidance (pwsh/windows_powershell/cmd). Call this first when planning shell execution.",
@@ -25,6 +27,20 @@ public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -86,6 +102,6 @@ public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
             "This pack is dangerous and should be explicitly enabled by policy.",
             "Use powershell_environment_discover before powershell_run to verify policy and host availability.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

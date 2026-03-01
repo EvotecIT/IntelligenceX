@@ -324,7 +324,7 @@ internal sealed partial class ChatServiceSession {
             var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var hasTableViewProjection);
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             var category = ResolvePlannerCategory(definition);
-            var packHint = ResolvePlannerPackHint(definition, category);
+            var packHint = ResolvePlannerPackHint(definition);
             var domainIntentFamily = ResolveDomainIntentFamily(definition);
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
             sb.Append(i + 1).Append(". ").Append(name);
@@ -371,22 +371,16 @@ internal sealed partial class ChatServiceSession {
         return (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
     }
 
-    private static string ResolvePlannerPackHint(ToolDefinition definition, string category) {
+    private static string ResolvePlannerPackHint(ToolDefinition definition) {
+        var routingPackId = NormalizePackId(definition.Routing?.PackId);
+        if (routingPackId.Length > 0) {
+            return routingPackId;
+        }
+
         if (ToolSelectionMetadata.TryResolvePackId(definition, out var resolvedPackId)) {
             var normalizedResolvedPackId = NormalizePackId(resolvedPackId);
             if (normalizedResolvedPackId.Length > 0) {
                 return normalizedResolvedPackId;
-            }
-        }
-
-        if (ToolSelectionMetadata.TryResolvePackId(
-                toolName: definition.Name,
-                category: category,
-                tags: definition.Tags,
-                out var inferredPackId)) {
-            var normalizedInferredPackId = NormalizePackId(inferredPackId);
-            if (normalizedInferredPackId.Length > 0) {
-                return normalizedInferredPackId;
             }
         }
 

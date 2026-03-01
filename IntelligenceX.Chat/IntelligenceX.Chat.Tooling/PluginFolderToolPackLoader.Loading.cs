@@ -416,14 +416,17 @@ internal static partial class PluginFolderToolPackLoader {
 
         return normalized switch {
             "fs" => options.EnableFileSystemPack,
+            "filesystem" => options.EnableFileSystemPack,
             "system" => options.EnableSystemPack,
             "ad" => options.EnableActiveDirectoryPack,
+            "active_directory" => options.EnableActiveDirectoryPack,
             "powershell" => options.EnablePowerShellPack,
             "testimox" => options.EnableTestimoXPack,
             "officeimo" => options.EnableOfficeImoPack,
             "dnsclientx" => options.EnableDnsClientXPack,
             "domaindetective" => options.EnableDomainDetectivePack,
             "reviewersetup" => options.EnableReviewerSetupPack,
+            "reviewer_setup" => options.EnableReviewerSetupPack,
             "email" => options.EnableEmailPack,
             _ => true
         };

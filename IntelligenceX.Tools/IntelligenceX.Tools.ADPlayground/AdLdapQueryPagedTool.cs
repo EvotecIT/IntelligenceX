@@ -14,6 +14,18 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// This is intended for "less defined" exploratory queries that may return many results.
 /// </summary>
 public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
+    private sealed record LdapQueryPagedRequest(
+        string LdapFilter,
+        string? Scope,
+        bool AllowSensitiveAttributes,
+        int MaxAttributes,
+        int MaxValuesPerAttribute,
+        int PageSize,
+        int MaxPages,
+        int TimeoutMs,
+        string? Cursor,
+        IReadOnlyList<string> RequestedAttributes);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_ldap_query_paged",
         "Run a read-only LDAP query with paging (cursor) support (read-only). Useful for large result sets.",
@@ -45,56 +57,78 @@ public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<LdapQueryPagedRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("ldap_filter", out var ldapFilter, out var ldapFilterError)) {
+                return ToolRequestBindingResult<LdapQueryPagedRequest>.Failure(ldapFilterError);
+            }
+
+            var requestedMaxAttrs = reader.OptionalInt64("max_attributes");
+            var maxAttributes = requestedMaxAttrs.HasValue && requestedMaxAttrs.Value > 0
+                ? (int)Math.Min(requestedMaxAttrs.Value, LdapQueryPolicy.MaxAttributesCap)
+                : LdapQueryPolicy.DefaultMaxAttributes;
+
+            var requestedMaxValues = reader.OptionalInt64("max_values_per_attribute");
+            var maxValuesPerAttribute = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
+                ? (int)Math.Min(requestedMaxValues.Value, LdapQueryPolicy.MaxValuesPerAttributeCap)
+                : LdapQueryPolicy.DefaultMaxValuesPerAttribute;
+
+            var requestedPageSize = reader.OptionalInt64("page_size");
+            var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0
+                ? (int)Math.Min(requestedPageSize.Value, LdapToolAdLdapQueryPagedRequest.MaxPageSizeCap)
+                : LdapToolAdLdapQueryPagedRequest.DefaultPageSize;
+
+            var requestedMaxPages = reader.OptionalInt64("max_pages");
+            var maxPages = requestedMaxPages.HasValue && requestedMaxPages.Value > 0
+                ? (int)Math.Min(requestedMaxPages.Value, LdapToolAdLdapQueryPagedRequest.MaxPagesCap)
+                : LdapToolAdLdapQueryPagedRequest.DefaultMaxPages;
+
+            var timeoutMs = (int)Math.Min(
+                Math.Max(reader.OptionalInt64("timeout_ms") ?? LdapToolAdLdapQueryPagedRequest.DefaultTimeoutMs, LdapToolAdLdapQueryPagedRequest.MinTimeoutMs),
+                LdapToolAdLdapQueryPagedRequest.MaxTimeoutMs);
+
+            return ToolRequestBindingResult<LdapQueryPagedRequest>.Success(new LdapQueryPagedRequest(
+                LdapFilter: ldapFilter,
+                Scope: reader.OptionalString("scope"),
+                AllowSensitiveAttributes: reader.Boolean("allow_sensitive_attributes"),
+                MaxAttributes: maxAttributes,
+                MaxValuesPerAttribute: maxValuesPerAttribute,
+                PageSize: pageSize,
+                MaxPages: maxPages,
+                TimeoutMs: timeoutMs,
+                Cursor: reader.OptionalString("cursor"),
+                RequestedAttributes: reader.StringArray("attributes")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<LdapQueryPagedRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var filter = ToolArgs.GetTrimmedOrDefault(arguments, "ldap_filter", string.Empty);
-        var scope = ToolArgs.GetOptionalTrimmed(arguments, "scope");
-        var allowSensitive = ToolArgs.GetBoolean(arguments, "allow_sensitive_attributes");
-
-        var requestedMaxAttrs = arguments?.GetInt64("max_attributes");
-        var maxAttributes = requestedMaxAttrs.HasValue && requestedMaxAttrs.Value > 0
-            ? (int)Math.Min(requestedMaxAttrs.Value, LdapQueryPolicy.MaxAttributesCap)
-            : LdapQueryPolicy.DefaultMaxAttributes;
-
-        var requestedMaxValues = arguments?.GetInt64("max_values_per_attribute");
-        var maxValuesPerAttribute = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
-            ? (int)Math.Min(requestedMaxValues.Value, LdapQueryPolicy.MaxValuesPerAttributeCap)
-            : LdapQueryPolicy.DefaultMaxValuesPerAttribute;
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var requestedPageSize = arguments?.GetInt64("page_size");
-        var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0
-            ? (int)Math.Min(requestedPageSize.Value, LdapToolAdLdapQueryPagedRequest.MaxPageSizeCap)
-            : LdapToolAdLdapQueryPagedRequest.DefaultPageSize;
-
-        var requestedMaxPages = arguments?.GetInt64("max_pages");
-        var maxPages = requestedMaxPages.HasValue && requestedMaxPages.Value > 0
-            ? (int)Math.Min(requestedMaxPages.Value, LdapToolAdLdapQueryPagedRequest.MaxPagesCap)
-            : LdapToolAdLdapQueryPagedRequest.DefaultMaxPages;
-
-        var timeoutMs = (int)Math.Min(
-            Math.Max(arguments?.GetInt64("timeout_ms") ?? LdapToolAdLdapQueryPagedRequest.DefaultTimeoutMs, LdapToolAdLdapQueryPagedRequest.MinTimeoutMs),
-            LdapToolAdLdapQueryPagedRequest.MaxTimeoutMs);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-        var cursor = ToolArgs.GetOptionalTrimmed(arguments, "cursor");
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
         if (!LdapToolAdLdapQueryPagedService.TryExecute(
                 request: new LdapToolAdLdapQueryPagedRequest {
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
-                    LdapFilter = filter,
-                    Scope = scope,
-                    RequestedAttributes = ToolArgs.ReadStringArray(arguments?.GetArray("attributes")),
-                    AllowSensitiveAttributes = allowSensitive,
+                    LdapFilter = request.LdapFilter,
+                    Scope = request.Scope,
+                    RequestedAttributes = request.RequestedAttributes,
+                    AllowSensitiveAttributes = request.AllowSensitiveAttributes,
                     MaxResults = maxResults,
                     ToolMaxResultsCap = Options.MaxResults,
-                    MaxAttributes = maxAttributes,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
-                    PageSize = pageSize,
-                    MaxPages = maxPages,
-                    Cursor = cursor,
-                    TimeoutMs = timeoutMs
+                    MaxAttributes = request.MaxAttributes,
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
+                    PageSize = request.PageSize,
+                    MaxPages = request.MaxPages,
+                    Cursor = request.Cursor,
+                    TimeoutMs = request.TimeoutMs
                 },
                 result: out var pageResult,
                 failure: out var failure,
@@ -125,16 +159,18 @@ public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
             result.Results
         };
 
-        AdDynamicTableView.TryBuildResponseFromOutputRows(
-            arguments: arguments,
-            model: root,
-            rows: result.Results,
-            title: "Active Directory: LDAP Query (paged preview)",
-            rowsPath: "results_view",
-            baseTruncated: result.IsTruncated,
-            response: out var response);
+        if (!AdDynamicTableView.TryBuildResponseFromOutputRows(
+                arguments: context.Arguments,
+                model: root,
+                rows: result.Results,
+                title: "Active Directory: LDAP Query (paged preview)",
+                rowsPath: "results_view",
+                baseTruncated: result.IsTruncated,
+                response: out var response)) {
+            return Task.FromResult(ToolResultV2.Error("query_failed", "Failed to build paged LDAP query table view response."));
+        }
+
         return Task.FromResult(response);
     }
 
 }
-

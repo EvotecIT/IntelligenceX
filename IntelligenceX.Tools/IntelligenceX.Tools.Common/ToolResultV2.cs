@@ -27,6 +27,55 @@ public static class ToolResultV2 {
     }
 
     /// <summary>
+    /// Creates a standard auto-column table success envelope.
+    /// </summary>
+    public static string OkAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int scanned,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        return ToolQueryHelpers.BuildAutoTableResponse(
+            arguments: arguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            baseTruncated: baseTruncated,
+            scanned: scanned,
+            maxTop: maxTop,
+            metaMutate: metaMutate);
+    }
+
+    /// <summary>
+    /// Creates a standard auto-column table success envelope, using source row count as scanned.
+    /// </summary>
+    public static string OkAutoTableResponse<TModel, TRow>(
+        JsonObject? arguments,
+        TModel model,
+        IReadOnlyList<TRow> sourceRows,
+        string viewRowsPath,
+        string title,
+        bool baseTruncated,
+        int maxTop,
+        Action<JsonObject>? metaMutate = null) {
+        return OkAutoTableResponse(
+            arguments: arguments,
+            model: model,
+            sourceRows: sourceRows,
+            viewRowsPath: viewRowsPath,
+            title: title,
+            baseTruncated: baseTruncated,
+            scanned: sourceRows.Count,
+            maxTop: maxTop,
+            metaMutate: metaMutate);
+    }
+
+    /// <summary>
     /// Creates a facts-table success envelope from a typed model.
     /// </summary>
     public static string OkFactsModel<T>(

@@ -74,6 +74,21 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
         IReadOnlyDictionary<string, string> Handoff,
         double Confidence);
 
+    private sealed record NamedEventsQueryRequest(
+        IReadOnlyList<NamedEvents> NamedEvents,
+        IReadOnlyList<string> EffectiveMachines,
+        DateTime? StartUtc,
+        DateTime? EndUtc,
+        TimePeriod? TimePeriod,
+        IReadOnlyList<string>? Categories,
+        string? LogNameFilter,
+        HashSet<int>? EventIdSet,
+        int MaxEvents,
+        int MaxThreads,
+        int? MaxEventsPerNamedEvent,
+        bool IncludePayload,
+        HashSet<string>? PayloadKeySet);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="EventLogNamedEventsQueryTool"/> class.
     /// </summary>
@@ -83,50 +98,91 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<NamedEventsQueryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var rawNamedEvents = reader.DistinctStringArray("named_events");
+            var rawCategories = reader.DistinctStringArray("categories");
+            if (!EventLogNamedEventsQueryShared.TryResolveNamedEvents(
+                    rawNamedEvents,
+                    rawCategories,
+                    out var namedEvents,
+                    out var categories,
+                    out var namedEventsError)) {
+                return ToolRequestBindingResult<NamedEventsQueryRequest>.Failure(namedEventsError ?? "Invalid named_events/categories filters.");
+            }
+
+            if (!EventLogNamedEventsQueryShared.TryResolveTimeWindow(
+                    arguments,
+                    out var startUtc,
+                    out var endUtc,
+                    out var timePeriod,
+                    out var timeError)) {
+                return ToolRequestBindingResult<NamedEventsQueryRequest>.Failure(timeError ?? "Invalid time range.");
+            }
+
+            if (!TryReadPositiveInt32Array(arguments, "event_ids", out var eventIds, out var eventIdsError)) {
+                return ToolRequestBindingResult<NamedEventsQueryRequest>.Failure(eventIdsError ?? "event_ids is invalid.");
+            }
+
+            var maxEvents = ResolveBoundedOptionLimit(arguments, "max_events");
+            var maxThreads = reader.CappedInt32("max_threads", 4, 1, EventLogNamedEventsQueryShared.MaxThreadsCap);
+            var maxEventsPerNamedEvent = TryReadOptionalPositiveInt32(arguments, "max_events_per_named_event", maxEvents);
+            var includePayload = reader.Boolean("include_payload", defaultValue: true);
+
+            var payloadKeys = reader.DistinctStringArray("payload_keys");
+            if (payloadKeys.Count > EventLogNamedEventsQueryShared.MaxPayloadKeys) {
+                return ToolRequestBindingResult<NamedEventsQueryRequest>.Failure(
+                    $"payload_keys supports at most {EventLogNamedEventsQueryShared.MaxPayloadKeys} values.");
+            }
+
+            var payloadKeySet = payloadKeys.Count > 0
+                ? new HashSet<string>(payloadKeys.Select(EventLogNamedEventsQueryShared.ToSnakeCase), StringComparer.OrdinalIgnoreCase)
+                : null;
+
+            var request = new NamedEventsQueryRequest(
+                NamedEvents: namedEvents,
+                EffectiveMachines: EventLogNamedEventsQueryShared.ResolveMachines(arguments, EventLogNamedEventsQueryShared.MaxMachines),
+                StartUtc: startUtc,
+                EndUtc: endUtc,
+                TimePeriod: timePeriod,
+                Categories: categories,
+                LogNameFilter: reader.OptionalString("log_name"),
+                EventIdSet: eventIds is null ? null : new HashSet<int>(eventIds),
+                MaxEvents: maxEvents,
+                MaxThreads: maxThreads,
+                MaxEventsPerNamedEvent: maxEventsPerNamedEvent,
+                IncludePayload: includePayload,
+                PayloadKeySet: payloadKeySet);
+
+            return ToolRequestBindingResult<NamedEventsQueryRequest>.Success(request);
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<NamedEventsQueryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var rawNamedEvents = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("named_events"));
-        var rawCategories = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("categories"));
-        if (!EventLogNamedEventsQueryShared.TryResolveNamedEvents(
-                rawNamedEvents,
-                rawCategories,
-                out var namedEvents,
-                out var categories,
-                out var namedEventsError)) {
-            return ToolResponse.Error("invalid_argument", namedEventsError ?? "Invalid named_events/categories filters.");
-        }
-
-        if (!EventLogNamedEventsQueryShared.TryResolveTimeWindow(
-                arguments,
-                out var startUtc,
-                out var endUtc,
-                out var timePeriod,
-                out var timeError)) {
-            return ToolResponse.Error("invalid_argument", timeError ?? "Invalid time range.");
-        }
-
-        var logNameFilter = ToolArgs.GetOptionalTrimmed(arguments, "log_name");
-        var eventIds = ToolArgs.TryReadPositiveInt32Array(arguments?.GetArray("event_ids"), "event_ids", out var eventIdsError);
-        if (!string.IsNullOrWhiteSpace(eventIdsError)) {
-            return ToolResponse.Error("invalid_argument", eventIdsError);
-        }
-        var eventIdSet = eventIds is null ? null : new HashSet<int>(eventIds);
-
-        var maxEvents = ResolveBoundedOptionLimit(arguments, "max_events");
-        var maxThreads = ToolArgs.GetCappedInt32(arguments, "max_threads", 4, 1, EventLogNamedEventsQueryShared.MaxThreadsCap);
-        var maxEventsPerNamedEvent = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("max_events_per_named_event"), maxEvents);
-        var includePayload = arguments?.GetBoolean("include_payload") ?? true;
-
-        var payloadKeys = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("payload_keys"));
-        if (payloadKeys.Count > EventLogNamedEventsQueryShared.MaxPayloadKeys) {
-            return ToolResponse.Error("invalid_argument", $"payload_keys supports at most {EventLogNamedEventsQueryShared.MaxPayloadKeys} values.");
-        }
-        var payloadKeySet = payloadKeys.Count > 0
-            ? new HashSet<string>(payloadKeys.Select(EventLogNamedEventsQueryShared.ToSnakeCase), StringComparer.OrdinalIgnoreCase)
-            : null;
-
-        var machines = EventLogNamedEventsQueryShared.ResolveMachines(arguments, EventLogNamedEventsQueryShared.MaxMachines);
+        var namedEvents = context.Request.NamedEvents;
+        var categories = context.Request.Categories;
+        var startUtc = context.Request.StartUtc;
+        var endUtc = context.Request.EndUtc;
+        var timePeriod = context.Request.TimePeriod;
+        var logNameFilter = context.Request.LogNameFilter;
+        var eventIdSet = context.Request.EventIdSet;
+        var maxEvents = context.Request.MaxEvents;
+        var maxThreads = context.Request.MaxThreads;
+        var maxEventsPerNamedEvent = context.Request.MaxEventsPerNamedEvent;
+        var includePayload = context.Request.IncludePayload;
+        var payloadKeySet = context.Request.PayloadKeySet;
+        var machines = context.Request.EffectiveMachines;
+        var namedEventsList = namedEvents.ToList();
 
         var rows = new List<NamedEventsQueryRow>(Math.Min(maxEvents, 256));
         var perNamedEventCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -135,7 +191,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
 
         try {
             await foreach (var item in SearchEvents.FindEventsByNamedEvents(
-                               typeEventsList: namedEvents,
+                               typeEventsList: namedEventsList,
                                machineNames: machines.Count > 0 ? machines.Cast<string?>().ToList() : null,
                                startTime: startUtc,
                                endTime: endUtc,
@@ -173,7 +229,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 }
             }
         } catch (ArgumentException ex) {
-            return ToolResponse.Error("invalid_argument", ex.Message);
+            return ToolResultV2.Error("invalid_argument", ex.Message);
         } catch (Exception ex) {
             return ErrorFromException(
                 ex,
@@ -218,8 +274,8 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
             Handoff: chain.Handoff,
             Confidence: chain.Confidence);
 
-        return BuildAutoTableResponse(
-            arguments: arguments,
+        return ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "events_view",
@@ -262,6 +318,66 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 }
                 meta.Add("entity_handoff", entityHandoff);
             });
+    }
+
+    private static bool TryReadPositiveInt32Array(
+        JsonObject? arguments,
+        string key,
+        out List<int>? values,
+        out string? error) {
+        values = null;
+        error = null;
+
+        if (!TryGetArray(arguments, key, out var array)) {
+            return true;
+        }
+
+        values = ToolArgs.TryReadPositiveInt32Array(array, key, out error);
+        return string.IsNullOrWhiteSpace(error);
+    }
+
+    private static int? TryReadOptionalPositiveInt32(JsonObject? arguments, string key, int maxInclusive) {
+        if (!TryGetInt64(arguments, key, out var value)) {
+            return null;
+        }
+
+        return ToolArgs.ToPositiveInt32OrNull(value, maxInclusive);
+    }
+
+    private static bool TryGetArray(JsonObject? arguments, string key, out JsonArray? array) {
+        array = null;
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            array = kv.Value.AsArray();
+            return array is not null;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetInt64(JsonObject? arguments, string key, out long? value) {
+        value = null;
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            value = kv.Value.AsInt64();
+            return value.HasValue;
+        }
+
+        return false;
     }
 
     private static ToolChainContractModel BuildChainContract(

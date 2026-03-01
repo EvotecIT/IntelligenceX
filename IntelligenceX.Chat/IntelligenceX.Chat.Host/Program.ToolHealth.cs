@@ -32,10 +32,7 @@ internal static partial class Program {
             return;
         }
 
-        var packInfoDefinitions = registry.GetDefinitions()
-            .Where(static def => def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(static def => def.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(registry);
         if (packInfoDefinitions.Length == 0) {
             Console.WriteLine("No *_pack_info tools are registered in this session.");
             return;

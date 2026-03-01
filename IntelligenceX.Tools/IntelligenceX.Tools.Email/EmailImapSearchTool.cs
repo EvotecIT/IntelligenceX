@@ -14,6 +14,17 @@ namespace IntelligenceX.Tools.Email;
 /// </summary>
 public sealed class EmailImapSearchTool : EmailToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record SearchRequest(
+        string? Folder,
+        string? SubjectContains,
+        string? FromContains,
+        string? ToContains,
+        string? BodyContains,
+        bool HasAttachment,
+        DateTime? SinceUtc,
+        DateTime? BeforeUtc,
+        string? Query,
+        int MaxResults);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "email_imap_search",
@@ -49,65 +60,81 @@ public sealed class EmailImapSearchTool : EmailToolBase, ITool {
     /// <param name="arguments">Tool arguments.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<SearchRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolTime.TryParseUtcOptional(reader.OptionalString("since_utc"), out var since, out var sinceErr)) {
+                return ToolRequestBindingResult<SearchRequest>.Failure($"since_utc: {sinceErr}");
+            }
+            if (!ToolTime.TryParseUtcOptional(reader.OptionalString("before_utc"), out var before, out var beforeErr)) {
+                return ToolRequestBindingResult<SearchRequest>.Failure($"before_utc: {beforeErr}");
+            }
+            if (since.HasValue && before.HasValue && since.Value > before.Value) {
+                return ToolRequestBindingResult<SearchRequest>.Failure("since_utc must be <= before_utc.");
+            }
+
+            return ToolRequestBindingResult<SearchRequest>.Success(new SearchRequest(
+                Folder: reader.OptionalString("folder"),
+                SubjectContains: reader.OptionalString("subject_contains"),
+                FromContains: reader.OptionalString("from_contains"),
+                ToContains: reader.OptionalString("to_contains"),
+                BodyContains: reader.OptionalString("body_contains"),
+                HasAttachment: reader.Boolean("has_attachment", defaultValue: false),
+                SinceUtc: since,
+                BeforeUtc: before,
+                Query: reader.OptionalString("query"),
+                MaxResults: reader.CappedInt32("max_results", Options.MaxListResults, 1, Options.MaxListResults)));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<SearchRequest> context, CancellationToken cancellationToken) {
         var imap = Options.Imap;
         if (imap is null) {
-            return ToolResponse.Error("not_configured", "IMAP is not configured.");
+            return ToolResultV2.Error("not_configured", "IMAP is not configured.");
         }
         imap.Validate();
 
-        var folder = arguments?.GetString("folder") ?? imap.DefaultFolder;
-        var subject = arguments?.GetString("subject_contains");
-        var from = arguments?.GetString("from_contains");
-        var to = arguments?.GetString("to_contains");
-        var body = arguments?.GetString("body_contains");
-        var hasAttachment = arguments?.GetBoolean("has_attachment") ?? false;
-        var queryString = arguments?.GetString("query");
-
-        if (!ToolTime.TryParseUtcOptional(arguments?.GetString("since_utc"), out var since, out var sinceErr)) {
-            return ToolResponse.Error("invalid_argument", $"since_utc: {sinceErr}");
-        }
-        if (!ToolTime.TryParseUtcOptional(arguments?.GetString("before_utc"), out var before, out var beforeErr)) {
-            return ToolResponse.Error("invalid_argument", $"before_utc: {beforeErr}");
-        }
-        if (since.HasValue && before.HasValue && since.Value > before.Value) {
-            return ToolResponse.Error("invalid_argument", "since_utc must be <= before_utc.");
-        }
-
-        var max = ToolArgs.GetCappedInt32(arguments, "max_results", Options.MaxListResults, 1, Options.MaxListResults);
+        var request = context.Request;
+        var folder = request.Folder ?? imap.DefaultFolder;
 
         using var client = await ImapClientFactory.ConnectAsync(imap, cancellationToken).ConfigureAwait(false);
         try {
             var messages = await MailboxSearcher.SearchImapAsync(
                 client,
                 folder: folder,
-                subject: subject,
-                fromContains: from,
-                toContains: to,
-                bodyContains: body,
-                since: since,
-                before: before,
-                hasAttachment: hasAttachment,
-                maxResults: max,
+                subject: request.SubjectContains,
+                fromContains: request.FromContains,
+                toContains: request.ToContains,
+                bodyContains: request.BodyContains,
+                since: request.SinceUtc,
+                before: request.BeforeUtc,
+                hasAttachment: request.HasAttachment,
+                maxResults: request.MaxResults,
                 cancellationToken: cancellationToken,
-                queryString: queryString).ConfigureAwait(false);
+                queryString: request.Query).ConfigureAwait(false);
 
             var rawMessages = messages.Select(static msg => {
                 var info = new ImapMessageInfo(msg);
                 return new {
-                Uid = (long)info.Uid.Id,
-                From = info.From,
-                To = info.To,
-                Subject = info.Subject ?? string.Empty,
-                DateUtc = info.Date.ToUniversalTime().ToString("O"),
-                HasAttachments = info.HasAttachments
+                    Uid = (long)info.Uid.Id,
+                    From = info.From,
+                    To = info.To,
+                    Subject = info.Subject ?? string.Empty,
+                    DateUtc = info.Date.ToUniversalTime().ToString("O"),
+                    HasAttachments = info.HasAttachments
                 };
             }).ToArray();
 
-            var truncated = messages.Count >= max;
-
-            ToolTableViewEnvelope.TryBuildModelResponseAutoColumns(
-                arguments: arguments,
+            var truncated = messages.Count >= request.MaxResults;
+            return ToolResultV2.OkAutoTableResponse(
+                arguments: context.Arguments,
                 model: new {
                     Folder = folder ?? string.Empty,
                     Count = messages.Count,
@@ -119,9 +146,7 @@ public sealed class EmailImapSearchTool : EmailToolBase, ITool {
                 title: "IMAP messages (preview)",
                 maxTop: MaxViewTop,
                 baseTruncated: truncated,
-                response: out var response,
-                metaMutate: m => m.Add("max_results", max));
-            return response;
+                metaMutate: m => AddMaxResultsMeta(m, request.MaxResults));
         } finally {
             try {
                 if (client.IsConnected) {
@@ -133,4 +158,3 @@ public sealed class EmailImapSearchTool : EmailToolBase, ITool {
         }
     }
 }
-

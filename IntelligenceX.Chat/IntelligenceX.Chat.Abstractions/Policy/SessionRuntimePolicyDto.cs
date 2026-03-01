@@ -45,6 +45,11 @@ public sealed record SessionRuntimePolicyDto {
     public string AuthenticationRuntimePreset { get; init; } = "default";
 
     /// <summary>
+    /// When true, tool registration requires explicit routing metadata.
+    /// </summary>
+    public bool RequireExplicitRoutingMetadata { get; init; }
+
+    /// <summary>
     /// When true, strict authentication runtime behavior is required.
     /// </summary>
     public bool RequireAuthenticationRuntime { get; init; }

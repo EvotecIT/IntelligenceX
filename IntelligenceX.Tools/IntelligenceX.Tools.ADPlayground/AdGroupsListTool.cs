@@ -15,6 +15,13 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGroupsListTool : ActiveDirectoryToolBase, ITool {
     private const int MaxPageSizeCap = 2000;
+    private sealed record GroupsListRequest(
+        string? NameContains,
+        string? NamePrefix,
+        long? OffsetRaw,
+        long? RequestedPageSizeRaw,
+        int MaxValuesPerAttribute,
+        IReadOnlyList<string> RequestedAttributes);
 
     private static readonly string[] DefaultAttributes = {
         "distinguishedName",
@@ -66,29 +73,46 @@ public sealed class AdGroupsListTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<GroupsListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<GroupsListRequest>.Success(new GroupsListRequest(
+                NameContains: reader.OptionalString("name_contains"),
+                NamePrefix: reader.OptionalString("name_prefix"),
+                OffsetRaw: reader.OptionalInt64("offset"),
+                RequestedPageSizeRaw: reader.OptionalInt64("page_size"),
+                MaxValuesPerAttribute: reader.CappedInt32(
+                    "max_values_per_attribute",
+                    LdapQueryPolicy.DefaultMaxValuesPerAttribute,
+                    1,
+                    LdapQueryPolicy.MaxValuesPerAttributeCap),
+                RequestedAttributes: reader.StringArray("attributes"))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GroupsListRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var namePrefix = ToolArgs.GetOptionalTrimmed(arguments, "name_prefix");
+        var request = context.Request;
+        var nameContains = request.NameContains;
+        var namePrefix = request.NamePrefix;
 
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
 
-        var offset = Math.Max(arguments?.GetInt64("offset") ?? 0, 0);
-        var requestedPageSize = arguments?.GetInt64("page_size");
+        var offset = Math.Max(request.OffsetRaw ?? 0, 0);
+        var requestedPageSize = request.RequestedPageSizeRaw;
         // Preserve historic behavior: by default return up to max_results unless caller opts into smaller paging.
         var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0
             ? (int)Math.Min(requestedPageSize.Value, MaxPageSizeCap)
             : maxResults;
 
-        var maxValuesPerAttribute = ToolArgs.GetCappedInt32(
-            arguments,
-            "max_values_per_attribute",
-            LdapQueryPolicy.DefaultMaxValuesPerAttribute,
-            1,
-            LdapQueryPolicy.MaxValuesPerAttributeCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-
-        var attributes = ToolArgs.ReadAllowedStrings(arguments?.GetArray("attributes"), AllowedAttributes);
+        var attributes = FilterAllowedStrings(request.RequestedAttributes, AllowedAttributes);
         if (attributes.Count == 0) {
             attributes.AddRange(DefaultAttributes);
         }
@@ -106,7 +130,7 @@ public sealed class AdGroupsListTool : ActiveDirectoryToolBase, ITool {
                     MaxResults = maxResults,
                     Offset = offset,
                     PageSize = pageSize,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
                     Attributes = attributes
                 },
                 result: out var queryResult,
@@ -116,20 +140,39 @@ public sealed class AdGroupsListTool : ActiveDirectoryToolBase, ITool {
         }
 
         var result = queryResult!;
-        AdDynamicTableView.TryBuildResponseFromOutputRows(
-            arguments: arguments,
-            model: result,
-            rows: result.Results,
-            title: "Active Directory: Groups (preview)",
-            rowsPath: "results_view",
-            baseTruncated: result.IsTruncated,
-            response: out var response,
-            scanned: result.Scanned,
-            metaMutate: meta => meta
-                .Add("max_results", maxResults)
-                .Add("offset", offset)
-                .Add("page_size", pageSize));
+        if (!AdDynamicTableView.TryBuildResponseFromOutputRows(
+                arguments: context.Arguments,
+                model: result,
+                rows: result.Results,
+                title: "Active Directory: Groups (preview)",
+                rowsPath: "results_view",
+                baseTruncated: result.IsTruncated,
+                response: out var response,
+                scanned: result.Scanned,
+                metaMutate: meta => meta
+                    .Add("max_results", maxResults)
+                    .Add("offset", offset)
+                    .Add("page_size", pageSize))) {
+            return Task.FromResult(ToolResultV2.Error("query_failed", "Failed to build groups list table view response."));
+        }
+
         return Task.FromResult(response);
     }
-}
 
+    private static List<string> FilterAllowedStrings(IReadOnlyList<string> values, IReadOnlySet<string> allowedValues) {
+        var normalized = new List<string>(values.Count);
+        for (var i = 0; i < values.Count; i++) {
+            var value = values[i];
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            var trimmed = value.Trim();
+            if (allowedValues.Contains(trimmed) && !normalized.Contains(trimmed, StringComparer.OrdinalIgnoreCase)) {
+                normalized.Add(trimmed);
+            }
+        }
+
+        return normalized;
+    }
+}

@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.PowerShell;
 /// Returns runtime and policy discovery details for IX.PowerShell planning.
 /// </summary>
 public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, ITool {
+    private sealed record EnvironmentDiscoverRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "powershell_environment_discover",
         "Discover IX.PowerShell runtime hosts (pwsh/windows_powershell/cmd) and execution policy (enabled/read-write options). Call this before powershell_run.",
@@ -25,6 +27,20 @@ public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, IToo
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<EnvironmentDiscoverRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<EnvironmentDiscoverRequest>.Success(new EnvironmentDiscoverRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<EnvironmentDiscoverRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var hosts = GetAvailableRuntimeHosts();
@@ -67,7 +83,7 @@ public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, IToo
             enabled: Options.Enabled,
             allowWrite: Options.AllowWrite);
 
-        return Task.FromResult(ToolResponse.OkModel(
+        return Task.FromResult(ToolResultV2.OkModel(
             model: model,
             meta: meta,
             summaryMarkdown: summary));

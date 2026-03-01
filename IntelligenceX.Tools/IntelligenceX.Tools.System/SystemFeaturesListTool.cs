@@ -13,6 +13,13 @@ namespace IntelligenceX.Tools.System;
 /// Lists Windows optional/server features (read-only, capped).
 /// </summary>
 public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
+    private sealed record FeaturesListRequest(
+        FeatureInventorySource Source,
+        string? NameContains,
+        WindowsOptionalFeatureState? OptionalState,
+        int MaxEntries,
+        int TimeoutMs);
+
     private const int MaxViewTop = 5000;
 
     private static readonly IReadOnlyDictionary<string, FeatureInventorySource> SourceByName =
@@ -67,43 +74,58 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "source"),
-                SourceByName,
-                "source",
-                out FeatureInventorySource? sourceOpt,
-                out var sourceError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", sourceError ?? "Invalid source value."));
-        }
-        var source = sourceOpt ?? FeatureInventorySource.Any;
-
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var optionalStateRaw = ToolArgs.GetOptionalTrimmed(arguments, "optional_state");
-        WindowsOptionalFeatureState? optionalState = null;
-        if (!string.IsNullOrWhiteSpace(optionalStateRaw) &&
-            !string.Equals(optionalStateRaw, "any", StringComparison.OrdinalIgnoreCase)) {
+    private ToolRequestBindingResult<FeaturesListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
             if (!ToolEnumBinders.TryParseOptional(
-                    optionalStateRaw,
-                    OptionalStateByName,
-                    "optional_state",
-                    out optionalState,
-                    out var optionalStateError)) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", optionalStateError ?? "Invalid optional_state value."));
+                    reader.OptionalString("source"),
+                    SourceByName,
+                    "source",
+                    out FeatureInventorySource? sourceOpt,
+                    out var sourceError)) {
+                return ToolRequestBindingResult<FeaturesListRequest>.Failure(sourceError ?? "Invalid source value.");
             }
-        }
+            var source = sourceOpt ?? FeatureInventorySource.Any;
 
-        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
-        var timeoutMs = ResolveTimeoutMs(arguments);
+            var optionalStateRaw = reader.OptionalString("optional_state");
+            WindowsOptionalFeatureState? optionalState = null;
+            if (!string.IsNullOrWhiteSpace(optionalStateRaw) &&
+                !string.Equals(optionalStateRaw, "any", StringComparison.OrdinalIgnoreCase)) {
+                if (!ToolEnumBinders.TryParseOptional(
+                        optionalStateRaw,
+                        OptionalStateByName,
+                        "optional_state",
+                        out optionalState,
+                        out var optionalStateError)) {
+                    return ToolRequestBindingResult<FeaturesListRequest>.Failure(optionalStateError ?? "Invalid optional_state value.");
+                }
+            }
 
+            return ToolRequestBindingResult<FeaturesListRequest>.Success(new FeaturesListRequest(
+                Source: source,
+                NameContains: reader.OptionalString("name_contains"),
+                OptionalState: optionalState,
+                MaxEntries: ResolveBoundedOptionLimit(arguments, "max_entries"),
+                TimeoutMs: ResolveTimeoutMs(arguments)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<FeaturesListRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
         if (!FeatureInventoryQueryExecutor.TryExecute(
                 request: new FeatureInventoryQueryRequest {
-                    Source = source,
-                    NameContains = nameContains,
-                    OptionalState = optionalState,
-                    MaxResults = max,
-                    Timeout = TimeSpan.FromMilliseconds(timeoutMs)
+                    Source = request.Source,
+                    NameContains = request.NameContains,
+                    OptionalState = request.OptionalState,
+                    MaxResults = request.MaxEntries,
+                    Timeout = TimeSpan.FromMilliseconds(request.TimeoutMs)
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -111,9 +133,9 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
             return Task.FromResult(ErrorFromFailure(failure, static x => x.Code, static x => x.Message, defaultMessage: "Feature query failed."));
         }
 
-        var result = queryResult ?? new FeatureInventoryQueryResult { Source = source };
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var result = queryResult ?? new FeatureInventoryQueryResult { Source = request.Source };
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Features,
             viewRowsPath: "features_view",
@@ -122,13 +144,13 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                meta.Add("source", ToolEnumBinders.ToName(source, SourceNames));
-                meta.Add("timeout_ms", timeoutMs);
-                if (!string.IsNullOrWhiteSpace(nameContains)) {
-                    meta.Add("name_contains", nameContains);
+                meta.Add("source", ToolEnumBinders.ToName(request.Source, SourceNames));
+                meta.Add("timeout_ms", request.TimeoutMs);
+                if (!string.IsNullOrWhiteSpace(request.NameContains)) {
+                    meta.Add("name_contains", request.NameContains);
                 }
-                if (optionalState.HasValue) {
-                    meta.Add("optional_state", ToolEnumBinders.ToName(optionalState.Value, OptionalStateNames));
+                if (request.OptionalState.HasValue) {
+                    meta.Add("optional_state", ToolEnumBinders.ToName(request.OptionalState.Value, OptionalStateNames));
                 }
             });
         return Task.FromResult(response);

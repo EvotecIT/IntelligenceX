@@ -51,6 +51,7 @@ internal sealed class ServiceProfile {
     public string WriteAuditSinkMode { get; set; } = "none";
     public string? WriteAuditSinkPath { get; set; }
     public string AuthenticationRuntimePreset { get; set; } = "default";
+    public bool RequireExplicitRoutingMetadata { get; set; }
     public bool RequireAuthenticationRuntime { get; set; }
     public string? RunAsProfilePath { get; set; }
     public string? AuthenticationProfilePath { get; set; }

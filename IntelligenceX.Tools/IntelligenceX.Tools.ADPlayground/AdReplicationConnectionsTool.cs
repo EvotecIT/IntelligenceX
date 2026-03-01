@@ -61,6 +61,19 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             .WithTableViewOptions()
             .NoAdditionalProperties());
 
+    private sealed record AdReplicationConnectionsRequest(
+        IReadOnlyList<string>? Server,
+        IReadOnlyList<string>? ServerMatch,
+        IReadOnlyList<string>? Site,
+        IReadOnlyList<string>? SiteMatch,
+        IReadOnlyList<string>? SourceServer,
+        IReadOnlyList<string>? SourceServerMatch,
+        string Transport,
+        string State,
+        string Origin,
+        bool Summary,
+        string SummaryBy);
+
     private sealed record AdReplicationConnectionsResult(
         string Mode,
         int Scanned,
@@ -83,39 +96,64 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<AdReplicationConnectionsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var transport = NormalizeValue(reader.OptionalString("transport"), "any");
+            var state = NormalizeValue(reader.OptionalString("state"), "any");
+            var origin = NormalizeValue(reader.OptionalString("origin"), "any");
+            var summaryBy = NormalizeValue(reader.OptionalString("summary_by"), "site");
+
+            if (!IsOneOf(transport, "any", "rpc", "smtp")) {
+                return ToolRequestBindingResult<AdReplicationConnectionsRequest>.Failure("transport must be one of: any, rpc, smtp.");
+            }
+            if (!IsOneOf(state, "any", "enabled", "disabled")) {
+                return ToolRequestBindingResult<AdReplicationConnectionsRequest>.Failure("state must be one of: any, enabled, disabled.");
+            }
+            if (!IsOneOf(origin, "any", "kcc", "user_defined")) {
+                return ToolRequestBindingResult<AdReplicationConnectionsRequest>.Failure("origin must be one of: any, kcc, user_defined.");
+            }
+            if (!IsOneOf(summaryBy, "site", "server")) {
+                return ToolRequestBindingResult<AdReplicationConnectionsRequest>.Failure("summary_by must be one of: site, server.");
+            }
+
+            return ToolRequestBindingResult<AdReplicationConnectionsRequest>.Success(new AdReplicationConnectionsRequest(
+                Server: ToNullableList(reader.DistinctStringArray("server")),
+                ServerMatch: ToNullableList(reader.DistinctStringArray("server_match")),
+                Site: ToNullableList(reader.DistinctStringArray("site")),
+                SiteMatch: ToNullableList(reader.DistinctStringArray("site_match")),
+                SourceServer: ToNullableList(reader.DistinctStringArray("source_server")),
+                SourceServerMatch: ToNullableList(reader.DistinctStringArray("source_server_match")),
+                Transport: transport,
+                State: state,
+                Origin: origin,
+                Summary: reader.Boolean("summary", defaultValue: false),
+                SummaryBy: summaryBy));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<AdReplicationConnectionsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var transport = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "transport"), "any");
-        var state = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "state"), "any");
-        var origin = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "origin"), "any");
-        var summary = ToolArgs.GetBoolean(arguments, "summary", defaultValue: false);
-        var summaryBy = NormalizeValue(ToolArgs.GetOptionalTrimmed(arguments, "summary_by"), "site");
-        var maxResults = ResolveMaxResults(arguments);
-
-        if (!IsOneOf(transport, "any", "rpc", "smtp")) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "transport must be one of: any, rpc, smtp."));
-        }
-        if (!IsOneOf(state, "any", "enabled", "disabled")) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "state must be one of: any, enabled, disabled."));
-        }
-        if (!IsOneOf(origin, "any", "kcc", "user_defined")) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "origin must be one of: any, kcc, user_defined."));
-        }
-        if (!IsOneOf(summaryBy, "site", "server")) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "summary_by must be one of: site, server."));
-        }
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments);
 
         if (!TryExecute(
                 action: () => ConnectionsExplorer.Get(new ConnectionsQuery {
-                Server = ReadStringArrayOrNull(arguments?.GetArray("server")),
-                ServerMatch = ReadStringArrayOrNull(arguments?.GetArray("server_match")),
-                Site = ReadStringArrayOrNull(arguments?.GetArray("site")),
-                SiteMatch = ReadStringArrayOrNull(arguments?.GetArray("site_match")),
-                SourceServer = ReadStringArrayOrNull(arguments?.GetArray("source_server")),
-                SourceServerMatch = ReadStringArrayOrNull(arguments?.GetArray("source_server_match")),
-                Transport = ToTransportFilter(transport),
-                State = ToStateFilter(state),
-                Origin = ToOriginFilter(origin)
+                Server = request.Server,
+                ServerMatch = request.ServerMatch,
+                Site = request.Site,
+                SiteMatch = request.SiteMatch,
+                SourceServer = request.SourceServer,
+                SourceServerMatch = request.SourceServerMatch,
+                Transport = ToTransportFilter(request.Transport),
+                State = ToStateFilter(request.State),
+                Origin = ToOriginFilter(request.Origin)
             }),
                 result: out IReadOnlyList<SiteConnectionInfo> filtered,
                 errorResponse: out var errorResponse,
@@ -124,8 +162,8 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             return Task.FromResult(errorResponse!);
         }
 
-        if (summary) {
-            var allSummary = ConnectionsExplorer.GetSummaryBy(filtered, summaryBy);
+        if (request.Summary) {
+            var allSummary = ConnectionsExplorer.GetSummaryBy(filtered, request.SummaryBy);
             var rows = CapRows(allSummary, maxResults, out var scanned, out var truncated);
 
             var summaryResult = new AdReplicationConnectionsResult(
@@ -133,15 +171,15 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 Scanned: scanned,
                 Truncated: truncated,
                 TotalFiltered: filtered.Count,
-                Transport: transport,
-                State: state,
-                Origin: origin,
-                SummaryBy: summaryBy,
+                Transport: request.Transport,
+                State: request.State,
+                Origin: request.Origin,
+                SummaryBy: request.SummaryBy,
                 Connections: Array.Empty<AdReplicationConnectionRow>(),
                 SummaryRows: rows);
 
-            return Task.FromResult(BuildAutoTableResponse(
-                arguments: arguments,
+            return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+                arguments: context.Arguments,
                 model: summaryResult,
                 sourceRows: rows,
                 viewRowsPath: "summary_view",
@@ -151,7 +189,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 scanned: scanned,
                 metaMutate: meta => {
                     meta.Add("mode", "summary");
-                    meta.Add("summary_by", summaryBy);
+                    meta.Add("summary_by", request.SummaryBy);
                     meta.Add("total_filtered", filtered.Count);
                     AddMaxResultsMeta(meta, maxResults);
                 }));
@@ -166,15 +204,15 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             Scanned: scannedConnections,
             Truncated: truncatedConnections,
             TotalFiltered: scannedConnections,
-            Transport: transport,
-            State: state,
-            Origin: origin,
-            SummaryBy: summaryBy,
+            Transport: request.Transport,
+            State: request.State,
+            Origin: request.Origin,
+            SummaryBy: request.SummaryBy,
             Connections: connectionRows,
             SummaryRows: Array.Empty<ConnectionSummary>());
 
-        return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: rawResult,
             sourceRows: connectionRows,
             viewRowsPath: "connections_view",
@@ -270,8 +308,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
             AllowedHoursGrid: new ReadOnlyCollection<IReadOnlyList<bool>>(allowedHoursGrid));
     }
 
-    private static IReadOnlyList<string>? ReadStringArrayOrNull(JsonArray? array) {
-        var values = ToolArgs.ReadDistinctStringArray(array);
+    private static IReadOnlyList<string>? ToNullableList(IReadOnlyList<string> values) {
         return values.Count == 0 ? null : values;
     }
 

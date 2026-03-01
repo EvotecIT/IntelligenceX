@@ -163,12 +163,22 @@ public static partial class ToolPackBootstrap {
             return string.Empty;
         }
 
-        normalized = normalized.Replace("-", string.Empty, StringComparison.Ordinal)
+        var compact = normalized.Replace("-", string.Empty, StringComparison.Ordinal)
             .Replace("_", string.Empty, StringComparison.Ordinal)
             .Replace(" ", string.Empty, StringComparison.Ordinal)
             .Replace(".", string.Empty, StringComparison.Ordinal);
-
-        return normalized;
+        return compact switch {
+            "ad" => "active_directory",
+            "activedirectory" => "active_directory",
+            "adplayground" => "active_directory",
+            "fs" => "filesystem",
+            "eventlogs" => "eventlog",
+            "reviewersetup" => "reviewer_setup",
+            "computerx" => "system",
+            "wsl" => "system",
+            "testimoxpack" => "testimox",
+            _ => compact
+        };
     }
 
     private static void EnsureNoPackIdNormalizationCollision(

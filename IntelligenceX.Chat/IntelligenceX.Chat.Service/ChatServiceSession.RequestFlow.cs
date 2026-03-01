@@ -32,8 +32,8 @@ internal sealed partial class ChatServiceSession {
             var required = ExtractRequiredArguments(parametersJson);
             var parameters = ExtractToolParameters(parametersJson, required);
             var packId = string.Empty;
-            if (_toolPackIdsByToolName.TryGetValue(defs[i].Name, out var registeredPackId)) {
-                packId = NormalizePackId(registeredPackId);
+            if (_toolOrchestrationCatalog.TryGetPackId(defs[i].Name, out var catalogPackId)) {
+                packId = catalogPackId;
             }
 
             string? packName = null;

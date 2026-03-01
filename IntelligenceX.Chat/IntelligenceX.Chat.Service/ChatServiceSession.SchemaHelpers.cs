@@ -234,6 +234,7 @@ internal sealed partial class ChatServiceSession {
         var packId = NormalizePackId(explicitPackId);
         return packId switch {
             "ad" => "active-directory",
+            "active_directory" => "active-directory",
             "eventlog" => "event-log",
             "fs" => "file-system",
             "system" => "system",
@@ -242,7 +243,9 @@ internal sealed partial class ChatServiceSession {
             "testimox" => "testimox",
             "officeimo" => "officeimo",
             "reviewersetup" => "reviewer-setup",
+            "reviewer_setup" => "reviewer-setup",
             "reviewer-setup" => "reviewer-setup",
+            "filesystem" => "file-system",
             _ => "other"
         };
     }

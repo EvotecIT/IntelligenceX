@@ -38,6 +38,12 @@ public static class ToolRegistrySystemExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(SystemToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return SystemToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(SystemToolOptions options) {
         yield return new SystemPackInfoTool(options);
         yield return new SystemInfoTool(options);
         yield return new SystemHardwareIdentityTool(options);

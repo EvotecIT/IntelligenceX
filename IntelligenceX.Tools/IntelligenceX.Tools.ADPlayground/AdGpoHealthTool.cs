@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground;
@@ -15,6 +16,12 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record GpoHealthRequest(
+        string? DomainName,
+        IReadOnlyList<Guid> GpoIds,
+        int RequestedCount,
+        bool Truncated,
+        int MaxResults);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_health",
@@ -43,11 +50,50 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var domainName = ResolveDomainName(arguments);
+    private ToolRequestBindingResult<GpoHealthRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var rawIds = reader.DistinctStringArray("gpo_ids");
+            if (rawIds.Count == 0) {
+                return ToolRequestBindingResult<GpoHealthRequest>.Failure("gpo_ids must contain at least one GUID.");
+            }
+
+            var maxResults = reader.CappedInt32("max_results", Options.MaxResults, 1, Options.MaxResults);
+            var requestedCount = rawIds.Count;
+            var truncated = requestedCount > maxResults;
+            var selectedRawIds = truncated ? rawIds.Take(maxResults).ToArray() : rawIds.ToArray();
+
+            var ids = new List<Guid>(selectedRawIds.Length);
+            for (var i = 0; i < selectedRawIds.Length; i++) {
+                var raw = selectedRawIds[i];
+                if (!Guid.TryParse(raw, out var parsed)) {
+                    return ToolRequestBindingResult<GpoHealthRequest>.Failure($"gpo_ids[{i}] is not a valid GUID.");
+                }
+
+                ids.Add(parsed);
+            }
+
+            return ToolRequestBindingResult<GpoHealthRequest>.Success(new GpoHealthRequest(
+                DomainName: reader.OptionalString("domain_name"),
+                GpoIds: ids,
+                RequestedCount: requestedCount,
+                Truncated: truncated,
+                MaxResults: maxResults));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoHealthRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+        var domainName = ResolveDomainName(request.DomainName);
         if (string.IsNullOrWhiteSpace(domainName)) {
-            return Task.FromResult(ToolResponse.Error(
+            return Task.FromResult(ToolResultV2.Error(
                 "not_configured",
                 "domain_name is required when the current domain cannot be discovered.",
                 hints: new[] {
@@ -57,57 +103,35 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
                 isTransient: false));
         }
 
-        var rawIds = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("gpo_ids"));
-        if (rawIds.Count == 0) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "gpo_ids must contain at least one GUID."));
-        }
-
-        var maxResults = ResolveMaxResults(arguments);
-        var requestedCount = rawIds.Count;
-        var truncated = requestedCount > maxResults;
-        if (rawIds.Count > maxResults) {
-            rawIds = rawIds.GetRange(0, maxResults);
-        }
-
-        var ids = new List<Guid>(rawIds.Count);
-        for (var i = 0; i < rawIds.Count; i++) {
-            var raw = rawIds[i];
-            if (!Guid.TryParse(raw, out var parsed)) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", $"gpo_ids[{i}] is not a valid GUID."));
-            }
-            ids.Add(parsed);
-        }
-
-        var rows = new List<GpoHealthRow>(ids.Count);
-        foreach (var id in ids) {
+        var rows = new List<GpoHealthRow>(request.GpoIds.Count);
+        foreach (var id in request.GpoIds) {
             cancellationToken.ThrowIfCancellationRequested();
             rows.Add(GpoHealthService.EvaluateSingle(domainName, id));
         }
 
         var result = new AdGpoHealthResult(
             DomainName: domainName,
-            RequestedCount: requestedCount,
-            Truncated: truncated,
+            RequestedCount: request.RequestedCount,
+            Truncated: request.Truncated,
             Rows: rows);
 
-        return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "rows_view",
             title: "Active Directory: GPO health (preview)",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
+            baseTruncated: request.Truncated,
             scanned: rows.Count,
             metaMutate: meta => {
-                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
-                meta.Add("requested_count", requestedCount);
+                AddDomainAndMaxResultsMeta(meta, domainName, request.MaxResults);
+                meta.Add("requested_count", request.RequestedCount);
                 meta.Add("processed_count", rows.Count);
             }));
     }
 
-    private static string? ResolveDomainName(JsonObject? arguments) {
-        var explicitDomainName = ToolArgs.GetOptionalTrimmed(arguments, "domain_name");
+    private static string? ResolveDomainName(string? explicitDomainName) {
         if (!string.IsNullOrWhiteSpace(explicitDomainName)) {
             return explicitDomainName;
         }
@@ -117,4 +141,3 @@ public sealed class AdGpoHealthTool : ActiveDirectoryToolBase, ITool {
             : null;
     }
 }
-

@@ -26,6 +26,9 @@ public sealed class ToolDefinition {
     /// <param name="aliasOf">Optional canonical tool name when this definition is an alias.</param>
     /// <param name="authentication">Optional authentication contract for tools that require/declare auth behavior.</param>
     /// <param name="routing">Optional routing contract for host-side orchestration.</param>
+    /// <param name="setup">Optional setup contract for prerequisites and setup hints.</param>
+    /// <param name="handoff">Optional handoff contract for cross-pack argument mappings.</param>
+    /// <param name="recovery">Optional recovery contract for tool-owned resilience behavior.</param>
     public ToolDefinition(
         string name,
         string? description = null,
@@ -37,7 +40,10 @@ public sealed class ToolDefinition {
         IReadOnlyList<ToolAliasDefinition>? aliases = null,
         string? aliasOf = null,
         ToolAuthenticationContract? authentication = null,
-        ToolRoutingContract? routing = null) {
+        ToolRoutingContract? routing = null,
+        ToolSetupContract? setup = null,
+        ToolHandoffContract? handoff = null,
+        ToolRecoveryContract? recovery = null) {
         if (string.IsNullOrWhiteSpace(name)) {
             throw new ArgumentException("Tool name cannot be empty.", nameof(name));
         }
@@ -58,6 +64,12 @@ public sealed class ToolDefinition {
         Authentication = authentication;
         routing?.Validate();
         Routing = routing;
+        setup?.Validate();
+        Setup = setup;
+        handoff?.Validate();
+        Handoff = handoff;
+        recovery?.Validate();
+        Recovery = recovery;
         Aliases = NormalizeAliases(aliases, Name);
         AliasOf = string.IsNullOrWhiteSpace(aliasOf) ? null : aliasOf!.Trim();
     }
@@ -110,6 +122,21 @@ public sealed class ToolDefinition {
     public ToolRoutingContract? Routing { get; }
 
     /// <summary>
+    /// Gets optional setup contract for prerequisites and setup hints.
+    /// </summary>
+    public ToolSetupContract? Setup { get; }
+
+    /// <summary>
+    /// Gets optional handoff contract for cross-pack argument mappings.
+    /// </summary>
+    public ToolHandoffContract? Handoff { get; }
+
+    /// <summary>
+    /// Gets optional recovery contract for tool-owned resilience behavior.
+    /// </summary>
+    public ToolRecoveryContract? Recovery { get; }
+
+    /// <summary>
     /// Gets the canonical tool name when this definition represents an alias.
     /// </summary>
     public string? AliasOf { get; }
@@ -157,7 +184,10 @@ public sealed class ToolDefinition {
             aliases: null,
             aliasOf: CanonicalName,
             authentication: Authentication,
-            routing: Routing);
+            routing: Routing,
+            setup: Setup,
+            handoff: Handoff,
+            recovery: Recovery);
     }
 
     /// <summary>

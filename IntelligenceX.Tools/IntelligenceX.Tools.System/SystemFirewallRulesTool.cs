@@ -14,6 +14,15 @@ namespace IntelligenceX.Tools.System;
 /// Lists active Windows Firewall rules (read-only, capped).
 /// </summary>
 public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
+    private sealed record FirewallRulesRequest(
+        string? NameContains,
+        string? ApplicationContains,
+        FirewallDirection? Direction,
+        FirewallAction? Action,
+        FirewallProtocol? Protocol,
+        FirewallProfileKind? Profile,
+        int MaxEntries);
+
     private const int MaxViewTop = 5000;
 
     private static readonly IReadOnlyDictionary<string, FirewallDirection> DirectionByName =
@@ -92,54 +101,71 @@ public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<FirewallRulesRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("direction"),
+                    DirectionByName,
+                    "direction",
+                    out FirewallDirection? direction,
+                    out var directionError)) {
+                return ToolRequestBindingResult<FirewallRulesRequest>.Failure(directionError ?? "Invalid direction value.");
+            }
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("action"),
+                    ActionByName,
+                    "action",
+                    out FirewallAction? action,
+                    out var actionError)) {
+                return ToolRequestBindingResult<FirewallRulesRequest>.Failure(actionError ?? "Invalid action value.");
+            }
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("protocol"),
+                    ProtocolByName,
+                    "protocol",
+                    out FirewallProtocol? protocol,
+                    out var protocolError)) {
+                return ToolRequestBindingResult<FirewallRulesRequest>.Failure(protocolError ?? "Invalid protocol value.");
+            }
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("profile"),
+                    ProfileByName,
+                    "profile",
+                    out FirewallProfileKind? profile,
+                    out var profileError)) {
+                return ToolRequestBindingResult<FirewallRulesRequest>.Failure(profileError ?? "Invalid profile value.");
+            }
+
+            return ToolRequestBindingResult<FirewallRulesRequest>.Success(new FirewallRulesRequest(
+                NameContains: reader.OptionalString("name_contains"),
+                ApplicationContains: reader.OptionalString("application_contains"),
+                Direction: direction,
+                Action: action,
+                Protocol: protocol,
+                Profile: profile,
+                MaxEntries: ResolveBoundedOptionLimit(arguments, "max_entries")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<FirewallRulesRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var applicationContains = ToolArgs.GetOptionalTrimmed(arguments, "application_contains");
-        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
-
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "direction"),
-                DirectionByName,
-                "direction",
-                out FirewallDirection? direction,
-                out var directionError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", directionError ?? "Invalid direction value."));
-        }
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "action"),
-                ActionByName,
-                "action",
-                out FirewallAction? action,
-                out var actionError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", actionError ?? "Invalid action value."));
-        }
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
-                ProtocolByName,
-                "protocol",
-                out FirewallProtocol? protocol,
-                out var protocolError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", protocolError ?? "Invalid protocol value."));
-        }
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "profile"),
-                ProfileByName,
-                "profile",
-                out FirewallProfileKind? profile,
-                out var profileError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", profileError ?? "Invalid profile value."));
-        }
-
+        var request = context.Request;
         if (!FirewallRuleListQueryExecutor.TryExecute(
                 request: new FirewallRuleListQueryRequest {
-                    NameContains = nameContains,
-                    ApplicationContains = applicationContains,
-                    Direction = direction,
-                    Action = action,
-                    Protocol = protocol,
-                    Profile = profile,
-                    MaxResults = max
+                    NameContains = request.NameContains,
+                    ApplicationContains = request.ApplicationContains,
+                    Direction = request.Direction,
+                    Action = request.Action,
+                    Protocol = request.Protocol,
+                    Profile = request.Profile,
+                    MaxResults = request.MaxEntries
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -148,8 +174,8 @@ public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new FirewallRuleListQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Rules,
             viewRowsPath: "rules_view",
@@ -158,23 +184,23 @@ public sealed class SystemFirewallRulesTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                if (!string.IsNullOrWhiteSpace(nameContains)) {
-                    meta.Add("name_contains", nameContains);
+                if (!string.IsNullOrWhiteSpace(request.NameContains)) {
+                    meta.Add("name_contains", request.NameContains);
                 }
-                if (!string.IsNullOrWhiteSpace(applicationContains)) {
-                    meta.Add("application_contains", applicationContains);
+                if (!string.IsNullOrWhiteSpace(request.ApplicationContains)) {
+                    meta.Add("application_contains", request.ApplicationContains);
                 }
-                if (direction.HasValue) {
-                    meta.Add("direction", ToolEnumBinders.ToName(direction.Value, DirectionNames));
+                if (request.Direction.HasValue) {
+                    meta.Add("direction", ToolEnumBinders.ToName(request.Direction.Value, DirectionNames));
                 }
-                if (action.HasValue) {
-                    meta.Add("action", ToolEnumBinders.ToName(action.Value, ActionNames));
+                if (request.Action.HasValue) {
+                    meta.Add("action", ToolEnumBinders.ToName(request.Action.Value, ActionNames));
                 }
-                if (protocol.HasValue) {
-                    meta.Add("protocol", ToolEnumBinders.ToName(protocol.Value, ProtocolNames));
+                if (request.Protocol.HasValue) {
+                    meta.Add("protocol", ToolEnumBinders.ToName(request.Protocol.Value, ProtocolNames));
                 }
-                if (profile.HasValue) {
-                    meta.Add("profile", ProfileToString(profile.Value));
+                if (request.Profile.HasValue) {
+                    meta.Add("profile", ProfileToString(request.Profile.Value));
                 }
             });
         return Task.FromResult(response);

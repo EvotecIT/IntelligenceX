@@ -1,0 +1,125 @@
+using System;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+
+namespace IntelligenceX.Tools.System;
+
+internal static class SystemToolContracts {
+    private static readonly string[] SetupHintKeys = {
+        "computer_name",
+        "machine_name",
+        "machine_names",
+        "target"
+    };
+
+    private static readonly string[] SystemSignalTokens = {
+        "system",
+        "host",
+        "computer",
+        "process",
+        "services",
+        "firewall",
+        "patch",
+        "wsl"
+    };
+
+    public static ITool Apply(ITool tool) {
+        ArgumentNullException.ThrowIfNull(tool);
+
+        var definition = tool.Definition;
+        var routing = BuildRouting(definition);
+        var setup = BuildSetup(definition, routing);
+        var recovery = BuildRecovery(definition, routing);
+        var updatedDefinition = ToolDefinitionOverlay.WithContracts(
+            definition: definition,
+            routing: routing,
+            setup: setup,
+            recovery: recovery);
+        return ToolDefinitionOverlay.WithDefinition(tool, updatedDefinition);
+    }
+
+    private static ToolRoutingContract BuildRouting(ToolDefinition definition) {
+        var existing = definition.Routing;
+        return new ToolRoutingContract {
+            IsRoutingAware = true,
+            RoutingContractId = string.IsNullOrWhiteSpace(existing?.RoutingContractId)
+                ? ToolRoutingContract.DefaultContractId
+                : existing!.RoutingContractId,
+            RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+            PackId = "system",
+            Role = ResolveRole(definition.Name),
+            DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
+            DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
+            DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : SystemSignalTokens,
+            RequiresSelectionForFallback = existing?.RequiresSelectionForFallback ?? false,
+            FallbackSelectionKeys = existing?.FallbackSelectionKeys ?? Array.Empty<string>(),
+            FallbackHintKeys = existing?.FallbackHintKeys ?? Array.Empty<string>()
+        };
+    }
+
+    private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
+        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Setup;
+        }
+
+        if (definition.Setup is { IsSetupAware: true }) {
+            return definition.Setup;
+        }
+
+        return new ToolSetupContract {
+            IsSetupAware = true,
+            SetupToolName = "system_info",
+            Requirements = new[] {
+                new ToolSetupRequirement {
+                    RequirementId = "system_host_access",
+                    Kind = ToolSetupRequirementKinds.Connectivity,
+                    IsRequired = true,
+                    HintKeys = SetupHintKeys
+                }
+            },
+            SetupHintKeys = SetupHintKeys
+        };
+    }
+
+    private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
+        if (definition.Recovery is { IsRecoveryAware: true }) {
+            return definition.Recovery;
+        }
+
+        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Recovery;
+        }
+
+        var supportsAlternateEngines = definition.Name.StartsWith("system_", StringComparison.OrdinalIgnoreCase);
+        return new ToolRecoveryContract {
+            IsRecoveryAware = true,
+            SupportsTransientRetry = true,
+            MaxRetryAttempts = 1,
+            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed", "access_denied" },
+            SupportsAlternateEngines = supportsAlternateEngines,
+            AlternateEngineIds = supportsAlternateEngines ? new[] { "cim", "wmi" } : Array.Empty<string>()
+        };
+    }
+
+    private static string ResolveRole(string toolName) {
+        if (string.Equals(toolName, "system_pack_info", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RolePackInfo;
+        }
+
+        if (toolName.IndexOf("_list", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_summary", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_status", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_posture", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_compliance", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_info", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_identity", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_details", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_configuration", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_updates", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.StartsWith("wsl_", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleDiagnostic;
+        }
+
+        return ToolRoutingTaxonomy.RoleOperational;
+    }
+}

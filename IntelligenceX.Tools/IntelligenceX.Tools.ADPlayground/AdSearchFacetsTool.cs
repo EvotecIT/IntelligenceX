@@ -14,6 +14,25 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Runs a read-only LDAP search and returns useful facet counts (read-only).
 /// </summary>
 public sealed class AdSearchFacetsTool : ActiveDirectoryToolBase, ITool {
+    private sealed record SearchFacetsRequest(
+        string? LdapFilter,
+        string? Kind,
+        string? SearchText,
+        string? Scope,
+        int PageSize,
+        int MaxPages,
+        int SampleSize,
+        int MaxFacetValues,
+        int MaxValuesPerAttribute,
+        bool IncludeSamples,
+        bool FacetByContainer,
+        bool FacetByEnabled,
+        string? ContainerFacetMode,
+        int ContainerOuDepth,
+        IReadOnlyList<string> UacFlags,
+        IReadOnlyList<int> PasswordAgeBucketsDays,
+        int TimeoutMs);
+
     private const int DefaultPageSize = 500;
     private const int MaxPageSizeCap = 5000;
     private const int DefaultMaxPages = 3;
@@ -98,75 +117,108 @@ public sealed class AdSearchFacetsTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<SearchFacetsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var requestedPageSize = reader.OptionalInt64("page_size");
+            var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0
+                ? (int)Math.Min(requestedPageSize.Value, MaxPageSizeCap)
+                : DefaultPageSize;
+
+            var requestedMaxPages = reader.OptionalInt64("max_pages");
+            var maxPages = requestedMaxPages.HasValue && requestedMaxPages.Value > 0
+                ? (int)Math.Min(requestedMaxPages.Value, MaxPagesCap)
+                : DefaultMaxPages;
+
+            var requestedSampleSize = reader.OptionalInt64("sample_size");
+            var sampleSize = requestedSampleSize.HasValue && requestedSampleSize.Value > 0
+                ? (int)Math.Min(requestedSampleSize.Value, MaxSampleSize)
+                : DefaultSampleSize;
+
+            var requestedMaxFacet = reader.OptionalInt64("max_facet_values");
+            var maxFacetValues = requestedMaxFacet.HasValue && requestedMaxFacet.Value > 0
+                ? (int)Math.Min(requestedMaxFacet.Value, MaxFacetValuesCap)
+                : DefaultMaxFacetValues;
+
+            var requestedContainerOuDepth = reader.OptionalInt64("container_ou_depth");
+            var containerOuDepth = requestedContainerOuDepth.HasValue
+                ? (int)Math.Min(Math.Max(requestedContainerOuDepth.Value, 1), 20)
+                : 1;
+
+            var uacFlags = reader.DistinctStringArray("facet_uac_flags");
+            if (uacFlags.Count == 0) {
+                uacFlags = new[] {
+                    "ACCOUNTDISABLE",
+                    "DONT_EXPIRE_PASSWORD",
+                    "PASSWD_NOTREQD",
+                    "DONT_REQ_PREAUTH",
+                    "TRUSTED_FOR_DELEGATION",
+                    "TRUSTED_TO_AUTH_FOR_DELEGATION"
+                };
+            }
+
+            var pwdBuckets = reader.PositiveInt32ArrayCapped("facet_pwd_age_buckets_days", maxInclusive: 3650)
+                .Distinct()
+                .Where(static x => x > 0)
+                .OrderBy(static x => x)
+                .ToArray();
+            if (pwdBuckets.Length == 0) {
+                pwdBuckets = DefaultPwdAgeBucketsDays;
+            }
+
+            var requestedTimeoutMs = reader.OptionalInt64("timeout_ms");
+            var timeoutMs = requestedTimeoutMs.HasValue
+                ? (int)Math.Min(Math.Max(requestedTimeoutMs.Value, 200), 120_000)
+                : 10_000;
+
+            return ToolRequestBindingResult<SearchFacetsRequest>.Success(new SearchFacetsRequest(
+                LdapFilter: reader.OptionalString("ldap_filter"),
+                Kind: reader.OptionalString("kind"),
+                SearchText: reader.OptionalString("search_text"),
+                Scope: reader.OptionalString("scope"),
+                PageSize: pageSize,
+                MaxPages: maxPages,
+                SampleSize: sampleSize,
+                MaxFacetValues: maxFacetValues,
+                MaxValuesPerAttribute: reader.CappedInt32(
+                    "max_values_per_attribute",
+                    LdapQueryPolicy.DefaultMaxValuesPerAttribute,
+                    1,
+                    LdapQueryPolicy.MaxValuesPerAttributeCap),
+                IncludeSamples: reader.Boolean("include_samples", true),
+                FacetByContainer: reader.Boolean("facet_by_container", true),
+                FacetByEnabled: reader.Boolean("facet_by_enabled", true),
+                ContainerFacetMode: reader.OptionalString("container_facet_mode"),
+                ContainerOuDepth: containerOuDepth,
+                UacFlags: uacFlags,
+                PasswordAgeBucketsDays: pwdBuckets,
+                TimeoutMs: timeoutMs));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SearchFacetsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var timeout = TimeSpan.FromMilliseconds(request.TimeoutMs);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
-        var requestedPageSize = arguments?.GetInt64("page_size");
-        var pageSize = requestedPageSize.HasValue && requestedPageSize.Value > 0
-            ? (int)Math.Min(requestedPageSize.Value, MaxPageSizeCap)
-            : DefaultPageSize;
-
-        var requestedMaxPages = arguments?.GetInt64("max_pages");
-        var maxPages = requestedMaxPages.HasValue && requestedMaxPages.Value > 0
-            ? (int)Math.Min(requestedMaxPages.Value, MaxPagesCap)
-            : DefaultMaxPages;
-
-        var requestedSampleSize = arguments?.GetInt64("sample_size");
-        var sampleSize = requestedSampleSize.HasValue && requestedSampleSize.Value > 0
-            ? (int)Math.Min(requestedSampleSize.Value, MaxSampleSize)
-            : DefaultSampleSize;
-
-        var requestedMaxFacet = arguments?.GetInt64("max_facet_values");
-        var maxFacetValues = requestedMaxFacet.HasValue && requestedMaxFacet.Value > 0
-            ? (int)Math.Min(requestedMaxFacet.Value, MaxFacetValuesCap)
-            : DefaultMaxFacetValues;
-
-        var maxValuesPerAttribute = ToolArgs.GetCappedInt32(
-            arguments,
-            "max_values_per_attribute",
-            LdapQueryPolicy.DefaultMaxValuesPerAttribute,
-            1,
-            LdapQueryPolicy.MaxValuesPerAttributeCap);
-
-        var includeSamples = ToolArgs.GetBoolean(arguments, "include_samples", true);
-        var facetByContainer = ToolArgs.GetBoolean(arguments, "facet_by_container", true);
-        var facetByEnabled = ToolArgs.GetBoolean(arguments, "facet_by_enabled", true);
-
-        var containerFacetMode = ContainerFacetHelper.ParseMode(ToolArgs.GetOptionalTrimmed(arguments, "container_facet_mode"));
-        var containerOuDepth = (int)Math.Min(Math.Max(arguments?.GetInt64("container_ou_depth") ?? 1, 1), 20);
-
-        var uacFlags = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("facet_uac_flags"));
-        if (uacFlags.Count == 0) {
-            uacFlags.AddRange(new[] {
-                "ACCOUNTDISABLE",
-                "DONT_EXPIRE_PASSWORD",
-                "PASSWD_NOTREQD",
-                "DONT_REQ_PREAUTH",
-                "TRUSTED_FOR_DELEGATION",
-                "TRUSTED_TO_AUTH_FOR_DELEGATION"
-            });
-        }
-
-        var pwdBuckets = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("facet_pwd_age_buckets_days"), maxInclusive: 3650);
-        if (pwdBuckets.Count == 0) {
-            pwdBuckets.AddRange(DefaultPwdAgeBucketsDays);
-        }
-        pwdBuckets = pwdBuckets.Distinct().Where(static x => x > 0).OrderBy(static x => x).ToList();
-
-        var timeoutMs = (int)Math.Min(Math.Max(arguments?.GetInt64("timeout_ms") ?? 10_000, 200), 120_000);
-        var timeout = TimeSpan.FromMilliseconds(timeoutMs);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-
-        var scope = LdapQueryPolicy.ParseScope(ToolArgs.GetOptionalTrimmed(arguments, "scope"));
-        var ldapFilter = ToolArgs.GetOptionalTrimmed(arguments, "ldap_filter") ?? string.Empty;
-        var kindArg = ToolArgs.GetOptionalTrimmed(arguments, "kind");
+        var scope = LdapQueryPolicy.ParseScope(request.Scope);
+        var ldapFilter = request.LdapFilter ?? string.Empty;
+        var kindArg = request.Kind;
         var kind = string.IsNullOrWhiteSpace(kindArg) ? "user" : kindArg.Trim().ToLowerInvariant();
-        var searchText = (ToolArgs.GetOptionalTrimmed(arguments, "search_text") ?? string.Empty).Trim();
+        var searchText = (request.SearchText ?? string.Empty).Trim();
+        var containerFacetMode = ContainerFacetHelper.ParseMode(request.ContainerFacetMode);
 
         var attributes = ResolveAttributes(
-            arguments: arguments,
+            arguments: context.Arguments,
             attributesKey: "attributes",
             allowedAttributes: AllowedAttributes,
             defaultAttributes: DefaultAttributes,
@@ -181,19 +233,19 @@ public sealed class AdSearchFacetsTool : ActiveDirectoryToolBase, ITool {
                     SearchText = searchText,
                     Scope = scope,
                     Attributes = attributes,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
-                    PageSize = pageSize,
-                    MaxPages = maxPages,
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
+                    PageSize = request.PageSize,
+                    MaxPages = request.MaxPages,
                     MaxResults = maxResults,
-                    MaxFacetValues = maxFacetValues,
-                    FacetByContainer = facetByContainer,
+                    MaxFacetValues = request.MaxFacetValues,
+                    FacetByContainer = request.FacetByContainer,
                     ContainerFacetMode = containerFacetMode,
-                    ContainerOuDepth = containerOuDepth,
-                    FacetByEnabled = facetByEnabled,
-                    UacFlags = uacFlags,
-                    PasswordAgeBucketsDays = pwdBuckets,
-                    IncludeSamples = includeSamples,
-                    SampleSize = sampleSize,
+                    ContainerOuDepth = request.ContainerOuDepth,
+                    FacetByEnabled = request.FacetByEnabled,
+                    UacFlags = request.UacFlags,
+                    PasswordAgeBucketsDays = request.PasswordAgeBucketsDays,
+                    IncludeSamples = request.IncludeSamples,
+                    SampleSize = request.SampleSize,
                     Timeout = timeout
                 },
                 result: out var queryResult,
@@ -211,7 +263,7 @@ public sealed class AdSearchFacetsTool : ActiveDirectoryToolBase, ITool {
 
         var meta = ToolOutputHints.Meta(count: 1, truncated: queryResult.IsTruncated, scanned: null, previewCount: facts.Length);
 
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: queryResult,
             title: "Active Directory: Search Facets",
             facts: facts,
@@ -222,4 +274,3 @@ public sealed class AdSearchFacetsTool : ActiveDirectoryToolBase, ITool {
             render: null));
     }
 }
-
