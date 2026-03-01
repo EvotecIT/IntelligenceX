@@ -7,9 +7,15 @@ layout: page
 meta.raw_html: true
 ---
 
-Download IntelligenceX release assets directly from this page. Source of truth remains [GitHub Releases](https://github.com/EvotecIT/IntelligenceX/releases).
+<p>Download IntelligenceX release assets directly from this page. Source of truth remains <a href="https://github.com/EvotecIT/IntelligenceX/releases">GitHub Releases</a>.</p>
 
-If the cards below show `No releases found`, no desktop artifacts have been published yet. In the meantime, start with [Getting Started](/docs/getting-started/) and project docs.
+<p>If the cards below show <code>No releases found</code>, no desktop artifacts have been published yet. In the meantime, start with <a href="/docs/getting-started/">Getting Started</a> and project docs.</p>
+
+<div class="ix-release-links" aria-label="Release resources">
+  <a href="/changelog/">Changelog</a>
+  <a href="/docs/getting-started/">Install Guide</a>
+  <a href="/docs/">Documentation</a>
+</div>
 
 <div class="ix-release-cta">
 {{< release-button placement="downloads.chat_stable" >}}
@@ -33,5 +39,3 @@ If the cards below show `No releases found`, no desktop artifacts have been publ
   <p>Cross-product view for releases that publish more than one package in the same tag.</p>
 {{< release-buttons placement="downloads.all_products" >}}
 </section>
-
-{{< release-changelog placement="downloads.timeline" >}}
