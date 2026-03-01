@@ -29,6 +29,8 @@ internal sealed partial class ChatServiceSession {
         bool HasPreferredVisualOverride,
         string PreferredVisualType,
         string PreferredVisualSource,
+        bool HasPreferredVisualPriority,
+        int PreferredVisualPriority,
         bool HasMaxNewVisualsOverride,
         int MaxNewVisuals);
     private const int PreferredVisualSourceScoreRenderHint = 300;
@@ -265,6 +267,9 @@ internal sealed partial class ChatServiceSession {
         var preferredVisualSourceText = visualPolicy.HasPreferredVisualOverride
             ? visualPolicy.PreferredVisualSource
             : "none";
+        var preferredVisualPriorityText = visualPolicy.HasPreferredVisualPriority
+            ? visualPolicy.PreferredVisualPriority.ToString(CultureInfo.InvariantCulture)
+            : "n/a";
         var maxNewVisualsText = visualPolicy.HasMaxNewVisualsOverride
             ? visualPolicy.MaxNewVisuals.ToString()
             : visualPolicy.AllowNewVisuals
@@ -291,6 +296,7 @@ internal sealed partial class ChatServiceSession {
             request_has_visual_contract: {{requestHasVisualContractText}}
             preferred_visual: {{preferredVisualTypeText}}
             preferred_visual_source: {{preferredVisualSourceText}}
+            preferred_visual_priority: {{preferredVisualPriorityText}}
             max_new_visuals: {{maxNewVisualsText}}
 
             User request:
@@ -337,6 +343,8 @@ internal sealed partial class ChatServiceSession {
                 ? inferredPreferredVisualTypeFromRequest
                 : string.Empty;
         var preferredVisualSource = hasPreferredVisualDirectiveFromRequest ? "request" : "none";
+        var hasPreferredVisualPriority = false;
+        var preferredVisualPriority = 0;
         var hasExplicitAutoPreferredVisualOverride = hasPreferredVisualOverride
             && string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var requestHasVisualContract = requestHasProactiveVisualizationMarker || requestHasVisualContractSignal || hasStructuredOverrides;
@@ -355,10 +363,16 @@ internal sealed partial class ChatServiceSession {
         if (baseAllowNewVisuals
             && requestHasVisualContract
             && !hasPreferredVisualDirectiveFromRequest
-            && TryResolvePreferredVisualTypeFromToolOutputs(toolOutputs, out var inferredPreferredVisualTypeFromToolOutputs)
+            && TryResolvePreferredVisualTypeFromToolOutputs(
+                toolOutputs,
+                out var inferredPreferredVisualTypeFromToolOutputs,
+                out var inferredPreferredVisualPriorityFromToolOutputs,
+                out var hasInferredPreferredVisualPriorityFromToolOutputs)
             && !string.IsNullOrWhiteSpace(inferredPreferredVisualTypeFromToolOutputs)) {
             effectivePreferredVisualType = inferredPreferredVisualTypeFromToolOutputs;
             preferredVisualSource = "tool_outputs";
+            hasPreferredVisualPriority = hasInferredPreferredVisualPriorityFromToolOutputs;
+            preferredVisualPriority = inferredPreferredVisualPriorityFromToolOutputs;
             hasInferredPreferredVisualTypeFromToolOutputs = true;
         }
 
@@ -391,35 +405,51 @@ internal sealed partial class ChatServiceSession {
             HasPreferredVisualOverride: hasPreferredVisualDirective,
             PreferredVisualType: effectivePreferredVisualType,
             PreferredVisualSource: preferredVisualSource,
+            HasPreferredVisualPriority: hasPreferredVisualPriority,
+            PreferredVisualPriority: preferredVisualPriority,
             HasMaxNewVisualsOverride: hasMaxNewVisualsOverride,
             MaxNewVisuals: maxNewVisuals);
     }
 
     private static bool TryResolvePreferredVisualTypeFromToolOutputs(
         IReadOnlyList<ToolOutputDto>? toolOutputs,
-        out string preferredVisualType) {
+        out string preferredVisualType,
+        out int preferredVisualPriority,
+        out bool hasPreferredVisualPriority) {
         preferredVisualType = string.Empty;
+        preferredVisualPriority = 0;
+        hasPreferredVisualPriority = false;
         if (toolOutputs is null || toolOutputs.Count == 0) {
             return false;
         }
 
         var bestSourceScore = int.MinValue;
         var bestRecencyScore = -1;
+        var bestPreferredVisualPriority = 0;
+        var bestHasPreferredVisualPriority = false;
         for (var i = 0; i < toolOutputs.Count; i++) {
             var output = toolOutputs[i];
             if (output is null) {
                 continue;
             }
 
-            if (TryResolvePreferredVisualTypeFromToolOutputRenderHints(output.RenderJson, out var preferredVisualFromRenderHints)
+            if (TryResolvePreferredVisualTypeFromToolOutputRenderHints(
+                    output.RenderJson,
+                    out var preferredVisualFromRenderHints,
+                    out var preferredVisualPriorityFromRenderHints,
+                    out var hasPreferredVisualPriorityFromRenderHints)
                 && !string.IsNullOrWhiteSpace(preferredVisualFromRenderHints)
                 && TrySetPreferredVisualTypeCandidate(
                     candidateVisualType: preferredVisualFromRenderHints,
+                    candidatePriority: preferredVisualPriorityFromRenderHints,
+                    hasCandidatePriority: hasPreferredVisualPriorityFromRenderHints,
                     sourceScore: PreferredVisualSourceScoreRenderHint,
                     recencyIndex: i,
                     ref preferredVisualType,
                     ref bestSourceScore,
-                    ref bestRecencyScore)) {
+                    ref bestRecencyScore,
+                    ref bestPreferredVisualPriority,
+                    ref bestHasPreferredVisualPriority)) {
                 continue;
             }
 
@@ -427,11 +457,15 @@ internal sealed partial class ChatServiceSession {
                 && !string.IsNullOrWhiteSpace(preferredVisualFromSummary)
                 && TrySetPreferredVisualTypeCandidate(
                     candidateVisualType: preferredVisualFromSummary,
+                    candidatePriority: 0,
+                    hasCandidatePriority: false,
                     sourceScore: PreferredVisualSourceScoreSummaryMarkdown,
                     recencyIndex: i,
                     ref preferredVisualType,
                     ref bestSourceScore,
-                    ref bestRecencyScore)) {
+                    ref bestRecencyScore,
+                    ref bestPreferredVisualPriority,
+                    ref bestHasPreferredVisualPriority)) {
                 continue;
             }
 
@@ -439,24 +473,34 @@ internal sealed partial class ChatServiceSession {
                 && !string.IsNullOrWhiteSpace(preferredVisualFromOutput)) {
                 TrySetPreferredVisualTypeCandidate(
                     candidateVisualType: preferredVisualFromOutput,
+                    candidatePriority: 0,
+                    hasCandidatePriority: false,
                     sourceScore: PreferredVisualSourceScoreOutputPayload,
                     recencyIndex: i,
                     ref preferredVisualType,
                     ref bestSourceScore,
-                    ref bestRecencyScore);
+                    ref bestRecencyScore,
+                    ref bestPreferredVisualPriority,
+                    ref bestHasPreferredVisualPriority);
             }
         }
 
+        preferredVisualPriority = bestPreferredVisualPriority;
+        hasPreferredVisualPriority = bestHasPreferredVisualPriority;
         return !string.IsNullOrWhiteSpace(preferredVisualType);
     }
 
     private static bool TrySetPreferredVisualTypeCandidate(
         string candidateVisualType,
+        int candidatePriority,
+        bool hasCandidatePriority,
         int sourceScore,
         int recencyIndex,
         ref string preferredVisualType,
         ref int bestSourceScore,
-        ref int bestRecencyScore) {
+        ref int bestRecencyScore,
+        ref int bestPreferredVisualPriority,
+        ref bool bestHasPreferredVisualPriority) {
         var normalizedVisualType = (candidateVisualType ?? string.Empty).Trim();
         if (normalizedVisualType.Length == 0) {
             return false;
@@ -474,13 +518,19 @@ internal sealed partial class ChatServiceSession {
         preferredVisualType = normalizedVisualType;
         bestSourceScore = sourceScore;
         bestRecencyScore = normalizedRecency;
+        bestPreferredVisualPriority = candidatePriority;
+        bestHasPreferredVisualPriority = hasCandidatePriority;
         return true;
     }
 
     private static bool TryResolvePreferredVisualTypeFromToolOutputRenderHints(
         string? renderJson,
-        out string preferredVisualType) {
+        out string preferredVisualType,
+        out int preferredVisualPriority,
+        out bool hasPreferredVisualPriority) {
         preferredVisualType = string.Empty;
+        preferredVisualPriority = 0;
+        hasPreferredVisualPriority = false;
         var payload = (renderJson ?? string.Empty).Trim();
         if (payload.Length < 2) {
             return false;
@@ -489,7 +539,11 @@ internal sealed partial class ChatServiceSession {
         try {
             using var document = JsonDocument.Parse(payload);
             if (document.RootElement.ValueKind == JsonValueKind.Object) {
-                return TryResolvePreferredVisualTypeFromRenderHint(document.RootElement, out preferredVisualType);
+                return TryResolvePreferredVisualTypeFromRenderHint(
+                    document.RootElement,
+                    out preferredVisualType,
+                    out preferredVisualPriority,
+                    out hasPreferredVisualPriority);
             }
 
             if (document.RootElement.ValueKind != JsonValueKind.Array) {
@@ -498,12 +552,18 @@ internal sealed partial class ChatServiceSession {
 
             var bestPriority = int.MinValue;
             var bestVisualType = string.Empty;
+            var bestVisualHintPriority = 0;
+            var hasBestVisualHintPriority = false;
             foreach (var hint in document.RootElement.EnumerateArray()) {
                 if (hint.ValueKind != JsonValueKind.Object) {
                     continue;
                 }
 
-                if (!TryResolvePreferredVisualTypeFromRenderHint(hint, out var candidateVisualType)
+                if (!TryResolvePreferredVisualTypeFromRenderHint(
+                        hint,
+                        out var candidateVisualType,
+                        out var candidateVisualHintPriority,
+                        out var hasCandidateVisualHintPriority)
                     || string.IsNullOrWhiteSpace(candidateVisualType)) {
                     continue;
                 }
@@ -515,6 +575,8 @@ internal sealed partial class ChatServiceSession {
 
                 bestPriority = candidatePriority;
                 bestVisualType = candidateVisualType;
+                bestVisualHintPriority = candidateVisualHintPriority;
+                hasBestVisualHintPriority = hasCandidateVisualHintPriority;
             }
 
             if (string.IsNullOrWhiteSpace(bestVisualType)) {
@@ -522,9 +584,13 @@ internal sealed partial class ChatServiceSession {
             }
 
             preferredVisualType = bestVisualType;
+            preferredVisualPriority = bestVisualHintPriority;
+            hasPreferredVisualPriority = hasBestVisualHintPriority;
             return true;
         } catch (JsonException) {
             preferredVisualType = string.Empty;
+            preferredVisualPriority = 0;
+            hasPreferredVisualPriority = false;
             return false;
         }
     }
@@ -549,8 +615,12 @@ internal sealed partial class ChatServiceSession {
 
     private static bool TryResolvePreferredVisualTypeFromRenderHint(
         JsonElement renderHint,
-        out string preferredVisualType) {
+        out string preferredVisualType,
+        out int preferredVisualPriority,
+        out bool hasPreferredVisualPriority) {
         preferredVisualType = string.Empty;
+        preferredVisualPriority = 0;
+        hasPreferredVisualPriority = false;
         if (renderHint.ValueKind != JsonValueKind.Object) {
             return false;
         }
@@ -560,6 +630,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (TryResolvePreferredVisualTypeToken(kind.AsSpan(), out preferredVisualType)) {
+            preferredVisualPriority = ResolveRenderHintPriority(renderHint, preferredVisualType);
+            hasPreferredVisualPriority = true;
             return true;
         }
 
@@ -571,7 +643,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return TryResolvePreferredVisualTypeToken(language.AsSpan(), out preferredVisualType);
+        if (!TryResolvePreferredVisualTypeToken(language.AsSpan(), out preferredVisualType)) {
+            return false;
+        }
+
+        preferredVisualPriority = ResolveRenderHintPriority(renderHint, preferredVisualType);
+        hasPreferredVisualPriority = true;
+        return true;
     }
 
     private static bool TryReadJsonStringPropertyIgnoreCase(
