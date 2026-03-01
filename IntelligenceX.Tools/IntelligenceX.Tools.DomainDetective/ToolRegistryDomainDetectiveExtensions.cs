@@ -30,6 +30,12 @@ public static class ToolRegistryDomainDetectiveExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(DomainDetectiveToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return DomainDetectiveToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(DomainDetectiveToolOptions options) {
         yield return new DomainDetectivePackInfoTool(options);
         yield return new DomainDetectiveChecksCatalogTool(options);
         yield return new DomainDetectiveDomainSummaryTool(options);

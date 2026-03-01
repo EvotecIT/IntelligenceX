@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.CompatibleHttp;
@@ -23,6 +24,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly FieldInfo RegistryField =
         typeof(ChatServiceSession).GetField("_registry", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_registry not found.");
+    private static readonly FieldInfo ToolOrchestrationCatalogField =
+        typeof(ChatServiceSession).GetField("_toolOrchestrationCatalog", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolOrchestrationCatalog not found.");
 
     private static readonly MethodInfo RunChatOnCurrentThreadAsyncMethod =
         typeof(ChatServiceSession).GetMethod("RunChatOnCurrentThreadAsync", BindingFlags.NonPublic | BindingFlags.Instance)
@@ -50,7 +54,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 var step = arguments?.GetString("step") ?? "unknown";
                 return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
             }));
-        RegistryField.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,
@@ -193,7 +197,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                                               "\"ok\":true," +
                                               "\"summary_markdown\":\"Cross-DC matrix: AD1 healthy, AD2 has Event 41 signal.\"" +
                                               "}")));
-        RegistryField.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,
@@ -319,7 +323,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                                               "\"ok\":true," +
                                               "\"summary_markdown\":\"Contact admin@contoso.local for cross-DC drill-down.\"" +
                                               "}")));
-        RegistryField.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,
@@ -457,7 +461,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                                               "\"ok\":true," +
                                               "\"summary_markdown\":\"Cross-DC matrix generated from AD0/AD1/AD2 sweep.\"" +
                                               "}")));
-        RegistryField.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,
@@ -604,7 +608,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         registry.Register(new RoundTripStubTool(
             "mock_round_tool",
             static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"Inventory ready.\"}")));
-        RegistryField.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,
@@ -730,7 +734,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         registry.Register(new RoundTripStubTool("ad_pack_info", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"ad pack ready\"}")));
         registry.Register(new RoundTripStubTool("ad_environment_discover", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"scope discovered\"}")));
         registry.Register(new RoundTripStubTool("ad_search", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"search complete\"}")));
-        RegistryField.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,
@@ -893,7 +897,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         registry.Register(new RoundTripStubTool("ad_pack_info", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"ad pack ready\"}")));
         registry.Register(new RoundTripStubTool("ad_environment_discover", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"scope discovered\"}")));
         registry.Register(new RoundTripStubTool("ad_search", static (_, _) => Task.FromResult("{\"ok\":true,\"summary_markdown\":\"search complete\"}")));
-        RegistryField.SetValue(session, registry);
+        SetSessionRegistry(session, registry);
 
         var clientOptions = new IntelligenceXClientOptions {
             TransportKind = OpenAITransportKind.CompatibleHttp,
@@ -967,5 +971,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("ad_search", resultMessage2.Tools.Calls[0].Name);
         Assert.Equal("call_ad_search_turn2", resultMessage2.Tools.Calls[0].CallId);
         Assert.DoesNotContain(resultMessage2.Tools.Calls, call => call.CallId.StartsWith("host_pack_preflight_", StringComparison.Ordinal));
+    }
+
+    private static void SetSessionRegistry(ChatServiceSession session, ToolRegistry registry) {
+        RegistryField.SetValue(session, registry);
+        var catalog = ToolOrchestrationCatalog.Build(registry.GetDefinitions());
+        ToolOrchestrationCatalogField.SetValue(session, catalog);
     }
 }

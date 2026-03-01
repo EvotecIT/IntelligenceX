@@ -110,12 +110,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldEmitInterimResultSnapshotMethod =
         typeof(ChatServiceSession).GetMethod("ShouldEmitInterimResultSnapshot", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldEmitInterimResultSnapshot not found.");
-    private static readonly MethodInfo RebuildPackCapabilityFallbackContractsMethod =
-        typeof(ChatServiceSession).GetMethod("RebuildPackCapabilityFallbackContracts", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("RebuildPackCapabilityFallbackContracts not found.");
-    private static readonly MethodInfo TryBuildPackCapabilityFallbackToolCallMethod =
-        typeof(ChatServiceSession).GetMethod("TryBuildPackCapabilityFallbackToolCall", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("TryBuildPackCapabilityFallbackToolCall not found.");
     private static readonly MethodInfo BuildToolProgressRecoveryPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolProgressRecoveryPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolProgressRecoveryPrompt not found.");

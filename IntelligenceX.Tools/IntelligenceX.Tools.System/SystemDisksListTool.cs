@@ -13,6 +13,13 @@ namespace IntelligenceX.Tools.System;
 /// Lists physical disks (read-only, capped).
 /// </summary>
 public sealed class SystemDisksListTool : SystemToolBase, ITool {
+    private sealed record DisksListRequest(
+        string? ModelContains,
+        string? InterfaceContains,
+        string? MediaContains,
+        long? MinSizeBytes,
+        int MaxEntries);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -37,29 +44,40 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var modelContains = ToolArgs.GetOptionalTrimmed(arguments, "model_contains");
-        var interfaceContains = ToolArgs.GetOptionalTrimmed(arguments, "interface_contains");
-        var mediaContains = ToolArgs.GetOptionalTrimmed(arguments, "media_contains");
-        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
-
-        var minSizeArg = arguments?.GetInt64("min_size_bytes");
-        long? minSize = null;
-        if (minSizeArg.HasValue) {
-            if (minSizeArg.Value < 0) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "min_size_bytes must be greater than or equal to zero."));
+    private ToolRequestBindingResult<DisksListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var minSize = reader.OptionalInt64("min_size_bytes");
+            if (minSize.HasValue && minSize.Value < 0) {
+                return ToolRequestBindingResult<DisksListRequest>.Failure(
+                    "min_size_bytes must be greater than or equal to zero.");
             }
-            minSize = minSizeArg.Value;
-        }
 
+            return ToolRequestBindingResult<DisksListRequest>.Success(new DisksListRequest(
+                ModelContains: reader.OptionalString("model_contains"),
+                InterfaceContains: reader.OptionalString("interface_contains"),
+                MediaContains: reader.OptionalString("media_contains"),
+                MinSizeBytes: minSize,
+                MaxEntries: ResolveBoundedOptionLimit(arguments, "max_entries")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DisksListRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
         if (!DiskInventoryQueryExecutor.TryExecute(
                 request: new DiskInventoryQueryRequest {
-                    ModelContains = modelContains,
-                    InterfaceContains = interfaceContains,
-                    MediaContains = mediaContains,
-                    MinSizeBytes = minSize,
-                    MaxResults = max
+                    ModelContains = request.ModelContains,
+                    InterfaceContains = request.InterfaceContains,
+                    MediaContains = request.MediaContains,
+                    MinSizeBytes = request.MinSizeBytes,
+                    MaxResults = request.MaxEntries
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -68,8 +86,8 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new DiskInventoryQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Disks,
             viewRowsPath: "disks_view",
@@ -78,20 +96,19 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                if (!string.IsNullOrWhiteSpace(modelContains)) {
-                    meta.Add("model_contains", modelContains);
+                if (!string.IsNullOrWhiteSpace(request.ModelContains)) {
+                    meta.Add("model_contains", request.ModelContains);
                 }
-                if (!string.IsNullOrWhiteSpace(interfaceContains)) {
-                    meta.Add("interface_contains", interfaceContains);
+                if (!string.IsNullOrWhiteSpace(request.InterfaceContains)) {
+                    meta.Add("interface_contains", request.InterfaceContains);
                 }
-                if (!string.IsNullOrWhiteSpace(mediaContains)) {
-                    meta.Add("media_contains", mediaContains);
+                if (!string.IsNullOrWhiteSpace(request.MediaContains)) {
+                    meta.Add("media_contains", request.MediaContains);
                 }
-                if (minSize.HasValue) {
-                    meta.Add("min_size_bytes", minSize.Value);
+                if (request.MinSizeBytes.HasValue) {
+                    meta.Add("min_size_bytes", request.MinSizeBytes.Value);
                 }
             });
         return Task.FromResult(response);
     }
 }
-

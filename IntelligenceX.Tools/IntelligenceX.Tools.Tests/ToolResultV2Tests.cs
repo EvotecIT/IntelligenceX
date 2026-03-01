@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.Common;
@@ -6,6 +7,8 @@ using Xunit;
 namespace IntelligenceX.Tools.Tests;
 
 public sealed class ToolResultV2Tests {
+    private sealed record Row(string Path, string Type);
+
     [Fact]
     public void OkWriteActionModel_ShouldNotMutateCallerMetaObject() {
         var meta = new JsonObject()
@@ -30,5 +33,30 @@ public sealed class ToolResultV2Tests {
         Assert.Equal("demo_action", responseMeta.GetProperty("action").GetString());
         Assert.True(responseMeta.GetProperty("write_applied").GetBoolean());
         Assert.Equal("abc-123", responseMeta.GetProperty("trace_id").GetString());
+    }
+
+    [Fact]
+    public void OkAutoTableResponse_ShouldEmitViewRowsEnvelope() {
+        var model = new {
+            Entries = new[] {
+                new Row(Path: @"C:\Temp\a.txt", Type: "file")
+            }
+        };
+        var rows = new[] {
+            new Row(Path: @"C:\Temp\a.txt", Type: "file")
+        };
+
+        var json = ToolResultV2.OkAutoTableResponse(
+            arguments: null,
+            model: model,
+            sourceRows: rows,
+            viewRowsPath: "entries_view",
+            title: "Entries",
+            baseTruncated: false,
+            maxTop: 100);
+
+        Assert.Contains("\"ok\":true", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"entries_view\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"table\"", json, StringComparison.OrdinalIgnoreCase);
     }
 }

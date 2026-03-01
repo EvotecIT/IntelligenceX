@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Engines.FileSystem;
@@ -13,6 +12,12 @@ namespace IntelligenceX.Tools.FileSystem;
 /// Searches text files under a directory for a regex pattern (safe-by-default; requires AllowedRoots).
 /// </summary>
 public sealed class FsSearchTool : FileSystemToolBase, ITool {
+    private sealed record SearchRequest(
+        string Path,
+        string Pattern,
+        bool CaseSensitive,
+        int MaxMatches);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -45,37 +50,58 @@ public sealed class FsSearchTool : FileSystemToolBase, ITool {
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var path = arguments?.GetString("path") ?? string.Empty;
-        var pattern = arguments?.GetString("pattern") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(pattern)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "Pattern is required."));
-        }
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        if (!TryResolveExistingDirectory(path, out var fullPath, out var pathError)) {
+    private ToolRequestBindingResult<SearchRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("path", out var path, out var pathError)) {
+                return ToolRequestBindingResult<SearchRequest>.Failure(pathError);
+            }
+
+            if (!reader.TryReadRequiredString("pattern", out var pattern, out var patternError)) {
+                return ToolRequestBindingResult<SearchRequest>.Failure(patternError);
+            }
+
+            return ToolRequestBindingResult<SearchRequest>.Success(new SearchRequest(
+                Path: path,
+                Pattern: pattern,
+                CaseSensitive: reader.Boolean("case_sensitive", defaultValue: false),
+                MaxMatches: reader.CappedInt32(
+                    key: "max_matches",
+                    defaultValue: Options.MaxResults,
+                    minInclusive: 1,
+                    maxInclusive: Options.MaxResults)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SearchRequest> context, CancellationToken cancellationToken) {
+        if (!TryResolveExistingDirectory(context.Request.Path, out var fullPath, out var pathError)) {
             return Task.FromResult(pathError);
         }
-
-        var caseSensitive = arguments?.GetBoolean("case_sensitive") ?? false;
-        var maxMatches = ResolveBoundedOptionLimit(arguments, "max_matches");
 
         FileTextSearchResult root;
         try {
             root = FileSystemQuery.SearchText(
                 request: new FileTextSearchRequest {
                     Path = fullPath,
-                    Pattern = pattern,
-                    CaseSensitive = caseSensitive,
-                    MaxMatches = maxMatches,
+                    Pattern = context.Request.Pattern,
+                    CaseSensitive = context.Request.CaseSensitive,
+                    MaxMatches = context.Request.MaxMatches,
                     MaxFileBytes = Options.MaxSearchFileBytes
                 },
                 canDescendOrIncludePath: candidate => TryResolvePath(candidate, out _, out _),
                 cancellationToken: cancellationToken);
         } catch (ArgumentException ex) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", $"Invalid regex: {ex.Message}"));
+            return Task.FromResult(ToolResultV2.Error("invalid_argument", $"Invalid regex: {ex.Message}"));
         }
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: root,
             sourceRows: root.Matches,
             viewRowsPath: "matches_view",

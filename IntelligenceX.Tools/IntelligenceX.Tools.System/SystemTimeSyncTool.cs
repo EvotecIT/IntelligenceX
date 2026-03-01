@@ -13,6 +13,11 @@ namespace IntelligenceX.Tools.System;
 /// Returns local or remote time synchronization status (read-only).
 /// </summary>
 public sealed class SystemTimeSyncTool : SystemToolBase, ITool {
+    private sealed record TimeSyncRequest(
+        string? ComputerName,
+        string Target,
+        DateTime ReferenceUtc);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_time_sync",
         "Return time synchronization status (w32time running and skew seconds) for local or remote host (read-only).",
@@ -36,49 +41,67 @@ public sealed class SystemTimeSyncTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync).ConfigureAwait(false);
+    }
 
+    private ToolRequestBindingResult<TimeSyncRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
+            var target = ResolveTargetComputerName(computerName);
+            var referenceRaw = reader.OptionalString("reference_time_utc");
+
+            DateTime referenceUtc;
+            if (string.IsNullOrWhiteSpace(referenceRaw)) {
+                referenceUtc = DateTime.UtcNow;
+            } else if (!DateTime.TryParse(referenceRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)) {
+                return ToolRequestBindingResult<TimeSyncRequest>.Failure("reference_time_utc must be a valid ISO-8601 datetime.");
+            } else {
+                referenceUtc = parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
+            }
+
+            return ToolRequestBindingResult<TimeSyncRequest>.Success(new TimeSyncRequest(
+                ComputerName: computerName,
+                Target: target,
+                ReferenceUtc: referenceUtc));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<TimeSyncRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
         var windowsError = ValidateWindowsSupport("system_time_sync");
         if (windowsError is not null) {
             return windowsError;
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = ResolveTargetComputerName(computerName);
-        var referenceRaw = ToolArgs.GetOptionalTrimmed(arguments, "reference_time_utc");
-
-        DateTime referenceUtc;
-        if (string.IsNullOrWhiteSpace(referenceRaw)) {
-            referenceUtc = DateTime.UtcNow;
-        } else if (!DateTime.TryParse(referenceRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)) {
-            return ToolResponse.Error("invalid_argument", "reference_time_utc must be a valid ISO-8601 datetime.");
-        } else {
-            referenceUtc = parsed.Kind == DateTimeKind.Utc ? parsed : parsed.ToUniversalTime();
-        }
+        var request = context.Request;
 
         TimeSyncInfo status;
         try {
-            var isLocalTarget = IsLocalTarget(computerName, target);
+            var isLocalTarget = IsLocalTarget(request.ComputerName, request.Target);
             if (isLocalTarget) {
-                status = TimeSync.GetLocalStatus(referenceUtc);
+                status = TimeSync.GetLocalStatus(request.ReferenceUtc);
             } else {
-                status = await TimeSync.QueryRemoteStatusAsync(target, referenceUtc, cancellationToken).ConfigureAwait(false);
+                status = await TimeSync.QueryRemoteStatusAsync(request.Target, request.ReferenceUtc, cancellationToken).ConfigureAwait(false);
             }
         } catch (Exception ex) {
             return ErrorFromException(ex, defaultMessage: "Time sync query failed.");
         }
 
         var model = new SystemTimeSyncResult(
-            ComputerName: target,
-            ReferenceTimeUtc: referenceUtc.ToString("O"),
+            ComputerName: request.Target,
+            ReferenceTimeUtc: request.ReferenceUtc.ToString("O"),
             Status: status);
 
-        return ToolResponse.OkFactsModel(
+        return ToolResultV2.OkFactsModel(
             model: model,
             title: "System time sync",
             facts: new[] {
-                ("Computer", target),
-                ("ReferenceTimeUtc", referenceUtc.ToString("O")),
+                ("Computer", request.Target),
+                ("ReferenceTimeUtc", request.ReferenceUtc.ToString("O")),
                 ("W32TimeRunning", status.IsW32TimeRunning.ToString()),
                 ("TimeSkewSeconds", status.TimeSkewSeconds.ToString("0.###", CultureInfo.InvariantCulture))
             },

@@ -13,6 +13,17 @@ namespace IntelligenceX.Tools.System;
 /// Lists and summarizes USB/Device Manager devices (read-only, capped).
 /// </summary>
 public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
+    private sealed record DevicesSummaryRequest(
+        bool IncludeUsb,
+        bool IncludeDeviceManager,
+        string? NameContains,
+        string? ClassContains,
+        string? ManufacturerContains,
+        string? StatusContains,
+        bool ProblemOnly,
+        int MaxEntries,
+        int TimeoutMs);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -41,33 +52,50 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<DevicesSummaryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var includeUsb = reader.Boolean("include_usb", defaultValue: true);
+            var includeDeviceManager = reader.Boolean("include_device_manager", defaultValue: true);
+            if (!includeUsb && !includeDeviceManager) {
+                return ToolRequestBindingResult<DevicesSummaryRequest>.Failure(
+                    "At least one source (include_usb/include_device_manager) must be true.");
+            }
+
+            return ToolRequestBindingResult<DevicesSummaryRequest>.Success(new DevicesSummaryRequest(
+                IncludeUsb: includeUsb,
+                IncludeDeviceManager: includeDeviceManager,
+                NameContains: reader.OptionalString("name_contains"),
+                ClassContains: reader.OptionalString("class_contains"),
+                ManufacturerContains: reader.OptionalString("manufacturer_contains"),
+                StatusContains: reader.OptionalString("status_contains"),
+                ProblemOnly: reader.Boolean("problem_only", defaultValue: false),
+                MaxEntries: ResolveBoundedOptionLimit(arguments, "max_entries"),
+                TimeoutMs: ResolveTimeoutMs(arguments)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DevicesSummaryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var includeUsb = arguments?.GetBoolean("include_usb", defaultValue: true) ?? true;
-        var includeDeviceManager = arguments?.GetBoolean("include_device_manager", defaultValue: true) ?? true;
-        if (!includeUsb && !includeDeviceManager) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "At least one source (include_usb/include_device_manager) must be true."));
-        }
-
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var classContains = ToolArgs.GetOptionalTrimmed(arguments, "class_contains");
-        var manufacturerContains = ToolArgs.GetOptionalTrimmed(arguments, "manufacturer_contains");
-        var statusContains = ToolArgs.GetOptionalTrimmed(arguments, "status_contains");
-        var problemOnly = arguments?.GetBoolean("problem_only", defaultValue: false) ?? false;
-        var max = ResolveBoundedOptionLimit(arguments, "max_entries");
-        var timeoutMs = ResolveTimeoutMs(arguments);
+        var request = context.Request;
 
         if (!DeviceInventoryQueryExecutor.TryExecute(
                 request: new DeviceInventoryQueryRequest {
-                    IncludeUsb = includeUsb,
-                    IncludeDeviceManager = includeDeviceManager,
-                    NameContains = nameContains,
-                    ClassContains = classContains,
-                    ManufacturerContains = manufacturerContains,
-                    StatusContains = statusContains,
-                    ProblemOnly = problemOnly,
-                    MaxResults = max,
-                    Timeout = TimeSpan.FromMilliseconds(timeoutMs)
+                    IncludeUsb = request.IncludeUsb,
+                    IncludeDeviceManager = request.IncludeDeviceManager,
+                    NameContains = request.NameContains,
+                    ClassContains = request.ClassContains,
+                    ManufacturerContains = request.ManufacturerContains,
+                    StatusContains = request.StatusContains,
+                    ProblemOnly = request.ProblemOnly,
+                    MaxResults = request.MaxEntries,
+                    Timeout = TimeSpan.FromMilliseconds(request.TimeoutMs)
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -76,8 +104,8 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new DeviceInventoryQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Devices,
             viewRowsPath: "devices_view",
@@ -86,22 +114,22 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                meta.Add("include_usb", includeUsb);
-                meta.Add("include_device_manager", includeDeviceManager);
-                meta.Add("problem_only", problemOnly);
-                meta.Add("timeout_ms", timeoutMs);
+                meta.Add("include_usb", request.IncludeUsb);
+                meta.Add("include_device_manager", request.IncludeDeviceManager);
+                meta.Add("problem_only", request.ProblemOnly);
+                meta.Add("timeout_ms", request.TimeoutMs);
 
-                if (!string.IsNullOrWhiteSpace(nameContains)) {
-                    meta.Add("name_contains", nameContains);
+                if (!string.IsNullOrWhiteSpace(request.NameContains)) {
+                    meta.Add("name_contains", request.NameContains);
                 }
-                if (!string.IsNullOrWhiteSpace(classContains)) {
-                    meta.Add("class_contains", classContains);
+                if (!string.IsNullOrWhiteSpace(request.ClassContains)) {
+                    meta.Add("class_contains", request.ClassContains);
                 }
-                if (!string.IsNullOrWhiteSpace(manufacturerContains)) {
-                    meta.Add("manufacturer_contains", manufacturerContains);
+                if (!string.IsNullOrWhiteSpace(request.ManufacturerContains)) {
+                    meta.Add("manufacturer_contains", request.ManufacturerContains);
                 }
-                if (!string.IsNullOrWhiteSpace(statusContains)) {
-                    meta.Add("status_contains", statusContains);
+                if (!string.IsNullOrWhiteSpace(request.StatusContains)) {
+                    meta.Add("status_contains", request.StatusContains);
                 }
             });
         return Task.FromResult(response);

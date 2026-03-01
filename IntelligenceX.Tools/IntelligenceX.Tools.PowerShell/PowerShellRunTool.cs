@@ -90,6 +90,17 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
             intentArgumentName: "intent",
             intentStringValue: "read_write",
             confirmationArgumentName: "allow_write"));
+    private sealed record PowerShellRunRequest(
+        string? Command,
+        string? Script,
+        string Payload,
+        ShellHostKind HostKind,
+        PowerShellExecutionIntent Intent,
+        bool AllowWrite,
+        int TimeoutMs,
+        int MaxOutputChars,
+        bool IncludeErrorStream,
+        string? WorkingDirectory);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PowerShellRunTool"/> class.
@@ -100,40 +111,74 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<PowerShellRunRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var command = reader.OptionalString("command");
+            var script = reader.OptionalString("script");
+
+            var hasCommand = !string.IsNullOrWhiteSpace(command);
+            var hasScript = !string.IsNullOrWhiteSpace(script);
+            if (hasCommand == hasScript) {
+                return ToolRequestBindingResult<PowerShellRunRequest>.Failure("Provide exactly one of command or script.");
+            }
+
+            if (!TryParseIntent(reader.OptionalString("intent"), out var intent, out var intentError)) {
+                return ToolRequestBindingResult<PowerShellRunRequest>.Failure(intentError ?? "Invalid intent value.");
+            }
+
+            if (!TryParseHost(reader.OptionalString("host"), out var hostKind, out var hostError)) {
+                return ToolRequestBindingResult<PowerShellRunRequest>.Failure(hostError ?? "Invalid host value.");
+            }
+
+            var request = new PowerShellRunRequest(
+                Command: command,
+                Script: script,
+                Payload: hasCommand ? command! : script!,
+                HostKind: hostKind,
+                Intent: intent,
+                AllowWrite: reader.Boolean("allow_write", defaultValue: false),
+                TimeoutMs: reader.CappedInt32(
+                    "timeout_ms",
+                    Options.DefaultTimeoutMs,
+                    1,
+                    Options.MaxTimeoutMs),
+                MaxOutputChars: reader.CappedInt32(
+                    "max_output_chars",
+                    Options.DefaultMaxOutputChars,
+                    256,
+                    Options.MaxOutputChars),
+                IncludeErrorStream: reader.Boolean("include_error_stream", defaultValue: true),
+                WorkingDirectory: reader.OptionalString("working_directory"));
+            return ToolRequestBindingResult<PowerShellRunRequest>.Success(request);
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<PowerShellRunRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (!Options.Enabled) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "disabled",
                 error: "IX.PowerShell pack is disabled by policy.",
                 hints: new[] { "Enable the PowerShell pack explicitly in host/service options before calling powershell_run." },
                 isTransient: false);
         }
 
-        var command = ToolArgs.GetOptionalTrimmed(arguments, "command");
-        var script = ToolArgs.GetOptionalTrimmed(arguments, "script");
+        var request = context.Request;
+        var mutatingReason = Options.EnableMutationHeuristic
+            ? DetectMutatingPayloadReason(request.Payload, request.HostKind)
+            : null;
 
-        var hasCommand = !string.IsNullOrWhiteSpace(command);
-        var hasScript = !string.IsNullOrWhiteSpace(script);
-        if (hasCommand == hasScript) {
-            return ToolResponse.Error("invalid_argument", "Provide exactly one of command or script.");
-        }
-
-        if (!TryParseIntent(ToolArgs.GetOptionalTrimmed(arguments, "intent"), out var intent, out var intentError)) {
-            return ToolResponse.Error("invalid_argument", intentError ?? "Invalid intent value.");
-        }
-
-        var allowWrite = ToolArgs.GetBoolean(arguments, "allow_write", defaultValue: false);
-        var payload = hasCommand ? command! : script!;
-        if (!TryParseHost(ToolArgs.GetOptionalTrimmed(arguments, "host"), out var hostKind, out var hostError)) {
-            return ToolResponse.Error("invalid_argument", hostError ?? "Invalid host value.");
-        }
-
-        var mutatingReason = Options.EnableMutationHeuristic ? DetectMutatingPayloadReason(payload, hostKind) : null;
-
-        if (intent == PowerShellExecutionIntent.ReadOnly && mutatingReason is not null) {
-            return ToolResponse.Error(
+        if (request.Intent == PowerShellExecutionIntent.ReadOnly && mutatingReason is not null) {
+            return ToolResultV2.Error(
                 errorCode: "invalid_argument",
                 error: "Read-only intent rejected a potentially mutating shell payload.",
                 hints: new[] {
@@ -144,8 +189,8 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
                 isTransient: false);
         }
 
-        if (intent == PowerShellExecutionIntent.ReadWrite && !Options.AllowWrite) {
-            return ToolResponse.Error(
+        if (request.Intent == PowerShellExecutionIntent.ReadWrite && !Options.AllowWrite) {
+            return ToolResultV2.Error(
                 errorCode: "disabled",
                 error: "Read-write shell execution is disabled by policy.",
                 hints: new[] {
@@ -155,8 +200,8 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
                 isTransient: false);
         }
 
-        if (intent == PowerShellExecutionIntent.ReadWrite && Options.RequireExplicitWriteFlag && !allowWrite) {
-            return ToolResponse.Error(
+        if (request.Intent == PowerShellExecutionIntent.ReadWrite && Options.RequireExplicitWriteFlag && !request.AllowWrite) {
+            return ToolResultV2.Error(
                 errorCode: "invalid_argument",
                 error: "Read-write intent requires explicit allow_write=true confirmation.",
                 hints: new[] {
@@ -166,35 +211,19 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
                 isTransient: false);
         }
 
-        var timeoutMs = ToolArgs.GetCappedInt32(
-            arguments: arguments,
-            key: "timeout_ms",
-            defaultValue: Options.DefaultTimeoutMs,
-            minInclusive: 1,
-            maxInclusive: Options.MaxTimeoutMs);
-        var maxOutputChars = ToolArgs.GetCappedInt32(
-            arguments: arguments,
-            key: "max_output_chars",
-            defaultValue: Options.DefaultMaxOutputChars,
-            minInclusive: 256,
-            maxInclusive: Options.MaxOutputChars);
-
-        var includeErrorStream = ToolArgs.GetBoolean(arguments, "include_error_stream", defaultValue: true);
-        var workingDirectory = ToolArgs.GetOptionalTrimmed(arguments, "working_directory");
-        var intentText = ToIntentId(intent);
-
-        if (hostKind == ShellHostKind.Cmd) {
+        var intentText = ToIntentId(request.Intent);
+        if (request.HostKind == ShellHostKind.Cmd) {
             var cmdResult = await ExecuteCmdAsync(
-                    payload: payload,
-                    includeErrorStream: includeErrorStream,
-                    timeoutMs: timeoutMs,
-                    maxOutputChars: maxOutputChars,
-                    workingDirectory: workingDirectory,
+                    payload: request.Payload,
+                    includeErrorStream: request.IncludeErrorStream,
+                    timeoutMs: request.TimeoutMs,
+                    maxOutputChars: request.MaxOutputChars,
+                    workingDirectory: request.WorkingDirectory,
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             if (!cmdResult.Success) {
-                return ToolResponse.Error(
+                return ToolResultV2.Error(
                     errorCode: cmdResult.ErrorCode ?? "query_failed",
                     error: cmdResult.Error ?? "Command prompt execution failed.",
                     hints: cmdResult.Hints,
@@ -204,7 +233,7 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
             var cmdModel = cmdResult.Model!;
             var cmdMeta = ToolOutputHints.Meta(count: 1, truncated: cmdModel.OutputTruncated)
                 .Add("intent", intentText)
-                .Add("allow_write", allowWrite)
+                .Add("allow_write", request.AllowWrite)
                 .Add("mutation_heuristic_enabled", Options.EnableMutationHeuristic)
                 .Add("mutation_heuristic_matched", mutatingReason is not null);
 
@@ -221,17 +250,17 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
                     ("TimedOut", cmdModel.TimedOut ? "true" : "false"),
                     ("OutputTruncated", cmdModel.OutputTruncated ? "true" : "false"),
                     ("Intent", intentText),
-                    ("WriteAllowed", allowWrite ? "true" : "false")
+                    ("WriteAllowed", request.AllowWrite ? "true" : "false")
                 });
 
-            return ToolResponse.OkModel(
+            return ToolResultV2.OkModel(
                 model: cmdModel,
                 meta: cmdMeta,
                 summaryMarkdown: cmdSummary,
                 render: ToolOutputHints.RenderCode(language: "text", contentPath: "output"));
         }
 
-        var host = hostKind switch {
+        var host = request.HostKind switch {
             ShellHostKind.PowerShell7 => PowerShellHostKind.PowerShell7,
             ShellHostKind.WindowsPowerShell => PowerShellHostKind.WindowsPowerShell,
             _ => PowerShellHostKind.Auto
@@ -240,12 +269,12 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         var attempt = PowerShellCommandQueryExecutor.TryExecute(
             request: new PowerShellCommandQueryRequest {
                 Host = host,
-                Command = command,
-                Script = script,
-                WorkingDirectory = workingDirectory,
-                TimeoutMs = timeoutMs,
-                MaxOutputChars = maxOutputChars,
-                IncludeErrorStream = includeErrorStream
+                Command = request.Command,
+                Script = request.Script,
+                WorkingDirectory = request.WorkingDirectory,
+                TimeoutMs = request.TimeoutMs,
+                MaxOutputChars = request.MaxOutputChars,
+                IncludeErrorStream = request.IncludeErrorStream
             },
             cancellationToken: cancellationToken);
         if (!attempt.Success) {
@@ -255,7 +284,7 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
         var result = attempt.Result!;
         var meta = ToolOutputHints.Meta(count: 1, truncated: result.OutputTruncated)
             .Add("intent", intentText)
-            .Add("allow_write", allowWrite)
+            .Add("allow_write", request.AllowWrite)
             .Add("mutation_heuristic_enabled", Options.EnableMutationHeuristic)
             .Add("mutation_heuristic_matched", mutatingReason is not null);
 
@@ -272,10 +301,10 @@ public sealed class PowerShellRunTool : PowerShellToolBase, ITool {
                 ("TimedOut", result.TimedOut ? "true" : "false"),
                 ("OutputTruncated", result.OutputTruncated ? "true" : "false"),
                 ("Intent", intentText),
-                ("WriteAllowed", allowWrite ? "true" : "false")
+                ("WriteAllowed", request.AllowWrite ? "true" : "false")
             });
 
-        return ToolResponse.OkModel(
+        return ToolResultV2.OkModel(
             model: result,
             meta: meta,
             summaryMarkdown: summary,

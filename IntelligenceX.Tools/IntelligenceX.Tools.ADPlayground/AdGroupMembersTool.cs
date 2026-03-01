@@ -12,6 +12,10 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Reads group members from Active Directory (read-only).
 /// </summary>
 public sealed class AdGroupMembersTool : ActiveDirectoryToolBase, ITool {
+    private sealed record GroupMembersRequest(
+        string Identity,
+        int MaxMembers);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_group_members",
         "Get members of an Active Directory group (read-only). Returns member distinguished names.",
@@ -38,26 +42,41 @@ public sealed class AdGroupMembersTool : ActiveDirectoryToolBase, ITool {
     /// Invokes the tool.
     /// </summary>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<GroupMembersRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("identity", out var identity, out var identityError)) {
+                return ToolRequestBindingResult<GroupMembersRequest>.Failure(identityError);
+            }
+
+            var requestedMax = reader.OptionalInt64("max_members");
+            var maxMembers = requestedMax.HasValue && requestedMax.Value > 0
+                ? (int)Math.Min(requestedMax.Value, Options.MaxResults)
+                : Options.MaxResults;
+
+            return ToolRequestBindingResult<GroupMembersRequest>.Success(new GroupMembersRequest(
+                Identity: identity,
+                MaxMembers: maxMembers));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GroupMembersRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var identity = ToolArgs.GetOptionalTrimmed(arguments, "identity") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(identity)) {
-            return Task.FromResult(Error("identity is required."));
-        }
-
-        var requestedMax = arguments?.GetInt64("max_members");
-        var maxMembers = requestedMax.HasValue && requestedMax.Value > 0
-            ? (int)Math.Min(requestedMax.Value, Options.MaxResults)
-            : Options.MaxResults;
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
+        var request = context.Request;
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         if (!AdGroupMembersService.TryQuery(
                 options: new AdGroupMembersService.GroupMembersQueryOptions {
-                    Identity = identity,
+                    Identity = request.Identity,
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
-                    MaxMembers = maxMembers
+                    MaxMembers = request.MaxMembers
                 },
                 status: out var status,
                 result: out var output,
@@ -75,9 +94,9 @@ public sealed class AdGroupMembersTool : ActiveDirectoryToolBase, ITool {
         }
 
         if (output is null) {
-            return Task.FromResult(Error("exception", "Group member query returned no result."));
+            return Task.FromResult(ToolResultV2.Error("exception", "Group member query returned no result."));
         }
 
-        return Task.FromResult(ToolResponse.OkModel(output));
+        return Task.FromResult(ToolResultV2.OkModel(output));
     }
 }

@@ -20,6 +20,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             WriteAuditSinkConfigured = true,
             WriteAuditSinkPath = "C:\\audit\\events.jsonl",
             AuthenticationPreset = ToolAuthenticationRuntimePreset.Strict,
+            RequireExplicitRoutingMetadata = true,
             RequireAuthenticationRuntime = true,
             AuthenticationRuntimeConfigured = true,
             RequireSuccessfulSmtpProbeForSend = true,
@@ -30,7 +31,14 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         var routingCatalog = new ToolRoutingCatalogDiagnostics {
             TotalTools = 12,
             RoutingAwareTools = 12,
+            ExplicitRoutingTools = 11,
+            InferredRoutingTools = 1,
             MissingRoutingContractTools = 0,
+            MissingPackIdTools = 0,
+            MissingRoleTools = 0,
+            SetupAwareTools = 2,
+            HandoffAwareTools = 1,
+            RecoveryAwareTools = 3,
             DomainFamilyTools = 6,
             ExpectedDomainFamilyMissingTools = 0,
             DomainFamilyMissingActionTools = 0,
@@ -86,6 +94,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.True(runtime.GetProperty("writeAuditSinkConfigured").GetBoolean());
         Assert.Equal("C:\\audit\\events.jsonl", runtime.GetProperty("writeAuditSinkPath").GetString());
         Assert.Equal("strict", runtime.GetProperty("authenticationRuntimePreset").GetString());
+        Assert.True(runtime.GetProperty("requireExplicitRoutingMetadata").GetBoolean());
         Assert.True(runtime.GetProperty("requireAuthenticationRuntime").GetBoolean());
         Assert.True(runtime.GetProperty("authenticationRuntimeConfigured").GetBoolean());
         Assert.True(runtime.GetProperty("requireSuccessfulSmtpProbeForSend").GetBoolean());
@@ -95,7 +104,13 @@ public sealed class SessionRuntimePolicyHelloContractTests {
 
         var serializedRoutingCatalog = serializedPolicy.GetProperty("routingCatalog");
         Assert.True(serializedRoutingCatalog.GetProperty("isHealthy").GetBoolean());
+        Assert.False(serializedRoutingCatalog.GetProperty("isExplicitRoutingReady").GetBoolean());
         Assert.Equal(12, serializedRoutingCatalog.GetProperty("totalTools").GetInt32());
+        Assert.Equal(11, serializedRoutingCatalog.GetProperty("explicitRoutingTools").GetInt32());
+        Assert.Equal(1, serializedRoutingCatalog.GetProperty("inferredRoutingTools").GetInt32());
+        Assert.Equal(2, serializedRoutingCatalog.GetProperty("setupAwareTools").GetInt32());
+        Assert.Equal(1, serializedRoutingCatalog.GetProperty("handoffAwareTools").GetInt32());
+        Assert.Equal(3, serializedRoutingCatalog.GetProperty("recoveryAwareTools").GetInt32());
         Assert.Equal(2, serializedRoutingCatalog.GetProperty("familyActions").GetArrayLength());
         Assert.Equal(
             "act_domain_scope_ad",
@@ -122,6 +137,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
                 WriteAuditSinkConfigured = false,
                 AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
                 RequireAuthenticationRuntime = false,
                 AuthenticationRuntimeConfigured = false,
                 RequireSuccessfulSmtpProbeForSend = false,
@@ -148,6 +164,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
                 WriteAuditSinkConfigured = false,
                 AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
                 RequireAuthenticationRuntime = false,
                 AuthenticationRuntimeConfigured = false,
                 RequireSuccessfulSmtpProbeForSend = false,

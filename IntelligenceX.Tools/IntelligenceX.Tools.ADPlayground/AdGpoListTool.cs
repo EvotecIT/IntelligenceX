@@ -14,6 +14,14 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record GpoListRequest(
+        string? DomainName,
+        string? ForestName,
+        string? NameContains,
+        GpoConsistency? Consistency,
+        GpoLinkState? LinkState,
+        DateTime? ModifiedSinceUtc,
+        int MaxResults);
 
     private static readonly IReadOnlyDictionary<string, GpoConsistency> ConsistencyByName =
         new Dictionary<string, GpoConsistency>(StringComparer.OrdinalIgnoreCase) {
@@ -76,34 +84,58 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<GpoListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("consistency"),
+                    ConsistencyByName,
+                    "consistency",
+                    out GpoConsistency? consistency,
+                    out var consistencyError)) {
+                return ToolRequestBindingResult<GpoListRequest>.Failure(consistencyError ?? "Invalid consistency value.");
+            }
+
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("link_state"),
+                    LinkStateByName,
+                    "link_state",
+                    out GpoLinkState? linkState,
+                    out var linkStateError)) {
+                return ToolRequestBindingResult<GpoListRequest>.Failure(linkStateError ?? "Invalid link_state value.");
+            }
+
+            if (!ToolTime.TryParseUtcOptional(reader.OptionalString("modified_since_utc"), out var modifiedSinceUtc, out var modifiedSinceError)) {
+                return ToolRequestBindingResult<GpoListRequest>.Failure($"modified_since_utc: {modifiedSinceError}");
+            }
+
+            return ToolRequestBindingResult<GpoListRequest>.Success(new GpoListRequest(
+                DomainName: reader.OptionalString("domain_name"),
+                ForestName: reader.OptionalString("forest_name"),
+                NameContains: reader.OptionalString("name_contains"),
+                Consistency: consistency,
+                LinkState: linkState,
+                ModifiedSinceUtc: modifiedSinceUtc,
+                MaxResults: reader.CappedInt32("max_results", Options.MaxResults, 1, Options.MaxResults)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoListRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "consistency"),
-                ConsistencyByName,
-                "consistency",
-                out GpoConsistency? consistency,
-                out var consistencyError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", consistencyError ?? "Invalid consistency value."));
-        }
-
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "link_state"),
-                LinkStateByName,
-                "link_state",
-                out GpoLinkState? linkState,
-                out var linkStateError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", linkStateError ?? "Invalid link_state value."));
-        }
-
-        if (!ToolTime.TryParseUtcOptional(ToolArgs.GetOptionalTrimmed(arguments, "modified_since_utc"), out var modifiedSinceUtc, out var modifiedSinceError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", $"modified_since_utc: {modifiedSinceError}"));
-        }
-
-
+        var request = context.Request;
+        var domainName = request.DomainName;
+        var forestName = request.ForestName;
+        var maxResults = request.MaxResults;
+        var nameContains = request.NameContains;
+        var consistency = request.Consistency;
+        var linkState = request.LinkState;
+        var modifiedSinceUtc = request.ModifiedSinceUtc;
         var items = new List<GpoListItem>(Math.Min(maxResults, 512));
         var scanned = 0;
         var truncated = false;
@@ -138,8 +170,8 @@ public sealed class AdGpoListTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Items: items);
 
-        return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: items,
             viewRowsPath: "items_view",

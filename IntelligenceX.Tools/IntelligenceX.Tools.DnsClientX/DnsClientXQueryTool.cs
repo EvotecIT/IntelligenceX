@@ -18,6 +18,18 @@ namespace IntelligenceX.Tools.DnsClientX;
 /// Queries DNS records using DnsClientX with bounded timeout/retry controls.
 /// </summary>
 public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
+    private sealed record QueryRequest(
+        string Name,
+        string RecordTypeText,
+        string EndpointText,
+        int TimeoutMs,
+        bool RetryOnTransient,
+        int MaxRetries,
+        bool RequestDnsSec,
+        bool ValidateDnsSec,
+        bool TypedRecords,
+        bool ParseTypedTxtRecords);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "dnsclientx_query",
         "Query DNS records for a name using DnsClientX (read-only).",
@@ -49,28 +61,41 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var name = ToolArgs.GetOptionalTrimmed(arguments, "name");
-        if (string.IsNullOrWhiteSpace(name)) {
-            return ToolResponse.Error(
-                errorCode: "invalid_argument",
-                error: "name is required.",
-                hints: new[] { "Provide a DNS name such as example.com and optionally set type (A/AAAA/MX/TXT/CNAME/PTR)." },
-                isTransient: false);
-        }
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var recordTypeText = ToolArgs.GetTrimmedOrDefault(arguments, "type", "A");
-        var endpointText = ToolArgs.GetTrimmedOrDefault(arguments, "endpoint", "System");
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", Options.DefaultTimeoutMs, 100, Options.MaxTimeoutMs);
-        var retryOnTransient = ToolArgs.GetBoolean(arguments, "retry_on_transient", defaultValue: true);
-        var maxRetries = ToolArgs.GetCappedInt32(arguments, "max_retries", 1, 0, Options.MaxRetries);
-        var requestDnsSec = ToolArgs.GetBoolean(arguments, "request_dnssec", defaultValue: false);
-        var validateDnsSec = ToolArgs.GetBoolean(arguments, "validate_dnssec", defaultValue: false);
-        var typedRecords = ToolArgs.GetBoolean(arguments, "typed_records", defaultValue: false);
-        var parseTypedTxtRecords = ToolArgs.GetBoolean(arguments, "parse_typed_txt_records", defaultValue: false);
+    private ToolRequestBindingResult<QueryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("name", out var name, out var nameError)) {
+                return ToolRequestBindingResult<QueryRequest>.Failure(
+                    error: nameError,
+                    hints: new[] { "Provide a DNS name such as example.com and optionally set type (A/AAAA/MX/TXT/CNAME/PTR)." });
+            }
+
+            return ToolRequestBindingResult<QueryRequest>.Success(new QueryRequest(
+                Name: name,
+                RecordTypeText: reader.OptionalString("type") ?? "A",
+                EndpointText: reader.OptionalString("endpoint") ?? "System",
+                TimeoutMs: reader.CappedInt32("timeout_ms", Options.DefaultTimeoutMs, 100, Options.MaxTimeoutMs),
+                RetryOnTransient: reader.Boolean("retry_on_transient", defaultValue: true),
+                MaxRetries: reader.CappedInt32("max_retries", 1, 0, Options.MaxRetries),
+                RequestDnsSec: reader.Boolean("request_dnssec", defaultValue: false),
+                ValidateDnsSec: reader.Boolean("validate_dnssec", defaultValue: false),
+                TypedRecords: reader.Boolean("typed_records", defaultValue: false),
+                ParseTypedTxtRecords: reader.Boolean("parse_typed_txt_records", defaultValue: false)));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<QueryRequest> context, CancellationToken cancellationToken) {
+        var request = context.Request;
 
 #if !DNSCLIENTX_ENABLED
-        return ToolResponse.Error(
+        return ToolResultV2.Error(
             errorCode: "dependency_unavailable",
             error: "DnsClientX dependency is not available in this build.",
             hints: new[] {
@@ -79,18 +104,18 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
             },
             isTransient: false);
 #else
-        if (!Enum.TryParse<DnsRecordType>(recordTypeText, ignoreCase: true, out var recordType)) {
-            return ToolResponse.Error(
+        if (!Enum.TryParse<DnsRecordType>(request.RecordTypeText, ignoreCase: true, out var recordType)) {
+            return ToolResultV2.Error(
                 errorCode: "invalid_argument",
-                error: $"Unsupported DNS record type '{recordTypeText}'.",
+                error: $"Unsupported DNS record type '{request.RecordTypeText}'.",
                 hints: new[] { "Use values from DnsClientX.DnsRecordType (for example: A, AAAA, MX, TXT, CNAME, PTR, NS, SOA)." },
                 isTransient: false);
         }
 
-        if (!Enum.TryParse<DnsEndpoint>(endpointText, ignoreCase: true, out var endpoint)) {
-            return ToolResponse.Error(
+        if (!Enum.TryParse<DnsEndpoint>(request.EndpointText, ignoreCase: true, out var endpoint)) {
+            return ToolResultV2.Error(
                 errorCode: "invalid_argument",
-                error: $"Unsupported DnsClientX endpoint '{endpointText}'.",
+                error: $"Unsupported DnsClientX endpoint '{request.EndpointText}'.",
                 hints: new[] { "Use a known endpoint such as System, Cloudflare, Google, Quad9, or RootServer." },
                 isTransient: false);
         }
@@ -98,30 +123,30 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         DnsResponse response;
         try {
             response = await ClientX.QueryDns(
-                name: name,
+                name: request.Name,
                 recordType: recordType,
                 dnsEndpoint: endpoint,
                 dnsSelectionStrategy: DnsSelectionStrategy.First,
-                timeOutMilliseconds: timeoutMs,
-                retryOnTransient: retryOnTransient,
-                maxRetries: maxRetries,
+                timeOutMilliseconds: request.TimeoutMs,
+                retryOnTransient: request.RetryOnTransient,
+                maxRetries: request.MaxRetries,
                 retryDelayMs: 200,
-                requestDnsSec: requestDnsSec,
-                validateDnsSec: validateDnsSec,
-                typedRecords: typedRecords,
-                parseTypedTxtRecords: parseTypedTxtRecords,
+                requestDnsSec: request.RequestDnsSec,
+                validateDnsSec: request.ValidateDnsSec,
+                typedRecords: request.TypedRecords,
+                parseTypedTxtRecords: request.ParseTypedTxtRecords,
                 cancellationToken: cancellationToken);
         } catch (OperationCanceledException) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "timeout",
-                error: $"DNS query timed out or was cancelled after timeout_ms={timeoutMs}.",
+                error: $"DNS query timed out or was cancelled after timeout_ms={request.TimeoutMs}.",
                 hints: new[] {
                     "Increase timeout_ms for slow resolvers.",
                     "Try a different endpoint (for example System or Cloudflare)."
                 },
                 isTransient: true);
         } catch (Exception ex) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "query_failed",
                 error: $"DnsClientX query failed: {ex.Message}",
                 hints: new[] {
@@ -144,7 +169,7 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
                 authorityCount: authorities.Count,
                 additionalCount: additional.Count,
                 isTruncated: response.IsTruncated)) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "query_failed",
                 error: "Resolver returned an empty response envelope without question/answer sections.",
                 hints: new[] {
@@ -161,7 +186,7 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
                 ? $"DnsClientX query failed with error '{response.ErrorCode}'."
                 : response.Error;
 
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 errorCode: "query_failed",
                 error: message,
                 hints: new[] {
@@ -178,16 +203,16 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
 
         var result = new DnsClientXQueryResultModel {
             Query = new DnsClientXQueryContextModel {
-                Name = name,
+                Name = request.Name,
                 RecordType = recordType.ToString(),
                 Endpoint = endpoint.ToString(),
-                TimeoutMs = timeoutMs,
-                RetryOnTransient = retryOnTransient,
-                MaxRetries = maxRetries,
-                RequestDnsSec = requestDnsSec,
-                ValidateDnsSec = validateDnsSec,
-                TypedRecords = typedRecords,
-                ParseTypedTxtRecords = parseTypedTxtRecords
+                TimeoutMs = request.TimeoutMs,
+                RetryOnTransient = request.RetryOnTransient,
+                MaxRetries = request.MaxRetries,
+                RequestDnsSec = request.RequestDnsSec,
+                ValidateDnsSec = request.ValidateDnsSec,
+                TypedRecords = request.TypedRecords,
+                ParseTypedTxtRecords = request.ParseTypedTxtRecords
             },
             Status = response.Status.ToString(),
             ErrorCode = response.ErrorCode == DnsQueryErrorCode.None ? null : response.ErrorCode.ToString(),

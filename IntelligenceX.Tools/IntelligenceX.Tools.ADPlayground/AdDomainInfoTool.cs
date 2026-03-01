@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Reads high-level Active Directory RootDSE information.
 /// </summary>
 public sealed class AdDomainInfoTool : ActiveDirectoryToolBase, ITool {
+    private sealed record DomainInfoRequest(string? DomainController);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_domain_info",
         "Read basic Active Directory domain/forest information from RootDSE (read-only).",
@@ -28,9 +30,23 @@ public sealed class AdDomainInfoTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<DomainInfoRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<DomainInfoRequest>.Success(new DomainInfoRequest(
+                DomainController: reader.OptionalString("domain_controller"))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DomainInfoRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var domainController = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller") ?? Options.DomainController;
+        var domainController = context.Request.DomainController ?? Options.DomainController;
         var result = DomainInfoService.Query(domainController, cancellationToken);
 
         var model = new {
@@ -49,7 +65,7 @@ public sealed class AdDomainInfoTool : ActiveDirectoryToolBase, ITool {
             ("Forest DNS name", result.ForestDnsName)
         };
 
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: model,
             title: "Active Directory: Domain Info",
             facts: facts,
@@ -60,4 +76,3 @@ public sealed class AdDomainInfoTool : ActiveDirectoryToolBase, ITool {
             render: null));
     }
 }
-

@@ -14,6 +14,10 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record GpoChangesRequest(
+        string DomainName,
+        DateTime? SinceUtc,
+        int MaxResults);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_changes",
@@ -43,19 +47,36 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<GpoChangesRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("domain_name", out var domainName, out var domainError)) {
+                return ToolRequestBindingResult<GpoChangesRequest>.Failure(domainError);
+            }
+
+            if (!ToolTime.TryParseUtcOptional(reader.OptionalString("since_utc"), out var sinceUtc, out var sinceError)) {
+                return ToolRequestBindingResult<GpoChangesRequest>.Failure($"since_utc: {sinceError}");
+            }
+
+            return ToolRequestBindingResult<GpoChangesRequest>.Success(new GpoChangesRequest(
+                DomainName: domainName,
+                SinceUtc: sinceUtc,
+                MaxResults: reader.CappedInt32("max_results", Options.MaxResults, 1, Options.MaxResults)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoChangesRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
-            return Task.FromResult(argumentError!);
-        }
-
-        var domainName = domainQuery.DomainName;
-
-        if (!ToolTime.TryParseUtcOptional(ToolArgs.GetOptionalTrimmed(arguments, "since_utc"), out var sinceUtc, out var sinceError)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", $"since_utc: {sinceError}"));
-        }
-
-        var maxResults = domainQuery.MaxResults;
+        var request = context.Request;
+        var domainName = request.DomainName;
+        var sinceUtc = request.SinceUtc;
+        var maxResults = request.MaxResults;
         var items = new List<GpoListItem>(Math.Min(maxResults, 512));
         var scanned = 0;
         var truncated = false;
@@ -86,8 +107,8 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
             Truncated: truncated,
             Items: items);
 
-        return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: items,
             viewRowsPath: "items_view",
@@ -103,4 +124,3 @@ public sealed class AdGpoChangesTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

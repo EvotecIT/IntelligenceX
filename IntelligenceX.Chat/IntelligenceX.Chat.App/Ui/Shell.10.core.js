@@ -652,22 +652,32 @@
       };
     }
 
-    var issueCount = routingCatalog.missingRoutingContractTools
-      + routingCatalog.expectedDomainFamilyMissingTools
-      + routingCatalog.domainFamilyMissingActionTools
-      + routingCatalog.actionWithoutFamilyTools
-      + routingCatalog.familyActionConflictFamilies;
+    var issueCount = computeRoutingCatalogIssueCount(routingCatalog);
+    var explicitReadinessIssueCount = computeExplicitRoutingReadinessIssueCount(routingCatalog);
 
     var headerText = routingCatalog.isHealthy
-      ? "Routing healthy"
+      ? (routingCatalog.isExplicitRoutingReady
+        ? "Routing healthy"
+        : "Routing healthy (explicit pending)")
       : ("Routing issues: " + String(issueCount));
 
     var titleLines = [];
     titleLines.push("Routing catalog: " + (routingCatalog.isHealthy ? "healthy" : "degraded"));
+    titleLines.push("Explicit-ready: " + (routingCatalog.isExplicitRoutingReady
+      ? "yes"
+      : ("no (" + explicitReadinessIssueCount + " blocker" + (explicitReadinessIssueCount === 1 ? "" : "s") + ")")));
     titleLines.push("Routing-aware tools: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
+    titleLines.push("Routing source: explicit " + routingCatalog.explicitRoutingTools + ", inferred " + routingCatalog.inferredRoutingTools);
+    titleLines.push("Contract-aware tools: setup " + routingCatalog.setupAwareTools + ", handoff " + routingCatalog.handoffAwareTools + ", recovery " + routingCatalog.recoveryAwareTools);
     titleLines.push("Domain-family tools: " + routingCatalog.domainFamilyTools);
     if (routingCatalog.missingRoutingContractTools > 0) {
       titleLines.push("Missing contracts: " + routingCatalog.missingRoutingContractTools);
+    }
+    if (routingCatalog.missingPackIdTools > 0) {
+      titleLines.push("Missing pack id: " + routingCatalog.missingPackIdTools);
+    }
+    if (routingCatalog.missingRoleTools > 0) {
+      titleLines.push("Missing role: " + routingCatalog.missingRoleTools);
     }
     if (routingCatalog.expectedDomainFamilyMissingTools > 0) {
       titleLines.push("Expected family missing: " + routingCatalog.expectedDomainFamilyMissingTools);
@@ -692,7 +702,7 @@
     return {
       visible: true,
       text: headerText,
-      tone: routingCatalog.isHealthy ? "ok" : "bad",
+      tone: !routingCatalog.isHealthy ? "bad" : (routingCatalog.isExplicitRoutingReady ? "ok" : "warn"),
       title: titleLines.join("\n")
     };
   }
@@ -922,17 +932,13 @@
 
     var startupWarnings = toStringArray(p.startupWarnings);
     var pluginSearchPaths = toStringArray(p.pluginSearchPaths);
+    var runtimePolicy = normalizeRuntimePolicy(p.runtimePolicy);
     var routingCatalog = normalizeRoutingCatalog(p.routingCatalog);
     var runtimeNotices = routingCatalog
       ? filterOutRoutingCatalogWarnings(startupWarnings)
       : startupWarnings;
-    var routingIssueCount = routingCatalog
-      ? routingCatalog.missingRoutingContractTools
-        + routingCatalog.expectedDomainFamilyMissingTools
-        + routingCatalog.domainFamilyMissingActionTools
-        + routingCatalog.actionWithoutFamilyTools
-        + routingCatalog.familyActionConflictFamilies
-      : 0;
+    var routingIssueCount = routingCatalog ? computeRoutingCatalogIssueCount(routingCatalog) : 0;
+    var explicitReadinessIssueCount = routingCatalog ? computeExplicitRoutingReadinessIssueCount(routingCatalog) : 0;
     var rows = [
       ["Read-only", p.readOnly ? "Yes" : "No"],
       ["Parallel tools", p.parallelTools ? "Yes" : "No"],
@@ -940,7 +946,12 @@
       ["Max tool rounds", p.maxToolRounds == null ? "Default" : String(p.maxToolRounds)],
       ["Turn timeout", p.turnTimeoutSeconds == null ? "Default" : (String(p.turnTimeoutSeconds) + "s")],
       ["Tool timeout", p.toolTimeoutSeconds == null ? "Default" : (String(p.toolTimeoutSeconds) + "s")],
+      ["Runtime policy", !runtimePolicy ? "Not available" : "Available"],
+      ["Explicit routing required", !runtimePolicy ? "N/A" : (runtimePolicy.requireExplicitRoutingMetadata ? "Yes" : "No")],
       ["Routing catalog", !routingCatalog ? "Not available" : (routingCatalog.isHealthy ? "Healthy" : ("Degraded (" + routingIssueCount + ")"))],
+      ["Explicit routing ready", !routingCatalog
+        ? "N/A"
+        : (routingCatalog.isExplicitRoutingReady ? "Yes" : ("No (" + explicitReadinessIssueCount + ")"))],
       ["Routing families", !routingCatalog ? "N/A" : String(routingCatalog.familyActions.length)],
       ["Plugin roots", pluginSearchPaths.length === 0 ? "None" : String(pluginSearchPaths.length)],
       ["Runtime notices", runtimeNotices.length === 0 ? "None" : String(runtimeNotices.length)]
@@ -970,10 +981,85 @@
     return Math.floor(number);
   }
 
+  function normalizeOptionalPath(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    var normalized = value.trim();
+    return normalized;
+  }
+
+  function normalizeModeToken(value, fallback) {
+    var normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    return normalized || fallback;
+  }
+
+  function normalizeRuntimePolicy(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    return {
+      writeGovernanceMode: normalizeModeToken(value.writeGovernanceMode, "enforced"),
+      requireWriteGovernanceRuntime: value.requireWriteGovernanceRuntime === true,
+      writeGovernanceRuntimeConfigured: value.writeGovernanceRuntimeConfigured === true,
+      requireWriteAuditSinkForWriteOperations: value.requireWriteAuditSinkForWriteOperations === true,
+      writeAuditSinkMode: normalizeModeToken(value.writeAuditSinkMode, "none"),
+      writeAuditSinkConfigured: value.writeAuditSinkConfigured === true,
+      writeAuditSinkPath: normalizeOptionalPath(value.writeAuditSinkPath),
+      authenticationRuntimePreset: normalizeModeToken(value.authenticationRuntimePreset, "default"),
+      requireExplicitRoutingMetadata: value.requireExplicitRoutingMetadata === true,
+      requireAuthenticationRuntime: value.requireAuthenticationRuntime === true,
+      authenticationRuntimeConfigured: value.authenticationRuntimeConfigured === true,
+      requireSuccessfulSmtpProbeForSend: value.requireSuccessfulSmtpProbeForSend === true,
+      smtpProbeMaxAgeSeconds: toNonNegativeInt(value.smtpProbeMaxAgeSeconds),
+      runAsProfilePath: normalizeOptionalPath(value.runAsProfilePath),
+      authenticationProfilePath: normalizeOptionalPath(value.authenticationProfilePath)
+    };
+  }
+
+  function computeRoutingCatalogIssueCount(routingCatalog) {
+    if (!routingCatalog) {
+      return 0;
+    }
+
+    return routingCatalog.missingRoutingContractTools
+      + routingCatalog.missingPackIdTools
+      + routingCatalog.missingRoleTools
+      + routingCatalog.expectedDomainFamilyMissingTools
+      + routingCatalog.domainFamilyMissingActionTools
+      + routingCatalog.actionWithoutFamilyTools
+      + routingCatalog.familyActionConflictFamilies;
+  }
+
+  function computeExplicitRoutingReadinessIssueCount(routingCatalog) {
+    if (!routingCatalog) {
+      return 0;
+    }
+
+    return routingCatalog.missingRoutingContractTools
+      + routingCatalog.missingPackIdTools
+      + routingCatalog.missingRoleTools
+      + routingCatalog.inferredRoutingTools;
+  }
+
   function normalizeRoutingCatalog(value) {
     if (!value || typeof value !== "object") {
       return null;
     }
+
+    var hasOwn = Object.prototype.hasOwnProperty;
+    var hasIsHealthy = hasOwn.call(value, "isHealthy");
+    var hasIsExplicitRoutingReady = hasOwn.call(value, "isExplicitRoutingReady");
+    var hasMissingRoutingContractTools = hasOwn.call(value, "missingRoutingContractTools");
+    var hasMissingPackIdTools = hasOwn.call(value, "missingPackIdTools");
+    var hasMissingRoleTools = hasOwn.call(value, "missingRoleTools");
+    var hasInferredRoutingTools = hasOwn.call(value, "inferredRoutingTools");
+    var hasExpectedDomainFamilyMissingTools = hasOwn.call(value, "expectedDomainFamilyMissingTools");
+    var hasDomainFamilyMissingActionTools = hasOwn.call(value, "domainFamilyMissingActionTools");
+    var hasActionWithoutFamilyTools = hasOwn.call(value, "actionWithoutFamilyTools");
+    var hasFamilyActionConflictFamilies = hasOwn.call(value, "familyActionConflictFamilies");
 
     var familyActionsRaw = Array.isArray(value.familyActions) ? value.familyActions : [];
     var familyActions = [];
@@ -999,23 +1085,43 @@
     var routingCatalog = {
       totalTools: toNonNegativeInt(value.totalTools),
       routingAwareTools: toNonNegativeInt(value.routingAwareTools),
+      explicitRoutingTools: toNonNegativeInt(value.explicitRoutingTools),
+      inferredRoutingTools: toNonNegativeInt(value.inferredRoutingTools),
       missingRoutingContractTools: toNonNegativeInt(value.missingRoutingContractTools),
+      missingPackIdTools: toNonNegativeInt(value.missingPackIdTools),
+      missingRoleTools: toNonNegativeInt(value.missingRoleTools),
+      setupAwareTools: toNonNegativeInt(value.setupAwareTools),
+      handoffAwareTools: toNonNegativeInt(value.handoffAwareTools),
+      recoveryAwareTools: toNonNegativeInt(value.recoveryAwareTools),
       domainFamilyTools: toNonNegativeInt(value.domainFamilyTools),
       expectedDomainFamilyMissingTools: toNonNegativeInt(value.expectedDomainFamilyMissingTools),
       domainFamilyMissingActionTools: toNonNegativeInt(value.domainFamilyMissingActionTools),
       actionWithoutFamilyTools: toNonNegativeInt(value.actionWithoutFamilyTools),
       familyActionConflictFamilies: toNonNegativeInt(value.familyActionConflictFamilies),
-      isHealthy: value.isHealthy === true,
+      // Keep version-skew payloads neutral by default; derive degraded states only when required counters are present.
+      isHealthy: hasIsHealthy ? value.isHealthy === true : true,
+      isExplicitRoutingReady: hasIsExplicitRoutingReady ? value.isExplicitRoutingReady === true : true,
       familyActions: familyActions
     };
 
-    var issueCount = routingCatalog.missingRoutingContractTools
-      + routingCatalog.expectedDomainFamilyMissingTools
-      + routingCatalog.domainFamilyMissingActionTools
-      + routingCatalog.actionWithoutFamilyTools
-      + routingCatalog.familyActionConflictFamilies;
-    if (issueCount > 0) {
+    var canDeriveHealth = hasMissingRoutingContractTools
+      && hasMissingPackIdTools
+      && hasMissingRoleTools
+      && hasExpectedDomainFamilyMissingTools
+      && hasDomainFamilyMissingActionTools
+      && hasActionWithoutFamilyTools
+      && hasFamilyActionConflictFamilies;
+    var canDeriveExplicitReadiness = hasMissingRoutingContractTools
+      && hasMissingPackIdTools
+      && hasMissingRoleTools
+      && hasInferredRoutingTools;
+    var issueCount = computeRoutingCatalogIssueCount(routingCatalog);
+    var explicitReadinessIssueCount = computeExplicitRoutingReadinessIssueCount(routingCatalog);
+    if (canDeriveHealth && issueCount > 0) {
       routingCatalog.isHealthy = false;
+    }
+    if (canDeriveExplicitReadiness && explicitReadinessIssueCount > 0) {
+      routingCatalog.isExplicitRoutingReady = false;
     }
 
     return routingCatalog;
@@ -1036,10 +1142,19 @@
 
     var lines = [];
     lines.push("health: " + (routingCatalog.isHealthy ? "healthy" : "degraded"));
+    lines.push("explicit-ready: " + (routingCatalog.isExplicitRoutingReady ? "yes" : "no"));
     lines.push("routing-aware: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
+    lines.push("routing source: explicit " + routingCatalog.explicitRoutingTools + ", inferred " + routingCatalog.inferredRoutingTools);
+    lines.push("contract-aware: setup " + routingCatalog.setupAwareTools + ", handoff " + routingCatalog.handoffAwareTools + ", recovery " + routingCatalog.recoveryAwareTools);
     lines.push("domain-family tools: " + routingCatalog.domainFamilyTools);
     if (routingCatalog.missingRoutingContractTools > 0) {
       lines.push("missing contracts: " + routingCatalog.missingRoutingContractTools);
+    }
+    if (routingCatalog.missingPackIdTools > 0) {
+      lines.push("missing pack id: " + routingCatalog.missingPackIdTools);
+    }
+    if (routingCatalog.missingRoleTools > 0) {
+      lines.push("missing role: " + routingCatalog.missingRoleTools);
     }
     if (routingCatalog.expectedDomainFamilyMissingTools > 0) {
       lines.push("expected family missing: " + routingCatalog.expectedDomainFamilyMissingTools);

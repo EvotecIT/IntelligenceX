@@ -374,7 +374,9 @@ namespace IntelligenceX.UnitTests {
             var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);
             Assert.True(routing.IsRoutingAware);
             Assert.Equal(ToolRoutingContract.DefaultContractId, routing.RoutingContractId);
+            Assert.Equal(ToolRoutingTaxonomy.SourceInferred, routing.RoutingSource, ignoreCase: true);
             Assert.Equal("dnsclientx", routing.PackId, ignoreCase: true);
+            Assert.Equal(ToolRoutingTaxonomy.RoleOperational, routing.Role, ignoreCase: true);
             Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyPublic, routing.DomainIntentFamily);
             Assert.Equal(ToolSelectionMetadata.DomainIntentActionIdPublic, routing.DomainIntentActionId);
             Assert.Contains("dmarc", routing.DomainSignalTokens, StringComparer.OrdinalIgnoreCase);
@@ -420,6 +422,7 @@ namespace IntelligenceX.UnitTests {
                 parameters: null,
                 routing: new ToolRoutingContract {
                     IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
                     PackId = "active_directory",
                     DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
                     DomainIntentActionId = "act_domain_scope_ad_custom"
@@ -429,6 +432,93 @@ namespace IntelligenceX.UnitTests {
 
             Assert.True(resolved);
             Assert.Equal("act_domain_scope_ad_custom", actionId);
+        }
+
+        [Fact]
+        public void Enrich_ShouldPreserveExplicitRoutingSource_WhenProvidedInRoutingContract() {
+            var definition = new ToolDefinition(
+                name: "custom_explicit_probe",
+                description: "Explicit probe",
+                parameters: null,
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                });
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+            Assert.Equal("system", routing.PackId, ignoreCase: true);
+        }
+
+        [Fact]
+        public void Enrich_ShouldInferPackInfoRole_ForPackInfoToolName() {
+            var definition = new ToolDefinition(
+                name: "custom_pack_info",
+                description: "Pack info",
+                parameters: null);
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);
+            Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, routing.Role, ignoreCase: true);
+        }
+
+        [Fact]
+        public void Enrich_ShouldInferEnvironmentDiscoverRole_ForEnvironmentDiscoverToolName() {
+            var definition = new ToolDefinition(
+                name: "custom_environment_discover",
+                description: "Environment discover",
+                parameters: null);
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);
+            Assert.Equal(ToolRoutingTaxonomy.RoleEnvironmentDiscover, routing.Role, ignoreCase: true);
+        }
+
+        [Fact]
+        public void Enrich_ShouldPreserveSetupHandoffAndRecoveryContracts() {
+            var definition = new ToolDefinition(
+                name: "custom_contract_preserve_tool",
+                description: "Contract preservation probe",
+                parameters: null,
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupHintKeys = new[] { "environment_name" }
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "dnsclientx",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "domain_name",
+                                    TargetArgument = "target"
+                                }
+                            }
+                        }
+                    }
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1
+                });
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            Assert.NotNull(enriched.Setup);
+            Assert.NotNull(enriched.Handoff);
+            Assert.NotNull(enriched.Recovery);
+            Assert.Equal("ix.tool-setup.v1", enriched.Setup!.SetupContractId, ignoreCase: true);
+            Assert.Equal("ix.tool-handoff.v1", enriched.Handoff!.HandoffContractId, ignoreCase: true);
+            Assert.Equal("ix.tool-recovery.v1", enriched.Recovery!.RecoveryContractId, ignoreCase: true);
         }
 
         private static JsonObject BuildSingleStringPropertySchema(string propertyName) {

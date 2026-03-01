@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.DnsClientX;
 /// Returns DnsClientX pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "dnsclientx_pack_info",
         "Return DnsClientX pack capabilities, output contract, and recommended usage patterns.",
@@ -52,6 +54,20 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -110,6 +126,6 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
             "Use `dnsclientx_query` for DNS evidence and `dnsclientx_ping` for quick reachability baselines.",
             "Use `domaindetective_domain_summary` when you need broader domain posture checks.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

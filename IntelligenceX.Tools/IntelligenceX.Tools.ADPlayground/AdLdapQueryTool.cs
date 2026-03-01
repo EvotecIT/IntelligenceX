@@ -13,6 +13,14 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Executes a read-only LDAP query and returns structured JSON results with safety caps.
 /// </summary>
 public sealed class AdLdapQueryTool : ActiveDirectoryToolBase, ITool {
+    private sealed record LdapQueryRequest(
+        string LdapFilter,
+        string? Scope,
+        bool AllowSensitiveAttributes,
+        int MaxAttributes,
+        int MaxValuesPerAttribute,
+        IReadOnlyList<string> RequestedAttributes);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_ldap_query",
         "Run a read-only LDAP query (filter/scope/base DN) and return matching objects (capped).",
@@ -40,36 +48,55 @@ public sealed class AdLdapQueryTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<LdapQueryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("ldap_filter", out var ldapFilter, out var ldapFilterError)) {
+                return ToolRequestBindingResult<LdapQueryRequest>.Failure(ldapFilterError);
+            }
+
+            var requestedMaxAttrs = reader.OptionalInt64("max_attributes");
+            var maxAttributes = requestedMaxAttrs.HasValue && requestedMaxAttrs.Value > 0
+                ? (int)Math.Min(requestedMaxAttrs.Value, LdapQueryPolicy.MaxAttributesCap)
+                : LdapQueryPolicy.DefaultMaxAttributes;
+
+            var requestedMaxValues = reader.OptionalInt64("max_values_per_attribute");
+            var maxValues = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
+                ? (int)Math.Min(requestedMaxValues.Value, LdapQueryPolicy.MaxValuesPerAttributeCap)
+                : LdapQueryPolicy.DefaultMaxValuesPerAttribute;
+
+            return ToolRequestBindingResult<LdapQueryRequest>.Success(new LdapQueryRequest(
+                LdapFilter: ldapFilter,
+                Scope: reader.OptionalString("scope"),
+                AllowSensitiveAttributes: reader.Boolean("allow_sensitive_attributes"),
+                MaxAttributes: maxAttributes,
+                MaxValuesPerAttribute: maxValues,
+                RequestedAttributes: reader.StringArray("attributes")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<LdapQueryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var filter = ToolArgs.GetTrimmedOrDefault(arguments, "ldap_filter", string.Empty);
-        var scope = ToolArgs.GetOptionalTrimmed(arguments, "scope");
-        var allowSensitive = ToolArgs.GetBoolean(arguments, "allow_sensitive_attributes");
-
-        var requestedMaxAttrs = arguments?.GetInt64("max_attributes");
-        var maxAttributes = requestedMaxAttrs.HasValue && requestedMaxAttrs.Value > 0
-            ? (int)Math.Min(requestedMaxAttrs.Value, LdapQueryPolicy.MaxAttributesCap)
-            : LdapQueryPolicy.DefaultMaxAttributes;
-
-        var requestedMaxValues = arguments?.GetInt64("max_values_per_attribute");
-        var maxValues = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
-            ? (int)Math.Min(requestedMaxValues.Value, LdapQueryPolicy.MaxValuesPerAttributeCap)
-            : LdapQueryPolicy.DefaultMaxValuesPerAttribute;
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         if (!LdapToolAdLdapQueryService.TryExecute(
                 request: new LdapToolAdLdapQueryRequest {
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
-                    LdapFilter = filter,
-                    Scope = scope,
-                    RequestedAttributes = ToolArgs.ReadStringArray(arguments?.GetArray("attributes")),
-                    AllowSensitiveAttributes = allowSensitive,
-                    MaxAttributes = maxAttributes,
-                    MaxValuesPerAttribute = maxValues,
+                    LdapFilter = request.LdapFilter,
+                    Scope = request.Scope,
+                    RequestedAttributes = request.RequestedAttributes,
+                    AllowSensitiveAttributes = request.AllowSensitiveAttributes,
+                    MaxAttributes = request.MaxAttributes,
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
                     MaxResults = maxResults
                 },
                 result: out var queryResult,
@@ -93,16 +120,18 @@ public sealed class AdLdapQueryTool : ActiveDirectoryToolBase, ITool {
             result.Results
         };
 
-        AdDynamicTableView.TryBuildResponseFromOutputRows(
-            arguments: arguments,
-            model: root,
-            rows: result.Results,
-            title: "Active Directory: LDAP Query (preview)",
-            rowsPath: "results_view",
-            baseTruncated: result.LimitReached,
-            response: out var response);
+        if (!AdDynamicTableView.TryBuildResponseFromOutputRows(
+                arguments: context.Arguments,
+                model: root,
+                rows: result.Results,
+                title: "Active Directory: LDAP Query (preview)",
+                rowsPath: "results_view",
+                baseTruncated: result.LimitReached,
+                response: out var response)) {
+            return Task.FromResult(ToolResultV2.Error("query_failed", "Failed to build LDAP query table view response."));
+        }
+
         return Task.FromResult(response);
     }
 
 }
-

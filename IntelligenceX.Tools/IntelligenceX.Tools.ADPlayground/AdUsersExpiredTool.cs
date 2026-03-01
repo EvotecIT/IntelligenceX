@@ -12,6 +12,8 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Lists Active Directory user accounts whose accountExpires timestamp is in the past (read-only).
 /// </summary>
 public sealed class AdUsersExpiredTool : ActiveDirectoryToolBase, ITool {
+    private sealed record UsersExpiredRequest(DateTime ReferenceUtc);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_users_expired",
         "List Active Directory user accounts that are currently expired (accountExpires in the past) (read-only).",
@@ -32,18 +34,30 @@ public sealed class AdUsersExpiredTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<UsersExpiredRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolTime.TryParseUtcOptional(reader.OptionalString("reference_time_utc"), out var referenceUtcOpt, out var refErr)) {
+                return ToolRequestBindingResult<UsersExpiredRequest>.Failure($"reference_time_utc: {refErr}");
+            }
+
+            return ToolRequestBindingResult<UsersExpiredRequest>.Success(new UsersExpiredRequest(
+                ReferenceUtc: referenceUtcOpt ?? DateTime.UtcNow));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<UsersExpiredRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!ToolTime.TryParseUtcOptional(ToolArgs.GetOptionalTrimmed(arguments, "reference_time_utc"), out var referenceUtcOpt, out var refErr)) {
-            return Task.FromResult(Error("invalid_argument", $"reference_time_utc: {refErr}"));
-        }
-        var referenceUtc = referenceUtcOpt ?? DateTime.UtcNow;
-
-        var maxResults = ResolveMaxResults(arguments);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
+        var maxResults = ResolveMaxResults(context.Arguments);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
         if (string.IsNullOrWhiteSpace(baseDn)) {
-            return Task.FromResult(Error(
+            return Task.FromResult(ToolResultV2.Error(
                 errorCode: "not_configured",
                 error: "search_base_dn could not be resolved (RootDSE defaultNamingContext missing).",
                 hints: new[] {
@@ -53,9 +67,8 @@ public sealed class AdUsersExpiredTool : ActiveDirectoryToolBase, ITool {
                 isTransient: false));
         }
 
-        var res = ExpiredUsersService.Query(baseDn, dc, referenceUtc, maxResults);
+        var res = ExpiredUsersService.Query(baseDn, dc, context.Request.ReferenceUtc, maxResults);
 
-        return Task.FromResult(ToolResponse.OkModel(res));
+        return Task.FromResult(ToolResultV2.OkModel(res));
     }
 }
-

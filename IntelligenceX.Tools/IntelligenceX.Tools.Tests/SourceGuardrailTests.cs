@@ -270,6 +270,130 @@ public class SourceGuardrailTests {
         }
     }
 
+    [Fact]
+    public void Wave2NoArgPackAndDiscoveryTools_ShouldUseTypedPipelineAndResultV2() {
+        var repoRoot = FindRepoRoot();
+        string[] filePaths = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemDevicesSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemHardwareIdentityTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemHardwareSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemBiosSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemSecurityOptionsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemBootConfigurationTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemRdpPostureTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemSmbPostureTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemFeaturesListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemUpdatesInstalledTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemPatchDetailsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemDisksListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemLogicalDisksListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemPortsListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemProcessListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemServiceListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemScheduledTasksListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemFirewallRulesTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemFirewallProfilesTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemTimeSyncTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemWhoAmITool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "WslStatusTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogNamedEventsCatalogTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogNamedEventsQueryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogLiveQueryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogTopEventsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogLiveStatsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxFindTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxQueryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxStatsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogEvtxSecuritySummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogTimelineQueryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogTimelineExplainTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX", "TestimoXPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX", "TestimoXRulesListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX", "TestimoXRulesRunTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem", "FileSystemPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem", "FsListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem", "FsReadTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem", "FsSearchTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.Email", "EmailPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.Email", "EmailImapSearchTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.Email", "EmailImapGetTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell", "PowerShellPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell", "PowerShellRunTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO", "OfficeImoPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO", "OfficeImoReadTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell", "PowerShellEnvironmentDiscoverTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell", "PowerShellHostsTool.cs")
+        };
+
+        foreach (var filePath in filePaths) {
+            var source = File.ReadAllText(filePath);
+            Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+            Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+            Assert.Contains("ToolResultV2.", source, StringComparison.Ordinal);
+
+            Assert.DoesNotContain("ToolResponse.Ok", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("ToolResponse.Error(", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void Wave1AndAdReadOnlyWrappers_ShouldUseTypedPipelineAndResultV2() {
+        var repoRoot = FindRepoRoot();
+        string[] filePaths = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectivePackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveNetworkProbeTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveDomainSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX", "DnsClientXPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX", "DnsClientXQueryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX", "DnsClientXPingTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdDomainAdminsSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdPrivilegedGroupsSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdStaleAccountsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdUsersExpiredTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdWhoAmITool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdMonitoringProbeCatalogTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdRecycleBinLifetimeTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupMembersTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupMembersResolvedTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupsListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdAdminCountReportTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGpoChangesTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGpoListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGpoHealthTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGpoPermissionReportTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGpoPermissionConsistencyTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdLdapQueryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdLdapQueryPagedTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdObjectGetTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdObjectResolveTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSearchTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSpnSearchTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdDomainInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdLdapDiagnosticsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdSearchFacetsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdReplicationSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdReplicationConnectionsTool.cs")
+        };
+
+        foreach (var filePath in filePaths) {
+            var source = File.ReadAllText(filePath);
+            Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+            Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+            Assert.Contains("ToolResultV2.", source, StringComparison.Ordinal);
+
+            Assert.DoesNotContain("ToolResponse.Ok", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("ToolResponse.Error(", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+        }
+    }
+
     private static string FindRepoRoot() {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null) {

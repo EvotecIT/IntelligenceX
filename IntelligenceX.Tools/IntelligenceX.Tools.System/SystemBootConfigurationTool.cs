@@ -13,6 +13,11 @@ namespace IntelligenceX.Tools.System;
 /// Returns Windows boot option posture and pending reboot state (read-only).
 /// </summary>
 public sealed class SystemBootConfigurationTool : SystemToolBase, ITool {
+    private sealed record BootConfigurationRequest(
+        string? ComputerName,
+        string Target,
+        bool IncludeRebootPending);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_boot_configuration",
         "Return Windows boot option posture (testsigning/debug/nointegritychecks/bootlog) and optional pending reboot state (read-only).",
@@ -38,6 +43,24 @@ public sealed class SystemBootConfigurationTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<BootConfigurationRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
+            return ToolRequestBindingResult<BootConfigurationRequest>.Success(new BootConfigurationRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
+                IncludeRebootPending: reader.Boolean("include_reboot_pending", defaultValue: true)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<BootConfigurationRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var windowsError = ValidateWindowsSupport("system_boot_configuration");
@@ -45,16 +68,14 @@ public sealed class SystemBootConfigurationTool : SystemToolBase, ITool {
             return Task.FromResult(windowsError);
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var includeRebootPending = ToolArgs.GetBoolean(arguments, "include_reboot_pending", defaultValue: true);
-        var target = ResolveTargetComputerName(computerName);
+        var request = context.Request;
 
         try {
-            var boot = BootOptionsQuery.Query(computerName);
+            var boot = BootOptionsQuery.Query(request.ComputerName);
 
             bool? rebootPending = null;
-            if (includeRebootPending) {
-                rebootPending = RebootState.IsRebootPending(computerName);
+            if (request.IncludeRebootPending) {
+                rebootPending = RebootState.IsRebootPending(request.ComputerName);
             }
 
             var warnings = new List<string>();
@@ -65,17 +86,17 @@ public sealed class SystemBootConfigurationTool : SystemToolBase, ITool {
             if (rebootPending == true) warnings.Add("System reports pending reboot state.");
 
             var model = new SystemBootConfigurationResult(
-                ComputerName: target,
+                ComputerName: request.Target,
                 BootOptions: boot,
                 RebootPending: rebootPending,
                 InsecureBootFlags: insecureFlags,
                 Warnings: warnings);
 
-            return Task.FromResult(ToolResponse.OkFactsModelWithRenderValue(
+            return Task.FromResult(ToolResultV2.OkFactsModelWithRenderValue(
                 model: model,
                 title: "System boot configuration",
                 facts: new[] {
-                    ("Computer", target),
+                    ("Computer", request.Target),
                     ("TestSigning", boot.TestSigning.ToString()),
                     ("Debug", boot.Debug.ToString()),
                     ("NoIntegrityChecks", boot.NoIntegrityChecks.ToString()),
@@ -86,8 +107,8 @@ public sealed class SystemBootConfigurationTool : SystemToolBase, ITool {
                 meta: BuildFactsMeta(
                     count: warnings.Count,
                     truncated: false,
-                    target: target,
-                    mutate: meta => meta.Add("include_reboot_pending", includeRebootPending)),
+                    target: request.Target,
+                    mutate: meta => meta.Add("include_reboot_pending", request.IncludeRebootPending)),
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,

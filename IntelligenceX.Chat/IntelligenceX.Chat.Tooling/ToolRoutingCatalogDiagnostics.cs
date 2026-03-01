@@ -40,9 +40,44 @@ public sealed record ToolRoutingCatalogDiagnostics {
     public required int RoutingAwareTools { get; init; }
 
     /// <summary>
+    /// Routing-aware tools that declare explicit routing source.
+    /// </summary>
+    public int ExplicitRoutingTools { get; init; }
+
+    /// <summary>
+    /// Routing-aware tools that still rely on inferred routing source.
+    /// </summary>
+    public int InferredRoutingTools { get; init; }
+
+    /// <summary>
     /// Tools without routing contracts.
     /// </summary>
     public required int MissingRoutingContractTools { get; init; }
+
+    /// <summary>
+    /// Routing-aware tools that miss explicit pack id.
+    /// </summary>
+    public int MissingPackIdTools { get; init; }
+
+    /// <summary>
+    /// Routing-aware tools that miss explicit role.
+    /// </summary>
+    public int MissingRoleTools { get; init; }
+
+    /// <summary>
+    /// Tools with setup-aware contracts.
+    /// </summary>
+    public int SetupAwareTools { get; init; }
+
+    /// <summary>
+    /// Tools with handoff-aware contracts.
+    /// </summary>
+    public int HandoffAwareTools { get; init; }
+
+    /// <summary>
+    /// Tools with recovery-aware contracts.
+    /// </summary>
+    public int RecoveryAwareTools { get; init; }
 
     /// <summary>
     /// Tools that declare a non-empty domain intent family.
@@ -79,10 +114,21 @@ public sealed record ToolRoutingCatalogDiagnostics {
     /// </summary>
     public bool IsHealthy =>
         MissingRoutingContractTools == 0
+        && MissingPackIdTools == 0
+        && MissingRoleTools == 0
         && ExpectedDomainFamilyMissingTools == 0
         && DomainFamilyMissingActionTools == 0
         && ActionWithoutFamilyTools == 0
         && FamilyActionConflictFamilies == 0;
+
+    /// <summary>
+    /// True when catalog is ready for strict explicit routing enforcement.
+    /// </summary>
+    public bool IsExplicitRoutingReady =>
+        MissingRoutingContractTools == 0
+        && MissingPackIdTools == 0
+        && MissingRoleTools == 0
+        && InferredRoutingTools == 0;
 }
 
 /// <summary>
@@ -110,7 +156,14 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
 
         var totalTools = definitions.Count;
         var routingAwareTools = 0;
+        var explicitRoutingTools = 0;
+        var inferredRoutingTools = 0;
         var missingRoutingContractTools = 0;
+        var missingPackIdTools = 0;
+        var missingRoleTools = 0;
+        var setupAwareTools = 0;
+        var handoffAwareTools = 0;
+        var recoveryAwareTools = 0;
         var domainFamilyTools = 0;
         var expectedDomainFamilyMissingTools = 0;
         var domainFamilyMissingActionTools = 0;
@@ -127,6 +180,19 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             var routing = definition.Routing;
             var family = NormalizeToken(routing?.DomainIntentFamily);
             var actionId = NormalizeToken(routing?.DomainIntentActionId);
+            var packId = NormalizeToken(routing?.PackId);
+            var role = NormalizeToken(routing?.Role);
+            var routingSource = NormalizeToken(routing?.RoutingSource);
+
+            if (definition.Setup?.IsSetupAware == true) {
+                setupAwareTools++;
+            }
+            if (definition.Handoff?.IsHandoffAware == true) {
+                handoffAwareTools++;
+            }
+            if (definition.Recovery?.IsRecoveryAware == true) {
+                recoveryAwareTools++;
+            }
 
             if (routing is null) {
                 missingRoutingContractTools++;
@@ -143,6 +209,23 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
 
             if (routing.IsRoutingAware) {
                 routingAwareTools++;
+            }
+
+            if (routingSource.Length == 0
+                || string.Equals(routingSource, ToolRoutingTaxonomy.SourceExplicit, StringComparison.OrdinalIgnoreCase)) {
+                explicitRoutingTools++;
+            } else if (string.Equals(routingSource, ToolRoutingTaxonomy.SourceInferred, StringComparison.OrdinalIgnoreCase)) {
+                inferredRoutingTools++;
+            } else {
+                inferredRoutingTools++;
+            }
+
+            if (packId.Length == 0) {
+                missingPackIdTools++;
+            }
+
+            if (role.Length == 0) {
+                missingRoleTools++;
             }
 
             if (family.Length == 0) {
@@ -194,7 +277,14 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
         return new ToolRoutingCatalogDiagnostics {
             TotalTools = totalTools,
             RoutingAwareTools = routingAwareTools,
+            ExplicitRoutingTools = explicitRoutingTools,
+            InferredRoutingTools = inferredRoutingTools,
             MissingRoutingContractTools = missingRoutingContractTools,
+            MissingPackIdTools = missingPackIdTools,
+            MissingRoleTools = missingRoleTools,
+            SetupAwareTools = setupAwareTools,
+            HandoffAwareTools = handoffAwareTools,
+            RecoveryAwareTools = recoveryAwareTools,
             DomainFamilyTools = domainFamilyTools,
             ExpectedDomainFamilyMissingTools = expectedDomainFamilyMissingTools,
             DomainFamilyMissingActionTools = domainFamilyMissingActionTools,
@@ -215,7 +305,14 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
         return
             $"tools={diagnostics.TotalTools}, " +
             $"routing_aware={diagnostics.RoutingAwareTools}, " +
+            $"routing_explicit={diagnostics.ExplicitRoutingTools}, " +
+            $"routing_inferred={diagnostics.InferredRoutingTools}, " +
             $"missing_contract={diagnostics.MissingRoutingContractTools}, " +
+            $"missing_pack={diagnostics.MissingPackIdTools}, " +
+            $"missing_role={diagnostics.MissingRoleTools}, " +
+            $"setup_aware={diagnostics.SetupAwareTools}, " +
+            $"handoff_aware={diagnostics.HandoffAwareTools}, " +
+            $"recovery_aware={diagnostics.RecoveryAwareTools}, " +
             $"domain_families={diagnostics.DomainFamilyTools}, " +
             $"expected_family_missing={diagnostics.ExpectedDomainFamilyMissingTools}, " +
             $"missing_action={diagnostics.DomainFamilyMissingActionTools}, " +
@@ -269,6 +366,9 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
 
         var warnings = new List<string>();
         AddWarningIfPositive(warnings, diagnostics.MissingRoutingContractTools, "tool(s) are missing routing contracts.");
+        AddWarningIfPositive(warnings, diagnostics.InferredRoutingTools, "tool(s) still use inferred routing metadata.");
+        AddWarningIfPositive(warnings, diagnostics.MissingPackIdTools, "tool(s) are missing routing pack id.");
+        AddWarningIfPositive(warnings, diagnostics.MissingRoleTools, "tool(s) are missing routing role.");
         AddWarningIfPositive(warnings, diagnostics.ExpectedDomainFamilyMissingTools,
             "tool(s) are missing domain intent family despite inferred scope.");
         AddWarningIfPositive(warnings, diagnostics.DomainFamilyMissingActionTools,

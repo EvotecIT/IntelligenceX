@@ -12,6 +12,8 @@ namespace IntelligenceX.Tools.System;
 /// Returns basic OS/runtime information.
 /// </summary>
 public sealed class SystemInfoTool : SystemToolBase, ITool {
+    private sealed record SystemInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_info",
         "Return basic OS/runtime information (read-only).",
@@ -28,6 +30,18 @@ public sealed class SystemInfoTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<SystemInfoRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, static _ => ToolRequestBindingResult<SystemInfoRequest>.Success(new SystemInfoRequest()));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SystemInfoRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var attempt = SystemRuntimeQueryExecutor.TryExecute(
@@ -57,7 +71,7 @@ public sealed class SystemInfoTool : SystemToolBase, ITool {
             isRemoteScope: false,
             scanned: 1,
             truncated: false);
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: result,
             title: "System Info",
             facts: facts,

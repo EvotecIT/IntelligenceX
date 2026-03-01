@@ -13,6 +13,10 @@ namespace IntelligenceX.Tools.System;
 /// Lists currently running processes (capped).
 /// </summary>
 public sealed class SystemProcessListTool : SystemToolBase, ITool {
+    private sealed record ProcessListRequest(
+        string? NameContains,
+        int MaxProcesses);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -34,15 +38,27 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<ProcessListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<ProcessListRequest>.Success(
+            new ProcessListRequest(
+                NameContains: reader.OptionalString("name_contains"),
+                MaxProcesses: ResolveBoundedOptionLimit(arguments, "max_processes"))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ProcessListRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var nameContains = arguments?.GetString("name_contains");
-        var max = ResolveBoundedOptionLimit(arguments, "max_processes");
-
+        var request = context.Request;
         if (!ProcessListQueryExecutor.TryExecute(
                 request: new ProcessListQueryRequest {
-                    NameContains = string.IsNullOrWhiteSpace(nameContains) ? null : nameContains.Trim(),
-                    MaxResults = max,
+                    NameContains = request.NameContains,
+                    MaxResults = request.MaxProcesses,
                     SortBy = ProcessListQuerySort.PidAsc
                 },
                 result: out var queryResult,
@@ -52,8 +68,8 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new ProcessListQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Processes,
             viewRowsPath: "processes_view",
@@ -64,4 +80,3 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-

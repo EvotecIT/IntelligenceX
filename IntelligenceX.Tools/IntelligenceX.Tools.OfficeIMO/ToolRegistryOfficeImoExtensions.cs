@@ -37,6 +37,12 @@ public static class ToolRegistryOfficeImoExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(OfficeImoToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return OfficeImoToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(OfficeImoToolOptions options) {
         yield return new OfficeImoPackInfoTool(options);
         yield return new OfficeImoReadTool(options);
     }

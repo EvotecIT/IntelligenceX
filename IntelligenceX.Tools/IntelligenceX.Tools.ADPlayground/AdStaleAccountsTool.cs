@@ -13,6 +13,14 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Finds potentially stale AD user/computer accounts using lastLogonTimestamp and pwdLastSet (read-only).
 /// </summary>
 public sealed class AdStaleAccountsTool : ActiveDirectoryToolBase, ITool {
+    private sealed record StaleAccountsRequest(
+        LdapToolObjectKind Kind,
+        bool EnabledOnly,
+        bool ExcludeCritical,
+        int? DaysSinceLogon,
+        int? DaysSincePasswordSet,
+        CriteriaMatch Match);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_stale_accounts",
         "Find stale AD users/computers based on lastLogonTimestamp and/or pwdLastSet (read-only).",
@@ -38,36 +46,50 @@ public sealed class AdStaleAccountsTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<StaleAccountsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var daysSinceLogon = ToolArgs.ToPositiveInt32OrNull(reader.OptionalInt64("days_since_logon"));
+            var daysSincePwd = ToolArgs.ToPositiveInt32OrNull(reader.OptionalInt64("days_since_password_set"));
+            if (!daysSinceLogon.HasValue && !daysSincePwd.HasValue) {
+                return ToolRequestBindingResult<StaleAccountsRequest>.Failure(
+                    "At least one of days_since_logon or days_since_password_set must be provided (>0).");
+            }
+
+            return ToolRequestBindingResult<StaleAccountsRequest>.Success(new StaleAccountsRequest(
+                Kind: LdapToolKinds.ParseObjectKind(reader.OptionalString("kind")),
+                EnabledOnly: reader.Boolean("enabled_only"),
+                ExcludeCritical: reader.Boolean("exclude_critical", defaultValue: true),
+                DaysSinceLogon: daysSinceLogon,
+                DaysSincePasswordSet: daysSincePwd,
+                Match: ParseMatch(reader.OptionalString("match"))));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<StaleAccountsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
-        var kind = LdapToolKinds.ParseObjectKind(ToolArgs.GetOptionalTrimmed(arguments, "kind"));
-        var enabledOnly = ToolArgs.GetBoolean(arguments, "enabled_only");
-        var excludeCritical = ToolArgs.GetBoolean(arguments, "exclude_critical", true);
-
-        var daysSinceLogon = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("days_since_logon"));
-        var daysSincePwd = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("days_since_password_set"));
-
-        if (!daysSinceLogon.HasValue && !daysSincePwd.HasValue) {
-            return Task.FromResult(Error("At least one of days_since_logon or days_since_password_set must be provided (>0)."));
-        }
-
-        var match = ParseMatch(ToolArgs.GetOptionalTrimmed(arguments, "match"));
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         var opts = new StaleAccountsQueryOptions {
-            Kind = kind switch {
+            Kind = request.Kind switch {
                 LdapToolObjectKind.User => DirectoryAccountKind.User,
                 LdapToolObjectKind.Computer => DirectoryAccountKind.Computer,
                 _ => DirectoryAccountKind.Any
             },
-            EnabledOnly = enabledOnly,
-            ExcludeCritical = excludeCritical,
-            DaysSinceLogon = daysSinceLogon,
-            DaysSincePasswordSet = daysSincePwd,
-            Match = match,
+            EnabledOnly = request.EnabledOnly,
+            ExcludeCritical = request.ExcludeCritical,
+            DaysSinceLogon = request.DaysSinceLogon,
+            DaysSincePasswordSet = request.DaysSincePasswordSet,
+            Match = request.Match,
             ServerOrDomain = dc,
             BaseDn = baseDn!,
             ReferenceUtc = DateTime.UtcNow,
@@ -75,7 +97,7 @@ public sealed class AdStaleAccountsTool : ActiveDirectoryToolBase, ITool {
         };
 
         var res = StaleAccountsService.Query(opts);
-        return Task.FromResult(ToolResponse.OkModel(res));
+        return Task.FromResult(ToolResultV2.OkModel(res));
     }
 
     private static CriteriaMatch ParseMatch(string? value) {
@@ -83,6 +105,4 @@ public sealed class AdStaleAccountsTool : ActiveDirectoryToolBase, ITool {
             ? CriteriaMatch.All
             : CriteriaMatch.Any;
     }
-
 }
-

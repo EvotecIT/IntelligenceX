@@ -14,6 +14,10 @@ namespace IntelligenceX.Tools.ADPlayground;
 public sealed class AdPrivilegedGroupsSummaryTool : ActiveDirectoryToolBase, ITool {
     private const int DefaultMembersSampleSize = 20;
     private const int MaxMembersSampleSize = 200;
+    private sealed record PrivilegedGroupsSummaryRequest(
+        bool IncludeMemberCount,
+        bool IncludeMemberSample,
+        int MemberSampleSize);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_privileged_groups_summary",
@@ -36,17 +40,32 @@ public sealed class AdPrivilegedGroupsSummaryTool : ActiveDirectoryToolBase, ITo
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PrivilegedGroupsSummaryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var requestedSampleSize = reader.OptionalInt64("member_sample_size");
+            var memberSampleSize = requestedSampleSize.HasValue && requestedSampleSize.Value > 0
+                ? (int)Math.Min(requestedSampleSize.Value, MaxMembersSampleSize)
+                : DefaultMembersSampleSize;
+
+            return ToolRequestBindingResult<PrivilegedGroupsSummaryRequest>.Success(new PrivilegedGroupsSummaryRequest(
+                IncludeMemberCount: reader.Boolean("include_member_count", defaultValue: true),
+                IncludeMemberSample: reader.Boolean("include_member_sample", defaultValue: false),
+                MemberSampleSize: memberSampleSize));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<PrivilegedGroupsSummaryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var includeMemberCount = arguments?.GetBoolean("include_member_count") ?? true;
-        var includeMemberSample = arguments?.GetBoolean("include_member_sample") ?? false;
-
-        var requestedSampleSize = arguments?.GetInt64("member_sample_size");
-        var memberSampleSize = requestedSampleSize.HasValue && requestedSampleSize.Value > 0
-            ? (int)Math.Min(requestedSampleSize.Value, MaxMembersSampleSize)
-            : DefaultMembersSampleSize;
-        var scopeHints = ResolveOptionalDomainQueryHints(arguments);
+        var request = context.Request;
+        var scopeHints = ResolveOptionalDomainQueryHints(context.Arguments);
 
         var summary = await PrivilegedGroupsSummaryService
             .QueryAsync(
@@ -54,13 +73,13 @@ public sealed class AdPrivilegedGroupsSummaryTool : ActiveDirectoryToolBase, ITo
                     DomainControllerHint = scopeHints.DomainControllerHint,
                     SearchBaseDnHint = scopeHints.SearchBaseDnHint,
                     DomainName = scopeHints.DomainName,
-                    IncludeMemberCount = includeMemberCount,
-                    IncludeMemberSample = includeMemberSample,
-                    MemberSampleSize = memberSampleSize
+                    IncludeMemberCount = request.IncludeMemberCount,
+                    IncludeMemberSample = request.IncludeMemberSample,
+                    MemberSampleSize = request.MemberSampleSize
                 },
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return ToolResponse.OkModel(summary);
+        return ToolResultV2.OkModel(summary);
     }
 }

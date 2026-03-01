@@ -23,6 +23,16 @@ public static class ToolRoutingTaxonomy {
     public const string SourceInferred = "inferred";
     /// <summary>Routing source for explicit overrides.</summary>
     public const string SourceExplicit = "explicit";
+    /// <summary>Default routing role value.</summary>
+    public const string RoleOperational = "operational";
+    /// <summary>Routing role for pack guidance/info tools.</summary>
+    public const string RolePackInfo = "pack_info";
+    /// <summary>Routing role for environment discovery/bootstrap tools.</summary>
+    public const string RoleEnvironmentDiscover = "environment_discover";
+    /// <summary>Routing role for resolver-oriented tools.</summary>
+    public const string RoleResolver = "resolver";
+    /// <summary>Routing role for diagnostics-focused tools.</summary>
+    public const string RoleDiagnostic = "diagnostic";
     /// <summary>Routing tag prefix for scope taxonomy tags.</summary>
     public const string ScopeTagPrefix = "scope:";
     /// <summary>Routing tag prefix for operation taxonomy tags.</summary>
@@ -45,6 +55,15 @@ public static class ToolRoutingTaxonomy {
     public static readonly IReadOnlyList<string> AllowedSources = new[] {
         SourceExplicit,
         SourceInferred
+    };
+
+    /// <summary>Allowed routing role values.</summary>
+    public static readonly IReadOnlyList<string> AllowedRoles = new[] {
+        RoleOperational,
+        RolePackInfo,
+        RoleEnvironmentDiscover,
+        RoleResolver,
+        RoleDiagnostic
     };
 
     /// <summary>
@@ -84,6 +103,28 @@ public static class ToolRoutingTaxonomy {
 
         for (var i = 0; i < AllowedSources.Count; i++) {
             if (string.Equals(normalized, AllowedSources[i], StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether the supplied value is an allowed routing role token.
+    /// </summary>
+    public static bool IsAllowedRole(string? value) {
+        if (value is null) {
+            return false;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < AllowedRoles.Count; i++) {
+            if (string.Equals(normalized, AllowedRoles[i], StringComparison.Ordinal)) {
                 return true;
             }
         }

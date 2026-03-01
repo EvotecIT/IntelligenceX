@@ -15,6 +15,16 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record GpoPermissionReportRequest(
+        string DomainName,
+        Guid? GpoId,
+        string? GpoName,
+        string? PrincipalContains,
+        string? PermissionTypeRaw,
+        GpoPermissionType? PermissionType,
+        int MaxGpos,
+        int MaxRows,
+        int MaxResults);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_permission_report",
@@ -57,40 +67,66 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<GpoPermissionReportRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("domain_name", out var domainName, out var domainError)) {
+                return ToolRequestBindingResult<GpoPermissionReportRequest>.Failure(domainError);
+            }
+
+            var gpoIdRaw = reader.OptionalString("gpo_id");
+            Guid? gpoId = null;
+            if (!string.IsNullOrWhiteSpace(gpoIdRaw)) {
+                if (!Guid.TryParse(gpoIdRaw, out var parsed) || parsed == Guid.Empty) {
+                    return ToolRequestBindingResult<GpoPermissionReportRequest>.Failure("gpo_id must be a valid non-empty GUID.");
+                }
+
+                gpoId = parsed;
+            }
+
+            var permissionTypeRaw = reader.OptionalString("permission_type");
+            GpoPermissionType? permissionType = null;
+            if (!string.IsNullOrWhiteSpace(permissionTypeRaw)) {
+                if (string.Equals(permissionTypeRaw, "allow", StringComparison.OrdinalIgnoreCase)) {
+                    permissionType = GpoPermissionType.Allow;
+                } else if (string.Equals(permissionTypeRaw, "deny", StringComparison.OrdinalIgnoreCase)) {
+                    permissionType = GpoPermissionType.Deny;
+                } else {
+                    return ToolRequestBindingResult<GpoPermissionReportRequest>.Failure("permission_type must be either 'allow' or 'deny'.");
+                }
+            }
+
+            return ToolRequestBindingResult<GpoPermissionReportRequest>.Success(new GpoPermissionReportRequest(
+                DomainName: domainName,
+                GpoId: gpoId,
+                GpoName: reader.OptionalString("gpo_name"),
+                PrincipalContains: reader.OptionalString("principal_contains"),
+                PermissionTypeRaw: permissionTypeRaw,
+                PermissionType: permissionType,
+                MaxGpos: reader.CappedInt32("max_gpos", 50000, 1, 200000),
+                MaxRows: reader.CappedInt32("max_rows", 200000, 1, 2000000),
+                MaxResults: reader.CappedInt32("max_results", Options.MaxResults, 1, Options.MaxResults)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoPermissionReportRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
-            return Task.FromResult(argumentError!);
-        }
-
-        var domainName = domainQuery.DomainName;
-
-        var gpoIdRaw = ToolArgs.GetOptionalTrimmed(arguments, "gpo_id");
-        Guid? gpoId = null;
-        if (!string.IsNullOrWhiteSpace(gpoIdRaw)) {
-            if (!Guid.TryParse(gpoIdRaw, out var parsed) || parsed == Guid.Empty) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "gpo_id must be a valid non-empty GUID."));
-            }
-            gpoId = parsed;
-        }
-
-        var gpoName = ToolArgs.GetOptionalTrimmed(arguments, "gpo_name");
-        var principalContains = ToolArgs.GetOptionalTrimmed(arguments, "principal_contains");
-        var permissionTypeRaw = ToolArgs.GetOptionalTrimmed(arguments, "permission_type");
-        GpoPermissionType? permissionType = null;
-        if (!string.IsNullOrWhiteSpace(permissionTypeRaw)) {
-            if (string.Equals(permissionTypeRaw, "allow", StringComparison.OrdinalIgnoreCase)) {
-                permissionType = GpoPermissionType.Allow;
-            } else if (string.Equals(permissionTypeRaw, "deny", StringComparison.OrdinalIgnoreCase)) {
-                permissionType = GpoPermissionType.Deny;
-            } else {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "permission_type must be either 'allow' or 'deny'."));
-            }
-        }
-
-        var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 200000, 1, 2000000);
-        var maxResults = domainQuery.MaxResults;
+        var request = context.Request;
+        var domainName = request.DomainName;
+        var gpoId = request.GpoId;
+        var gpoName = request.GpoName;
+        var principalContains = request.PrincipalContains;
+        var permissionType = request.PermissionType;
+        var permissionTypeRaw = request.PermissionTypeRaw;
+        var maxGpos = request.MaxGpos;
+        var maxRows = request.MaxRows;
+        var maxResults = request.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionReportService.Get(domainName, gpoId: gpoId, gpoName: gpoName, maxGpos: maxGpos, maxRows: maxRows),
@@ -127,8 +163,8 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
             InheritedCount: filtered.Count(static row => row.Inherited),
             Rows: rows);
 
-        return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "rows_view",
@@ -155,4 +191,3 @@ public sealed class AdGpoPermissionReportTool : ActiveDirectoryToolBase, ITool {
             }));
     }
 }
-

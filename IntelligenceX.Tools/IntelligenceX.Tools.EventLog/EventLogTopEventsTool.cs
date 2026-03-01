@@ -12,6 +12,13 @@ namespace IntelligenceX.Tools.EventLog;
 /// Returns the most recent N events from a local or remote Windows Event Log channel (quick triage).
 /// </summary>
 public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
+    private sealed record TopEventsRequest(
+        string LogName,
+        string? MachineName,
+        int MaxEvents,
+        bool IncludeMessage,
+        int? SessionTimeoutMs);
+
     private const int DefaultMaxEvents = 5;
     private const int MaxViewTop = 5000;
     private const int MaxMachineNameLength = 260;
@@ -44,120 +51,115 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
     /// <summary>
     /// Invokes the tool.
     /// </summary>
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var logName = arguments?.GetString("log_name") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(logName)) {
-            return ToolResponse.Error("invalid_argument", "log_name is required.");
-        }
-        logName = logName.Trim();
-        if (logName.Length > MaxLogNameLength) {
-            return ToolResponse.Error("invalid_argument", $"log_name must be <= {MaxLogNameLength} characters.");
-        }
-        foreach (var c in logName) {
-            if (char.IsControl(c)) {
-                return ToolResponse.Error("invalid_argument", "log_name must not contain control characters.");
-            }
-        }
-
-        // Treat whitespace-only values as "not provided" to avoid accidental remote session behavior.
-        var machineName = ToolArgs.GetOptionalTrimmed(arguments, "machine_name");
-        if (string.IsNullOrWhiteSpace(machineName)) {
-            machineName = null;
-        }
-        if (machineName is not null) {
-            if (machineName.Length > MaxMachineNameLength) {
-                return ToolResponse.Error("invalid_argument", $"machine_name must be <= {MaxMachineNameLength} characters.");
-            }
-            foreach (var c in machineName) {
-                if (char.IsControl(c)) {
-                    return ToolResponse.Error("invalid_argument", "machine_name must not contain control characters.");
-                }
-            }
-        }
-
-        // Defensive: options are validated on construction, but keep "top events" semantics stable
-        // even if an upstream host misconfigures MaxResults to 0/negative.
-        var maxEventsCap = Options.MaxResults <= 0
-            ? MaxViewTop
-            : Math.Min(Options.MaxResults, MaxViewTop);
-        if (maxEventsCap < 1) {
-            maxEventsCap = DefaultMaxEvents;
-        }
-        var maxEvents = ToolArgs.GetPositiveCappedInt32OrDefault(
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
             arguments: arguments,
-            key: "max_events",
-            defaultValue: DefaultMaxEvents,
-            maxInclusive: maxEventsCap);
-        if (maxEvents < 1) {
-            maxEvents = 1;
-        }
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        // Default off: formatting messages can be slow/fragile for remote sessions and is not always needed for triage.
-        // Note: tool arguments are untrusted; treat invalid types as "not provided" rather than throwing.
-        var includeMessage = ToolArgs.GetBoolean(arguments, "include_message", defaultValue: false);
+    private ToolRequestBindingResult<TopEventsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("log_name", out var logName, out var logNameError)) {
+                return ToolRequestBindingResult<TopEventsRequest>.Failure(logNameError);
+            }
 
-        long? sessionTimeoutRaw = null;
-        if (arguments is not null && arguments.TryGetValue("session_timeout_ms", out var sessionTimeoutValue)) {
-            // Treat explicit null as "not provided".
-            if (sessionTimeoutValue is not null && sessionTimeoutValue.Kind != JsonValueKind.Null) {
-                if (sessionTimeoutValue.Kind != JsonValueKind.Number) {
-                    return ToolResponse.Error("invalid_argument", "session_timeout_ms must be a number of milliseconds.");
+            logName = logName.Trim();
+            if (logName.Length > MaxLogNameLength) {
+                return ToolRequestBindingResult<TopEventsRequest>.Failure($"log_name must be <= {MaxLogNameLength} characters.");
+            }
+            if (ContainsControlCharacters(logName)) {
+                return ToolRequestBindingResult<TopEventsRequest>.Failure("log_name must not contain control characters.");
+            }
+
+            // Treat whitespace-only values as "not provided" to avoid accidental remote session behavior.
+            var machineName = reader.OptionalString("machine_name");
+            if (string.IsNullOrWhiteSpace(machineName)) {
+                machineName = null;
+            }
+
+            if (machineName is not null) {
+                if (machineName.Length > MaxMachineNameLength) {
+                    return ToolRequestBindingResult<TopEventsRequest>.Failure($"machine_name must be <= {MaxMachineNameLength} characters.");
                 }
-
-                // Avoid relying on raw boxed numeric shapes. We only need bounded ms precision here, so prefer
-                // the model's safe numeric accessors and truncate fractional milliseconds deterministically.
-                var d = sessionTimeoutValue.AsDouble();
-                if (!d.HasValue) {
-                    sessionTimeoutRaw = null;
-                } else if (!double.IsFinite(d.Value)) {
-                    return ToolResponse.Error("invalid_argument", "session_timeout_ms must be a finite number.");
-                } else {
-                    sessionTimeoutRaw = (long)Math.Truncate(d.Value);
+                if (ContainsControlCharacters(machineName)) {
+                    return ToolRequestBindingResult<TopEventsRequest>.Failure("machine_name must not contain control characters.");
                 }
             }
-        }
 
-        var sessionTimeoutMs = ResolveSessionTimeoutMs(
-            timeoutRaw: sessionTimeoutRaw,
-            minInclusive: MinSessionTimeoutMs,
-            maxInclusive: MaxSessionTimeoutMs);
+            // Defensive: options are validated on construction, but keep "top events" semantics stable
+            // even if an upstream host misconfigures MaxResults to 0/negative.
+            var maxEventsCap = Options.MaxResults <= 0
+                ? MaxViewTop
+                : Math.Min(Options.MaxResults, MaxViewTop);
+            if (maxEventsCap < 1) {
+                maxEventsCap = DefaultMaxEvents;
+            }
 
-        if (machineName is not null && !sessionTimeoutMs.HasValue) {
-            sessionTimeoutMs = DefaultRemoteSessionTimeoutMs;
-        }
+            var maxEvents = ToolArgs.GetPositiveCappedInt32OrDefault(
+                arguments: arguments,
+                key: "max_events",
+                defaultValue: DefaultMaxEvents,
+                maxInclusive: maxEventsCap);
+            if (maxEvents < 1) {
+                maxEvents = 1;
+            }
 
-        var maxMessageChars = includeMessage
+            if (!TryReadSessionTimeoutRaw(arguments, out var sessionTimeoutRaw, out var timeoutError)) {
+                return ToolRequestBindingResult<TopEventsRequest>.Failure(timeoutError ?? "session_timeout_ms is invalid.");
+            }
+
+            var sessionTimeoutMs = ResolveSessionTimeoutMs(
+                timeoutRaw: sessionTimeoutRaw,
+                minInclusive: MinSessionTimeoutMs,
+                maxInclusive: MaxSessionTimeoutMs);
+            if (machineName is not null && !sessionTimeoutMs.HasValue) {
+                sessionTimeoutMs = DefaultRemoteSessionTimeoutMs;
+            }
+
+            return ToolRequestBindingResult<TopEventsRequest>.Success(new TopEventsRequest(
+                LogName: logName,
+                MachineName: machineName,
+                MaxEvents: maxEvents,
+                IncludeMessage: reader.Boolean("include_message", defaultValue: false),
+                SessionTimeoutMs: sessionTimeoutMs));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<TopEventsRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+        var maxMessageChars = request.IncludeMessage
             ? Math.Max(0, Math.Min(Options.MaxMessageChars, 1200))
             : 0;
 
-        var request = new LiveEventQueryRequest {
-            LogName = logName,
-            MachineName = machineName,
+        var liveRequest = new LiveEventQueryRequest {
+            LogName = request.LogName,
+            MachineName = request.MachineName,
             XPath = "*",
-            MaxEvents = maxEvents,
+            MaxEvents = request.MaxEvents,
             OldestFirst = false,
-            IncludeMessage = includeMessage,
+            IncludeMessage = request.IncludeMessage,
             MaxMessageChars = maxMessageChars,
-            SessionTimeoutMs = sessionTimeoutMs
+            SessionTimeoutMs = request.SessionTimeoutMs
         };
 
         LiveEventQueryResult? root;
         LiveEventQueryFailure? failure;
         bool ok;
 
-        if (machineName is null) {
+        if (request.MachineName is null) {
             // Local reads are typically fast and stay on the current thread to reduce overhead.
             ok = LiveEventQueryExecutor.TryRead(
-                request: request,
+                request: liveRequest,
                 result: out root,
                 failure: out failure,
                 cancellationToken: cancellationToken);
         } else {
             // Live querying is synchronous; for remote sessions, offload work so callers don't tie up request threads.
             // Use a small concurrency gate to avoid saturating the host with concurrent RPC/session work.
-            await RemoteReadGate.WaitAsync(cancellationToken);
+            await RemoteReadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             (bool Ok, LiveEventQueryResult? Root, LiveEventQueryFailure? Failure) remote;
             try {
                 // Cancellation is best-effort: we honor it while waiting for the concurrency gate and before starting
@@ -166,12 +168,12 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
 
                 remote = await Task.Run(() => {
                     var okInner = LiveEventQueryExecutor.TryRead(
-                        request: request,
+                        request: liveRequest,
                         result: out var remoteRoot,
                         failure: out var remoteFailure,
                         cancellationToken: cancellationToken);
                     return (Ok: okInner, Root: okInner ? remoteRoot : null, Failure: okInner ? null : remoteFailure);
-                }, CancellationToken.None);
+                }, CancellationToken.None).ConfigureAwait(false);
             } finally {
                 RemoteReadGate.Release();
             }
@@ -184,28 +186,80 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
         if (!ok) {
             return ErrorFromLiveQueryFailure(
                 failure: failure,
-                machineName: machineName,
-                logName: logName);
+                machineName: request.MachineName,
+                logName: request.LogName);
         }
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        return ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: root!,
             sourceRows: root!.Events,
             viewRowsPath: "events_view",
-            title: $"Top {maxEvents} recent events (preview)",
-            baseTruncated: root!.Truncated,
+            title: $"Top {request.MaxEvents} recent events (preview)",
+            baseTruncated: root.Truncated,
             scanned: root.Events.Count,
             maxTop: MaxViewTop,
             metaMutate: meta => AddReadOnlyTriageChainingMeta(
                 meta: meta,
                 currentTool: "eventlog_top_events",
-                logName: logName,
-                machineName: machineName,
-                suggestedMaxEvents: maxEvents,
+                logName: request.LogName,
+                machineName: request.MachineName,
+                suggestedMaxEvents: request.MaxEvents,
                 scanned: root.Events.Count,
                 truncated: root.Truncated,
                 queryMode: "top_events"));
-        return response;
+    }
+
+    private static bool ContainsControlCharacters(string value) {
+        for (var i = 0; i < value.Length; i++) {
+            if (char.IsControl(value[i])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryReadSessionTimeoutRaw(JsonObject? arguments, out long? timeoutRaw, out string? error) {
+        timeoutRaw = null;
+        error = null;
+        if (arguments is null) {
+            return true;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, "session_timeout_ms", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var value = kv.Value;
+            // Treat explicit null as "not provided".
+            if (value is null || value.Kind == JsonValueKind.Null) {
+                return true;
+            }
+
+            if (value.Kind != JsonValueKind.Number) {
+                error = "session_timeout_ms must be a number of milliseconds.";
+                return false;
+            }
+
+            // Avoid relying on raw boxed numeric shapes. We only need bounded ms precision here, so prefer
+            // the model's safe numeric accessors and truncate fractional milliseconds deterministically.
+            var d = value.AsDouble();
+            if (!d.HasValue) {
+                timeoutRaw = null;
+                return true;
+            }
+
+            if (!double.IsFinite(d.Value)) {
+                error = "session_timeout_ms must be a finite number.";
+                return false;
+            }
+
+            timeoutRaw = (long)Math.Truncate(d.Value);
+            return true;
+        }
+
+        return true;
     }
 }

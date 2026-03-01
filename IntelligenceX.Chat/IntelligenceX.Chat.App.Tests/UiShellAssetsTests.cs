@@ -47,6 +47,22 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures routing-catalog normalization remains backward compatible for older payloads
+    /// that do not include newer explicit-routing readiness counters.
+    /// </summary>
+    [Fact]
+    public void Load_RoutingCatalogNormalization_UsesPresenceGatesForReadinessDerivation() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("var hasIsExplicitRoutingReady = hasOwn.call(value, \"isExplicitRoutingReady\");", script, StringComparison.Ordinal);
+        Assert.Contains("var hasInferredRoutingTools = hasOwn.call(value, \"inferredRoutingTools\");", script, StringComparison.Ordinal);
+        Assert.Contains("isExplicitRoutingReady: hasIsExplicitRoutingReady ? value.isExplicitRoutingReady === true : true,", script, StringComparison.Ordinal);
+        Assert.Contains("var canDeriveExplicitReadiness = hasMissingRoutingContractTools", script, StringComparison.Ordinal);
+        Assert.Contains("if (canDeriveExplicitReadiness && explicitReadinessIssueCount > 0) {", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures split JavaScript files are explicitly tracked by manifest,
     /// so adding/renaming files cannot silently change runtime composition.
     /// </summary>

@@ -17,9 +17,44 @@ public sealed record SessionRoutingCatalogDiagnosticsDto {
     public int RoutingAwareTools { get; init; }
 
     /// <summary>
+    /// Routing-aware tools declaring explicit routing source.
+    /// </summary>
+    public int ExplicitRoutingTools { get; init; }
+
+    /// <summary>
+    /// Routing-aware tools still relying on inferred routing source.
+    /// </summary>
+    public int InferredRoutingTools { get; init; }
+
+    /// <summary>
     /// Tools missing routing contracts.
     /// </summary>
     public int MissingRoutingContractTools { get; init; }
+
+    /// <summary>
+    /// Routing-aware tools missing pack id.
+    /// </summary>
+    public int MissingPackIdTools { get; init; }
+
+    /// <summary>
+    /// Routing-aware tools missing role.
+    /// </summary>
+    public int MissingRoleTools { get; init; }
+
+    /// <summary>
+    /// Tools with setup-aware contracts.
+    /// </summary>
+    public int SetupAwareTools { get; init; }
+
+    /// <summary>
+    /// Tools with handoff-aware contracts.
+    /// </summary>
+    public int HandoffAwareTools { get; init; }
+
+    /// <summary>
+    /// Tools with recovery-aware contracts.
+    /// </summary>
+    public int RecoveryAwareTools { get; init; }
 
     /// <summary>
     /// Tools declaring a non-empty domain intent family.
@@ -50,6 +85,11 @@ public sealed record SessionRoutingCatalogDiagnosticsDto {
     /// True when no catalog inconsistencies are detected.
     /// </summary>
     public bool IsHealthy { get; init; }
+
+    /// <summary>
+    /// True when strict explicit routing enforcement can be enabled safely.
+    /// </summary>
+    public bool IsExplicitRoutingReady { get; init; }
 
     /// <summary>
     /// Family/action distribution summary.

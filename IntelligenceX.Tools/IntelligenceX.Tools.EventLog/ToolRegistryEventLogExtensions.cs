@@ -37,6 +37,12 @@ public static class ToolRegistryEventLogExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(EventLogToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return EventLogToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(EventLogToolOptions options) {
         yield return new EventLogPackInfoTool(options);
         yield return new EventLogChannelListTool(options);
         yield return new EventLogProviderListTool(options);

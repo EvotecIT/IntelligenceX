@@ -564,7 +564,8 @@ internal sealed partial class ChatServiceSession {
         nameof(_startupWarnings),
         nameof(_pluginSearchPaths),
         nameof(_runtimePolicyDiagnostics),
-        nameof(_routingCatalogDiagnostics))]
+        nameof(_routingCatalogDiagnostics),
+        nameof(_toolOrchestrationCatalog))]
     private void RebuildToolingCore(bool clearRoutingCaches) {
         var startupWarnings = new List<string>();
         var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
@@ -581,8 +582,10 @@ internal sealed partial class ChatServiceSession {
         var registry = new ToolRegistry();
         _toolPackIdsByToolName.Clear();
         ToolPackBootstrap.RegisterAll(registry, bootstrapResult.Packs, _toolPackIdsByToolName);
+        var definitions = registry.GetDefinitions();
+        _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, _toolPackIdsByToolName);
         _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
-        _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(registry);
+        _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
 
         _packs = bootstrapResult.Packs;
         _packAvailability = bootstrapResult.PackAvailability.ToArray();
@@ -591,7 +594,6 @@ internal sealed partial class ChatServiceSession {
         _registry = registry;
 
         UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
-        RebuildPackCapabilityFallbackContracts(registry.GetDefinitions());
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();

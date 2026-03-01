@@ -37,6 +37,12 @@ public static class ToolRegistryFileSystemExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(FileSystemToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return FileSystemToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(FileSystemToolOptions options) {
         yield return new FileSystemPackInfoTool(options);
         yield return new FsListTool(options);
         yield return new FsReadTool(options);

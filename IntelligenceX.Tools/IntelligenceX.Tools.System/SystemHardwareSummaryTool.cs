@@ -14,6 +14,13 @@ namespace IntelligenceX.Tools.System;
 /// Returns a summarized hardware snapshot (CPU, memory, GPU).
 /// </summary>
 public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
+    private sealed record HardwareSummaryRequest(
+        bool IncludeProcessors,
+        bool IncludeMemoryModules,
+        bool IncludeVideoControllers,
+        int? NameSampleSize,
+        int TimeoutMs);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_hardware_summary",
         "Return a summarized hardware snapshot (CPU, memory, GPU).",
@@ -35,32 +42,54 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var includeProcessors = arguments?.GetBoolean("include_processors", defaultValue: true) ?? true;
-        var includeMemoryModules = arguments?.GetBoolean("include_memory_modules", defaultValue: true) ?? true;
-        var includeVideoControllers = arguments?.GetBoolean("include_video_controllers", defaultValue: true) ?? true;
-        if (!includeProcessors && !includeMemoryModules && !includeVideoControllers) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "At least one include_* section must be true."));
-        }
-
-        var timeoutMs = ResolveTimeoutMs(arguments);
-        var nameSampleArg = arguments?.GetInt64("name_sample_size");
-        int? nameSampleSize = null;
-        if (nameSampleArg.HasValue) {
-            if (nameSampleArg.Value <= 0) {
-                return Task.FromResult(ToolResponse.Error("invalid_argument", "name_sample_size must be greater than zero."));
+    private ToolRequestBindingResult<HardwareSummaryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var includeProcessors = reader.Boolean("include_processors", defaultValue: true);
+            var includeMemoryModules = reader.Boolean("include_memory_modules", defaultValue: true);
+            var includeVideoControllers = reader.Boolean("include_video_controllers", defaultValue: true);
+            if (!includeProcessors && !includeMemoryModules && !includeVideoControllers) {
+                return ToolRequestBindingResult<HardwareSummaryRequest>.Failure(
+                    "At least one include_* section must be true.");
             }
-            nameSampleSize = (int)Math.Min(nameSampleArg.Value, 50);
-        }
+
+            var nameSampleArg = reader.OptionalInt64("name_sample_size");
+            int? nameSampleSize = null;
+            if (nameSampleArg.HasValue) {
+                if (nameSampleArg.Value <= 0) {
+                    return ToolRequestBindingResult<HardwareSummaryRequest>.Failure(
+                        "name_sample_size must be greater than zero.");
+                }
+
+                nameSampleSize = (int)Math.Min(nameSampleArg.Value, 50);
+            }
+
+            return ToolRequestBindingResult<HardwareSummaryRequest>.Success(new HardwareSummaryRequest(
+                IncludeProcessors: includeProcessors,
+                IncludeMemoryModules: includeMemoryModules,
+                IncludeVideoControllers: includeVideoControllers,
+                NameSampleSize: nameSampleSize,
+                TimeoutMs: ResolveTimeoutMs(arguments)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<HardwareSummaryRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         if (!HardwareSummaryQueryExecutor.TryExecute(
                 request: new HardwareSummaryQueryRequest {
-                    IncludeProcessors = includeProcessors,
-                    IncludeMemoryModules = includeMemoryModules,
-                    IncludeVideoControllers = includeVideoControllers,
-                    NameSampleSize = nameSampleSize,
-                    Timeout = TimeSpan.FromMilliseconds(timeoutMs)
+                    IncludeProcessors = request.IncludeProcessors,
+                    IncludeMemoryModules = request.IncludeMemoryModules,
+                    IncludeVideoControllers = request.IncludeVideoControllers,
+                    NameSampleSize = request.NameSampleSize,
+                    Timeout = TimeSpan.FromMilliseconds(request.TimeoutMs)
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -70,30 +99,30 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
 
         var result = queryResult!;
         var facts = new List<(string Key, string Value)>();
-        if (includeProcessors) {
+        if (request.IncludeProcessors) {
             facts.Add(("Processor Count", result.ProcessorCount.ToString(CultureInfo.InvariantCulture)));
             facts.Add(("Total CPU Cores", result.TotalCpuCores.ToString(CultureInfo.InvariantCulture)));
             facts.Add(("Total Logical Processors", result.TotalLogicalProcessors.ToString(CultureInfo.InvariantCulture)));
             facts.Add(("Max CPU Clock (MHz)", result.MaxCpuClockMhz.ToString(CultureInfo.InvariantCulture)));
         }
-        if (includeMemoryModules) {
+        if (request.IncludeMemoryModules) {
             facts.Add(("Memory Module Count", result.MemoryModuleCount.ToString(CultureInfo.InvariantCulture)));
             facts.Add(("Total Memory (bytes)", result.TotalMemoryBytes.ToString(CultureInfo.InvariantCulture)));
             facts.Add(("Max Memory Speed (MHz)", result.MaxMemorySpeedMhz.ToString(CultureInfo.InvariantCulture)));
         }
-        if (includeVideoControllers) {
+        if (request.IncludeVideoControllers) {
             facts.Add(("Video Controller Count", result.VideoControllerCount.ToString(CultureInfo.InvariantCulture)));
         }
 
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: result,
             title: "Hardware summary",
             facts: facts,
             meta: ToolOutputHints.Meta(count: facts.Count, truncated: false)
-                .Add("timeout_ms", timeoutMs)
-                .Add("include_processors", includeProcessors)
-                .Add("include_memory_modules", includeMemoryModules)
-                .Add("include_video_controllers", includeVideoControllers),
+                .Add("timeout_ms", request.TimeoutMs)
+                .Add("include_processors", request.IncludeProcessors)
+                .Add("include_memory_modules", request.IncludeMemoryModules)
+                .Add("include_video_controllers", request.IncludeVideoControllers),
             keyHeader: "Metric",
             valueHeader: "Value",
             truncated: false,

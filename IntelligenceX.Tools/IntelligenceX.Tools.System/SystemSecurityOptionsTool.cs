@@ -12,6 +12,10 @@ namespace IntelligenceX.Tools.System;
 /// Returns Windows Security Options policy state from registry (read-only).
 /// </summary>
 public sealed class SystemSecurityOptionsTool : SystemToolBase, ITool {
+    private sealed record SecurityOptionsRequest(
+        string? ComputerName,
+        string Target);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_security_options",
         "Return Windows Security Options policy state from registry (read-only).",
@@ -31,6 +35,23 @@ public sealed class SystemSecurityOptionsTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<SecurityOptionsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
+            return ToolRequestBindingResult<SecurityOptionsRequest>.Success(new SecurityOptionsRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SecurityOptionsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var windowsError = ValidateWindowsSupport("system_security_options");
@@ -38,18 +59,17 @@ public sealed class SystemSecurityOptionsTool : SystemToolBase, ITool {
             return Task.FromResult(windowsError);
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = ResolveTargetComputerName(computerName);
+        var request = context.Request;
 
         try {
-            var state = SecurityOptionsQuery.Get(computerName);
-            var model = new SecurityOptionsResult(target, state);
+            var state = SecurityOptionsQuery.Get(request.ComputerName);
+            var model = new SecurityOptionsResult(request.Target, state);
 
-            return Task.FromResult(ToolResponse.OkFactsModel(
+            return Task.FromResult(ToolResultV2.OkFactsModel(
                 model: model,
                 title: "System Security Options",
                 facts: new[] {
-                    ("Computer", target),
+                    ("Computer", request.Target),
                     ("RestrictAnonymous", state.RestrictAnonymous?.ToString() ?? string.Empty),
                     ("RequireSmbSigningServer", state.RequireSmbSigningServer?.ToString() ?? string.Empty),
                     ("Smb1", state.Smb1?.ToString() ?? string.Empty)

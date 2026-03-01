@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.System;
 /// Returns system pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class SystemPackInfoTool : SystemToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_pack_info",
         "Return system pack capabilities, output contract, and recommended usage patterns. Call this first when planning system diagnostics.",
@@ -26,6 +28,20 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -116,6 +132,6 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             "Use raw payload fields for reasoning and correlation.",
             "Use `*_view` fields only for presentation filtering/sorting.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

@@ -33,10 +33,7 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var packInfoDefinitions = _registry.GetDefinitions()
-            .Where(static def => def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(static def => def.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry);
         var sourceFilter = BuildSourceKindFilter(request.SourceKinds);
         var packIdFilter = BuildPackIdFilter(request.PackIds);
 
@@ -86,10 +83,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private async Task PrimeStartupToolHealthWarningsAsync(CancellationToken cancellationToken) {
-        var packInfoDefinitions = _registry.GetDefinitions()
-            .Where(static def => def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(static def => def.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry);
         if (packInfoDefinitions.Length == 0) {
             return;
         }
@@ -209,8 +203,8 @@ internal sealed partial class ChatServiceSession {
 
     private (string PackId, string? PackName, ToolPackSourceKind SourceKind) ResolvePackMetadata(ToolDefinition definition) {
         var packId = string.Empty;
-        if (_toolPackIdsByToolName.TryGetValue(definition.Name, out var assignedPackId)) {
-            packId = NormalizePackId(assignedPackId);
+        if (_toolOrchestrationCatalog.TryGetPackId(definition.Name, out var catalogPackId)) {
+            packId = catalogPackId;
         }
 
         _packDisplayNamesById.TryGetValue(packId, out var packName);

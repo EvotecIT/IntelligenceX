@@ -15,6 +15,7 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoInventoryHealthTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record GpoInventoryHealthRequest(string Slice);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_inventory_health",
@@ -49,15 +50,29 @@ public sealed class AdGpoInventoryHealthTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var slice = (ToolArgs.GetOptionalTrimmed(arguments, "slice") ?? "all").ToLowerInvariant();
-        if (slice is not ("all" or "disabled" or "empty" or "unlinked" or "all_settings_disabled")) {
-            return Task.FromResult(ToolResponse.Error(
-                "invalid_argument",
-                "slice must be one of: all, disabled, empty, unlinked, all_settings_disabled."));
-        }
-
-        return ExecuteDomainRowsViewTool(
+        return RunPipelineAsync(
             arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<GpoInventoryHealthRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var slice = (reader.OptionalString("slice") ?? "all").ToLowerInvariant();
+            if (slice is not ("all" or "disabled" or "empty" or "unlinked" or "all_settings_disabled")) {
+                return ToolRequestBindingResult<GpoInventoryHealthRequest>.Failure(
+                    "slice must be one of: all, disabled, empty, unlinked, all_settings_disabled.");
+            }
+
+            return ToolRequestBindingResult<GpoInventoryHealthRequest>.Success(new GpoInventoryHealthRequest(slice));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoInventoryHealthRequest> context, CancellationToken cancellationToken) {
+        var slice = context.Request.Slice;
+        return ExecuteDomainRowsViewTool(
+            arguments: context.Arguments,
             cancellationToken: cancellationToken,
             title: "Active Directory: GPO Inventory Health (preview)",
             defaultErrorMessage: "GPO inventory health query failed.",
@@ -90,4 +105,3 @@ public sealed class AdGpoInventoryHealthTool : ActiveDirectoryToolBase, ITool {
             });
     }
 }
-

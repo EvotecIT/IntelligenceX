@@ -19,6 +19,25 @@ namespace IntelligenceX.Tools.OfficeIMO;
 /// Reads a supported Office document (or a folder of documents) and emits AI-friendly chunks/documents.
 /// </summary>
 public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
+    private sealed record OfficeImoReadRequest(
+        string FullPath,
+        bool Recurse,
+        HashSet<string> NormalizedExtensions,
+        int MaxFiles,
+        long MaxTotalBytes,
+        long MaxInputBytes,
+        int MaxChunks,
+        int MaxChars,
+        int MaxTableRows,
+        string? ExcelSheetName,
+        string? ExcelA1Range,
+        bool ExcelHeadersInFirstRow,
+        bool IncludeWordFootnotes,
+        bool IncludePptNotes,
+        bool MarkdownChunkByHeadings,
+        bool IncludeDocumentChunks,
+        OfficeImoOutputMode OutputMode);
+
     private static readonly string[] DefaultOfficeExtensions = {
         ".docx", ".docm",
         ".xlsx", ".xlsm",
@@ -61,43 +80,92 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var inputPath = arguments?.GetString("path") ?? string.Empty;
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        if (!PathResolver.TryResolvePath(inputPath, Options.AllowedRoots, out var fullPath, out var resolveError)) {
-            return Task.FromResult(ToolResponse.Error(
-                errorCode: "access_denied",
-                error: resolveError,
-                hints: new[] { "Adjust AllowedRoots to include the requested path.", "Use an absolute path inside an allowed root." },
-                isTransient: false));
-        }
+    private ToolRequestBindingResult<OfficeImoReadRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("path", out var inputPath, out var pathError)) {
+                return ToolRequestBindingResult<OfficeImoReadRequest>.Failure(pathError);
+            }
 
-        var recurse = ToolArgs.GetBoolean(arguments, "recurse", defaultValue: false);
-        var maxFiles = ToolArgs.GetCappedInt32(arguments, "max_files", Options.MaxFiles, 1, Options.MaxFiles);
-        var maxTotalBytes = ToolArgs.GetCappedInt64(arguments, "max_total_bytes", Options.MaxTotalBytes, 1, Options.MaxTotalBytes);
-        var maxInputBytes = ToolArgs.GetCappedInt64(arguments, "max_input_bytes", Options.MaxInputBytes, 1, Options.MaxInputBytes);
-        var maxChunks = ToolArgs.GetCappedInt32(arguments, "max_chunks", defaultValue: 10_000, minInclusive: 1, maxInclusive: 100_000);
+            if (!PathResolver.TryResolvePath(inputPath, Options.AllowedRoots, out var fullPath, out var resolveError)) {
+                return ToolRequestBindingResult<OfficeImoReadRequest>.Failure(
+                    error: resolveError,
+                    errorCode: "access_denied",
+                    hints: new[] { "Adjust AllowedRoots to include the requested path.", "Use an absolute path inside an allowed root." },
+                    isTransient: false);
+            }
 
-        var maxChars = ToolArgs.GetCappedInt32(arguments, "max_chars", defaultValue: 8000, minInclusive: 256, maxInclusive: 250_000);
-        var maxTableRows = ToolArgs.GetCappedInt32(arguments, "max_table_rows", defaultValue: 200, minInclusive: 1, maxInclusive: 10_000);
+            var recurse = reader.Boolean("recurse", defaultValue: false);
+            var maxFiles = reader.CappedInt32("max_files", Options.MaxFiles, 1, Options.MaxFiles);
+            var maxTotalBytes = reader.CappedInt64("max_total_bytes", Options.MaxTotalBytes, 1, Options.MaxTotalBytes);
+            var maxInputBytes = reader.CappedInt64("max_input_bytes", Options.MaxInputBytes, 1, Options.MaxInputBytes);
+            var maxChunks = reader.CappedInt32("max_chunks", defaultValue: 10_000, minInclusive: 1, maxInclusive: 100_000);
+            var maxChars = reader.CappedInt32("max_chars", defaultValue: 8000, minInclusive: 256, maxInclusive: 250_000);
+            var maxTableRows = reader.CappedInt32("max_table_rows", defaultValue: 200, minInclusive: 1, maxInclusive: 10_000);
+            var excelSheetName = reader.OptionalString("excel_sheet_name");
+            var excelA1Range = reader.OptionalString("excel_a1_range");
+            var excelHeadersInFirstRow = reader.Boolean("excel_headers_in_first_row", defaultValue: true);
+            var includeWordFootnotes = reader.Boolean("include_word_footnotes", defaultValue: true);
+            var includePptNotes = reader.Boolean("include_ppt_notes", defaultValue: true);
+            var markdownChunkByHeadings = reader.Boolean("markdown_chunk_by_headings", defaultValue: true);
+            var includeDocumentChunks = reader.Boolean("include_document_chunks", defaultValue: true);
 
-        var excelSheetName = ToolArgs.GetOptionalTrimmed(arguments, "excel_sheet_name");
-        var excelA1Range = ToolArgs.GetOptionalTrimmed(arguments, "excel_a1_range");
-        var excelHeadersInFirstRow = ToolArgs.GetBoolean(arguments, "excel_headers_in_first_row", defaultValue: true);
-        var includeWordFootnotes = ToolArgs.GetBoolean(arguments, "include_word_footnotes", defaultValue: true);
-        var includePptNotes = ToolArgs.GetBoolean(arguments, "include_ppt_notes", defaultValue: true);
-        var markdownChunkByHeadings = ToolArgs.GetBoolean(arguments, "markdown_chunk_by_headings", defaultValue: true);
-        var includeDocumentChunks = ToolArgs.GetBoolean(arguments, "include_document_chunks", defaultValue: true);
+            if (!TryParseOutputMode(reader.OptionalString("output_mode"), out var outputMode)) {
+                return ToolRequestBindingResult<OfficeImoReadRequest>.Failure(
+                    error: "Invalid output_mode. Allowed values: chunks, documents, both.",
+                    errorCode: "invalid_argument",
+                    hints: new[] { "Use output_mode='chunks' (default), 'documents', or 'both'." });
+            }
 
-        if (!TryParseOutputMode(ToolArgs.GetOptionalTrimmed(arguments, "output_mode"), out var outputMode)) {
-            return Task.FromResult(ToolResponse.Error(
-                errorCode: "invalid_argument",
-                error: "Invalid output_mode. Allowed values: chunks, documents, both.",
-                hints: new[] { "Use output_mode='chunks' (default), 'documents', or 'both'." },
-                isTransient: false));
-        }
+            var normalizedExt = NormalizeExtensions(reader.DistinctStringArray("extensions"));
 
-        var extensions = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("extensions"));
-        var normalizedExt = NormalizeExtensions(extensions);
+            return ToolRequestBindingResult<OfficeImoReadRequest>.Success(new OfficeImoReadRequest(
+                FullPath: fullPath,
+                Recurse: recurse,
+                NormalizedExtensions: normalizedExt,
+                MaxFiles: maxFiles,
+                MaxTotalBytes: maxTotalBytes,
+                MaxInputBytes: maxInputBytes,
+                MaxChunks: maxChunks,
+                MaxChars: maxChars,
+                MaxTableRows: maxTableRows,
+                ExcelSheetName: excelSheetName,
+                ExcelA1Range: excelA1Range,
+                ExcelHeadersInFirstRow: excelHeadersInFirstRow,
+                IncludeWordFootnotes: includeWordFootnotes,
+                IncludePptNotes: includePptNotes,
+                MarkdownChunkByHeadings: markdownChunkByHeadings,
+                IncludeDocumentChunks: includeDocumentChunks,
+                OutputMode: outputMode));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<OfficeImoReadRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var fullPath = context.Request.FullPath;
+        var recurse = context.Request.Recurse;
+        var normalizedExt = context.Request.NormalizedExtensions;
+        var maxFiles = context.Request.MaxFiles;
+        var maxTotalBytes = context.Request.MaxTotalBytes;
+        var maxInputBytes = context.Request.MaxInputBytes;
+        var maxChunks = context.Request.MaxChunks;
+        var maxChars = context.Request.MaxChars;
+        var maxTableRows = context.Request.MaxTableRows;
+        var excelSheetName = context.Request.ExcelSheetName;
+        var excelA1Range = context.Request.ExcelA1Range;
+        var excelHeadersInFirstRow = context.Request.ExcelHeadersInFirstRow;
+        var includeWordFootnotes = context.Request.IncludeWordFootnotes;
+        var includePptNotes = context.Request.IncludePptNotes;
+        var markdownChunkByHeadings = context.Request.MarkdownChunkByHeadings;
+        var includeDocumentChunks = context.Request.IncludeDocumentChunks;
+        var outputMode = context.Request.OutputMode;
 
         var result = new OfficeImoReadResult {
             OutputMode = ToOutputModeString(outputMode)
@@ -122,7 +190,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
             result.Files.Add(fullPath);
             result.FilesScanned = 1;
         } else {
-            return Task.FromResult(ToolResponse.Error(
+            return Task.FromResult(ToolResultV2.Error(
                 errorCode: "not_found",
                 error: "File or directory not found.",
                 hints: new[] { "Verify the path exists and is inside AllowedRoots." },
@@ -149,7 +217,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
             .Add("output_mode", result.OutputMode)
             .Add("officeimo_enabled", false);
 
-        return Task.FromResult(ToolResponse.OkModel(model: result, meta: disabledMeta, summaryMarkdown: disabledSummary));
+        return Task.FromResult(ToolResultV2.OkModel(model: result, meta: disabledMeta, summaryMarkdown: disabledSummary));
 #else
         var readerOptions = CreateReaderOptions(
             maxInputBytes: maxInputBytes,
@@ -221,7 +289,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
                 result,
                 cancellationToken);
         } else {
-            return Task.FromResult(ToolResponse.Error(
+            return Task.FromResult(ToolResultV2.Error(
                 errorCode: "not_found",
                 error: "File or directory not found.",
                 hints: new[] { "Verify the path exists and is inside AllowedRoots." },
@@ -270,7 +338,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
                 }),
             preview);
 
-        return Task.FromResult(ToolResponse.OkModel(model: result, meta: meta, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(model: result, meta: meta, summaryMarkdown: summary));
 #endif
     }
 

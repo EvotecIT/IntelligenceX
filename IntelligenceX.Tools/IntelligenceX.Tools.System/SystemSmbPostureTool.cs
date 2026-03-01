@@ -14,6 +14,11 @@ namespace IntelligenceX.Tools.System;
 /// Returns SMB security posture highlights from ComputerX SMB configuration (read-only).
 /// </summary>
 public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
+    private sealed record SmbPostureRequest(
+        string? ComputerName,
+        string Target,
+        bool IncludeNetbiosInterfaces);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_smb_posture",
         "Return SMB server/client security posture highlights (SMB1/signing/guest/null-session/NetBIOS) for local or remote host (read-only).",
@@ -43,6 +48,24 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<SmbPostureRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
+            return ToolRequestBindingResult<SmbPostureRequest>.Success(new SmbPostureRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
+                IncludeNetbiosInterfaces: reader.Boolean("include_netbios_interfaces", defaultValue: false)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SmbPostureRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var windowsError = ValidateWindowsSupport("system_smb_posture");
@@ -50,13 +73,11 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
             return Task.FromResult(windowsError);
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var includeNetbiosInterfaces = ToolArgs.GetBoolean(arguments, "include_netbios_interfaces", defaultValue: false);
-        var target = ResolveTargetComputerName(computerName);
+        var request = context.Request;
 
         try {
-            var raw = SmbConfigQuery.Get(computerName);
-            var config = includeNetbiosInterfaces ? raw : new SmbConfigInfo {
+            var raw = SmbConfigQuery.Get(request.ComputerName);
+            var config = request.IncludeNetbiosInterfaces ? raw : new SmbConfigInfo {
                 ComputerName = raw.ComputerName,
                 ServerSmb1Enabled = raw.ServerSmb1Enabled,
                 ServerSmb2Enabled = raw.ServerSmb2Enabled,
@@ -111,7 +132,7 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
             if (netbiosInterfacesNotDisabled > 0) warnings.Add("One or more NetBIOS interfaces are not disabled.");
 
             var model = new SystemSmbPostureResult(
-                ComputerName: target,
+                ComputerName: request.Target,
                 Configuration: config,
                 Smb1EnabledRisk: smb1Risk,
                 SigningNotRequiredRisk: signingRisk,
@@ -121,11 +142,11 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
                 NetbiosInterfacesNotDisabled: netbiosInterfacesNotDisabled,
                 Warnings: warnings);
 
-            return Task.FromResult(ToolResponse.OkFactsModelWithRenderValue(
+            return Task.FromResult(ToolResultV2.OkFactsModelWithRenderValue(
                 model: model,
                 title: "System SMB posture",
                 facts: new[] {
-                    ("Computer", target),
+                    ("Computer", request.Target),
                     ("ServerSmb1Enabled", raw.ServerSmb1Enabled?.ToString() ?? string.Empty),
                     ("ServerSigningRequired", raw.ServerSigningRequired?.ToString() ?? string.Empty),
                     ("ClientSigningRequired", raw.ClientSigningRequired?.ToString() ?? string.Empty),
@@ -137,8 +158,8 @@ public sealed class SystemSmbPostureTool : SystemToolBase, ITool {
                 meta: BuildFactsMeta(
                     count: warnings.Count,
                     truncated: false,
-                    target: target,
-                    mutate: meta => meta.Add("include_netbios_interfaces", includeNetbiosInterfaces)),
+                    target: request.Target,
+                    mutate: meta => meta.Add("include_netbios_interfaces", request.IncludeNetbiosInterfaces)),
                 keyHeader: "Field",
                 valueHeader: "Value",
                 truncated: false,

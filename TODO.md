@@ -6,6 +6,10 @@ Status: In progress
 For the "smart colleague" chat agent roadmap (ADPlayground/TestimoX/ComputerX/EventViewerX + runtime parallelism),
 see [Docs/agent-superpowers-backlog.md](Docs/agent-superpowers-backlog.md).
 
+## Chat/Tools Decoupling Migration
+- [ ] Track contract-first Chat/Tools migration execution against [PLAN.md](PLAN.md) and [PLAN-EXECUTION-ORDER.md](PLAN-EXECUTION-ORDER.md).
+- [ ] Keep ADR state current in [InternalDocs/architecture/adr-0001-chat-tools-contract-boundary.md](InternalDocs/architecture/adr-0001-chat-tools-contract-boundary.md).
+
 ## PR Feedback Churn
 - [ ] PR #399: Confirm intended shutdown semantics/ownership boundaries for queued UI publish awaiters (`CancelQueuedUiPublishesForShutdown`) because reviewer todo/critical guidance alternates between "complete on shutdown" vs "cancel on shutdown" and repeatedly reports outdated shutdown-order findings after fixes. Source: https://github.com/EvotecIT/IntelligenceX/pull/399#issuecomment-3906851784
 - [ ] PR #438: Confirm intended routing transparency emission policy (`ShouldEmitRoutingTransparency`) because reviewer todo/critical guidance repeatedly alternates between "emit only on consistent/informative routing states" and "always emit with normalized counts," producing non-deterministic merge blockers after each fix. Source: https://github.com/EvotecIT/IntelligenceX/pull/438#issuecomment-3912769531

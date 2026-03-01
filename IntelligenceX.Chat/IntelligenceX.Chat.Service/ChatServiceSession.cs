@@ -59,9 +59,9 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolPackIdsByToolName = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, PackCapabilityFallbackContract> _packCapabilityFallbackContractsByPackId = new(StringComparer.OrdinalIgnoreCase);
     private ToolRuntimePolicyDiagnostics _runtimePolicyDiagnostics;
     private ToolRoutingCatalogDiagnostics _routingCatalogDiagnostics;
+    private ToolOrchestrationCatalog _toolOrchestrationCatalog;
     private readonly object _toolRoutingStatsLock = new();
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingContextLock = new();

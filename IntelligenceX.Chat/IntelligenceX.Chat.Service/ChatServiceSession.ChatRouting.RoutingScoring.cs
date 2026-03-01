@@ -16,7 +16,7 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private static IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
+    private IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
         if (definitions.Count == 0 || limit <= 0) {
             return Array.Empty<ToolDefinition>();
         }
@@ -46,12 +46,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Deterministic but less registration-order-biased fallback:
-        // round-robin one tool per family (prefix) before filling remaining slots.
+        // round-robin one tool per catalog family before filling remaining slots.
         var familyOrder = new List<string>(uniqueDefinitions.Count);
         var toolsByFamily = new Dictionary<string, Queue<ToolDefinition>>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < uniqueDefinitions.Count; i++) {
             var definition = uniqueDefinitions[i];
-            var family = ResolveDeterministicSubsetFamilyKey(definition.Name);
+            var family = ResolveDeterministicSubsetFamilyKey(definition);
             if (!toolsByFamily.TryGetValue(family, out var queue)) {
                 queue = new Queue<ToolDefinition>();
                 toolsByFamily[family] = queue;
@@ -101,23 +101,20 @@ internal sealed partial class ChatServiceSession {
         return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
     }
 
-    private static string ResolveDeterministicSubsetFamilyKey(string? toolName) {
-        const string packInfoSuffix = "_pack_info";
-        const string environmentDiscoverSuffix = "_environment_discover";
-
-        var normalized = (toolName ?? string.Empty).Trim();
+    private string ResolveDeterministicSubsetFamilyKey(ToolDefinition definition) {
+        var normalized = (definition?.Name ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return string.Empty;
         }
 
-        if (normalized.EndsWith(packInfoSuffix, StringComparison.OrdinalIgnoreCase)
-            && normalized.Length > packInfoSuffix.Length) {
-            return normalized[..^packInfoSuffix.Length].ToLowerInvariant();
-        }
+        if (_toolOrchestrationCatalog.TryGetEntry(normalized, out var catalogEntry)) {
+            if (catalogEntry.PackId.Length > 0) {
+                return catalogEntry.PackId;
+            }
 
-        if (normalized.EndsWith(environmentDiscoverSuffix, StringComparison.OrdinalIgnoreCase)
-            && normalized.Length > environmentDiscoverSuffix.Length) {
-            return normalized[..^environmentDiscoverSuffix.Length].ToLowerInvariant();
+            if (catalogEntry.DomainIntentFamily.Length > 0) {
+                return "family|" + catalogEntry.DomainIntentFamily;
+            }
         }
 
         var separator = normalized.IndexOf('_');
@@ -431,8 +428,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static void AppendRoutingPackTokens(StringBuilder sb, ToolDefinition definition) {
-        var category = ResolvePlannerCategory(definition);
-        var packHint = ResolvePlannerPackHint(definition, category);
+        var packHint = ResolvePlannerPackHint(definition);
         if (packHint.Length == 0) {
             return;
         }

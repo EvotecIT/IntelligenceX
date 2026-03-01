@@ -12,6 +12,12 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Summarizes Domain Admins group membership with resolved details and quick risk flags (read-only).
 /// </summary>
 public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
+    private sealed record DomainAdminsSummaryRequest(
+        bool IncludeNested,
+        bool UsersOnly,
+        bool ComputersOnly,
+        bool IncludeMembers);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_domain_admins_summary",
         "Summarize Domain Admins membership with resolved details and quick risk flags (read-only).",
@@ -35,20 +41,36 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<DomainAdminsSummaryRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var usersOnly = reader.Boolean("users_only", defaultValue: false);
+            var computersOnly = reader.Boolean("computers_only", defaultValue: false);
+            if (usersOnly && computersOnly) {
+                return ToolRequestBindingResult<DomainAdminsSummaryRequest>.Failure(
+                    "users_only and computers_only cannot both be true.");
+            }
+
+            return ToolRequestBindingResult<DomainAdminsSummaryRequest>.Success(new DomainAdminsSummaryRequest(
+                IncludeNested: reader.Boolean("include_nested", defaultValue: false),
+                UsersOnly: usersOnly,
+                ComputersOnly: computersOnly,
+                IncludeMembers: reader.Boolean("include_members", defaultValue: true)));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<DomainAdminsSummaryRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var includeNested = arguments?.GetBoolean("include_nested") ?? false;
-        var usersOnly = arguments?.GetBoolean("users_only") ?? false;
-        var computersOnly = arguments?.GetBoolean("computers_only") ?? false;
-        if (usersOnly && computersOnly) {
-            return Error("invalid_argument", "users_only and computers_only cannot both be true.");
-        }
-
-        var includeMembers = arguments?.GetBoolean("include_members") ?? true;
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-        var scopeHints = ResolveOptionalDomainQueryHints(arguments);
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var scopeHints = ResolveOptionalDomainQueryHints(context.Arguments);
 
         try {
             var summary = await DomainAdminsSummaryService
@@ -57,17 +79,17 @@ public sealed class AdDomainAdminsSummaryTool : ActiveDirectoryToolBase, ITool {
                         DomainControllerHint = scopeHints.DomainControllerHint,
                         SearchBaseDnHint = scopeHints.SearchBaseDnHint,
                         DomainName = scopeHints.DomainName,
-                        IncludeNested = includeNested,
-                        UsersOnly = usersOnly,
-                        ComputersOnly = computersOnly,
-                        IncludeMembers = includeMembers,
+                        IncludeNested = request.IncludeNested,
+                        UsersOnly = request.UsersOnly,
+                        ComputersOnly = request.ComputersOnly,
+                        IncludeMembers = request.IncludeMembers,
                         MaxResults = maxResults,
                         Timeout = TimeSpan.FromSeconds(30)
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            return ToolResponse.OkModel(summary);
+            return ToolResultV2.OkModel(summary);
         } catch (Exception ex) {
             return ErrorFromException(ex, defaultMessage: "Domain Admins summary query failed.");
         }

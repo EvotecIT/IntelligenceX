@@ -153,6 +153,13 @@ public sealed class ToolArgumentReader {
     }
 
     /// <summary>
+    /// Reads an optional 64-bit integer value.
+    /// </summary>
+    public long? OptionalInt64(string key) {
+        return _arguments?.GetInt64(key);
+    }
+
+    /// <summary>
     /// Reads a trimmed string array.
     /// </summary>
     public IReadOnlyList<string> StringArray(string key) {
@@ -164,6 +171,13 @@ public sealed class ToolArgumentReader {
     /// </summary>
     public IReadOnlyList<string> DistinctStringArray(string key) {
         return ToolArgs.ReadDistinctStringArray(_arguments?.GetArray(key));
+    }
+
+    /// <summary>
+    /// Reads a positive integer array and caps values by an inclusive upper bound.
+    /// </summary>
+    public IReadOnlyList<int> PositiveInt32ArrayCapped(string key, int maxInclusive) {
+        return ToolArgs.ReadPositiveInt32ArrayCapped(_arguments?.GetArray(key), maxInclusive);
     }
 }
 

@@ -13,6 +13,16 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Diagnostics for LDAP/LDAPS/GC connectivity, binding, and certificate metadata (read-only).
 /// </summary>
 public sealed class AdLdapDiagnosticsTool : ActiveDirectoryToolBase, ITool {
+    private sealed record LdapDiagnosticsRequest(
+        int TimeoutMs,
+        bool IncludeGlobalCatalog,
+        bool VerifyCertificate,
+        string Identity,
+        IReadOnlyList<string> CertificateIncludeDnsNames,
+        string? DomainController,
+        int MaxServers,
+        IReadOnlyList<string> Servers);
+
     private const int DefaultTimeoutMs = 5_000;
     private const int MaxTimeoutMs = 60_000;
     private const int DefaultMaxServers = 10;
@@ -43,49 +53,58 @@ public sealed class AdLdapDiagnosticsTool : ActiveDirectoryToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<LdapDiagnosticsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var requestedMaxServers = reader.OptionalInt64("max_servers");
+            var maxServers = requestedMaxServers.HasValue && requestedMaxServers.Value > 0
+                ? (int)Math.Min(requestedMaxServers.Value, MaxServersCap)
+                : DefaultMaxServers;
+
+            return ToolRequestBindingResult<LdapDiagnosticsRequest>.Success(new LdapDiagnosticsRequest(
+                TimeoutMs: reader.CappedInt32("timeout_ms", DefaultTimeoutMs, 200, MaxTimeoutMs),
+                IncludeGlobalCatalog: reader.Boolean("include_global_catalog", defaultValue: true),
+                VerifyCertificate: reader.Boolean("verify_certificate", defaultValue: true),
+                Identity: reader.OptionalString("identity") ?? string.Empty,
+                CertificateIncludeDnsNames: reader.DistinctStringArray("certificate_include_dns_names"),
+                DomainController: reader.OptionalString("domain_controller"),
+                MaxServers: maxServers,
+                Servers: reader.DistinctStringArray("servers")));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<LdapDiagnosticsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
-        var timeoutMs = (int)Math.Min(Math.Max(arguments?.GetInt64("timeout_ms") ?? DefaultTimeoutMs, 200), MaxTimeoutMs);
-
-        var includeGc = arguments?.GetBoolean("include_global_catalog", defaultValue: true) ?? true;
-        var verifyCert = arguments?.GetBoolean("verify_certificate", defaultValue: true) ?? true;
-
-        var identity = (arguments?.GetString("identity") ?? string.Empty).Trim();
-        if (identity.Length == 0) {
-            identity = string.Empty;
-        }
-
-        var includeDnsNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("certificate_include_dns_names"));
-
-        var dc = ToolArgs.GetOptionalTrimmed(arguments, "domain_controller");
+        var dc = request.DomainController;
         if (string.IsNullOrWhiteSpace(dc)) {
             dc = Options.DomainController;
         }
 
-        var requestedMaxServers = arguments?.GetInt64("max_servers");
-        var maxServers = requestedMaxServers.HasValue && requestedMaxServers.Value > 0
-            ? (int)Math.Min(requestedMaxServers.Value, MaxServersCap)
-            : DefaultMaxServers;
-
-        var servers = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("servers"));
-
         var report = await LdapDiagnosticsReportBuilder.BuildAsync(
                 new LdapDiagnosticsReportBuilder.Options {
                     DomainController = dc,
-                    Servers = servers,
-                    MaxServers = maxServers,
-                    IncludeGlobalCatalog = includeGc,
-                    VerifyCertificate = verifyCert,
-                    Identity = identity,
-                    CertificateIncludeDnsNames = includeDnsNames,
-                    TimeoutMs = timeoutMs
+                    Servers = request.Servers,
+                    MaxServers = request.MaxServers,
+                    IncludeGlobalCatalog = request.IncludeGlobalCatalog,
+                    VerifyCertificate = request.VerifyCertificate,
+                    Identity = request.Identity,
+                    CertificateIncludeDnsNames = request.CertificateIncludeDnsNames,
+                    TimeoutMs = request.TimeoutMs
                 },
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return BuildAutoTableResponse(
-            arguments: arguments,
+        return ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: report,
             sourceRows: report.Servers,
             viewRowsPath: "servers_view",

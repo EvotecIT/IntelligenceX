@@ -15,6 +15,13 @@ namespace IntelligenceX.Tools.DnsClientX;
 /// Performs bounded ICMP ping checks for one or more targets.
 /// </summary>
 public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
+    private sealed record PingRequest(
+        IReadOnlyList<string> Targets,
+        int TimeoutMs,
+        int MaxTargets,
+        bool DontFragment,
+        int BufferSize);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "dnsclientx_ping",
         "Perform quick ICMP reachability checks for one or more targets (read-only).",
@@ -41,43 +48,56 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
-    protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var targets = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("targets"));
-        var singleTarget = ToolArgs.GetOptionalTrimmed(arguments, "target");
-        if (!string.IsNullOrWhiteSpace(singleTarget) && !targets.Contains(singleTarget, StringComparer.OrdinalIgnoreCase)) {
-            targets.Insert(0, singleTarget);
-        }
+    protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        if (targets.Count == 0) {
-            return ToolResponse.Error(
-                errorCode: "invalid_argument",
-                error: "Provide target or targets for ping checks.",
-                hints: new[] { "Example: target='dc01.contoso.local' or targets=['dc01','dc02']." },
-                isTransient: false);
-        }
+    private ToolRequestBindingResult<PingRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var targets = reader.DistinctStringArray("targets").ToList();
+            var singleTarget = reader.OptionalString("target");
+            if (!string.IsNullOrWhiteSpace(singleTarget) && !targets.Contains(singleTarget, StringComparer.OrdinalIgnoreCase)) {
+                targets.Insert(0, singleTarget);
+            }
 
-        var timeoutMs = ToolArgs.GetCappedInt32(arguments, "timeout_ms", Options.DefaultPingTimeoutMs, 100, Options.MaxPingTimeoutMs);
-        var maxTargets = ToolArgs.GetCappedInt32(arguments, "max_targets", Options.MaxPingTargets, 1, Options.MaxPingTargets);
-        var dontFragment = ToolArgs.GetBoolean(arguments, "dont_fragment", defaultValue: false);
-        var bufferSize = ToolArgs.GetCappedInt32(arguments, "buffer_size", defaultValue: 32, minInclusive: 1, maxInclusive: 1024);
+            if (targets.Count == 0) {
+                return ToolRequestBindingResult<PingRequest>.Failure(
+                    error: "Provide target or targets for ping checks.",
+                    hints: new[] { "Example: target='dc01.contoso.local' or targets=['dc01','dc02']." });
+            }
 
-        var selectedTargets = targets.Take(maxTargets).ToArray();
-        var truncated = targets.Count > selectedTargets.Length;
+            return ToolRequestBindingResult<PingRequest>.Success(new PingRequest(
+                Targets: targets,
+                TimeoutMs: reader.CappedInt32("timeout_ms", Options.DefaultPingTimeoutMs, 100, Options.MaxPingTimeoutMs),
+                MaxTargets: reader.CappedInt32("max_targets", Options.MaxPingTargets, 1, Options.MaxPingTargets),
+                DontFragment: reader.Boolean("dont_fragment", defaultValue: false),
+                BufferSize: reader.CappedInt32("buffer_size", defaultValue: 32, minInclusive: 1, maxInclusive: 1024)));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<PingRequest> context, CancellationToken cancellationToken) {
+        var request = context.Request;
+        var selectedTargets = request.Targets.Take(request.MaxTargets).ToArray();
+        var truncated = request.Targets.Count > selectedTargets.Length;
         var warnings = new List<string>();
         if (truncated) {
             warnings.Add($"Input targets were capped to {selectedTargets.Length}.");
         }
 
         var probes = new List<DnsClientXPingProbeModel>(selectedTargets.Length);
-        var buffer = new byte[bufferSize];
+        var buffer = new byte[request.BufferSize];
         for (var i = 0; i < selectedTargets.Length; i++) {
             cancellationToken.ThrowIfCancellationRequested();
 
             var target = selectedTargets[i];
             try {
                 using var ping = new Ping();
-                var options = new PingOptions(ttl: 64, dontFragment: dontFragment);
-                var reply = await ping.SendPingAsync(target, timeoutMs, buffer, options);
+                var options = new PingOptions(ttl: 64, dontFragment: request.DontFragment);
+                var reply = await ping.SendPingAsync(target, request.TimeoutMs, buffer, options);
 
                 probes.Add(new DnsClientXPingProbeModel {
                     Target = target,
@@ -85,7 +105,7 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
                     Address = reply.Address?.ToString(),
                     RoundTripMilliseconds = reply.Status == IPStatus.Success ? reply.RoundtripTime : null,
                     Ttl = reply.Options?.Ttl,
-                    BufferSize = bufferSize,
+                    BufferSize = request.BufferSize,
                     Error = null
                 });
             } catch (Exception ex) when (ex is PingException or InvalidOperationException or ArgumentException or NotSupportedException) {
@@ -95,7 +115,7 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
                     Address = null,
                     RoundTripMilliseconds = null,
                     Ttl = null,
-                    BufferSize = bufferSize,
+                    BufferSize = request.BufferSize,
                     Error = ex.Message
                 });
             }
@@ -105,10 +125,10 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
         var failedCount = probes.Count - successCount;
 
         var result = new DnsClientXPingResultModel {
-            TimeoutMs = timeoutMs,
-            DontFragment = dontFragment,
-            BufferSize = bufferSize,
-            RequestedTargets = targets,
+            TimeoutMs = request.TimeoutMs,
+            DontFragment = request.DontFragment,
+            BufferSize = request.BufferSize,
+            RequestedTargets = request.Targets,
             ProbedTargets = selectedTargets,
             SuccessCount = successCount,
             FailedCount = failedCount,
@@ -123,15 +143,15 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
                 ("Targets", result.ProbedTargets.Count.ToString(CultureInfo.InvariantCulture)),
                 ("Success", successCount.ToString(CultureInfo.InvariantCulture)),
                 ("Failed", failedCount.ToString(CultureInfo.InvariantCulture)),
-                ("Timeout (ms)", timeoutMs.ToString(CultureInfo.InvariantCulture))
+                ("Timeout (ms)", request.TimeoutMs.ToString(CultureInfo.InvariantCulture))
             });
 
         var meta = ToolOutputHints.Meta(count: probes.Count, truncated: truncated)
             .Add("success_count", successCount)
             .Add("failed_count", failedCount)
-            .Add("timeout_ms", timeoutMs);
+            .Add("timeout_ms", request.TimeoutMs);
 
-        return ToolResponse.OkModel(result, meta: meta, summaryMarkdown: summary);
+        return ToolResultV2.OkModel(result, meta: meta, summaryMarkdown: summary);
     }
 
     private sealed class DnsClientXPingResultModel {

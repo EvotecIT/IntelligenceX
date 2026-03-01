@@ -106,11 +106,44 @@ public sealed class ToolHealthDiagnosticsTests {
         Assert.Null(result.ErrorCode);
     }
 
+    [Fact]
+    public void GetPackInfoToolNames_PrefersRoutingRoleWithSuffixFallback() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "custom_pack_summary",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool(
+            "custom_operational_tool",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var names = ToolHealthDiagnostics.GetPackInfoToolNames(registry);
+
+        Assert.Contains("custom_pack_summary", names, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("legacy_pack_info", names, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("custom_operational_tool", names, StringComparer.OrdinalIgnoreCase);
+    }
+
     private sealed class StubTool : ITool {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 
-        public StubTool(string name, Func<JsonObject?, CancellationToken, Task<string>> invoke) {
-            Definition = new ToolDefinition(name, description: "stub");
+        public StubTool(
+            string name,
+            Func<JsonObject?, CancellationToken, Task<string>> invoke,
+            ToolRoutingContract? routing = null) {
+            Definition = new ToolDefinition(name, description: "stub", routing: routing);
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 

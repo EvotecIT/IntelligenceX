@@ -30,6 +30,12 @@ public static class ToolRegistryTestimoXExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(TestimoXToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return TestimoXToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(TestimoXToolOptions options) {
         yield return new TestimoXPackInfoTool(options);
         yield return new TestimoXRulesListTool(options);
         yield return new TestimoXRulesRunTool(options);

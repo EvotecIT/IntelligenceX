@@ -14,6 +14,12 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Lists group members with resolved object details in a single LDAP query (read-only).
 /// </summary>
 public sealed class AdGroupMembersResolvedTool : ActiveDirectoryToolBase, ITool {
+    private sealed record GroupMembersResolvedRequest(
+        string Identity,
+        bool IncludeNested,
+        int MaxValuesPerAttribute,
+        IReadOnlyList<string> RequestedAttributes);
+
     private static readonly string[] DefaultAttributes = {
         "distinguishedName",
         "objectClass",
@@ -65,27 +71,38 @@ public sealed class AdGroupMembersResolvedTool : ActiveDirectoryToolBase, ITool 
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<GroupMembersResolvedRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("identity", out var identity, out var identityError)) {
+                return ToolRequestBindingResult<GroupMembersResolvedRequest>.Failure(identityError, errorCode: "error");
+            }
+
+            return ToolRequestBindingResult<GroupMembersResolvedRequest>.Success(new GroupMembersResolvedRequest(
+                Identity: identity,
+                IncludeNested: reader.Boolean("include_nested"),
+                MaxValuesPerAttribute: reader.CappedInt32(
+                    "max_values_per_attribute",
+                    LdapQueryPolicy.DefaultMaxValuesPerAttribute,
+                    1,
+                    LdapQueryPolicy.MaxValuesPerAttributeCap),
+                RequestedAttributes: reader.StringArray("attributes")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GroupMembersResolvedRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
-        var identity = ToolArgs.GetOptionalTrimmed(arguments, "identity") ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(identity)) {
-            return Task.FromResult(Error("identity is required."));
-        }
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var includeNested = ToolArgs.GetBoolean(arguments, "include_nested");
-
-        var maxValuesPerAttribute = ToolArgs.GetCappedInt32(
-            arguments,
-            "max_values_per_attribute",
-            LdapQueryPolicy.DefaultMaxValuesPerAttribute,
-            1,
-            LdapQueryPolicy.MaxValuesPerAttributeCap);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-
-        var attributes = ToolArgs.ReadAllowedStrings(arguments?.GetArray("attributes"), AllowedAttributes);
+        var attributes = FilterAllowedStrings(request.RequestedAttributes, AllowedAttributes);
         if (attributes.Count == 0) {
             attributes.AddRange(DefaultAttributes);
         }
@@ -94,12 +111,12 @@ public sealed class AdGroupMembersResolvedTool : ActiveDirectoryToolBase, ITool 
 
         if (!AdGroupMembersResolvedService.TryQuery(
                 options: new AdGroupMembersResolvedService.GroupMembersResolvedQueryOptions {
-                    Identity = identity,
+                    Identity = request.Identity,
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
-                    IncludeNested = includeNested,
+                    IncludeNested = request.IncludeNested,
                     MaxResults = maxResults,
-                    MaxValuesPerAttribute = maxValuesPerAttribute,
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
                     Attributes = attributes
                 },
                 status: out var status,
@@ -110,30 +127,49 @@ public sealed class AdGroupMembersResolvedTool : ActiveDirectoryToolBase, ITool 
         }
 
         if (status == AdGroupLookupStatus.NotFound) {
-            return Task.FromResult(Error("Group not found."));
+            return Task.FromResult(ToolResultV2.Error("error", "Group not found."));
         }
 
         if (status == AdGroupLookupStatus.Ambiguous) {
-            return Task.FromResult(Error("invalid_argument", "Multiple groups matched identity. Provide a more specific identity or search_base_dn."));
+            return Task.FromResult(ToolResultV2.Error("invalid_argument", "Multiple groups matched identity. Provide a more specific identity or search_base_dn."));
         }
 
         if (status == AdGroupLookupStatus.MissingDistinguishedName) {
-            return Task.FromResult(Error("Failed to read group distinguishedName."));
+            return Task.FromResult(ToolResultV2.Error("error", "Failed to read group distinguishedName."));
         }
 
         if (root is null) {
-            return Task.FromResult(Error("exception", "Group resolved-members query returned no result."));
+            return Task.FromResult(ToolResultV2.Error("exception", "Group resolved-members query returned no result."));
         }
 
-        AdDynamicTableView.TryBuildResponseFromOutputRows(
-            arguments: arguments,
-            model: root,
-            rows: root.Results,
-            title: "Active Directory: Group Members Resolved (preview)",
-            rowsPath: "results_view",
-            baseTruncated: root.IsTruncated,
-            response: out var response);
+        if (!AdDynamicTableView.TryBuildResponseFromOutputRows(
+                arguments: context.Arguments,
+                model: root,
+                rows: root.Results,
+                title: "Active Directory: Group Members Resolved (preview)",
+                rowsPath: "results_view",
+                baseTruncated: root.IsTruncated,
+                response: out var response)) {
+            return Task.FromResult(ToolResultV2.Error("query_failed", "Failed to build resolved group-members table view response."));
+        }
+
         return Task.FromResult(response);
     }
-}
 
+    private static List<string> FilterAllowedStrings(IReadOnlyList<string> values, IReadOnlySet<string> allowedValues) {
+        var normalized = new List<string>(values.Count);
+        for (var i = 0; i < values.Count; i++) {
+            var value = values[i];
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            var trimmed = value.Trim();
+            if (allowedValues.Contains(trimmed) && !normalized.Contains(trimmed, StringComparer.OrdinalIgnoreCase)) {
+                normalized.Add(trimmed);
+            }
+        }
+
+        return normalized;
+    }
+}

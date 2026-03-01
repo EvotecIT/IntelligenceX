@@ -510,6 +510,11 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
+        var routingFamily = (definition.Routing?.DomainIntentFamily ?? string.Empty).Trim();
+        if (TryNormalizeDomainIntentFamily(routingFamily, out var normalizedRoutingFamily)) {
+            return normalizedRoutingFamily;
+        }
+
         if (ToolSelectionMetadata.TryResolveDomainIntentFamily(definition, out var family)
             && TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
             return normalizedFamily;
@@ -529,6 +534,11 @@ internal sealed partial class ChatServiceSession {
             if (family.Length > 0) {
                 return family;
             }
+        }
+
+        if (_toolOrchestrationCatalog.TryGetEntry(normalizedToolName, out var catalogEntry)
+            && TryNormalizeDomainIntentFamily(catalogEntry.DomainIntentFamily, out var normalizedCatalogFamily)) {
+            return normalizedCatalogFamily;
         }
 
         if (ToolSelectionMetadata.TryResolveDomainIntentFamily(
@@ -567,9 +577,10 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            var normalizedActionId = ToolSelectionMetadata.TryResolveDomainIntentActionId(definition, out var actionId)
-                ? (actionId ?? string.Empty).Trim()
-                : ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+            var normalizedActionId = (definition.Routing?.DomainIntentActionId ?? string.Empty).Trim();
+            if (normalizedActionId.Length == 0) {
+                normalizedActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+            }
             if (normalizedActionId.Length == 0) {
                 continue;
             }
@@ -701,6 +712,10 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < options.Count; i++) {
             var option = options[i];
             sb.Append("- ").AppendLine(option.Ordinal.ToString());
+            var unicodeAlternates = BuildUnicodeOrdinalAlternates(option.Ordinal);
+            for (var alternateIndex = 0; alternateIndex < unicodeAlternates.Count; alternateIndex++) {
+                sb.Append("- ").AppendLine(unicodeAlternates[alternateIndex]);
+            }
         }
         for (var i = 0; i < options.Count; i++) {
             var option = options[i];
@@ -726,6 +741,17 @@ internal sealed partial class ChatServiceSession {
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    private static IReadOnlyList<string> BuildUnicodeOrdinalAlternates(int ordinal) {
+        if (ordinal < 0 || ordinal > 9) {
+            return Array.Empty<string>();
+        }
+
+        var alternates = new List<string>(2);
+        alternates.Add(new string(new[] { (char)('\uFF10' + ordinal) }));
+        alternates.Add(new string(new[] { (char)('\u0660' + ordinal) }));
+        return alternates;
     }
 
     private static string BuildDomainIntentClarificationVisibleText() {

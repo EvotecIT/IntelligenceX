@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.EventLog;
 /// Returns event log pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_pack_info",
         "Return event log pack capabilities, output contract, and recommended usage patterns. Call this first when planning event investigations.",
@@ -55,6 +57,20 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -169,6 +185,6 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
             title: "EventLog Pack",
             "Use raw event payloads for reasoning/correlation; use `*_view` fields for presentation.");
 
-        return Task.FromResult(ToolResponse.OkModel(model: root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(model: root, summaryMarkdown: summary));
     }
 }

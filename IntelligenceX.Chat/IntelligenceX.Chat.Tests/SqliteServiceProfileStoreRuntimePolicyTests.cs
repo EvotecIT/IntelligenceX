@@ -20,6 +20,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
                 WriteAuditSinkMode = "sqlite",
                 WriteAuditSinkPath = " C:/temp/write-audit.db ",
                 AuthenticationRuntimePreset = "strict",
+                RequireExplicitRoutingMetadata = true,
                 RequireAuthenticationRuntime = true,
                 RunAsProfilePath = " C:/profiles/run-as.json ",
                 AuthenticationProfilePath = " C:/profiles/auth.json "
@@ -35,6 +36,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.Equal("sqlite", loaded.WriteAuditSinkMode);
             Assert.Equal("C:/temp/write-audit.db", loaded.WriteAuditSinkPath);
             Assert.Equal("strict", loaded.AuthenticationRuntimePreset);
+            Assert.True(loaded.RequireExplicitRoutingMetadata);
             Assert.True(loaded.RequireAuthenticationRuntime);
             Assert.Equal("C:/profiles/run-as.json", loaded.RunAsProfilePath);
             Assert.Equal("C:/profiles/auth.json", loaded.AuthenticationProfilePath);
@@ -64,6 +66,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.Equal("enforced", loaded!.WriteGovernanceMode);
             Assert.Equal("none", loaded.WriteAuditSinkMode);
             Assert.Equal("default", loaded.AuthenticationRuntimePreset);
+            Assert.False(loaded.RequireExplicitRoutingMetadata);
             Assert.Null(loaded.WriteAuditSinkPath);
             Assert.Null(loaded.RunAsProfilePath);
             Assert.Null(loaded.AuthenticationProfilePath);

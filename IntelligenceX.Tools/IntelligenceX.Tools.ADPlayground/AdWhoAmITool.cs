@@ -11,6 +11,8 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns runtime identity + basic Active Directory context info (read-only).
 /// </summary>
 public sealed class AdWhoAmITool : ActiveDirectoryToolBase, ITool {
+    private sealed record WhoAmIRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_whoami",
         "Return the current process identity used for Active Directory operations + basic domain context (read-only).",
@@ -35,6 +37,20 @@ public sealed class AdWhoAmITool : ActiveDirectoryToolBase, ITool {
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<WhoAmIRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<WhoAmIRequest>.Success(new WhoAmIRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<WhoAmIRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var result = AdWhoAmIService.Query(
@@ -50,7 +66,7 @@ public sealed class AdWhoAmITool : ActiveDirectoryToolBase, ITool {
             ("Default naming context", result.DefaultNamingContext),
             ("RootDSE dnsHostName", result.RootDseDnsHostName)
         };
-        return Task.FromResult(ToolResponse.OkFactsModel(
+        return Task.FromResult(ToolResultV2.OkFactsModel(
             model: result,
             title: "Active Directory: WhoAmI",
             facts: facts,

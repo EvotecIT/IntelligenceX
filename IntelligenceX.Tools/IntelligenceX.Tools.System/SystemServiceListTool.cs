@@ -15,6 +15,11 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class SystemServiceListTool : SystemToolBase, ITool {
+    private sealed record ServiceListRequest(
+        string? NameContains,
+        ServiceListStatusFilter Status,
+        int MaxServices);
+
     private const int MaxViewTop = 5000;
 
     private static readonly IReadOnlyDictionary<string, ServiceListStatusFilter> StatusFilterByName =
@@ -45,26 +50,38 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
     /// <inheritdoc />
     [SupportedOSPlatform("windows")]
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync).ConfigureAwait(false);
+    }
 
-        var nameContains = arguments?.GetString("name_contains");
-        if (!ToolEnumBinders.TryParseOptional(
-                ToolArgs.GetOptionalTrimmed(arguments, "status"),
-                StatusFilterByName,
-                "status",
-                out ServiceListStatusFilter? parsedStatus,
-                out var statusError)) {
-            return ToolResponse.Error("invalid_argument", statusError ?? "Invalid status value.");
-        }
+    private ToolRequestBindingResult<ServiceListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!ToolEnumBinders.TryParseOptional(
+                    reader.OptionalString("status"),
+                    StatusFilterByName,
+                    "status",
+                    out ServiceListStatusFilter? parsedStatus,
+                    out var statusError)) {
+                return ToolRequestBindingResult<ServiceListRequest>.Failure(statusError ?? "Invalid status value.");
+            }
 
-        var status = parsedStatus ?? ServiceListStatusFilter.Any;
-        var max = ResolveBoundedOptionLimit(arguments, "max_services");
+            return ToolRequestBindingResult<ServiceListRequest>.Success(new ServiceListRequest(
+                NameContains: reader.OptionalString("name_contains"),
+                Status: parsedStatus ?? ServiceListStatusFilter.Any,
+                MaxServices: ResolveBoundedOptionLimit(arguments, "max_services")));
+        });
+    }
 
+    private async Task<string> ExecuteAsync(ToolPipelineContext<ServiceListRequest> context, CancellationToken cancellationToken) {
+        var request = context.Request;
         var attempt = await ServiceListQueryExecutor.TryExecuteAsync(
             request: new ServiceListQueryRequest {
-                NameContains = string.IsNullOrWhiteSpace(nameContains) ? null : nameContains.Trim(),
-                StatusFilter = status,
-                MaxResults = max,
+                NameContains = request.NameContains,
+                StatusFilter = request.Status,
+                MaxResults = request.MaxServices,
                 SortBy = ServiceListQuerySort.ServiceNameAsc
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -73,8 +90,8 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         }
 
         var result = attempt.Result ?? new ServiceListQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Services,
             viewRowsPath: "services_view",
@@ -85,4 +102,3 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         return response;
     }
 }
-

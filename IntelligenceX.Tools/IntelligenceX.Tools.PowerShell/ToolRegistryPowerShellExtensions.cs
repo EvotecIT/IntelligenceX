@@ -30,6 +30,12 @@ public static class ToolRegistryPowerShellExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(PowerShellToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return PowerShellToolContracts.Apply(tool);
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(PowerShellToolOptions options) {
         yield return new PowerShellPackInfoTool(options);
         yield return new PowerShellEnvironmentDiscoverTool(options);
         yield return new PowerShellHostsTool(options);

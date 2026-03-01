@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.FileSystem;
 /// Returns filesystem pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class FileSystemPackInfoTool : FileSystemToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "fs_pack_info",
         "Return filesystem pack capabilities, allowed-root behavior, output contract, and recommended usage patterns.",
@@ -25,6 +27,20 @@ public sealed class FileSystemPackInfoTool : FileSystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -79,6 +95,6 @@ public sealed class FileSystemPackInfoTool : FileSystemToolBase, ITool {
             title: "FileSystem Pack",
             "Use raw payload fields for reasoning. Use `*_view` only for presentation.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

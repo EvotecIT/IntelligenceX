@@ -15,6 +15,15 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private sealed record GpoPermissionConsistencyRequest(
+        string DomainName,
+        bool VerifyInheritance,
+        bool IncludeConsistent,
+        bool TopLevelInconsistentOnly,
+        bool InsideInconsistentOnly,
+        int MaxGpos,
+        int SysvolScanCap,
+        int MaxResults);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_permission_consistency",
@@ -57,27 +66,51 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<GpoPermissionConsistencyRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("domain_name", out var domainName, out var domainError)) {
+                return ToolRequestBindingResult<GpoPermissionConsistencyRequest>.Failure(domainError);
+            }
+
+            var verifyInheritance = reader.Boolean("verify_inheritance", defaultValue: false);
+            var includeConsistent = reader.Boolean("include_consistent", defaultValue: false);
+            var topLevelInconsistentOnly = reader.Boolean("top_level_inconsistent_only", defaultValue: false);
+            var insideInconsistentOnly = reader.Boolean("inside_inconsistent_only", defaultValue: false);
+            if (insideInconsistentOnly && !verifyInheritance) {
+                return ToolRequestBindingResult<GpoPermissionConsistencyRequest>.Failure(
+                    "inside_inconsistent_only requires verify_inheritance=true.");
+            }
+
+            return ToolRequestBindingResult<GpoPermissionConsistencyRequest>.Success(new GpoPermissionConsistencyRequest(
+                DomainName: domainName,
+                VerifyInheritance: verifyInheritance,
+                IncludeConsistent: includeConsistent,
+                TopLevelInconsistentOnly: topLevelInconsistentOnly,
+                InsideInconsistentOnly: insideInconsistentOnly,
+                MaxGpos: reader.CappedInt32("max_gpos", 50000, 1, 200000),
+                SysvolScanCap: reader.CappedInt32("sysvol_scan_cap", 2000, 1, 500000),
+                MaxResults: reader.CappedInt32("max_results", Options.MaxResults, 1, Options.MaxResults)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoPermissionConsistencyRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
-            return Task.FromResult(argumentError!);
-        }
-
-        var domainName = domainQuery.DomainName;
-
-        var verifyInheritance = ToolArgs.GetBoolean(arguments, "verify_inheritance", defaultValue: false);
-        var includeConsistent = ToolArgs.GetBoolean(arguments, "include_consistent", defaultValue: false);
-        var topLevelInconsistentOnly = ToolArgs.GetBoolean(arguments, "top_level_inconsistent_only", defaultValue: false);
-        var insideInconsistentOnly = ToolArgs.GetBoolean(arguments, "inside_inconsistent_only", defaultValue: false);
-        if (insideInconsistentOnly && !verifyInheritance) {
-            return Task.FromResult(ToolResponse.Error(
-                "invalid_argument",
-                "inside_inconsistent_only requires verify_inheritance=true."));
-        }
-
-        var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var sysvolScanCap = ToolArgs.GetCappedInt32(arguments, "sysvol_scan_cap", 2000, 1, 500000);
-        var maxResults = domainQuery.MaxResults;
+        var request = context.Request;
+        var domainName = request.DomainName;
+        var verifyInheritance = request.VerifyInheritance;
+        var includeConsistent = request.IncludeConsistent;
+        var topLevelInconsistentOnly = request.TopLevelInconsistentOnly;
+        var insideInconsistentOnly = request.InsideInconsistentOnly;
+        var maxGpos = request.MaxGpos;
+        var sysvolScanCap = request.SysvolScanCap;
+        var maxResults = request.MaxResults;
 
         if (!TryExecuteCollectionQuery(
                 query: () => GpoPermissionConsistencyService.Get(domainName, verifyInheritance: verifyInheritance, includeConsistent: includeConsistent, maxGpos: maxGpos, sysvolScanCap: sysvolScanCap),
@@ -111,8 +144,8 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
             ErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
             Rows: projectedRows);
 
-        return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+        return Task.FromResult(ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: projectedRows,
             viewRowsPath: "rows_view",
@@ -131,4 +164,3 @@ public sealed class AdGpoPermissionConsistencyTool : ActiveDirectoryToolBase, IT
             }));
     }
 }
-

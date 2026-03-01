@@ -456,7 +456,6 @@ internal sealed partial class ChatServiceSession {
         var structuredNextActionRetryUsed = false;
         var toolProgressRecoveryUsed = false;
         var hostStructuredNextActionReplayUsed = false;
-        var packCapabilityFallbackReplayUsed = false;
         var noResultPhaseLoopWatchdogUsed = false;
         var interimResultSent = false;
         var lastNonEmptyAssistantDraft = string.Empty;
@@ -505,7 +504,6 @@ internal sealed partial class ChatServiceSession {
                     structuredNextActionRetryUsed: structuredNextActionRetryUsed,
                     toolProgressRecoveryUsed: toolProgressRecoveryUsed,
                     hostStructuredNextActionReplayUsed: hostStructuredNextActionReplayUsed,
-                    packCapabilityFallbackReplayUsed: packCapabilityFallbackReplayUsed,
                     noResultPhaseLoopWatchdogUsed: noResultPhaseLoopWatchdogUsed,
                     lastNonEmptyAssistantDraft: lastNonEmptyAssistantDraft,
                     nudgeUnknownEnvelopeReplanCount: nudgeUnknownEnvelopeReplanCount,
@@ -552,7 +550,7 @@ internal sealed partial class ChatServiceSession {
                         ref usedContinuationSubset, ref toolRounds, ref projectionFallbackCount, ref reviewPassesUsed, ref executionNudgeUsed,
                         ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref noToolExecutionWatchdogReason, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
                         ref autoPendingActionReplayUsed, ref proactiveFollowUpUsed, ref localNoTextDirectRetryUsed, ref structuredNextActionRetryUsed,
-                        ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref packCapabilityFallbackReplayUsed, ref noResultPhaseLoopWatchdogUsed,
+                        ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref noResultPhaseLoopWatchdogUsed,
                         ref lastNonEmptyAssistantDraft, ref nudgeUnknownEnvelopeReplanCount, ref noTextRecoveryHitCount, ref noTextToolOutputRecoveryHitCount,
                         ref proactiveSkipMutatingCount, ref proactiveSkipReadOnlyCount, ref proactiveSkipUnknownCount,
                         ref interimResultSent);
@@ -597,7 +595,7 @@ internal sealed partial class ChatServiceSession {
                     ref usedContinuationSubset, ref toolRounds, ref projectionFallbackCount, ref reviewPassesUsed, ref executionNudgeUsed,
                     ref toolReceiptCorrectionUsed, ref noToolExecutionWatchdogUsed, ref noToolExecutionWatchdogReason, ref executionContractEscapeUsed, ref continuationSubsetEscapeUsed,
                     ref autoPendingActionReplayUsed, ref proactiveFollowUpUsed, ref localNoTextDirectRetryUsed, ref structuredNextActionRetryUsed,
-                    ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref packCapabilityFallbackReplayUsed, ref noResultPhaseLoopWatchdogUsed,
+                    ref toolProgressRecoveryUsed, ref hostStructuredNextActionReplayUsed, ref noResultPhaseLoopWatchdogUsed,
                     ref lastNonEmptyAssistantDraft, ref nudgeUnknownEnvelopeReplanCount, ref noTextRecoveryHitCount, ref noTextToolOutputRecoveryHitCount,
                     ref proactiveSkipMutatingCount, ref proactiveSkipReadOnlyCount, ref proactiveSkipUnknownCount,
                     ref interimResultSent);

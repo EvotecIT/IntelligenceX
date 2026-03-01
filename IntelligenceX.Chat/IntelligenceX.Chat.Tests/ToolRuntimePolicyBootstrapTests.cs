@@ -16,6 +16,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             WriteAuditSinkMode = ToolWriteAuditSinkMode.SqliteAppendOnly,
             WriteAuditSinkPath = " C:/temp/write-audit.db ",
             AuthenticationRuntimePreset = ToolAuthenticationRuntimePreset.Strict,
+            RequireExplicitRoutingMetadata = true,
             RequireAuthenticationRuntime = true,
             RunAsProfilePath = " C:/temp/runas.json ",
             AuthenticationProfilePath = " C:/temp/auth.json "
@@ -27,6 +28,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Equal(ToolWriteAuditSinkMode.SqliteAppendOnly, options.WriteAuditSinkMode);
         Assert.Equal(" C:/temp/write-audit.db ", options.WriteAuditSinkPath);
         Assert.Equal(ToolAuthenticationRuntimePreset.Strict, options.AuthenticationPreset);
+        Assert.True(options.RequireExplicitRoutingMetadata);
         Assert.True(options.RequireAuthenticationRuntime);
         Assert.Equal(" C:/temp/runas.json ", options.RunAsProfilePath);
         Assert.Equal(" C:/temp/auth.json ", options.AuthenticationProfilePath);
@@ -65,15 +67,18 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         var registry = new ToolRegistry();
         var context = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
             WriteGovernanceMode = ToolWriteGovernanceMode.Yolo,
-            RequireWriteGovernanceRuntime = true
+            RequireWriteGovernanceRuntime = true,
+            RequireExplicitRoutingMetadata = true
         });
 
         var diagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, context);
 
         Assert.Equal(ToolWriteGovernanceMode.Yolo, registry.WriteGovernanceMode);
         Assert.True(registry.RequireWriteGovernanceRuntime);
+        Assert.True(registry.RequireExplicitRoutingMetadata);
         Assert.NotNull(registry.WriteGovernanceRuntime);
         Assert.True(diagnostics.RequireWriteGovernanceRuntime);
+        Assert.True(diagnostics.RequireExplicitRoutingMetadata);
         Assert.True(diagnostics.WriteGovernanceRuntimeConfigured);
     }
 
@@ -139,6 +144,8 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Contains(lines, static line => line.StartsWith("  --write-governance-mode", StringComparison.Ordinal));
         Assert.Contains(lines, static line => line.StartsWith("  --write-audit-sink-mode", StringComparison.Ordinal));
         Assert.Contains(lines, static line => line.StartsWith("  --auth-runtime-preset", StringComparison.Ordinal));
+        Assert.Contains(lines, static line => line.StartsWith("  --require-explicit-routing-metadata", StringComparison.Ordinal));
+        Assert.Contains(lines, static line => line.StartsWith("  --allow-inferred-routing-metadata", StringComparison.Ordinal));
         Assert.Contains(lines, static line => line.StartsWith("  --run-as-profile-path", StringComparison.Ordinal));
         Assert.Contains(lines, static line => line.StartsWith("  --auth-profile-path", StringComparison.Ordinal));
     }
@@ -158,6 +165,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         var writeAuditSinkMode = ToolWriteAuditSinkMode.None;
         string? writeAuditSinkPath = null;
         var authPreset = ToolAuthenticationRuntimePreset.Default;
+        var requireExplicitRoutingMetadata = false;
         var requireAuthRuntime = false;
         string? runAsProfilePath = null;
         string? authProfilePath = null;
@@ -171,6 +179,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             setWriteAuditSinkMode: mode => writeAuditSinkMode = mode,
             setWriteAuditSinkPath: path => writeAuditSinkPath = path,
             setAuthenticationRuntimePreset: preset => authPreset = preset,
+            setRequireExplicitRoutingMetadata: required => requireExplicitRoutingMetadata = required,
             setRequireAuthenticationRuntime: required => requireAuthRuntime = required,
             setRunAsProfilePath: path => runAsProfilePath = path,
             setAuthenticationProfilePath: path => authProfilePath = path,
@@ -186,9 +195,57 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Equal(ToolWriteAuditSinkMode.None, writeAuditSinkMode);
         Assert.Null(writeAuditSinkPath);
         Assert.Equal(ToolAuthenticationRuntimePreset.Default, authPreset);
+        Assert.False(requireExplicitRoutingMetadata);
         Assert.False(requireAuthRuntime);
         Assert.Null(runAsProfilePath);
         Assert.Null(authProfilePath);
+    }
+
+    [Fact]
+    public void TryApplyRuntimePolicyCliArgument_TogglesExplicitRoutingMetadataRequirement() {
+        var requireExplicitRoutingMetadata = false;
+
+        var requireOk = ToolRuntimePolicyBootstrap.TryApplyRuntimePolicyCliArgument(
+            argument: "--require-explicit-routing-metadata",
+            consumeValue: static () => throw new InvalidOperationException("consumeValue should not be called."),
+            setWriteGovernanceMode: static _ => { },
+            setRequireWriteGovernanceRuntime: static _ => { },
+            setRequireWriteAuditSinkForWriteOperations: static _ => { },
+            setWriteAuditSinkMode: static _ => { },
+            setWriteAuditSinkPath: static _ => { },
+            setAuthenticationRuntimePreset: static _ => { },
+            setRequireExplicitRoutingMetadata: required => requireExplicitRoutingMetadata = required,
+            setRequireAuthenticationRuntime: static _ => { },
+            setRunAsProfilePath: static _ => { },
+            setAuthenticationProfilePath: static _ => { },
+            handled: out var requireHandled,
+            error: out var requireError);
+
+        Assert.True(requireOk);
+        Assert.True(requireHandled);
+        Assert.Null(requireError);
+        Assert.True(requireExplicitRoutingMetadata);
+
+        var allowOk = ToolRuntimePolicyBootstrap.TryApplyRuntimePolicyCliArgument(
+            argument: "--allow-inferred-routing-metadata",
+            consumeValue: static () => throw new InvalidOperationException("consumeValue should not be called."),
+            setWriteGovernanceMode: static _ => { },
+            setRequireWriteGovernanceRuntime: static _ => { },
+            setRequireWriteAuditSinkForWriteOperations: static _ => { },
+            setWriteAuditSinkMode: static _ => { },
+            setWriteAuditSinkPath: static _ => { },
+            setAuthenticationRuntimePreset: static _ => { },
+            setRequireExplicitRoutingMetadata: required => requireExplicitRoutingMetadata = required,
+            setRequireAuthenticationRuntime: static _ => { },
+            setRunAsProfilePath: static _ => { },
+            setAuthenticationProfilePath: static _ => { },
+            handled: out var allowHandled,
+            error: out var allowError);
+
+        Assert.True(allowOk);
+        Assert.True(allowHandled);
+        Assert.Null(allowError);
+        Assert.False(requireExplicitRoutingMetadata);
     }
 
     [Fact]
@@ -202,6 +259,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             setWriteAuditSinkMode: static _ => { },
             setWriteAuditSinkPath: static _ => { },
             setAuthenticationRuntimePreset: static _ => { },
+            setRequireExplicitRoutingMetadata: static _ => { },
             setRequireAuthenticationRuntime: static _ => { },
             setRunAsProfilePath: static _ => { },
             setAuthenticationProfilePath: static _ => { },
@@ -224,6 +282,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             setWriteAuditSinkMode: static _ => { },
             setWriteAuditSinkPath: static _ => { },
             setAuthenticationRuntimePreset: static _ => { },
+            setRequireExplicitRoutingMetadata: static _ => { },
             setRequireAuthenticationRuntime: static _ => { },
             setRunAsProfilePath: static _ => { },
             setAuthenticationProfilePath: static _ => { },
@@ -243,6 +302,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         var writeAuditSinkMode = ToolWriteAuditSinkMode.None;
         string? writeAuditSinkPath = null;
         var authPreset = ToolAuthenticationRuntimePreset.Default;
+        var requireExplicitRoutingMetadata = false;
         var requireAuthRuntime = false;
         string? runAsProfilePath = null;
         string? authProfilePath = null;
@@ -254,6 +314,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             writeAuditSinkMode: "sqlite",
             writeAuditSinkPath: "C:/temp/write-audit.db",
             authenticationRuntimePreset: "strict",
+            requireExplicitRoutingMetadata: true,
             requireAuthenticationRuntime: true,
             runAsProfilePath: "C:/profiles/runas.json",
             authenticationProfilePath: "C:/profiles/auth.json",
@@ -263,6 +324,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             setWriteAuditSinkMode: mode => writeAuditSinkMode = mode,
             setWriteAuditSinkPath: path => writeAuditSinkPath = path,
             setAuthenticationRuntimePreset: preset => authPreset = preset,
+            setRequireExplicitRoutingMetadata: required => requireExplicitRoutingMetadata = required,
             setRequireAuthenticationRuntime: required => requireAuthRuntime = required,
             setRunAsProfilePath: path => runAsProfilePath = path,
             setAuthenticationProfilePath: path => authProfilePath = path);
@@ -273,6 +335,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Equal(ToolWriteAuditSinkMode.SqliteAppendOnly, writeAuditSinkMode);
         Assert.Equal("C:/temp/write-audit.db", writeAuditSinkPath);
         Assert.Equal(ToolAuthenticationRuntimePreset.Strict, authPreset);
+        Assert.True(requireExplicitRoutingMetadata);
         Assert.True(requireAuthRuntime);
         Assert.Equal("C:/profiles/runas.json", runAsProfilePath);
         Assert.Equal("C:/profiles/auth.json", authProfilePath);
@@ -286,6 +349,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         var writeAuditSinkMode = ToolWriteAuditSinkMode.FileAppendOnly;
         string? writeAuditSinkPath = "before";
         var authPreset = ToolAuthenticationRuntimePreset.Strict;
+        var requireExplicitRoutingMetadata = true;
         var requireAuthRuntime = true;
         string? runAsProfilePath = "before-runas";
         string? authProfilePath = "before-auth";
@@ -297,6 +361,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             writeAuditSinkMode: "invalid",
             writeAuditSinkPath: "after",
             authenticationRuntimePreset: "invalid",
+            requireExplicitRoutingMetadata: false,
             requireAuthenticationRuntime: false,
             runAsProfilePath: "after-runas",
             authenticationProfilePath: "after-auth",
@@ -306,6 +371,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             setWriteAuditSinkMode: mode => writeAuditSinkMode = mode,
             setWriteAuditSinkPath: path => writeAuditSinkPath = path,
             setAuthenticationRuntimePreset: preset => authPreset = preset,
+            setRequireExplicitRoutingMetadata: required => requireExplicitRoutingMetadata = required,
             setRequireAuthenticationRuntime: required => requireAuthRuntime = required,
             setRunAsProfilePath: path => runAsProfilePath = path,
             setAuthenticationProfilePath: path => authProfilePath = path);
@@ -316,6 +382,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.Equal(ToolWriteAuditSinkMode.FileAppendOnly, writeAuditSinkMode);
         Assert.Equal("after", writeAuditSinkPath);
         Assert.Equal(ToolAuthenticationRuntimePreset.Strict, authPreset);
+        Assert.False(requireExplicitRoutingMetadata);
         Assert.False(requireAuthRuntime);
         Assert.Equal("after-runas", runAsProfilePath);
         Assert.Equal("after-auth", authProfilePath);
@@ -338,6 +405,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         public ToolWriteAuditSinkMode WriteAuditSinkMode { get; init; }
         public string? WriteAuditSinkPath { get; init; }
         public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; init; } = ToolAuthenticationRuntimePreset.Default;
+        public bool RequireExplicitRoutingMetadata { get; init; }
         public bool RequireAuthenticationRuntime { get; init; }
         public string? RunAsProfilePath { get; init; }
         public string? AuthenticationProfilePath { get; init; }

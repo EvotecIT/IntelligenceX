@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.TestimoX;
 /// Returns TestimoX pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "testimox_pack_info",
         "Return TestimoX pack capabilities, output contract, and recommended usage patterns. Call this first when planning rule-based diagnostics.",
@@ -25,6 +27,20 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -107,6 +123,6 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
             "Discover rules first, then execute a focused rule subset.",
             "Use raw run payload fields for reasoning and cross-pack correlation.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

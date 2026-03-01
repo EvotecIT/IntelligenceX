@@ -39,4 +39,39 @@ public sealed class ToolRoutingTaxonomyTests {
         Assert.Equal(string.Empty, key);
         Assert.Equal(string.Empty, value);
     }
+
+    [Theory]
+    [InlineData(ToolRoutingTaxonomy.RoleOperational)]
+    [InlineData(ToolRoutingTaxonomy.RolePackInfo)]
+    [InlineData(ToolRoutingTaxonomy.RoleEnvironmentDiscover)]
+    [InlineData(ToolRoutingTaxonomy.RoleResolver)]
+    [InlineData(ToolRoutingTaxonomy.RoleDiagnostic)]
+    public void IsAllowedRole_ShouldReturnTrue_ForSupportedRoles(string role) {
+        Assert.True(ToolRoutingTaxonomy.IsAllowedRole(role));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("unknown")]
+    [InlineData("packinfo")]
+    public void IsAllowedRole_ShouldReturnFalse_ForUnsupportedRoles(string role) {
+        Assert.False(ToolRoutingTaxonomy.IsAllowedRole(role));
+    }
+
+    [Theory]
+    [InlineData(ToolRoutingTaxonomy.SourceExplicit)]
+    [InlineData(ToolRoutingTaxonomy.SourceInferred)]
+    public void IsAllowedSource_ShouldReturnTrue_ForSupportedSources(string source) {
+        Assert.True(ToolRoutingTaxonomy.IsAllowedSource(source));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("unknown")]
+    [InlineData("explicitly")]
+    public void IsAllowedSource_ShouldReturnFalse_ForUnsupportedSources(string source) {
+        Assert.False(ToolRoutingTaxonomy.IsAllowedSource(source));
+    }
 }

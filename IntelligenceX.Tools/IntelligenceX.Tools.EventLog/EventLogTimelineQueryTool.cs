@@ -98,20 +98,19 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             }
 
             var logNameFilter = reader.OptionalString("log_name");
-            var eventIds = ToolArgs.TryReadPositiveInt32Array(arguments?.GetArray("event_ids"), "event_ids", out var eventIdsError);
-            if (!string.IsNullOrWhiteSpace(eventIdsError)) {
-                return ToolRequestBindingResult<TimelineRequest>.Failure(eventIdsError);
+            if (!TryReadPositiveInt32Array(arguments, "event_ids", out var eventIds, out var eventIdsError)) {
+                return ToolRequestBindingResult<TimelineRequest>.Failure(eventIdsError ?? "event_ids is invalid.");
             }
 
             var maxEvents = ResolveBoundedOptionLimit(arguments, "max_events");
             var maxThreads = reader.CappedInt32("max_threads", 4, 1, EventLogNamedEventsQueryShared.MaxThreadsCap);
-            var maxEventsPerNamedEvent = ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("max_events_per_named_event"), maxEvents);
+            var maxEventsPerNamedEvent = TryReadOptionalPositiveInt32(arguments, "max_events_per_named_event", maxEvents);
 
-            var includeUncorrelated = arguments?.GetBoolean("include_uncorrelated") ?? true;
+            var includeUncorrelated = reader.Boolean("include_uncorrelated", defaultValue: true);
             var maxGroups = reader.CappedInt32("max_groups", 250, 1, 2000);
             var bucketMinutes = reader.CappedInt32("bucket_minutes", 15, 1, 1440);
 
-            var includePayload = arguments?.GetBoolean("include_payload") ?? false;
+            var includePayload = reader.Boolean("include_payload", defaultValue: false);
             var payloadKeys = reader.DistinctStringArray("payload_keys");
             if (payloadKeys.Count > EventLogNamedEventsQueryShared.MaxPayloadKeys) {
                 return ToolRequestBindingResult<TimelineRequest>.Failure(
@@ -181,7 +180,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
         }
 
         if (result is null) {
-            return ToolResponse.Error("query_failed", "Timeline query failed.");
+            return ToolResultV2.Error("query_failed", "Timeline query failed.");
         }
 
         var entityHandoff = EventLogEntityHandoff.BuildFromRows(
@@ -190,7 +189,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             objectAffectedSelector: static row => row.ObjectAffected,
             computerSelector: static row => row.Computer);
 
-        return BuildAutoTableResponse(
+        return ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
             sourceRows: result.Timeline,
@@ -247,11 +246,71 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             });
     }
 
+    private static bool TryReadPositiveInt32Array(
+        JsonObject? arguments,
+        string key,
+        out List<int>? values,
+        out string? error) {
+        values = null;
+        error = null;
+
+        if (!TryGetArray(arguments, key, out var array)) {
+            return true;
+        }
+
+        values = ToolArgs.TryReadPositiveInt32Array(array, key, out error);
+        return string.IsNullOrWhiteSpace(error);
+    }
+
+    private static int? TryReadOptionalPositiveInt32(JsonObject? arguments, string key, int maxInclusive) {
+        if (!TryGetInt64(arguments, key, out var value)) {
+            return null;
+        }
+
+        return ToolArgs.ToPositiveInt32OrNull(value, maxInclusive);
+    }
+
+    private static bool TryGetArray(JsonObject? arguments, string key, out JsonArray? array) {
+        array = null;
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            array = kv.Value.AsArray();
+            return array is not null;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetInt64(JsonObject? arguments, string key, out long? value) {
+        value = null;
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return false;
+        }
+
+        foreach (var kv in arguments) {
+            if (!string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            value = kv.Value.AsInt64();
+            return value.HasValue;
+        }
+
+        return false;
+    }
+
     private static string ErrorFromTimelineFailure(NamedEventsTimelineQueryFailure failure) {
         return failure.Kind switch {
-            NamedEventsTimelineQueryFailureKind.InvalidArgument => ToolResponse.Error("invalid_argument", failure.Message),
-            NamedEventsTimelineQueryFailureKind.QueryFailed => ToolResponse.Error("query_failed", failure.Message),
-            _ => ToolResponse.Error("execution_error", failure.Message)
+            NamedEventsTimelineQueryFailureKind.InvalidArgument => ToolResultV2.Error("invalid_argument", failure.Message),
+            NamedEventsTimelineQueryFailureKind.QueryFailed => ToolResultV2.Error("query_failed", failure.Message),
+            _ => ToolResultV2.Error("execution_error", failure.Message)
         };
     }
 }

@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.DomainDetective;
 /// Returns DomainDetective pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "domaindetective_pack_info",
         "Return DomainDetective pack capabilities, output contract, and recommended usage patterns.",
@@ -52,6 +54,20 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -138,6 +154,6 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
             "Use this pack for internet/domain posture diagnostics.",
             "Use AD pack tools for directory-specific domain controller and LDAP workflows.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

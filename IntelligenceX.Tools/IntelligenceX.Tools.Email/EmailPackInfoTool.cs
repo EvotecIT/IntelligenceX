@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.Email;
 /// Returns email pack capabilities and usage guidance for model-driven tool planning.
 /// </summary>
 public sealed class EmailPackInfoTool : EmailToolBase, ITool {
+    private sealed record PackInfoRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "email_pack_info",
         "Return email pack capabilities, configuration hints, output contract, and recommended usage patterns.",
@@ -25,6 +27,20 @@ public sealed class EmailPackInfoTool : EmailToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
+        _ = arguments;
+        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -82,6 +98,6 @@ public sealed class EmailPackInfoTool : EmailToolBase, ITool {
                 SmtpProbeMaxAgeSeconds = Options.SmtpProbeMaxAgeSeconds
             });
 
-        return Task.FromResult(ToolResponse.OkModel(root));
+        return Task.FromResult(ToolResultV2.OkModel(root));
     }
 }

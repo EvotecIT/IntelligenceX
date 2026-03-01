@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Engines.FileSystem;
@@ -13,6 +12,12 @@ namespace IntelligenceX.Tools.FileSystem;
 /// Lists directory entries (safe-by-default; requires AllowedRoots).
 /// </summary>
 public sealed class FsListTool : FileSystemToolBase, ITool {
+    private sealed record ListRequest(
+        string Path,
+        bool Recursive,
+        bool IncludeFiles,
+        bool IncludeDirs);
+
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -45,28 +50,45 @@ public sealed class FsListTool : FileSystemToolBase, ITool {
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>JSON string result.</returns>
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        var path = arguments?.GetString("path") ?? string.Empty;
-        if (!TryResolveExistingDirectory(path, out var fullPath, out var pathError)) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<ListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("path", out var path, out var pathError)) {
+                return ToolRequestBindingResult<ListRequest>.Failure(pathError);
+            }
+
+            return ToolRequestBindingResult<ListRequest>.Success(new ListRequest(
+                Path: path,
+                Recursive: reader.Boolean("recursive", defaultValue: false),
+                IncludeFiles: reader.Boolean("include_files", defaultValue: true),
+                IncludeDirs: reader.Boolean("include_dirs", defaultValue: true)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ListRequest> context, CancellationToken cancellationToken) {
+        if (!TryResolveExistingDirectory(context.Request.Path, out var fullPath, out var pathError)) {
             return Task.FromResult(pathError);
         }
-
-        var recursive = arguments?.GetBoolean("recursive") ?? false;
-        var includeFiles = arguments?.GetBoolean("include_files") ?? true;
-        var includeDirs = arguments?.GetBoolean("include_dirs") ?? true;
 
         var root = FileSystemQuery.List(
             request: new FileSystemListRequest {
                 Path = fullPath,
-                Recursive = recursive,
-                IncludeFiles = includeFiles,
-                IncludeDirectories = includeDirs,
+                Recursive = context.Request.Recursive,
+                IncludeFiles = context.Request.IncludeFiles,
+                IncludeDirectories = context.Request.IncludeDirs,
                 MaxResults = Options.MaxResults
             },
             canDescendOrIncludePath: candidate => TryResolvePath(candidate, out _, out _),
             cancellationToken: cancellationToken);
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: root,
             sourceRows: root.Entries,
             viewRowsPath: "entries_view",

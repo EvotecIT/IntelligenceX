@@ -30,17 +30,26 @@ public static class ToolHealthDiagnostics {
         long DurationMs);
 
     /// <summary>
-    /// Returns all registered <c>*_pack_info</c> tool names (sorted, case-insensitive).
+    /// Returns registered pack-info definitions (sorted, case-insensitive).
+    /// Prefers routing-role metadata and keeps suffix-based discovery as compatibility fallback.
     /// </summary>
-    public static string[] GetPackInfoToolNames(ToolRegistry registry) {
+    public static ToolDefinition[] GetPackInfoDefinitions(ToolRegistry registry) {
         if (registry is null) {
             throw new ArgumentNullException(nameof(registry));
         }
 
         return registry.GetDefinitions()
-            .Where(static def => def.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase))
+            .Where(IsPackInfoDefinition)
+            .OrderBy(static def => def.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Returns all registered pack-info tool names (sorted, case-insensitive).
+    /// </summary>
+    public static string[] GetPackInfoToolNames(ToolRegistry registry) {
+        return GetPackInfoDefinitions(registry)
             .Select(static def => def.Name)
-            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -198,6 +207,7 @@ public static class ToolHealthDiagnostics {
                 smokeToolName = "system_info";
                 return true;
             case "ad":
+            case "active_directory":
                 smokeToolName = "ad_environment_discover";
                 return true;
             case "eventlog":
@@ -213,5 +223,18 @@ public static class ToolHealthDiagnostics {
             default:
                 return false;
         }
+    }
+
+    private static bool IsPackInfoDefinition(ToolDefinition definition) {
+        if (definition is null) {
+            return false;
+        }
+
+        var role = (definition.Routing?.Role ?? string.Empty).Trim();
+        if (string.Equals(role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return definition.Name.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase);
     }
 }

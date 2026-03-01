@@ -80,6 +80,7 @@ internal sealed partial class ChatServiceSession {
                 WriteAuditSinkConfigured = runtimePolicy.WriteAuditSinkConfigured,
                 WriteAuditSinkPath = runtimePolicy.WriteAuditSinkPath,
                 AuthenticationRuntimePreset = ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(runtimePolicy.AuthenticationPreset),
+                RequireExplicitRoutingMetadata = runtimePolicy.RequireExplicitRoutingMetadata,
                 RequireAuthenticationRuntime = runtimePolicy.RequireAuthenticationRuntime,
                 AuthenticationRuntimeConfigured = runtimePolicy.AuthenticationRuntimeConfigured,
                 RequireSuccessfulSmtpProbeForSend = runtimePolicy.RequireSuccessfulSmtpProbeForSend,
@@ -110,13 +111,21 @@ internal sealed partial class ChatServiceSession {
         return new SessionRoutingCatalogDiagnosticsDto {
             TotalTools = Math.Max(0, diagnostics.TotalTools),
             RoutingAwareTools = Math.Max(0, diagnostics.RoutingAwareTools),
+            ExplicitRoutingTools = Math.Max(0, diagnostics.ExplicitRoutingTools),
+            InferredRoutingTools = Math.Max(0, diagnostics.InferredRoutingTools),
             MissingRoutingContractTools = Math.Max(0, diagnostics.MissingRoutingContractTools),
+            MissingPackIdTools = Math.Max(0, diagnostics.MissingPackIdTools),
+            MissingRoleTools = Math.Max(0, diagnostics.MissingRoleTools),
+            SetupAwareTools = Math.Max(0, diagnostics.SetupAwareTools),
+            HandoffAwareTools = Math.Max(0, diagnostics.HandoffAwareTools),
+            RecoveryAwareTools = Math.Max(0, diagnostics.RecoveryAwareTools),
             DomainFamilyTools = Math.Max(0, diagnostics.DomainFamilyTools),
             ExpectedDomainFamilyMissingTools = Math.Max(0, diagnostics.ExpectedDomainFamilyMissingTools),
             DomainFamilyMissingActionTools = Math.Max(0, diagnostics.DomainFamilyMissingActionTools),
             ActionWithoutFamilyTools = Math.Max(0, diagnostics.ActionWithoutFamilyTools),
             FamilyActionConflictFamilies = Math.Max(0, diagnostics.FamilyActionConflictFamilies),
             IsHealthy = diagnostics.IsHealthy,
+            IsExplicitRoutingReady = diagnostics.IsExplicitRoutingReady,
             FamilyActions = mappedFamilyActions
         };
     }
