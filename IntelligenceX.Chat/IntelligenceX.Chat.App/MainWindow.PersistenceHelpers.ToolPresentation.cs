@@ -18,10 +18,12 @@ public sealed partial class MainWindow : Window {
         bool debugMode,
         Func<string?, string> resolveToolDisplayName) {
         ArgumentNullException.ThrowIfNull(tools);
+        if (!debugMode) {
+            return string.Empty;
+        }
+
         ArgumentNullException.ThrowIfNull(resolveToolDisplayName);
-        return debugMode
-            ? ToolRunMarkdownFormatter.Format(tools, resolveToolDisplayName)
-            : ToolRunMarkdownFormatter.FormatVisualsOnly(tools, resolveToolDisplayName);
+        return ToolRunMarkdownFormatter.Format(tools, resolveToolDisplayName);
     }
 
     private string BuildToolRunTranscriptMarkdown(ToolRunDto tools) {
