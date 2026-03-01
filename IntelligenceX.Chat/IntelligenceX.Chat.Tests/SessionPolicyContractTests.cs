@@ -40,6 +40,29 @@ public sealed class SessionPolicyContractTests {
                 PluginSearchPaths = new[] {
                     "C:\\Users\\user\\AppData\\Local\\IntelligenceX.Chat\\plugins",
                     "C:\\Support\\GitHub\\IntelligenceX\\plugins"
+                },
+                RoutingCatalog = new SessionRoutingCatalogDiagnosticsDto {
+                    TotalTools = 8,
+                    RoutingAwareTools = 8,
+                    MissingRoutingContractTools = 0,
+                    DomainFamilyTools = 4,
+                    ExpectedDomainFamilyMissingTools = 0,
+                    DomainFamilyMissingActionTools = 0,
+                    ActionWithoutFamilyTools = 0,
+                    FamilyActionConflictFamilies = 0,
+                    IsHealthy = true,
+                    FamilyActions = new[] {
+                        new SessionRoutingFamilyActionSummaryDto {
+                            Family = "ad_domain",
+                            ActionId = "act_domain_scope_ad",
+                            ToolCount = 2
+                        },
+                        new SessionRoutingFamilyActionSummaryDto {
+                            Family = "public_domain",
+                            ActionId = "act_domain_scope_public",
+                            ToolCount = 2
+                        }
+                    }
                 }
             }
         };
@@ -57,5 +80,10 @@ public sealed class SessionPolicyContractTests {
         Assert.Single(policy.Packs);
         Assert.False(policy.Packs[0].Enabled);
         Assert.Equal("License expired on 2026-03-31.", policy.Packs[0].DisabledReason);
+        var routingCatalog = Assert.IsType<SessionRoutingCatalogDiagnosticsDto>(policy.RoutingCatalog);
+        Assert.True(routingCatalog.IsHealthy);
+        Assert.Equal(8, routingCatalog.TotalTools);
+        Assert.Equal(2, routingCatalog.FamilyActions.Length);
+        Assert.Equal("ad_domain", routingCatalog.FamilyActions[0].Family);
     }
 }

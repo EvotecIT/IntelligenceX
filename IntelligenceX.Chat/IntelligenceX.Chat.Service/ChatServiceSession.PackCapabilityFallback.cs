@@ -535,11 +535,12 @@ internal sealed partial class ChatServiceSession {
                     sourcePackId: sourcePackId,
                     candidateTool: candidateTool,
                     partialScopeHints: partialScopeHints);
+                AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
                 AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
                 AddSchemaAwareFallbackDefaultArguments(sourcePackId, toolDefinition, fallbackArguments, partialScopeHints);
                 var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
                 if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                    || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                    || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                     continue;
                 }
                 var serializedArguments = JsonLite.Serialize(normalizedArguments);
@@ -626,11 +627,12 @@ internal sealed partial class ChatServiceSession {
                 sourcePackId: NormalizePackId("active_directory"),
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackDefaultArguments("active_directory", toolDefinition, fallbackArguments, partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
             var serializedArguments = JsonLite.Serialize(normalizedArguments);
@@ -700,11 +702,12 @@ internal sealed partial class ChatServiceSession {
                 sourcePackId: sourcePackId,
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackDefaultArguments(sourcePackId, toolDefinition, fallbackArguments, partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -775,11 +778,12 @@ internal sealed partial class ChatServiceSession {
                 sourcePackId: NormalizePackId("active_directory"),
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackDefaultArguments("active_directory", toolDefinition, fallbackArguments, partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -863,12 +867,13 @@ internal sealed partial class ChatServiceSession {
             if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, computerName, "computer_name", "machine_name", "host", "target", "name")) {
                 fallbackArguments.Add("computer_name", computerName);
             }
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackDefaultArguments("system", toolDefinition, fallbackArguments, partialScopeHints);
 
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -939,11 +944,12 @@ internal sealed partial class ChatServiceSession {
                 sourcePackId: NormalizePackId("testimox"),
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackDefaultArguments("testimox", toolDefinition, fallbackArguments, partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -1014,11 +1020,12 @@ internal sealed partial class ChatServiceSession {
                 sourcePackId: NormalizePackId("domaindetective"),
                 candidateTool: candidateTool,
                 partialScopeHints: partialScopeHints);
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackDefaultArguments("domaindetective", toolDefinition, fallbackArguments, partialScopeHints);
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -1113,7 +1120,7 @@ internal sealed partial class ChatServiceSession {
 
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -1215,7 +1222,7 @@ internal sealed partial class ChatServiceSession {
 
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -1302,7 +1309,7 @@ internal sealed partial class ChatServiceSession {
 
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -1746,6 +1753,7 @@ internal sealed partial class ChatServiceSession {
             if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, machineName, "machine_name", "computer_name", "host", "target", "name")) {
                 fallbackArguments.Add("machine_name", machineName);
             }
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             if (!fallbackArguments.TryGetValue("log_name", out _)
                 && ToolDefinitionHasInputProperty(toolDefinition, "log_name")) {
@@ -1759,7 +1767,7 @@ internal sealed partial class ChatServiceSession {
 
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -1847,12 +1855,13 @@ internal sealed partial class ChatServiceSession {
             if (!TryAddFallbackHintArgumentForCandidate(toolDefinition, fallbackArguments, domainName, "domain_name", "dns_domain_name", "domain", "name")) {
                 fallbackArguments["domain_name"] = JsonValue.From(domainName);
             }
+            AddMetadataDrivenFallbackHintArguments(candidateTool, toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackHintArguments(toolDefinition, fallbackArguments, partialScopeHints);
             AddSchemaAwareFallbackDefaultArguments("active_directory", toolDefinition, fallbackArguments, partialScopeHints);
 
             var normalizedArguments = CoerceStructuredNextActionArgumentsForTool(fallbackArguments, toolDefinition);
             if (!HasRequiredToolArguments(toolDefinition, normalizedArguments)
-                || ShouldSkipFallbackCandidate(candidateTool, normalizedArguments)) {
+                || ShouldSkipFallbackCandidate(candidateTool, toolDefinition, normalizedArguments)) {
                 continue;
             }
 
@@ -2161,29 +2170,28 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        if (PackIdMatches(sourcePackId, "testimox")) {
-            if (string.Equals(candidateTool, "testimox_rules_list", StringComparison.OrdinalIgnoreCase)) {
-                CopyHintIfPresent(partialScopeHints, args, "search_text");
-                CopyHintIfPresent(partialScopeHints, args, "rule_origin");
-                CopyHintIfPresent(partialScopeHints, args, "categories");
-                CopyHintIfPresent(partialScopeHints, args, "tags");
-                CopyHintIfPresent(partialScopeHints, args, "source_types");
-                return args;
-            }
+        return args;
+    }
 
-            if (string.Equals(candidateTool, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)) {
-                CopyHintIfPresent(partialScopeHints, args, "search_text");
-                CopyHintIfPresent(partialScopeHints, args, "rule_origin");
-                CopyHintIfPresent(partialScopeHints, args, "rule_names");
-                CopyHintIfPresent(partialScopeHints, args, "rule_name_patterns");
-                CopyHintIfPresent(partialScopeHints, args, "categories");
-                CopyHintIfPresent(partialScopeHints, args, "tags");
-                CopyHintIfPresent(partialScopeHints, args, "source_types");
-                return args;
-            }
+    private static void AddMetadataDrivenFallbackHintArguments(
+        string candidateTool,
+        ToolDefinition toolDefinition,
+        JsonObject arguments,
+        JsonObject partialScopeHints) {
+        var normalizedDefinition = ToolSelectionMetadata.Enrich(toolDefinition, toolType: null);
+        var hintKeys = ToolSelectionMetadata.GetFallbackHintKeys(normalizedDefinition);
+        if (hintKeys.Count == 0) {
+            return;
         }
 
-        return args;
+        for (var i = 0; i < hintKeys.Count; i++) {
+            var key = (hintKeys[i] ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            CopyHintIfPresent(partialScopeHints, arguments, key);
+        }
     }
 
     private static void AddSchemaAwareFallbackHintArguments(
@@ -2512,12 +2520,18 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private static bool ShouldSkipFallbackCandidate(string candidateTool, JsonObject arguments) {
-        if (!string.Equals(candidateTool, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)) {
+    private static bool ShouldSkipFallbackCandidate(string candidateTool, ToolDefinition toolDefinition, JsonObject arguments) {
+        var normalizedDefinition = ToolSelectionMetadata.Enrich(toolDefinition, toolType: null);
+        if (!ToolSelectionMetadata.RequiresSelectionForFallback(normalizedDefinition)) {
             return false;
         }
 
-        return !HasTestimoSelectionArguments(arguments);
+        var requiredKeys = ToolSelectionMetadata.GetFallbackSelectionKeys(normalizedDefinition);
+        if (requiredKeys.Count == 0) {
+            return false;
+        }
+
+        return !HasAnyFallbackSelectionArgument(arguments, requiredKeys);
     }
 
     private static bool IsHintlessSafeFallbackCandidate(string candidateTool) {
@@ -2531,14 +2545,23 @@ internal sealed partial class ChatServiceSession {
                || !string.IsNullOrWhiteSpace(output.Error);
     }
 
-    private static bool HasTestimoSelectionArguments(JsonObject arguments) {
-        return HasNonEmptyStringArgument(arguments, "search_text")
-               || HasNonEmptyStringArrayArgument(arguments, "rule_names")
-               || HasNonEmptyStringArrayArgument(arguments, "rule_name_patterns")
-               || HasNonEmptyStringArrayArgument(arguments, "categories")
-               || HasNonEmptyStringArrayArgument(arguments, "tags")
-               || HasNonEmptyStringArrayArgument(arguments, "source_types")
-               || HasNonEmptyStringArgument(arguments, "rule_origin");
+    private static bool HasAnyFallbackSelectionArgument(JsonObject arguments, IReadOnlyList<string> keys) {
+        if (keys is null || keys.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < keys.Count; i++) {
+            var key = (keys[i] ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            if (HasNonEmptyStringArgument(arguments, key) || HasNonEmptyStringArrayArgument(arguments, key)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasNonEmptyStringArgument(JsonObject arguments, string name) {
@@ -2766,49 +2789,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static HashSet<string> GetNormalizedPackAliases(string packId) {
-        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void AddAlias(string value) {
-            var normalized = NormalizePackId(value);
-            if (normalized.Length > 0) {
-                aliases.Add(normalized);
-            }
-        }
-
-        AddAlias(packId);
-        switch (NormalizePackId(packId)) {
-            case "activedirectory":
-                AddAlias("ad");
-                AddAlias("adplayground");
-                break;
-            case "ad":
-                AddAlias("active_directory");
-                AddAlias("adplayground");
-                break;
-            case "adplayground":
-                AddAlias("active_directory");
-                AddAlias("ad");
-                break;
-            case "system":
-                AddAlias("computerx");
-                break;
-            case "computerx":
-                AddAlias("system");
-                break;
-            case "eventlog":
-                AddAlias("event_log");
-                break;
-            case "domaindetective":
-                AddAlias("domain_detective");
-                break;
-            case "dnsclientx":
-                AddAlias("dns_client_x");
-                break;
-            case "testimox":
-                AddAlias("testimo_x");
-                break;
-        }
-
-        return aliases;
+        var aliases = ToolSelectionMetadata.GetNormalizedPackAliases(packId);
+        return aliases.Count == 0
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(aliases, StringComparer.OrdinalIgnoreCase);
     }
 
     private static bool IsLikelyDomainName(string value) {
@@ -2990,3 +2974,9 @@ internal sealed partial class ChatServiceSession {
     }
 
 }
+
+
+
+
+
+

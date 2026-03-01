@@ -30,7 +30,12 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
                 ("max_hints", ToolSchema.Integer("Maximum remediation hints returned (capped by pack options).")),
                 ("include_analysis_overview", ToolSchema.Boolean("Include analysis map availability summary (default: true).")))
             .Required("domain")
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "dns",
+        tags: new[] {
+            "domain_posture",
+            "dns"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DomainDetectiveDomainSummaryTool"/> class.

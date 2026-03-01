@@ -138,9 +138,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool IsSupportedDomainIntentFamily(string family) {
-        var normalizedFamily = (family ?? string.Empty).Trim();
-        return string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
-               || string.Equals(normalizedFamily, DomainIntentFamilyPublic, StringComparison.Ordinal);
+        return TryNormalizeDomainIntentFamily(family, out _);
     }
 
     private static DomainIntentStoreDto ReadDomainIntentStoreNoThrow(string path) {

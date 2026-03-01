@@ -27,6 +27,28 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             RunAsProfilePath = "C:\\profiles\\run-as.json",
             AuthenticationProfilePath = "C:\\profiles\\auth.json"
         };
+        var routingCatalog = new ToolRoutingCatalogDiagnostics {
+            TotalTools = 12,
+            RoutingAwareTools = 12,
+            MissingRoutingContractTools = 0,
+            DomainFamilyTools = 6,
+            ExpectedDomainFamilyMissingTools = 0,
+            DomainFamilyMissingActionTools = 0,
+            ActionWithoutFamilyTools = 0,
+            FamilyActionConflictFamilies = 0,
+            FamilyActions = new[] {
+                new ToolRoutingFamilyActionSummary {
+                    Family = "ad_domain",
+                    ActionId = "act_domain_scope_ad",
+                    ToolCount = 3
+                },
+                new ToolRoutingFamilyActionSummary {
+                    Family = "public_domain",
+                    ActionId = "act_domain_scope_public",
+                    ToolCount = 3
+                }
+            }
+        };
 
         var policy = ChatServiceSession.BuildSessionPolicy(
             new ServiceOptions {
@@ -36,7 +58,8 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             Array.Empty<ToolPackAvailabilityInfo>(),
             Array.Empty<string>(),
             Array.Empty<string>(),
-            runtimePolicy);
+            runtimePolicy,
+            routingCatalog);
 
         var hello = new HelloMessage {
             Kind = ChatServiceMessageKind.Response,
@@ -69,6 +92,17 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.Equal(600, runtime.GetProperty("smtpProbeMaxAgeSeconds").GetInt32());
         Assert.Equal("C:\\profiles\\run-as.json", runtime.GetProperty("runAsProfilePath").GetString());
         Assert.Equal("C:\\profiles\\auth.json", runtime.GetProperty("authenticationProfilePath").GetString());
+
+        var serializedRoutingCatalog = serializedPolicy.GetProperty("routingCatalog");
+        Assert.True(serializedRoutingCatalog.GetProperty("isHealthy").GetBoolean());
+        Assert.Equal(12, serializedRoutingCatalog.GetProperty("totalTools").GetInt32());
+        Assert.Equal(2, serializedRoutingCatalog.GetProperty("familyActions").GetArrayLength());
+        Assert.Equal(
+            "act_domain_scope_ad",
+            serializedRoutingCatalog
+                .GetProperty("familyActions")[0]
+                .GetProperty("actionId")
+                .GetString());
     }
 
     [Fact]

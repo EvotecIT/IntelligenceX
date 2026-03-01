@@ -557,7 +557,25 @@ public sealed partial class MainWindow : Window {
                 parallelTools = _sessionPolicy.ParallelTools,
                 allowMutatingParallelToolCalls = _sessionPolicy.AllowMutatingParallelToolCalls,
                 startupWarnings = _sessionPolicy.StartupWarnings,
-                pluginSearchPaths = _sessionPolicy.PluginSearchPaths
+                pluginSearchPaths = _sessionPolicy.PluginSearchPaths,
+                routingCatalog = _sessionPolicy.RoutingCatalog is null ? null : new {
+                    totalTools = _sessionPolicy.RoutingCatalog.TotalTools,
+                    routingAwareTools = _sessionPolicy.RoutingCatalog.RoutingAwareTools,
+                    missingRoutingContractTools = _sessionPolicy.RoutingCatalog.MissingRoutingContractTools,
+                    domainFamilyTools = _sessionPolicy.RoutingCatalog.DomainFamilyTools,
+                    expectedDomainFamilyMissingTools = _sessionPolicy.RoutingCatalog.ExpectedDomainFamilyMissingTools,
+                    domainFamilyMissingActionTools = _sessionPolicy.RoutingCatalog.DomainFamilyMissingActionTools,
+                    actionWithoutFamilyTools = _sessionPolicy.RoutingCatalog.ActionWithoutFamilyTools,
+                    familyActionConflictFamilies = _sessionPolicy.RoutingCatalog.FamilyActionConflictFamilies,
+                    isHealthy = _sessionPolicy.RoutingCatalog.IsHealthy,
+                    familyActions = Array.ConvertAll(
+                        _sessionPolicy.RoutingCatalog.FamilyActions,
+                        static item => new {
+                            family = item.Family,
+                            actionId = item.ActionId,
+                            toolCount = item.ToolCount
+                        })
+                }
             }
         });
         if (!UiPublishDedupe.TryBeginPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json)) {

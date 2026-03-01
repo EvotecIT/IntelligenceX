@@ -129,6 +129,7 @@ public sealed class ToolRegistry {
 
         ValidateWriteGovernanceContract(definition);
         ValidateAuthenticationContract(definition);
+        ValidateRoutingContract(definition);
 
         _tools[definition.Name] = tool;
         _definitions[definition.Name] = definition;
@@ -247,6 +248,56 @@ public sealed class ToolRegistry {
 
         throw new InvalidOperationException(
             $"Tool '{definition.Name}' is authentication-aware and must expose authentication argument(s) in schema properties: {string.Join(", ", missingArguments)}.");
+    }
+
+    private void ValidateRoutingContract(ToolDefinition definition) {
+        ToolRoutingContract? contract = definition.Routing;
+        if (contract is null) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' must declare a routing contract.");
+        }
+
+        if (!contract.IsRoutingAware) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' cannot opt out of routing metadata (IsRoutingAware=false).");
+        }
+
+        contract.Validate();
+        ValidateDomainIntentActionCatalogConsistency(definition, contract);
+    }
+
+    private void ValidateDomainIntentActionCatalogConsistency(ToolDefinition definition, ToolRoutingContract contract) {
+        var family = (contract.DomainIntentFamily ?? string.Empty).Trim();
+        var actionId = (contract.DomainIntentActionId ?? string.Empty).Trim();
+        if (family.Length == 0 || actionId.Length == 0) {
+            return;
+        }
+
+        foreach (var existingDefinition in _definitions.Values) {
+            if (existingDefinition is null) {
+                continue;
+            }
+
+            var existingContract = existingDefinition.Routing;
+            if (existingContract is null || !existingContract.IsRoutingAware) {
+                continue;
+            }
+
+            var existingFamily = (existingContract.DomainIntentFamily ?? string.Empty).Trim();
+            if (!string.Equals(existingFamily, family, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var existingActionId = (existingContract.DomainIntentActionId ?? string.Empty).Trim();
+            if (existingActionId.Length == 0
+                || string.Equals(existingActionId, actionId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' declares DomainIntentActionId '{actionId}' for family '{family}', " +
+                $"but existing tool '{existingDefinition.Name}' already declares '{existingActionId}'.");
+        }
     }
 
     private Task<string> ExecuteWriteOperationWithReplayAsync(string operationReplayKey, Func<Task<string>> executeAsync) {

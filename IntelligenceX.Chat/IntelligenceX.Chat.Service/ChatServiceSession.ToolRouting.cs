@@ -33,65 +33,121 @@ internal sealed partial class ChatServiceSession {
     private const int DomainIntentAmbiguousDomainTokenMaxCandidates = 16;
     private const string DomainIntentFamilyAd = "ad_domain";
     private const string DomainIntentFamilyPublic = "public_domain";
-    private const string DomainIntentActionIdAd = "act_domain_scope_ad";
-    private const string DomainIntentActionIdPublic = "act_domain_scope_public";
     private const string DomainIntentAcronymTokenAd = "AD";
     private const string DomainIntentMarker = "ix:domain-intent:v1";
     private const string DomainIntentChoiceMarker = "ix:domain-intent-choice:v1";
-    private static readonly string[] DomainIntentAdTechnicalSignals = new[] {
-        "dc",
-        "ldap",
-        "gpo",
-        "kerberos",
-        "replication",
-        "sysvol",
-        "netlogon",
-        "ntds",
-        "forest",
-        "trust",
-        "adplayground",
-        "active_directory",
-        "ad_domain",
-        "act_domain_scope_ad"
-    };
-    private static readonly string[] DomainIntentPublicTechnicalSignals = new[] {
-        "dns",
-        "mx",
-        "spf",
-        "dmarc",
-        "dkim",
-        "ns",
-        "dnssec",
-        "caa",
-        "whois",
-        "mta_sts",
-        "bimi",
-        "dnsclientx",
-        "dns_client_x",
-        "domaindetective",
-        "domain_detective",
-        "public_domain",
-        "act_domain_scope_public"
-    };
-    private static readonly string[] ActiveDirectoryToolNamePrefixes = new[] { "ad_", "active_directory_", "adplayground_" };
-    private static readonly string[] ActiveDirectoryToolNameCompactPrefixes = new[] { "activedirectory", "adplayground" };
-    private static readonly string[] PublicDomainToolNamePrefixes = new[] {
-        "dnsclientx_",
-        "dns_client_x_",
-        "domaindetective_",
-        "domain_detective_"
-    };
-    private static readonly string[] PublicDomainToolNameCompactPrefixes = new[] { "dnsclientx", "domaindetective" };
-    private static readonly string[] EventLogToolNamePrefixes = new[] { "eventlog_", "event_log_" };
-    private static readonly string[] EventLogToolNameCompactPrefixes = new[] { "eventlog" };
-    private static readonly string[] SystemToolNamePrefixes = new[] { "system_", "computerx_", "wsl_" };
-    private static readonly string[] SystemToolNameCompactPrefixes = new[] { "computerx", "wsl" };
-    private static readonly string[] TestimoXToolNamePrefixes = new[] { "testimox_", "testimo_x_" };
-    private static readonly string[] TestimoXToolNameCompactPrefixes = new[] { "testimox" };
-    private static readonly string[] DomainDetectiveToolNamePrefixes = new[] { "domaindetective_", "domain_detective_" };
-    private static readonly string[] DomainDetectiveToolNameCompactPrefixes = new[] { "domaindetective" };
-    private static readonly string[] DnsClientXToolNamePrefixes = new[] { "dnsclientx_", "dns_client_x_" };
-    private static readonly string[] DnsClientXToolNameCompactPrefixes = new[] { "dnsclientx" };
+    private readonly record struct DomainIntentFamilyAvailability(
+        bool HasAd,
+        bool HasPublic,
+        IReadOnlyList<string>? Families = null) {
+        internal bool HasMixedFamilies {
+            get {
+                if (Families is { Count: > 0 }) {
+                    return Families.Count > 1;
+                }
+
+                return HasAd && HasPublic;
+            }
+        }
+
+        internal bool HasFamily(string family) {
+            if (!TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
+                return false;
+            }
+
+            if (Families is { Count: > 0 }) {
+                for (var i = 0; i < Families.Count; i++) {
+                    if (string.Equals(Families[i], normalizedFamily, StringComparison.Ordinal)) {
+                        return true;
+                    }
+                }
+            }
+
+            return string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
+                ? HasAd
+                : string.Equals(normalizedFamily, DomainIntentFamilyPublic, StringComparison.Ordinal) && HasPublic;
+        }
+
+        internal IReadOnlyList<string> GetFamilies() {
+            if (Families is { Count: > 0 }) {
+                return Families;
+            }
+
+            var fallback = new List<string>(2);
+            if (HasAd) {
+                fallback.Add(DomainIntentFamilyAd);
+            }
+            if (HasPublic) {
+                fallback.Add(DomainIntentFamilyPublic);
+            }
+
+            return fallback.Count == 0
+                ? Array.Empty<string>()
+                : fallback;
+        }
+    }
+    private readonly record struct DomainIntentActionCatalog(
+        string AdActionId,
+        string PublicActionId,
+        IReadOnlyDictionary<string, string>? FamilyActionIds = null) {
+        internal bool TryGetActionId(string family, out string actionId) {
+            actionId = string.Empty;
+            if (!TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
+                return false;
+            }
+
+            if (FamilyActionIds is not null && FamilyActionIds.TryGetValue(normalizedFamily, out var mappedActionId)) {
+                var mapped = (mappedActionId ?? string.Empty).Trim();
+                if (mapped.Length > 0) {
+                    actionId = mapped;
+                    return true;
+                }
+            }
+
+            if (string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+                actionId = (AdActionId ?? string.Empty).Trim();
+                return actionId.Length > 0;
+            }
+
+            if (string.Equals(normalizedFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
+                actionId = (PublicActionId ?? string.Empty).Trim();
+                return actionId.Length > 0;
+            }
+
+            actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(normalizedFamily);
+            return actionId.Length > 0;
+        }
+
+        internal bool TryGetFamilyByActionId(string actionId, out string family) {
+            family = string.Empty;
+            var normalizedActionId = (actionId ?? string.Empty).Trim();
+            if (normalizedActionId.Length == 0) {
+                return false;
+            }
+
+            if (FamilyActionIds is not null) {
+                foreach (var pair in FamilyActionIds) {
+                    if (string.Equals(pair.Value, normalizedActionId, StringComparison.OrdinalIgnoreCase)
+                        && TryNormalizeDomainIntentFamily(pair.Key, out family)) {
+                        return true;
+                    }
+                }
+            }
+
+            if (string.Equals(normalizedActionId, AdActionId, StringComparison.OrdinalIgnoreCase)) {
+                family = DomainIntentFamilyAd;
+                return true;
+            }
+
+            if (string.Equals(normalizedActionId, PublicActionId, StringComparison.OrdinalIgnoreCase)) {
+                family = DomainIntentFamilyPublic;
+                return true;
+            }
+
+            return false;
+        }
+    }
+    private readonly record struct DomainIntentFamilyOption(int Ordinal, string Family, string ActionId);
 
     private static List<ToolRoutingInsight> BuildContinuationRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs) {
         var list = new List<ToolRoutingInsight>(selectedDefs.Count);
@@ -226,8 +282,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var adCandidates = 0;
-        var publicDomainCandidates = 0;
+        var familyCandidateCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < selectedTools.Count; i++) {
             var tool = selectedTools[i];
             var toolName = (tool.Name ?? string.Empty).Trim();
@@ -236,62 +291,72 @@ internal sealed partial class ChatServiceSession {
             }
 
             var family = ResolveDomainIntentFamily(tool);
-            if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
-                adCandidates++;
-            } else if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
-                publicDomainCandidates++;
+            if (family.Length == 0) {
+                continue;
             }
+
+            familyCandidateCounts[family] = familyCandidateCounts.TryGetValue(family, out var currentCount)
+                ? currentCount + 1
+                : 1;
         }
 
-        if (adCandidates <= 0 || publicDomainCandidates <= 0) {
+        if (familyCandidateCounts.Count < 2) {
             return false;
         }
 
-        var relevantCandidates = adCandidates + publicDomainCandidates;
+        var relevantCandidates = familyCandidateCounts.Values.Sum();
         if (relevantCandidates < DomainIntentClarificationMinRelevantCandidates) {
             return false;
         }
 
-        var dominantShare = Math.Max(adCandidates, publicDomainCandidates) / (double)relevantCandidates;
+        var dominantShare = familyCandidateCounts.Values.Max() / (double)relevantCandidates;
         return dominantShare < DomainIntentClarificationMaxDominantShare;
     }
 
     private static bool HasMixedDomainIntentFamilyCoverage(IReadOnlyList<ToolDefinition> definitions) {
-        if (definitions is null || definitions.Count == 0) {
-            return false;
-        }
-
-        var hasAd = false;
-        var hasPublic = false;
-
-        for (var i = 0; i < definitions.Count; i++) {
-            var family = ResolveDomainIntentFamily(definitions[i]);
-            if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
-                hasAd = true;
-            } else if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
-                hasPublic = true;
-            }
-
-            if (hasAd && hasPublic) {
-                return true;
-            }
-        }
-
-        return false;
+        return ResolveDomainIntentFamilyAvailability(definitions).HasMixedFamilies;
     }
 
     private static bool ShouldForceDomainIntentClarificationForConflictingSignals(string userRequest, IReadOnlyList<ToolDefinition> allDefinitions) {
-        if (!HasMixedDomainIntentFamilyCoverage(allDefinitions)) {
+        var availability = ResolveDomainIntentFamilyAvailability(allDefinitions);
+        if (!availability.HasMixedFamilies) {
+            return false;
+        }
+
+        return ShouldForceDomainIntentClarificationForConflictingSignals(userRequest, availability, allDefinitions);
+    }
+
+    private static bool ShouldForceDomainIntentClarificationForConflictingSignals(
+        string userRequest,
+        DomainIntentFamilyAvailability availability) {
+        return ShouldForceDomainIntentClarificationForConflictingSignals(userRequest, availability, availableDefinitions: null);
+    }
+
+    private static bool ShouldForceDomainIntentClarificationForConflictingSignals(
+        string userRequest,
+        DomainIntentFamilyAvailability availability,
+        IReadOnlyList<ToolDefinition>? availableDefinitions) {
+        if (!availability.HasMixedFamilies) {
             return false;
         }
 
         // If an explicit structured family selection is present, do not force clarification.
-        if (TryResolveDomainIntentFamilyFromUserSignals(userRequest, out _)) {
+        if (TryResolveDomainIntentFamilyFromUserSignals(userRequest, availableDefinitions, out _)) {
             return false;
         }
 
-        return HasConflictingDomainIntentSignals(userRequest)
+        return HasConflictingDomainIntentSignals(userRequest, availableDefinitions)
                || LooksLikeMixedDomainScopeRequest(userRequest);
+    }
+
+    private static bool ShouldSuppressDomainIntentClarificationForCompactFollowUp(
+        bool compactFollowUpTurn,
+        bool hasPreferredDomainIntentFamily,
+        bool hasFreshPendingActionContext,
+        bool conflictingDomainSignals) {
+        return compactFollowUpTurn
+               && (hasPreferredDomainIntentFamily || hasFreshPendingActionContext)
+               && !conflictingDomainSignals;
     }
 
     private static bool LooksLikeMixedDomainScopeRequest(string text) {
@@ -423,83 +488,21 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool IsAdDomainIntentToolName(string toolName) {
-        return MatchesToolNameLiteralOrCompactPrefix(toolName, ActiveDirectoryToolNamePrefixes, ActiveDirectoryToolNameCompactPrefixes);
+        return ToolSelectionMetadata.TryResolveDomainIntentFamily(
+                   toolName,
+                   category: null,
+                   tags: null,
+                   out var family)
+               && string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal);
     }
 
     private static bool IsPublicDomainIntentToolName(string toolName) {
-        return MatchesToolNameLiteralOrCompactPrefix(toolName, PublicDomainToolNamePrefixes, PublicDomainToolNameCompactPrefixes);
-    }
-
-    private static bool IsEventLogToolName(string toolName) {
-        return MatchesToolNameLiteralOrCompactPrefix(toolName, EventLogToolNamePrefixes, EventLogToolNameCompactPrefixes);
-    }
-
-    private static bool IsSystemToolName(string toolName) {
-        return MatchesToolNameLiteralOrCompactPrefix(toolName, SystemToolNamePrefixes, SystemToolNameCompactPrefixes);
-    }
-
-    private static bool IsTestimoXToolName(string toolName) {
-        return MatchesToolNameLiteralOrCompactPrefix(toolName, TestimoXToolNamePrefixes, TestimoXToolNameCompactPrefixes);
-    }
-
-    private static bool IsDomainDetectiveToolName(string toolName) {
-        return MatchesToolNameLiteralOrCompactPrefix(toolName, DomainDetectiveToolNamePrefixes, DomainDetectiveToolNameCompactPrefixes);
-    }
-
-    private static bool IsDnsClientXToolName(string toolName) {
-        return MatchesToolNameLiteralOrCompactPrefix(toolName, DnsClientXToolNamePrefixes, DnsClientXToolNameCompactPrefixes);
-    }
-
-    private static bool MatchesToolNameLiteralOrCompactPrefix(string toolName, string[] literalPrefixes, string[] compactPrefixes) {
-        var normalizedToolName = (toolName ?? string.Empty).Trim();
-        if (normalizedToolName.Length == 0) {
-            return false;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, literalPrefixes)) {
-            return true;
-        }
-
-        if (compactPrefixes.Length == 0) {
-            return false;
-        }
-
-        var compactToolName = NormalizeCompactToken(normalizedToolName.AsSpan());
-        if (compactToolName.Length == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < compactPrefixes.Length; i++) {
-            var compactPrefix = compactPrefixes[i];
-            if (compactPrefix.Length == 0) {
-                continue;
-            }
-
-            if (compactToolName.StartsWith(compactPrefix, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool StartsWithAnyPrefix(string value, string[] prefixes) {
-        if (string.IsNullOrWhiteSpace(value) || prefixes is null || prefixes.Length == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < prefixes.Length; i++) {
-            var prefix = prefixes[i];
-            if (string.IsNullOrWhiteSpace(prefix)) {
-                continue;
-            }
-
-            if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return false;
+        return ToolSelectionMetadata.TryResolveDomainIntentFamily(
+                   toolName,
+                   category: null,
+                   tags: null,
+                   out var family)
+               && string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal);
     }
 
     private static string ResolveDomainIntentFamily(ToolDefinition definition) {
@@ -507,26 +510,9 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
-        var category = (definition.Category ?? string.Empty).Trim();
-        if (category.Length == 0) {
-            category = (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
-        }
-
-        if (string.Equals(category, "active_directory", StringComparison.OrdinalIgnoreCase)) {
-            return DomainIntentFamilyAd;
-        }
-
-        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)) {
-            return DomainIntentFamilyPublic;
-        }
-
-        var toolName = (definition.Name ?? string.Empty).Trim();
-        if (IsAdDomainIntentToolName(toolName)) {
-            return DomainIntentFamilyAd;
-        }
-
-        if (IsPublicDomainIntentToolName(toolName)) {
-            return DomainIntentFamilyPublic;
+        if (ToolSelectionMetadata.TryResolveDomainIntentFamily(definition, out var family)
+            && TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
+            return normalizedFamily;
         }
 
         return string.Empty;
@@ -545,62 +531,262 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        if (IsAdDomainIntentToolName(normalizedToolName)) {
-            return DomainIntentFamilyAd;
-        }
-
-        if (IsPublicDomainIntentToolName(normalizedToolName)) {
-            return DomainIntentFamilyPublic;
+        if (ToolSelectionMetadata.TryResolveDomainIntentFamily(
+                normalizedToolName,
+                category: null,
+                tags: null,
+                out var inferredFamily)
+            && TryNormalizeDomainIntentFamily(inferredFamily, out var normalizedFamily)) {
+            return normalizedFamily;
         }
 
         return string.Empty;
     }
 
+    private static DomainIntentActionCatalog ResolveDomainIntentActionCatalog(IReadOnlyList<ToolDefinition>? definitions) {
+        var defaultAdActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd);
+        var defaultPublicActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic);
+        var familyActionIds = new Dictionary<string, string>(StringComparer.Ordinal);
+        familyActionIds[DomainIntentFamilyAd] = defaultAdActionId;
+        familyActionIds[DomainIntentFamilyPublic] = defaultPublicActionId;
+        if (definitions is null || definitions.Count == 0) {
+            return new DomainIntentActionCatalog(
+                AdActionId: defaultAdActionId,
+                PublicActionId: defaultPublicActionId,
+                FamilyActionIds: familyActionIds);
+        }
+
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var family = ResolveDomainIntentFamily(definition);
+            if (family.Length == 0) {
+                continue;
+            }
+
+            var normalizedActionId = ToolSelectionMetadata.TryResolveDomainIntentActionId(definition, out var actionId)
+                ? (actionId ?? string.Empty).Trim()
+                : ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+            if (normalizedActionId.Length == 0) {
+                continue;
+            }
+
+            var existingActionId = familyActionIds.TryGetValue(family, out var existing)
+                ? (existing ?? string.Empty).Trim()
+                : string.Empty;
+            var defaultFamilyActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+            if (existingActionId.Length == 0
+                || string.Equals(existingActionId, defaultFamilyActionId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(existingActionId, normalizedActionId, StringComparison.OrdinalIgnoreCase)) {
+                familyActionIds[family] = normalizedActionId;
+            }
+        }
+
+        var adActionId = familyActionIds.TryGetValue(DomainIntentFamilyAd, out var adMappedActionId)
+            && !string.IsNullOrWhiteSpace(adMappedActionId)
+            ? adMappedActionId.Trim()
+            : defaultAdActionId;
+        var publicActionId = familyActionIds.TryGetValue(DomainIntentFamilyPublic, out var publicMappedActionId)
+            && !string.IsNullOrWhiteSpace(publicMappedActionId)
+            ? publicMappedActionId.Trim()
+            : defaultPublicActionId;
+        return new DomainIntentActionCatalog(
+            AdActionId: adActionId,
+            PublicActionId: publicActionId,
+            FamilyActionIds: familyActionIds);
+    }
+
+    private static DomainIntentActionCatalog BuildDefaultDomainIntentActionCatalog() {
+        return new DomainIntentActionCatalog(
+            AdActionId: ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd),
+            PublicActionId: ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic),
+            FamilyActionIds: new Dictionary<string, string>(StringComparer.Ordinal) {
+                [DomainIntentFamilyAd] = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd),
+                [DomainIntentFamilyPublic] = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic)
+            });
+    }
+
+    private static IReadOnlyList<DomainIntentFamilyOption> BuildDomainIntentFamilyOptions(
+        DomainIntentFamilyAvailability availability,
+        DomainIntentActionCatalog actionCatalog) {
+        var families = availability.GetFamilies();
+        if (families.Count < 2) {
+            return Array.Empty<DomainIntentFamilyOption>();
+        }
+
+        var orderedFamilies = families
+            .Where(static family => !string.IsNullOrWhiteSpace(family))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static family => string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
+                    ? 0
+                    : string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
+                        ? 1
+                        : 2)
+            .ThenBy(static family => family, StringComparer.Ordinal)
+            .ToArray();
+        if (orderedFamilies.Length < 2) {
+            return Array.Empty<DomainIntentFamilyOption>();
+        }
+
+        var options = new List<DomainIntentFamilyOption>(orderedFamilies.Length);
+        for (var i = 0; i < orderedFamilies.Length; i++) {
+            var family = orderedFamilies[i];
+            if (!actionCatalog.TryGetActionId(family, out var actionId)) {
+                actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+            }
+
+            options.Add(new DomainIntentFamilyOption(
+                Ordinal: i + 1,
+                Family: family,
+                ActionId: actionId));
+        }
+
+        return options.Count < 2
+            ? Array.Empty<DomainIntentFamilyOption>()
+            : options;
+    }
+
     private static string BuildDomainIntentClarificationText() {
-        return """
-               [DomainIntent]
-               ix:domain-intent-choice:v1
-               choice: 1|2
-               option_1: ad_domain
-               option_2: public_domain
+        return BuildDomainIntentClarificationText(
+            new DomainIntentFamilyAvailability(
+                HasAd: true,
+                HasPublic: true,
+                Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic }),
+            BuildDefaultDomainIntentActionCatalog());
+    }
 
-               selection_map:
-               1: ad_domain
-               2: public_domain
+    private static string BuildDomainIntentClarificationText(DomainIntentFamilyAvailability availability) {
+        return BuildDomainIntentClarificationText(
+            availability,
+            BuildDefaultDomainIntentActionCatalog());
+    }
 
-               accepted_input:
-               - ordinal: 1|2 (Unicode digits supported)
-               - family: ad_domain|public_domain
-               - marker: ix:domain-intent:v1
-               - action: /act act_domain_scope_ad|/act act_domain_scope_public
+    private static string BuildDomainIntentClarificationText(
+        DomainIntentFamilyAvailability availability,
+        DomainIntentActionCatalog actionCatalog) {
+        var options = BuildDomainIntentFamilyOptions(availability, actionCatalog);
+        if (options.Count < 2) {
+            return string.Empty;
+        }
 
-               examples:
-               - 1
-               - ２
-               - ١
-               - ad_domain
-               - public_domain
+        var choices = string.Join('|', options.Select(static option => option.Ordinal.ToString()));
+        var families = string.Join('|', options.Select(static option => option.Family));
+        var actionReplies = string.Join('|', options.Select(static option => $"/act {option.ActionId}"));
 
-               [DomainIntent]
-               ix:domain-intent:v1
-               family: ad_domain|public_domain
+        var sb = new StringBuilder();
+        sb.AppendLine("[DomainIntent]");
+        sb.AppendLine(DomainIntentChoiceMarker);
+        sb.Append("choice: ").AppendLine(choices);
+        for (var i = 0; i < options.Count; i++) {
+            var option = options[i];
+            sb.Append("option_").Append(option.Ordinal).Append(": ").AppendLine(option.Family);
+        }
+        sb.AppendLine();
+        sb.AppendLine("selection_map:");
+        for (var i = 0; i < options.Count; i++) {
+            var option = options[i];
+            sb.Append(option.Ordinal).Append(": ").AppendLine(option.Family);
+        }
+        sb.AppendLine();
+        sb.AppendLine("accepted_input:");
+        sb.Append("- ordinal: ").Append(choices).AppendLine(" (Unicode digits supported)");
+        sb.Append("- family: ").AppendLine(families);
+        sb.Append("- marker: ").AppendLine(DomainIntentMarker);
+        sb.Append("- action: ").AppendLine(actionReplies);
+        sb.AppendLine();
+        sb.AppendLine("examples:");
+        for (var i = 0; i < options.Count; i++) {
+            var option = options[i];
+            sb.Append("- ").AppendLine(option.Ordinal.ToString());
+        }
+        for (var i = 0; i < options.Count; i++) {
+            var option = options[i];
+            sb.Append("- ").AppendLine(option.Family);
+        }
+        sb.AppendLine();
+        sb.AppendLine("[DomainIntent]");
+        sb.AppendLine(DomainIntentMarker);
+        sb.Append("family: ").AppendLine(families);
+        sb.AppendLine();
+        for (var i = 0; i < options.Count; i++) {
+            var option = options[i];
+            sb.AppendLine("[Action]");
+            sb.AppendLine("ix:action:v1");
+            sb.Append("id: ").AppendLine(option.ActionId);
+            sb.Append("title: ").AppendLine(option.Family);
+            sb.Append("request: {\"ix_domain_scope\":{\"family\":\"").Append(option.Family).AppendLine("\"}}");
+            sb.Append("reply: /act ").AppendLine(option.ActionId);
+            sb.AppendLine("mutating: false");
+            if (i < options.Count - 1) {
+                sb.AppendLine();
+            }
+        }
 
-               [Action]
-               ix:action:v1
-               id: act_domain_scope_ad
-               title: ad_domain
-               request: {"ix_domain_scope":{"family":"ad_domain"}}
-               reply: /act act_domain_scope_ad
-               mutating: false
+        return sb.ToString().TrimEnd();
+    }
 
-               [Action]
-               ix:action:v1
-               id: act_domain_scope_public
-               title: public_domain
-               request: {"ix_domain_scope":{"family":"public_domain"}}
-               reply: /act act_domain_scope_public
-               mutating: false
-               """;
+    private static string BuildDomainIntentClarificationVisibleText() {
+        return BuildDomainIntentClarificationVisibleText(
+            new DomainIntentFamilyAvailability(
+                HasAd: true,
+                HasPublic: true,
+                Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic }),
+            BuildDefaultDomainIntentActionCatalog());
+    }
+
+    private static string BuildDomainIntentClarificationVisibleText(DomainIntentFamilyAvailability availability) {
+        return BuildDomainIntentClarificationVisibleText(
+            availability,
+            BuildDefaultDomainIntentActionCatalog());
+    }
+
+    private static string BuildDomainIntentClarificationVisibleText(
+        DomainIntentFamilyAvailability availability,
+        DomainIntentActionCatalog actionCatalog) {
+        var options = BuildDomainIntentFamilyOptions(availability, actionCatalog);
+        if (options.Count < 2) {
+            return string.Empty;
+        }
+
+        var ordinalChoices = string.Join(" or ", options.Select(static option => option.Ordinal.ToString()));
+        var familyChoices = string.Join(" or ", options.Select(static option => option.Family));
+        var actionChoices = string.Join('|', options.Select(static option => $"/act {option.ActionId}"));
+
+        var sb = new StringBuilder();
+        sb.AppendLine("I need a quick scope choice before continuing.");
+        sb.AppendLine();
+        for (var i = 0; i < options.Count; i++) {
+            var option = options[i];
+            sb.Append(option.Ordinal).Append(". ").AppendLine(BuildDomainIntentFamilyChoiceDescription(option.Family));
+        }
+        sb.AppendLine();
+        sb.AppendLine("Reply with:");
+        sb.Append("- ").Append(ordinalChoices).AppendLine(" (Unicode digits supported),");
+        sb.Append("- ").Append(familyChoices).AppendLine(",");
+        sb.Append("- or ").Append(actionChoices).Append('.');
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildDomainIntentFamilyChoiceDescription(string family) {
+        if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+            return "AD domain (internal AD checks like replication, LDAP, DC health)";
+        }
+
+        if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
+            return "Public domain (external DNS/mail checks like MX/SPF/DMARC)";
+        }
+
+        var label = (family ?? string.Empty).Trim();
+        if (label.Length == 0) {
+            return "Custom domain scope";
+        }
+
+        var humanized = label.Replace('_', ' ');
+        return $"{humanized} scope";
     }
 
     private static string BuildDomainIntentSelectionRoutingHint(string family) {
@@ -634,6 +820,14 @@ internal sealed partial class ChatServiceSession {
     }
 
     private bool TryResolvePendingDomainIntentClarificationSelection(string threadId, string userRequest, out string family) {
+        return TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, _registry.GetDefinitions(), out family);
+    }
+
+    private bool TryResolvePendingDomainIntentClarificationSelection(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> availableDefinitions,
+        out string family) {
         family = string.Empty;
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0) {
@@ -671,7 +865,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryParsePendingDomainIntentClarificationSelection(normalizedRequest, out var selectedFamily)) {
+        var availability = ResolveDomainIntentFamilyAvailability(availableDefinitions);
+        if (!TryParsePendingDomainIntentClarificationSelection(normalizedRequest, availability, availableDefinitions, out var selectedFamily)) {
             return false;
         }
 
@@ -681,25 +876,108 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryParsePendingDomainIntentClarificationSelection(string userRequest, out string family) {
+        return TryParsePendingDomainIntentClarificationSelectionCore(userRequest, out family);
+    }
+
+    private static bool TryParsePendingDomainIntentClarificationSelection(
+        string userRequest,
+        DomainIntentFamilyAvailability availability,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
+        family = string.Empty;
+        if (!TryParsePendingDomainIntentClarificationSelectionCore(userRequest, availableDefinitions, out var selectedFamily)) {
+            return false;
+        }
+
+        if (!IsDomainIntentFamilyAvailable(availability, selectedFamily)) {
+            return false;
+        }
+
+        family = selectedFamily;
+        return true;
+    }
+
+    private static bool TryParsePendingDomainIntentClarificationSelectionCore(string userRequest, out string family) {
+        return TryParsePendingDomainIntentClarificationSelectionCore(userRequest, availableDefinitions: null, out family);
+    }
+
+    private static bool TryParsePendingDomainIntentClarificationSelectionCore(
+        string userRequest,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
         family = string.Empty;
         var normalized = (userRequest ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
         }
 
+        var availability = availableDefinitions is { Count: > 0 }
+            ? ResolveDomainIntentFamilyAvailability(availableDefinitions)
+            : new DomainIntentFamilyAvailability(
+                HasAd: true,
+                HasPublic: true,
+                Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic });
+        var actionCatalog = ResolveDomainIntentActionCatalog(availableDefinitions);
+        var options = BuildDomainIntentFamilyOptions(availability, actionCatalog);
         if (TryParseOrdinalSelection(normalized, out var ordinal)) {
-            if (ordinal == 1) {
-                family = DomainIntentFamilyAd;
-                return true;
+            for (var i = 0; i < options.Count; i++) {
+                var option = options[i];
+                if (option.Ordinal == ordinal) {
+                    family = option.Family;
+                    return true;
+                }
             }
 
-            if (ordinal == 2) {
-                family = DomainIntentFamilyPublic;
+            var families = availability.GetFamilies();
+            if (families.Count == 1 && ordinal == 1) {
+                family = families[0];
                 return true;
             }
         }
 
-        return TryResolveDomainIntentFamilyFromUserSignals(normalized, out family);
+        return TryResolveDomainIntentFamilyFromUserSignals(normalized, availableDefinitions, out family);
+    }
+
+    private static DomainIntentFamilyAvailability ResolveDomainIntentFamilyAvailability(IReadOnlyList<ToolDefinition> definitions) {
+        if (definitions is null || definitions.Count == 0) {
+            return default;
+        }
+
+        var families = new HashSet<string>(StringComparer.Ordinal);
+        var hasAd = false;
+        var hasPublic = false;
+        for (var i = 0; i < definitions.Count; i++) {
+            var family = ResolveDomainIntentFamily(definitions[i]);
+            if (family.Length == 0) {
+                continue;
+            }
+
+            families.Add(family);
+            if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+                hasAd = true;
+            } else if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
+                hasPublic = true;
+            }
+        }
+
+        IReadOnlyList<string> orderedFamilies = families.Count == 0
+            ? Array.Empty<string>()
+            : families
+                .OrderBy(static family => string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
+                        ? 0
+                        : string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
+                            ? 1
+                            : 2)
+                .ThenBy(static family => family, StringComparer.Ordinal)
+                .ToArray();
+        return new DomainIntentFamilyAvailability(
+            HasAd: hasAd,
+            HasPublic: hasPublic,
+            Families: orderedFamilies);
+    }
+
+    private static bool IsDomainIntentFamilyAvailable(DomainIntentFamilyAvailability availability, string family) {
+        return availability.HasFamily(family);
     }
 
 }

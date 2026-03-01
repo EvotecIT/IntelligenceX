@@ -89,7 +89,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldRetryToolCall_RetriesTransientFailureWhenErrorCodeIsMissing() {
         var resolveRetryProfileMethod = typeof(ChatServiceSession).GetMethod(
             "ResolveRetryProfile",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(string) },
+            modifiers: null);
         Assert.NotNull(resolveRetryProfileMethod);
         var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
             "ShouldRetryToolCall",
@@ -114,7 +117,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldRetryToolCall_DoesNotTreatAmbiguousAuthSubstringCodeAsPermanent() {
         var resolveRetryProfileMethod = typeof(ChatServiceSession).GetMethod(
             "ResolveRetryProfile",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(string) },
+            modifiers: null);
         Assert.NotNull(resolveRetryProfileMethod);
         var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
             "ShouldRetryToolCall",

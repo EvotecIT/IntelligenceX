@@ -149,6 +149,22 @@ body {
   margin-right: 2px;
 }
 
+.status-chip-routing {
+  min-width: 108px;
+  max-width: 220px;
+  padding: 4px 10px 4px 18px;
+  font-size: 11px;
+  margin-right: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-chip.status-chip-routing::before {
+  left: 7px;
+  width: 5px;
+  height: 5px;
+}
+
 .status-chip::before {
   content: "";
   position: absolute;
@@ -189,6 +205,12 @@ body {
 
 .status-chip.bad::before {
   background: var(--ix-status-bad);
+}
+
+@media (max-width: 980px) {
+  .status-chip-routing {
+    display: none !important;
+  }
 }
 
 .tb-btn {

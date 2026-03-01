@@ -11,6 +11,9 @@ internal sealed record AssistantPendingAction(string Id, string Title, string Re
 internal static class ActionModelProtocol {
     private const string ActionHeader = "[Action]";
     private const string ActionMarker = "ix:action:v1";
+    private const string DomainIntentHeader = "[DomainIntent]";
+    private const string DomainIntentMarker = "ix:domain-intent:v1";
+    private const string DomainIntentChoiceMarker = "ix:domain-intent-choice:v1";
     private const int MaxActionParsingChars = 64 * 1024;
     private static readonly Regex LooseActionBlockRegex = new(
         @"(?is)(?:^|\n)\s*id\s*:?\s*(?<id>[^\r\n]+)\s*\r?\n\s*title\s*:?\s*(?<title>[^\r\n]*)\s*\r?\n\s*request\s*:?\s*(?<request>.*?)\r?\n\s*reply\s*:?\s*(?<reply>[^\r\n]+)",
@@ -150,6 +153,12 @@ internal static class ActionModelProtocol {
         }
 
         if (!markerSeen) {
+            var domainIntentCleanedText = StripDomainIntentProtocolBlocks(normalized);
+            if (!string.Equals(domainIntentCleanedText, normalized, StringComparison.Ordinal)) {
+                cleanedText = domainIntentCleanedText;
+                return true;
+            }
+
             if (!TryStripLoosePendingActions(normalized, out var looseActions, out var looseCleanedText)) {
                 return false;
             }
@@ -158,7 +167,7 @@ internal static class ActionModelProtocol {
                 .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .ToArray();
-            cleanedText = looseCleanedText;
+            cleanedText = StripDomainIntentProtocolBlocks(looseCleanedText);
             return true;
         }
 
@@ -186,6 +195,7 @@ internal static class ActionModelProtocol {
         }
 
         cleanedText = Regex.Replace(string.Join('\n', kept).Trim(), @"\n{3,}", "\n\n");
+        cleanedText = StripDomainIntentProtocolBlocks(cleanedText);
 
         actions = extracted
             .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
@@ -196,6 +206,89 @@ internal static class ActionModelProtocol {
 
     private static bool IsFenceBoundary(string line) =>
         !string.IsNullOrWhiteSpace(line) && line.StartsWith("```", StringComparison.Ordinal);
+
+    private static string StripDomainIntentProtocolBlocks(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.IndexOf(DomainIntentHeader, StringComparison.OrdinalIgnoreCase) < 0
+            && normalized.IndexOf(DomainIntentMarker, StringComparison.OrdinalIgnoreCase) < 0
+            && normalized.IndexOf(DomainIntentChoiceMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return normalized;
+        }
+
+        var stripped = RemoveResidualDomainIntentLines(normalized);
+        return Regex.Replace(stripped.Trim(), @"\n{3,}", "\n\n");
+    }
+
+    private static string RemoveResidualDomainIntentLines(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var lines = normalized.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        var kept = new List<string>(lines.Length);
+        var inDomainIntentBlock = false;
+        for (var i = 0; i < lines.Length; i++) {
+            var raw = lines[i] ?? string.Empty;
+            var trimmed = raw.Trim();
+            if (string.Equals(trimmed, DomainIntentHeader, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmed, DomainIntentMarker, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trimmed, DomainIntentChoiceMarker, StringComparison.OrdinalIgnoreCase)) {
+                inDomainIntentBlock = true;
+                continue;
+            }
+
+            if (inDomainIntentBlock) {
+                if (trimmed.StartsWith("[Action]", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("ix:action:v1", StringComparison.OrdinalIgnoreCase)) {
+                    inDomainIntentBlock = false;
+                } else if (trimmed.Length == 0 || IsDomainIntentProtocolLine(trimmed)) {
+                    continue;
+                } else {
+                    inDomainIntentBlock = false;
+                }
+            }
+
+            kept.Add(raw);
+        }
+
+        return string.Join('\n', kept).Trim();
+    }
+
+    private static bool IsDomainIntentProtocolLine(string line) {
+        var normalized = (line ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return true;
+        }
+
+        if (normalized.StartsWith("ix:", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("option_", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("selection_map", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("accepted_input", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("examples", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("choice", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("selection", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("family", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("marker", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("action", StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith("-", StringComparison.Ordinal)) {
+            return true;
+        }
+
+        var separator = normalized.IndexOf(':', StringComparison.Ordinal);
+        if (separator > 0) {
+            var key = normalized[..separator].Trim();
+            if (key.Length > 0 && key.All(char.IsDigit)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public static string MergeVisibleTextWithPendingActions(string cleanedText, IReadOnlyList<AssistantPendingAction> actions) {
         return (cleanedText ?? string.Empty).Trim();

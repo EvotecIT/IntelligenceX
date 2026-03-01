@@ -59,6 +59,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var fullToolDefs = toolDefs.Count == 0 ? Array.Empty<ToolDefinition>() : toolDefs.ToArray();
+        var domainIntentFamilyAvailability = ResolveDomainIntentFamilyAvailability(fullToolDefs);
         var originalToolCount = toolDefs.Count;
         var routingInsights = new List<ToolRoutingInsight>();
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
@@ -81,7 +82,11 @@ internal sealed partial class ChatServiceSession {
         var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
-        if (TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, out var selectedDomainIntentFamily)) {
+        if (TryResolvePendingDomainIntentClarificationSelection(
+                threadId,
+                userRequest,
+                fullToolDefs,
+                out var selectedDomainIntentFamily)) {
             routedUserRequest = routedUserRequest + "\n\n" + BuildDomainIntentSelectionRoutingHint(selectedDomainIntentFamily);
             await TryWriteStatusAsync(
                     writer,
@@ -203,125 +208,152 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
-        var forceDomainIntentClarification = ShouldForceDomainIntentClarificationForConflictingSignals(
-            routedUserRequest,
-            fullToolDefs);
-        if (forceDomainIntentClarification || ShouldRequestDomainIntentClarification(
-                weightedToolRouting: weightedToolRouting,
-                executionContractApplies: executionContractApplies,
-                usedContinuationSubset: usedContinuationSubset,
+        var domainIntentSignalRequest = userRequest;
+        var conflictingDomainSignals = domainIntentFamilyAvailability.HasMixedFamilies
+                                       && HasConflictingDomainIntentSignals(domainIntentSignalRequest, fullToolDefs);
+        if (conflictingDomainSignals) {
+            ClearPreferredDomainIntentFamily(threadId);
+        }
+
+        var domainIntentRoutingResolved = false;
+        if (!conflictingDomainSignals
+            && TryApplyDomainIntentSignalRoutingHint(
+                threadId,
+                domainIntentSignalRequest,
+                toolDefs,
+                out var signaledTools,
+                out var signaledFamily,
+                out var signaledRemovedCount)) {
+            toolDefs = signaledTools;
+            (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message:
+                    $"Tool routing detected explicit domain-scope signals (family={DescribeDomainIntentFamily(signaledFamily)}) and removed {signaledRemovedCount} conflicting candidate tool(s).")
+                .ConfigureAwait(false);
+            var signalRoutingMetaPayload = BuildRoutingMetaPayload(
+                strategy: "domain_signal_hint",
+                weightedToolRouting,
+                executionContractApplies,
+                usedContinuationSubset,
                 selectedToolCount: routingSelectedToolCount,
                 totalToolCount: routingTotalToolCount,
-                selectedTools: toolDefs)) {
-            var conflictingDomainSignals = HasConflictingDomainIntentSignals(routedUserRequest);
-            if (conflictingDomainSignals) {
-                ClearPreferredDomainIntentFamily(threadId);
-            }
-
-            if (!conflictingDomainSignals && TryApplyDomainIntentSignalRoutingHint(
+                insightCount: routingInsights.Count,
+                plannerInsightsDetected: false,
+                requestedMaxCandidateTools: requestedMaxCandidateTools,
+                effectiveMaxCandidateTools: maxCandidateTools,
+                effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
+                contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
+                domainIntentSource: "signal_hint",
+                domainIntentFamily: signaledFamily,
+                weightedAmbiguityWidened,
+                weightedAmbiguityBaselineSelection,
+                weightedAmbiguityEffectiveSelection,
+                weightedAmbiguityClusterSize,
+                weightedAmbiguitySecondScoreRatio);
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
                     threadId,
-                    routedUserRequest,
-                    toolDefs,
-                    out var signaledTools,
-                    out var signaledFamily,
-                    out var signaledRemovedCount)) {
-                toolDefs = signaledTools;
-                (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
-                await TryWriteStatusAsync(
-                        writer,
-                        request.RequestId,
-                        threadId,
-                        status: ChatStatusCodes.Routing,
-                        message:
-                        $"Tool routing detected explicit domain-scope signals (family={DescribeDomainIntentFamily(signaledFamily)}) and removed {signaledRemovedCount} conflicting candidate tool(s).")
-                    .ConfigureAwait(false);
-                var signalRoutingMetaPayload = BuildRoutingMetaPayload(
-                    strategy: "domain_signal_hint",
-                    weightedToolRouting,
-                    executionContractApplies,
-                    usedContinuationSubset,
-                    selectedToolCount: routingSelectedToolCount,
-                    totalToolCount: routingTotalToolCount,
-                    insightCount: routingInsights.Count,
-                    plannerInsightsDetected: false,
-                    requestedMaxCandidateTools: requestedMaxCandidateTools,
-                    effectiveMaxCandidateTools: maxCandidateTools,
-                    effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
-                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
-                    domainIntentSource: "signal_hint",
-                    domainIntentFamily: signaledFamily,
-                    weightedAmbiguityWidened,
-                    weightedAmbiguityBaselineSelection,
-                    weightedAmbiguityEffectiveSelection,
-                    weightedAmbiguityClusterSize,
-                    weightedAmbiguitySecondScoreRatio);
-                await TryWriteStatusAsync(
-                        writer,
-                        request.RequestId,
-                        threadId,
-                        status: ChatStatusCodes.RoutingMeta,
-                        message: signalRoutingMetaPayload)
-                    .ConfigureAwait(false);
-            } else if (!conflictingDomainSignals
-                       && TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
-                toolDefs = affinedTools;
-                (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
-                await TryWriteStatusAsync(
-                        writer,
-                        request.RequestId,
-                        threadId,
-                        status: ChatStatusCodes.Routing,
-                        message:
-                        $"Tool routing reused previous domain-scope context (family={DescribeDomainIntentFamily(affinityFamily)}) and removed {affinityRemovedCount} conflicting candidate tool(s).")
-                    .ConfigureAwait(false);
-                var affinityRoutingMetaPayload = BuildRoutingMetaPayload(
-                    strategy: "domain_family_affinity",
-                    weightedToolRouting,
-                    executionContractApplies,
-                    usedContinuationSubset,
-                    selectedToolCount: routingSelectedToolCount,
-                    totalToolCount: routingTotalToolCount,
-                    insightCount: routingInsights.Count,
-                    plannerInsightsDetected: false,
-                    requestedMaxCandidateTools: requestedMaxCandidateTools,
-                    effectiveMaxCandidateTools: maxCandidateTools,
-                    effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
-                    contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
-                    domainIntentSource: "affinity",
-                    domainIntentFamily: affinityFamily,
-                    weightedAmbiguityWidened,
-                    weightedAmbiguityBaselineSelection,
-                    weightedAmbiguityEffectiveSelection,
-                    weightedAmbiguityClusterSize,
-                    weightedAmbiguitySecondScoreRatio);
-                await TryWriteStatusAsync(
-                        writer,
-                        request.RequestId,
-                        threadId,
-                        status: ChatStatusCodes.RoutingMeta,
-                        message: affinityRoutingMetaPayload)
-                    .ConfigureAwait(false);
-            } else {
-                await TryWriteStatusAsync(
-                        writer,
-                        request.RequestId,
-                        threadId,
-                        status: ChatStatusCodes.Routing,
-                        message: conflictingDomainSignals
-                            ? forceDomainIntentClarification
-                                ? "Tool routing detected conflicting domain-scope signals and forced structured clarification before execution."
-                                : "Tool routing detected conflicting domain-scope signals (multiple families); requesting scope clarification before execution."
-                            : "Tool routing detected mixed cross-family domain candidates; requesting scope clarification before execution.")
-                    .ConfigureAwait(false);
+                    status: ChatStatusCodes.RoutingMeta,
+                    message: signalRoutingMetaPayload)
+                .ConfigureAwait(false);
+            domainIntentRoutingResolved = true;
+        } else if (!conflictingDomainSignals
+                   && TryApplyDomainIntentAffinity(threadId, toolDefs, out var affinedTools, out var affinityFamily, out var affinityRemovedCount)) {
+            toolDefs = affinedTools;
+            (routingSelectedToolCount, routingTotalToolCount) = NormalizeRoutingToolCounts(toolDefs.Count, originalToolCount);
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message:
+                    $"Tool routing reused previous domain-scope context (family={DescribeDomainIntentFamily(affinityFamily)}) and removed {affinityRemovedCount} conflicting candidate tool(s).")
+                .ConfigureAwait(false);
+            var affinityRoutingMetaPayload = BuildRoutingMetaPayload(
+                strategy: "domain_family_affinity",
+                weightedToolRouting,
+                executionContractApplies,
+                usedContinuationSubset,
+                selectedToolCount: routingSelectedToolCount,
+                totalToolCount: routingTotalToolCount,
+                insightCount: routingInsights.Count,
+                plannerInsightsDetected: false,
+                requestedMaxCandidateTools: requestedMaxCandidateTools,
+                effectiveMaxCandidateTools: maxCandidateTools,
+                effectiveContextLength: maxCandidateToolDiagnostics.EffectiveContextLength,
+                contextAwareBudgetApplied: maxCandidateToolDiagnostics.ContextAwareBudgetApplied,
+                domainIntentSource: "affinity",
+                domainIntentFamily: affinityFamily,
+                weightedAmbiguityWidened,
+                weightedAmbiguityBaselineSelection,
+                weightedAmbiguityEffectiveSelection,
+                weightedAmbiguityClusterSize,
+                weightedAmbiguitySecondScoreRatio);
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.RoutingMeta,
+                    message: affinityRoutingMetaPayload)
+                .ConfigureAwait(false);
+            domainIntentRoutingResolved = true;
+        }
 
-                var clarificationText = BuildDomainIntentClarificationText();
+        var forceDomainIntentClarification = ShouldForceDomainIntentClarificationForConflictingSignals(
+            domainIntentSignalRequest,
+            fullToolDefs);
+        var shouldRequestDomainIntentClarification = ShouldRequestDomainIntentClarification(
+            weightedToolRouting: weightedToolRouting,
+            executionContractApplies: executionContractApplies,
+            usedContinuationSubset: usedContinuationSubset,
+            selectedToolCount: routingSelectedToolCount,
+            totalToolCount: routingTotalToolCount,
+            selectedTools: toolDefs);
+        var hasPreferredDomainIntentFamily = TryGetCurrentDomainIntentFamily(threadId, out var preferredDomainIntentFamily);
+        if (hasPreferredDomainIntentFamily
+            && !IsDomainIntentFamilyAvailable(domainIntentFamilyAvailability, preferredDomainIntentFamily)) {
+            ClearPreferredDomainIntentFamily(threadId);
+            hasPreferredDomainIntentFamily = false;
+        }
+        var hasFreshPendingActionContext = HasFreshPendingActionsContext(threadId);
+        if (ShouldSuppressDomainIntentClarificationForCompactFollowUp(
+                compactFollowUpTurn,
+                hasPreferredDomainIntentFamily,
+                hasFreshPendingActionContext,
+                conflictingDomainSignals)) {
+            shouldRequestDomainIntentClarification = false;
+        }
+
+        if (!domainIntentRoutingResolved
+            && (forceDomainIntentClarification || shouldRequestDomainIntentClarification)) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: conflictingDomainSignals
+                        ? forceDomainIntentClarification
+                            ? "Tool routing detected conflicting domain-scope signals and forced structured clarification before execution."
+                            : "Tool routing detected conflicting domain-scope signals (multiple families); requesting scope clarification before execution."
+                        : "Tool routing detected mixed cross-family domain candidates; requesting scope clarification before execution.")
+                .ConfigureAwait(false);
+
+            var actionCatalog = ResolveDomainIntentActionCatalog(fullToolDefs);
+            var clarificationText = BuildDomainIntentClarificationText(domainIntentFamilyAvailability, actionCatalog);
+            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentFamilyAvailability, actionCatalog);
+            if (clarificationText.Length > 0 && clarificationVisibleText.Length > 0) {
                 RememberPendingDomainIntentClarificationRequest(threadId);
                 RememberPendingActions(threadId, clarificationText);
                 var clarificationResult = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     ThreadId = threadId,
-                    Text = clarificationText,
+                    Text = clarificationVisibleText,
                     Tools = null,
                     TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
                 };

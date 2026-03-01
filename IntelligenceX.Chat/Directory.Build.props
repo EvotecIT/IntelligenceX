@@ -4,6 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
 
     <!-- Chat local-dev dependency roots: prefer sibling repos during development. -->
     <!-- root1: repo-root sibling layout (..\..\OfficeIMO from IntelligenceX.Chat) -->
@@ -31,6 +32,6 @@
 
     <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.1.8</OfficeImoMarkdownRendererNuGetVersion>
     <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.11</OfficeImoExcelNuGetVersion>
-    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.5</OfficeImoWordMarkdownNuGetVersion>
+    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.6</OfficeImoWordMarkdownNuGetVersion>
   </PropertyGroup>
 </Project>

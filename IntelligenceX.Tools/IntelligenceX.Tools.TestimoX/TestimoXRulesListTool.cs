@@ -32,7 +32,13 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
                 ("offset", ToolSchema.Integer("Optional zero-based offset into matched rules (for paging).")),
                 ("cursor", ToolSchema.String("Optional opaque paging cursor (alternative to offset).")))
             .WithTableViewOptions()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "testimox",
+        tags: new[] {
+            "compliance",
+            "rules",
+            "fallback_hint_keys:search_text,rule_origin,categories,tags,source_types"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TestimoXRulesListTool"/> class.

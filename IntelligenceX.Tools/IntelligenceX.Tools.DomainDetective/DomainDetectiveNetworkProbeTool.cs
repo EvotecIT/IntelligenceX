@@ -34,7 +34,12 @@ public sealed class DomainDetectiveNetworkProbeTool : DomainDetectiveToolBase, I
                 ("timeout_ms", ToolSchema.Integer("Per-probe timeout in milliseconds (capped).")),
                 ("max_hops", ToolSchema.Integer("Maximum traceroute hops when run_traceroute=true (capped).")))
             .Required("host")
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "dns",
+        tags: new[] {
+            "reachability",
+            "dns"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DomainDetectiveNetworkProbeTool"/> class.

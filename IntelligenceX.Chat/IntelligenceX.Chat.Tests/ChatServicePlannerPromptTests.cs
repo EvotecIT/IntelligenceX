@@ -116,6 +116,26 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesPackHintFromExplicitTagForCustomName() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "custom_scope_probe",
+                "Custom scope probe.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                tags: new[] { "pack:dnsclientx" })
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "collect resolver evidence",
+            definitions,
+            4
+        }));
+
+        Assert.Contains("pack: dnsclientx", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_aliases: dns_client_x", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildModelPlannerPrompt_IncludesPackAliasesForEventLogCategoryAlias() {
         var definitions = new List<ToolDefinition> {
             new(
@@ -492,7 +512,7 @@ public sealed class ChatServicePlannerPromptTests {
 
         var args = new object?[] {
             definitions,
-            "Please summarize telemetryx for this environment.",
+            "Please summarize telemetryx diagnostics across multiple hosts for this environment now.",
             8,
             null
         };
