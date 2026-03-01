@@ -476,6 +476,7 @@ public static class ToolHealthDiagnostics {
     private sealed class SmokeProbePlanCache {
         private readonly object _gate = new();
         private int _definitionCount = -1;
+        private int _definitionFingerprint;
         private Dictionary<string, SmokeProbePlan> _loosePlans = new(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, SmokeProbePlan> _strictPlans = new(StringComparer.OrdinalIgnoreCase);
 
@@ -488,16 +489,41 @@ public static class ToolHealthDiagnostics {
 
             lock (_gate) {
                 var definitions = registry.GetDefinitions();
-                if (_definitionCount != definitions.Count) {
+                var fingerprint = ComputeDefinitionFingerprint(definitions);
+                if (_definitionCount != definitions.Count || _definitionFingerprint != fingerprint) {
                     _loosePlans = BuildSmokeProbePlanIndex(definitions, requireExplicitPackInfoRole: false);
                     _strictPlans = BuildSmokeProbePlanIndex(definitions, requireExplicitPackInfoRole: true);
                     _definitionCount = definitions.Count;
+                    _definitionFingerprint = fingerprint;
                 }
 
                 var index = requireExplicitPackInfoRole ? _strictPlans : _loosePlans;
                 return index.TryGetValue(normalizedToolName, out plan);
             }
         }
+    }
+
+    private static int ComputeDefinitionFingerprint(IReadOnlyList<ToolDefinition> definitions) {
+        var hash = new HashCode();
+        hash.Add(definitions.Count);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                hash.Add("<null>", StringComparer.Ordinal);
+                continue;
+            }
+
+            hash.Add((definition.Name ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+            hash.Add((definition.Routing?.Role ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+            hash.Add((definition.Routing?.RoutingSource ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+            hash.Add(ToolPackBootstrap.NormalizePackId(definition.Routing?.PackId), StringComparer.OrdinalIgnoreCase);
+            hash.Add(definition.WriteGovernance?.IsWriteCapable ?? false);
+            hash.Add(HasRequiredArguments(definition));
+            _ = TryResolveSmokePagingArgumentName(definition, out var pagingArgumentName);
+            hash.Add(pagingArgumentName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        return hash.ToHashCode();
     }
 
     private static int GetSmokeRolePriority(string? role) {

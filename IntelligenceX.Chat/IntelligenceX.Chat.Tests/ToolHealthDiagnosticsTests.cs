@@ -195,6 +195,60 @@ public sealed class ToolHealthDiagnosticsTests {
     }
 
     [Fact]
+    public async Task ProbeAsync_RebuildsSmokePlanCache_WhenCatalogCountUnchangedButMetadataChanges() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_smoke_a",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        registry.Register(new StubTool(
+            "system_smoke_b",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"Preferred diagnostic smoke."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
+
+        var firstResult = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.False(firstResult.Ok);
+        Assert.Equal("smoke_access_denied", firstResult.ErrorCode);
+        Assert.Contains("system_smoke_b", firstResult.Error, StringComparison.OrdinalIgnoreCase);
+
+        registry.Register(new StubTool(
+            "system_smoke_b",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"Now operational and lower-priority."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }),
+            replaceExisting: true);
+
+        var secondResult = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(secondResult.Ok);
+        Assert.Null(secondResult.ErrorCode);
+    }
+
+    [Fact]
     public async Task ProbeAsync_DoesNotRunSmoke_WhenComposedSchemaDeclaresRequiredArguments() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
