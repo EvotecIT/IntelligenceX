@@ -16,6 +16,7 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private const int FactsDiscoveryTimeoutMs = 2000;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_dc_fleet_posture",
@@ -103,10 +104,33 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
                     domainDn: domainDn,
                     domainControllersDn: domainControllersDn,
                     cancellationToken: cancellationToken);
-                var discoveredFactsCount = TryGetDiscoveredDomainControllerCount(domain);
-                var resolvedDomainControllerCount = ResolveDomainControllerCount(
-                    view.DomainControllerCount,
-                    discoveredFactsCount);
+
+                if (ShouldRetryWithAlternateDomainControllersDn(view)) {
+                    var alternateDn = TryBuildLegacyDomainControllersDn(domainDn);
+                    if (!string.IsNullOrWhiteSpace(alternateDn)
+                        && !string.Equals(alternateDn, domainControllersDn, StringComparison.OrdinalIgnoreCase)) {
+                        try {
+                            var alternateView = FleetPostureService.Evaluate(
+                                domain,
+                                domainDn: domainDn,
+                                domainControllersDn: alternateDn,
+                                cancellationToken: cancellationToken);
+                            view = ChooseMoreInformativeView(view, alternateView);
+                        } catch {
+                            // Keep primary view when alternate container lookup fails.
+                        }
+                    }
+                }
+
+                var resolvedDomainControllerCount = view.DomainControllerCount;
+                if (resolvedDomainControllerCount <= 0) {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var discoveredFactsCount = TryGetDiscoveredDomainControllerCount(domain);
+                    resolvedDomainControllerCount = ResolveDomainControllerCount(
+                        view.DomainControllerCount,
+                        discoveredFactsCount);
+                }
+
                 summaryRows.Add(new DcFleetPostureRow(
                     DomainName: view.DomainName,
                     DomainControllerCount: resolvedDomainControllerCount,
@@ -182,6 +206,15 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
             return null;
         }
 
+        return $"CN=Domain Controllers,{normalized}";
+    }
+
+    internal static string? TryBuildLegacyDomainControllersDn(string? domainDn) {
+        var normalized = (domainDn ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
         return $"OU=Domain Controllers,{normalized}";
     }
 
@@ -191,7 +224,7 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
         }
 
         try {
-            return DomainControllerFactsService.GetFacts(domainName, timeoutMs: 2000).Count;
+            return DomainControllerFactsService.GetFacts(domainName, timeoutMs: FactsDiscoveryTimeoutMs).Count;
         } catch {
             return 0;
         }
@@ -201,5 +234,46 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
         var normalizedReported = Math.Max(0, reportedCount);
         var normalizedDiscovered = Math.Max(0, discoveredFactsCount);
         return Math.Max(normalizedReported, normalizedDiscovered);
+    }
+
+    internal static bool ShouldRetryWithAlternateDomainControllersDn(FleetPostureService.View view) {
+        return view is not null
+               && view.InactiveCount == 0
+               && view.OldPasswordCount == 0
+               && view.DisabledCount == 0
+               && view.ManagedBySetCount == 0
+               && view.NonAdministrativeOwnerCount == 0
+               && view.Inactive.Length == 0
+               && view.OldPasswords.Length == 0
+               && view.Disabled.Length == 0
+               && view.ManagedBySet.Length == 0
+               && view.NonAdministrativeOwners.Length == 0;
+    }
+
+    internal static FleetPostureService.View ChooseMoreInformativeView(
+        FleetPostureService.View primary,
+        FleetPostureService.View alternate) {
+        return ComputeViewInformationScore(alternate) > ComputeViewInformationScore(primary)
+            ? alternate
+            : primary;
+    }
+
+    private static int ComputeViewInformationScore(FleetPostureService.View view) {
+        if (view is null) {
+            return 0;
+        }
+
+        var findings = Math.Max(0, view.InactiveCount)
+            + Math.Max(0, view.OldPasswordCount)
+            + Math.Max(0, view.DisabledCount)
+            + Math.Max(0, view.ManagedBySetCount)
+            + Math.Max(0, view.NonAdministrativeOwnerCount);
+        var detailRows = view.Inactive.Length
+            + view.OldPasswords.Length
+            + view.Disabled.Length
+            + view.ManagedBySet.Length
+            + view.NonAdministrativeOwners.Length;
+        var domainControllerCount = Math.Max(0, view.DomainControllerCount);
+        return (findings * 100) + (detailRows * 10) + domainControllerCount;
     }
 }

@@ -31,6 +31,15 @@ public sealed class AdDcFleetPostureToolTests {
     [Fact]
     public void TryBuildDomainControllersDn_BuildsExpectedContainerDn() {
         var dn = AdDcFleetPostureTool.TryBuildDomainControllersDn("DC=ad,DC=evotec,DC=xyz");
+        Assert.Equal("CN=Domain Controllers,DC=ad,DC=evotec,DC=xyz", dn);
+    }
+
+    /// <summary>
+    /// Ensures helper can still derive legacy OU path when needed for compatibility.
+    /// </summary>
+    [Fact]
+    public void TryBuildLegacyDomainControllersDn_BuildsExpectedOuDn() {
+        var dn = AdDcFleetPostureTool.TryBuildLegacyDomainControllersDn("DC=ad,DC=evotec,DC=xyz");
         Assert.Equal("OU=Domain Controllers,DC=ad,DC=evotec,DC=xyz", dn);
     }
 
