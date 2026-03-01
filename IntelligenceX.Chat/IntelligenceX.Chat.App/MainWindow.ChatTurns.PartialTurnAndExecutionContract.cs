@@ -225,7 +225,17 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        return ShouldAppendFinalAssistantAfterInterim(finalAssistantText, streamedAssistantText);
+        var normalizedStreamedDraft = NormalizeAssistantSnapshotForAppendDecision(streamedAssistantText);
+        if (normalizedStreamedDraft.Length == 0) {
+            // Guardrail: if this turn reports delta activity but no usable draft text is present,
+            // preserve final-message append behavior so we do not risk clobbering prior assistant rows.
+            return NormalizeAssistantSnapshotForAppendDecision(finalAssistantText).Length > 0;
+        }
+
+        // Streamed draft bubbles should converge into a single finalized assistant entry.
+        // Appending a second "final" bubble after streaming causes near-duplicate transcript
+        // rows and confusing exports; finalize by replacing the draft instead.
+        return false;
     }
 
     private static string NormalizeAssistantSnapshotForAppendDecision(string? text) {
