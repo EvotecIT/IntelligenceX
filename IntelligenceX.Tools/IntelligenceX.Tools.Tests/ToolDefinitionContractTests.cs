@@ -717,6 +717,67 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void Register_ShouldRequireRoutingPackId_WhenRequireExplicitRoutingMetadataEnabled() {
+        var definition = new ToolDefinition(
+            name: "custom_strict_packid_probe",
+            description: "Strict routing metadata pack-id probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = string.Empty,
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(definition)));
+        Assert.Contains("Routing.PackId", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Register_ShouldRequirePackInfoRoleConsistency_WhenRequireExplicitRoutingMetadataEnabled() {
+        var definition = new ToolDefinition(
+            name: "custom_pack_info",
+            description: "Strict routing metadata pack-info role probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            tags: new[] { "pack_info" },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(definition)));
+        Assert.Contains($"Routing.Role='{ToolRoutingTaxonomy.RolePackInfo}'", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Register_ShouldRequireEnvironmentDiscoverRoleConsistency_WhenRequireExplicitRoutingMetadataEnabled() {
+        var definition = new ToolDefinition(
+            name: "custom_environment_discover",
+            description: "Strict routing metadata environment-discover role probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(definition)));
+        Assert.Contains($"Routing.Role='{ToolRoutingTaxonomy.RoleEnvironmentDiscover}'", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Register_ShouldRejectConflictingDomainIntentActionIdsForSameFamily() {
         var firstDefinition = new ToolDefinition(
             name: "custom_ad_pack_a",

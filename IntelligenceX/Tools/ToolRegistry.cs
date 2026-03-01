@@ -277,6 +277,12 @@ public sealed class ToolRegistry {
                     $"Tool '{definition.Name}' must declare Routing.PackId when RequireExplicitRoutingMetadata is enabled.");
             }
 
+            var normalizedRole = (contract.Role ?? string.Empty).Trim();
+            if (normalizedRole.Length == 0) {
+                throw new InvalidOperationException(
+                    $"Tool '{definition.Name}' must declare Routing.Role when RequireExplicitRoutingMetadata is enabled.");
+            }
+
             if (!string.Equals(
                     (contract.RoutingSource ?? string.Empty).Trim(),
                     ToolRoutingTaxonomy.SourceExplicit,
@@ -284,9 +290,42 @@ public sealed class ToolRegistry {
                 throw new InvalidOperationException(
                     $"Tool '{definition.Name}' must declare explicit RoutingSource when RequireExplicitRoutingMetadata is enabled.");
             }
+
+            var isPackInfoShape =
+                definition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase)
+                || HasTag(definition.Tags, "pack_info");
+            if (isPackInfoShape
+                && !string.Equals(normalizedRole, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException(
+                    $"Tool '{definition.Name}' must declare Routing.Role='{ToolRoutingTaxonomy.RolePackInfo}' when RequireExplicitRoutingMetadata is enabled.");
+            }
+
+            var isEnvironmentDiscoverShape =
+                definition.Name.EndsWith("_environment_discover", StringComparison.OrdinalIgnoreCase)
+                || HasTag(definition.Tags, ToolRoutingTaxonomy.RoleEnvironmentDiscover);
+            if (isEnvironmentDiscoverShape
+                && !string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException(
+                    $"Tool '{definition.Name}' must declare Routing.Role='{ToolRoutingTaxonomy.RoleEnvironmentDiscover}' when RequireExplicitRoutingMetadata is enabled.");
+            }
         }
 
         ValidateDomainIntentActionCatalogConsistency(definition, contract);
+    }
+
+    private static bool HasTag(IReadOnlyList<string>? tags, string expectedTag) {
+        if (tags is null || tags.Count == 0 || string.IsNullOrWhiteSpace(expectedTag)) {
+            return false;
+        }
+
+        var expected = expectedTag.Trim();
+        for (var i = 0; i < tags.Count; i++) {
+            if (string.Equals((tags[i] ?? string.Empty).Trim(), expected, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ValidateSetupContract(ToolDefinition definition) {
