@@ -172,6 +172,20 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
+    /// Ensures append remains available when delta activity was marked but no draft text exists to replace.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendFinalAssistantAfterStreamedDraft_AppendsWhenNoStreamedDraftTextIsAvailable() {
+        var append = MainWindow.ShouldAppendFinalAssistantAfterStreamedDraft(
+            activeTurnReceivedDelta: true,
+            activeTurnInterimResultSeen: false,
+            finalAssistantText: "Final synthesized answer.",
+            streamedAssistantText: "   ");
+
+        Assert.True(append);
+    }
+
+    /// <summary>
     /// Ensures interim results are suppressed when a streaming draft already exists in the turn.
     /// </summary>
     [Fact]
