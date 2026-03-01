@@ -69,4 +69,19 @@ public sealed class MainWindowToolTranscriptMarkdownTests {
 
         Assert.Equal(string.Empty, markdown);
     }
+
+    /// <summary>
+    /// Ensures non-debug transcript formatting does not require a display-name resolver.
+    /// </summary>
+    [Fact]
+    public void BuildToolRunTranscriptMarkdown_NonDebug_DoesNotRequireResolver() {
+        var tools = new ToolRunDto {
+            Calls = Array.Empty<ToolCallDto>(),
+            Outputs = Array.Empty<ToolOutputDto>()
+        };
+
+        var markdown = MainWindow.BuildToolRunTranscriptMarkdown(tools, debugMode: false, null!);
+
+        Assert.Equal(string.Empty, markdown);
+    }
 }

@@ -99,6 +99,7 @@
 .msg-row.assistant .bubble {
   background: var(--ix-bubble-assistant-bg);
   border: 1px solid var(--ix-bubble-assistant-border);
+  padding-right: 44px;
 }
 
 .msg-row.assistant.assistant-draft .avatar {
@@ -124,6 +125,7 @@
 .msg-row.user .bubble {
   background: var(--ix-bubble-user-bg);
   border: 1px solid var(--ix-bubble-user-border);
+  padding-left: 44px;
 }
 
 .msg-row.system .bubble {
