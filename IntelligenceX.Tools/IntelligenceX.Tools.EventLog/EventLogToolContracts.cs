@@ -141,7 +141,9 @@ internal static class EventLogToolContracts {
             IsRecoveryAware = true,
             SupportsTransientRetry = supportsRetry,
             MaxRetryAttempts = supportsRetry ? 1 : 0,
-            RetryableErrorCodes = supportsRetry ? new[] { "timeout", "query_failed", "probe_failed" } : Array.Empty<string>()
+            RetryableErrorCodes = supportsRetry
+                ? new[] { "timeout", "query_failed", "probe_failed", "transport_unavailable" }
+                : Array.Empty<string>()
         };
     }
 

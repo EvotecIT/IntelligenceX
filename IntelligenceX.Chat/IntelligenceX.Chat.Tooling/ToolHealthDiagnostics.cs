@@ -86,7 +86,7 @@ public static class ToolHealthDiagnostics {
                     return new ProbeResult(normalizedToolName, Ok: false, ErrorCode: errorCode, Error: error, DurationMs: sw.ElapsedMilliseconds);
                 }
 
-                if (TryResolveOperationalSmokeProbe(normalizedToolName, out var smokeToolName, out var smokeArguments)
+                if (TryResolveOperationalSmokeProbe(registry, normalizedToolName, out var smokeToolName, out var smokeArguments)
                     && registry.TryGet(smokeToolName, out var smokeTool)) {
                     var smokeRaw = await smokeTool.InvokeAsync(smokeArguments, toolToken).ConfigureAwait(false) ?? string.Empty;
                     if (TryReadFailure(smokeRaw, out var smokeErrorCode, out var smokeError)) {
@@ -192,7 +192,7 @@ public static class ToolHealthDiagnostics {
         return cts;
     }
 
-    private static bool TryResolveOperationalSmokeProbe(string packInfoToolName, out string smokeToolName, out JsonObject smokeArguments) {
+    private static bool TryResolveOperationalSmokeProbe(ToolRegistry registry, string packInfoToolName, out string smokeToolName, out JsonObject smokeArguments) {
         smokeToolName = string.Empty;
         smokeArguments = new JsonObject();
 
@@ -201,28 +201,94 @@ public static class ToolHealthDiagnostics {
             return false;
         }
 
-        var packId = ToolPackBootstrap.NormalizePackId(normalized[..^PackInfoSuffix.Length]);
-        switch (packId) {
-            case "system":
-                smokeToolName = "system_info";
-                return true;
-            case "ad":
-            case "active_directory":
-                smokeToolName = "ad_environment_discover";
-                return true;
-            case "eventlog":
-                smokeToolName = "eventlog_named_events_catalog";
-                return true;
-            case "testimox":
-                smokeToolName = "testimox_rules_list";
-                smokeArguments.Add("page_size", 25);
-                return true;
-            case "powershell":
-                smokeToolName = "powershell_environment_discover";
-                return true;
-            default:
-                return false;
+        var definitions = registry.GetDefinitions();
+        ToolDefinition? packInfoDefinition = null;
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (string.Equals(definition.Name, normalized, StringComparison.OrdinalIgnoreCase)) {
+                packInfoDefinition = definition;
+                break;
+            }
         }
+
+        if (packInfoDefinition is null || !TryResolveCanonicalPackId(packInfoDefinition, out var packId)) {
+            return false;
+        }
+
+        ToolDefinition? selected = null;
+        var selectedPriority = int.MaxValue;
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (string.Equals(definition.Name, normalized, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (definition.WriteGovernance?.IsWriteCapable == true) {
+                continue;
+            }
+
+            if (!TryResolveCanonicalPackId(definition, out var candidatePackId)
+                || !string.Equals(packId, candidatePackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (IsPackInfoDefinition(definition) || HasRequiredArguments(definition)) {
+                continue;
+            }
+
+            var rolePriority = GetSmokeRolePriority(definition.Routing?.Role);
+            if (selected is null
+                || rolePriority < selectedPriority
+                || (rolePriority == selectedPriority && string.Compare(definition.Name, selected.Name, StringComparison.OrdinalIgnoreCase) < 0)) {
+                selected = definition;
+                selectedPriority = rolePriority;
+            }
+        }
+
+        if (selected is null) {
+            return false;
+        }
+
+        smokeToolName = selected.Name;
+        return true;
+    }
+
+    private static bool TryResolveCanonicalPackId(ToolDefinition definition, out string packId) {
+        packId = ToolPackBootstrap.NormalizePackId(definition.Routing?.PackId);
+        if (packId.Length > 0) {
+            return true;
+        }
+
+        if (ToolSelectionMetadata.TryResolvePackId(definition, out var inferred) && !string.IsNullOrWhiteSpace(inferred)) {
+            packId = ToolPackBootstrap.NormalizePackId(inferred);
+            return packId.Length > 0;
+        }
+
+        var normalizedName = (definition.Name ?? string.Empty).Trim();
+        if (normalizedName.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+            packId = ToolPackBootstrap.NormalizePackId(normalizedName[..^PackInfoSuffix.Length]);
+            if (packId.Length > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasRequiredArguments(ToolDefinition definition) {
+        var required = definition.Parameters?.GetArray("required");
+        return required is { Count: > 0 };
+    }
+
+    private static int GetSmokeRolePriority(string? role) {
+        var normalized = (role ?? string.Empty).Trim();
+        return normalized switch {
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase) => 0,
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase) => 1,
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase) => 2,
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleOperational, StringComparison.OrdinalIgnoreCase) => 3,
+            _ => 4
+        };
     }
 
     private static bool IsPackInfoDefinition(ToolDefinition definition) {

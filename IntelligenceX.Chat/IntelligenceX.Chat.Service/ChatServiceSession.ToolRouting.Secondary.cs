@@ -684,7 +684,8 @@ internal sealed partial class ChatServiceSession {
         int MaxAttempts,
         int DelayBaseMs,
         bool RetryOnTimeout,
-        bool RetryOnTransport);
+        bool RetryOnTransport,
+        IReadOnlyList<string> RetryableErrorCodes);
 
     internal void RememberPlannerThreadContextForTesting(string activeThreadId, string plannerThreadId, long seenUtcTicks) {
         RememberPlannerThreadContext(activeThreadId, plannerThreadId, seenUtcTicks);

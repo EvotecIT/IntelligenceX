@@ -95,7 +95,7 @@ internal static class SystemToolContracts {
             IsRecoveryAware = true,
             SupportsTransientRetry = true,
             MaxRetryAttempts = 1,
-            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed", "access_denied" },
+            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed", "access_denied", "transport_unavailable" },
             SupportsAlternateEngines = supportsAlternateEngines,
             AlternateEngineIds = supportsAlternateEngines ? new[] { "cim", "wmi" } : Array.Empty<string>()
         };

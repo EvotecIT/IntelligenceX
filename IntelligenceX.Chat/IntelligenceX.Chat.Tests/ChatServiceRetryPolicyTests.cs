@@ -45,7 +45,14 @@ public sealed class ChatServiceRetryPolicyTests {
 
     [Fact]
     public void ShouldRetryToolCall_DoesNotRetryPermanentAccessDeniedFailure() {
-        var profile = InvokeResolveRetryProfile("ad_replication_summary");
+        var profile = InvokeResolveRetryProfile(
+            "ad_replication_summary",
+            BuildRecoveryAwareDefinition(
+                "ad_replication_summary",
+                maxRetryAttempts: 1,
+                "timeout",
+                "query_failed",
+                "transport_unavailable"));
         var output = new ToolOutputDto {
             CallId = "call-1",
             Output = "{\"error_code\":\"permission_denied\",\"error\":\"Unauthorized: access denied to domain controller.\"}",
@@ -61,8 +68,26 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
-    public void ShouldRetryToolCall_RetriesTimeoutBeforeFinalAttemptOnly() {
+    public void ShouldRetryToolCall_WithoutRecoveryContract_DoesNotRetryTimeout() {
         var profile = InvokeResolveRetryProfile("ad_replication_summary");
+        var output = new ToolOutputDto {
+            CallId = "call-contractless",
+            Output = "{\"error\":\"Tool timed out.\"}",
+            Ok = false,
+            ErrorCode = "tool_timeout",
+            Error = "Tool timed out."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_RetriesTimeoutBeforeFinalAttemptOnly() {
+        var profile = InvokeResolveRetryProfile(
+            "ad_replication_summary",
+            BuildRecoveryAwareDefinition("ad_replication_summary", maxRetryAttempts: 1, "timeout"));
         var output = new ToolOutputDto {
             CallId = "call-2",
             Output = "{\"error\":\"Tool timed out.\"}",
@@ -80,7 +105,9 @@ public sealed class ChatServiceRetryPolicyTests {
 
     [Fact]
     public void ShouldRetryToolCall_DoesNotRetryTransportSignalsForFsProfile() {
-        var profile = InvokeResolveRetryProfile("fs_read_file");
+        var profile = InvokeResolveRetryProfile(
+            "fs_read_file",
+            BuildRecoveryAwareDefinition("fs_read_file", maxRetryAttempts: 1, "timeout", "query_failed"));
         var output = new ToolOutputDto {
             CallId = "call-3",
             Output = "{\"error\":\"Service temporarily unavailable.\"}",
@@ -96,7 +123,9 @@ public sealed class ChatServiceRetryPolicyTests {
 
     [Fact]
     public void ShouldRetryToolCall_RetriesTimeoutForDomainDetectiveProfile() {
-        var profile = InvokeResolveRetryProfile("domaindetective_domain_summary");
+        var profile = InvokeResolveRetryProfile(
+            "domaindetective_domain_summary",
+            BuildRecoveryAwareDefinition("domaindetective_domain_summary", maxRetryAttempts: 2, "timeout", "query_failed"));
         var output = new ToolOutputDto {
             CallId = "call-3c",
             Output = "{\"error\":\"Tool timed out.\"}",
@@ -112,7 +141,14 @@ public sealed class ChatServiceRetryPolicyTests {
 
     [Fact]
     public void ShouldRetryToolCall_RetriesTransportForDnsClientXProfile() {
-        var profile = InvokeResolveRetryProfile("dnsclientx_query");
+        var profile = InvokeResolveRetryProfile(
+            "dnsclientx_query",
+            BuildRecoveryAwareDefinition(
+                "dnsclientx_query",
+                maxRetryAttempts: 2,
+                "timeout",
+                "query_failed",
+                "transport_unavailable"));
         var output = new ToolOutputDto {
             CallId = "call-3d",
             Output = "{\"error\":\"Service temporarily unavailable.\"}",
@@ -128,7 +164,14 @@ public sealed class ChatServiceRetryPolicyTests {
 
     [Fact]
     public void ShouldRetryToolCall_RetriesTransportForTestimoXProfile() {
-        var profile = InvokeResolveRetryProfile("testimox_rules_run");
+        var profile = InvokeResolveRetryProfile(
+            "testimox_rules_run",
+            BuildRecoveryAwareDefinition(
+                "testimox_rules_run",
+                maxRetryAttempts: 1,
+                "execution_failed",
+                "timeout",
+                "transport_unavailable"));
         var output = new ToolOutputDto {
             CallId = "call-3e",
             Output = "{\"error\":\"Upstream connection reset.\"}",
@@ -144,7 +187,9 @@ public sealed class ChatServiceRetryPolicyTests {
 
     [Fact]
     public void ShouldRetryToolCall_RetriesTimeoutForComputerXPrefixProfile() {
-        var profile = InvokeResolveRetryProfile("computerx_inventory_snapshot");
+        var profile = InvokeResolveRetryProfile(
+            "computerx_inventory_snapshot",
+            BuildRecoveryAwareDefinition("computerx_inventory_snapshot", maxRetryAttempts: 1, "timeout", "query_failed"));
         var output = new ToolOutputDto {
             CallId = "call-3f",
             Output = "{\"error\":\"Tool timed out.\"}",
@@ -159,7 +204,7 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
-    public void ShouldRetryToolCall_RetriesTransportForCustomPackTaggedToolProfile() {
+    public void ShouldRetryToolCall_DoesNotRetryTransportForCustomPackTaggedToolWithoutRecoveryContract() {
         var profile = InvokeResolveRetryProfile(
             "custom_diagnostic_probe",
             new ToolDefinition(
@@ -178,12 +223,36 @@ public sealed class ChatServiceRetryPolicyTests {
 
         var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
 
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_RetriesTransportForCustomToolWithRecoveryContract() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_diagnostic_probe",
+            BuildRecoveryAwareDefinition(
+                "custom_diagnostic_probe",
+                maxRetryAttempts: 1,
+                "timeout",
+                "transport_unavailable"));
+        var output = new ToolOutputDto {
+            CallId = "call-3g2",
+            Output = "{\"error\":\"Service temporarily unavailable.\"}",
+            Ok = false,
+            ErrorCode = "transport_unavailable",
+            Error = "Service temporarily unavailable."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
         Assert.True(shouldRetry);
     }
 
     [Fact]
     public void ShouldRetryToolCall_DoesNotRetryDomainScopeGuardrailFailure() {
-        var profile = InvokeResolveRetryProfile("ad_replication_summary");
+        var profile = InvokeResolveRetryProfile(
+            "ad_replication_summary",
+            BuildRecoveryAwareDefinition("ad_replication_summary", maxRetryAttempts: 1, "timeout", "transport_unavailable"));
         var output = new ToolOutputDto {
             CallId = "call-3b",
             Output = "{\"error_code\":\"domain_scope_host_guardrail\",\"error\":\"Blocked host target.\"}",
@@ -529,6 +598,19 @@ public sealed class ChatServiceRetryPolicyTests {
     private static object InvokeResolveRetryProfile(string toolName, ToolDefinition definition) {
         var profile = ResolveRetryProfileWithDefinitionMethod.Invoke(null, new object?[] { toolName, definition });
         return profile ?? throw new InvalidOperationException("ResolveRetryProfile(string, ToolDefinition) returned null.");
+    }
+
+    private static ToolDefinition BuildRecoveryAwareDefinition(string toolName, int maxRetryAttempts, params string[] retryableErrorCodes) {
+        return new ToolDefinition(
+            name: toolName,
+            description: "Contract-driven retry policy test definition.",
+            parameters: null,
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                SupportsTransientRetry = true,
+                MaxRetryAttempts = maxRetryAttempts,
+                RetryableErrorCodes = retryableErrorCodes
+            });
     }
 
     private static bool InvokeShouldRetryToolCall(ToolOutputDto output, object profile, int attemptIndex) {

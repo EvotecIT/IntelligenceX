@@ -93,7 +93,9 @@ internal static class TestimoXToolContracts {
             IsRecoveryAware = true,
             SupportsTransientRetry = supportsRetry,
             MaxRetryAttempts = supportsRetry ? 1 : 0,
-            RetryableErrorCodes = supportsRetry ? new[] { "execution_failed", "timeout" } : Array.Empty<string>()
+            RetryableErrorCodes = supportsRetry
+                ? new[] { "execution_failed", "timeout", "transport_unavailable" }
+                : Array.Empty<string>()
         };
     }
 

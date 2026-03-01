@@ -91,7 +91,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             "ResolveRetryProfile",
             BindingFlags.NonPublic | BindingFlags.Static,
             binder: null,
-            types: new[] { typeof(string) },
+            types: new[] { typeof(string), typeof(ToolDefinition) },
             modifiers: null);
         Assert.NotNull(resolveRetryProfileMethod);
         var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
@@ -99,7 +99,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(shouldRetryToolCallMethod);
 
-        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { "ad_replication_summary" });
+        var definition = new ToolDefinition(
+            name: "ad_replication_summary",
+            description: "AD replication summary",
+            parameters: null,
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                SupportsTransientRetry = true,
+                MaxRetryAttempts = 1,
+                RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" }
+            });
+        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { "ad_replication_summary", definition });
         var output = new ToolOutputDto {
             CallId = "call_003",
             Output = "{\"ok\":false,\"error\":\"transient transport issue\"}",
@@ -119,7 +129,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             "ResolveRetryProfile",
             BindingFlags.NonPublic | BindingFlags.Static,
             binder: null,
-            types: new[] { typeof(string) },
+            types: new[] { typeof(string), typeof(ToolDefinition) },
             modifiers: null);
         Assert.NotNull(resolveRetryProfileMethod);
         var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
@@ -127,7 +137,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(shouldRetryToolCallMethod);
 
-        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { "ad_replication_summary" });
+        var definition = new ToolDefinition(
+            name: "ad_replication_summary",
+            description: "AD replication summary",
+            parameters: null,
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                SupportsTransientRetry = true,
+                MaxRetryAttempts = 1,
+                RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" }
+            });
+        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { "ad_replication_summary", definition });
         var output = new ToolOutputDto {
             CallId = "call_004",
             Output = "{\"ok\":false,\"error_code\":\"oauth_refresh_transient\",\"error\":\"token refresh race\"}",
