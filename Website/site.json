@@ -185,7 +185,6 @@
           { "Title": "Home", "Url": "/" },
           { "Title": "Docs", "Url": "/docs/" },
           { "Title": "Showcase", "Url": "/showcase/" },
-          { "Title": "Downloads", "Url": "/downloads/" },
           { "Title": "Blog", "Url": "/blog/" },
           { "Title": "API (.NET)", "Url": "/api/" },
           { "Title": "API (PowerShell)", "Url": "/api/powershell/" }

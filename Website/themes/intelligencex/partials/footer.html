@@ -12,9 +12,9 @@
         <p class="ix-footer-tagline">AI-powered code review using your own ChatGPT or Copilot account. Zero trust, full control.</p>
       </div>
       {{ if navigation.menus && navigation.menus.size > 1 }}
-      <div class="ix-footer-col">
+      <div class="ix-footer-col ix-footer-col--docs">
         <p class="ix-footer-heading">Documentation</p>
-        <ul>
+        <ul class="ix-footer-links{{ if navigation.menus[1].items.size > 8 }} is-split{{ end }}">
           {{ for link in navigation.menus[1].items }}
           <li><a href="{{ link.url }}">{{ link.title }}</a></li>
           {{ end }}
@@ -22,9 +22,9 @@
       </div>
       {{ end }}
       {{ if navigation.menus && navigation.menus.size > 2 }}
-      <div class="ix-footer-col">
+      <div class="ix-footer-col ix-footer-col--resources">
         <p class="ix-footer-heading">Resources</p>
-        <ul>
+        <ul class="ix-footer-links{{ if navigation.menus[2].items.size > 8 }} is-split{{ end }}">
           {{ for link in navigation.menus[2].items }}
           <li><a href="{{ link.url }}">{{ link.title }}</a></li>
           {{ end }}
@@ -32,9 +32,9 @@
       </div>
       {{ end }}
       {{ if navigation.menus && navigation.menus.size > 3 }}
-      <div class="ix-footer-col">
+      <div class="ix-footer-col ix-footer-col--company">
         <p class="ix-footer-heading">Company</p>
-        <ul>
+        <ul class="ix-footer-links">
           {{ for link in navigation.menus[3].items }}
           <li><a href="{{ link.url }}">{{ link.title }}</a></li>
           {{ end }}

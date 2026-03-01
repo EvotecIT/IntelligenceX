@@ -6,6 +6,10 @@
 .hero h1 { font-size: 3.25rem; font-weight: 700; line-height: 1.15; margin-bottom: 1.25rem; background: linear-gradient(135deg, var(--pf-ink-strong, #fff) 0%, var(--pf-accent) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 .hero-tagline { font-size: 1.15rem; color: var(--pf-muted); max-width: 650px; margin: 0 auto 2rem; line-height: 1.6; }
 .hero-buttons { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+.hero-secondary-links { display: flex; justify-content: center; gap: 0.65rem; flex-wrap: wrap; margin: -0.5rem 0 1rem; }
+.hero-secondary-links a { display: inline-flex; align-items: center; border: 1px solid var(--pf-border); border-radius: 999px; padding: 0.3rem 0.85rem; font-size: 0.8rem; color: var(--pf-muted); text-decoration: none; background: rgba(125, 211, 252, 0.08); transition: border-color 0.2s, color 0.2s, transform 0.2s; }
+.hero-secondary-links a:hover { border-color: var(--pf-accent); color: var(--pf-ink); transform: translateY(-1px); }
+[data-theme="light"] .hero-secondary-links a { color: #1F2937; border-color: rgba(14, 116, 144, 0.25); background: rgba(14, 116, 144, 0.08); }
 .hero-command { display: inline-flex; align-items: center; gap: 0.75rem; background: var(--pf-code-bg); border: 1px solid var(--pf-code-border); border-radius: var(--pf-radius-sm); padding: 0.625rem 1.25rem; font-family: var(--pf-font-mono); font-size: 0.9rem; color: var(--pf-ink); }
 .hero-command code { background: none; border: none; padding: 0; }
 .hero-command .prompt { color: var(--pf-accent); user-select: none; }
