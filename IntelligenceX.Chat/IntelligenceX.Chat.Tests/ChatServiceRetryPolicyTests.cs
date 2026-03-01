@@ -590,12 +590,12 @@ public sealed class ChatServiceRetryPolicyTests {
         Assert.Equal(5, fallbackCall.Arguments.GetInt64("top"));
     }
 
-    private static object InvokeResolveRetryProfile(string toolName) {
+    private static ChatServiceSession.RetryProfileSnapshot InvokeResolveRetryProfile(string toolName) {
         _ = toolName;
         return ChatServiceSession.ResolveRetryProfileForTesting(definition: null);
     }
 
-    private static object InvokeResolveRetryProfile(string toolName, ToolDefinition definition) {
+    private static ChatServiceSession.RetryProfileSnapshot InvokeResolveRetryProfile(string toolName, ToolDefinition definition) {
         _ = toolName;
         return ChatServiceSession.ResolveRetryProfileForTesting(definition);
     }
@@ -613,7 +613,7 @@ public sealed class ChatServiceRetryPolicyTests {
             });
     }
 
-    private static bool InvokeShouldRetryToolCall(ToolOutputDto output, object profile, int attemptIndex) {
+    private static bool InvokeShouldRetryToolCall(ToolOutputDto output, ChatServiceSession.RetryProfileSnapshot profile, int attemptIndex) {
         return ChatServiceSession.ShouldRetryToolCallForTesting(output, profile, attemptIndex);
     }
 

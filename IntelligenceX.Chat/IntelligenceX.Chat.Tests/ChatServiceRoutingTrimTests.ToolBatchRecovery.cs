@@ -87,18 +87,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ShouldRetryToolCall_RetriesTransientFailureWhenErrorCodeIsMissing() {
-        var resolveRetryProfileMethod = typeof(ChatServiceSession).GetMethod(
-            "ResolveRetryProfile",
-            BindingFlags.NonPublic | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(ToolDefinition) },
-            modifiers: null);
-        Assert.NotNull(resolveRetryProfileMethod);
-        var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
-            "ShouldRetryToolCall",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(shouldRetryToolCallMethod);
-
         var definition = new ToolDefinition(
             name: "ad_replication_summary",
             description: "AD replication summary",
@@ -109,7 +97,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 MaxRetryAttempts = 1,
                 RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" }
             });
-        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { definition });
+        var profile = ChatServiceSession.ResolveRetryProfileForTesting(definition);
         var output = new ToolOutputDto {
             CallId = "call_003",
             Output = "{\"ok\":false,\"error\":\"transient transport issue\"}",
@@ -119,24 +107,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
             IsTransient = true
         };
 
-        var result = shouldRetryToolCallMethod!.Invoke(null, new[] { output, profile, (object)0 });
-        Assert.True(Assert.IsType<bool>(result));
+        var result = ChatServiceSession.ShouldRetryToolCallForTesting(output, profile, attemptIndex: 0);
+        Assert.True(result);
     }
 
     [Fact]
     public void ShouldRetryToolCall_DoesNotTreatAmbiguousAuthSubstringCodeAsPermanent() {
-        var resolveRetryProfileMethod = typeof(ChatServiceSession).GetMethod(
-            "ResolveRetryProfile",
-            BindingFlags.NonPublic | BindingFlags.Static,
-            binder: null,
-            types: new[] { typeof(ToolDefinition) },
-            modifiers: null);
-        Assert.NotNull(resolveRetryProfileMethod);
-        var shouldRetryToolCallMethod = typeof(ChatServiceSession).GetMethod(
-            "ShouldRetryToolCall",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(shouldRetryToolCallMethod);
-
         var definition = new ToolDefinition(
             name: "ad_replication_summary",
             description: "AD replication summary",
@@ -147,7 +123,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 MaxRetryAttempts = 1,
                 RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" }
             });
-        var profile = resolveRetryProfileMethod!.Invoke(null, new object?[] { definition });
+        var profile = ChatServiceSession.ResolveRetryProfileForTesting(definition);
         var output = new ToolOutputDto {
             CallId = "call_004",
             Output = "{\"ok\":false,\"error_code\":\"oauth_refresh_transient\",\"error\":\"token refresh race\"}",
@@ -157,8 +133,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             IsTransient = true
         };
 
-        var result = shouldRetryToolCallMethod!.Invoke(null, new[] { output, profile, (object)0 });
-        Assert.True(Assert.IsType<bool>(result));
+        var result = ChatServiceSession.ShouldRetryToolCallForTesting(output, profile, attemptIndex: 0);
+        Assert.True(result);
     }
 
     [Fact]
