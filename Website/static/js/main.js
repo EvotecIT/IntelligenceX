@@ -485,6 +485,86 @@ document.addEventListener('DOMContentLoaded', function () {
     highlightCodeBlocksWhenReady(document, 20);
   });
 
+  function linkifyReleaseBodyUrls() {
+    var containers = Array.from(document.querySelectorAll('.pf-release-body'))
+      .filter(function (container) { return container.dataset.linkified !== 'true'; });
+
+    containers.forEach(function (container) {
+      var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          if (!node || !node.nodeValue || !/https?:\/\//i.test(node.nodeValue)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          var parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_ACCEPT;
+          var tag = parent.tagName;
+          if (tag === 'A' || tag === 'CODE' || tag === 'PRE' || tag === 'SCRIPT' || tag === 'STYLE') {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+
+      var textNodes = [];
+      var current = walker.nextNode();
+      while (current) {
+        textNodes.push(current);
+        current = walker.nextNode();
+      }
+
+      textNodes.forEach(function (node) {
+        var source = node.nodeValue || '';
+        var pattern = /https?:\/\/[^\s<>()]+/gi;
+        var lastIndex = 0;
+        var match = pattern.exec(source);
+        if (!match) return;
+
+        var fragment = document.createDocumentFragment();
+        while (match) {
+          var raw = match[0];
+          var url = raw;
+          var suffix = '';
+          while (/[.,;:!?)]$/.test(url)) {
+            suffix = url.slice(-1) + suffix;
+            url = url.slice(0, -1);
+          }
+
+          if (match.index > lastIndex) {
+            fragment.appendChild(document.createTextNode(source.slice(lastIndex, match.index)));
+          }
+
+          if (url) {
+            var anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.textContent = url;
+            anchor.target = '_blank';
+            anchor.rel = 'noopener';
+            fragment.appendChild(anchor);
+          } else {
+            fragment.appendChild(document.createTextNode(raw));
+          }
+
+          if (suffix) {
+            fragment.appendChild(document.createTextNode(suffix));
+          }
+
+          lastIndex = match.index + raw.length;
+          match = pattern.exec(source);
+        }
+
+        if (lastIndex < source.length) {
+          fragment.appendChild(document.createTextNode(source.slice(lastIndex)));
+        }
+
+        if (node.parentNode) {
+          node.parentNode.replaceChild(fragment, node);
+        }
+      });
+
+      container.dataset.linkified = 'true';
+    });
+  }
+
   // Code tabs
   document.querySelectorAll('.code-tabs').forEach(function (tabBar) {
     var tabs = tabBar.querySelectorAll('.code-tab');
@@ -530,4 +610,5 @@ document.addEventListener('DOMContentLoaded', function () {
 
   renderRelatedPosts();
   renderMermaidDiagrams();
+  linkifyReleaseBodyUrls();
 });
