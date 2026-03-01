@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
+using JsonObject = IntelligenceX.Json.JsonObject;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -57,8 +59,24 @@ public sealed class ToolHealthDiagnosticsTests {
     [Fact]
     public async Task ProbeAsync_RunsOperationalSmokeTool_WhenAvailable() {
         var registry = new ToolRegistry();
-        registry.Register(new StubTool("system_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
-        registry.Register(new StubTool("system_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
 
@@ -67,16 +85,105 @@ public sealed class ToolHealthDiagnosticsTests {
     }
 
     [Fact]
+    public async Task ProbeAsync_RunsOperationalSmokeTool_WithPagingDefaultsWhenSupported() {
+        JsonObject? capturedSmokeArguments = null;
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_info",
+            (arguments, _) => {
+                capturedSmokeArguments = arguments;
+                return Task.FromResult("""{"ok":true}""");
+            },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            parameters: ToolSchema.Object(
+                ("page_size", ToolSchema.Integer("Optional page size.")))
+                .NoAdditionalProperties()));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+        Assert.NotNull(capturedSmokeArguments);
+        Assert.Equal(25, capturedSmokeArguments!.GetInt64("page_size"));
+    }
+
+    [Fact]
     public async Task ProbeAsync_FailsWhenOperationalSmokeToolFails() {
         var registry = new ToolRegistry();
-        registry.Register(new StubTool("system_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
-        registry.Register(new StubTool("system_info", static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"WMI not available."}""")));
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_info",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"WMI not available."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
 
         Assert.False(result.Ok);
         Assert.Equal("smoke_access_denied", result.ErrorCode);
         Assert.Contains("system_info", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_DoesNotRunSmoke_WhenComposedSchemaDeclaresRequiredArguments() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_info",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"should_not_run","error":"Smoke should skip required composed schema."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject(StringComparer.Ordinal)
+                    .Add("query", ToolSchema.String("Target query.")))
+                .Add("allOf", new JsonArray()
+                    .Add(new JsonObject()
+                        .Add("required", new JsonArray().Add("query"))))
+                .Add("additionalProperties", false)));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
     }
 
     [Fact]
@@ -96,9 +203,27 @@ public sealed class ToolHealthDiagnosticsTests {
     [Fact]
     public async Task ProbeAsync_DoesNotRunContractVerifySmoke_ForReviewerSetupPackInfo() {
         var registry = new ToolRegistry();
-        registry.Register(new StubTool("reviewer_setup_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool(
+            "reviewer_setup_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "reviewer_setup",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
         registry.Register(new StubTool("reviewer_setup_contract_verify",
-            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"invalid_argument","error":"autodetect_contract_version is required."}""")));
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"invalid_argument","error":"autodetect_contract_version is required."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "reviewer_setup",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            parameters: ToolSchema.Object(
+                    ("autodetect_contract_version", ToolSchema.Boolean()))
+                .Required("autodetect_contract_version")
+                .NoAdditionalProperties()));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "reviewer_setup_pack_info", timeoutSeconds: 2, CancellationToken.None);
 
@@ -136,14 +261,52 @@ public sealed class ToolHealthDiagnosticsTests {
         Assert.DoesNotContain("custom_operational_tool", names, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void GetPackInfoToolNames_WhenStrictRoleRequired_ExcludesSuffixOnlyPackInfoDefinitions() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "custom_pack_summary",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+
+        var names = ToolHealthDiagnostics.GetPackInfoToolNames(registry, requireExplicitPackInfoRole: true);
+
+        Assert.Contains("custom_pack_summary", names, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("legacy_pack_info", names, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_WhenStrictRoleRequired_DoesNotRunSmokeForSuffixOnlyPackInfoDefinition() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool("legacy_diagnostic", static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"Should not run."}""")));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(
+            registry,
+            toolName: "legacy_pack_info",
+            timeoutSeconds: 2,
+            cancellationToken: CancellationToken.None,
+            requireExplicitPackInfoRole: true);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+    }
+
     private sealed class StubTool : ITool {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 
         public StubTool(
             string name,
             Func<JsonObject?, CancellationToken, Task<string>> invoke,
-            ToolRoutingContract? routing = null) {
-            Definition = new ToolDefinition(name, description: "stub", routing: routing);
+            ToolRoutingContract? routing = null,
+            JsonObject? parameters = null) {
+            Definition = new ToolDefinition(name, description: "stub", parameters: parameters, routing: routing);
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 

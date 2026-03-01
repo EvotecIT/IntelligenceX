@@ -33,7 +33,8 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry);
+        var requireExplicitPackInfoRole = _runtimePolicyDiagnostics.RequireExplicitRoutingMetadata;
+        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry, requireExplicitPackInfoRole);
         var sourceFilter = BuildSourceKindFilter(request.SourceKinds);
         var packIdFilter = BuildPackIdFilter(request.PackIds);
 
@@ -46,7 +47,12 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            var probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, timeoutSeconds, cancellationToken)
+            var probe = await ToolHealthDiagnostics.ProbeAsync(
+                    _registry,
+                    definition.Name,
+                    timeoutSeconds,
+                    cancellationToken,
+                    requireExplicitPackInfoRole)
                 .ConfigureAwait(false);
 
             if (probe.Ok) {
@@ -83,7 +89,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private async Task PrimeStartupToolHealthWarningsAsync(CancellationToken cancellationToken) {
-        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry);
+        var requireExplicitPackInfoRole = _runtimePolicyDiagnostics.RequireExplicitRoutingMetadata;
+        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry, requireExplicitPackInfoRole);
         if (packInfoDefinitions.Length == 0) {
             return;
         }
@@ -104,11 +111,23 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, metadata.SourceKind, metadata.PackId);
-                var probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, timeoutSeconds, cancellationToken).ConfigureAwait(false);
+                var probe = await ToolHealthDiagnostics.ProbeAsync(
+                        _registry,
+                        definition.Name,
+                        timeoutSeconds,
+                        cancellationToken,
+                        requireExplicitPackInfoRole)
+                    .ConfigureAwait(false);
                 if (!probe.Ok && IsToolTimeoutProbe(probe)) {
                     var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, metadata.SourceKind, metadata.PackId);
                     if (retryTimeoutSeconds > timeoutSeconds) {
-                        probe = await ToolHealthDiagnostics.ProbeAsync(_registry, definition.Name, retryTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+                        probe = await ToolHealthDiagnostics.ProbeAsync(
+                                _registry,
+                                definition.Name,
+                                retryTimeoutSeconds,
+                                cancellationToken,
+                                requireExplicitPackInfoRole)
+                            .ConfigureAwait(false);
                     }
                 }
 

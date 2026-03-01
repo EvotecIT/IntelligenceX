@@ -149,7 +149,7 @@ internal static class DnsClientXToolContracts {
                 IsRecoveryAware = true,
                 SupportsTransientRetry = true,
                 MaxRetryAttempts = 2,
-                RetryableErrorCodes = new[] { "timeout", "query_failed" }
+                RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" }
             };
         }
 

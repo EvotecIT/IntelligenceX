@@ -271,7 +271,7 @@ internal sealed partial class ChatServiceSession {
         if (_registry.TryGetDefinition(call.Name, out var registeredDefinition) && registeredDefinition is not null) {
             toolDefinition = ToolSelectionMetadata.Enrich(registeredDefinition, tool.GetType());
         }
-        var profile = ResolveRetryProfile(call.Name, toolDefinition);
+        var profile = ResolveRetryProfile(toolDefinition);
         var currentCall = call;
         var projectionFallbackAttempted = false;
         ToolOutputDto? lastFailure = null;
@@ -382,6 +382,10 @@ internal sealed partial class ChatServiceSession {
         }
         if (!string.IsNullOrWhiteSpace(output.ErrorCode)) {
             var code = output.ErrorCode.Trim();
+            if (IsRetryableErrorCode(profile, code)) {
+                return true;
+            }
+
             var transientTransportCode = code.Contains("transport", StringComparison.OrdinalIgnoreCase)
                                          || code.Contains("transient", StringComparison.OrdinalIgnoreCase)
                                          || code.Contains("unavailable", StringComparison.OrdinalIgnoreCase);
@@ -542,50 +546,118 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static ToolRetryProfile ResolveRetryProfile(string? toolName) {
-        return ResolveRetryProfile(toolName, definition: null);
-    }
-
-    private static ToolRetryProfile ResolveRetryProfile(string? toolName, ToolDefinition? definition) {
-        if (!TryResolveRetryProfilePackId(toolName, definition, out var packId)) {
-            return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
+    private static ToolRetryProfile ResolveRetryProfile(ToolDefinition? definition) {
+        var recovery = definition?.Recovery;
+        if (recovery is not { IsRecoveryAware: true } || !recovery.SupportsTransientRetry || recovery.MaxRetryAttempts <= 0) {
+            return new ToolRetryProfile(
+                MaxAttempts: 1,
+                DelayBaseMs: 0,
+                RetryOnTimeout: false,
+                RetryOnTransport: false,
+                RetryableErrorCodes: Array.Empty<string>());
         }
 
-        return packId switch {
-            "active_directory" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 200, RetryOnTimeout: true, RetryOnTransport: true),
-            "eventlog" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 150, RetryOnTimeout: true, RetryOnTransport: true),
-            "system" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 120, RetryOnTimeout: true, RetryOnTransport: true),
-            "domaindetective" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
-            "dnsclientx" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
-            "testimox" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
-            "filesystem" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 90, RetryOnTimeout: true, RetryOnTransport: false),
-            _ => new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false)
+        var retryableCodes = NormalizeRetryableErrorCodes(recovery.RetryableErrorCodes);
+        var retryOnTimeout = retryableCodes.Any(static code => IsTimeoutRetryableCode(code));
+        var retryOnTransport = retryableCodes.Any(static code => IsTransportRetryableCode(code));
+        var maxAttempts = Math.Clamp(recovery.MaxRetryAttempts + 1, 2, 6);
+        var delayBaseMs = ResolveRetryDelayBaseMs(maxAttempts, retryOnTransport);
+        return new ToolRetryProfile(
+            MaxAttempts: maxAttempts,
+            DelayBaseMs: delayBaseMs,
+            RetryOnTimeout: retryOnTimeout,
+            RetryOnTransport: retryOnTransport,
+            RetryableErrorCodes: retryableCodes);
+    }
+
+    private static string[] NormalizeRetryableErrorCodes(IReadOnlyList<string>? values) {
+        if (values is null || values.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(values.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var token = NormalizeRetryableErrorCode(values[i]);
+            if (token.Length == 0 || !seen.Add(token)) {
+                continue;
+            }
+
+            normalized.Add(token);
+        }
+
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
+    }
+
+    private static string NormalizeRetryableErrorCode(string? value) {
+        var normalized = (value ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant()
+            .Replace('-', '_')
+            .Replace(' ', '_');
+        return normalized switch {
+            "tool_timeout" => "timeout",
+            "transport" => "transport_unavailable",
+            _ => normalized
         };
     }
 
-    private static bool TryResolveRetryProfilePackId(string? toolName, ToolDefinition? definition, out string packId) {
-        packId = string.Empty;
-        if (definition is not null) {
-            if (ToolSelectionMetadata.TryResolvePackId(definition, out packId) && packId.Length > 0) {
+    private static bool IsTimeoutRetryableCode(string code) {
+        return string.Equals(code, "timeout", StringComparison.OrdinalIgnoreCase)
+               || code.EndsWith("_timeout", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTransportRetryableCode(string code) {
+        return string.Equals(code, "transport_unavailable", StringComparison.OrdinalIgnoreCase)
+               || code.Contains("transport", StringComparison.OrdinalIgnoreCase)
+               || code.Contains("transient", StringComparison.OrdinalIgnoreCase)
+               || code.Contains("unavailable", StringComparison.OrdinalIgnoreCase)
+               || code.Contains("connection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRetryableErrorCode(ToolRetryProfile profile, string errorCode) {
+        var normalizedCode = NormalizeRetryableErrorCode(errorCode);
+        if (normalizedCode.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < profile.RetryableErrorCodes.Count; i++) {
+            var candidate = profile.RetryableErrorCodes[i];
+            if (candidate.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(normalizedCode, candidate, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
 
-            if (ToolSelectionMetadata.TryResolvePackId(
-                    definition.Name,
-                    definition.Category,
-                    definition.Tags,
-                    out packId)
-                && packId.Length > 0) {
+            if (string.Equals(candidate, "timeout", StringComparison.OrdinalIgnoreCase)
+                && IsTimeoutRetryableCode(normalizedCode)) {
+                return true;
+            }
+
+            if (string.Equals(candidate, "transport_unavailable", StringComparison.OrdinalIgnoreCase)
+                && IsTransportRetryableCode(normalizedCode)) {
                 return true;
             }
         }
 
-        return ToolSelectionMetadata.TryResolvePackId(
-                   toolName,
-                   category: null,
-                   tags: null,
-                   out packId)
-               && packId.Length > 0;
+        return false;
+    }
+
+    private static int ResolveRetryDelayBaseMs(int maxAttempts, bool retryOnTransport) {
+        // Keep Chat generic: derive backoff from declared retry budget and transient transport capability.
+        if (maxAttempts <= 1) {
+            return 0;
+        }
+
+        var budgetOffset = Math.Max(0, maxAttempts - 2);
+        var baseDelay = 120 + (budgetOffset * 30);
+        if (retryOnTransport) {
+            baseDelay += 40;
+        }
+
+        return Math.Clamp(baseDelay, 90, 320);
     }
 
 }

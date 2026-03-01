@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
@@ -18,6 +19,16 @@ namespace IntelligenceX.Chat.Tooling;
 public static class ToolHealthDiagnostics {
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private const string PackInfoSuffix = "_pack_info";
+    private const int SmokePagingDefaultValue = 25;
+    private const int MaxSchemaTraversalDepth = 6;
+    private static readonly string[] SmokePagingArgumentCandidates = {
+        "page_size",
+        "limit",
+        "top",
+        "take",
+        "first",
+        "max_results"
+    };
 
     /// <summary>
     /// Result of a single tool-health probe.
@@ -31,15 +42,15 @@ public static class ToolHealthDiagnostics {
 
     /// <summary>
     /// Returns registered pack-info definitions (sorted, case-insensitive).
-    /// Prefers routing-role metadata and keeps suffix-based discovery as compatibility fallback.
+    /// Prefers routing-role metadata and can optionally require explicit pack-info role metadata.
     /// </summary>
-    public static ToolDefinition[] GetPackInfoDefinitions(ToolRegistry registry) {
+    public static ToolDefinition[] GetPackInfoDefinitions(ToolRegistry registry, bool requireExplicitPackInfoRole = false) {
         if (registry is null) {
             throw new ArgumentNullException(nameof(registry));
         }
 
         return registry.GetDefinitions()
-            .Where(IsPackInfoDefinition)
+            .Where(definition => IsPackInfoDefinition(definition, requireExplicitPackInfoRole))
             .OrderBy(static def => def.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -47,8 +58,8 @@ public static class ToolHealthDiagnostics {
     /// <summary>
     /// Returns all registered pack-info tool names (sorted, case-insensitive).
     /// </summary>
-    public static string[] GetPackInfoToolNames(ToolRegistry registry) {
-        return GetPackInfoDefinitions(registry)
+    public static string[] GetPackInfoToolNames(ToolRegistry registry, bool requireExplicitPackInfoRole = false) {
+        return GetPackInfoDefinitions(registry, requireExplicitPackInfoRole)
             .Select(static def => def.Name)
             .ToArray();
     }
@@ -56,7 +67,8 @@ public static class ToolHealthDiagnostics {
     /// <summary>
     /// Probes a single tool and returns a normalized health result.
     /// </summary>
-    public static async Task<ProbeResult> ProbeAsync(ToolRegistry registry, string toolName, int timeoutSeconds, CancellationToken cancellationToken) {
+    public static async Task<ProbeResult> ProbeAsync(ToolRegistry registry, string toolName, int timeoutSeconds, CancellationToken cancellationToken,
+        bool requireExplicitPackInfoRole = false) {
         if (registry is null) {
             throw new ArgumentNullException(nameof(registry));
         }
@@ -86,7 +98,7 @@ public static class ToolHealthDiagnostics {
                     return new ProbeResult(normalizedToolName, Ok: false, ErrorCode: errorCode, Error: error, DurationMs: sw.ElapsedMilliseconds);
                 }
 
-                if (TryResolveOperationalSmokeProbe(normalizedToolName, out var smokeToolName, out var smokeArguments)
+                if (TryResolveOperationalSmokeProbe(registry, normalizedToolName, requireExplicitPackInfoRole, out var smokeToolName, out var smokeArguments)
                     && registry.TryGet(smokeToolName, out var smokeTool)) {
                     var smokeRaw = await smokeTool.InvokeAsync(smokeArguments, toolToken).ConfigureAwait(false) ?? string.Empty;
                     if (TryReadFailure(smokeRaw, out var smokeErrorCode, out var smokeError)) {
@@ -192,47 +204,276 @@ public static class ToolHealthDiagnostics {
         return cts;
     }
 
-    private static bool TryResolveOperationalSmokeProbe(string packInfoToolName, out string smokeToolName, out JsonObject smokeArguments) {
+    private static bool TryResolveOperationalSmokeProbe(ToolRegistry registry, string packInfoToolName, bool requireExplicitPackInfoRole,
+        out string smokeToolName, out JsonObject smokeArguments) {
         smokeToolName = string.Empty;
         smokeArguments = new JsonObject();
 
         var normalized = (packInfoToolName ?? string.Empty).Trim();
-        if (normalized.Length == 0 || !normalized.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+        if (normalized.Length == 0) {
             return false;
         }
 
-        var packId = ToolPackBootstrap.NormalizePackId(normalized[..^PackInfoSuffix.Length]);
-        switch (packId) {
-            case "system":
-                smokeToolName = "system_info";
+        var definitions = registry.GetDefinitions();
+        ToolDefinition? packInfoDefinition = null;
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (string.Equals(definition.Name, normalized, StringComparison.OrdinalIgnoreCase)) {
+                packInfoDefinition = definition;
+                break;
+            }
+        }
+
+        if (packInfoDefinition is null
+            || !IsPackInfoDefinition(packInfoDefinition, requireExplicitPackInfoRole)
+            || !TryResolvePackId(packInfoDefinition, out var packId, allowNameSuffixFallback: !requireExplicitPackInfoRole)) {
+            return false;
+        }
+
+        ToolDefinition? selected = null;
+        var selectedPriority = int.MaxValue;
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (string.Equals(definition.Name, normalized, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (definition.WriteGovernance?.IsWriteCapable == true) {
+                continue;
+            }
+
+            if (!TryResolvePackId(definition, out var candidatePackId, allowNameSuffixFallback: !requireExplicitPackInfoRole)
+                || !string.Equals(packId, candidatePackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (IsPackInfoDefinition(definition, requireExplicitPackInfoRole: false) || HasRequiredArguments(definition)) {
+                continue;
+            }
+
+            var rolePriority = GetSmokeRolePriority(definition.Routing?.Role);
+            if (selected is null
+                || rolePriority < selectedPriority
+                || (rolePriority == selectedPriority && string.Compare(definition.Name, selected.Name, StringComparison.OrdinalIgnoreCase) < 0)) {
+                selected = definition;
+                selectedPriority = rolePriority;
+            }
+        }
+
+        if (selected is null) {
+            return false;
+        }
+
+        smokeToolName = selected.Name;
+        smokeArguments = BuildSmokeArguments(selected);
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves canonical pack id for a tool definition using routing metadata first, then metadata inference,
+    /// and optionally legacy <c>*_pack_info</c> name suffix fallback.
+    /// </summary>
+    /// <param name="definition">Tool definition to inspect.</param>
+    /// <param name="packId">Resolved canonical pack id when available.</param>
+    /// <param name="allowNameSuffixFallback">When true, allows legacy name-suffix based resolution for compatibility.</param>
+    /// <returns><c>true</c> when a pack id was resolved.</returns>
+    public static bool TryResolvePackId(ToolDefinition definition, out string packId, bool allowNameSuffixFallback = true) {
+        packId = ToolPackBootstrap.NormalizePackId(definition.Routing?.PackId);
+        if (packId.Length > 0) {
+            return true;
+        }
+
+        if (ToolSelectionMetadata.TryResolvePackId(definition, out var inferred) && !string.IsNullOrWhiteSpace(inferred)) {
+            packId = ToolPackBootstrap.NormalizePackId(inferred);
+            return packId.Length > 0;
+        }
+
+        if (allowNameSuffixFallback) {
+            var normalizedName = (definition.Name ?? string.Empty).Trim();
+            if (normalizedName.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+                packId = ToolPackBootstrap.NormalizePackId(normalizedName[..^PackInfoSuffix.Length]);
+                if (packId.Length > 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasRequiredArguments(ToolDefinition definition) {
+        return ContainsRequiredArguments(definition.Parameters, depth: 0);
+    }
+
+    private static bool ContainsRequiredArguments(JsonObject? schema, int depth) {
+        if (schema is null || depth > MaxSchemaTraversalDepth) {
+            return false;
+        }
+
+        var required = schema.GetArray("required");
+        if (required is { Count: > 0 }) {
+            return true;
+        }
+
+        return ContainsRequiredArgumentsInCombinators(schema.GetArray("allOf"), depth + 1)
+               || ContainsRequiredArgumentsInCombinators(schema.GetArray("anyOf"), depth + 1)
+               || ContainsRequiredArgumentsInCombinators(schema.GetArray("oneOf"), depth + 1);
+    }
+
+    private static bool ContainsRequiredArgumentsInCombinators(JsonArray? compositions, int depth) {
+        if (compositions is null || compositions.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < compositions.Count; i++) {
+            var candidate = compositions[i]?.AsObject();
+            if (candidate is not null && ContainsRequiredArguments(candidate, depth)) {
                 return true;
-            case "ad":
-            case "active_directory":
-                smokeToolName = "ad_environment_discover";
-                return true;
-            case "eventlog":
-                smokeToolName = "eventlog_named_events_catalog";
-                return true;
-            case "testimox":
-                smokeToolName = "testimox_rules_list";
-                smokeArguments.Add("page_size", 25);
-                return true;
-            case "powershell":
-                smokeToolName = "powershell_environment_discover";
-                return true;
-            default:
-                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static JsonObject BuildSmokeArguments(ToolDefinition definition) {
+        var arguments = new JsonObject();
+        var properties = definition.Parameters?.GetObject("properties");
+        if (properties is null || properties.Count == 0) {
+            return arguments;
+        }
+
+        var requiredNames = BuildRequiredArgumentNameSet(definition.Parameters);
+        for (var i = 0; i < SmokePagingArgumentCandidates.Length; i++) {
+            var candidate = SmokePagingArgumentCandidates[i];
+            if (requiredNames.Contains(candidate)) {
+                continue;
+            }
+
+            if (!TryGetSchemaProperty(properties, candidate, out var resolvedName, out var propertySchema)
+                || !IsNumericLikeSchema(propertySchema)) {
+                continue;
+            }
+
+            arguments.Add(resolvedName, SmokePagingDefaultValue);
+            break;
+        }
+
+        return arguments;
+    }
+
+    private static HashSet<string> BuildRequiredArgumentNameSet(JsonObject? schema) {
+        var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AppendRequiredArgumentNames(schema, required, depth: 0);
+        return required;
+    }
+
+    private static void AppendRequiredArgumentNames(JsonObject? schema, HashSet<string> required, int depth) {
+        if (schema is null || depth > MaxSchemaTraversalDepth) {
+            return;
+        }
+
+        var requiredValues = schema.GetArray("required");
+        if (requiredValues is { Count: > 0 }) {
+            for (var i = 0; i < requiredValues.Count; i++) {
+                var name = (requiredValues[i]?.AsString() ?? string.Empty).Trim();
+                if (name.Length > 0) {
+                    required.Add(name);
+                }
+            }
+        }
+
+        AppendRequiredArgumentNames(schema.GetArray("allOf"), required, depth + 1);
+        AppendRequiredArgumentNames(schema.GetArray("anyOf"), required, depth + 1);
+        AppendRequiredArgumentNames(schema.GetArray("oneOf"), required, depth + 1);
+    }
+
+    private static void AppendRequiredArgumentNames(JsonArray? compositions, HashSet<string> required, int depth) {
+        if (compositions is null || compositions.Count == 0 || depth > MaxSchemaTraversalDepth) {
+            return;
+        }
+
+        for (var i = 0; i < compositions.Count; i++) {
+            AppendRequiredArgumentNames(compositions[i]?.AsObject(), required, depth);
         }
     }
 
-    private static bool IsPackInfoDefinition(ToolDefinition definition) {
+    private static bool TryGetSchemaProperty(JsonObject properties, string propertyName, out string resolvedName, out JsonObject? propertySchema) {
+        if (properties.TryGetValue(propertyName, out var direct)) {
+            resolvedName = propertyName;
+            propertySchema = direct?.AsObject();
+            return true;
+        }
+
+        foreach (var property in properties) {
+            if (!string.Equals(property.Key, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            resolvedName = property.Key;
+            propertySchema = property.Value?.AsObject();
+            return true;
+        }
+
+        resolvedName = string.Empty;
+        propertySchema = null;
+        return false;
+    }
+
+    private static bool IsNumericLikeSchema(JsonObject? schema) {
+        if (schema is null) {
+            return false;
+        }
+
+        var type = (schema.GetString("type") ?? string.Empty).Trim();
+        if (type.Length > 0) {
+            return string.Equals(type, "integer", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(type, "number", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var typeArray = schema.GetArray("type");
+        if (typeArray is null || typeArray.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < typeArray.Count; i++) {
+            var candidate = (typeArray[i]?.AsString() ?? string.Empty).Trim();
+            if (string.Equals(candidate, "integer", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, "number", StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int GetSmokeRolePriority(string? role) {
+        var normalized = (role ?? string.Empty).Trim();
+        return normalized switch {
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase) => 0,
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase) => 1,
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase) => 2,
+            var value when string.Equals(value, ToolRoutingTaxonomy.RoleOperational, StringComparison.OrdinalIgnoreCase) => 3,
+            _ => 4
+        };
+    }
+
+    private static bool IsPackInfoDefinition(ToolDefinition definition, bool requireExplicitPackInfoRole) {
         if (definition is null) {
             return false;
         }
 
         var role = (definition.Routing?.Role ?? string.Empty).Trim();
         if (string.Equals(role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return true;
+            if (!requireExplicitPackInfoRole) {
+                return true;
+            }
+
+            var routingSource = (definition.Routing?.RoutingSource ?? string.Empty).Trim();
+            return string.Equals(routingSource, ToolRoutingTaxonomy.SourceExplicit, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (requireExplicitPackInfoRole) {
+            return false;
         }
 
         return definition.Name.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase);
