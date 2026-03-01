@@ -185,6 +185,7 @@
           { "Title": "Home", "Url": "/" },
           { "Title": "Docs", "Url": "/docs/" },
           { "Title": "Showcase", "Url": "/showcase/" },
+          { "Title": "Downloads", "Url": "/downloads/" },
           { "Title": "Blog", "Url": "/blog/" },
           { "Title": "API (.NET)", "Url": "/api/" },
           { "Title": "API (PowerShell)", "Url": "/api/powershell/" }
@@ -212,6 +213,7 @@
           { "Title": "Showcase", "Url": "/showcase/" },
           { "Title": "Blog", "Url": "/blog/" },
           { "Title": "FAQ", "Url": "/docs/faq/" },
+          { "Title": "Downloads", "Url": "/downloads/" },
           { "Title": "Changelog", "Url": "/changelog/" },
           { "Title": "GitHub Repository", "Url": "https://github.com/EvotecIT/IntelligenceX", "External": true },
           { "Title": "Report Issue", "Url": "https://github.com/EvotecIT/IntelligenceX/issues", "External": true }
