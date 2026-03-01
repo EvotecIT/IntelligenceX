@@ -78,6 +78,8 @@ public sealed class ToolPackBootstrapMetadataTests {
     [InlineData("reviewer_setup", "reviewer_setup")]
     [InlineData("event-log", "eventlog")]
     [InlineData("file system", "filesystem")]
+    [InlineData("testimoxpack", "testimox")]
+    [InlineData("custom pack", "custompack")]
     public void NormalizePackId_UsesCanonicalShape(string input, string expected) {
         var normalized = ToolPackBootstrap.NormalizePackId(input);
         Assert.Equal(expected, normalized);

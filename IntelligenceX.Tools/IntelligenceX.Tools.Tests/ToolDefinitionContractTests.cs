@@ -155,6 +155,18 @@ public class ToolDefinitionContractTests {
         Assert.Equal(enriched.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), enriched.Tags);
     }
 
+    [Theory]
+    [InlineData("ad", "active_directory")]
+    [InlineData("adplayground", "active_directory")]
+    [InlineData("event-logs", "eventlog")]
+    [InlineData("testimoxpack", "testimox")]
+    [InlineData("reviewer setup", "reviewer_setup")]
+    [InlineData("my-pack", "mypack")]
+    public void NormalizePackId_ShouldCanonicalizeKnownAliases_AndCompactUnknownIds(string input, string expected) {
+        var normalized = ToolSelectionMetadata.NormalizePackId(input);
+        Assert.Equal(expected, normalized);
+    }
+
     [Fact]
     public void Enrich_ShouldIgnoreConflictingInputTaxonomyTags() {
         var definition = new ToolDefinition(

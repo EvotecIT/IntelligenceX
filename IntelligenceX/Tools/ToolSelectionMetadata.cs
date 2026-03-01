@@ -506,6 +506,20 @@ public static class ToolSelectionMetadata {
     }
 
     /// <summary>
+    /// Normalizes a pack identifier into canonical known ids, or compact fallback shape for unknown ids.
+    /// </summary>
+    public static string NormalizePackId(string? value) {
+        var compact = NormalizeCompactToken(value);
+        if (compact.Length == 0) {
+            return string.Empty;
+        }
+
+        return TryNormalizePackId(compact, out var packId)
+            ? packId
+            : compact;
+    }
+
+    /// <summary>
     /// Tries to resolve an AD/public-domain routing family from tool identity hints.
     /// </summary>
     public static bool TryResolveDomainIntentFamily(

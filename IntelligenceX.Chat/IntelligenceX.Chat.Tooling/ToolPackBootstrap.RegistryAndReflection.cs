@@ -158,27 +158,7 @@ public static partial class ToolPackBootstrap {
     /// <param name="descriptorId">Descriptor id.</param>
     /// <returns>Canonical pack id, or empty string when input is empty.</returns>
     public static string NormalizePackId(string? descriptorId) {
-        var normalized = (descriptorId ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length == 0) {
-            return string.Empty;
-        }
-
-        var compact = normalized.Replace("-", string.Empty, StringComparison.Ordinal)
-            .Replace("_", string.Empty, StringComparison.Ordinal)
-            .Replace(" ", string.Empty, StringComparison.Ordinal)
-            .Replace(".", string.Empty, StringComparison.Ordinal);
-        return compact switch {
-            "ad" => "active_directory",
-            "activedirectory" => "active_directory",
-            "adplayground" => "active_directory",
-            "fs" => "filesystem",
-            "eventlogs" => "eventlog",
-            "reviewersetup" => "reviewer_setup",
-            "computerx" => "system",
-            "wsl" => "system",
-            "testimoxpack" => "testimox",
-            _ => compact
-        };
+        return ToolSelectionMetadata.NormalizePackId(descriptorId);
     }
 
     private static void EnsureNoPackIdNormalizationCollision(
