@@ -397,9 +397,37 @@ code { font-family: var(--pf-font-mono); font-size: 0.875em; }
   color: var(--pf-ink);
 }
 .pf-release-button:not(.btn):hover { border-color: var(--pf-accent); transform: translateY(-1px); box-shadow: var(--pf-shadow-card); color: var(--pf-accent); }
-.pf-release-button--item { justify-content: space-between; width: 100%; }
+.pf-release-button--item { justify-content: space-between; width: 100%; align-items: flex-start; gap: 0.65rem; }
+.pf-release-button-media {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.45rem;
+  border: 1px solid var(--pf-border);
+  background: var(--pf-card-bg);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.pf-release-button-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pf-release-button-content { min-width: 0; flex: 1; display: grid; gap: 0.28rem; }
 .pf-release-button-label { display: inline-block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-release-button-meta { font-size: 0.76rem; opacity: 0.82; text-transform: uppercase; letter-spacing: 0.04em; }
+.pf-release-button-badges { display: flex; flex-wrap: wrap; gap: 0.32rem; }
+.pf-release-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--pf-border);
+  font-size: 0.64rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pf-muted);
+  background: rgba(148, 163, 184, 0.08);
+}
+.pf-release-badge--platform { border-color: rgba(14, 165, 233, 0.4); color: #7DD3FC; }
+.pf-release-badge--arch { border-color: rgba(139, 92, 246, 0.45); color: #C4B5FD; }
+.pf-release-badge--kind { border-color: rgba(16, 185, 129, 0.45); color: #6EE7B7; }
 .pf-release-buttons { display: grid; gap: 0.85rem; margin: 1rem 0 1.5rem; }
 .pf-release-buttons-list { display: grid; gap: 0.55rem; }
 .pf-release-group { border: 1px solid var(--pf-border); border-radius: var(--pf-radius-sm); padding: 0.75rem; background: var(--pf-card-bg); }
@@ -439,8 +467,34 @@ code { font-family: var(--pf-font-mono); font-size: 0.875em; }
 .pf-release-body > :first-child { margin-top: 0; }
 .pf-release-assets { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
 .pf-release-asset-item { display: flex; flex-wrap: wrap; gap: 0.45rem 0.7rem; align-items: center; }
+.pf-release-asset-thumb {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--pf-border);
+  object-fit: cover;
+  display: block;
+  background: var(--pf-card-bg);
+}
 .pf-release-asset-link { font-weight: 600; }
 .pf-release-asset-meta { font-size: 0.78rem; color: var(--pf-muted); }
+.pf-release-asset-badges { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
+.pf-release-asset-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--pf-border);
+  font-size: 0.64rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pf-muted);
+  background: rgba(148, 163, 184, 0.08);
+}
+.pf-release-asset-badge--platform { border-color: rgba(14, 165, 233, 0.4); color: #7DD3FC; }
+.pf-release-asset-badge--arch { border-color: rgba(139, 92, 246, 0.45); color: #C4B5FD; }
+.pf-release-asset-badge--kind { border-color: rgba(16, 185, 129, 0.45); color: #6EE7B7; }
 [data-theme="light"] .pf-release-chip--preview { color: #92400E; }
 [data-theme="light"] .pf-release-chip--latest { color: #065F46; }
 [data-theme="light"] .pf-release-chip--latest-preview { color: #1E3A8A; }
