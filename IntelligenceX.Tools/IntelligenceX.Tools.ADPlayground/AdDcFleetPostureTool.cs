@@ -243,11 +243,11 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
                && view.DisabledCount == 0
                && view.ManagedBySetCount == 0
                && view.NonAdministrativeOwnerCount == 0
-               && view.Inactive.Length == 0
-               && view.OldPasswords.Length == 0
-               && view.Disabled.Length == 0
-               && view.ManagedBySet.Length == 0
-               && view.NonAdministrativeOwners.Length == 0;
+               && (view.Inactive?.Length ?? 0) == 0
+               && (view.OldPasswords?.Length ?? 0) == 0
+               && (view.Disabled?.Length ?? 0) == 0
+               && (view.ManagedBySet?.Length ?? 0) == 0
+               && (view.NonAdministrativeOwners?.Length ?? 0) == 0;
     }
 
     internal static FleetPostureService.View ChooseMoreInformativeView(
@@ -268,11 +268,11 @@ public sealed class AdDcFleetPostureTool : ActiveDirectoryToolBase, ITool {
             + Math.Max(0, view.DisabledCount)
             + Math.Max(0, view.ManagedBySetCount)
             + Math.Max(0, view.NonAdministrativeOwnerCount);
-        var detailRows = view.Inactive.Length
-            + view.OldPasswords.Length
-            + view.Disabled.Length
-            + view.ManagedBySet.Length
-            + view.NonAdministrativeOwners.Length;
+        var detailRows = (view.Inactive?.Length ?? 0)
+            + (view.OldPasswords?.Length ?? 0)
+            + (view.Disabled?.Length ?? 0)
+            + (view.ManagedBySet?.Length ?? 0)
+            + (view.NonAdministrativeOwners?.Length ?? 0);
         var domainControllerCount = Math.Max(0, view.DomainControllerCount);
         return (findings * 100) + (detailRows * 10) + domainControllerCount;
     }
