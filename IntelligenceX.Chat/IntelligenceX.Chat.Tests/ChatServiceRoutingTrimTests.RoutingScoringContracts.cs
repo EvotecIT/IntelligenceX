@@ -35,4 +35,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains(selected, static definition => string.Equals(definition.Name, "gamma_inventory", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(selected, static definition => string.Equals(definition.Name, "beta_inventory", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void SelectDeterministicToolSubset_DoesNotGroupUnassignedToolsByNamePrefix() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "alpha_one",
+            CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)));
+        registry.Register(new PreflightStubTool(
+            "alpha_two",
+            CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)));
+        registry.Register(new PreflightStubTool(
+            "beta_one",
+            CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)));
+        SetSessionRegistry(session, registry);
+
+        var result = SelectDeterministicToolSubsetMethod.Invoke(session, new object?[] { registry.GetDefinitions(), 2 });
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
+
+        Assert.Equal(2, selected.Count);
+        Assert.Contains(selected, static definition => string.Equals(definition.Name, "alpha_one", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(selected, static definition => string.Equals(definition.Name, "alpha_two", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(selected, static definition => string.Equals(definition.Name, "beta_one", StringComparison.OrdinalIgnoreCase));
+    }
 }
