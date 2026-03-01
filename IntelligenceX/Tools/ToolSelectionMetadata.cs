@@ -1109,9 +1109,10 @@ public static class ToolSelectionMetadata {
 
     private static string InferEntity(string? toolName, string? category) {
         var name = (toolName ?? string.Empty).Trim();
-        if (name.IndexOf("ping", StringComparison.OrdinalIgnoreCase) >= 0
-            || name.IndexOf("probe", StringComparison.OrdinalIgnoreCase) >= 0
-            || name.IndexOf("traceroute", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)
+            && (name.IndexOf("ping", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("probe", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("traceroute", StringComparison.OrdinalIgnoreCase) >= 0)) {
             return "host";
         }
 

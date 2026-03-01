@@ -173,7 +173,7 @@ public class ToolDefinitionContractTests {
 
         Assert.Contains("scope:general", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:probe", enriched.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:host", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:resource", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:low", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:inferred", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(enriched.Tags, "scope:");
@@ -278,7 +278,7 @@ public class ToolDefinitionContractTests {
         Assert.Equal(aliasA.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), aliasA.Tags);
         Assert.Contains("scope:domain", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:search", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:host", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:resource", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:high", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:explicit", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(aliasA.Tags, "scope:");
@@ -304,7 +304,7 @@ public class ToolDefinitionContractTests {
 
         Assert.Contains("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:probe", alias.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:host", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:resource", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(alias.Tags, "scope:");
@@ -333,7 +333,7 @@ public class ToolDefinitionContractTests {
         Assert.DoesNotContain("scope:", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:search", alias.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:host", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:resource", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(alias.Tags, "scope:");
