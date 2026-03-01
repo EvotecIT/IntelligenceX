@@ -32,7 +32,8 @@ internal static partial class Program {
             return;
         }
 
-        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(registry);
+        var requireExplicitPackInfoRole = options.RequireExplicitRoutingMetadata;
+        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(registry, requireExplicitPackInfoRole);
         if (packInfoDefinitions.Length == 0) {
             Console.WriteLine("No *_pack_info tools are registered in this session.");
             return;
@@ -44,10 +45,10 @@ internal static partial class Program {
         var failCount = 0;
 
         foreach (var definition in packInfoDefinitions) {
-            var inferredPackId = InferPackIdFromProbeToolName(definition.Name);
-            packMetadataById.TryGetValue(inferredPackId, out var metadata);
+            var resolvedPackId = ResolveToolHealthPackId(definition, allowNameSuffixFallback: !requireExplicitPackInfoRole);
+            packMetadataById.TryGetValue(resolvedPackId, out var metadata);
 
-            var effectivePackId = metadata.PackId.Length == 0 ? inferredPackId : metadata.PackId;
+            var effectivePackId = metadata.PackId.Length == 0 ? resolvedPackId : metadata.PackId;
             var effectiveSourceKind = metadata.SourceKind.Length == 0
                 ? InferToolHealthSourceKind(sourceKind: null, effectivePackId)
                 : metadata.SourceKind;
@@ -69,10 +70,10 @@ internal static partial class Program {
         Console.WriteLine($"Running tool health checks for {selectedProbeCount}/{packInfoDefinitions.Length} pack probes{selectedLabel}...");
 
         foreach (var definition in packInfoDefinitions) {
-            var inferredPackId = InferPackIdFromProbeToolName(definition.Name);
-            packMetadataById.TryGetValue(inferredPackId, out var metadata);
+            var resolvedPackId = ResolveToolHealthPackId(definition, allowNameSuffixFallback: !requireExplicitPackInfoRole);
+            packMetadataById.TryGetValue(resolvedPackId, out var metadata);
 
-            var effectivePackId = metadata.PackId.Length == 0 ? inferredPackId : metadata.PackId;
+            var effectivePackId = metadata.PackId.Length == 0 ? resolvedPackId : metadata.PackId;
             var effectivePackName = metadata.PackName;
             var effectiveSourceKind = metadata.SourceKind.Length == 0
                 ? InferToolHealthSourceKind(sourceKind: null, effectivePackId)
@@ -82,7 +83,13 @@ internal static partial class Program {
                 continue;
             }
 
-            var probe = await ToolHealthDiagnostics.ProbeAsync(registry, definition.Name, options.ToolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+            var probe = await ToolHealthDiagnostics.ProbeAsync(
+                    registry,
+                    definition.Name,
+                    options.ToolTimeoutSeconds,
+                    cancellationToken,
+                    requireExplicitPackInfoRole)
+                .ConfigureAwait(false);
             var probeScope = FormatProbeScope(effectivePackId, effectivePackName, effectiveSourceKind);
             if (probe.Ok) {
                 okCount++;
@@ -262,18 +269,12 @@ internal static partial class Program {
             : $" [{idAndName}, source={normalizedSource}]";
     }
 
-    private static string InferPackIdFromProbeToolName(string? toolName) {
-        var normalized = (toolName ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return string.Empty;
+    private static string ResolveToolHealthPackId(ToolDefinition definition, bool allowNameSuffixFallback) {
+        if (ToolHealthDiagnostics.TryResolvePackId(definition, out var packId, allowNameSuffixFallback)) {
+            return packId;
         }
 
-        const string suffix = "_pack_info";
-        if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) {
-            normalized = normalized[..^suffix.Length];
-        }
-
-        return NormalizeToolHealthPackId(normalized);
+        return string.Empty;
     }
 
     private static bool TryParseSourceKindToken(string token, out string sourceKind) {

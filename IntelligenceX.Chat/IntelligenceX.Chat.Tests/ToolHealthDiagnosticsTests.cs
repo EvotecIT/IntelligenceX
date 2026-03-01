@@ -188,6 +188,43 @@ public sealed class ToolHealthDiagnosticsTests {
         Assert.DoesNotContain("custom_operational_tool", names, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void GetPackInfoToolNames_WhenStrictRoleRequired_ExcludesSuffixOnlyPackInfoDefinitions() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "custom_pack_summary",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+
+        var names = ToolHealthDiagnostics.GetPackInfoToolNames(registry, requireExplicitPackInfoRole: true);
+
+        Assert.Contains("custom_pack_summary", names, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("legacy_pack_info", names, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_WhenStrictRoleRequired_DoesNotRunSmokeForSuffixOnlyPackInfoDefinition() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool("legacy_diagnostic", static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"Should not run."}""")));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(
+            registry,
+            toolName: "legacy_pack_info",
+            timeoutSeconds: 2,
+            cancellationToken: CancellationToken.None,
+            requireExplicitPackInfoRole: true);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+    }
+
     private sealed class StubTool : ITool {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 

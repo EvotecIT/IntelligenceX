@@ -31,15 +31,15 @@ public static class ToolHealthDiagnostics {
 
     /// <summary>
     /// Returns registered pack-info definitions (sorted, case-insensitive).
-    /// Prefers routing-role metadata and keeps suffix-based discovery as compatibility fallback.
+    /// Prefers routing-role metadata and can optionally require explicit pack-info role metadata.
     /// </summary>
-    public static ToolDefinition[] GetPackInfoDefinitions(ToolRegistry registry) {
+    public static ToolDefinition[] GetPackInfoDefinitions(ToolRegistry registry, bool requireExplicitPackInfoRole = false) {
         if (registry is null) {
             throw new ArgumentNullException(nameof(registry));
         }
 
         return registry.GetDefinitions()
-            .Where(IsPackInfoDefinition)
+            .Where(definition => IsPackInfoDefinition(definition, requireExplicitPackInfoRole))
             .OrderBy(static def => def.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -47,8 +47,8 @@ public static class ToolHealthDiagnostics {
     /// <summary>
     /// Returns all registered pack-info tool names (sorted, case-insensitive).
     /// </summary>
-    public static string[] GetPackInfoToolNames(ToolRegistry registry) {
-        return GetPackInfoDefinitions(registry)
+    public static string[] GetPackInfoToolNames(ToolRegistry registry, bool requireExplicitPackInfoRole = false) {
+        return GetPackInfoDefinitions(registry, requireExplicitPackInfoRole)
             .Select(static def => def.Name)
             .ToArray();
     }
@@ -56,7 +56,8 @@ public static class ToolHealthDiagnostics {
     /// <summary>
     /// Probes a single tool and returns a normalized health result.
     /// </summary>
-    public static async Task<ProbeResult> ProbeAsync(ToolRegistry registry, string toolName, int timeoutSeconds, CancellationToken cancellationToken) {
+    public static async Task<ProbeResult> ProbeAsync(ToolRegistry registry, string toolName, int timeoutSeconds, CancellationToken cancellationToken,
+        bool requireExplicitPackInfoRole = false) {
         if (registry is null) {
             throw new ArgumentNullException(nameof(registry));
         }
@@ -86,7 +87,7 @@ public static class ToolHealthDiagnostics {
                     return new ProbeResult(normalizedToolName, Ok: false, ErrorCode: errorCode, Error: error, DurationMs: sw.ElapsedMilliseconds);
                 }
 
-                if (TryResolveOperationalSmokeProbe(registry, normalizedToolName, out var smokeToolName, out var smokeArguments)
+                if (TryResolveOperationalSmokeProbe(registry, normalizedToolName, requireExplicitPackInfoRole, out var smokeToolName, out var smokeArguments)
                     && registry.TryGet(smokeToolName, out var smokeTool)) {
                     var smokeRaw = await smokeTool.InvokeAsync(smokeArguments, toolToken).ConfigureAwait(false) ?? string.Empty;
                     if (TryReadFailure(smokeRaw, out var smokeErrorCode, out var smokeError)) {
@@ -192,12 +193,13 @@ public static class ToolHealthDiagnostics {
         return cts;
     }
 
-    private static bool TryResolveOperationalSmokeProbe(ToolRegistry registry, string packInfoToolName, out string smokeToolName, out JsonObject smokeArguments) {
+    private static bool TryResolveOperationalSmokeProbe(ToolRegistry registry, string packInfoToolName, bool requireExplicitPackInfoRole,
+        out string smokeToolName, out JsonObject smokeArguments) {
         smokeToolName = string.Empty;
         smokeArguments = new JsonObject();
 
         var normalized = (packInfoToolName ?? string.Empty).Trim();
-        if (normalized.Length == 0 || !normalized.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+        if (normalized.Length == 0) {
             return false;
         }
 
@@ -211,7 +213,9 @@ public static class ToolHealthDiagnostics {
             }
         }
 
-        if (packInfoDefinition is null || !TryResolveCanonicalPackId(packInfoDefinition, out var packId)) {
+        if (packInfoDefinition is null
+            || !IsPackInfoDefinition(packInfoDefinition, requireExplicitPackInfoRole)
+            || !TryResolvePackId(packInfoDefinition, out var packId, allowNameSuffixFallback: !requireExplicitPackInfoRole)) {
             return false;
         }
 
@@ -227,12 +231,12 @@ public static class ToolHealthDiagnostics {
                 continue;
             }
 
-            if (!TryResolveCanonicalPackId(definition, out var candidatePackId)
+            if (!TryResolvePackId(definition, out var candidatePackId, allowNameSuffixFallback: !requireExplicitPackInfoRole)
                 || !string.Equals(packId, candidatePackId, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 
-            if (IsPackInfoDefinition(definition) || HasRequiredArguments(definition)) {
+            if (IsPackInfoDefinition(definition, requireExplicitPackInfoRole: false) || HasRequiredArguments(definition)) {
                 continue;
             }
 
@@ -253,7 +257,15 @@ public static class ToolHealthDiagnostics {
         return true;
     }
 
-    private static bool TryResolveCanonicalPackId(ToolDefinition definition, out string packId) {
+    /// <summary>
+    /// Resolves canonical pack id for a tool definition using routing metadata first, then metadata inference,
+    /// and optionally legacy <c>*_pack_info</c> name suffix fallback.
+    /// </summary>
+    /// <param name="definition">Tool definition to inspect.</param>
+    /// <param name="packId">Resolved canonical pack id when available.</param>
+    /// <param name="allowNameSuffixFallback">When true, allows legacy name-suffix based resolution for compatibility.</param>
+    /// <returns><c>true</c> when a pack id was resolved.</returns>
+    public static bool TryResolvePackId(ToolDefinition definition, out string packId, bool allowNameSuffixFallback = true) {
         packId = ToolPackBootstrap.NormalizePackId(definition.Routing?.PackId);
         if (packId.Length > 0) {
             return true;
@@ -264,11 +276,13 @@ public static class ToolHealthDiagnostics {
             return packId.Length > 0;
         }
 
-        var normalizedName = (definition.Name ?? string.Empty).Trim();
-        if (normalizedName.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
-            packId = ToolPackBootstrap.NormalizePackId(normalizedName[..^PackInfoSuffix.Length]);
-            if (packId.Length > 0) {
-                return true;
+        if (allowNameSuffixFallback) {
+            var normalizedName = (definition.Name ?? string.Empty).Trim();
+            if (normalizedName.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+                packId = ToolPackBootstrap.NormalizePackId(normalizedName[..^PackInfoSuffix.Length]);
+                if (packId.Length > 0) {
+                    return true;
+                }
             }
         }
 
@@ -291,14 +305,23 @@ public static class ToolHealthDiagnostics {
         };
     }
 
-    private static bool IsPackInfoDefinition(ToolDefinition definition) {
+    private static bool IsPackInfoDefinition(ToolDefinition definition, bool requireExplicitPackInfoRole) {
         if (definition is null) {
             return false;
         }
 
         var role = (definition.Routing?.Role ?? string.Empty).Trim();
         if (string.Equals(role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return true;
+            if (!requireExplicitPackInfoRole) {
+                return true;
+            }
+
+            var routingSource = (definition.Routing?.RoutingSource ?? string.Empty).Trim();
+            return string.Equals(routingSource, ToolRoutingTaxonomy.SourceExplicit, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (requireExplicitPackInfoRole) {
+            return false;
         }
 
         return definition.Name.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase);
