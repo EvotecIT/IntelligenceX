@@ -1,6 +1,8 @@
 {
   "version": 1,
-  "generatedAtUtc": "2026-02-21T07:11:00.3711561+00:00",
-  "warningCount": 0,
-  "warningKeys": []
+  "generatedAtUtc": "2026-03-01T08:58:10.9330432+00:00",
+  "warningCount": 1,
+  "warningKeys": [
+    "Release lint: referenced product \u0027intelligencex.chat\u0027 has no matching assets in release-hub data."
+  ]
 }

@@ -66,6 +66,8 @@
 .product-install { display: flex; width: fit-content; align-items: center; gap: 0.5rem; background: var(--pf-code-bg); border: 1px solid var(--pf-code-border); border-radius: var(--pf-radius-sm); padding: 0.4rem 0.75rem; font-family: var(--pf-font-mono); font-size: 0.8rem; color: var(--pf-ink); margin-bottom: 1rem; max-width: 100%; overflow-x: auto; }
 .product-install .prompt { color: var(--pf-accent); user-select: none; }
 .product-install code { background: none; border: none; padding: 0; }
+.product-download-row { margin-bottom: 1rem; }
+.product-download-btn { width: fit-content; }
 .product-card-image { padding: 1rem; }
 .product-card-image img { width: 100%; height: auto; border-radius: var(--pf-radius-sm); }
 

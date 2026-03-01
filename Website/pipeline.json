@@ -14,9 +14,53 @@
       "skipIfProjectMissing": true
     },
     {
+      "task": "release-hub",
+      "id": "build-release-hub",
+      "dependsOn": "build-library",
+      "source": "github",
+      "repo": "EvotecIT/IntelligenceX",
+      "tokenEnv": "GITHUB_TOKEN",
+      "out": "./data/release-hub.json",
+      "title": "IntelligenceX Releases",
+      "maxReleases": 300,
+      "pageSize": 100,
+      "maxPages": 4,
+      "includePrerelease": true,
+      "products": [
+        { "id": "intelligencex.chat", "name": "IX Chat", "order": 10 },
+        { "id": "intelligencex.tools", "name": "IX Tools", "order": 20 },
+        { "id": "intelligencex.powershell", "name": "PowerShell Module", "order": 30 },
+        { "id": "intelligencex.library", "name": ".NET Library", "order": 40 }
+      ],
+      "assetRules": [
+        {
+          "product": "intelligencex.chat",
+          "label": "IX Chat",
+          "match": ["*IntelligenceX.Chat*.zip", "*IX.Chat*.zip", "*IntelligenceX.Chat*.msix*", "*IntelligenceX.Chat*.exe"]
+        },
+        {
+          "product": "intelligencex.tools",
+          "label": "IX Tools",
+          "match": ["*IntelligenceX.Tools*.zip", "*IX.Tools*.zip"]
+        },
+        {
+          "product": "intelligencex.powershell",
+          "label": "PowerShell Module",
+          "match": ["*IntelligenceX.PowerShell*.zip", "*IntelligenceX.PowerShell*.nupkg"],
+          "kind": "nupkg"
+        },
+        {
+          "product": "intelligencex.library",
+          "label": ".NET Library",
+          "match": ["*IntelligenceX*.nupkg", "*IntelligenceX*.zip"],
+          "kind": "nupkg"
+        }
+      ]
+    },
+    {
       "task": "build",
       "id": "build-site",
-      "dependsOn": "build-library",
+      "dependsOn": ["build-library", "build-release-hub"],
       "config": "./site.json",
       "out": "./_site",
       "clean": true

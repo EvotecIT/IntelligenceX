@@ -28,6 +28,11 @@
                     <code>{{ item.install }}</code>
                 </div>
                 {{ end }}
+                {{ if item.releaseProduct }}
+                <div class="product-download-row">
+                    {{ pf.release_button item.releaseProduct item.releaseChannel item.releasePlatform item.releaseArch item.releaseKind item.downloadLabel "btn btn-secondary product-download-btn" }}
+                </div>
+                {{ end }}
                 <a href="{{ item.link }}" class="feature-link">Learn about {{ item.title }} &rarr;</a>
             </div>
             {{ if item.screenshot }}
@@ -38,4 +43,35 @@
         </div>
         {{ end }}
     </div>
+
+    {{ home_release_cfg = null }}
+    {{ if data.release_placements && data.release_placements.home && data.release_placements.home.chat_downloads }}
+    {{ home_release_cfg = data.release_placements.home.chat_downloads }}
+    {{ end }}
+    {{ if home_release_cfg }}
+    {{ home_release_product = "intelligencex.chat" }}
+    {{ home_release_channel = "stable" }}
+    {{ home_release_limit = 12 }}
+    {{ home_release_group = "platform" }}
+    {{ home_release_platform = "" }}
+    {{ home_release_arch = "" }}
+    {{ home_release_kind = "" }}
+    {{ home_release_class = "pf-release-buttons--matrix" }}
+    {{ if home_release_cfg.product != "" }}{{ home_release_product = home_release_cfg.product }}{{ end }}
+    {{ if home_release_cfg.channel != "" }}{{ home_release_channel = home_release_cfg.channel }}{{ end }}
+    {{ if home_release_cfg.limit }}{{ home_release_limit = home_release_cfg.limit }}{{ end }}
+    {{ if home_release_cfg.groupBy != "" }}{{ home_release_group = home_release_cfg.groupBy }}{{ end }}
+    {{ if home_release_cfg.platform != "" }}{{ home_release_platform = home_release_cfg.platform }}{{ end }}
+    {{ if home_release_cfg.arch != "" }}{{ home_release_arch = home_release_cfg.arch }}{{ end }}
+    {{ if home_release_cfg.kind != "" }}{{ home_release_kind = home_release_cfg.kind }}{{ end }}
+    {{ if home_release_cfg.class != "" }}{{ home_release_class = home_release_cfg.class }}{{ end }}
+    {{ home_release_buttons = pf.release_buttons home_release_product home_release_channel home_release_limit home_release_group home_release_platform home_release_arch home_release_kind home_release_class }}
+    {{ if home_release_buttons != "" }}
+    <section class="pf-release-downloads-panel">
+        <h2>IX Chat Downloads</h2>
+        <p>Stable desktop binaries grouped by platform for faster onboarding from the homepage.</p>
+        {{ home_release_buttons }}
+    </section>
+    {{ end }}
+    {{ end }}
 </section>
