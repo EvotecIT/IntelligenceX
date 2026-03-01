@@ -108,6 +108,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_priority: 100", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -137,6 +138,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_priority: 400", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -166,6 +168,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: table", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_priority: 900", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -195,6 +198,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual_source: tool_outputs", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual_priority: 400", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
