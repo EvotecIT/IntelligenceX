@@ -17,8 +17,18 @@ public sealed class ChatServiceRetryPolicyTests {
 
     private static readonly MethodInfo ResolveRetryProfileMethod = ChatServiceSessionType.GetMethod(
         "ResolveRetryProfile",
-        BindingFlags.NonPublic | BindingFlags.Static)
+        BindingFlags.NonPublic | BindingFlags.Static,
+        binder: null,
+        types: new[] { typeof(string) },
+        modifiers: null)
         ?? throw new InvalidOperationException("ResolveRetryProfile not found.");
+    private static readonly MethodInfo ResolveRetryProfileWithDefinitionMethod = ChatServiceSessionType.GetMethod(
+        "ResolveRetryProfile",
+        BindingFlags.NonPublic | BindingFlags.Static,
+        binder: null,
+        types: new[] { typeof(string), typeof(ToolDefinition) },
+        modifiers: null)
+        ?? throw new InvalidOperationException("ResolveRetryProfile(string, ToolDefinition) not found.");
 
     private static readonly MethodInfo ShouldRetryToolCallMethod = ChatServiceSessionType.GetMethod(
         "ShouldRetryToolCall",
@@ -141,6 +151,29 @@ public sealed class ChatServiceRetryPolicyTests {
             Ok = false,
             ErrorCode = "tool_timeout",
             Error = "Tool timed out."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_RetriesTransportForCustomPackTaggedToolProfile() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_diagnostic_probe",
+            new ToolDefinition(
+                name: "custom_diagnostic_probe",
+                description: "Custom DNS diagnostics",
+                parameters: null,
+                category: "dns",
+                tags: new[] { "pack:dnsclientx", "resolver" }));
+        var output = new ToolOutputDto {
+            CallId = "call-3g",
+            Output = "{\"error\":\"Service temporarily unavailable.\"}",
+            Ok = false,
+            ErrorCode = "transport_unavailable",
+            Error = "Service temporarily unavailable."
         };
 
         var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
@@ -491,6 +524,11 @@ public sealed class ChatServiceRetryPolicyTests {
     private static object InvokeResolveRetryProfile(string toolName) {
         var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { toolName });
         return profile ?? throw new InvalidOperationException("ResolveRetryProfile returned null.");
+    }
+
+    private static object InvokeResolveRetryProfile(string toolName, ToolDefinition definition) {
+        var profile = ResolveRetryProfileWithDefinitionMethod.Invoke(null, new object?[] { toolName, definition });
+        return profile ?? throw new InvalidOperationException("ResolveRetryProfile(string, ToolDefinition) returned null.");
     }
 
     private static bool InvokeShouldRetryToolCall(ToolOutputDto output, object profile, int attemptIndex) {

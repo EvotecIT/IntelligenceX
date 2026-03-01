@@ -169,4 +169,70 @@ public sealed class ActionModelProtocolTests {
         Assert.Equal(text.Trim(), cleaned);
         Assert.Contains("ix:action:v1", cleaned);
     }
+
+    /// <summary>
+    /// Ensures domain-intent protocol blocks are stripped even when no action cards are present.
+    /// </summary>
+    [Fact]
+    public void TryStripAndExtractPendingActions_StripsDomainIntentProtocolWithoutActions() {
+        const string text = """
+                            We need one quick scope selection.
+
+                            [DomainIntent]
+                            ix:domain-intent-choice:v1
+                            choice: 1|2
+                            option_1: ad_domain
+                            option_2: public_domain
+
+                            selection_map:
+                            1: ad_domain
+                            2: public_domain
+
+                            [DomainIntent]
+                            ix:domain-intent:v1
+                            family: ad_domain|public_domain
+                            """;
+
+        var normalized = ActionModelProtocol.TryStripAndExtractPendingActions(text, out var actions, out var cleaned);
+
+        Assert.True(normalized);
+        Assert.Empty(actions);
+        Assert.DoesNotContain("[DomainIntent]", cleaned, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:domain-intent", cleaned, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("We need one quick scope selection.", cleaned);
+    }
+
+    /// <summary>
+    /// Ensures domain-intent protocol is removed while still preserving actionable card extraction.
+    /// </summary>
+    [Fact]
+    public void TryStripAndExtractPendingActions_StripsDomainIntentProtocolAndKeepsActionExtraction() {
+        const string text = """
+                            Scope is ambiguous; choose one.
+
+                            [DomainIntent]
+                            ix:domain-intent-choice:v1
+                            choice: 1|2
+                            option_1: ad_domain
+                            option_2: public_domain
+
+                            [Action]
+                            ix:action:v1
+                            id: act_domain_scope_ad
+                            title: ad_domain
+                            request: {"ix_domain_scope":{"family":"ad_domain"}}
+                            reply: /act act_domain_scope_ad
+                            """;
+
+        var normalized = ActionModelProtocol.TryStripAndExtractPendingActions(text, out var actions, out var cleaned);
+
+        Assert.True(normalized);
+        Assert.Single(actions);
+        Assert.Equal("act_domain_scope_ad", actions[0].Id);
+        Assert.DoesNotContain("[DomainIntent]", cleaned, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:domain-intent", cleaned, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[Action]", cleaned, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:action:v1", cleaned, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Scope is ambiguous; choose one.", cleaned);
+    }
 }

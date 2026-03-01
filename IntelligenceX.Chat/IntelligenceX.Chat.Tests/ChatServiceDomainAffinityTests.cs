@@ -65,6 +65,31 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryApplyDomainIntentAffinity_UsesExplicitDomainFamilyTags_WhenNamesAreCustom() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetPreferredDomainIntentFamilyForTesting("thread-domain-tagged", "ad_domain");
+
+        var tools = new List<ToolDefinition> {
+            new("custom_directory_probe", description: "Custom AD probe", tags: new[] { "domain_family:ad_domain" }),
+            new("custom_dns_probe", description: "Custom DNS probe", tags: new[] { "domain_family:public_domain" }),
+            new("eventlog_live_query", description: "Event log")
+        };
+
+        var applied = session.TryApplyDomainIntentAffinityForTesting(
+            "thread-domain-tagged",
+            tools,
+            out var filtered,
+            out var family,
+            out var removedCount);
+
+        Assert.True(applied);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal(1, removedCount);
+        Assert.Contains(filtered, tool => string.Equals(tool.Name, "custom_directory_probe", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(filtered, tool => string.Equals(tool.Name, "custom_dns_probe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void TryApplyDomainIntentAffinity_DoesNotApplyWhenAffinityIsExpired() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting(
@@ -202,6 +227,82 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.True(resolved);
         Assert.Equal("public_domain", family);
         Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_DoesNotResolveUnavailableFamilyChoice() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-unavailable");
+        var availableDefinitions = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("ad_domain_controllers", "AD DCs")
+        };
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-unavailable",
+            "2",
+            availableDefinitions,
+            out var family);
+
+        Assert.False(resolved);
+        Assert.Equal(string.Empty, family);
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-unavailable"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ResolvesAvailableFamilyChoiceWhenSingleFamilyIsPresent() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-single-family");
+        var availableDefinitions = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope"),
+            new ToolDefinition("ad_domain_controllers", "AD DCs")
+        };
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-single-family",
+            "1",
+            availableDefinitions,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-single-family"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_MapsOrdinalToCustomFamilyWhenAvailable() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-custom-family");
+        var availableDefinitions = new[] {
+            new ToolDefinition(
+                "ad_pack_info",
+                "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }),
+            new ToolDefinition(
+                "corp_pack_info",
+                "Corp pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "corp_pack",
+                    DomainIntentFamily = "corp_internal",
+                    DomainIntentActionId = "act_domain_scope_corp_internal_custom"
+                })
+        };
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-custom-family",
+            "2",
+            availableDefinitions,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("corp_internal", family);
+        Assert.Equal("corp_internal", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-custom-family"));
     }
 
     [Theory]
@@ -351,6 +452,45 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.True(resolved);
         Assert.Equal("ad_domain", family);
         Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-object-request"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ParsesCustomActionIdFromAvailableRoutingContracts() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-custom");
+
+        var availableDefinitions = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info",
+                description: "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_ad_custom"
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_public_custom"
+                })
+        };
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-custom",
+            """
+            {"ix_action_selection":{"id":"act_domain_scope_public_custom","title":"public_domain","request":{"ix_domain_scope":{"family":"public_domain"}},"mutating":false}}
+            """,
+            availableDefinitions,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("public_domain", family);
+        Assert.Equal("public_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-custom"));
     }
 
     [Fact]
@@ -577,6 +717,65 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.False(shouldForce);
     }
 
+    [Fact]
+    public void ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting_ReturnsTrueForCompactFollowUpWithPreferredFamily() {
+        var suppressed = ChatServiceSession.ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting(
+            compactFollowUpTurn: true,
+            hasPreferredDomainIntentFamily: true,
+            hasFreshPendingActionContext: false,
+            conflictingDomainSignals: false);
+
+        Assert.True(suppressed);
+    }
+
+    [Fact]
+    public void ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting_ReturnsTrueForCompactFollowUpWithPendingActionContext() {
+        var suppressed = ChatServiceSession.ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting(
+            compactFollowUpTurn: true,
+            hasPreferredDomainIntentFamily: false,
+            hasFreshPendingActionContext: true,
+            conflictingDomainSignals: false);
+
+        Assert.True(suppressed);
+    }
+
+    [Fact]
+    public void ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting_ReturnsFalseWhenSignalsConflict() {
+        var suppressed = ChatServiceSession.ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting(
+            compactFollowUpTurn: true,
+            hasPreferredDomainIntentFamily: true,
+            hasFreshPendingActionContext: true,
+            conflictingDomainSignals: true);
+
+        Assert.False(suppressed);
+    }
+
+    [Fact]
+    public void CompactFollowUp_WithUnresolvedFallbackChoice_KeepsPendingActionContextAndSuppressesDomainIntentClarification() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-compact-follow-up";
+        const string assistantChoices = """
+                                      Chcesz, zebym od razu zrobil:
+                                      - szybki drill-down z detalami polaczen
+                                      - od razu pelny health-check DC
+                                      """;
+
+        session.RememberPendingActionsForTesting(threadId, assistantChoices);
+        Assert.True(session.HasFreshPendingActionsContextForTesting(threadId));
+
+        var expanded = session.ExpandContinuationUserRequestForTesting(threadId, "tak poprosze to drugie");
+        Assert.Equal("tak poprosze to drugie", expanded);
+        Assert.True(session.HasFreshPendingActionsContextForTesting(threadId));
+
+        var suppressed = ChatServiceSession.ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting(
+            compactFollowUpTurn: true,
+            hasPreferredDomainIntentFamily: false,
+            hasFreshPendingActionContext: session.HasFreshPendingActionsContextForTesting(threadId),
+            conflictingDomainSignals: false);
+
+        Assert.True(suppressed);
+    }
+
     [Theory]
     [InlineData("Check domain health for corp.contoso.com and contoso.com.")]
     [InlineData("Necesito revisar corp.contoso.com y contoso.com.")]
@@ -646,6 +845,36 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.True(blocked);
         Assert.Equal("domain_scope_host_guardrail", output.ErrorCode);
         Assert.False(output.IsTransient);
+    }
+
+    [Fact]
+    public void IsDomainIntentHostGuardrailCandidateToolForTesting_UsesMetadataForCustomNames() {
+        var adTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "custom_directory_probe",
+            new ToolDefinition(
+                name: "custom_directory_probe",
+                description: "Custom AD probe",
+                parameters: null,
+                tags: new[] { "domain_family:ad_domain" }));
+        var eventLogTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "custom_event_timeline",
+            new ToolDefinition(
+                name: "custom_event_timeline",
+                description: "Custom event timeline",
+                parameters: null,
+                category: "eventlog",
+                tags: new[] { "pack:eventlog" }));
+        var dnsTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "custom_dns_probe",
+            new ToolDefinition(
+                name: "custom_dns_probe",
+                description: "Custom DNS probe",
+                parameters: null,
+                tags: new[] { "domain_family:public_domain", "pack:dnsclientx" }));
+
+        Assert.True(adTagged);
+        Assert.True(eventLogTagged);
+        Assert.False(dnsTagged);
     }
 
     [Fact]

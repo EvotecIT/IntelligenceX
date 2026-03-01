@@ -72,4 +72,9 @@ public sealed record SessionPolicyDto {
     /// Runtime governance/auth policy snapshot active for the session.
     /// </summary>
     public SessionRuntimePolicyDto? RuntimePolicy { get; init; }
+
+    /// <summary>
+    /// Structured routing catalog diagnostics for the active registry.
+    /// </summary>
+    public SessionRoutingCatalogDiagnosticsDto? RoutingCatalog { get; init; }
 }

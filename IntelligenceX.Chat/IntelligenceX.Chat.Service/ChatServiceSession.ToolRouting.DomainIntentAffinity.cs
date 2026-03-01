@@ -75,9 +75,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var normalizedFamily = string.Equals(preferredFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)
-            ? DomainIntentFamilyPublic
-            : DomainIntentFamilyAd;
+        if (!TryNormalizeDomainIntentFamily(preferredFamily, out var normalizedFamily)) {
+            return false;
+        }
+
         var filtered = new List<ToolDefinition>(selectedTools.Count);
         for (var i = 0; i < selectedTools.Count; i++) {
             var tool = selectedTools[i];
@@ -87,14 +88,8 @@ internal sealed partial class ChatServiceSession {
             }
 
             var candidateFamily = ResolveDomainIntentFamily(tool);
-            if (string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
-                && string.Equals(candidateFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
-                removedCount++;
-                continue;
-            }
-
-            if (string.Equals(normalizedFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)
-                && string.Equals(candidateFamily, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+            if (candidateFamily.Length > 0
+                && !string.Equals(candidateFamily, normalizedFamily, StringComparison.Ordinal)) {
                 removedCount++;
                 continue;
             }

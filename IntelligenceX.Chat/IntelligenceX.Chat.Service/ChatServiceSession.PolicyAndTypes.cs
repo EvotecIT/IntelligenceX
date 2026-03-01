@@ -25,7 +25,8 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     internal static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<ToolPackAvailabilityInfo> packAvailability,
-        IReadOnlyList<string> startupWarnings, IReadOnlyList<string> pluginSearchPaths, ToolRuntimePolicyDiagnostics runtimePolicy) {
+        IReadOnlyList<string> startupWarnings, IReadOnlyList<string> pluginSearchPaths, ToolRuntimePolicyDiagnostics runtimePolicy,
+        ToolRoutingCatalogDiagnostics? routingCatalog = null) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
         var packList = new List<ToolPackInfoDto>();
@@ -85,7 +86,38 @@ internal sealed partial class ChatServiceSession {
                 SmtpProbeMaxAgeSeconds = runtimePolicy.SmtpProbeMaxAgeSeconds,
                 RunAsProfilePath = runtimePolicy.RunAsProfilePath,
                 AuthenticationProfilePath = runtimePolicy.AuthenticationProfilePath
-            }
+            },
+            RoutingCatalog = MapRoutingCatalogDiagnostics(routingCatalog)
+        };
+    }
+
+    private static SessionRoutingCatalogDiagnosticsDto? MapRoutingCatalogDiagnostics(ToolRoutingCatalogDiagnostics? diagnostics) {
+        if (diagnostics is null) {
+            return null;
+        }
+
+        var familyActions = diagnostics.FamilyActions;
+        var mappedFamilyActions = familyActions.Count == 0
+            ? Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            : familyActions
+                .Select(static item => new SessionRoutingFamilyActionSummaryDto {
+                    Family = item.Family,
+                    ActionId = item.ActionId,
+                    ToolCount = Math.Max(0, item.ToolCount)
+                })
+                .ToArray();
+
+        return new SessionRoutingCatalogDiagnosticsDto {
+            TotalTools = Math.Max(0, diagnostics.TotalTools),
+            RoutingAwareTools = Math.Max(0, diagnostics.RoutingAwareTools),
+            MissingRoutingContractTools = Math.Max(0, diagnostics.MissingRoutingContractTools),
+            DomainFamilyTools = Math.Max(0, diagnostics.DomainFamilyTools),
+            ExpectedDomainFamilyMissingTools = Math.Max(0, diagnostics.ExpectedDomainFamilyMissingTools),
+            DomainFamilyMissingActionTools = Math.Max(0, diagnostics.DomainFamilyMissingActionTools),
+            ActionWithoutFamilyTools = Math.Max(0, diagnostics.ActionWithoutFamilyTools),
+            FamilyActionConflictFamilies = Math.Max(0, diagnostics.FamilyActionConflictFamilies),
+            IsHealthy = diagnostics.IsHealthy,
+            FamilyActions = mappedFamilyActions
         };
     }
 

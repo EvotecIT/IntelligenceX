@@ -1026,8 +1026,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 ("search_text", ToolSchema.String("selector")))
             .NoAdditionalProperties();
         var toolDefinitions = new List<ToolDefinition> {
-            new("testimox_rules_list", "rules list", listSchema),
-            new("testimox_rules_run", "rules run", runSchema)
+            new(
+                "testimox_rules_list",
+                "rules list",
+                listSchema,
+                tags: new[] { "fallback_hint_keys:search_text,rule_origin,categories,tags,source_types" }),
+            new(
+                "testimox_rules_run",
+                "rules run",
+                runSchema,
+                tags: new[] {
+                    "fallback:requires_selection",
+                    "fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin",
+                    "fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types"
+                })
         };
         RebuildPackCapabilityFallbackContractsMethod.Invoke(session, new object?[] { toolDefinitions });
 

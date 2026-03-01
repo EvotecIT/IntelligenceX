@@ -52,7 +52,15 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
                 ("include_rule_results", ToolSchema.Boolean("Include capped raw rule result rows. Default false.")),
                 ("max_result_rows_per_rule", ToolSchema.Integer("Maximum raw result rows per rule when include_rule_results=true (capped).")))
             .WithTableViewOptions()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "testimox",
+        tags: new[] {
+            "compliance",
+            "rules",
+            "fallback:requires_selection",
+            "fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin",
+            "fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TestimoXRulesRunTool"/> class.

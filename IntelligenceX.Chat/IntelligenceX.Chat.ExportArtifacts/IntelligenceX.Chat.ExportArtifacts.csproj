@@ -25,14 +25,14 @@
 
   <ItemGroup>
     <ProjectReference Include="$(OfficeImoExcelProject)"
-                      Condition="Exists('$(OfficeImoExcelProject)')" />
+                      Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoExcelProject)')" />
     <ProjectReference Include="$(OfficeImoWordMarkdownProject)"
-                      Condition="Exists('$(OfficeImoWordMarkdownProject)')" />
+                      Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoWordMarkdownProject)')" />
 
     <PackageReference Include="OfficeIMO.Excel" Version="$(OfficeImoExcelNuGetVersion)"
-                      Condition="!Exists('$(OfficeImoExcelProject)')" />
+                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or !Exists('$(OfficeImoExcelProject)')" />
     <PackageReference Include="OfficeIMO.Word.Markdown" Version="$(OfficeImoWordMarkdownNuGetVersion)"
-                      Condition="!Exists('$(OfficeImoWordMarkdownProject)')" />
+                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or !Exists('$(OfficeImoWordMarkdownProject)')" />
   </ItemGroup>
 
 </Project>

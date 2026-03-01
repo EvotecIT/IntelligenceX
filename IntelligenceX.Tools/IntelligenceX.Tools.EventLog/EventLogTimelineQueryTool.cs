@@ -46,7 +46,12 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
                 ("include_payload", ToolSchema.Boolean("When true, include payload object in timeline rows (default false).")),
                 ("payload_keys", ToolSchema.Array(ToolSchema.String("Payload field name in snake_case."), "Optional payload key allowlist when include_payload=true.")))
             .WithTableViewOptions()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "eventlog",
+        tags: new[] {
+            "timeline",
+            "correlation"
+        });
 
     private sealed record TimelineRequest(
         NamedEventsTimelineQueryRequest QueryRequest,

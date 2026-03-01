@@ -64,6 +64,7 @@
     renderExportPreferences();
     renderDebugPanel();
     updateMenuState();
+    updateRoutingStatusVisual();
   }
 
   function handleTranscriptNavKey(e) {

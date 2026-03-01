@@ -61,6 +61,7 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, string> _toolPackIdsByToolName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PackCapabilityFallbackContract> _packCapabilityFallbackContractsByPackId = new(StringComparer.OrdinalIgnoreCase);
     private ToolRuntimePolicyDiagnostics _runtimePolicyDiagnostics;
+    private ToolRoutingCatalogDiagnostics _routingCatalogDiagnostics;
     private readonly object _toolRoutingStatsLock = new();
     private readonly Dictionary<string, ToolRoutingStats> _toolRoutingStats = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _toolRoutingContextLock = new();
@@ -232,7 +233,13 @@ internal sealed partial class ChatServiceSession {
                             Name = "IntelligenceX.Chat.Service",
                             Version = typeof(ChatServiceSession).Assembly.GetName().Version?.ToString() ?? "0.0.0",
                             ProcessId = Environment.ProcessId.ToString(),
-                            Policy = BuildSessionPolicy(_options, _packAvailability, _startupWarnings, _pluginSearchPaths, _runtimePolicyDiagnostics)
+                            Policy = BuildSessionPolicy(
+                                _options,
+                                _packAvailability,
+                                _startupWarnings,
+                                _pluginSearchPaths,
+                                _runtimePolicyDiagnostics,
+                                _routingCatalogDiagnostics)
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 

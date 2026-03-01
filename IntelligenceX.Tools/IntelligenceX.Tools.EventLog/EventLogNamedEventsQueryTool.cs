@@ -35,7 +35,12 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
                 ("include_payload", ToolSchema.Boolean("When true, include payload object (default true).")),
                 ("payload_keys", ToolSchema.Array(ToolSchema.String("Payload field name in snake_case."), "Optional payload key allowlist when include_payload=true.")))
             .WithTableViewOptions()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "eventlog",
+        tags: new[] {
+            "named_events",
+            "correlation"
+        });
 
     private sealed record NamedEventsQueryRow(
         string NamedEvent,

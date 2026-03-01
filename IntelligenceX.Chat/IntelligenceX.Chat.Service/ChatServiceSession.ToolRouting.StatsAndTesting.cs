@@ -467,6 +467,11 @@ internal sealed partial class ChatServiceSession {
         RememberPendingActions(threadId, assistantReply);
     }
 
+    internal bool HasFreshPendingActionsContextForTesting(string threadId) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        return HasFreshPendingActionsContext(threadId);
+    }
+
     internal double ReadToolRoutingAdjustmentForTesting(string toolName) {
         return ReadToolRoutingAdjustment(toolName);
     }
@@ -573,12 +578,40 @@ internal sealed partial class ChatServiceSession {
         return ShouldForceDomainIntentClarificationForConflictingSignals(userRequest, allDefinitions);
     }
 
+    internal static bool ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting(
+        bool compactFollowUpTurn,
+        bool hasPreferredDomainIntentFamily,
+        bool hasFreshPendingActionContext,
+        bool conflictingDomainSignals) {
+        return ShouldSuppressDomainIntentClarificationForCompactFollowUp(
+            compactFollowUpTurn,
+            hasPreferredDomainIntentFamily,
+            hasFreshPendingActionContext,
+            conflictingDomainSignals);
+    }
+
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {
         RememberPendingDomainIntentClarificationRequest(threadId);
     }
 
     internal bool TryResolvePendingDomainIntentClarificationSelectionForTesting(string threadId, string userRequest, out string family) {
         return TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, out family);
+    }
+
+    internal bool TryResolvePendingDomainIntentClarificationSelectionForTesting(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> availableDefinitions,
+        out string family) {
+        return TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, availableDefinitions, out family);
+    }
+
+    internal static string BuildDomainIntentClarificationTextForTesting(bool hasAdFamily, bool hasPublicFamily) {
+        return BuildDomainIntentClarificationText(new DomainIntentFamilyAvailability(HasAd: hasAdFamily, HasPublic: hasPublicFamily));
+    }
+
+    internal static string BuildDomainIntentClarificationVisibleTextForTesting(bool hasAdFamily, bool hasPublicFamily) {
+        return BuildDomainIntentClarificationVisibleText(new DomainIntentFamilyAvailability(HasAd: hasAdFamily, HasPublic: hasPublicFamily));
     }
 
     internal IReadOnlyCollection<string> GetTrackedToolRoutingStatNamesForTesting() {

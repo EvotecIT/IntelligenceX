@@ -46,10 +46,13 @@ internal static partial class Program {
         IReadOnlyList<IToolPack> packs,
         ToolRuntimePolicyContext runtimePolicyContext,
         ToolRuntimePolicyDiagnostics runtimePolicyDiagnostics,
+        ToolRoutingCatalogDiagnostics routingCatalogDiagnostics,
         IReadOnlyList<string>? bootstrapWarnings = null) {
         var descriptors = ToolPackBootstrap.GetDescriptors(packs);
         var dangerousEnabled = descriptors.Any(static p => p.IsDangerous || p.Tier == ToolCapabilityTier.DangerousWrite);
         var pluginPaths = GetPluginSearchPaths(options, runtimePolicyContext);
+        var familySummaries = ToolRoutingCatalogDiagnosticsBuilder.FormatFamilySummaries(routingCatalogDiagnostics, maxItems: 8);
+        var routingWarnings = ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(routingCatalogDiagnostics, maxWarnings: 12);
 
         Console.WriteLine("Policy:");
         Console.WriteLine($"  Mode: {(dangerousEnabled ? "mixed (dangerous pack enabled)" : "read-only (no writes implied)")}");
@@ -75,6 +78,19 @@ internal static partial class Program {
         Console.WriteLine($"  Response shaping: max_table_rows={maxTable}, max_sample={maxSample}, redact={(options.Redact ? "on" : "off")}");
         Console.WriteLine($"  Allowed roots: {(options.AllowedRoots.Count == 0 ? "(none)" : string.Join("; ", options.AllowedRoots))}");
         Console.WriteLine($"  Plugin search paths: {(pluginPaths.Count == 0 ? "(none)" : string.Join("; ", pluginPaths))}");
+        Console.WriteLine($"  Routing catalog: {ToolRoutingCatalogDiagnosticsBuilder.FormatSummary(routingCatalogDiagnostics)}");
+        if (familySummaries.Count > 0) {
+            Console.WriteLine("  Routing families:");
+            foreach (var familySummary in familySummaries) {
+                Console.WriteLine($"    - {familySummary}");
+            }
+        }
+        if (routingWarnings.Count > 0) {
+            Console.WriteLine("  Routing warnings:");
+            foreach (var warning in routingWarnings) {
+                Console.WriteLine($"    - {warning}");
+            }
+        }
         Console.WriteLine("  Packs:");
 
         foreach (var p in descriptors) {
@@ -92,6 +108,12 @@ internal static partial class Program {
         }
 
         Console.WriteLine($"  Dangerous tools: {(dangerousEnabled ? "enabled (explicit opt-in)" : "disabled")}");
+    }
+
+    private static ToolRoutingCatalogDiagnostics BuildRoutingCatalogDiagnostics(IReadOnlyList<IToolPack> packs) {
+        var registry = new ToolRegistry();
+        ToolPackBootstrap.RegisterAll(registry, packs);
+        return ToolRoutingCatalogDiagnosticsBuilder.Build(registry);
     }
 
     private static string? ApplyRuntimeShaping(string? instructions, ReplOptions options) {

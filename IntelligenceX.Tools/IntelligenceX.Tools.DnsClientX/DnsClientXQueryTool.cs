@@ -33,7 +33,12 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
                 ("typed_records", ToolSchema.Boolean("Request typed answer parsing from DnsClientX (default: false).")),
                 ("parse_typed_txt_records", ToolSchema.Boolean("Enable TXT-specific typed parsing in DnsClientX (default: false).")))
             .Required("name")
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "dns",
+        tags: new[] {
+            "resolver",
+            "dns"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DnsClientXQueryTool"/> class.

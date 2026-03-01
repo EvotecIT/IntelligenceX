@@ -1,0 +1,309 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using IntelligenceX.Tools;
+
+namespace IntelligenceX.Chat.Tooling;
+
+/// <summary>
+/// Per-family routing action summary.
+/// </summary>
+public sealed record ToolRoutingFamilyActionSummary {
+    /// <summary>
+    /// Normalized domain intent family token.
+    /// </summary>
+    public required string Family { get; init; }
+
+    /// <summary>
+    /// Action id declared for the family.
+    /// </summary>
+    public required string ActionId { get; init; }
+
+    /// <summary>
+    /// Number of tools mapped to this family/action pair.
+    /// </summary>
+    public required int ToolCount { get; init; }
+}
+
+/// <summary>
+/// Routing catalog diagnostics snapshot.
+/// </summary>
+public sealed record ToolRoutingCatalogDiagnostics {
+    /// <summary>
+    /// Total tool definitions observed.
+    /// </summary>
+    public required int TotalTools { get; init; }
+
+    /// <summary>
+    /// Tools that explicitly participate in routing metadata.
+    /// </summary>
+    public required int RoutingAwareTools { get; init; }
+
+    /// <summary>
+    /// Tools without routing contracts.
+    /// </summary>
+    public required int MissingRoutingContractTools { get; init; }
+
+    /// <summary>
+    /// Tools that declare a non-empty domain intent family.
+    /// </summary>
+    public required int DomainFamilyTools { get; init; }
+
+    /// <summary>
+    /// Tools where domain-family is inferred from identity hints but routing contract omits it.
+    /// </summary>
+    public required int ExpectedDomainFamilyMissingTools { get; init; }
+
+    /// <summary>
+    /// Tools that declare family but miss action id.
+    /// </summary>
+    public required int DomainFamilyMissingActionTools { get; init; }
+
+    /// <summary>
+    /// Tools that declare action id but no family.
+    /// </summary>
+    public required int ActionWithoutFamilyTools { get; init; }
+
+    /// <summary>
+    /// Count of domain families that map to multiple action ids.
+    /// </summary>
+    public required int FamilyActionConflictFamilies { get; init; }
+
+    /// <summary>
+    /// Family/action distribution.
+    /// </summary>
+    public required IReadOnlyList<ToolRoutingFamilyActionSummary> FamilyActions { get; init; }
+
+    /// <summary>
+    /// True when no catalog inconsistencies were detected.
+    /// </summary>
+    public bool IsHealthy =>
+        MissingRoutingContractTools == 0
+        && ExpectedDomainFamilyMissingTools == 0
+        && DomainFamilyMissingActionTools == 0
+        && ActionWithoutFamilyTools == 0
+        && FamilyActionConflictFamilies == 0;
+}
+
+/// <summary>
+/// Shared helpers for startup routing catalog diagnostics in host and service.
+/// </summary>
+public static class ToolRoutingCatalogDiagnosticsBuilder {
+    /// <summary>
+    /// Builds diagnostics for the current registry state.
+    /// </summary>
+    public static ToolRoutingCatalogDiagnostics Build(ToolRegistry registry) {
+        if (registry is null) {
+            throw new ArgumentNullException(nameof(registry));
+        }
+
+        return Build(registry.GetDefinitions());
+    }
+
+    /// <summary>
+    /// Builds diagnostics for the supplied tool definitions.
+    /// </summary>
+    public static ToolRoutingCatalogDiagnostics Build(IReadOnlyList<ToolDefinition> definitions) {
+        if (definitions is null) {
+            throw new ArgumentNullException(nameof(definitions));
+        }
+
+        var totalTools = definitions.Count;
+        var routingAwareTools = 0;
+        var missingRoutingContractTools = 0;
+        var domainFamilyTools = 0;
+        var expectedDomainFamilyMissingTools = 0;
+        var domainFamilyMissingActionTools = 0;
+        var actionWithoutFamilyTools = 0;
+
+        var familyActionCounts = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var routing = definition.Routing;
+            var family = NormalizeToken(routing?.DomainIntentFamily);
+            var actionId = NormalizeToken(routing?.DomainIntentActionId);
+
+            if (routing is null) {
+                missingRoutingContractTools++;
+                if (family.Length == 0
+                    && ToolSelectionMetadata.TryResolveDomainIntentFamily(
+                        toolName: definition.Name,
+                        category: definition.Category,
+                        tags: definition.Tags,
+                        out _)) {
+                    expectedDomainFamilyMissingTools++;
+                }
+                continue;
+            }
+
+            if (routing.IsRoutingAware) {
+                routingAwareTools++;
+            }
+
+            if (family.Length == 0) {
+                if (ToolSelectionMetadata.TryResolveDomainIntentFamily(
+                        toolName: definition.Name,
+                        category: definition.Category,
+                        tags: definition.Tags,
+                        out _)) {
+                    expectedDomainFamilyMissingTools++;
+                }
+            } else {
+                domainFamilyTools++;
+                if (actionId.Length == 0) {
+                    domainFamilyMissingActionTools++;
+                } else {
+                    if (!familyActionCounts.TryGetValue(family, out var actionCounts)) {
+                        actionCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                        familyActionCounts[family] = actionCounts;
+                    }
+
+                    actionCounts.TryGetValue(actionId, out var currentCount);
+                    actionCounts[actionId] = currentCount + 1;
+                }
+            }
+
+            if (family.Length == 0 && actionId.Length > 0) {
+                actionWithoutFamilyTools++;
+            }
+        }
+
+        var familyActions = new List<ToolRoutingFamilyActionSummary>();
+        var familyActionConflictFamilies = 0;
+
+        foreach (var familyPair in familyActionCounts.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+            var actionCountById = familyPair.Value;
+            if (actionCountById.Count > 1) {
+                familyActionConflictFamilies++;
+            }
+
+            foreach (var actionPair in actionCountById.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+                familyActions.Add(new ToolRoutingFamilyActionSummary {
+                    Family = familyPair.Key,
+                    ActionId = actionPair.Key,
+                    ToolCount = Math.Max(0, actionPair.Value)
+                });
+            }
+        }
+
+        return new ToolRoutingCatalogDiagnostics {
+            TotalTools = totalTools,
+            RoutingAwareTools = routingAwareTools,
+            MissingRoutingContractTools = missingRoutingContractTools,
+            DomainFamilyTools = domainFamilyTools,
+            ExpectedDomainFamilyMissingTools = expectedDomainFamilyMissingTools,
+            DomainFamilyMissingActionTools = domainFamilyMissingActionTools,
+            ActionWithoutFamilyTools = actionWithoutFamilyTools,
+            FamilyActionConflictFamilies = familyActionConflictFamilies,
+            FamilyActions = familyActions.Count == 0 ? Array.Empty<ToolRoutingFamilyActionSummary>() : familyActions
+        };
+    }
+
+    /// <summary>
+    /// Formats a one-line diagnostics summary for startup status banners.
+    /// </summary>
+    public static string FormatSummary(ToolRoutingCatalogDiagnostics diagnostics) {
+        if (diagnostics is null) {
+            throw new ArgumentNullException(nameof(diagnostics));
+        }
+
+        return
+            $"tools={diagnostics.TotalTools}, " +
+            $"routing_aware={diagnostics.RoutingAwareTools}, " +
+            $"missing_contract={diagnostics.MissingRoutingContractTools}, " +
+            $"domain_families={diagnostics.DomainFamilyTools}, " +
+            $"expected_family_missing={diagnostics.ExpectedDomainFamilyMissingTools}, " +
+            $"missing_action={diagnostics.DomainFamilyMissingActionTools}, " +
+            $"action_without_family={diagnostics.ActionWithoutFamilyTools}, " +
+            $"conflicts={diagnostics.FamilyActionConflictFamilies}";
+    }
+
+    /// <summary>
+    /// Formats family/action entries for startup diagnostics banners.
+    /// </summary>
+    public static IReadOnlyList<string> FormatFamilySummaries(ToolRoutingCatalogDiagnostics diagnostics, int maxItems = 8) {
+        if (diagnostics is null) {
+            throw new ArgumentNullException(nameof(diagnostics));
+        }
+
+        if (maxItems <= 0 || diagnostics.FamilyActions.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var byFamily = diagnostics.FamilyActions
+            .GroupBy(static item => item.Family, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (byFamily.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var lines = new List<string>(Math.Min(maxItems, byFamily.Length));
+        for (var i = 0; i < byFamily.Length && lines.Count < maxItems; i++) {
+            var group = byFamily[i];
+            var actionParts = group
+                .OrderBy(static item => item.ActionId, StringComparer.OrdinalIgnoreCase)
+                .Select(static item => $"{item.ActionId} ({item.ToolCount})");
+            lines.Add($"{group.Key}: {string.Join(", ", actionParts)}");
+        }
+
+        return lines.Count == 0 ? Array.Empty<string>() : lines.ToArray();
+    }
+
+    /// <summary>
+    /// Builds issue-oriented warnings when diagnostics detect degraded routing catalog state.
+    /// </summary>
+    public static IReadOnlyList<string> BuildWarnings(ToolRoutingCatalogDiagnostics diagnostics, int maxWarnings = 8) {
+        if (diagnostics is null) {
+            throw new ArgumentNullException(nameof(diagnostics));
+        }
+
+        if (maxWarnings <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var warnings = new List<string>();
+        AddWarningIfPositive(warnings, diagnostics.MissingRoutingContractTools, "tool(s) are missing routing contracts.");
+        AddWarningIfPositive(warnings, diagnostics.ExpectedDomainFamilyMissingTools,
+            "tool(s) are missing domain intent family despite inferred scope.");
+        AddWarningIfPositive(warnings, diagnostics.DomainFamilyMissingActionTools,
+            "tool(s) declare a domain intent family but miss action id.");
+        AddWarningIfPositive(warnings, diagnostics.ActionWithoutFamilyTools,
+            "tool(s) declare an action id without a domain intent family.");
+        AddWarningIfPositive(warnings, diagnostics.FamilyActionConflictFamilies,
+            "domain intent family/families map to multiple action ids.");
+
+        if (warnings.Count >= maxWarnings) {
+            return warnings.Take(maxWarnings).ToArray();
+        }
+
+        var conflictingFamilies = diagnostics.FamilyActions
+            .GroupBy(static item => item.Family, StringComparer.OrdinalIgnoreCase)
+            .Where(static group => group.Select(item => item.ActionId).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+            .OrderBy(static group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => $"{group.Key}: {string.Join(", ", group.Select(item => item.ActionId).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(static id => id, StringComparer.OrdinalIgnoreCase))}")
+            .ToArray();
+        for (var i = 0; i < conflictingFamilies.Length && warnings.Count < maxWarnings; i++) {
+            warnings.Add("conflict " + conflictingFamilies[i]);
+        }
+
+        return warnings.Count == 0 ? Array.Empty<string>() : warnings.ToArray();
+    }
+
+    private static void AddWarningIfPositive(List<string> warnings, int count, string suffix) {
+        if (count <= 0) {
+            return;
+        }
+
+        warnings.Add($"{count} {suffix}");
+    }
+
+    private static string NormalizeToken(string? value) {
+        return (value ?? string.Empty).Trim();
+    }
+}

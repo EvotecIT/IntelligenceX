@@ -640,6 +640,90 @@
     return { text: "Starting runtime...", tone: "warn" };
   }
 
+  function buildRoutingStatusChipModel() {
+    var policy = (state.options && state.options.policy) || null;
+    var routingCatalog = normalizeRoutingCatalog(policy ? policy.routingCatalog : null);
+    if (!routingCatalog) {
+      return {
+        visible: false,
+        text: "Routing catalog unavailable",
+        tone: "warn",
+        title: "Routing catalog diagnostics are not available for this session."
+      };
+    }
+
+    var issueCount = routingCatalog.missingRoutingContractTools
+      + routingCatalog.expectedDomainFamilyMissingTools
+      + routingCatalog.domainFamilyMissingActionTools
+      + routingCatalog.actionWithoutFamilyTools
+      + routingCatalog.familyActionConflictFamilies;
+
+    var headerText = routingCatalog.isHealthy
+      ? "Routing healthy"
+      : ("Routing issues: " + String(issueCount));
+
+    var titleLines = [];
+    titleLines.push("Routing catalog: " + (routingCatalog.isHealthy ? "healthy" : "degraded"));
+    titleLines.push("Routing-aware tools: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
+    titleLines.push("Domain-family tools: " + routingCatalog.domainFamilyTools);
+    if (routingCatalog.missingRoutingContractTools > 0) {
+      titleLines.push("Missing contracts: " + routingCatalog.missingRoutingContractTools);
+    }
+    if (routingCatalog.expectedDomainFamilyMissingTools > 0) {
+      titleLines.push("Expected family missing: " + routingCatalog.expectedDomainFamilyMissingTools);
+    }
+    if (routingCatalog.domainFamilyMissingActionTools > 0) {
+      titleLines.push("Family missing action: " + routingCatalog.domainFamilyMissingActionTools);
+    }
+    if (routingCatalog.actionWithoutFamilyTools > 0) {
+      titleLines.push("Action without family: " + routingCatalog.actionWithoutFamilyTools);
+    }
+    if (routingCatalog.familyActionConflictFamilies > 0) {
+      titleLines.push("Family action conflicts: " + routingCatalog.familyActionConflictFamilies);
+    }
+    if (routingCatalog.familyActions.length > 0) {
+      titleLines.push("Families:");
+      for (var i = 0; i < routingCatalog.familyActions.length; i++) {
+        var familyAction = routingCatalog.familyActions[i];
+        titleLines.push("- " + familyAction.family + " -> " + familyAction.actionId + " (" + familyAction.toolCount + ")");
+      }
+    }
+
+    return {
+      visible: true,
+      text: headerText,
+      tone: routingCatalog.isHealthy ? "ok" : "bad",
+      title: titleLines.join("\n")
+    };
+  }
+
+  function updateRoutingStatusVisual() {
+    var routingEl = byId("routingStatus");
+    if (!routingEl) {
+      return;
+    }
+
+    var model = buildRoutingStatusChipModel();
+    routingEl.classList.remove("ok", "warn", "bad");
+    if (!model.visible) {
+      routingEl.hidden = true;
+      routingEl.textContent = "";
+      routingEl.title = "";
+      return;
+    }
+
+    routingEl.hidden = false;
+    routingEl.textContent = model.text;
+    routingEl.title = model.title || "";
+    if (model.tone === "ok") {
+      routingEl.classList.add("ok");
+    } else if (model.tone === "bad") {
+      routingEl.classList.add("bad");
+    } else {
+      routingEl.classList.add("warn");
+    }
+  }
+
   function updateStatusVisual(text, tone) {
     var statusEl = byId("status");
     var value = String(text || "").trim();
@@ -667,24 +751,21 @@
     statusEl.classList.remove("ok", "warn", "bad");
     if (normalizedTone === "ok") {
       statusEl.classList.add("ok");
-      return;
-    }
-    if (normalizedTone === "warn") {
+    } else if (normalizedTone === "warn") {
       statusEl.classList.add("warn");
-      return;
-    }
-    if (normalizedTone === "bad") {
+    } else if (normalizedTone === "bad") {
       statusEl.classList.add("bad");
-      return;
-    }
-
-    if (lower.indexOf("failed") >= 0 || lower.indexOf("error") >= 0 || lower.indexOf("limit") >= 0 || lower.indexOf("quota") >= 0 || lower.indexOf("unavailable") >= 0) {
+    } else if (lower.indexOf("failed") >= 0 || lower.indexOf("error") >= 0 || lower.indexOf("limit") >= 0 || lower.indexOf("quota") >= 0 || lower.indexOf("unavailable") >= 0) {
       statusEl.classList.add("bad");
     } else if (lower.indexOf("connected") >= 0 || lower.indexOf("ready") >= 0) {
       statusEl.classList.add("ok");
     } else if (lower.indexOf("sign") >= 0 || lower.indexOf("wait") >= 0 || lower.indexOf("open") >= 0 || lower.indexOf("start") >= 0) {
       statusEl.classList.add("warn");
+    } else {
+      statusEl.classList.add("warn");
     }
+
+    updateRoutingStatusVisual();
   }
 
   function updateWindowControlsState() {
@@ -817,6 +898,7 @@
     var policyEl = byId("policyInfo");
     var startupWarningsEl = byId("policyStartupWarnings");
     var pluginRootsEl = byId("policyPluginRoots");
+    var routingCatalogEl = byId("policyRoutingCatalog");
     policyEl.innerHTML = "";
 
     var p = state.options.policy;
@@ -830,11 +912,27 @@
         pluginRootsEl.hidden = true;
         pluginRootsEl.innerHTML = "";
       }
+      if (routingCatalogEl) {
+        routingCatalogEl.hidden = true;
+        routingCatalogEl.innerHTML = "";
+        routingCatalogEl.classList.remove("options-policy-list-warn");
+      }
       return;
     }
 
     var startupWarnings = toStringArray(p.startupWarnings);
     var pluginSearchPaths = toStringArray(p.pluginSearchPaths);
+    var routingCatalog = normalizeRoutingCatalog(p.routingCatalog);
+    var runtimeNotices = routingCatalog
+      ? filterOutRoutingCatalogWarnings(startupWarnings)
+      : startupWarnings;
+    var routingIssueCount = routingCatalog
+      ? routingCatalog.missingRoutingContractTools
+        + routingCatalog.expectedDomainFamilyMissingTools
+        + routingCatalog.domainFamilyMissingActionTools
+        + routingCatalog.actionWithoutFamilyTools
+        + routingCatalog.familyActionConflictFamilies
+      : 0;
     var rows = [
       ["Read-only", p.readOnly ? "Yes" : "No"],
       ["Parallel tools", p.parallelTools ? "Yes" : "No"],
@@ -842,8 +940,10 @@
       ["Max tool rounds", p.maxToolRounds == null ? "Default" : String(p.maxToolRounds)],
       ["Turn timeout", p.turnTimeoutSeconds == null ? "Default" : (String(p.turnTimeoutSeconds) + "s")],
       ["Tool timeout", p.toolTimeoutSeconds == null ? "Default" : (String(p.toolTimeoutSeconds) + "s")],
+      ["Routing catalog", !routingCatalog ? "Not available" : (routingCatalog.isHealthy ? "Healthy" : ("Degraded (" + routingIssueCount + ")"))],
+      ["Routing families", !routingCatalog ? "N/A" : String(routingCatalog.familyActions.length)],
       ["Plugin roots", pluginSearchPaths.length === 0 ? "None" : String(pluginSearchPaths.length)],
-      ["Runtime notices", startupWarnings.length === 0 ? "None" : String(startupWarnings.length)]
+      ["Runtime notices", runtimeNotices.length === 0 ? "None" : String(runtimeNotices.length)]
     ];
 
     for (var i = 0; i < rows.length; i++) {
@@ -857,8 +957,140 @@
       policyEl.appendChild(v);
     }
 
+    renderRoutingCatalogPolicy(routingCatalogEl, routingCatalog);
     renderPolicyList(pluginRootsEl, pluginSearchPaths, "Plugin search roots");
-    renderPolicyList(startupWarningsEl, startupWarnings, startupWarnings.length === 1 ? "Runtime notice" : "Runtime notices");
+    renderPolicyList(startupWarningsEl, runtimeNotices, runtimeNotices.length === 1 ? "Runtime notice" : "Runtime notices");
+  }
+
+  function toNonNegativeInt(value) {
+    var number = Number(value);
+    if (!Number.isFinite(number) || number < 0) {
+      return 0;
+    }
+    return Math.floor(number);
+  }
+
+  function normalizeRoutingCatalog(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    var familyActionsRaw = Array.isArray(value.familyActions) ? value.familyActions : [];
+    var familyActions = [];
+    for (var i = 0; i < familyActionsRaw.length; i++) {
+      var item = familyActionsRaw[i];
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      var family = typeof item.family === "string" ? item.family.trim() : "";
+      var actionId = typeof item.actionId === "string" ? item.actionId.trim() : "";
+      if (!family || !actionId) {
+        continue;
+      }
+
+      familyActions.push({
+        family: family,
+        actionId: actionId,
+        toolCount: toNonNegativeInt(item.toolCount)
+      });
+    }
+
+    var routingCatalog = {
+      totalTools: toNonNegativeInt(value.totalTools),
+      routingAwareTools: toNonNegativeInt(value.routingAwareTools),
+      missingRoutingContractTools: toNonNegativeInt(value.missingRoutingContractTools),
+      domainFamilyTools: toNonNegativeInt(value.domainFamilyTools),
+      expectedDomainFamilyMissingTools: toNonNegativeInt(value.expectedDomainFamilyMissingTools),
+      domainFamilyMissingActionTools: toNonNegativeInt(value.domainFamilyMissingActionTools),
+      actionWithoutFamilyTools: toNonNegativeInt(value.actionWithoutFamilyTools),
+      familyActionConflictFamilies: toNonNegativeInt(value.familyActionConflictFamilies),
+      isHealthy: value.isHealthy === true,
+      familyActions: familyActions
+    };
+
+    var issueCount = routingCatalog.missingRoutingContractTools
+      + routingCatalog.expectedDomainFamilyMissingTools
+      + routingCatalog.domainFamilyMissingActionTools
+      + routingCatalog.actionWithoutFamilyTools
+      + routingCatalog.familyActionConflictFamilies;
+    if (issueCount > 0) {
+      routingCatalog.isHealthy = false;
+    }
+
+    return routingCatalog;
+  }
+
+  function renderRoutingCatalogPolicy(host, routingCatalog) {
+    if (!host) {
+      return;
+    }
+
+    host.innerHTML = "";
+    host.classList.remove("options-policy-list-warn");
+
+    if (!routingCatalog) {
+      host.hidden = true;
+      return;
+    }
+
+    var lines = [];
+    lines.push("health: " + (routingCatalog.isHealthy ? "healthy" : "degraded"));
+    lines.push("routing-aware: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
+    lines.push("domain-family tools: " + routingCatalog.domainFamilyTools);
+    if (routingCatalog.missingRoutingContractTools > 0) {
+      lines.push("missing contracts: " + routingCatalog.missingRoutingContractTools);
+    }
+    if (routingCatalog.expectedDomainFamilyMissingTools > 0) {
+      lines.push("expected family missing: " + routingCatalog.expectedDomainFamilyMissingTools);
+    }
+    if (routingCatalog.domainFamilyMissingActionTools > 0) {
+      lines.push("family missing action: " + routingCatalog.domainFamilyMissingActionTools);
+    }
+    if (routingCatalog.actionWithoutFamilyTools > 0) {
+      lines.push("action without family: " + routingCatalog.actionWithoutFamilyTools);
+    }
+    if (routingCatalog.familyActionConflictFamilies > 0) {
+      lines.push("family action conflicts: " + routingCatalog.familyActionConflictFamilies);
+    }
+
+    for (var i = 0; i < routingCatalog.familyActions.length; i++) {
+      var familyAction = routingCatalog.familyActions[i];
+      lines.push("family " + familyAction.family + " -> " + familyAction.actionId + " (" + familyAction.toolCount + ")");
+    }
+
+    if (!routingCatalog.isHealthy) {
+      host.classList.add("options-policy-list-warn");
+    }
+
+    renderPolicyList(host, lines, "Routing catalog");
+  }
+
+  function filterOutRoutingCatalogWarnings(values) {
+    if (!Array.isArray(values) || values.length === 0) {
+      return [];
+    }
+
+    var filtered = [];
+    for (var i = 0; i < values.length; i++) {
+      var value = values[i];
+      if (typeof value !== "string") {
+        continue;
+      }
+
+      var normalized = value.trim();
+      if (!normalized) {
+        continue;
+      }
+
+      if (normalized.toLowerCase().indexOf("[routing catalog]") === 0) {
+        continue;
+      }
+
+      filtered.push(normalized);
+    }
+
+    return filtered;
   }
 
   function renderPolicyList(host, values, title) {

@@ -291,6 +291,66 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
+    private bool HasFreshPendingActionsContext(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        PendingAction[]? actions;
+        long seenTicks;
+        lock (_toolRoutingContextLock) {
+            _pendingActionsByThreadId.TryGetValue(normalizedThreadId, out actions);
+            seenTicks = _pendingActionsSeenUtcTicks.TryGetValue(normalizedThreadId, out var cachedSeenTicks)
+                ? cachedSeenTicks
+                : 0;
+        }
+
+        if (actions is null || actions.Length == 0 || seenTicks <= 0) {
+            if (!TryLoadPendingActionsSnapshot(normalizedThreadId, out var persistedSeenTicks, out var persistedActions, out var persistedCallToActionTokens)) {
+                return false;
+            }
+
+            actions = persistedActions;
+            seenTicks = persistedSeenTicks;
+            lock (_toolRoutingContextLock) {
+                _pendingActionsByThreadId[normalizedThreadId] = persistedActions;
+                _pendingActionsSeenUtcTicks[normalizedThreadId] = persistedSeenTicks;
+                if (persistedCallToActionTokens is { Length: > 0 }) {
+                    _pendingActionsCallToActionTokensByThreadId[normalizedThreadId] = persistedCallToActionTokens;
+                } else {
+                    _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
+                }
+                TrimWeightedRoutingContextsNoLock();
+            }
+        }
+
+        if (actions is null || actions.Length == 0 || seenTicks <= 0 || !TryGetUtcDateTimeFromTicks(seenTicks, out var seenUtc)) {
+            lock (_toolRoutingContextLock) {
+                _pendingActionsByThreadId.Remove(normalizedThreadId);
+                _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
+                TrimWeightedRoutingContextsNoLock();
+            }
+            RemovePendingActionsSnapshot(normalizedThreadId);
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        if (seenUtc > now || now - seenUtc > PendingActionContextMaxAge) {
+            lock (_toolRoutingContextLock) {
+                _pendingActionsByThreadId.Remove(normalizedThreadId);
+                _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
+                TrimWeightedRoutingContextsNoLock();
+            }
+            RemovePendingActionsSnapshot(normalizedThreadId);
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool TryBuildSinglePendingActionSelectionPayload(string assistantDraft, out string payloadJson, out string actionId) {
         payloadJson = string.Empty;
         actionId = string.Empty;

@@ -11,10 +11,14 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private bool TryBuildDomainIntentHostScopeGuardrailOutput(string threadId, string userRequest, ToolCall call, out ToolOutputDto output) {
         output = null!;
+        ToolDefinition? toolDefinition = null;
+        if (_registry.TryGetDefinition(call.Name, out var registeredDefinition) && registeredDefinition is not null) {
+            toolDefinition = ToolSelectionMetadata.Enrich(registeredDefinition, toolType: null);
+        }
 
         if (!TryGetCurrentDomainIntentFamily(threadId, out var family)
             || !string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
-            || !IsDomainIntentHostGuardrailCandidateTool(call.Name)) {
+            || !IsDomainIntentHostGuardrailCandidateTool(call.Name, toolDefinition)) {
             return false;
         }
 
@@ -59,14 +63,39 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private static bool IsDomainIntentHostGuardrailCandidateTool(string toolName) {
+    private static bool IsDomainIntentHostGuardrailCandidateTool(string toolName, ToolDefinition? definition = null) {
         var normalizedToolName = (toolName ?? string.Empty).Trim();
         if (normalizedToolName.Length == 0) {
             return false;
         }
 
-        return normalizedToolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
-               || normalizedToolName.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase);
+        if (definition is not null) {
+            if (ToolSelectionMetadata.TryResolveDomainIntentFamily(definition, out var family)
+                && string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+                return true;
+            }
+
+            if (ToolSelectionMetadata.TryResolvePackId(definition, out var packId)
+                && string.Equals(packId, "eventlog", StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        if (ToolSelectionMetadata.TryResolveDomainIntentFamily(
+                normalizedToolName,
+                definition?.Category,
+                definition?.Tags,
+                out var inferredFamily)
+            && string.Equals(inferredFamily, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+            return true;
+        }
+
+        return ToolSelectionMetadata.TryResolvePackId(
+                   normalizedToolName,
+                   definition?.Category,
+                   definition?.Tags,
+                   out var inferredPackId)
+               && string.Equals(inferredPackId, "eventlog", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string[] ExtractHostScopedTargets(JsonObject? arguments) {
@@ -236,5 +265,9 @@ internal sealed partial class ChatServiceSession {
 
     internal bool TryBuildDomainIntentHostScopeGuardrailOutputForTesting(string threadId, string userRequest, ToolCall call, out ToolOutputDto output) {
         return TryBuildDomainIntentHostScopeGuardrailOutput(threadId, userRequest, call, out output);
+    }
+
+    internal static bool IsDomainIntentHostGuardrailCandidateToolForTesting(string toolName, ToolDefinition? definition = null) {
+        return IsDomainIntentHostGuardrailCandidateTool(toolName, definition);
     }
 }

@@ -60,20 +60,20 @@
 
     <!-- Local development: prefer an external OfficeIMO checkout for markdown rendering. -->
     <ProjectReference Include="$(OfficeImoMarkdownRendererProject)"
-                      Condition="Exists('$(OfficeImoMarkdownRendererProject)')" />
+                      Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoMarkdownRendererProject)')" />
     <Reference Include="OfficeIMO.MarkdownRenderer"
-               Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownRendererDll)')">
+               Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and !Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownRendererDll)')">
       <HintPath>$(OfficeImoMarkdownRendererDll)</HintPath>
       <Private>true</Private>
     </Reference>
     <Reference Include="OfficeIMO.Markdown"
-               Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownDll)')">
+               Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and !Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownDll)')">
       <HintPath>$(OfficeImoMarkdownDll)</HintPath>
       <Private>true</Private>
     </Reference>
 
     <PackageReference Include="OfficeIMO.MarkdownRenderer" Version="$(OfficeImoMarkdownRendererNuGetVersion)"
-                      Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)')" />
+                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or (!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)'))" />
   </ItemGroup>
 
   <ItemGroup>

@@ -137,7 +137,7 @@ public static partial class OfficeImoArtifactWriter {
             AllowLocalImages = allowedImageDirectories is { Count: > 0 },
             PreferNarrativeSingleLineDefinitions = true,
             FitImagesToContextWidth = true,
-            MaxImageWidthPercentOfContent = 100
+            MaxImageWidthPercentOfContent = 100d
         };
         ApplyMarkdownImageSizingOptions(options, docxVisualMaxWidthPx);
         if (allowedImageDirectories is { Count: > 0 }) {
@@ -159,8 +159,8 @@ public static partial class OfficeImoArtifactWriter {
 
     private static void ApplyMarkdownImageSizingOptions(MarkdownToWordOptions options, int? docxVisualMaxWidthPx) {
         var normalizedWidth = NormalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx);
-        TrySetMarkdownOption(options, "FitImagesToPageContentWidth", true);
-        TrySetMarkdownOption(options, "MaxImageWidthPixels", (double)normalizedWidth);
+        options.FitImagesToPageContentWidth = true;
+        options.MaxImageWidthPixels = normalizedWidth;
     }
 
     private static int NormalizeDocxVisualMaxWidthPx(int? value) {
@@ -178,26 +178,6 @@ public static partial class OfficeImoArtifactWriter {
         }
 
         return normalized;
-    }
-
-    private static void TrySetMarkdownOption(MarkdownToWordOptions options, string propertyName, object value) {
-        var property = options.GetType().GetProperty(propertyName);
-        if (property == null || !property.CanWrite) {
-            return;
-        }
-
-        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-        if (targetType.IsInstanceOfType(value)) {
-            property.SetValue(options, value);
-            return;
-        }
-
-        try {
-            var converted = Convert.ChangeType(value, targetType);
-            property.SetValue(options, converted);
-        } catch {
-            // Option type mismatch should not block DOCX export.
-        }
     }
 
     private static IReadOnlyList<string> BuildAllowedImageDirectories(IReadOnlyList<string>? additionalDirectories) {

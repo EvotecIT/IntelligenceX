@@ -13,7 +13,34 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
     private static readonly ToolDefinition DefinitionValue = new(
         "dnsclientx_pack_info",
         "Return DnsClientX pack capabilities, output contract, and recommended usage patterns.",
-        ToolSchema.Object().NoAdditionalProperties());
+        ToolSchema.Object().NoAdditionalProperties(),
+        category: "dns",
+        tags: new[] {
+            "pack:dnsclientx",
+            "domain_family:public_domain",
+            "domain_signals:dns,mx,spf,dmarc,dkim,ns,dnssec,caa,whois,mta_sts,bimi,dnsclientx,dns_client_x"
+        },
+        routing: new ToolRoutingContract {
+            IsRoutingAware = true,
+            PackId = "dnsclientx",
+            DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+            DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic,
+            DomainSignalTokens = new[] {
+                "dns",
+                "mx",
+                "spf",
+                "dmarc",
+                "dkim",
+                "ns",
+                "dnssec",
+                "caa",
+                "whois",
+                "mta_sts",
+                "bimi",
+                "dnsclientx",
+                "dns_client_x"
+            }
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DnsClientXPackInfoTool"/> class.
@@ -86,4 +113,3 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
         return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
     }
 }
-

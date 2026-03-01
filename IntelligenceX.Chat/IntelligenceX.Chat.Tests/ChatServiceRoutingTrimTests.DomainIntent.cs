@@ -14,8 +14,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
         ?? throw new InvalidOperationException("ShouldRequestDomainIntentClarification not found.");
 
     private static readonly MethodInfo BuildDomainIntentClarificationTextMethod =
-        typeof(ChatServiceSession).GetMethod("BuildDomainIntentClarificationText", BindingFlags.NonPublic | BindingFlags.Static)
+        typeof(ChatServiceSession).GetMethod(
+            "BuildDomainIntentClarificationText",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null)
         ?? throw new InvalidOperationException("BuildDomainIntentClarificationText not found.");
+
+    private static readonly MethodInfo BuildDomainIntentClarificationVisibleTextMethod =
+        typeof(ChatServiceSession).GetMethod(
+            "BuildDomainIntentClarificationVisibleText",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null)
+        ?? throw new InvalidOperationException("BuildDomainIntentClarificationVisibleText not found.");
 
     [Fact]
     public void ShouldRequestDomainIntentClarification_TrueForMixedAdAndPublicDomainSubset() {
@@ -192,6 +206,38 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("Active Directory domain scope", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Public DNS/domain scope", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Accepted quick replies", clarification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildDomainIntentClarificationVisibleText_DoesNotExposeProtocolMarkers() {
+        var text = BuildDomainIntentClarificationVisibleTextMethod.Invoke(null, Array.Empty<object?>());
+        var clarification = Assert.IsType<string>(text);
+
+        Assert.Contains("1.", clarification, StringComparison.Ordinal);
+        Assert.Contains("2.", clarification, StringComparison.Ordinal);
+        Assert.Contains("AD", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DNS", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[DomainIntent]", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:domain-intent", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[Action]", clarification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildDomainIntentClarificationTextForTesting_ReturnsEmptyWhenOnlyOneFamilyIsAvailable() {
+        var clarification = ChatServiceSession.BuildDomainIntentClarificationTextForTesting(
+            hasAdFamily: true,
+            hasPublicFamily: false);
+
+        Assert.Equal(string.Empty, clarification);
+    }
+
+    [Fact]
+    public void BuildDomainIntentClarificationVisibleTextForTesting_ReturnsEmptyWhenOnlyOneFamilyIsAvailable() {
+        var clarification = ChatServiceSession.BuildDomainIntentClarificationVisibleTextForTesting(
+            hasAdFamily: false,
+            hasPublicFamily: true);
+
+        Assert.Equal(string.Empty, clarification);
     }
 
     [Fact]

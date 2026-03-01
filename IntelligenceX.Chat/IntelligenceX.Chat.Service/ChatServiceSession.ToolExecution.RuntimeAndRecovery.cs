@@ -267,7 +267,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Retry profile wiring is enforced in this execution loop.
-        var profile = ResolveRetryProfile(call.Name);
+        ToolDefinition? toolDefinition = null;
+        if (_registry.TryGetDefinition(call.Name, out var registeredDefinition) && registeredDefinition is not null) {
+            toolDefinition = ToolSelectionMetadata.Enrich(registeredDefinition, tool.GetType());
+        }
+        var profile = ResolveRetryProfile(call.Name, toolDefinition);
         var currentCall = call;
         var projectionFallbackAttempted = false;
         ToolOutputDto? lastFailure = null;
@@ -539,31 +543,49 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static ToolRetryProfile ResolveRetryProfile(string? toolName) {
-        var normalized = (toolName ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.StartsWith("ad_", StringComparison.Ordinal)) {
-            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 200, RetryOnTimeout: true, RetryOnTransport: true);
-        }
-        if (normalized.StartsWith("eventlog_", StringComparison.Ordinal)) {
-            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 150, RetryOnTimeout: true, RetryOnTransport: true);
-        }
-        if (normalized.StartsWith("system_", StringComparison.Ordinal)
-            || normalized.StartsWith("computerx_", StringComparison.Ordinal)
-            || normalized.StartsWith("wsl_", StringComparison.Ordinal)) {
-            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 120, RetryOnTimeout: true, RetryOnTransport: true);
-        }
-        if (normalized.StartsWith("domaindetective_", StringComparison.Ordinal)
-            || normalized.StartsWith("domain_detective_", StringComparison.Ordinal)
-            || normalized.StartsWith("dnsclientx_", StringComparison.Ordinal)
-            || normalized.StartsWith("dns_client_x_", StringComparison.Ordinal)
-            || normalized.StartsWith("testimox_", StringComparison.Ordinal)
-            || normalized.StartsWith("testimo_x_", StringComparison.Ordinal)) {
-            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true);
-        }
-        if (normalized.StartsWith("fs_", StringComparison.Ordinal)) {
-            return new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 90, RetryOnTimeout: true, RetryOnTransport: false);
+        return ResolveRetryProfile(toolName, definition: null);
+    }
+
+    private static ToolRetryProfile ResolveRetryProfile(string? toolName, ToolDefinition? definition) {
+        if (!TryResolveRetryProfilePackId(toolName, definition, out var packId)) {
+            return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
         }
 
-        return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
+        return packId switch {
+            "active_directory" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 200, RetryOnTimeout: true, RetryOnTransport: true),
+            "eventlog" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 150, RetryOnTimeout: true, RetryOnTransport: true),
+            "system" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 120, RetryOnTimeout: true, RetryOnTransport: true),
+            "domaindetective" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
+            "dnsclientx" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
+            "testimox" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
+            "filesystem" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 90, RetryOnTimeout: true, RetryOnTransport: false),
+            _ => new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false)
+        };
+    }
+
+    private static bool TryResolveRetryProfilePackId(string? toolName, ToolDefinition? definition, out string packId) {
+        packId = string.Empty;
+        if (definition is not null) {
+            if (ToolSelectionMetadata.TryResolvePackId(definition, out packId) && packId.Length > 0) {
+                return true;
+            }
+
+            if (ToolSelectionMetadata.TryResolvePackId(
+                    definition.Name,
+                    definition.Category,
+                    definition.Tags,
+                    out packId)
+                && packId.Length > 0) {
+                return true;
+            }
+        }
+
+        return ToolSelectionMetadata.TryResolvePackId(
+                   toolName,
+                   category: null,
+                   tags: null,
+                   out packId)
+               && packId.Length > 0;
     }
 
 }

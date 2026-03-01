@@ -25,6 +25,7 @@ public sealed class ToolDefinition {
     /// <param name="aliases">Optional aliases that should invoke the same tool implementation.</param>
     /// <param name="aliasOf">Optional canonical tool name when this definition is an alias.</param>
     /// <param name="authentication">Optional authentication contract for tools that require/declare auth behavior.</param>
+    /// <param name="routing">Optional routing contract for host-side orchestration.</param>
     public ToolDefinition(
         string name,
         string? description = null,
@@ -35,7 +36,8 @@ public sealed class ToolDefinition {
         ToolWriteGovernanceContract? writeGovernance = null,
         IReadOnlyList<ToolAliasDefinition>? aliases = null,
         string? aliasOf = null,
-        ToolAuthenticationContract? authentication = null) {
+        ToolAuthenticationContract? authentication = null,
+        ToolRoutingContract? routing = null) {
         if (string.IsNullOrWhiteSpace(name)) {
             throw new ArgumentException("Tool name cannot be empty.", nameof(name));
         }
@@ -54,6 +56,8 @@ public sealed class ToolDefinition {
         WriteGovernance = writeGovernance;
         authentication?.Validate();
         Authentication = authentication;
+        routing?.Validate();
+        Routing = routing;
         Aliases = NormalizeAliases(aliases, Name);
         AliasOf = string.IsNullOrWhiteSpace(aliasOf) ? null : aliasOf!.Trim();
     }
@@ -99,6 +103,11 @@ public sealed class ToolDefinition {
     /// Gets optional authentication contract for tools that require/declare auth behavior.
     /// </summary>
     public ToolAuthenticationContract? Authentication { get; }
+
+    /// <summary>
+    /// Gets optional routing contract for host-side orchestration.
+    /// </summary>
+    public ToolRoutingContract? Routing { get; }
 
     /// <summary>
     /// Gets the canonical tool name when this definition represents an alias.
@@ -147,7 +156,8 @@ public sealed class ToolDefinition {
             writeGovernance: WriteGovernance,
             aliases: null,
             aliasOf: CanonicalName,
-            authentication: Authentication);
+            authentication: Authentication,
+            routing: Routing);
     }
 
     /// <summary>

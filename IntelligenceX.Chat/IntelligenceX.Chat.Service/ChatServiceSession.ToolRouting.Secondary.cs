@@ -372,46 +372,22 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string ResolvePlannerPackHint(ToolDefinition definition, string category) {
-        for (var i = 0; i < definition.Tags.Count; i++) {
-            var tag = (definition.Tags[i] ?? string.Empty).Trim();
-            if (!ToolRoutingTaxonomy.TryGetTagKeyValue(tag, out var tagKey, out var tagValue)
-                || !string.Equals(tagKey, "pack", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var normalizedTaggedPack = NormalizePackId(tagValue);
-            if (normalizedTaggedPack.Length > 0) {
-                return normalizedTaggedPack;
+        if (ToolSelectionMetadata.TryResolvePackId(definition, out var resolvedPackId)) {
+            var normalizedResolvedPackId = NormalizePackId(resolvedPackId);
+            if (normalizedResolvedPackId.Length > 0) {
+                return normalizedResolvedPackId;
             }
         }
 
-        var toolName = (definition.Name ?? string.Empty).Trim();
-        if (TryResolvePackHintFromToolNamePrefix(toolName, out var packHintFromPrefix)) {
-            return packHintFromPrefix;
-        }
-
-        if (PackIdMatches(category, "active_directory")) {
-            return "active_directory";
-        }
-
-        if (PackIdMatches(category, "eventlog")) {
-            return "eventlog";
-        }
-
-        if (PackIdMatches(category, "system")) {
-            return "system";
-        }
-
-        if (PackIdMatches(category, "testimox")) {
-            return "testimox";
-        }
-
-        if (PackIdMatches(category, "domaindetective")) {
-            return "domaindetective";
-        }
-
-        if (PackIdMatches(category, "dnsclientx")) {
-            return "dnsclientx";
+        if (ToolSelectionMetadata.TryResolvePackId(
+                toolName: definition.Name,
+                category: category,
+                tags: definition.Tags,
+                out var inferredPackId)) {
+            var normalizedInferredPackId = NormalizePackId(inferredPackId);
+            if (normalizedInferredPackId.Length > 0) {
+                return normalizedInferredPackId;
+            }
         }
 
         return string.Empty;
@@ -425,7 +401,7 @@ internal sealed partial class ChatServiceSession {
 
         var aliases = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { normalizedPackHint };
-        foreach (var token in BuildRoutingPackSearchTokens(normalizedPackHint)) {
+        foreach (var token in ToolSelectionMetadata.GetPackSearchTokens(normalizedPackHint)) {
             var alias = (token ?? string.Empty).Trim();
             if (alias.Length == 0 || !seen.Add(alias)) {
                 continue;
@@ -440,46 +416,6 @@ internal sealed partial class ChatServiceSession {
 
         aliases.Sort(StringComparer.OrdinalIgnoreCase);
         return aliases.ToArray();
-    }
-
-    private static bool TryResolvePackHintFromToolNamePrefix(string toolName, out string packHint) {
-        packHint = string.Empty;
-        var normalizedToolName = (toolName ?? string.Empty).Trim();
-        if (normalizedToolName.Length == 0) {
-            return false;
-        }
-
-        if (IsAdDomainIntentToolName(normalizedToolName)) {
-            packHint = "active_directory";
-            return true;
-        }
-
-        if (IsEventLogToolName(normalizedToolName)) {
-            packHint = "eventlog";
-            return true;
-        }
-
-        if (IsSystemToolName(normalizedToolName)) {
-            packHint = "system";
-            return true;
-        }
-
-        if (IsTestimoXToolName(normalizedToolName)) {
-            packHint = "testimox";
-            return true;
-        }
-
-        if (IsDomainDetectiveToolName(normalizedToolName)) {
-            packHint = "domaindetective";
-            return true;
-        }
-
-        if (IsDnsClientXToolName(normalizedToolName)) {
-            packHint = "dnsclientx";
-            return true;
-        }
-
-        return false;
     }
 
     private static string[] ExtractPlannerTags(ToolDefinition definition, int maxCount) {

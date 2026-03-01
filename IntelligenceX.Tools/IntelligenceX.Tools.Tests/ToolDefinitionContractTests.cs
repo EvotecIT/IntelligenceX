@@ -173,7 +173,7 @@ public class ToolDefinitionContractTests {
 
         Assert.Contains("scope:general", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:probe", enriched.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:resource", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:host", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:low", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:inferred", enriched.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(enriched.Tags, "scope:");
@@ -278,7 +278,7 @@ public class ToolDefinitionContractTests {
         Assert.Equal(aliasA.Tags.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase), aliasA.Tags);
         Assert.Contains("scope:domain", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:search", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:resource", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:host", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:high", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:explicit", aliasA.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(aliasA.Tags, "scope:");
@@ -304,7 +304,7 @@ public class ToolDefinitionContractTests {
 
         Assert.Contains("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:probe", alias.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:resource", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:host", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(alias.Tags, "scope:");
@@ -333,7 +333,7 @@ public class ToolDefinitionContractTests {
         Assert.DoesNotContain("scope:", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("scope:general", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("operation:search", alias.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("entity:resource", alias.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("entity:host", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("risk:low", alias.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("routing:inferred", alias.Tags, StringComparer.OrdinalIgnoreCase);
         AssertSingleTaxonomyTag(alias.Tags, "scope:");
@@ -551,13 +551,23 @@ public class ToolDefinitionContractTests {
             Enabled = true
         });
 
+        var definitions = registry.GetDefinitions();
         var names = new HashSet<string>(
-            registry.GetDefinitions().Select(static d => d.Name),
+            definitions.Select(static d => d.Name),
             StringComparer.OrdinalIgnoreCase);
 
         Assert.Contains("testimox_pack_info", names);
         Assert.Contains("testimox_rules_list", names);
         Assert.Contains("testimox_rules_run", names);
+
+        var definitionsByName = definitions.ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+        var rulesList = Assert.IsType<ToolDefinition>(definitionsByName["testimox_rules_list"]);
+        var rulesRun = Assert.IsType<ToolDefinition>(definitionsByName["testimox_rules_run"]);
+
+        Assert.Contains("fallback_hint_keys:search_text,rule_origin,categories,tags,source_types", rulesList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback:requires_selection", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -566,8 +576,9 @@ public class ToolDefinitionContractTests {
         registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
         registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
 
+        var definitions = registry.GetDefinitions();
         var names = new HashSet<string>(
-            registry.GetDefinitions().Select(static d => d.Name),
+            definitions.Select(static d => d.Name),
             StringComparer.OrdinalIgnoreCase);
 
         Assert.Contains("dnsclientx_pack_info", names);
@@ -577,6 +588,165 @@ public class ToolDefinitionContractTests {
         Assert.Contains("domaindetective_checks_catalog", names);
         Assert.Contains("domaindetective_domain_summary", names);
         Assert.Contains("domaindetective_network_probe", names);
+
+        var definitionsByName = definitions.ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+        var dnsPackInfo = Assert.IsType<ToolDefinition>(definitionsByName["dnsclientx_pack_info"]);
+        var domainDetectivePackInfo = Assert.IsType<ToolDefinition>(definitionsByName["domaindetective_pack_info"]);
+        var dnsQuery = Assert.IsType<ToolDefinition>(definitionsByName["dnsclientx_query"]);
+        var dnsPing = Assert.IsType<ToolDefinition>(definitionsByName["dnsclientx_ping"]);
+        var domainSummary = Assert.IsType<ToolDefinition>(definitionsByName["domaindetective_domain_summary"]);
+        var networkProbe = Assert.IsType<ToolDefinition>(definitionsByName["domaindetective_network_probe"]);
+
+        Assert.Contains("domain_family:public_domain", dnsPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_signals:dns,mx,spf,dmarc,dkim,ns,dnssec,caa,whois,mta_sts,bimi,dnsclientx,dns_client_x", dnsPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_family:public_domain", domainDetectivePackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_signals:dns,mx,spf,dmarc,dkim,ns,dnssec,caa,whois,mta_sts,bimi,domaindetective,domain_detective", domainDetectivePackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("resolver", dnsQuery.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("reachability", dnsPing.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_posture", domainSummary.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("reachability", networkProbe.Tags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CoreDomainPacks_ShouldExposeDomainIntentSignalsViaPackInfoTags() {
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+        var adPackInfo = Assert.IsType<ToolDefinition>(definitionsByName["ad_pack_info"]);
+        var eventLogPackInfo = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_pack_info"]);
+
+        Assert.Contains("domain_family:ad_domain", adPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_signals:dc,ldap,gpo,kerberos,replication,sysvol,netlogon,ntds,forest,trust,active_directory,adplayground", adPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_family:ad_domain", eventLogPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_signals:eventlog,security,kerberos,gpo,ad_domain,dc", eventLogPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CorePackInfoTools_ShouldExposeRoutingContractsForDomainIntentFamilies() {
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+        registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
+        registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+
+        var adPackInfo = Assert.IsType<ToolDefinition>(definitionsByName["ad_pack_info"]);
+        var eventLogPackInfo = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_pack_info"]);
+        var dnsPackInfo = Assert.IsType<ToolDefinition>(definitionsByName["dnsclientx_pack_info"]);
+        var domainDetectivePackInfo = Assert.IsType<ToolDefinition>(definitionsByName["domaindetective_pack_info"]);
+
+        AssertRoutingContract(
+            adPackInfo,
+            expectedPackId: "active_directory",
+            expectedFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+            expectedActionId: ToolSelectionMetadata.DomainIntentActionIdAd,
+            expectedSignalToken: "replication");
+        AssertRoutingContract(
+            eventLogPackInfo,
+            expectedPackId: "eventlog",
+            expectedFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+            expectedActionId: ToolSelectionMetadata.DomainIntentActionIdAd,
+            expectedSignalToken: "eventlog");
+        AssertRoutingContract(
+            dnsPackInfo,
+            expectedPackId: "dnsclientx",
+            expectedFamily: ToolSelectionMetadata.DomainIntentFamilyPublic,
+            expectedActionId: ToolSelectionMetadata.DomainIntentActionIdPublic,
+            expectedSignalToken: "dns");
+        AssertRoutingContract(
+            domainDetectivePackInfo,
+            expectedPackId: "domaindetective",
+            expectedFamily: ToolSelectionMetadata.DomainIntentFamilyPublic,
+            expectedActionId: ToolSelectionMetadata.DomainIntentActionIdPublic,
+            expectedSignalToken: "dmarc");
+    }
+
+    [Fact]
+    public void Register_ShouldValidateMutatedRoutingContractBeforeAddingTool() {
+        var routing = new ToolRoutingContract {
+            IsRoutingAware = true,
+            PackId = "active_directory",
+            DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+            DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+        };
+
+        var definition = new ToolDefinition(
+            name: "custom_routing_probe",
+            description: "Routing probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            routing: routing);
+
+        routing.RequiresSelectionForFallback = true;
+        routing.FallbackSelectionKeys = Array.Empty<string>();
+
+        var registry = new ToolRegistry();
+        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(definition)));
+        Assert.Contains("FallbackSelectionKeys", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Register_ShouldRejectRoutingMetadataOptOut() {
+        var definition = new ToolDefinition(
+            name: "custom_routing_opt_out",
+            description: "Routing opt-out probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = false
+            });
+
+        var registry = new ToolRegistry();
+        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(definition)));
+        Assert.Contains("IsRoutingAware=false", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Register_ShouldRejectConflictingDomainIntentActionIdsForSameFamily() {
+        var firstDefinition = new ToolDefinition(
+            name: "custom_ad_pack_a",
+            description: "AD pack A",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                PackId = "active_directory",
+                DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                DomainIntentActionId = "act_domain_scope_ad_custom_a"
+            });
+
+        var secondDefinition = new ToolDefinition(
+            name: "custom_ad_pack_b",
+            description: "AD pack B",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                PackId = "active_directory",
+                DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                DomainIntentActionId = "act_domain_scope_ad_custom_b"
+            });
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(firstDefinition));
+        var ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(secondDefinition)));
+        Assert.Contains("DomainIntentActionId", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AssertRoutingContract(
+        ToolDefinition definition,
+        string expectedPackId,
+        string expectedFamily,
+        string expectedActionId,
+        string expectedSignalToken) {
+        var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
+        Assert.True(routing.IsRoutingAware);
+        Assert.Equal(ToolRoutingContract.DefaultContractId, routing.RoutingContractId);
+        Assert.Equal(expectedPackId, routing.PackId, ignoreCase: true);
+        Assert.Equal(expectedFamily, routing.DomainIntentFamily);
+        Assert.Equal(expectedActionId, routing.DomainIntentActionId);
+        Assert.Contains(expectedSignalToken, routing.DomainSignalTokens, StringComparer.OrdinalIgnoreCase);
     }
 
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {

@@ -25,7 +25,12 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
                 ("max_targets", ToolSchema.Integer("Maximum targets to evaluate from input (capped by pack options).")),
                 ("dont_fragment", ToolSchema.Boolean("Set ICMP Don't Fragment flag (default: false).")),
                 ("buffer_size", ToolSchema.Integer("Ping payload size in bytes (default: 32, capped at 1024).")))
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "dns",
+        tags: new[] {
+            "reachability",
+            "dns"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DnsClientXPingTool"/> class.
@@ -152,4 +157,3 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
         public string? Error { get; init; }
     }
 }
-

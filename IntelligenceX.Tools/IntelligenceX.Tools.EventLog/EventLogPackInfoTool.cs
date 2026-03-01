@@ -15,7 +15,27 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
         "eventlog_pack_info",
         "Return event log pack capabilities, output contract, and recommended usage patterns. Call this first when planning event investigations.",
         ToolSchema.Object()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "eventlog",
+        tags: new[] {
+            "pack:eventlog",
+            "domain_family:ad_domain",
+            "domain_signals:eventlog,security,kerberos,gpo,ad_domain,dc"
+        },
+        routing: new ToolRoutingContract {
+            IsRoutingAware = true,
+            PackId = "eventlog",
+            DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+            DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd,
+            DomainSignalTokens = new[] {
+                "eventlog",
+                "security",
+                "kerberos",
+                "gpo",
+                "ad_domain",
+                "dc"
+            }
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EventLogPackInfoTool"/> class.

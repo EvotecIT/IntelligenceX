@@ -26,25 +26,27 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private static bool TryResolveDomainIntentFamilyFromUserSignals(string userRequest, out string family) {
+        return TryResolveDomainIntentFamilyFromUserSignals(userRequest, availableDefinitions: null, out family);
+    }
+
+    private static bool TryResolveDomainIntentFamilyFromUserSignals(
+        string userRequest,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
         family = string.Empty;
         var normalized = (userRequest ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
         }
 
+        var actionCatalog = ResolveDomainIntentActionCatalog(availableDefinitions);
         if (TryParseExplicitActSelection(normalized, out var explicitActionId, out _) && explicitActionId.Length > 0) {
-            if (string.Equals(explicitActionId, DomainIntentActionIdAd, StringComparison.OrdinalIgnoreCase)) {
-                family = DomainIntentFamilyAd;
-                return true;
-            }
-
-            if (string.Equals(explicitActionId, DomainIntentActionIdPublic, StringComparison.OrdinalIgnoreCase)) {
-                family = DomainIntentFamilyPublic;
+            if (actionCatalog.TryGetFamilyByActionId(explicitActionId, out family)) {
                 return true;
             }
         }
 
-        if (TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, out family)) {
+        if (TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, availableDefinitions, out family)) {
             return true;
         }
 
@@ -57,16 +59,25 @@ internal sealed partial class ChatServiceSession {
         }
 
         var compact = NormalizeCompactText(normalized);
-        if (TryNormalizeDomainIntentFamily(compact, out family)) {
-            return true;
+        if (TryNormalizeDomainIntentFamily(compact, out var compactFamily)) {
+            var availability = availableDefinitions is { Count: > 0 }
+                ? ResolveDomainIntentFamilyAvailability(availableDefinitions)
+                : new DomainIntentFamilyAvailability(
+                    HasAd: true,
+                    HasPublic: true,
+                    Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic });
+            if (IsDomainIntentFamilyAvailable(availability, compactFamily)) {
+                family = compactFamily;
+                return true;
+            }
         }
 
         if (TryExtractActionSelectionPayloadJson(normalized, out var payload)
-            && TryParseDomainIntentFamilyFromDomainScopePayload(payload, out family)) {
+            && TryParseDomainIntentFamilyFromDomainScopePayload(payload, availableDefinitions, out family)) {
             return true;
         }
 
-        if (TryParseDomainIntentFamilyFromTechnicalSignals(normalized, out family)) {
+        if (TryParseDomainIntentFamilyFromTechnicalSignals(normalized, availableDefinitions, out family)) {
             return true;
         }
 
@@ -74,6 +85,13 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryParseDomainIntentFamilyFromDomainScopePayload(string payload, out string family) {
+        return TryParseDomainIntentFamilyFromDomainScopePayload(payload, availableDefinitions: null, out family);
+    }
+
+    private static bool TryParseDomainIntentFamilyFromDomainScopePayload(
+        string payload,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
         family = string.Empty;
         if (string.IsNullOrWhiteSpace(payload)) {
             return false;
@@ -119,14 +137,20 @@ internal sealed partial class ChatServiceSession {
             if (TryGetObjectPropertyCaseInsensitive(scope, out var choiceNode, "choice", "selection")
                 && choiceNode.ValueKind == JsonValueKind.Number
                 && choiceNode.TryGetInt32(out var choiceNumber)) {
-                if (choiceNumber == 1) {
-                    family = DomainIntentFamilyAd;
-                    return true;
-                }
-
-                if (choiceNumber == 2) {
-                    family = DomainIntentFamilyPublic;
-                    return true;
+                var availability = availableDefinitions is { Count: > 0 }
+                    ? ResolveDomainIntentFamilyAvailability(availableDefinitions)
+                    : new DomainIntentFamilyAvailability(
+                        HasAd: true,
+                        HasPublic: true,
+                        Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic });
+                var actionCatalog = ResolveDomainIntentActionCatalog(availableDefinitions);
+                var options = BuildDomainIntentFamilyOptions(availability, actionCatalog);
+                for (var i = 0; i < options.Count; i++) {
+                    var option = options[i];
+                    if (option.Ordinal == choiceNumber) {
+                        family = option.Family;
+                        return true;
+                    }
                 }
             }
         } catch (JsonException) {
@@ -151,36 +175,24 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryNormalizeDomainIntentFamily(string? value, out string family) {
-        family = string.Empty;
-        var normalized = (value ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        if (string.Equals(normalized, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
-            family = DomainIntentFamilyAd;
-            return true;
-        }
-
-        if (string.Equals(normalized, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
-            family = DomainIntentFamilyPublic;
-            return true;
-        }
-
-        return false;
+        return ToolSelectionMetadata.TryNormalizeDomainIntentFamily(value, out family);
     }
 
-    private static bool TryParseDomainIntentFamilyFromTechnicalSignals(string text, out string family) {
+    private static bool TryParseDomainIntentFamilyFromTechnicalSignals(
+        string text,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
         family = string.Empty;
         var normalized = NormalizeCompactText(text);
         if (normalized.Length == 0) {
             return false;
         }
 
-        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals)
+        var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
                            || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd)
                            || IsStandaloneDomainSignalAlias(normalized, "ad");
-        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
         if (hasAdSignals == hasPublicSignals) {
             return false;
         }
@@ -190,16 +202,83 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool HasConflictingDomainIntentSignals(string text) {
+        return HasConflictingDomainIntentSignals(text, availableDefinitions: null);
+    }
+
+    private static bool HasConflictingDomainIntentSignals(string text, IReadOnlyList<ToolDefinition>? availableDefinitions) {
         var normalized = NormalizeCompactText(text);
         if (normalized.Length == 0) {
             return false;
         }
 
-        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentAdTechnicalSignals)
+        var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
                            || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd)
                            || IsStandaloneDomainSignalAlias(normalized, "ad");
-        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, DomainIntentPublicTechnicalSignals);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
         return hasAdSignals && hasPublicSignals;
+    }
+
+    private readonly record struct DomainIntentSignalLexicon(
+        IReadOnlyList<string> AdSignals,
+        IReadOnlyList<string> PublicSignals);
+
+    private static DomainIntentSignalLexicon ResolveDomainIntentSignalLexicon(IReadOnlyList<ToolDefinition>? availableDefinitions) {
+        var adSignals = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var publicSignals = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddDomainSignalTokens(adSignals, ToolSelectionMetadata.GetDefaultDomainSignalTokens(DomainIntentFamilyAd));
+        AddDomainSignalTokens(publicSignals, ToolSelectionMetadata.GetDefaultDomainSignalTokens(DomainIntentFamilyPublic));
+
+        if (availableDefinitions is not null && availableDefinitions.Count > 0) {
+            for (var i = 0; i < availableDefinitions.Count; i++) {
+                var definition = availableDefinitions[i];
+                if (definition is null
+                    || !ToolSelectionMetadata.TryResolveDomainIntentFamily(definition, out var family)) {
+                    continue;
+                }
+
+                var signalSet = string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
+                    ? adSignals
+                    : string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
+                        ? publicSignals
+                        : null;
+                if (signalSet is null) {
+                    continue;
+                }
+
+                AddDomainSignalTokens(signalSet, ToolSelectionMetadata.GetDomainSignalTokens(definition));
+            }
+        }
+
+        return new DomainIntentSignalLexicon(
+            AdSignals: ToSortedDomainSignalArray(adSignals),
+            PublicSignals: ToSortedDomainSignalArray(publicSignals));
+    }
+
+    private static void AddDomainSignalTokens(HashSet<string> destination, IReadOnlyList<string>? tokens) {
+        if (destination is null || tokens is null || tokens.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < tokens.Count; i++) {
+            var normalized = NormalizeDomainSignalTokenValue(tokens[i] ?? string.Empty);
+            if (normalized.Length < 2) {
+                continue;
+            }
+
+            destination.Add(normalized);
+        }
+    }
+
+    private static IReadOnlyList<string> ToSortedDomainSignalArray(HashSet<string> signals) {
+        if (signals is null || signals.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var list = signals.ToArray();
+        Array.Sort(list, StringComparer.OrdinalIgnoreCase);
+        return list;
     }
 
     private static bool ContainsAnyDomainSignalToken(string text, IReadOnlyList<string> signals) {
@@ -409,6 +488,8 @@ internal sealed partial class ChatServiceSession {
 
         var tail = normalized[(markerIndex + marker.Length)..];
         var lines = tail.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
+        var mappedFamiliesByOrdinal = new Dictionary<int, string>();
+        var selectedValue = string.Empty;
         for (var i = 0; i < lines.Length; i++) {
             var line = (lines[i] ?? string.Empty).Trim();
             if (line.Length == 0) {
@@ -432,16 +513,17 @@ internal sealed partial class ChatServiceSession {
 
             if (string.Equals(key, "family", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(key, "scope", StringComparison.OrdinalIgnoreCase)) {
-                if (string.Equals(value, DomainIntentFamilyAd, StringComparison.OrdinalIgnoreCase)) {
-                    family = DomainIntentFamilyAd;
+                if (TryNormalizeDomainIntentFamily(value, out family)) {
                     return true;
                 }
 
-                if (string.Equals(value, DomainIntentFamilyPublic, StringComparison.OrdinalIgnoreCase)) {
-                    family = DomainIntentFamilyPublic;
-                    return true;
-                }
+                continue;
+            }
 
+            if ((key.StartsWith("option_", StringComparison.OrdinalIgnoreCase) || key.All(char.IsDigit))
+                && TryParseOrdinalSelection(key, out var optionOrdinal)
+                && TryNormalizeDomainIntentFamily(value, out var optionFamily)) {
+                mappedFamiliesByOrdinal[optionOrdinal] = optionFamily;
                 continue;
             }
 
@@ -452,26 +534,44 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (!TryParseOrdinalSelection(value, out var ordinalValue)) {
-                continue;
-            }
-
-            if (ordinalValue == 1) {
-                family = DomainIntentFamilyAd;
+            selectedValue = value;
+            if (TryNormalizeDomainIntentFamily(value, out family)) {
                 return true;
             }
+        }
 
-            if (ordinalValue == 2) {
-                family = DomainIntentFamilyPublic;
-                return true;
-            }
+        if (selectedValue.Length == 0 || !TryParseOrdinalSelection(selectedValue, out var selectedOrdinal)) {
+            return false;
+        }
+
+        if (mappedFamiliesByOrdinal.TryGetValue(selectedOrdinal, out var mappedFamily)
+            && TryNormalizeDomainIntentFamily(mappedFamily, out family)) {
+            return true;
+        }
+
+        if (selectedOrdinal == 1) {
+            family = DomainIntentFamilyAd;
+            return true;
+        }
+
+        if (selectedOrdinal == 2) {
+            family = DomainIntentFamilyPublic;
+            return true;
         }
 
         return false;
     }
 
     private static bool TryParseDomainIntentFamilyFromActionSelectionPayload(string text, out string family) {
+        return TryParseDomainIntentFamilyFromActionSelectionPayload(text, availableDefinitions: null, out family);
+    }
+
+    private static bool TryParseDomainIntentFamilyFromActionSelectionPayload(
+        string text,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
         family = string.Empty;
+        var actionCatalog = ResolveDomainIntentActionCatalog(availableDefinitions);
         if (!TryExtractActionSelectionPayloadJson(text, out var payload)) {
             return false;
         }
@@ -496,13 +596,7 @@ internal sealed partial class ChatServiceSession {
             if (TryGetObjectPropertyCaseInsensitive(selection, out var idNode, "id", "action_id", "actionId")) {
                 if (idNode.ValueKind == JsonValueKind.String) {
                     var id = (idNode.GetString() ?? string.Empty).Trim();
-                    if (string.Equals(id, DomainIntentActionIdAd, StringComparison.OrdinalIgnoreCase)) {
-                        family = DomainIntentFamilyAd;
-                        return true;
-                    }
-
-                    if (string.Equals(id, DomainIntentActionIdPublic, StringComparison.OrdinalIgnoreCase)) {
-                        family = DomainIntentFamilyPublic;
+                    if (actionCatalog.TryGetFamilyByActionId(id, out family)) {
                         return true;
                     }
                 }
@@ -523,7 +617,7 @@ internal sealed partial class ChatServiceSession {
                 var title = (titleNode.GetString() ?? string.Empty).Trim();
                 var normalizedTitle = NormalizeCompactText(title);
                 if (TryNormalizeDomainIntentFamily(normalizedTitle, out family)
-                    || TryParseDomainIntentFamilyFromTechnicalSignals(normalizedTitle, out family)) {
+                    || TryParseDomainIntentFamilyFromTechnicalSignals(normalizedTitle, availableDefinitions, out family)) {
                     return true;
                 }
             }
@@ -535,12 +629,12 @@ internal sealed partial class ChatServiceSession {
                     var nestedRequest = (requestNode.GetString() ?? string.Empty).Trim();
                     if (nestedRequest.Length > 0
                         && !string.Equals(nestedRequest, text, StringComparison.Ordinal)
-                        && TryResolveDomainIntentFamilyFromUserSignals(nestedRequest, out family)) {
+                        && TryResolveDomainIntentFamilyFromUserSignals(nestedRequest, availableDefinitions, out family)) {
                         return true;
                     }
                 } else if (requestNode.ValueKind == JsonValueKind.Object) {
                     var nestedPayload = requestNode.GetRawText();
-                    if (TryParseDomainIntentFamilyFromDomainScopePayload(nestedPayload, out family)
+                    if (TryParseDomainIntentFamilyFromDomainScopePayload(nestedPayload, availableDefinitions, out family)
                         || TryParseDomainIntentFamilyProperty(
                             requestNode,
                             out family,
@@ -553,7 +647,7 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            if (TryParseDomainIntentFamilyFromDomainScopePayload(payload, out family)) {
+            if (TryParseDomainIntentFamilyFromDomainScopePayload(payload, availableDefinitions, out family)) {
                 return true;
             }
         } catch (JsonException) {
@@ -605,7 +699,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveDomainIntentFamilyFromUserSignals(userRequest, out var inferredFamily)) {
+        if (!TryResolveDomainIntentFamilyFromUserSignals(userRequest, _registry.GetDefinitions(), out var inferredFamily)) {
             return false;
         }
 

@@ -78,7 +78,14 @@ internal static partial class Program {
             warning => CollectPackWarning(startupPackWarnings, warning));
         var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
         var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
-        WritePolicyBanner(options, packs, startupRuntimePolicyContext, startupRuntimePolicyDiagnostics, startupPackWarnings);
+        var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(packs);
+        WritePolicyBanner(
+            options,
+            packs,
+            startupRuntimePolicyContext,
+            startupRuntimePolicyDiagnostics,
+            startupRoutingCatalogDiagnostics,
+            startupPackWarnings);
         Console.WriteLine();
 
         using var cts = new CancellationTokenSource();
@@ -177,6 +184,7 @@ internal static partial class Program {
             var nextRegistry = new ToolRegistry();
             ToolPackBootstrap.RegisterAll(nextRegistry, nextPacks);
             var runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(nextRegistry, runtimePolicyContext);
+            var runtimeRoutingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(nextRegistry);
             var nextSession = new ReplSession(nextClient, nextRegistry, options, runtimeInstructions, statusWriter);
 
             if (client is not null) {
@@ -196,6 +204,13 @@ internal static partial class Program {
             if (runtimePackWarnings.Count > 0) {
                 foreach (var warning in runtimePackWarnings) {
                     Console.WriteLine($"[pack warning] {warning}");
+                }
+            }
+            Console.WriteLine($"Routing catalog: {ToolRoutingCatalogDiagnosticsBuilder.FormatSummary(runtimeRoutingCatalogDiagnostics)}");
+            var runtimeRoutingWarnings = ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(runtimeRoutingCatalogDiagnostics, maxWarnings: 12);
+            if (runtimeRoutingWarnings.Count > 0) {
+                foreach (var warning in runtimeRoutingWarnings) {
+                    Console.WriteLine($"[routing warning] {warning}");
                 }
             }
             Console.WriteLine(
@@ -297,7 +312,14 @@ internal static partial class Program {
                                     warning => CollectPackWarning(profilePackWarnings, warning));
                                 var profileRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(profileRuntimePolicyContext);
                                 var profilePacks = BuildPacks(options, profileRuntimePolicyContext, warning => CollectPackWarning(profilePackWarnings, warning));
-                                WritePolicyBanner(options, profilePacks, profileRuntimePolicyContext, profileRuntimePolicyDiagnostics, profilePackWarnings);
+                                var profileRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(profilePacks);
+                                WritePolicyBanner(
+                                    options,
+                                    profilePacks,
+                                    profileRuntimePolicyContext,
+                                    profileRuntimePolicyDiagnostics,
+                                    profileRoutingCatalogDiagnostics,
+                                    profilePackWarnings);
                                 Console.WriteLine();
 
                                 await BuildRuntimeAsync().ConfigureAwait(false);

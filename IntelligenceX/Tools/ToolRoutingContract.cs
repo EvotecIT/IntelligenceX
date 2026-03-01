@@ -1,0 +1,87 @@
+using System;
+using System.Collections.Generic;
+
+namespace IntelligenceX.Tools;
+
+/// <summary>
+/// Declares routing/selection metadata used by host-side chat orchestration.
+/// </summary>
+public sealed class ToolRoutingContract {
+    /// <summary>
+    /// Default contract id for IX routing metadata.
+    /// </summary>
+    public const string DefaultContractId = "ix.tool-routing.v1";
+
+    /// <summary>
+    /// True when this definition participates in host-side routing metadata.
+    /// </summary>
+    public bool IsRoutingAware { get; set; } = true;
+
+    /// <summary>
+    /// Stable routing contract identifier.
+    /// </summary>
+    public string RoutingContractId { get; set; } = DefaultContractId;
+
+    /// <summary>
+    /// Optional normalized pack identifier for this tool.
+    /// </summary>
+    public string PackId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional domain intent family token (for example ad_domain/public_domain).
+    /// </summary>
+    public string DomainIntentFamily { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional action id used when selecting this domain intent family.
+    /// </summary>
+    public string DomainIntentActionId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional normalized domain-intent signal tokens associated with this tool.
+    /// </summary>
+    public IReadOnlyList<string> DomainSignalTokens { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates fallback requires selector-like arguments.
+    /// </summary>
+    public bool RequiresSelectionForFallback { get; set; }
+
+    /// <summary>
+    /// Selector argument names required for fallback execution.
+    /// </summary>
+    public IReadOnlyList<string> FallbackSelectionKeys { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Hint argument names preferred for fallback execution.
+    /// </summary>
+    public IReadOnlyList<string> FallbackHintKeys { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Validates the contract and throws when invalid.
+    /// </summary>
+    public void Validate() {
+        if (!IsRoutingAware) {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(RoutingContractId)) {
+            throw new InvalidOperationException("RoutingContractId is required when IsRoutingAware is enabled.");
+        }
+
+        var normalizedFamily = (DomainIntentFamily ?? string.Empty).Trim();
+        if (normalizedFamily.Length > 0
+            && !ToolSelectionMetadata.TryNormalizeDomainIntentFamily(normalizedFamily, out _)) {
+            throw new InvalidOperationException("DomainIntentFamily must be a normalized non-empty token when provided.");
+        }
+
+        if (normalizedFamily.Length > 0 && string.IsNullOrWhiteSpace(DomainIntentActionId)) {
+            throw new InvalidOperationException("DomainIntentActionId is required when DomainIntentFamily is provided.");
+        }
+
+        if (RequiresSelectionForFallback && (FallbackSelectionKeys is null || FallbackSelectionKeys.Count == 0)) {
+            throw new InvalidOperationException(
+                "FallbackSelectionKeys must include at least one argument when RequiresSelectionForFallback is enabled.");
+        }
+    }
+}

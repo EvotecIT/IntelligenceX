@@ -16,17 +16,6 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private static readonly HashSet<string> CompoundPackRoutingTokenCompacts = new(StringComparer.OrdinalIgnoreCase) {
-        "activedirectory",
-        "adplayground",
-        "computerx",
-        "domaindetective",
-        "dnsclientx",
-        "eventlog",
-        "testimox"
-    };
-
-
     private static IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
         if (definitions.Count == 0 || limit <= 0) {
             return Array.Empty<ToolDefinition>();
@@ -326,7 +315,7 @@ internal sealed partial class ChatServiceSession {
         string combined,
         int maxTokens) {
         var compact = NormalizeCompactToken(combined.AsSpan());
-        if (compact.Length == 0 || !CompoundPackRoutingTokenCompacts.Contains(compact)) {
+        if (!ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact(compact)) {
             return false;
         }
 
@@ -459,59 +448,9 @@ internal sealed partial class ChatServiceSession {
             sb.Append(" pack:").Append(token);
         }
 
-        foreach (var alias in BuildRoutingPackSearchTokens(packHint)) {
+        foreach (var alias in ToolSelectionMetadata.GetPackSearchTokens(packHint)) {
             AppendPackToken(alias);
         }
-    }
-
-    private static IEnumerable<string> BuildRoutingPackSearchTokens(string packHint) {
-        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void AddToken(string value) {
-            var token = (value ?? string.Empty).Trim();
-            if (token.Length > 0) {
-                aliases.Add(token);
-            }
-        }
-
-        AddToken(packHint);
-        foreach (var alias in GetNormalizedPackAliases(packHint)) {
-            AddToken(alias);
-        }
-
-        switch (NormalizePackId(packHint)) {
-            case "activedirectory":
-                AddToken("active_directory");
-                AddToken("ad_playground");
-                break;
-            case "ad":
-                AddToken("active_directory");
-                AddToken("ad_playground");
-                break;
-            case "adplayground":
-                AddToken("active_directory");
-                AddToken("ad_playground");
-                break;
-            case "system":
-                AddToken("computer_x");
-                break;
-            case "computerx":
-                AddToken("computer_x");
-                break;
-            case "eventlog":
-                AddToken("event_log");
-                break;
-            case "domaindetective":
-                AddToken("domain_detective");
-                break;
-            case "dnsclientx":
-                AddToken("dns_client_x");
-                break;
-            case "testimox":
-                AddToken("testimo_x");
-                break;
-        }
-
-        return aliases;
     }
 
     private static string[] ExtractToolSchemaPropertyNames(ToolDefinition definition, int maxCount, out bool hasTableViewProjection) {
