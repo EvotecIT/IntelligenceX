@@ -85,6 +85,43 @@ public sealed class ToolHealthDiagnosticsTests {
     }
 
     [Fact]
+    public async Task ProbeAsync_RunsOperationalSmokeTool_WithPagingDefaultsWhenSupported() {
+        JsonObject? capturedSmokeArguments = null;
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_info",
+            (arguments, _) => {
+                capturedSmokeArguments = arguments;
+                return Task.FromResult("""{"ok":true}""");
+            },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            parameters: ToolSchema.Object(
+                ("page_size", ToolSchema.Integer("Optional page size.")))
+                .NoAdditionalProperties()));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+        Assert.NotNull(capturedSmokeArguments);
+        Assert.Equal(25, capturedSmokeArguments!.GetInt64("page_size"));
+    }
+
+    [Fact]
     public async Task ProbeAsync_FailsWhenOperationalSmokeToolFails() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
@@ -111,6 +148,42 @@ public sealed class ToolHealthDiagnosticsTests {
         Assert.False(result.Ok);
         Assert.Equal("smoke_access_denied", result.ErrorCode);
         Assert.Contains("system_info", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_DoesNotRunSmoke_WhenComposedSchemaDeclaresRequiredArguments() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_info",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"should_not_run","error":"Smoke should skip required composed schema."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject(StringComparer.Ordinal)
+                    .Add("query", ToolSchema.String("Target query.")))
+                .Add("allOf", new JsonArray()
+                    .Add(new JsonObject()
+                        .Add("required", new JsonArray().Add("query"))))
+                .Add("additionalProperties", false)));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
     }
 
     [Fact]

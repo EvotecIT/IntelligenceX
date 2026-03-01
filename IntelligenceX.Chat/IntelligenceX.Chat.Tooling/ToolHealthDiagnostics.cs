@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
@@ -18,6 +19,16 @@ namespace IntelligenceX.Chat.Tooling;
 public static class ToolHealthDiagnostics {
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private const string PackInfoSuffix = "_pack_info";
+    private const int SmokePagingDefaultValue = 25;
+    private const int MaxSchemaTraversalDepth = 6;
+    private static readonly string[] SmokePagingArgumentCandidates = {
+        "page_size",
+        "limit",
+        "top",
+        "take",
+        "first",
+        "max_results"
+    };
 
     /// <summary>
     /// Result of a single tool-health probe.
@@ -254,6 +265,7 @@ public static class ToolHealthDiagnostics {
         }
 
         smokeToolName = selected.Name;
+        smokeArguments = BuildSmokeArguments(selected);
         return true;
     }
 
@@ -290,8 +302,148 @@ public static class ToolHealthDiagnostics {
     }
 
     private static bool HasRequiredArguments(ToolDefinition definition) {
-        var required = definition.Parameters?.GetArray("required");
-        return required is { Count: > 0 };
+        return ContainsRequiredArguments(definition.Parameters, depth: 0);
+    }
+
+    private static bool ContainsRequiredArguments(JsonObject? schema, int depth) {
+        if (schema is null || depth > MaxSchemaTraversalDepth) {
+            return false;
+        }
+
+        var required = schema.GetArray("required");
+        if (required is { Count: > 0 }) {
+            return true;
+        }
+
+        return ContainsRequiredArgumentsInCombinators(schema.GetArray("allOf"), depth + 1)
+               || ContainsRequiredArgumentsInCombinators(schema.GetArray("anyOf"), depth + 1)
+               || ContainsRequiredArgumentsInCombinators(schema.GetArray("oneOf"), depth + 1);
+    }
+
+    private static bool ContainsRequiredArgumentsInCombinators(JsonArray? compositions, int depth) {
+        if (compositions is null || compositions.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < compositions.Count; i++) {
+            var candidate = compositions[i]?.AsObject();
+            if (candidate is not null && ContainsRequiredArguments(candidate, depth)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static JsonObject BuildSmokeArguments(ToolDefinition definition) {
+        var arguments = new JsonObject();
+        var properties = definition.Parameters?.GetObject("properties");
+        if (properties is null || properties.Count == 0) {
+            return arguments;
+        }
+
+        var requiredNames = BuildRequiredArgumentNameSet(definition.Parameters);
+        for (var i = 0; i < SmokePagingArgumentCandidates.Length; i++) {
+            var candidate = SmokePagingArgumentCandidates[i];
+            if (requiredNames.Contains(candidate)) {
+                continue;
+            }
+
+            if (!TryGetSchemaProperty(properties, candidate, out var resolvedName, out var propertySchema)
+                || !IsNumericLikeSchema(propertySchema)) {
+                continue;
+            }
+
+            arguments.Add(resolvedName, SmokePagingDefaultValue);
+            break;
+        }
+
+        return arguments;
+    }
+
+    private static HashSet<string> BuildRequiredArgumentNameSet(JsonObject? schema) {
+        var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AppendRequiredArgumentNames(schema, required, depth: 0);
+        return required;
+    }
+
+    private static void AppendRequiredArgumentNames(JsonObject? schema, HashSet<string> required, int depth) {
+        if (schema is null || depth > MaxSchemaTraversalDepth) {
+            return;
+        }
+
+        var requiredValues = schema.GetArray("required");
+        if (requiredValues is { Count: > 0 }) {
+            for (var i = 0; i < requiredValues.Count; i++) {
+                var name = (requiredValues[i]?.AsString() ?? string.Empty).Trim();
+                if (name.Length > 0) {
+                    required.Add(name);
+                }
+            }
+        }
+
+        AppendRequiredArgumentNames(schema.GetArray("allOf"), required, depth + 1);
+        AppendRequiredArgumentNames(schema.GetArray("anyOf"), required, depth + 1);
+        AppendRequiredArgumentNames(schema.GetArray("oneOf"), required, depth + 1);
+    }
+
+    private static void AppendRequiredArgumentNames(JsonArray? compositions, HashSet<string> required, int depth) {
+        if (compositions is null || compositions.Count == 0 || depth > MaxSchemaTraversalDepth) {
+            return;
+        }
+
+        for (var i = 0; i < compositions.Count; i++) {
+            AppendRequiredArgumentNames(compositions[i]?.AsObject(), required, depth);
+        }
+    }
+
+    private static bool TryGetSchemaProperty(JsonObject properties, string propertyName, out string resolvedName, out JsonObject? propertySchema) {
+        if (properties.TryGetValue(propertyName, out var direct)) {
+            resolvedName = propertyName;
+            propertySchema = direct?.AsObject();
+            return true;
+        }
+
+        foreach (var property in properties) {
+            if (!string.Equals(property.Key, propertyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            resolvedName = property.Key;
+            propertySchema = property.Value?.AsObject();
+            return true;
+        }
+
+        resolvedName = string.Empty;
+        propertySchema = null;
+        return false;
+    }
+
+    private static bool IsNumericLikeSchema(JsonObject? schema) {
+        if (schema is null) {
+            return false;
+        }
+
+        var type = (schema.GetString("type") ?? string.Empty).Trim();
+        if (type.Length > 0) {
+            return string.Equals(type, "integer", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(type, "number", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var typeArray = schema.GetArray("type");
+        if (typeArray is null || typeArray.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < typeArray.Count; i++) {
+            var candidate = (typeArray[i]?.AsString() ?? string.Empty).Trim();
+            if (string.Equals(candidate, "integer", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, "number", StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int GetSmokeRolePriority(string? role) {
