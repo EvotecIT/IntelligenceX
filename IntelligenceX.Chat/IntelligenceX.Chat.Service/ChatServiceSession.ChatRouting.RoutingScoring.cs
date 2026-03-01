@@ -9,6 +9,7 @@ using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using IntelligenceX.Json;
@@ -17,6 +18,13 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
+        return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
+    }
+
+    private static IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(
+        IReadOnlyList<ToolDefinition> definitions,
+        int limit,
+        ToolOrchestrationCatalog toolOrchestrationCatalog) {
         if (definitions.Count == 0 || limit <= 0) {
             return Array.Empty<ToolDefinition>();
         }
@@ -51,7 +59,7 @@ internal sealed partial class ChatServiceSession {
         var toolsByFamily = new Dictionary<string, Queue<ToolDefinition>>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < uniqueDefinitions.Count; i++) {
             var definition = uniqueDefinitions[i];
-            var family = ResolveDeterministicSubsetFamilyKey(definition);
+            var family = ResolveDeterministicSubsetFamilyKey(definition, toolOrchestrationCatalog);
             if (!toolsByFamily.TryGetValue(family, out var queue)) {
                 queue = new Queue<ToolDefinition>();
                 toolsByFamily[family] = queue;
@@ -101,13 +109,15 @@ internal sealed partial class ChatServiceSession {
         return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
     }
 
-    private string ResolveDeterministicSubsetFamilyKey(ToolDefinition definition) {
+    private static string ResolveDeterministicSubsetFamilyKey(
+        ToolDefinition definition,
+        ToolOrchestrationCatalog toolOrchestrationCatalog) {
         var normalized = (definition?.Name ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return string.Empty;
         }
 
-        if (_toolOrchestrationCatalog.TryGetEntry(normalized, out var catalogEntry)) {
+        if (toolOrchestrationCatalog.TryGetEntry(normalized, out var catalogEntry)) {
             if (catalogEntry.PackId.Length > 0) {
                 return catalogEntry.PackId;
             }

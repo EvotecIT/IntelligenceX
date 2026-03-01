@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
@@ -338,7 +339,7 @@ internal sealed partial class ChatServiceSession {
             return (definitions, new List<ToolRoutingInsight>());
         }
 
-        var plannerCandidates = BuildModelPlannerCandidates(definitions, limit);
+        var plannerCandidates = BuildModelPlannerCandidates(definitions, limit, _toolOrchestrationCatalog);
         var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, userRequest, plannerCandidates, limit, cancellationToken)
             .ConfigureAwait(false);
         if (planned.Count > 0) {
@@ -353,14 +354,17 @@ internal sealed partial class ChatServiceSession {
         return (fallback, fallbackInsights);
     }
 
-    private IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(IReadOnlyList<ToolDefinition> definitions, int limit) {
+    private static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(
+        IReadOnlyList<ToolDefinition> definitions,
+        int limit,
+        ToolOrchestrationCatalog toolOrchestrationCatalog) {
         if (definitions.Count <= 64) {
             return definitions;
         }
 
         var minCandidateLimit = Math.Max(24, limit);
         var candidateLimit = Math.Clamp(Math.Max(limit * 3, minCandidateLimit), minCandidateLimit, Math.Min(definitions.Count, 96));
-        return SelectDeterministicToolSubset(definitions, candidateLimit);
+        return SelectDeterministicToolSubset(definitions, candidateLimit, toolOrchestrationCatalog);
     }
 
     private IReadOnlyList<ToolDefinition> SelectWeightedToolSubset(IReadOnlyList<ToolDefinition> definitions, string requestText, int? maxCandidateTools,
@@ -457,7 +461,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (!hasSignal) {
-            return SelectDeterministicToolSubset(definitions, limit);
+            return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
         }
 
         scored.Sort(static (a, b) => {
@@ -470,7 +474,7 @@ internal sealed partial class ChatServiceSession {
         });
 
         if (scored[0].Score < 1d) {
-            return SelectDeterministicToolSubset(definitions, limit);
+            return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
         }
 
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -484,7 +488,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (selectedDefs.Count == 0) {
-            return SelectDeterministicToolSubset(definitions, limit);
+            return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
         }
 
         var selectionDiagnostics = ResolveWeightedRoutingSelectionDiagnostics(scored, limit, definitions.Count);
