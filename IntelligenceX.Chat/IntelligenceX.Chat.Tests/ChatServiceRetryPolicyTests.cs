@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Service;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using Xunit;
@@ -11,27 +12,11 @@ namespace IntelligenceX.Chat.Tests;
 /// Covers retry policy boundaries for transient/permanent tool failures.
 /// </summary>
 public sealed class ChatServiceRetryPolicyTests {
-    private static readonly Type ChatServiceSessionType =
-        Type.GetType("IntelligenceX.Chat.Service.ChatServiceSession, IntelligenceX.Chat.Service")
-        ?? throw new InvalidOperationException("ChatServiceSession type not found.");
-
-    private static readonly MethodInfo ResolveRetryProfileMethod = ChatServiceSessionType.GetMethod(
-        "ResolveRetryProfile",
-        BindingFlags.NonPublic | BindingFlags.Static,
-        binder: null,
-        types: new[] { typeof(ToolDefinition) },
-        modifiers: null)
-        ?? throw new InvalidOperationException("ResolveRetryProfile(ToolDefinition) not found.");
-
-    private static readonly MethodInfo ShouldRetryToolCallMethod = ChatServiceSessionType.GetMethod(
-        "ShouldRetryToolCall",
-        BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("ShouldRetryToolCall not found.");
-    private static readonly MethodInfo IsProjectionViewArgumentFailureMethod = ChatServiceSessionType.GetMethod(
+    private static readonly MethodInfo IsProjectionViewArgumentFailureMethod = typeof(ChatServiceSession).GetMethod(
         "IsProjectionViewArgumentFailure",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("IsProjectionViewArgumentFailure not found.");
-    private static readonly MethodInfo TryBuildProjectionArgsFallbackCallMethod = ChatServiceSessionType.GetMethod(
+    private static readonly MethodInfo TryBuildProjectionArgsFallbackCallMethod = typeof(ChatServiceSession).GetMethod(
         "TryBuildProjectionArgsFallbackCall",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("TryBuildProjectionArgsFallbackCall not found.");
@@ -607,14 +592,12 @@ public sealed class ChatServiceRetryPolicyTests {
 
     private static object InvokeResolveRetryProfile(string toolName) {
         _ = toolName;
-        var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { null });
-        return profile ?? throw new InvalidOperationException("ResolveRetryProfile returned null.");
+        return ChatServiceSession.ResolveRetryProfileForTesting(definition: null);
     }
 
     private static object InvokeResolveRetryProfile(string toolName, ToolDefinition definition) {
         _ = toolName;
-        var profile = ResolveRetryProfileMethod.Invoke(null, new object?[] { definition });
-        return profile ?? throw new InvalidOperationException("ResolveRetryProfile(ToolDefinition) returned null.");
+        return ChatServiceSession.ResolveRetryProfileForTesting(definition);
     }
 
     private static ToolDefinition BuildRecoveryAwareDefinition(string toolName, int maxRetryAttempts, params string[] retryableErrorCodes) {
@@ -631,8 +614,7 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     private static bool InvokeShouldRetryToolCall(ToolOutputDto output, object profile, int attemptIndex) {
-        var result = ShouldRetryToolCallMethod.Invoke(null, new object?[] { output, profile, attemptIndex });
-        return Assert.IsType<bool>(result);
+        return ChatServiceSession.ShouldRetryToolCallForTesting(output, profile, attemptIndex);
     }
 
     private static bool InvokeIsProjectionViewArgumentFailure(ToolOutputDto output) {

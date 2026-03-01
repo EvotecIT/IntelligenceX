@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -20,6 +21,8 @@ public static class ToolHealthDiagnostics {
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private const string PackInfoSuffix = "_pack_info";
     private const int SmokePagingDefaultValue = 25;
+    // Keep recursive schema traversal bounded so pathological contracts cannot blow up probe classification time.
+    // Policy: fail-open past this depth (treat as no additional "required" discovery) to preserve probe availability.
     private const int MaxSchemaTraversalDepth = 6;
     private static readonly string[] SmokePagingArgumentCandidates = {
         "page_size",
@@ -29,6 +32,7 @@ public static class ToolHealthDiagnostics {
         "first",
         "max_results"
     };
+    private static readonly ConditionalWeakTable<ToolRegistry, SmokeProbePlanCache> SmokeProbePlanCaches = new();
 
     /// <summary>
     /// Result of a single tool-health probe.
@@ -214,58 +218,12 @@ public static class ToolHealthDiagnostics {
             return false;
         }
 
-        var definitions = registry.GetDefinitions();
-        ToolDefinition? packInfoDefinition = null;
-        for (var i = 0; i < definitions.Count; i++) {
-            var definition = definitions[i];
-            if (string.Equals(definition.Name, normalized, StringComparison.OrdinalIgnoreCase)) {
-                packInfoDefinition = definition;
-                break;
-            }
-        }
-
-        if (packInfoDefinition is null
-            || !IsPackInfoDefinition(packInfoDefinition, requireExplicitPackInfoRole)
-            || !TryResolvePackId(packInfoDefinition, out var packId, allowNameSuffixFallback: !requireExplicitPackInfoRole)) {
+        if (!TryResolveOperationalSmokeProbePlan(registry, normalized, requireExplicitPackInfoRole, out var plan)) {
             return false;
         }
 
-        ToolDefinition? selected = null;
-        var selectedPriority = int.MaxValue;
-        for (var i = 0; i < definitions.Count; i++) {
-            var definition = definitions[i];
-            if (string.Equals(definition.Name, normalized, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            if (definition.WriteGovernance?.IsWriteCapable == true) {
-                continue;
-            }
-
-            if (!TryResolvePackId(definition, out var candidatePackId, allowNameSuffixFallback: !requireExplicitPackInfoRole)
-                || !string.Equals(packId, candidatePackId, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            if (IsPackInfoDefinition(definition, requireExplicitPackInfoRole: false) || HasRequiredArguments(definition)) {
-                continue;
-            }
-
-            var rolePriority = GetSmokeRolePriority(definition.Routing?.Role);
-            if (selected is null
-                || rolePriority < selectedPriority
-                || (rolePriority == selectedPriority && string.Compare(definition.Name, selected.Name, StringComparison.OrdinalIgnoreCase) < 0)) {
-                selected = definition;
-                selectedPriority = rolePriority;
-            }
-        }
-
-        if (selected is null) {
-            return false;
-        }
-
-        smokeToolName = selected.Name;
-        smokeArguments = BuildSmokeArguments(selected);
+        smokeToolName = plan.SmokeToolName;
+        smokeArguments = BuildSmokeArguments(plan.PagingArgumentName);
         return true;
     }
 
@@ -299,6 +257,62 @@ public static class ToolHealthDiagnostics {
         }
 
         return false;
+    }
+
+    private static bool TryResolveOperationalSmokeProbePlan(ToolRegistry registry, string packInfoToolName, bool requireExplicitPackInfoRole,
+        out SmokeProbePlan plan) {
+        var cache = SmokeProbePlanCaches.GetValue(registry, static _ => new SmokeProbePlanCache());
+        return cache.TryResolvePlan(registry, packInfoToolName, requireExplicitPackInfoRole, out plan);
+    }
+
+    private static Dictionary<string, SmokeProbePlan> BuildSmokeProbePlanIndex(IReadOnlyList<ToolDefinition> definitions, bool requireExplicitPackInfoRole) {
+        var plans = new Dictionary<string, SmokeProbePlan>(StringComparer.OrdinalIgnoreCase);
+        var allowNameSuffixFallback = !requireExplicitPackInfoRole;
+
+        var bestCandidatesByPack = new Dictionary<string, SmokeProbeCandidate>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null || definition.WriteGovernance?.IsWriteCapable == true) {
+                continue;
+            }
+
+            if (IsPackInfoDefinition(definition, requireExplicitPackInfoRole: false) || HasRequiredArguments(definition)) {
+                continue;
+            }
+
+            if (!TryResolvePackId(definition, out var packId, allowNameSuffixFallback) || packId.Length == 0) {
+                continue;
+            }
+
+            var rolePriority = GetSmokeRolePriority(definition.Routing?.Role);
+            _ = TryResolveSmokePagingArgumentName(definition, out var pagingArgumentName);
+            var candidate = new SmokeProbeCandidate(definition.Name, rolePriority, pagingArgumentName);
+            if (!bestCandidatesByPack.TryGetValue(packId, out var selected)
+                || candidate.RolePriority < selected.RolePriority
+                || (candidate.RolePriority == selected.RolePriority
+                    && string.Compare(candidate.ToolName, selected.ToolName, StringComparison.OrdinalIgnoreCase) < 0)) {
+                bestCandidatesByPack[packId] = candidate;
+            }
+        }
+
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null || !IsPackInfoDefinition(definition, requireExplicitPackInfoRole)) {
+                continue;
+            }
+
+            if (!TryResolvePackId(definition, out var packId, allowNameSuffixFallback) || packId.Length == 0) {
+                continue;
+            }
+
+            if (!bestCandidatesByPack.TryGetValue(packId, out var selected)) {
+                continue;
+            }
+
+            plans[definition.Name] = new SmokeProbePlan(selected.ToolName, selected.PagingArgumentName);
+        }
+
+        return plans;
     }
 
     private static bool HasRequiredArguments(ToolDefinition definition) {
@@ -335,11 +349,21 @@ public static class ToolHealthDiagnostics {
         return false;
     }
 
-    private static JsonObject BuildSmokeArguments(ToolDefinition definition) {
+    private static JsonObject BuildSmokeArguments(string pagingArgumentName) {
         var arguments = new JsonObject();
+        if (string.IsNullOrWhiteSpace(pagingArgumentName)) {
+            return arguments;
+        }
+
+        arguments.Add(pagingArgumentName, SmokePagingDefaultValue);
+        return arguments;
+    }
+
+    private static bool TryResolveSmokePagingArgumentName(ToolDefinition definition, out string pagingArgumentName) {
+        pagingArgumentName = string.Empty;
         var properties = definition.Parameters?.GetObject("properties");
         if (properties is null || properties.Count == 0) {
-            return arguments;
+            return false;
         }
 
         var requiredNames = BuildRequiredArgumentNameSet(definition.Parameters);
@@ -354,11 +378,11 @@ public static class ToolHealthDiagnostics {
                 continue;
             }
 
-            arguments.Add(resolvedName, SmokePagingDefaultValue);
-            break;
+            pagingArgumentName = resolvedName;
+            return true;
         }
 
-        return arguments;
+        return false;
     }
 
     private static HashSet<string> BuildRequiredArgumentNameSet(JsonObject? schema) {
@@ -444,6 +468,62 @@ public static class ToolHealthDiagnostics {
         }
 
         return false;
+    }
+
+    private readonly record struct SmokeProbePlan(string SmokeToolName, string PagingArgumentName);
+    private readonly record struct SmokeProbeCandidate(string ToolName, int RolePriority, string PagingArgumentName);
+
+    private sealed class SmokeProbePlanCache {
+        private readonly object _gate = new();
+        private int _definitionCount = -1;
+        private int _definitionFingerprint;
+        private Dictionary<string, SmokeProbePlan> _loosePlans = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, SmokeProbePlan> _strictPlans = new(StringComparer.OrdinalIgnoreCase);
+
+        internal bool TryResolvePlan(ToolRegistry registry, string packInfoToolName, bool requireExplicitPackInfoRole, out SmokeProbePlan plan) {
+            var normalizedToolName = (packInfoToolName ?? string.Empty).Trim();
+            if (normalizedToolName.Length == 0) {
+                plan = default;
+                return false;
+            }
+
+            lock (_gate) {
+                var definitions = registry.GetDefinitions();
+                var fingerprint = ComputeDefinitionFingerprint(definitions);
+                if (_definitionCount != definitions.Count || _definitionFingerprint != fingerprint) {
+                    _loosePlans = BuildSmokeProbePlanIndex(definitions, requireExplicitPackInfoRole: false);
+                    _strictPlans = BuildSmokeProbePlanIndex(definitions, requireExplicitPackInfoRole: true);
+                    _definitionCount = definitions.Count;
+                    _definitionFingerprint = fingerprint;
+                }
+
+                var index = requireExplicitPackInfoRole ? _strictPlans : _loosePlans;
+                return index.TryGetValue(normalizedToolName, out plan);
+            }
+        }
+    }
+
+    private static int ComputeDefinitionFingerprint(IReadOnlyList<ToolDefinition> definitions) {
+        var hash = new HashCode();
+        hash.Add(definitions.Count);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                hash.Add("<null>", StringComparer.Ordinal);
+                continue;
+            }
+
+            hash.Add((definition.Name ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+            hash.Add((definition.Routing?.Role ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+            hash.Add((definition.Routing?.RoutingSource ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+            hash.Add(ToolPackBootstrap.NormalizePackId(definition.Routing?.PackId), StringComparer.OrdinalIgnoreCase);
+            hash.Add(definition.WriteGovernance?.IsWriteCapable ?? false);
+            hash.Add(HasRequiredArguments(definition));
+            _ = TryResolveSmokePagingArgumentName(definition, out var pagingArgumentName);
+            hash.Add(pagingArgumentName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        return hash.ToHashCode();
     }
 
     private static int GetSmokeRolePriority(string? role) {
