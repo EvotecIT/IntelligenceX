@@ -249,6 +249,28 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
+    public void ShouldRetryToolCall_RetriesTransportVariantCodeWhenProfileDeclaresTransportUnavailable() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_diagnostic_probe",
+            BuildRecoveryAwareDefinition(
+                "custom_diagnostic_probe",
+                maxRetryAttempts: 1,
+                "transport_unavailable"));
+        var output = new ToolOutputDto {
+            CallId = "call-3g3",
+            Output = "{\"error\":\"Upstream connection reset.\"}",
+            Ok = false,
+            ErrorCode = "connection_reset",
+            Error = "Upstream connection reset.",
+            IsTransient = false
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
     public void ShouldRetryToolCall_DoesNotRetryDomainScopeGuardrailFailure() {
         var profile = InvokeResolveRetryProfile(
             "ad_replication_summary",

@@ -640,6 +640,11 @@ internal sealed partial class ChatServiceSession {
                 && IsTimeoutRetryableCode(normalizedCode)) {
                 return true;
             }
+
+            if (string.Equals(candidate, "transport_unavailable", StringComparison.OrdinalIgnoreCase)
+                && IsTransportRetryableCode(normalizedCode)) {
+                return true;
+            }
         }
 
         return false;
