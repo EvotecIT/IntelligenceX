@@ -1,5 +1,19 @@
 <footer class="ix-footer">
   <div class="ix-footer-inner">
+    {{ footer_docs = null }}
+    {{ footer_resources = null }}
+    {{ footer_company = null }}
+    {{ if navigation.menus }}
+      {{ for menu in navigation.menus }}
+        {{ if menu.name == "footer-docs" }}
+          {{ footer_docs = menu }}
+        {{ else if menu.name == "footer-resources" }}
+          {{ footer_resources = menu }}
+        {{ else if menu.name == "footer-company" }}
+          {{ footer_company = menu }}
+        {{ end }}
+      {{ end }}
+    {{ end }}
     <div class="ix-footer-grid">
       <div class="ix-footer-brand">
         <div class="ix-footer-logo">
@@ -11,36 +25,38 @@
         </div>
         <p class="ix-footer-tagline">AI-powered code review using your own ChatGPT or Copilot account. Zero trust, full control.</p>
       </div>
-      {{ if navigation.menus && navigation.menus.size > 1 }}
-      <div class="ix-footer-col ix-footer-col--docs">
+      <div class="ix-footer-catalog">
+      {{ if footer_docs && footer_docs.items && footer_docs.items.size > 0 }}
+      <section class="ix-footer-section ix-footer-section--docs">
         <p class="ix-footer-heading">Documentation</p>
-        <ul class="ix-footer-links{{ if navigation.menus[1].items.size > 8 }} is-split{{ end }}">
-          {{ for link in navigation.menus[1].items }}
-          <li><a href="{{ link.url }}">{{ link.title }}</a></li>
+        <ul class="ix-footer-links{{ if footer_docs.items.size > 8 }} is-dense{{ end }}{{ if footer_docs.items.size > 14 }} is-mega{{ end }}{{ if footer_docs.items.size > 20 }} is-scroll{{ end }}">
+          {{ for link in footer_docs.items }}
+          <li><a href="{{ link.url }}"{{ if link.external }} target="_blank" rel="noopener"{{ end }}>{{ link.title }}</a></li>
           {{ end }}
         </ul>
-      </div>
+      </section>
       {{ end }}
-      {{ if navigation.menus && navigation.menus.size > 2 }}
-      <div class="ix-footer-col ix-footer-col--resources">
+      {{ if footer_resources && footer_resources.items && footer_resources.items.size > 0 }}
+      <section class="ix-footer-section ix-footer-section--resources">
         <p class="ix-footer-heading">Resources</p>
-        <ul class="ix-footer-links{{ if navigation.menus[2].items.size > 8 }} is-split{{ end }}">
-          {{ for link in navigation.menus[2].items }}
-          <li><a href="{{ link.url }}">{{ link.title }}</a></li>
+        <ul class="ix-footer-links{{ if footer_resources.items.size > 8 }} is-dense{{ end }}{{ if footer_resources.items.size > 14 }} is-mega{{ end }}{{ if footer_resources.items.size > 20 }} is-scroll{{ end }}">
+          {{ for link in footer_resources.items }}
+          <li><a href="{{ link.url }}"{{ if link.external }} target="_blank" rel="noopener"{{ end }}>{{ link.title }}</a></li>
           {{ end }}
         </ul>
-      </div>
+      </section>
       {{ end }}
-      {{ if navigation.menus && navigation.menus.size > 3 }}
-      <div class="ix-footer-col ix-footer-col--company">
+      {{ if footer_company && footer_company.items && footer_company.items.size > 0 }}
+      <section class="ix-footer-section ix-footer-section--company">
         <p class="ix-footer-heading">Company</p>
         <ul class="ix-footer-links">
-          {{ for link in navigation.menus[3].items }}
-          <li><a href="{{ link.url }}">{{ link.title }}</a></li>
+          {{ for link in footer_company.items }}
+          <li><a href="{{ link.url }}"{{ if link.external }} target="_blank" rel="noopener"{{ end }}>{{ link.title }}</a></li>
           {{ end }}
         </ul>
-      </div>
+      </section>
       {{ end }}
+      </div>
     </div>
     <div class="ix-footer-bottom">
       <p>MIT License. Built with <a href="https://github.com/EvotecIT/PSPublishModule">PowerForge</a>.</p>
