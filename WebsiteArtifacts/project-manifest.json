@@ -1,0 +1,25 @@
+{
+  "slug": "intelligencex",
+  "name": "IntelligenceX",
+  "mode": "dedicated-external",
+  "version": "0.1.0",
+  "generatedAt": "2026-03-01T15:22:19+01:00",
+  "commit": "47b41fbd",
+  "description": "AI-powered operations and documentation assistant.",
+  "surfaces": {
+    "docs": true,
+    "apiDotNet": true,
+    "apiPowerShell": true,
+    "changelog": true,
+    "releases": true
+  },
+  "links": {
+    "website": "https://intelligencex.app",
+    "docs": "https://intelligencex.dev/docs/",
+    "apiDotNet": "https://intelligencex.dev/api/",
+    "apiPowerShell": "https://intelligencex.dev/api/powershell/",
+    "changelog": "https://intelligencex.dev/changelog/",
+    "releases": "https://github.com/EvotecIT/IntelligenceX/releases",
+    "source": "https://github.com/EvotecIT/IntelligenceX"
+  }
+}
