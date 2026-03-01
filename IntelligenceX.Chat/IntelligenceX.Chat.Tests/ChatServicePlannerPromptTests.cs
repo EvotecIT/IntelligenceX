@@ -437,21 +437,39 @@ public sealed class ChatServicePlannerPromptTests {
             definitions.Add(new ToolDefinition(
                 $"ad_query_{i:D2}",
                 "AD query.",
-                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties()));
+                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
         }
 
         for (var i = 0; i < 3; i++) {
             definitions.Add(new ToolDefinition(
                 $"eventlog_query_{i:D2}",
                 "Event query.",
-                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties()));
+                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
         }
 
         for (var i = 0; i < 3; i++) {
             definitions.Add(new ToolDefinition(
                 $"system_info_{i:D2}",
                 "System query.",
-                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties()));
+                ToolSchema.Object(("target", ToolSchema.String("Target"))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
         }
 
         var args = new object?[] {

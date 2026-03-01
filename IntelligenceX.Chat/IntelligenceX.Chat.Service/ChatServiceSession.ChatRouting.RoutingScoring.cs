@@ -127,12 +127,18 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var separator = normalized.IndexOf('_');
-        if (separator > 0) {
-            return normalized[..separator].ToLowerInvariant();
+        var routingPackId = ToolSelectionMetadata.NormalizePackId(definition?.Routing?.PackId);
+        if (routingPackId.Length > 0) {
+            return routingPackId;
         }
 
-        return normalized.ToLowerInvariant();
+        if (ToolSelectionMetadata.TryNormalizeDomainIntentFamily(definition?.Routing?.DomainIntentFamily, out var family)
+            && family.Length > 0) {
+            return "family|" + family;
+        }
+
+        // Keep non-contract fallback generic so routing does not depend on tool-name prefixes/suffixes.
+        return "unassigned";
     }
 
     private static List<ToolRoutingInsight> BuildRoutingInsights(
