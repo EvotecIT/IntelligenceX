@@ -1304,18 +1304,27 @@ public static class ToolSelectionMetadata {
         ToolSelectionRoutingInfo routing,
         IReadOnlyList<string> enrichedTags) {
         var existing = definition.Routing;
+        var normalizedExistingSource = NormalizeToken(existing?.RoutingSource, fallback: string.Empty);
+        var hasExplicitExistingSource = string.Equals(
+            normalizedExistingSource,
+            ToolRoutingTaxonomy.SourceExplicit,
+            StringComparison.OrdinalIgnoreCase);
 
         var packId = NormalizeToken(existing?.PackId, fallback: string.Empty);
         if (packId.Length == 0) {
-            TryResolvePackId(definition.Name, category, enrichedTags, out packId);
+            if (!hasExplicitExistingSource) {
+                TryResolvePackId(definition.Name, category, enrichedTags, out packId);
+            }
         } else {
             TryNormalizePackId(packId, out packId);
         }
 
-        var role = ResolveRoutingRole(
-            toolName: definition.Name,
-            existingRole: existing?.Role,
-            tags: enrichedTags);
+        var role = hasExplicitExistingSource
+            ? NormalizeToken(existing?.Role, fallback: string.Empty)
+            : ResolveRoutingRole(
+                toolName: definition.Name,
+                existingRole: existing?.Role,
+                tags: enrichedTags);
         var source = ResolveRoutingSource(
             existingSource: existing?.RoutingSource,
             tags: enrichedTags,
@@ -1323,7 +1332,9 @@ public static class ToolSelectionMetadata {
 
         var family = NormalizeToken(existing?.DomainIntentFamily, fallback: string.Empty);
         if (!TryNormalizeDomainIntentFamilyToken(family, out family)) {
-            TryResolveDomainIntentFamily(definition.Name, category, enrichedTags, out family);
+            if (!hasExplicitExistingSource) {
+                TryResolveDomainIntentFamily(definition.Name, category, enrichedTags, out family);
+            }
         }
 
         var actionId = (existing?.DomainIntentActionId ?? string.Empty).Trim();

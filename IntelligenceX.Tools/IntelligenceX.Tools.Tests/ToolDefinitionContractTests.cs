@@ -196,6 +196,47 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void Enrich_ShouldNotBackfillRoutingPackOrFamily_WhenRoutingSourceIsExplicit() {
+        var definition = new ToolDefinition(
+            name: "ad_custom_probe",
+            description: "Probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            category: "active_directory",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = string.Empty,
+                Role = ToolRoutingTaxonomy.RoleOperational,
+                DomainIntentFamily = string.Empty,
+                DomainIntentActionId = string.Empty
+            });
+
+        var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+        var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);
+
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+        Assert.Equal(string.Empty, routing.PackId);
+        Assert.Equal(string.Empty, routing.DomainIntentFamily);
+        Assert.Equal(string.Empty, routing.DomainIntentActionId);
+    }
+
+    [Fact]
+    public void Enrich_ShouldInferRoutingPackAndFamily_WhenRoutingSourceIsInferred() {
+        var definition = new ToolDefinition(
+            name: "ad_custom_probe",
+            description: "Probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            category: "active_directory");
+
+        var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+        var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);
+
+        Assert.Equal("active_directory", routing.PackId, ignoreCase: true);
+        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, routing.DomainIntentFamily);
+        Assert.Equal(ToolSelectionMetadata.DomainIntentActionIdAd, routing.DomainIntentActionId);
+    }
+
+    [Fact]
     public void CreateAliasDefinition_ShouldMergeAndSortEnrichedTagsDeterministically() {
         var canonical = ToolSelectionMetadata.Enrich(
             new ToolDefinition(
