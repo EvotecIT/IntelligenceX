@@ -271,7 +271,7 @@ internal sealed partial class ChatServiceSession {
             ? visualPolicy.PreferredVisualPriority.ToString(CultureInfo.InvariantCulture)
             : "n/a";
         var maxNewVisualsText = visualPolicy.HasMaxNewVisualsOverride
-            ? visualPolicy.MaxNewVisuals.ToString()
+            ? visualPolicy.MaxNewVisuals.ToString(CultureInfo.InvariantCulture)
             : visualPolicy.AllowNewVisuals
                 ? "1"
                 : "0";
@@ -568,12 +568,11 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                var candidatePriority = ResolveRenderHintPriority(hint, candidateVisualType);
-                if (candidatePriority <= bestPriority) {
+                if (candidateVisualHintPriority <= bestPriority) {
                     continue;
                 }
 
-                bestPriority = candidatePriority;
+                bestPriority = candidateVisualHintPriority;
                 bestVisualType = candidateVisualType;
                 bestVisualHintPriority = candidateVisualHintPriority;
                 hasBestVisualHintPriority = hasCandidateVisualHintPriority;
