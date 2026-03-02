@@ -7,6 +7,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 ## Progress Update (2026-03-02)
 
 - [x] PR #985 merged (`2f649d62d164185755c19e33906a7064ae4ff132`): contract-first pack toggles, startup bootstrap visibility, and migration hardening are now on `master`.
+- [x] PR #986 merged (`4db3931ac8cbb753da7ff160311a4f8e0d6904a3`): removed planner prompt pack-hint inference (`pack`/`pack_aliases`) to keep Chat planner context generic.
 
 ## Rules For This Migration
 

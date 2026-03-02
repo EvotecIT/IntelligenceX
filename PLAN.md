@@ -22,6 +22,7 @@ Build a contract-first architecture where:
 - [x] Startup bootstrap visibility landed end-to-end (structured telemetry + status parsing + UI surfacing for runtime/tool-pack loading progress).
 - [x] SQLite profile migration now preserves legacy `enable_*_pack` intent by translating into pack-id lists before deprecated columns are dropped.
 - [x] Regression coverage added for legacy pack-toggle migration and unknown-required-column insert backfill behavior.
+- [x] PR #986 merged: planner prompt no longer emits inferred `pack`/`pack_aliases`; Chat planner context stays generic (`category`/`family`/`tags`) while routing search tokens remain metadata-backed.
 
 ## Hard Decisions (Locked)
 
