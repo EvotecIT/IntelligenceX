@@ -509,6 +509,163 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_AutoBootstrapsDomainEnvironmentAfterNoToolBlockerLoop() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-1",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      Szybki status AD replication forest:
+                                      - brak wykrytej domeny/DC
+                                      - podaj FQDN kontrolera lub nazwę domeny
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-2",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      AD replication forest - nadal bez punktu zaczepienia:
+                                      - brak domeny z autodiscovery
+                                      - potrzebny host/FQDN DC
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-3",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      AD replication forest:
+                                      - discovery nie zwróciło pełnego scope
+                                      - kontynuuję po bootstrapie
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            4 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Auto-scope completed: discovered contoso.local via dc01.contoso.local. Ready to run replication summary."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "ad_environment_discover",
+            static (_, _) => Task.FromResult("""
+                                             {"ok":true,"summary_markdown":"Auto-scope: contoso.local via dc01.contoso.local"}
+                                             """)));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-domain-bootstrap-recovery",
+            ThreadId = thread.Id,
+            Text = "Check AD replication forest status and summarize what is available right now.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(4, server.ChatCompletionRequestCount);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Contains("Auto-scope completed", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Single(resultMessage.Tools!.Calls);
+        Assert.Single(resultMessage.Tools.Outputs);
+        Assert.Equal("ad_environment_discover", resultMessage.Tools.Calls[0].Name);
+        Assert.StartsWith("host_pack_preflight_environment_discover_", resultMessage.Tools.Calls[0].CallId, StringComparison.Ordinal);
+        Assert.Equal(resultMessage.Tools.Calls[0].CallId, resultMessage.Tools.Outputs[0].CallId);
+        Assert.True(resultMessage.Tools.Outputs[0].Ok ?? true);
+
+        var finalRequestBody = server.GetChatRequestBody(3);
+        Assert.True(ContainsToolMessageForCallId(finalRequestBody, resultMessage.Tools.Calls[0].CallId));
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_RecomputesPendingActionsAfterRecoveredNoTextDraft() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => JsonSerializer.Serialize(new {
