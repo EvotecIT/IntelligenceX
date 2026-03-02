@@ -444,7 +444,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static void AppendRoutingPackTokens(StringBuilder sb, ToolDefinition definition) {
-        var packHint = ResolvePlannerPackHint(definition);
+        var packHint = ResolveRoutingPackHint(definition);
         if (packHint.Length == 0) {
             return;
         }
@@ -463,6 +463,22 @@ internal sealed partial class ChatServiceSession {
         foreach (var alias in ToolSelectionMetadata.GetPackSearchTokens(packHint)) {
             AppendPackToken(alias);
         }
+    }
+
+    private static string ResolveRoutingPackHint(ToolDefinition definition) {
+        var routingPackId = NormalizePackId(definition.Routing?.PackId);
+        if (routingPackId.Length > 0) {
+            return routingPackId;
+        }
+
+        if (ToolSelectionMetadata.TryResolvePackId(definition, out var resolvedPackId)) {
+            var normalizedResolvedPackId = NormalizePackId(resolvedPackId);
+            if (normalizedResolvedPackId.Length > 0) {
+                return normalizedResolvedPackId;
+            }
+        }
+
+        return string.Empty;
     }
 
     private static string[] ExtractToolSchemaPropertyNames(ToolDefinition definition, int maxCount, out bool hasTableViewProjection) {
