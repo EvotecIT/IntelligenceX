@@ -144,7 +144,8 @@
     },
     "CacheHeaders": {
       "Enabled": true,
-      "OutputPath": "_headers"
+      "OutputPath": "_headers",
+      "HtmlCacheControl": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400, stale-if-error=604800"
     }
   },
   "Prism": {
