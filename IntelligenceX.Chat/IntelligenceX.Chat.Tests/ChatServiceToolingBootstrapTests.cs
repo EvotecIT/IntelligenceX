@@ -132,4 +132,47 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.Contains("active_directory=1400ms", slowPacks, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("plugins=900ms", slowPacks, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void SummarizeSlowPluginLoadWarnings_PluginProcessedProgress_UsesCompletedEndEvents() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "SummarizeSlowPluginLoadWarnings",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string> {
+            "[plugin] load_progress plugin='alpha' phase='begin' index='1' total='3'",
+            "[plugin] load_progress plugin='alpha' phase='end' index='1' total='3' elapsed_ms='100' loaded='1' disabled='0' duplicate='0' failed='0'",
+            "[plugin] load_progress plugin='beta' phase='begin' index='2' total='3'",
+            "[plugin] load_progress plugin='beta' phase='end' index='2' total='3' elapsed_ms='120' loaded='1' disabled='0' duplicate='0' failed='0'",
+            "[plugin] load_progress plugin='gamma' phase='begin' index='3' total='3'"
+        };
+
+        method!.Invoke(null, new object?[] { warnings });
+
+        Assert.Contains(
+            warnings,
+            static w => w.StartsWith("[startup] plugin load progress: processed 2/3 plugin folders (begin=3, end=2).", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SummarizeSlowPluginLoadWarnings_PackProcessedProgress_UsesCompletedEndEvents() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "SummarizeSlowPluginLoadWarnings",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string> {
+            "[startup] pack_load_progress pack='eventlog' phase='begin' index='1' total='3'",
+            "[startup] pack_load_progress pack='eventlog' phase='end' index='1' total='3' elapsed_ms='120' failed='0'",
+            "[startup] pack_load_progress pack='active_directory' phase='begin' index='2' total='3'",
+            "[startup] pack_load_progress pack='plugins' phase='begin' index='3' total='3'"
+        };
+
+        method!.Invoke(null, new object?[] { warnings });
+
+        Assert.Contains(
+            warnings,
+            static w => w.StartsWith("[startup] pack load progress: processed 1/3 bootstrap steps (begin=3, end=1).", StringComparison.OrdinalIgnoreCase));
+    }
 }

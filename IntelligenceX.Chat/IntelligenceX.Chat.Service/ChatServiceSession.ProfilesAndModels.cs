@@ -887,7 +887,8 @@ internal sealed partial class ChatServiceSession {
         int progressEndCount,
         int progressLatestIndex,
         int progressLatestTotal) {
-        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
+        _ = progressLatestIndex;
+        var processed = progressEndCount;
         var total = progressLatestTotal > 0
             ? progressLatestTotal
             : Math.Max(processed, Math.Max(progressBeginCount, progressEndCount));
@@ -899,8 +900,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static int ResolvePluginProgressProcessed(int progressEndCount, int progressLatestIndex) {
-        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
-        return Math.Max(0, processed);
+        _ = progressLatestIndex;
+        return Math.Max(0, progressEndCount);
     }
 
     private static int ResolvePluginProgressTotal(int progressBeginCount, int progressEndCount, int progressLatestTotal, int processed) {
@@ -916,7 +917,8 @@ internal sealed partial class ChatServiceSession {
         int progressEndCount,
         int progressLatestIndex,
         int progressLatestTotal) {
-        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
+        _ = progressLatestIndex;
+        var processed = progressEndCount;
         var total = progressLatestTotal > 0
             ? progressLatestTotal
             : Math.Max(processed, Math.Max(progressBeginCount, progressEndCount));
@@ -928,8 +930,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static int ResolvePackProgressProcessed(int progressEndCount, int progressLatestIndex) {
-        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
-        return Math.Max(0, processed);
+        _ = progressLatestIndex;
+        return Math.Max(0, progressEndCount);
     }
 
     private static int ResolvePackProgressTotal(int progressBeginCount, int progressEndCount, int progressLatestTotal, int processed) {
