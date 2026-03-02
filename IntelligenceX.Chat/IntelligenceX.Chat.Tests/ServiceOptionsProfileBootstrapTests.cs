@@ -94,6 +94,8 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(error), error);
             Assert.Equal("default", options.ProfileName);
             Assert.Equal(OpenAICompatibleHttpAuthMode.Bearer, options.OpenAIAuthMode);
+            Assert.Contains("legacyalpha", options.DisabledPackIds);
+            Assert.Contains("legacybeta", options.EnabledPackIds);
         } finally {
             TryDelete(dbPath);
         }
