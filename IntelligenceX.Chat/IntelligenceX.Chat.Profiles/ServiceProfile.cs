@@ -39,12 +39,11 @@ internal sealed class ServiceProfile {
     public string? AdDomainController { get; set; }
     public string? AdDefaultSearchBaseDn { get; set; }
     public int AdMaxResults { get; set; } = 1000;
-    public bool EnablePowerShellPack { get; set; }
     public bool PowerShellAllowWrite { get; set; }
-    public bool EnableTestimoXPack { get; set; } = true;
-    public bool EnableOfficeImoPack { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; set; } = new();
+    public List<string> DisabledPackIds { get; set; } = new();
+    public List<string> EnabledPackIds { get; set; } = new();
     public string WriteGovernanceMode { get; set; } = "enforced";
     public bool RequireWriteGovernanceRuntime { get; set; } = true;
     public bool RequireWriteAuditSinkForWriteOperations { get; set; }

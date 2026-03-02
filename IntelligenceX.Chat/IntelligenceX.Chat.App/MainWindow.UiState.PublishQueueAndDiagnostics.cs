@@ -622,6 +622,7 @@ public sealed partial class MainWindow : Window {
             _toolPackIds.TryGetValue(name, out var packId);
             _toolPackNames.TryGetValue(name, out var packName);
             _toolParameters.TryGetValue(name, out var parameters);
+            _toolWriteCapabilities.TryGetValue(name, out var isWriteCapable);
             _toolStates.TryGetValue(name, out var enabled);
             _toolRoutingConfidence.TryGetValue(name, out var routingConfidence);
             _toolRoutingReason.TryGetValue(name, out var routingReason);
@@ -638,6 +639,7 @@ public sealed partial class MainWindow : Window {
                 packName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
                 tags = tags ?? Array.Empty<string>(),
                 parameters = parameterState,
+                isWriteCapable,
                 routingConfidence = string.IsNullOrWhiteSpace(routingConfidence) ? null : routingConfidence,
                 routingReason = string.IsNullOrWhiteSpace(routingReason) ? null : routingReason,
                 routingScore = _toolRoutingScore.ContainsKey(name) ? Math.Round(routingScore, 3) : (double?)null,

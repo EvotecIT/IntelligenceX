@@ -64,6 +64,11 @@ public sealed record SessionPolicyDto {
     public string[] StartupWarnings { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Structured startup/bootstrap telemetry captured during tooling initialization.
+    /// </summary>
+    public SessionStartupBootstrapTelemetryDto? StartupBootstrap { get; init; }
+
+    /// <summary>
     /// Effective plugin search roots used by the runtime.
     /// </summary>
     public string[] PluginSearchPaths { get; init; } = Array.Empty<string>();

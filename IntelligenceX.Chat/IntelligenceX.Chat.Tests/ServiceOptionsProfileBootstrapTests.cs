@@ -26,9 +26,6 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.True(string.IsNullOrWhiteSpace(error));
         Assert.Equal(0, options.MaxTableRows);
         Assert.Equal(0, options.MaxSample);
-        Assert.True(options.EnableOfficeImoPack);
-        Assert.True(options.EnableDnsClientXPack);
-        Assert.True(options.EnableDomainDetectivePack);
         Assert.False(options.AllowMutatingParallelToolCalls);
     }
 
@@ -90,15 +87,16 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             var options = ServiceOptions.Parse(new[] {
                 "--pipe", "test.pipe",
                 "--state-db", dbPath,
-                "--profile", "default",
-                "--save-profile", "default"
+                "--profile", "default"
             }, out var error);
 
             Assert.NotNull(options);
             Assert.True(string.IsNullOrWhiteSpace(error), error);
             Assert.Equal("default", options.ProfileName);
-            Assert.Equal("default", options.SaveProfileName);
             Assert.Equal(OpenAICompatibleHttpAuthMode.Bearer, options.OpenAIAuthMode);
+            Assert.Contains("testimox", options.DisabledPackIds);
+            Assert.Contains("officeimo", options.EnabledPackIds);
+            Assert.Contains("powershell", options.EnabledPackIds);
         } finally {
             TryDelete(dbPath);
         }
@@ -129,46 +127,62 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
-    public void Parse_Allows_Disabling_And_Enabling_OfficeImoPack() {
-        var disabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack" }, out var disabledError);
+    public void Parse_Allows_Disabling_And_Enabling_OfficeImoPack_ByPackId() {
+        var disabled = ServiceOptions.Parse(new[] { "--disable-pack-id", "officeimo" }, out var disabledError);
         Assert.True(string.IsNullOrWhiteSpace(disabledError));
-        Assert.False(disabled.EnableOfficeImoPack);
+        Assert.Contains("officeimo", disabled.DisabledPackIds);
+        Assert.DoesNotContain("officeimo", disabled.EnabledPackIds);
 
-        var enabled = ServiceOptions.Parse(new[] { "--disable-officeimo-pack", "--enable-officeimo-pack" }, out var enabledError);
+        var enabled = ServiceOptions.Parse(new[] { "--disable-pack-id", "officeimo", "--enable-pack-id", "officeimo" }, out var enabledError);
         Assert.True(string.IsNullOrWhiteSpace(enabledError));
-        Assert.True(enabled.EnableOfficeImoPack);
+        Assert.DoesNotContain("officeimo", enabled.DisabledPackIds);
+        Assert.Contains("officeimo", enabled.EnabledPackIds);
     }
 
     [Fact]
-    public void Parse_Allows_Disabling_And_Enabling_DnsAndDomainDetectivePacks() {
-        var disabledDns = ServiceOptions.Parse(new[] { "--disable-dnsclientx-pack" }, out var disabledDnsError);
+    public void Parse_Allows_Disabling_And_Enabling_DnsAndDomainDetectivePacks_ByPackId() {
+        var disabledDns = ServiceOptions.Parse(new[] { "--disable-pack-id", "dnsclientx" }, out var disabledDnsError);
         Assert.True(string.IsNullOrWhiteSpace(disabledDnsError));
-        Assert.False(disabledDns.EnableDnsClientXPack);
+        Assert.Contains("dnsclientx", disabledDns.DisabledPackIds);
+        Assert.DoesNotContain("dnsclientx", disabledDns.EnabledPackIds);
 
-        var enabledDns = ServiceOptions.Parse(new[] { "--disable-dnsclientx-pack", "--enable-dnsclientx-pack" }, out var enabledDnsError);
+        var enabledDns = ServiceOptions.Parse(new[] { "--disable-pack-id", "dnsclientx", "--enable-pack-id", "dnsclientx" }, out var enabledDnsError);
         Assert.True(string.IsNullOrWhiteSpace(enabledDnsError));
-        Assert.True(enabledDns.EnableDnsClientXPack);
+        Assert.DoesNotContain("dnsclientx", enabledDns.DisabledPackIds);
+        Assert.Contains("dnsclientx", enabledDns.EnabledPackIds);
 
-        var disabledDomainDetective = ServiceOptions.Parse(new[] { "--disable-domaindetective-pack" }, out var disabledDomainDetectiveError);
+        var disabledDomainDetective = ServiceOptions.Parse(new[] { "--disable-pack-id", "domaindetective" }, out var disabledDomainDetectiveError);
         Assert.True(string.IsNullOrWhiteSpace(disabledDomainDetectiveError));
-        Assert.False(disabledDomainDetective.EnableDomainDetectivePack);
+        Assert.Contains("domaindetective", disabledDomainDetective.DisabledPackIds);
+        Assert.DoesNotContain("domaindetective", disabledDomainDetective.EnabledPackIds);
 
         var enabledDomainDetective = ServiceOptions.Parse(
-            new[] { "--disable-domaindetective-pack", "--enable-domaindetective-pack" },
+            new[] { "--disable-pack-id", "domaindetective", "--enable-pack-id", "domaindetective" },
             out var enabledDomainDetectiveError);
         Assert.True(string.IsNullOrWhiteSpace(enabledDomainDetectiveError));
-        Assert.True(enabledDomainDetective.EnableDomainDetectivePack);
+        Assert.DoesNotContain("domaindetective", enabledDomainDetective.DisabledPackIds);
+        Assert.Contains("domaindetective", enabledDomainDetective.EnabledPackIds);
     }
 
     [Fact]
-    public void Parse_Allows_Disabling_And_Enabling_PowerShellPack() {
-        var enabled = ServiceOptions.Parse(new[] { "--enable-powershell-pack" }, out var enabledError);
+    public void Parse_Allows_Disabling_And_Enabling_PowerShellPack_ByPackId() {
+        var enabled = ServiceOptions.Parse(new[] { "--enable-pack-id", "powershell" }, out var enabledError);
         Assert.True(string.IsNullOrWhiteSpace(enabledError));
-        Assert.True(enabled.EnablePowerShellPack);
+        Assert.Contains("powershell", enabled.EnabledPackIds);
+        Assert.DoesNotContain("powershell", enabled.DisabledPackIds);
 
-        var disabled = ServiceOptions.Parse(new[] { "--enable-powershell-pack", "--disable-powershell-pack" }, out var disabledError);
+        var disabled = ServiceOptions.Parse(new[] { "--enable-pack-id", "powershell", "--disable-pack-id", "powershell" }, out var disabledError);
         Assert.True(string.IsNullOrWhiteSpace(disabledError));
-        Assert.False(disabled.EnablePowerShellPack);
+        Assert.DoesNotContain("powershell", disabled.EnabledPackIds);
+        Assert.Contains("powershell", disabled.DisabledPackIds);
+    }
+
+    [Fact]
+    public void Parse_Disables_UnknownPack_ByPackId() {
+        var options = ServiceOptions.Parse(new[] { "--disable-pack-id", "custom_plugin_pack" }, out var error);
+
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Contains("custompluginpack", options.DisabledPackIds);
     }
 
     [Fact]
@@ -347,6 +361,8 @@ public sealed class ServiceOptionsProfileBootstrapTests {
                 "--state-db", dbPath,
                 "--profile", "runtime",
                 "--save-profile", "runtime",
+                "--disable-pack-id", "custom_plugin_pack",
+                "--enable-pack-id", "powershell",
                 "--allow-mutating-parallel-tools",
                 "--write-governance-mode", "yolo",
                 "--no-require-write-governance-runtime",
@@ -381,6 +397,9 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(loaded.RequireAuthenticationRuntime);
             Assert.Equal("C:/temp/runas-profiles.json", loaded.RunAsProfilePath);
             Assert.Equal("C:/temp/auth-profiles.json", loaded.AuthenticationProfilePath);
+            Assert.DoesNotContain("powershell", loaded.DisabledPackIds);
+            Assert.Contains("custompluginpack", loaded.DisabledPackIds);
+            Assert.Contains("powershell", loaded.EnabledPackIds);
         } finally {
             TryDelete(dbPath);
         }
@@ -436,8 +455,9 @@ CREATE TABLE IF NOT EXISTS ix_service_profiles (
   ad_default_search_base_dn TEXT NULL,
   ad_max_results INTEGER NOT NULL,
   enable_powershell_pack INTEGER NOT NULL,
-  powershell_allow_write INTEGER NOT NULL,
   enable_testimox_pack INTEGER NOT NULL,
+  powershell_allow_write INTEGER NOT NULL,
+  enable_officeimo_pack INTEGER NOT NULL,
   enable_default_plugin_paths INTEGER NOT NULL,
   updated_utc TEXT NOT NULL
 );
@@ -453,7 +473,7 @@ INSERT INTO ix_service_profiles (
   max_tool_rounds, parallel_tools, turn_timeout_seconds, tool_timeout_seconds,
   instructions_file, max_table_rows, max_sample, redact,
   ad_domain_controller, ad_default_search_base_dn, ad_max_results,
-  enable_powershell_pack, powershell_allow_write, enable_testimox_pack, enable_default_plugin_paths,
+  enable_powershell_pack, enable_testimox_pack, powershell_allow_write, enable_officeimo_pack, enable_default_plugin_paths,
   updated_utc
 ) VALUES (
   @name, @model, @transport_kind, @openai_base_url, @openai_api_key,
@@ -462,7 +482,7 @@ INSERT INTO ix_service_profiles (
   @max_tool_rounds, @parallel_tools, @turn_timeout_seconds, @tool_timeout_seconds,
   @instructions_file, @max_table_rows, @max_sample, @redact,
   @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
-  @enable_powershell_pack, @powershell_allow_write, @enable_testimox_pack, @enable_default_plugin_paths,
+  @enable_powershell_pack, @enable_testimox_pack, @powershell_allow_write, @enable_officeimo_pack, @enable_default_plugin_paths,
   @updated_utc
 );
 """,
@@ -490,9 +510,10 @@ INSERT INTO ix_service_profiles (
                 ["@ad_domain_controller"] = null,
                 ["@ad_default_search_base_dn"] = null,
                 ["@ad_max_results"] = 1000,
-                ["@enable_powershell_pack"] = 0,
+                ["@enable_powershell_pack"] = 1,
+                ["@enable_testimox_pack"] = 0,
                 ["@powershell_allow_write"] = 0,
-                ["@enable_testimox_pack"] = 1,
+                ["@enable_officeimo_pack"] = 1,
                 ["@enable_default_plugin_paths"] = 1,
                 ["@updated_utc"] = DateTime.UtcNow.ToString("O")
             });

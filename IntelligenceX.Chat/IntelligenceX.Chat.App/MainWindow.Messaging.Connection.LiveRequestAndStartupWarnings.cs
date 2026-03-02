@@ -179,4 +179,79 @@ public sealed partial class MainWindow : Window {
         AppendSystem(string.Join(Environment.NewLine, lines));
     }
 
+    private void AppendStartupBootstrapSummaryFromPolicy() {
+        var telemetry = _sessionPolicy?.StartupBootstrap;
+        if (telemetry is null) {
+            return;
+        }
+
+        var signalWorthy = telemetry.TotalMs >= 1000
+                           || telemetry.PackLoadMs >= 800
+                           || telemetry.SlowPackCount > 0
+                           || telemetry.SlowPluginCount > 0;
+        if (!signalWorthy) {
+            return;
+        }
+
+        var signature = string.Join("|", new[] {
+            telemetry.TotalMs.ToString(),
+            telemetry.PackLoadMs.ToString(),
+            telemetry.RegistryMs.ToString(),
+            telemetry.SlowPackCount.ToString(),
+            telemetry.PackProgressProcessed.ToString(),
+            telemetry.PackProgressTotal.ToString(),
+            telemetry.SlowPluginCount.ToString(),
+            telemetry.PluginProgressProcessed.ToString(),
+            telemetry.PluginProgressTotal.ToString(),
+            telemetry.PacksLoaded.ToString(),
+            telemetry.PacksDisabled.ToString(),
+            telemetry.Tools.ToString()
+        });
+        if (!_startupBootstrapSummarySignatures.Add(signature)) {
+            return;
+        }
+
+        static string FormatDuration(long milliseconds) {
+            var bounded = Math.Max(0, milliseconds);
+            var elapsed = TimeSpan.FromMilliseconds(bounded);
+            if (elapsed.TotalSeconds >= 1) {
+                return $"{elapsed.TotalSeconds:0.0}s";
+            }
+
+            return $"{Math.Max(1, bounded)}ms";
+        }
+
+        var lines = new List<string> {
+            "[startup] Runtime tool bootstrap summary",
+            string.Empty,
+            $"- Total: {FormatDuration(telemetry.TotalMs)} (pack load {FormatDuration(telemetry.PackLoadMs)}, registry {FormatDuration(telemetry.RegistryMs)})",
+            $"- Packs loaded: {telemetry.PacksLoaded}, disabled: {telemetry.PacksDisabled}, tools: {telemetry.Tools}"
+        };
+
+        if (telemetry.PackProgressTotal > 0 || telemetry.PackProgressProcessed > 0) {
+            var processed = Math.Max(telemetry.PackProgressProcessed, 0);
+            var total = Math.Max(processed, telemetry.PackProgressTotal);
+            lines.Add($"- Pack bootstrap progress: {processed}/{total} steps");
+        }
+
+        if (telemetry.SlowPackCount > 0) {
+            lines.Add($"- Slow pack loads detected: {telemetry.SlowPackCount} (top {telemetry.SlowPackTopCount} captured in startup warnings)");
+        }
+
+        if (telemetry.PluginRoots > 0 || telemetry.PluginProgressTotal > 0 || telemetry.PluginProgressProcessed > 0) {
+            var processed = Math.Max(telemetry.PluginProgressProcessed, 0);
+            var total = Math.Max(processed, telemetry.PluginProgressTotal);
+            lines.Add($"- Plugin roots: {telemetry.PluginRoots}, folders processed: {processed}/{total}");
+        }
+
+        if (telemetry.SlowPluginCount > 0) {
+            lines.Add($"- Slow plugin loads detected: {telemetry.SlowPluginCount} (top {telemetry.SlowPluginTopCount} captured in startup warnings)");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add("Open the runtime policy panel for detailed startup warnings.");
+
+        AppendSystem(string.Join(Environment.NewLine, lines));
+    }
+
 }

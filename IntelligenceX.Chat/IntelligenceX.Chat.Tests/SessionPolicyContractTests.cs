@@ -37,6 +37,25 @@ public sealed class SessionPolicyContractTests {
                     "[plugin] path_not_found path='C:\\plugins\\missing'",
                     "[plugin] init_failed plugin='ix.mail' error='dependency missing'"
                 },
+                StartupBootstrap = new SessionStartupBootstrapTelemetryDto {
+                    TotalMs = 4120,
+                    RuntimePolicyMs = 35,
+                    BootstrapOptionsMs = 14,
+                    PackLoadMs = 3988,
+                    RegistryMs = 83,
+                    Tools = 142,
+                    PacksLoaded = 10,
+                    PacksDisabled = 2,
+                    PluginRoots = 2,
+                    SlowPackCount = 2,
+                    SlowPackTopCount = 2,
+                    PackProgressProcessed = 12,
+                    PackProgressTotal = 12,
+                    SlowPluginCount = 3,
+                    SlowPluginTopCount = 3,
+                    PluginProgressProcessed = 5,
+                    PluginProgressTotal = 5
+                },
                 PluginSearchPaths = new[] {
                     "C:\\Users\\user\\AppData\\Local\\IntelligenceX.Chat\\plugins",
                     "C:\\Support\\GitHub\\IntelligenceX\\plugins"
@@ -76,6 +95,14 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal("[plugin] path_not_found path='C:\\plugins\\missing'", policy.StartupWarnings[0]);
         Assert.Equal(2, policy.PluginSearchPaths.Length);
         Assert.Equal("C:\\Support\\GitHub\\IntelligenceX\\plugins", policy.PluginSearchPaths[1]);
+        var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(policy.StartupBootstrap);
+        Assert.Equal(4120, startupBootstrap.TotalMs);
+        Assert.Equal(3988, startupBootstrap.PackLoadMs);
+        Assert.Equal(2, startupBootstrap.SlowPackCount);
+        Assert.Equal(12, startupBootstrap.PackProgressProcessed);
+        Assert.Equal(12, startupBootstrap.PackProgressTotal);
+        Assert.Equal(5, startupBootstrap.PluginProgressProcessed);
+        Assert.Equal(5, startupBootstrap.PluginProgressTotal);
         Assert.False(policy.AllowMutatingParallelToolCalls);
         Assert.Single(policy.Packs);
         Assert.False(policy.Packs[0].Enabled);

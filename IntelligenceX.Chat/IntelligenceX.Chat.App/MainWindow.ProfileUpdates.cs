@@ -110,8 +110,9 @@ public sealed partial class MainWindow : Window {
             _toolParameters[name] = tool.Parameters is { Length: > 0 } parameters
                 ? parameters
                 : Array.Empty<ToolParameterDto>();
+            _toolWriteCapabilities[name] = tool.IsWriteCapable;
             if (!_toolStates.ContainsKey(name)) {
-                _toolStates[name] = true;
+                _toolStates[name] = !tool.IsWriteCapable;
             }
 
             // Reset routing snapshot on catalog refresh so UI never shows stale confidence/score/reason.
@@ -131,6 +132,7 @@ public sealed partial class MainWindow : Window {
                 _toolPackNames.Remove(toolName);
                 _toolTags.Remove(toolName);
                 _toolParameters.Remove(toolName);
+                _toolWriteCapabilities.Remove(toolName);
                 _toolRoutingConfidence.Remove(toolName);
                 _toolRoutingReason.Remove(toolName);
                 _toolRoutingScore.Remove(toolName);
@@ -145,7 +147,7 @@ public sealed partial class MainWindow : Window {
 
         var key = toolName.Trim();
         if (!_toolStates.ContainsKey(key)) {
-            _toolStates[key] = true;
+            _toolStates[key] = !IsWriteCapableTool(key);
         }
         _toolStates[key] = enabled;
     }
@@ -156,7 +158,7 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (IsRuntimeManagedPack(normalizedPackId)) {
+        if (FindSessionPackInfo(normalizedPackId) is not null) {
             return await TryApplyRuntimePackSettingAsync(normalizedPackId, enabled).ConfigureAwait(false);
         }
 
@@ -182,12 +184,6 @@ public sealed partial class MainWindow : Window {
         }
 
         return changed;
-    }
-
-    private static bool IsRuntimeManagedPack(string normalizedPackId) {
-        return string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal)
-               || string.Equals(normalizedPackId, "testimox", StringComparison.Ordinal)
-               || string.Equals(normalizedPackId, "officeimo", StringComparison.Ordinal);
     }
 
     private ToolPackInfoDto? FindSessionPackInfo(string normalizedPackId) {
@@ -217,19 +213,8 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        var showPowerShellOnboardingHint = enabled
-                                           && string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal)
-                                           && (pack is null || !pack.Enabled);
-        bool? enablePowerShellPack = null;
-        bool? enableTestimoXPack = null;
-        bool? enableOfficeImoPack = null;
-        if (string.Equals(normalizedPackId, "powershell", StringComparison.Ordinal)) {
-            enablePowerShellPack = enabled;
-        } else if (string.Equals(normalizedPackId, "testimox", StringComparison.Ordinal)) {
-            enableTestimoXPack = enabled;
-        } else if (string.Equals(normalizedPackId, "officeimo", StringComparison.Ordinal)) {
-            enableOfficeImoPack = enabled;
-        }
+        var enablePackIds = enabled ? new[] { normalizedPackId } : null;
+        var disablePackIds = enabled ? null : new[] { normalizedPackId };
 
         var liveApply = await TryApplyRuntimeSettingsLiveAsync(
                 profileSaved: true,
@@ -249,9 +234,8 @@ public sealed partial class MainWindow : Window {
                 reasoningSummary: _localProviderReasoningSummary,
                 textVerbosity: _localProviderTextVerbosity,
                 temperature: _localProviderTemperature,
-                enablePowerShellPack: enablePowerShellPack,
-                enableTestimoXPack: enableTestimoXPack,
-                enableOfficeImoPack: enableOfficeImoPack).ConfigureAwait(false);
+                enablePackIds: enablePackIds,
+                disablePackIds: disablePackIds).ConfigureAwait(false);
         if (liveApply) {
             await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(false);
             await SyncConnectedServiceProfileAndModelsAsync(
@@ -265,29 +249,11 @@ public sealed partial class MainWindow : Window {
             await PublishOptionsStateAsync().ConfigureAwait(false);
         }
 
-        if (showPowerShellOnboardingHint) {
-            AppendPowerShellOnboardingHint();
-        }
-
         return true;
     }
 
-    private void AppendPowerShellOnboardingHint() {
-        if (_powerShellOnboardingHintShownThisSession) {
-            return;
-        }
-
-        _powerShellOnboardingHintShownThisSession = true;
-        AppendSystem(GetActiveConversation(), """
-[info] PowerShell Runtime enabled.
-
-You can now run shell-backed diagnostics (including cmd host support) through `powershell_run`.
-
-Quick start prompts:
-- `Run powershell_environment_discover and summarize host availability + write policy.`
-- `Run powershell_run with host=cmd and command='ver' using read_only intent.`
-- `Run powershell_run with host=pwsh and command='Get-Service | Select-Object -First 20' using read_only intent.`
-""");
+    private bool IsWriteCapableTool(string toolName) {
+        return _toolWriteCapabilities.TryGetValue(toolName, out var isWriteCapable) && isWriteCapable;
     }
 
     private string ResolveToolPackId(string toolName) {
@@ -632,6 +598,7 @@ Quick start prompts:
                       disabledTools));
         lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
                   + ", disabled " + disabledTools.ToString(CultureInfo.InvariantCulture));
+        AppendWriteToolCapabilityContextLines(lines);
         if (options is not null) {
             lines.Add("Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
                       + " (" + (options.ParallelToolMode ?? ParallelToolModeAuto) + ")");
@@ -655,6 +622,39 @@ Quick start prompts:
         lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
         lines.Add("Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
         return lines;
+    }
+
+    private void AppendWriteToolCapabilityContextLines(List<string> lines) {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (_toolWriteCapabilities.Count == 0) {
+            return;
+        }
+
+        var enabledWriteTools = new List<string>();
+        var disabledWriteTools = new List<string>();
+        foreach (var pair in _toolWriteCapabilities) {
+            if (!pair.Value) {
+                continue;
+            }
+
+            if (_toolStates.TryGetValue(pair.Key, out var enabled) && enabled) {
+                enabledWriteTools.Add(pair.Key);
+            } else {
+                disabledWriteTools.Add(pair.Key);
+            }
+        }
+
+        enabledWriteTools.Sort(StringComparer.OrdinalIgnoreCase);
+        disabledWriteTools.Sort(StringComparer.OrdinalIgnoreCase);
+        lines.Add("Write-capable tools: enabled " + enabledWriteTools.Count.ToString(CultureInfo.InvariantCulture)
+                  + ", disabled " + disabledWriteTools.Count.ToString(CultureInfo.InvariantCulture) + ".");
+        if (disabledWriteTools.Count > 0) {
+            var preview = string.Join(", ", disabledWriteTools.GetRange(0, Math.Min(disabledWriteTools.Count, 8)));
+            if (disabledWriteTools.Count > 8) {
+                preview += ", ...";
+            }
+            lines.Add("Disabled write-capable tools: " + preview + ".");
+        }
     }
 
     private void CountKnownToolStates(out int knownToolCount, out int enabledTools, out int disabledTools) {

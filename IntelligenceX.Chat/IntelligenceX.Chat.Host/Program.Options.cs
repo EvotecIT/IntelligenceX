@@ -65,14 +65,11 @@ internal static partial class Program {
         public string? AdDomainController { get; set; }
         public string? AdDefaultSearchBaseDn { get; set; }
         public int AdMaxResults { get; set; } = 1000;
-        public bool EnablePowerShellPack { get; set; }
         public bool PowerShellAllowWrite { get; set; }
-        public bool EnableTestimoXPack { get; set; } = true;
-        public bool EnableOfficeImoPack { get; set; } = true;
-        public bool EnableDnsClientXPack { get; set; } = true;
-        public bool EnableDomainDetectivePack { get; set; } = true;
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
+        public List<string> DisabledPackIds { get; } = new();
+        public List<string> EnabledPackIds { get; } = new();
         public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
         public bool RequireWriteGovernanceRuntime { get; set; } = true;
         public bool RequireWriteAuditSinkForWriteOperations { get; set; }
@@ -87,6 +84,8 @@ internal static partial class Program {
         ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
         IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
         IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
+        IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
+        IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
 
         public static ReplOptions Parse(string[] args, out string? error) {
             error = null;
@@ -292,35 +291,18 @@ internal static partial class Program {
                         }
                         options.AdMaxResults = adMaxResults;
                         break;
-                    case "--enable-powershell-pack":
-                        options.EnablePowerShellPack = true;
+                    case "--enable-pack-id":
+                    case "--disable-pack-id":
+                        if (!TryGetValue(args, ref i, out var packId, out error)) {
+                            return options;
+                        }
+                        var enablePack = string.Equals(a, "--enable-pack-id", StringComparison.Ordinal);
+                        if (!TryApplyPackEnablement(options, packId, enablePack, a, out error)) {
+                            return options;
+                        }
                         break;
                     case "--powershell-allow-write":
                         options.PowerShellAllowWrite = true;
-                        break;
-                    case "--enable-testimox-pack":
-                        options.EnableTestimoXPack = true;
-                        break;
-                    case "--disable-testimox-pack":
-                        options.EnableTestimoXPack = false;
-                        break;
-                    case "--enable-officeimo-pack":
-                        options.EnableOfficeImoPack = true;
-                        break;
-                    case "--disable-officeimo-pack":
-                        options.EnableOfficeImoPack = false;
-                        break;
-                    case "--enable-dnsclientx-pack":
-                        options.EnableDnsClientXPack = true;
-                        break;
-                    case "--disable-dnsclientx-pack":
-                        options.EnableDnsClientXPack = false;
-                        break;
-                    case "--enable-domaindetective-pack":
-                        options.EnableDomainDetectivePack = true;
-                        break;
-                    case "--disable-domaindetective-pack":
-                        options.EnableDomainDetectivePack = false;
                         break;
                     case "--plugin-path":
                         if (!TryGetValue(args, ref i, out var pluginPath, out error)) {
@@ -527,14 +509,19 @@ internal static partial class Program {
             AdDomainController = profile.AdDomainController;
             AdDefaultSearchBaseDn = profile.AdDefaultSearchBaseDn;
             AdMaxResults = profile.AdMaxResults;
-            EnablePowerShellPack = profile.EnablePowerShellPack;
             PowerShellAllowWrite = profile.PowerShellAllowWrite;
-            EnableTestimoXPack = profile.EnableTestimoXPack;
-            EnableOfficeImoPack = profile.EnableOfficeImoPack;
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
             PluginPaths.Clear();
             if (profile.PluginPaths is { Count: > 0 }) {
                 PluginPaths.AddRange(profile.PluginPaths);
+            }
+            DisabledPackIds.Clear();
+            if (profile.DisabledPackIds is { Count: > 0 }) {
+                DisabledPackIds.AddRange(profile.DisabledPackIds);
+            }
+            EnabledPackIds.Clear();
+            if (profile.EnabledPackIds is { Count: > 0 }) {
+                EnabledPackIds.AddRange(profile.EnabledPackIds);
             }
             ToolRuntimePolicyBootstrap.ApplyProfileRuntimePolicy(
                 writeGovernanceMode: profile.WriteGovernanceMode,
@@ -601,12 +588,7 @@ internal static partial class Program {
                 AdDomainController = AdDomainController,
                 AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
                 AdMaxResults = AdMaxResults,
-                EnablePowerShellPack = EnablePowerShellPack,
                 PowerShellAllowWrite = PowerShellAllowWrite,
-                EnableTestimoXPack = EnableTestimoXPack,
-                EnableOfficeImoPack = EnableOfficeImoPack,
-                EnableDnsClientXPack = EnableDnsClientXPack,
-                EnableDomainDetectivePack = EnableDomainDetectivePack,
                 EnableDefaultPluginPaths = EnableDefaultPluginPaths,
                 WriteGovernanceMode = WriteGovernanceMode,
                 RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,
@@ -626,8 +608,61 @@ internal static partial class Program {
             if (PluginPaths.Count > 0) {
                 clone.PluginPaths.AddRange(PluginPaths);
             }
+            if (DisabledPackIds.Count > 0) {
+                clone.DisabledPackIds.AddRange(DisabledPackIds);
+            }
+            if (EnabledPackIds.Count > 0) {
+                clone.EnabledPackIds.AddRange(EnabledPackIds);
+            }
 
             return clone;
+        }
+
+        private static bool TryApplyPackEnablement(
+            ReplOptions options,
+            string? rawPackId,
+            bool enabled,
+            string argumentName,
+            out string? error) {
+            error = null;
+            var normalizedPackId = ToolPackBootstrap.NormalizePackId(rawPackId);
+            if (normalizedPackId.Length == 0) {
+                error = $"{argumentName} requires a non-empty pack id.";
+                return false;
+            }
+
+            if (enabled) {
+                RemovePackId(options.DisabledPackIds, normalizedPackId);
+                AddPackIdIfMissing(options.EnabledPackIds, normalizedPackId);
+            } else {
+                RemovePackId(options.EnabledPackIds, normalizedPackId);
+                AddPackIdIfMissing(options.DisabledPackIds, normalizedPackId);
+            }
+
+            return true;
+        }
+
+        private static void RemovePackId(List<string> packIds, string normalizedPackId) {
+            for (var i = packIds.Count - 1; i >= 0; i--) {
+                if (string.Equals(ToolPackBootstrap.NormalizePackId(packIds[i]), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                    packIds.RemoveAt(i);
+                }
+            }
+        }
+
+        private static bool ContainsPackId(List<string> packIds, string normalizedPackId) {
+            for (var i = 0; i < packIds.Count; i++) {
+                if (string.Equals(ToolPackBootstrap.NormalizePackId(packIds[i]), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static void AddPackIdIfMissing(List<string> packIds, string normalizedPackId) {
+            if (!ContainsPackId(packIds, normalizedPackId)) {
+                packIds.Add(normalizedPackId);
+            }
         }
 
         private static bool TryGetValue(string[] args, ref int i, out string value, out string? error) {

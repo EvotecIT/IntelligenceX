@@ -51,14 +51,11 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public string? AdDomainController { get; set; }
     public string? AdDefaultSearchBaseDn { get; set; }
     public int AdMaxResults { get; set; } = 1000;
-    public bool EnablePowerShellPack { get; set; }
     public bool PowerShellAllowWrite { get; set; }
-    public bool EnableTestimoXPack { get; set; } = true;
-    public bool EnableOfficeImoPack { get; set; } = true;
-    public bool EnableDnsClientXPack { get; set; } = true;
-    public bool EnableDomainDetectivePack { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
+    public List<string> DisabledPackIds { get; } = new();
+    public List<string> EnabledPackIds { get; } = new();
     public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
     public bool RequireWriteGovernanceRuntime { get; set; } = true;
     public bool RequireWriteAuditSinkForWriteOperations { get; set; }
@@ -73,6 +70,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
     IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
     IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
+    IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
+    IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
 
     public string? InstructionsFile { get; set; }
     public int MaxTableRows { get; set; }
@@ -395,48 +394,19 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.AdMaxResults = n;
                 continue;
             }
-            if (arg is "--enable-powershell-pack") {
-                options.EnablePowerShellPack = true;
-                continue;
-            }
-            if (arg is "--disable-powershell-pack") {
-                options.EnablePowerShellPack = false;
+            if (arg is "--enable-pack-id" or "--disable-pack-id") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+
+                var enabled = arg is "--enable-pack-id";
+                if (!TryApplyPackEnablement(options, value, enabled, arg, out error)) {
+                    return options;
+                }
                 continue;
             }
             if (arg is "--powershell-allow-write") {
                 options.PowerShellAllowWrite = true;
-                continue;
-            }
-            if (arg is "--enable-testimox-pack") {
-                options.EnableTestimoXPack = true;
-                continue;
-            }
-            if (arg is "--disable-testimox-pack") {
-                options.EnableTestimoXPack = false;
-                continue;
-            }
-            if (arg is "--enable-officeimo-pack") {
-                options.EnableOfficeImoPack = true;
-                continue;
-            }
-            if (arg is "--disable-officeimo-pack") {
-                options.EnableOfficeImoPack = false;
-                continue;
-            }
-            if (arg is "--enable-dnsclientx-pack") {
-                options.EnableDnsClientXPack = true;
-                continue;
-            }
-            if (arg is "--disable-dnsclientx-pack") {
-                options.EnableDnsClientXPack = false;
-                continue;
-            }
-            if (arg is "--enable-domaindetective-pack") {
-                options.EnableDomainDetectivePack = true;
-                continue;
-            }
-            if (arg is "--disable-domaindetective-pack") {
-                options.EnableDomainDetectivePack = false;
                 continue;
             }
             if (arg is "--plugin-path") {
@@ -568,17 +538,10 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --ad-domain-controller  Active Directory domain controller host/FQDN (optional).");
         Console.WriteLine("  --ad-search-base        Active Directory base DN (optional; defaultNamingContext used otherwise).");
         Console.WriteLine("  --ad-max-results <N>    Max results returned by AD tools (default: 1000).");
-        Console.WriteLine("  --enable-powershell-pack  Enable dangerous IX.PowerShell runtime tools (default: off).");
-        Console.WriteLine("  --disable-powershell-pack Disable IX.PowerShell runtime tools.");
+        Console.WriteLine("  --enable-pack-id <ID>   Enable a tool pack by normalized pack id (repeatable).");
+        Console.WriteLine("  --disable-pack-id <ID>  Disable a tool pack by normalized pack id (repeatable).");
+        Console.WriteLine("                          Pack ids come from runtime metadata (built-in + plugin packs).");
         Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
-        Console.WriteLine("  --enable-testimox-pack  Enable IX.TestimoX diagnostics tools (default: on).");
-        Console.WriteLine("  --disable-testimox-pack Disable IX.TestimoX diagnostics tools.");
-        Console.WriteLine("  --enable-officeimo-pack  Enable IX.OfficeIMO document ingestion tools (default: on).");
-        Console.WriteLine("  --disable-officeimo-pack Disable IX.OfficeIMO document ingestion tools.");
-        Console.WriteLine("  --enable-dnsclientx-pack  Enable IX.DnsClientX DNS tools (default: on).");
-        Console.WriteLine("  --disable-dnsclientx-pack Disable IX.DnsClientX DNS tools.");
-        Console.WriteLine("  --enable-domaindetective-pack  Enable IX.DomainDetective diagnostics tools (default: on).");
-        Console.WriteLine("  --disable-domaindetective-pack Disable IX.DomainDetective diagnostics tools.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);
@@ -680,6 +643,53 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             root = ".";
         }
         return Path.Combine(root, "IntelligenceX.Chat", "state.db");
+    }
+
+    internal static bool TryApplyPackEnablement(
+        ServiceOptions options,
+        string? rawPackId,
+        bool enabled,
+        string argumentName,
+        out string? error) {
+        error = null;
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(rawPackId);
+        if (normalizedPackId.Length == 0) {
+            error = $"{argumentName} requires a non-empty pack id.";
+            return false;
+        }
+
+        if (enabled) {
+            RemovePackId(options.DisabledPackIds, normalizedPackId);
+            AddPackIdIfMissing(options.EnabledPackIds, normalizedPackId);
+        } else {
+            RemovePackId(options.EnabledPackIds, normalizedPackId);
+            AddPackIdIfMissing(options.DisabledPackIds, normalizedPackId);
+        }
+
+        return true;
+    }
+
+    private static void RemovePackId(List<string> packIds, string normalizedPackId) {
+        for (var i = packIds.Count - 1; i >= 0; i--) {
+            if (string.Equals(ToolPackBootstrap.NormalizePackId(packIds[i]), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                packIds.RemoveAt(i);
+            }
+        }
+    }
+
+    private static bool ContainsPackId(List<string> packIds, string normalizedPackId) {
+        for (var i = 0; i < packIds.Count; i++) {
+            if (string.Equals(ToolPackBootstrap.NormalizePackId(packIds[i]), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void AddPackIdIfMissing(List<string> packIds, string normalizedPackId) {
+        if (!ContainsPackId(packIds, normalizedPackId)) {
+            packIds.Add(normalizedPackId);
+        }
     }
 
 }

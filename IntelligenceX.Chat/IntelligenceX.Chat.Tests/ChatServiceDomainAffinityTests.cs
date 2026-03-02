@@ -856,14 +856,14 @@ public sealed class ChatServiceDomainAffinityTests {
                 description: "Custom AD probe",
                 parameters: null,
                 tags: new[] { "domain_family:ad_domain" }));
-        var eventLogTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
-            "custom_event_timeline",
+        var adHostTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "custom_host_timeline",
             new ToolDefinition(
-                name: "custom_event_timeline",
-                description: "Custom event timeline",
+                name: "custom_host_timeline",
+                description: "Custom host timeline",
                 parameters: null,
-                category: "eventlog",
-                tags: new[] { "pack:eventlog" }));
+                category: "custom",
+                tags: new[] { "domain_family:ad_domain", "scope:host" }));
         var dnsTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "custom_dns_probe",
             new ToolDefinition(
@@ -871,10 +871,18 @@ public sealed class ChatServiceDomainAffinityTests {
                 description: "Custom DNS probe",
                 parameters: null,
                 tags: new[] { "domain_family:public_domain", "pack:dnsclientx" }));
+        var eventLogCategory = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "eventlog_live_query",
+            new ToolDefinition(
+                name: "eventlog_live_query",
+                description: "Event log query",
+                parameters: null,
+                category: "eventlog"));
 
         Assert.True(adTagged);
-        Assert.True(eventLogTagged);
+        Assert.True(adHostTagged);
         Assert.False(dnsTagged);
+        Assert.True(eventLogCategory);
     }
 
     [Fact]

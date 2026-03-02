@@ -274,6 +274,14 @@ public sealed partial class MainWindow : Window {
                 return RoundMs(remaining).ToString(CultureInfo.InvariantCulture);
             }
 
+            async Task SetConnectProgressStatusAsync(string text) {
+                if (_shutdownRequested || _isSending || _turnStartupInProgress) {
+                    return;
+                }
+
+                await SetStatusAsync(text, SessionStatusTone.Warn).ConfigureAwait(false);
+            }
+
             void LogConnectAttemptStart(string phase, int attemptNumber, TimeSpan requestedTimeout, TimeSpan timeout, TimeSpan hardTimeout) {
                 LogStartupConnectDetail(
                     phase
@@ -334,6 +342,7 @@ public sealed partial class MainWindow : Window {
 
             _isConnected = false;
             await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(false);
+            await SetConnectProgressStatusAsync("Starting runtime... (connecting to service)").ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
             _isAuthenticated = false;
             _authenticatedAccountId = null;
@@ -396,6 +405,7 @@ public sealed partial class MainWindow : Window {
                     LogStartupConnectPhase("ensure_sidecar", "skipped_budget");
                     sidecarConnectException = CreateBudgetExceededException();
                 } else {
+                    await SetConnectProgressStatusAsync("Starting runtime... (starting local service)").ConfigureAwait(false);
                     LogStartupConnectPhase("ensure_sidecar", "begin");
                     var ensureSidecarStopwatch = Stopwatch.StartNew();
                     var sidecarRunning = await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false);
@@ -409,6 +419,7 @@ public sealed partial class MainWindow : Window {
                     }
 
                     if (sidecarRunning) {
+                        await SetConnectProgressStatusAsync("Starting runtime... (retrying service connection)").ConfigureAwait(false);
                         LogStartupConnectPhase("ensure_sidecar", "done");
                         LogStartupConnectPhase("pipe_connect.retry", "begin");
                         for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
@@ -518,6 +529,11 @@ public sealed partial class MainWindow : Window {
                 deferStartupModelProfileSync: ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry));
             if (deferredMetadataPlan.DeferStartupMetadataSync) {
                 _sessionPolicy = null;
+                await SetStatusAsync(
+                    deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated
+                        ? "Runtime connected. Sign in to finish loading tool packs..."
+                        : "Runtime connected. Loading tool packs in background...",
+                    SessionStatusTone.Warn).ConfigureAwait(false);
                 LogStartupConnectPhase("hello", deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
                 LogStartupConnectPhase("list_tools", deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
                 if (deferredMetadataPlan.QueueDeferredConnectMetadataSync) {
@@ -554,6 +570,7 @@ public sealed partial class MainWindow : Window {
 
             AppendStartupToolHealthWarningsFromPolicy();
             AppendUnavailablePacksFromPolicy();
+            AppendStartupBootstrapSummaryFromPolicy();
 
             if (deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated) {
                 LogStartupConnectPhase("auth_refresh", "skipped_unauthenticated");
