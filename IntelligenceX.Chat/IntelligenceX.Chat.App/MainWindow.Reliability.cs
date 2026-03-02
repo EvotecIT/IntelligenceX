@@ -37,6 +37,14 @@ public sealed partial class MainWindow : Window {
         public DateTime? LastDeltaUtc { get; set; }
     }
 
+    private readonly record struct TurnWatchdogProgressSnapshot(
+        DateTime DispatchStartedUtc,
+        bool HasFirstStatus,
+        string? FirstStatusCode,
+        bool HasModelSelected,
+        bool HasFirstToolRunning,
+        bool HasFirstDelta);
+
     private sealed class ProviderReliabilitySnapshot {
         public required string Key { get; init; }
         public required string Label { get; set; }
@@ -293,6 +301,29 @@ public sealed partial class MainWindow : Window {
             tracker.FirstDeltaUtc ??= nowUtc;
             tracker.LastDeltaUtc = nowUtc;
             tracker.LastUpdatedUtc = nowUtc;
+        }
+    }
+
+    private bool TryGetTurnWatchdogProgressSnapshot(string? requestId, out TurnWatchdogProgressSnapshot snapshot) {
+        snapshot = default;
+        var normalizedRequestId = NormalizeRequestId(requestId);
+        if (normalizedRequestId.Length == 0) {
+            return false;
+        }
+
+        lock (_turnDiagnosticsSync) {
+            if (!_turnLatencyByRequestId.TryGetValue(normalizedRequestId, out var tracker)) {
+                return false;
+            }
+
+            snapshot = new TurnWatchdogProgressSnapshot(
+                DispatchStartedUtc: tracker.DispatchStartedUtc,
+                HasFirstStatus: tracker.FirstStatusUtc.HasValue,
+                FirstStatusCode: tracker.FirstStatusCode,
+                HasModelSelected: tracker.ModelSelectedUtc.HasValue,
+                HasFirstToolRunning: tracker.FirstToolRunningUtc.HasValue,
+                HasFirstDelta: tracker.FirstDeltaUtc.HasValue);
+            return true;
         }
     }
 

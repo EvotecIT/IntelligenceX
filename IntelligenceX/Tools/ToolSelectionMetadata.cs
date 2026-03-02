@@ -37,25 +37,6 @@ public static class ToolSelectionMetadata {
     private const string FallbackSelectionKeysTagPrefix = "fallback_selection_keys:";
     private const string FallbackHintKeyTagPrefix = "fallback_hint_key:";
     private const string FallbackHintKeysTagPrefix = "fallback_hint_keys:";
-    private static readonly string[] ActiveDirectoryDomainIntentNamePrefixes = {
-        "ad_",
-        "active_directory_",
-        "adplayground_"
-    };
-    private static readonly string[] PublicDomainIntentNamePrefixes = {
-        "dnsclientx_",
-        "dns_client_x_",
-        "domaindetective_",
-        "domain_detective_"
-    };
-    private static readonly string[] ActiveDirectoryDomainIntentCompactPrefixes = {
-        "activedirectory",
-        "adplayground"
-    };
-    private static readonly string[] PublicDomainIntentCompactPrefixes = {
-        "dnsclientx",
-        "domaindetective"
-    };
     private static readonly string[] DomainIntentAdDefaultSignalTokens = {
         "dc",
         "ldap",
@@ -90,29 +71,6 @@ public static class ToolSelectionMetadata {
         "domain_detective",
         "public_domain",
         DomainIntentActionIdPublic
-    };
-    private static readonly string[] SystemPackNamePrefixes = {
-        "system_",
-        "computerx_",
-        "wsl_"
-    };
-    private static readonly string[] SystemPackCompactPrefixes = {
-        "computerx",
-        "wsl"
-    };
-    private static readonly string[] EventLogPackNamePrefixes = {
-        "eventlog_",
-        "event_log_"
-    };
-    private static readonly string[] EventLogPackCompactPrefixes = {
-        "eventlog"
-    };
-    private static readonly string[] TestimoXPackNamePrefixes = {
-        "testimox_",
-        "testimo_x_"
-    };
-    private static readonly string[] TestimoXPackCompactPrefixes = {
-        "testimox"
     };
     private static readonly HashSet<string> KnownCompoundPackRoutingTokenCompacts = new(StringComparer.OrdinalIgnoreCase) {
         "activedirectory",
@@ -448,75 +406,20 @@ public static class ToolSelectionMetadata {
         string? category,
         IReadOnlyList<string>? tags,
         out string packId) {
+        _ = toolName;
+        _ = category;
         packId = string.Empty;
 
-        if (TryResolvePackIdFromTags(tags, out packId)) {
-            return true;
-        }
-
-        var normalizedCategory = NormalizeToken(category, fallback: string.Empty);
-        if (TryResolvePackIdFromCategory(normalizedCategory, out packId)) {
-            return true;
-        }
-
-        var inferredCategory = NormalizeToken(InferCategory(toolName, toolType: null), fallback: string.Empty);
-        if (TryResolvePackIdFromCategory(inferredCategory, out packId)) {
-            return true;
-        }
-
-        var normalizedToolName = (toolName ?? string.Empty).Trim();
-        if (normalizedToolName.Length == 0) {
-            return false;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, ActiveDirectoryDomainIntentNamePrefixes)
-            || StartsWithCompactPrefix(normalizedToolName, ActiveDirectoryDomainIntentCompactPrefixes)) {
-            packId = "active_directory";
-            return true;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, EventLogPackNamePrefixes)
-            || StartsWithCompactPrefix(normalizedToolName, EventLogPackCompactPrefixes)) {
-            packId = "eventlog";
-            return true;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, SystemPackNamePrefixes)
-            || StartsWithCompactPrefix(normalizedToolName, SystemPackCompactPrefixes)) {
-            packId = "system";
-            return true;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, TestimoXPackNamePrefixes)
-            || StartsWithCompactPrefix(normalizedToolName, TestimoXPackCompactPrefixes)) {
-            packId = "testimox";
-            return true;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, PublicDomainIntentNamePrefixes)
-            || StartsWithCompactPrefix(normalizedToolName, PublicDomainIntentCompactPrefixes)) {
-            var compactName = NormalizeCompactToken(normalizedToolName);
-            packId = compactName.StartsWith("dnsclientx", StringComparison.OrdinalIgnoreCase)
-                ? "dnsclientx"
-                : "domaindetective";
-            return true;
-        }
-
-        return false;
+        return TryResolvePackIdFromTags(tags, out packId);
     }
 
     /// <summary>
     /// Normalizes a pack identifier into canonical known ids, or compact fallback shape for unknown ids.
     /// </summary>
     public static string NormalizePackId(string? value) {
-        var compact = NormalizeCompactToken(value);
-        if (compact.Length == 0) {
-            return string.Empty;
-        }
-
-        return TryNormalizePackId(compact, out var packId)
+        return TryNormalizePackId(value, out var packId)
             ? packId
-            : compact;
+            : string.Empty;
     }
 
     /// <summary>
@@ -527,54 +430,11 @@ public static class ToolSelectionMetadata {
         string? category,
         IReadOnlyList<string>? tags,
         out string family) {
+        _ = toolName;
+        _ = category;
         family = string.Empty;
 
-        if (TryResolveDomainIntentFamilyFromTags(tags, out family)) {
-            return true;
-        }
-
-        var normalizedCategory = NormalizeToken(category, fallback: string.Empty);
-        if (string.Equals(normalizedCategory, "active_directory", StringComparison.Ordinal)
-            || string.Equals(normalizedCategory, "eventlog", StringComparison.Ordinal)) {
-            family = DomainIntentFamilyAd;
-            return true;
-        }
-
-        if (string.Equals(normalizedCategory, "dns", StringComparison.Ordinal)) {
-            family = DomainIntentFamilyPublic;
-            return true;
-        }
-
-        var inferredCategory = NormalizeToken(InferCategory(toolName, toolType: null), fallback: string.Empty);
-        if (string.Equals(inferredCategory, "active_directory", StringComparison.Ordinal)
-            || string.Equals(inferredCategory, "eventlog", StringComparison.Ordinal)) {
-            family = DomainIntentFamilyAd;
-            return true;
-        }
-
-        if (string.Equals(inferredCategory, "dns", StringComparison.Ordinal)) {
-            family = DomainIntentFamilyPublic;
-            return true;
-        }
-
-        var normalizedToolName = (toolName ?? string.Empty).Trim();
-        if (normalizedToolName.Length == 0) {
-            return false;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, ActiveDirectoryDomainIntentNamePrefixes)
-            || StartsWithCompactPrefix(normalizedToolName, ActiveDirectoryDomainIntentCompactPrefixes)) {
-            family = DomainIntentFamilyAd;
-            return true;
-        }
-
-        if (StartsWithAnyPrefix(normalizedToolName, PublicDomainIntentNamePrefixes)
-            || StartsWithCompactPrefix(normalizedToolName, PublicDomainIntentCompactPrefixes)) {
-            family = DomainIntentFamilyPublic;
-            return true;
-        }
-
-        return false;
+        return TryResolveDomainIntentFamilyFromTags(tags, out family);
     }
 
     /// <summary>
@@ -1234,7 +1094,7 @@ public static class ToolSelectionMetadata {
         }
 
         AddTag(category);
-        if (TryResolvePackId(definition.Name, category, definition.Tags, out var packId)) {
+        if (TryResolvePackId(definition, out var packId)) {
             AddTag($"{PackTagPrefix}{packId}");
         }
         AddTag($"scope:{routing.Scope}");
@@ -1755,49 +1615,6 @@ public static class ToolSelectionMetadata {
         return normalized.ToLowerInvariant();
     }
 
-    private static bool StartsWithAnyPrefix(string value, IReadOnlyList<string> prefixes) {
-        if (string.IsNullOrWhiteSpace(value) || prefixes is null || prefixes.Count == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < prefixes.Count; i++) {
-            var prefix = prefixes[i];
-            if (string.IsNullOrWhiteSpace(prefix)) {
-                continue;
-            }
-
-            if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool StartsWithCompactPrefix(string value, IReadOnlyList<string> compactPrefixes) {
-        if (string.IsNullOrWhiteSpace(value) || compactPrefixes is null || compactPrefixes.Count == 0) {
-            return false;
-        }
-
-        var compactValue = NormalizeCompactToken(value);
-        if (compactValue.Length == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < compactPrefixes.Count; i++) {
-            var compactPrefix = compactPrefixes[i];
-            if (string.IsNullOrWhiteSpace(compactPrefix)) {
-                continue;
-            }
-
-            if (compactValue.StartsWith(compactPrefix, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static string NormalizeCompactToken(string? value) {
         if (string.IsNullOrEmpty(value)) {
             return string.Empty;
@@ -1841,37 +1658,14 @@ public static class ToolSelectionMetadata {
         return false;
     }
 
-    private static bool TryResolvePackIdFromCategory(string? category, out string packId) {
+    private static bool TryNormalizePackId(string? value, out string packId) {
         packId = string.Empty;
-        var compactCategory = NormalizeCompactToken(category);
-        if (compactCategory.Length == 0) {
+        var normalized = NormalizePackToken(value);
+        if (normalized.Length == 0) {
             return false;
         }
 
-        return compactCategory switch {
-            "ad" => TryNormalizePackId("active_directory", out packId),
-            "activedirectory" => TryNormalizePackId("active_directory", out packId),
-            "adplayground" => TryNormalizePackId("active_directory", out packId),
-            "eventlog" => TryNormalizePackId("eventlog", out packId),
-            "system" => TryNormalizePackId("system", out packId),
-            "computerx" => TryNormalizePackId("system", out packId),
-            "wsl" => TryNormalizePackId("system", out packId),
-            "filesystem" => TryNormalizePackId("filesystem", out packId),
-            "fs" => TryNormalizePackId("filesystem", out packId),
-            "email" => TryNormalizePackId("email", out packId),
-            "powershell" => TryNormalizePackId("powershell", out packId),
-            "testimox" => TryNormalizePackId("testimox", out packId),
-            "officeimo" => TryNormalizePackId("officeimo", out packId),
-            "reviewersetup" => TryNormalizePackId("reviewer_setup", out packId),
-            "dnsclientx" => TryNormalizePackId("dnsclientx", out packId),
-            "domaindetective" => TryNormalizePackId("domaindetective", out packId),
-            _ => false
-        };
-    }
-
-    private static bool TryNormalizePackId(string value, out string packId) {
-        packId = string.Empty;
-        var compact = NormalizeCompactToken(value);
+        var compact = NormalizeCompactToken(normalized);
         if (compact.Length == 0) {
             return false;
         }
@@ -1895,10 +1689,42 @@ public static class ToolSelectionMetadata {
             "reviewersetup" => "reviewer_setup",
             "dnsclientx" => "dnsclientx",
             "domaindetective" => "domaindetective",
-            _ => string.Empty
+            _ => normalized
         };
 
-        return packId.Length > 0;
+        return true;
+    }
+
+    private static string NormalizePackToken(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var buffer = new char[normalized.Length];
+        var length = 0;
+        var previousWasSeparator = false;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch)) {
+                buffer[length++] = char.ToLowerInvariant(ch);
+                previousWasSeparator = false;
+                continue;
+            }
+
+            if (ch is '_' or '-' || char.IsWhiteSpace(ch)) {
+                if (length > 0 && !previousWasSeparator) {
+                    buffer[length++] = '_';
+                    previousWasSeparator = true;
+                }
+            }
+        }
+
+        while (length > 0 && buffer[length - 1] == '_') {
+            length--;
+        }
+
+        return length == 0 ? string.Empty : new string(buffer, 0, length);
     }
 
     private static bool HasAnyProperty(JsonObject? schema, IReadOnlyList<string> propertyNames) {

@@ -1000,9 +1000,17 @@ internal sealed partial class ChatServiceSession {
         int heartbeatSeconds) {
         // Defensive rebind: planner routing may temporarily switch threads.
         // Reassert the active conversation thread before each model phase.
+        var normalizedPhaseStatus = string.IsNullOrWhiteSpace(phaseStatus) ? ChatStatusCodes.Thinking : phaseStatus.Trim();
         if (!string.IsNullOrWhiteSpace(threadId)) {
             var requestedThreadId = threadId.Trim();
             var reboundThreadId = ResolveRecoveredThreadAlias(requestedThreadId);
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadId,
+                    status: normalizedPhaseStatus,
+                    message: "Preparing model phase context...")
+                .ConfigureAwait(false);
             try {
                 await client.UseThreadAsync(reboundThreadId, cancellationToken).ConfigureAwait(false);
             } catch (Exception ex) when (ShouldRecoverMissingTransportThread(ex)) {
@@ -1014,6 +1022,14 @@ internal sealed partial class ChatServiceSession {
                     if (!string.Equals(reboundThreadId, requestedThreadId, StringComparison.Ordinal)) {
                         RememberRecoveredThreadAlias(reboundThreadId, recoveredThreadId);
                     }
+
+                    await TryWriteStatusAsync(
+                            writer,
+                            requestId,
+                            recoveredThreadId,
+                            status: normalizedPhaseStatus,
+                            message: "Recovered missing conversation context. Continuing model phase...")
+                        .ConfigureAwait(false);
                 }
             }
         }

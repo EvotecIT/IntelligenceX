@@ -21,16 +21,42 @@ public sealed class MainWindowServiceBootstrapStatusTests {
     }
 
     /// <summary>
-    /// Ignores pack bootstrap end-progress diagnostics to avoid status spam.
+    /// Parses pack bootstrap end-progress diagnostics so users can see what just finished and how long it took.
     /// </summary>
     [Fact]
-    public void TryBuildServiceBootstrapStatus_IgnoresPackProgressEnd() {
+    public void TryBuildServiceBootstrapStatus_ParsesPackProgressEnd() {
         var parsed = MainWindow.TryBuildServiceBootstrapStatus(
             "[pack warning] [startup] pack_load_progress pack='eventlog' phase='end' index='2' total='11' elapsed_ms='42'",
             out var statusText);
 
-        Assert.False(parsed);
-        Assert.Equal(string.Empty, statusText);
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... initialized tool packs 2/11 (eventlog, 42ms)", statusText);
+    }
+
+    /// <summary>
+    /// Parses pack registration begin-progress diagnostics into a user-facing startup status.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_ParsesPackRegistrationProgressBegin() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[pack warning] [startup] pack_register_progress pack='eventlog' phase='begin' index='2' total='11'",
+            out var statusText);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... registering tool pack 2/11 (eventlog)", statusText);
+    }
+
+    /// <summary>
+    /// Parses pack registration end-progress diagnostics into a user-facing startup status.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_ParsesPackRegistrationProgressEnd() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[pack warning] [startup] pack_register_progress pack='eventlog' phase='end' index='2' total='11' elapsed_ms='42'",
+            out var statusText);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... registered tool pack 2/11 (eventlog, 42ms)", statusText);
     }
 
     /// <summary>
@@ -47,16 +73,16 @@ public sealed class MainWindowServiceBootstrapStatusTests {
     }
 
     /// <summary>
-    /// Ignores end-progress diagnostics to avoid status spam.
+    /// Parses plugin end-progress diagnostics so users can see what just finished and how long it took.
     /// </summary>
     [Fact]
-    public void TryBuildServiceBootstrapStatus_IgnoresPluginProgressEnd() {
+    public void TryBuildServiceBootstrapStatus_ParsesPluginProgressEnd() {
         var parsed = MainWindow.TryBuildServiceBootstrapStatus(
             "[pack warning] [plugin] load_progress plugin='dnsclientx' phase='end' index='3' total='12' elapsed_ms='99'",
             out var statusText);
 
-        Assert.False(parsed);
-        Assert.Equal(string.Empty, statusText);
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... loaded tool packs 3/12 (dnsclientx, 99ms)", statusText);
     }
 
     /// <summary>

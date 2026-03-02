@@ -217,11 +217,6 @@ public sealed partial class MainWindow : Window {
             return "security analyst";
         }
 
-        if (lowerHint.Contains("ad engineer", StringComparison.Ordinal)
-            || lowerHint.Contains("active directory", StringComparison.Ordinal)) {
-            return "AD engineer";
-        }
-
         var token = genericPersona.Trim().ToLowerInvariant();
         return token switch {
             "analyst" or "analyst mode" => "analyst",
@@ -243,7 +238,6 @@ public sealed partial class MainWindow : Window {
             or "operator"
             or "security"
             or "security analyst"
-            or "ad engineer"
             or "support"
             or "helper"
             or "default";

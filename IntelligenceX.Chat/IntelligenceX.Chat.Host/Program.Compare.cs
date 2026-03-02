@@ -111,7 +111,9 @@ internal static partial class Program {
                 }
             }
 
-            var registry = new ToolRegistry();
+            var registry = new ToolRegistry {
+                RequireExplicitRoutingMetadata = runtimePolicyContext.Options.RequireExplicitRoutingMetadata
+            };
             ToolPackBootstrap.RegisterAll(registry, packs);
             _ = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
             var session = new ReplSession(client, registry, compareOptions, shaped, status: null);

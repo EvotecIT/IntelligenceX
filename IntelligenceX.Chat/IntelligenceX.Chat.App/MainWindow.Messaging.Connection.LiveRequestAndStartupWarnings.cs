@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Policy;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
@@ -185,48 +186,88 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var signalWorthy = telemetry.TotalMs >= 1000
-                           || telemetry.PackLoadMs >= 800
-                           || telemetry.SlowPackCount > 0
-                           || telemetry.SlowPluginCount > 0;
-        if (!signalWorthy) {
+        if (!IsStartupBootstrapSignalWorthy(telemetry)) {
             return;
         }
 
+        var phases = telemetry.Phases ?? Array.Empty<SessionStartupBootstrapPhaseTelemetryDto>();
+        var phaseSignature = phases.Length == 0
+            ? string.Empty
+            : string.Join(",",
+                phases
+                    .OrderBy(static phase => phase.Order)
+                    .ThenBy(static phase => phase.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(static phase => $"{phase.Id}:{phase.DurationMs}"));
         var signature = string.Join("|", new[] {
             telemetry.TotalMs.ToString(),
             telemetry.PackLoadMs.ToString(),
+            telemetry.PackRegisterMs.ToString(),
+            telemetry.RegistryFinalizeMs.ToString(),
             telemetry.RegistryMs.ToString(),
             telemetry.SlowPackCount.ToString(),
             telemetry.PackProgressProcessed.ToString(),
             telemetry.PackProgressTotal.ToString(),
+            telemetry.SlowPackRegistrationCount.ToString(),
+            telemetry.PackRegistrationProgressProcessed.ToString(),
+            telemetry.PackRegistrationProgressTotal.ToString(),
             telemetry.SlowPluginCount.ToString(),
             telemetry.PluginProgressProcessed.ToString(),
             telemetry.PluginProgressTotal.ToString(),
             telemetry.PacksLoaded.ToString(),
             telemetry.PacksDisabled.ToString(),
-            telemetry.Tools.ToString()
+            telemetry.Tools.ToString(),
+            telemetry.SlowestPhaseId ?? string.Empty,
+            telemetry.SlowestPhaseMs.ToString(),
+            phaseSignature
         });
         if (!_startupBootstrapSummarySignatures.Add(signature)) {
             return;
         }
 
-        static string FormatDuration(long milliseconds) {
-            var bounded = Math.Max(0, milliseconds);
-            var elapsed = TimeSpan.FromMilliseconds(bounded);
-            if (elapsed.TotalSeconds >= 1) {
-                return $"{elapsed.TotalSeconds:0.0}s";
-            }
+        AppendSystem(string.Join(Environment.NewLine, BuildStartupBootstrapSummaryLines(telemetry)));
+    }
 
-            return $"{Math.Max(1, bounded)}ms";
-        }
+    internal static bool IsStartupBootstrapSignalWorthy(SessionStartupBootstrapTelemetryDto telemetry) {
+        ArgumentNullException.ThrowIfNull(telemetry);
+        return telemetry.TotalMs >= 1000
+               || telemetry.PackLoadMs >= 800
+               || telemetry.PackRegisterMs >= 500
+               || telemetry.RegistryFinalizeMs >= 500
+               || telemetry.SlowPackCount > 0
+               || telemetry.SlowPackRegistrationCount > 0
+               || telemetry.SlowPluginCount > 0;
+    }
+
+    internal static string[] BuildStartupBootstrapSummaryLines(SessionStartupBootstrapTelemetryDto telemetry) {
+        ArgumentNullException.ThrowIfNull(telemetry);
 
         var lines = new List<string> {
             "[startup] Runtime tool bootstrap summary",
             string.Empty,
-            $"- Total: {FormatDuration(telemetry.TotalMs)} (pack load {FormatDuration(telemetry.PackLoadMs)}, registry {FormatDuration(telemetry.RegistryMs)})",
+            $"- Total: {FormatBootstrapDuration(telemetry.TotalMs)} " +
+            $"(pack load {FormatBootstrapDuration(telemetry.PackLoadMs)}, " +
+            $"pack register {FormatBootstrapDuration(telemetry.PackRegisterMs)}, " +
+            $"registry finalize {FormatBootstrapDuration(telemetry.RegistryFinalizeMs)}, " +
+            $"registry total {FormatBootstrapDuration(telemetry.RegistryMs)})",
             $"- Packs loaded: {telemetry.PacksLoaded}, disabled: {telemetry.PacksDisabled}, tools: {telemetry.Tools}"
         };
+
+        var phases = telemetry.Phases ?? Array.Empty<SessionStartupBootstrapPhaseTelemetryDto>();
+        if (phases.Length > 0) {
+            var phaseSummary = string.Join(", ",
+                phases
+                    .OrderBy(static phase => phase.Order)
+                    .ThenBy(static phase => phase.Id, StringComparer.OrdinalIgnoreCase)
+                    .Select(static phase => $"{FormatBootstrapPhaseLabel(phase)} {FormatBootstrapDuration(phase.DurationMs)}"));
+            lines.Add($"- Startup phases: {phaseSummary}");
+        }
+
+        var slowestPhaseLabel = ResolveSlowestPhaseLabel(telemetry);
+        if (slowestPhaseLabel is not null && telemetry.SlowestPhaseMs > 0) {
+            var totalForRatio = Math.Max(1, telemetry.TotalMs);
+            var ratio = (double)Math.Max(0, telemetry.SlowestPhaseMs) / totalForRatio * 100d;
+            lines.Add($"- Slowest phase: {slowestPhaseLabel} ({FormatBootstrapDuration(telemetry.SlowestPhaseMs)}, {ratio:0.#}%)");
+        }
 
         if (telemetry.PackProgressTotal > 0 || telemetry.PackProgressProcessed > 0) {
             var processed = Math.Max(telemetry.PackProgressProcessed, 0);
@@ -234,8 +275,18 @@ public sealed partial class MainWindow : Window {
             lines.Add($"- Pack bootstrap progress: {processed}/{total} steps");
         }
 
+        if (telemetry.PackRegistrationProgressTotal > 0 || telemetry.PackRegistrationProgressProcessed > 0) {
+            var processed = Math.Max(telemetry.PackRegistrationProgressProcessed, 0);
+            var total = Math.Max(processed, telemetry.PackRegistrationProgressTotal);
+            lines.Add($"- Pack registration progress: {processed}/{total} packs");
+        }
+
         if (telemetry.SlowPackCount > 0) {
             lines.Add($"- Slow pack loads detected: {telemetry.SlowPackCount} (top {telemetry.SlowPackTopCount} captured in startup warnings)");
+        }
+
+        if (telemetry.SlowPackRegistrationCount > 0) {
+            lines.Add($"- Slow pack registrations detected: {telemetry.SlowPackRegistrationCount} (top {telemetry.SlowPackRegistrationTopCount} captured in startup warnings)");
         }
 
         if (telemetry.PluginRoots > 0 || telemetry.PluginProgressTotal > 0 || telemetry.PluginProgressProcessed > 0) {
@@ -250,8 +301,51 @@ public sealed partial class MainWindow : Window {
 
         lines.Add(string.Empty);
         lines.Add("Open the runtime policy panel for detailed startup warnings.");
-
-        AppendSystem(string.Join(Environment.NewLine, lines));
+        return lines.ToArray();
     }
 
+    private static string FormatBootstrapDuration(long milliseconds) {
+        var bounded = Math.Max(0, milliseconds);
+        var elapsed = TimeSpan.FromMilliseconds(bounded);
+        if (elapsed.TotalSeconds >= 1) {
+            return $"{elapsed.TotalSeconds:0.0}s";
+        }
+
+        return $"{Math.Max(1, bounded)}ms";
+    }
+
+    private static string FormatBootstrapPhaseLabel(SessionStartupBootstrapPhaseTelemetryDto phase) {
+        var label = (phase.Label ?? string.Empty).Trim();
+        if (label.Length > 0) {
+            return label;
+        }
+
+        var id = (phase.Id ?? string.Empty).Trim();
+        if (id.Length == 0) {
+            return "phase";
+        }
+
+        return id.Replace('_', ' ');
+    }
+
+    private static string? ResolveSlowestPhaseLabel(SessionStartupBootstrapTelemetryDto telemetry) {
+        var label = (telemetry.SlowestPhaseLabel ?? string.Empty).Trim();
+        if (label.Length > 0) {
+            return label;
+        }
+
+        var slowestId = (telemetry.SlowestPhaseId ?? string.Empty).Trim();
+        if (slowestId.Length == 0) {
+            return null;
+        }
+
+        var phases = telemetry.Phases ?? Array.Empty<SessionStartupBootstrapPhaseTelemetryDto>();
+        var match = phases
+            .FirstOrDefault(phase => string.Equals((phase.Id ?? string.Empty).Trim(), slowestId, StringComparison.OrdinalIgnoreCase));
+        if (match is not null) {
+            return FormatBootstrapPhaseLabel(match);
+        }
+
+        return slowestId.Replace('_', ' ');
+    }
 }

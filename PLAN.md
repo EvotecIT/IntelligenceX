@@ -20,6 +20,22 @@ Build a contract-first architecture where:
 
 - [x] PR #985 merged: generic runtime pack toggles are fully list-driven (`EnabledPackIds`/`DisabledPackIds`) across app/client/host/profile paths.
 - [x] Startup bootstrap visibility landed end-to-end (structured telemetry + status parsing + UI surfacing for runtime/tool-pack loading progress).
+- [x] Startup bootstrap telemetry now includes ordered phase timings + slowest-phase summary so UI can explain where startup time is spent.
+- [x] `ToolRegistry` now hard-fails registration when `Routing.PackId` or `Routing.Role` is missing (strict-mode toggle still controls explicit-vs-inferred source).
+- [x] Startup diagnostics now include per-pack registration progress (`pack_register_progress`) + slow-registration summaries, and Chat app status parsing surfaces registration activity during runtime warmup.
+- [x] Turn watchdog now surfaces phase-aware in-flight wait hints before first token (awaiting ack/model/tool output) and mirrors that in header status for long-running turns.
+- [x] Service now emits early request/model-phase progress markers before thread binding, weighted tool-subset model calls, and model resolution so users see immediate in-flight status instead of silent 30s+ gaps.
+- [x] Turn metrics now include phase timings for `ensure_thread`, weighted subset-selection, and model-resolution, and app debug summary surfaces those phase costs directly.
+- [x] Chat app debug summary now highlights the slowest per-turn startup stage (`ensure_thread`, `weighted_subset`, `resolve_model`) to explain first-token latency at a glance.
+- [x] Chat app profile persona normalization no longer hardcodes AD-specific role hints (for example `active directory`/`ad engineer`), keeping persona shaping generic.
+- [x] Startup telemetry split now exposes `pack_register` and `registry_finalize` phase timings (plus total registry time) so post-load delays are attributable without guesswork.
+- [x] Chat app sidecar copy targets now filter missing artifacts before copy, preventing transient `.psd1` MSB3030 failures during app test/build runs.
+- [x] Tool health diagnostics now resolve pack ids from explicit routing contracts only (legacy metadata/suffix fallback removed).
+- [x] Tool health pack-info discovery now uses routing role contracts only (legacy name-suffix `_pack_info` fallback removed from probe selection/smoke planning).
+- [x] Chat service bootstrap no longer depends on `_toolPackIdsByToolName` runtime mapping; orchestration catalog is built directly from registered tool contracts.
+- [x] `ToolOrchestrationCatalog` no longer accepts registered pack-id fallback maps; pack identity comes from routing contracts only.
+- [x] Chat `list_tools` category shaping now uses declared tool category metadata only (generic normalization); no pack-id fallback/category alias maps remain in Chat service.
+- [x] Regression coverage now proves Chat does not auto-switch packs after a failed tool call, even when tools from other packs are available.
 - [x] SQLite profile migration now preserves legacy `enable_*_pack` intent by translating into pack-id lists before deprecated columns are dropped.
 - [x] Regression coverage added for legacy pack-toggle migration and unknown-required-column insert backfill behavior.
 - [x] PR #986 merged: planner prompt no longer emits inferred `pack`/`pack_aliases`; Chat planner context stays generic (`category`/`family`/`tags`) while routing search tokens remain metadata-backed.
@@ -38,7 +54,7 @@ Build a contract-first architecture where:
 - [x] `G2` Chat triggers fallback replay in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.
 - [x] `G3` Chat pack preflight no longer depends on `_pack_info`/`_environment_discover` suffix selection.
 - [x] `G4` Chat deterministic routing now relies on contract metadata rather than suffix/prefix family-key inference paths.
-- [ ] `G5` Tools metadata enrichment still contains hardcoded pack/category inference maps in `IntelligenceX/Tools/ToolSelectionMetadata.cs`.
+- [x] `G5` Tools metadata enrichment hardcoded pack/category inference maps removed from `IntelligenceX/Tools/ToolSelectionMetadata.cs` in favor of contract/tag metadata.
 - [x] `G6` Fallback behavior is partly metadata-driven, partly hardcoded; split must become tool-contract only.
 
 ## Phase 0 - Baseline And Guardrails
@@ -56,8 +72,8 @@ Build a contract-first architecture where:
 3. [x] Add explicit `ToolHandoffContract` types in `IntelligenceX/Tools` for source entity -> target argument mappings.
 4. [x] Add explicit `ToolSetupContract` types for prerequisites and user-facing setup hints.
 5. [x] Add `RoutingSource` (`explicit|inferred`) and strict-mode gate `ToolRegistry.RequireExplicitRoutingMetadata` to enforce explicit routing metadata during migration.
-6. [ ] Extend `ToolDefinition` validation in `IntelligenceX/Tools/ToolRegistry.cs` to require explicit pack/routing role metadata.
-7. [ ] Remove implicit pack/category/domain-family inference pathways from `IntelligenceX/Tools/ToolSelectionMetadata.cs` (or gate them behind hard-fail mode that is always enabled).
+6. [x] Extend `ToolDefinition` validation in `IntelligenceX/Tools/ToolRegistry.cs` to require explicit pack/routing role metadata.
+7. [x] Remove implicit pack/category/domain-family inference pathways from `IntelligenceX/Tools/ToolSelectionMetadata.cs` (or gate them behind hard-fail mode that is always enabled).
 8. [ ] Enforce one canonical source for domain intent family/action mapping from routing contracts.
 9. [ ] Ensure all `_pack_info` tools define explicit routing contracts (not inference).
 10. [ ] Keep `ToolPackGuidance` as rich documentation contract, but make routing-critical fields available without calling tools.
@@ -66,7 +82,7 @@ Build a contract-first architecture where:
 
 1. [x] Introduce `ToolOrchestrationCatalog` in Chat bootstrapping built from `ToolRegistry.GetDefinitions()`.
 2. [ ] Include in catalog: pack id, role, scope/operation/entity/risk, domain family/action, setup requirements, handoff edges, recovery policy.
-3. [ ] Replace direct `_toolPackIdsByToolName` and suffix inference consumers with catalog queries.
+3. [x] Replace direct `_toolPackIdsByToolName` and suffix inference consumers with catalog queries.
 4. [x] Keep Chat startup diagnostics but add new contract health metrics (missing role, missing handoff schema, invalid setup contracts).
 5. [x] Surface catalog health in existing routing policy UI payloads.
 6. [x] Add runtime policy toggle `RequireExplicitRoutingMetadata` (CLI/profile/session policy) to support strict contract-only registration rollout.
@@ -96,7 +112,7 @@ Build a contract-first architecture where:
 3. [x] Migrate DnsClientX pack tools with explicit resolver-vs-posture role split.
 4. [x] Migrate System/EventLog/TestimoX/FileSystem/Email/PowerShell/OfficeIMO packs the same way.
 5. [x] Add contract tests per pack proving no Chat changes are needed to register and route new tools.
-6. [ ] Add one synthetic sample pack in tests to prove plug-in registration works without Chat edits.
+6. [x] Add one synthetic sample pack in tests to prove plug-in registration works without Chat edits.
 
 ## Phase 6 - Typed Tool Surface (Less Stringly, More Models)
 
@@ -110,8 +126,8 @@ Build a contract-first architecture where:
 
 1. [x] Replace reflection-heavy fallback tests in `IntelligenceX.Chat/IntelligenceX.Chat.Tests/ChatServiceRoutingTrimTests.*PackFallback*.cs` with internal helper exposure tests or remove if behavior deleted.
 2. [ ] Add contract-driven routing tests in Chat that use synthetic tools with explicit contracts.
-3. [ ] Add regression tests verifying Chat does not auto-switch packs after tool failure.
-4. [ ] Add tests ensuring preflight uses role contracts, not suffixes.
+3. [x] Add regression tests verifying Chat does not auto-switch packs after tool failure.
+4. [x] Add tests ensuring preflight uses role contracts, not suffixes.
 5. [ ] Add tests ensuring DomainDetective and ADPlayground remain isolated unless handoff contract explicitly connects them.
 6. [ ] Keep existing language-neutral routing/ordinal tests green.
 
@@ -136,7 +152,7 @@ Build a contract-first architecture where:
 - [x] `DoD2` Chat does not decide substitute tools based on hardcoded pack names.
 - [x] `DoD3` Pack preflight/routing relies on contracts, not suffix/prefix naming.
 - [ ] `DoD4` Every registered tool has explicit routing role + pack metadata.
-- [ ] `DoD5` New synthetic pack/tool can be added in tests without Chat code changes.
+- [x] `DoD5` New synthetic pack/tool can be added in tests without Chat code changes.
 - [x] `DoD6` DomainDetective vs ADPlayground separation enforced by contracts/tests.
 - [ ] `DoD7` Full build/test suite passes after legacy fallback removal.
 

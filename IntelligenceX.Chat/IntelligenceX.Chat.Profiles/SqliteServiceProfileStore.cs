@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   write_governance_mode TEXT NOT NULL DEFAULT 'enforced',
   require_write_governance_runtime INTEGER NOT NULL DEFAULT 1,
   require_write_audit_sink INTEGER NOT NULL DEFAULT 0,
-  require_explicit_routing_metadata INTEGER NOT NULL DEFAULT 0,
+  require_explicit_routing_metadata INTEGER NOT NULL DEFAULT 1,
   write_audit_sink_mode TEXT NOT NULL DEFAULT 'none',
   write_audit_sink_path TEXT NULL,
   authentication_runtime_preset TEXT NOT NULL DEFAULT 'default',
@@ -137,7 +137,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         EnsureColumnExists(ProfileTable, knownProfileColumns, "write_governance_mode", "TEXT NOT NULL DEFAULT 'enforced'");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "require_write_governance_runtime", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "require_write_audit_sink", "INTEGER NOT NULL DEFAULT 0");
-        EnsureColumnExists(ProfileTable, knownProfileColumns, "require_explicit_routing_metadata", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "require_explicit_routing_metadata", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "write_audit_sink_mode", "TEXT NOT NULL DEFAULT 'none'");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "write_audit_sink_path", "TEXT NULL");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_account_id", "TEXT NULL");
@@ -420,7 +420,7 @@ CREATE TABLE {migratedTable} (
   write_governance_mode TEXT NOT NULL DEFAULT 'enforced',
   require_write_governance_runtime INTEGER NOT NULL DEFAULT 1,
   require_write_audit_sink INTEGER NOT NULL DEFAULT 0,
-  require_explicit_routing_metadata INTEGER NOT NULL DEFAULT 0,
+  require_explicit_routing_metadata INTEGER NOT NULL DEFAULT 1,
   write_audit_sink_mode TEXT NOT NULL DEFAULT 'none',
   write_audit_sink_path TEXT NULL,
   authentication_runtime_preset TEXT NOT NULL DEFAULT 'default',
@@ -636,7 +636,7 @@ LIMIT 1;",
             WriteGovernanceMode = NormalizeWriteGovernanceMode(ReadString(r, "write_governance_mode")),
             RequireWriteGovernanceRuntime = ReadBool(r, "require_write_governance_runtime", defaultValue: true),
             RequireWriteAuditSinkForWriteOperations = ReadBool(r, "require_write_audit_sink", defaultValue: false),
-            RequireExplicitRoutingMetadata = ReadBool(r, "require_explicit_routing_metadata", defaultValue: false),
+            RequireExplicitRoutingMetadata = ReadBool(r, "require_explicit_routing_metadata", defaultValue: true),
             WriteAuditSinkMode = NormalizeWriteAuditSinkMode(ReadString(r, "write_audit_sink_mode")),
             WriteAuditSinkPath = NormalizeOptionalPath(ReadString(r, "write_audit_sink_path")),
             AuthenticationRuntimePreset = NormalizeAuthenticationRuntimePreset(ReadString(r, "authentication_runtime_preset")),

@@ -143,10 +143,15 @@ public sealed class ToolContractValidationTests {
         var definition = new ToolDefinition(
             name: "system_info_probe",
             description: "Probe",
-            parameters: BuildSingleStringPropertySchema("computer_name"));
+            parameters: BuildSingleStringPropertySchema("computer_name"),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceInferred,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var ex = Assert.Throws<InvalidOperationException>(() => registry.Register(new StubTool(definition)));
-        Assert.Contains("RoutingSource", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("explicit", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -171,6 +176,36 @@ public sealed class ToolContractValidationTests {
         Assert.True(registry.TryGetDefinition("system_info_probe_explicit", out var registered));
         Assert.NotNull(registered);
         Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, registered!.Routing!.RoutingSource, ignoreCase: true);
+    }
+
+    [Fact]
+    public void Register_ShouldSupportSyntheticPackWithoutHardcodedMappings() {
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+        var definition = new ToolDefinition(
+            name: "synthetic_sample_inventory",
+            description: "Synthetic sample inventory",
+            parameters: BuildSingleStringPropertySchema("target"),
+            tags: new[] { "pack:sample_pack_v2", "domain_family:corp_internal" },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "sample_pack_v2",
+                Role = ToolRoutingTaxonomy.RoleOperational,
+                DomainIntentFamily = "corp_internal",
+                DomainIntentActionId = "act_domain_scope_corp_internal"
+            });
+
+        registry.Register(new StubTool(definition));
+
+        Assert.True(registry.TryGetDefinition("synthetic_sample_inventory", out var registered));
+        Assert.NotNull(registered);
+        Assert.Equal("sample_pack_v2", registered!.Routing!.PackId, ignoreCase: true);
+        Assert.True(ToolSelectionMetadata.TryResolvePackId(registered, out var packId));
+        Assert.Equal("sample_pack_v2", packId, ignoreCase: true);
+        Assert.True(ToolSelectionMetadata.TryResolveDomainIntentFamily(registered, out var family));
+        Assert.Equal("corp_internal", family, ignoreCase: true);
     }
 
     private static JsonObject BuildSingleStringPropertySchema(string propertyName) {

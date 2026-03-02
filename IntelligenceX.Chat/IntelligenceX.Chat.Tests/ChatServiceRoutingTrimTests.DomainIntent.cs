@@ -34,11 +34,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldRequestDomainIntentClarification_TrueForMixedAdAndPublicDomainSubset() {
         var selectedTools = new List<ToolDefinition> {
-            new("ad_scope_discovery", description: "AD scope"),
-            new("ad_domain_controllers", description: "AD DCs"),
-            new("dnsclientx_query", description: "DNS query"),
-            new("domaindetective_domain_summary", description: "Domain summary"),
-            new("eventlog_live_query", description: "Event log")
+            new("ad_scope_discovery", description: "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new("ad_domain_controllers", description: "AD DCs", tags: new[] { "domain_family:ad_domain" }),
+            new("dnsclientx_query", description: "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new("domaindetective_domain_summary", description: "Domain summary", tags: new[] { "domain_family:public_domain" }),
+            new("eventlog_live_query", description: "Event log", tags: new[] { "domain_family:ad_domain" })
         };
 
         var result = ShouldRequestDomainIntentClarificationMethod.Invoke(
@@ -58,11 +58,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldRequestDomainIntentClarification_TrueForMixedAliasPrefixedAdAndPublicDomainSubset() {
         var selectedTools = new List<ToolDefinition> {
-            new("active_directory_scope_discovery", description: "AD scope"),
-            new("adplayground_domain_controllers", description: "AD DCs"),
-            new("dns_client_x_query", description: "DNS query"),
-            new("domain_detective_domain_summary", description: "Domain summary"),
-            new("eventlog_live_query", description: "Event log")
+            new("active_directory_scope_discovery", description: "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new("adplayground_domain_controllers", description: "AD DCs", tags: new[] { "domain_family:ad_domain" }),
+            new("dns_client_x_query", description: "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new("domain_detective_domain_summary", description: "Domain summary", tags: new[] { "domain_family:public_domain" }),
+            new("eventlog_live_query", description: "Event log", tags: new[] { "domain_family:ad_domain" })
         };
 
         var result = ShouldRequestDomainIntentClarificationMethod.Invoke(
@@ -82,11 +82,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldRequestDomainIntentClarification_TrueForMixedHyphenatedAliasPrefixedAdAndPublicDomainSubset() {
         var selectedTools = new List<ToolDefinition> {
-            new("active-directory-scope-discovery", description: "AD scope"),
-            new("adplayground-domain-controllers", description: "AD DCs"),
-            new("dns-client-x-query", description: "DNS query"),
-            new("domain-detective-domain-summary", description: "Domain summary"),
-            new("eventlog-live-query", description: "Event log")
+            new("active-directory-scope-discovery", description: "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new("adplayground-domain-controllers", description: "AD DCs", tags: new[] { "domain_family:ad_domain" }),
+            new("dns-client-x-query", description: "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new("domain-detective-domain-summary", description: "Domain summary", tags: new[] { "domain_family:public_domain" }),
+            new("eventlog-live-query", description: "Event log", tags: new[] { "domain_family:ad_domain" })
         };
 
         var result = ShouldRequestDomainIntentClarificationMethod.Invoke(
@@ -106,12 +106,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldRequestDomainIntentClarification_FalseWhenOneFamilyDominates() {
         var selectedTools = new List<ToolDefinition> {
-            new("ad_scope_discovery", description: "AD scope"),
-            new("ad_domain_controllers", description: "AD DCs"),
-            new("ad_forest_discover", description: "AD forest"),
-            new("ad_ldap_query", description: "AD LDAP"),
-            new("ad_directory_discovery_diagnostics", description: "AD diagnostics"),
-            new("dnsclientx_query", description: "DNS query")
+            new("ad_scope_discovery", description: "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new("ad_domain_controllers", description: "AD DCs", tags: new[] { "domain_family:ad_domain" }),
+            new("ad_forest_discover", description: "AD forest", tags: new[] { "domain_family:ad_domain" }),
+            new("ad_ldap_query", description: "AD LDAP", tags: new[] { "domain_family:ad_domain" }),
+            new("ad_directory_discovery_diagnostics", description: "AD diagnostics", tags: new[] { "domain_family:ad_domain" }),
+            new("dnsclientx_query", description: "DNS query", tags: new[] { "domain_family:public_domain" })
         };
 
         var result = ShouldRequestDomainIntentClarificationMethod.Invoke(
@@ -131,9 +131,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldRequestDomainIntentClarification_FalseWhenExecutionContractApplies() {
         var selectedTools = new List<ToolDefinition> {
-            new("ad_scope_discovery", description: "AD scope"),
-            new("dnsclientx_query", description: "DNS query"),
-            new("domaindetective_domain_summary", description: "Domain summary")
+            new("ad_scope_discovery", description: "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new("dnsclientx_query", description: "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new("domaindetective_domain_summary", description: "Domain summary", tags: new[] { "domain_family:public_domain" })
         };
 
         var result = ShouldRequestDomainIntentClarificationMethod.Invoke(
@@ -153,9 +153,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldRequestDomainIntentClarification_FalseWhenFullToolsetIsSelected() {
         var selectedTools = new List<ToolDefinition> {
-            new("ad_scope_discovery", description: "AD scope"),
-            new("dnsclientx_query", description: "DNS query"),
-            new("domaindetective_domain_summary", description: "Domain summary")
+            new("ad_scope_discovery", description: "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new("dnsclientx_query", description: "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new("domaindetective_domain_summary", description: "Domain summary", tags: new[] { "domain_family:public_domain" })
         };
 
         var result = ShouldRequestDomainIntentClarificationMethod.Invoke(

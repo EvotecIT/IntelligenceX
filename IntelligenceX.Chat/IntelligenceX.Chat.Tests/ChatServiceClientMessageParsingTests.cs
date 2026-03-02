@@ -143,4 +143,36 @@ public sealed class ChatServiceClientMessageParsingTests {
         Assert.Equal("Recovered via fallback", result.Text);
         Assert.Null(result.TurnTimelineEvents);
     }
+
+    /// <summary>
+    /// Ensures per-turn phase timing telemetry fields in chat_metrics events deserialize end-to-end.
+    /// </summary>
+    [Fact]
+    public void TryDeserializeMessageLine_ParsesChatMetricsWithPhaseTimings() {
+        const string line = """
+            {
+              "type":"chat_metrics",
+              "kind":"event",
+              "requestId":"req_metrics_phase_timings",
+              "threadId":"thread_metrics_phase_timings",
+              "startedAtUtc":"2026-03-02T11:12:13Z",
+              "completedAtUtc":"2026-03-02T11:12:20Z",
+              "durationMs":7000,
+              "ensureThreadMs":120,
+              "weightedSubsetSelectionMs":930,
+              "resolveModelMs":410,
+              "toolCallsCount":2,
+              "toolRounds":1,
+              "projectionFallbackCount":0,
+              "outcome":"ok"
+            }
+            """;
+
+        var parsed = ChatServiceClient.TryDeserializeMessageLine(line);
+
+        var metrics = Assert.IsType<ChatMetricsMessage>(parsed);
+        Assert.Equal(120, metrics.EnsureThreadMs);
+        Assert.Equal(930, metrics.WeightedSubsetSelectionMs);
+        Assert.Equal(410, metrics.ResolveModelMs);
+    }
 }

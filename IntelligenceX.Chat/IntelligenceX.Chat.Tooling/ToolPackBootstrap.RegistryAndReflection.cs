@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using IntelligenceX.Tools;
@@ -31,7 +32,7 @@ public static partial class ToolPackBootstrap {
     /// <param name="registry">Tool registry.</param>
     /// <param name="packs">Packs to register.</param>
     public static void RegisterAll(ToolRegistry registry, IEnumerable<IToolPack> packs) {
-        RegisterAll(registry, packs, toolPackIdsByToolName: null);
+        RegisterAll(registry, packs, toolPackIdsByToolName: null, onRegistrationProgressWarning: null);
     }
 
     /// <summary>
@@ -43,6 +44,23 @@ public static partial class ToolPackBootstrap {
     /// Optional sink populated with registered tool definition name to normalized pack id mappings.
     /// </param>
     public static void RegisterAll(ToolRegistry registry, IEnumerable<IToolPack> packs, IDictionary<string, string>? toolPackIdsByToolName) {
+        RegisterAll(registry, packs, toolPackIdsByToolName, onRegistrationProgressWarning: null);
+    }
+
+    /// <summary>
+    /// Registers all provided packs into the registry and optionally records tool-to-pack ownership/progress diagnostics.
+    /// </summary>
+    /// <param name="registry">Tool registry.</param>
+    /// <param name="packs">Packs to register.</param>
+    /// <param name="toolPackIdsByToolName">
+    /// Optional sink populated with registered tool definition name to normalized pack id mappings.
+    /// </param>
+    /// <param name="onRegistrationProgressWarning">Optional startup warning sink for per-pack registration progress.</param>
+    public static void RegisterAll(
+        ToolRegistry registry,
+        IEnumerable<IToolPack> packs,
+        IDictionary<string, string>? toolPackIdsByToolName,
+        Action<string>? onRegistrationProgressWarning) {
         if (registry is null) {
             throw new ArgumentNullException(nameof(registry));
         }
@@ -50,33 +68,65 @@ public static partial class ToolPackBootstrap {
             throw new ArgumentNullException(nameof(packs));
         }
 
+        var packList = packs as IReadOnlyList<IToolPack> ?? packs.ToArray();
         var knownDefinitions = new HashSet<string>(
             registry.GetDefinitions().Select(static definition => definition.Name),
             StringComparer.OrdinalIgnoreCase);
         var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var totalPacks = Math.Max(1, packList.Count);
 
-        foreach (var pack in packs) {
+        for (var packIndex = 0; packIndex < packList.Count; packIndex++) {
+            var pack = packList[packIndex];
             var descriptorId = (pack.Descriptor.Id ?? string.Empty).Trim();
             var normalizedPackId = NormalizePackId(descriptorId);
             EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedPackId);
-
-            pack.Register(registry);
-
             if (normalizedPackId.Length == 0) {
-                foreach (var definition in registry.GetDefinitions()) {
-                    knownDefinitions.Add(definition.Name);
-                }
-                continue;
+                normalizedPackId = "pack_" + (packIndex + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
 
-            foreach (var definition in registry.GetDefinitions()) {
-                if (!knownDefinitions.Add(definition.Name)) {
-                    continue;
-                }
+            EmitPackRegistrationProgress(
+                onRegistrationProgressWarning,
+                normalizedPackId,
+                phase: "begin",
+                index: packIndex + 1,
+                total: totalPacks,
+                elapsedMs: null,
+                toolsRegistered: null,
+                totalTools: null,
+                failed: null);
 
-                if (toolPackIdsByToolName is not null && normalizedPackId.Length > 0) {
-                    toolPackIdsByToolName[definition.Name] = normalizedPackId;
+            var registerStopwatch = Stopwatch.StartNew();
+            var failed = false;
+            var toolsRegistered = 0;
+            try {
+                pack.Register(registry);
+
+                foreach (var definition in registry.GetDefinitions()) {
+                    if (!knownDefinitions.Add(definition.Name)) {
+                        continue;
+                    }
+
+                    toolsRegistered++;
+                    if (toolPackIdsByToolName is not null) {
+                        toolPackIdsByToolName[definition.Name] = normalizedPackId;
+                    }
                 }
+            } catch {
+                failed = true;
+                throw;
+            } finally {
+                registerStopwatch.Stop();
+
+                EmitPackRegistrationProgress(
+                    onRegistrationProgressWarning,
+                    normalizedPackId,
+                    phase: "end",
+                    index: packIndex + 1,
+                    total: totalPacks,
+                    elapsedMs: Math.Max(1, (long)registerStopwatch.Elapsed.TotalMilliseconds),
+                    toolsRegistered: toolsRegistered,
+                    totalTools: knownDefinitions.Count,
+                    failed: failed);
             }
         }
     }
@@ -182,6 +232,37 @@ public static partial class ToolPackBootstrap {
     private static string NormalizeCollisionDescriptorId(string descriptorId) {
         var normalized = (descriptorId ?? string.Empty).Trim();
         return normalized.Length == 0 ? "<empty>" : normalized;
+    }
+
+    private static void EmitPackRegistrationProgress(
+        Action<string>? onRegistrationProgressWarning,
+        string normalizedPackId,
+        string phase,
+        int index,
+        int total,
+        long? elapsedMs,
+        int? toolsRegistered,
+        int? totalTools,
+        bool? failed) {
+        if (onRegistrationProgressWarning is null) {
+            return;
+        }
+
+        var packId = string.IsNullOrWhiteSpace(normalizedPackId) ? "pack" : normalizedPackId.Trim();
+        var boundedIndex = Math.Max(1, index);
+        var boundedTotal = Math.Max(boundedIndex, total);
+        if (string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)) {
+            var boundedElapsedMs = Math.Max(1, elapsedMs ?? 1);
+            var boundedToolsRegistered = Math.Max(0, toolsRegistered ?? 0);
+            var boundedTotalTools = Math.Max(boundedToolsRegistered, totalTools ?? 0);
+            onRegistrationProgressWarning(
+                $"[startup] pack_register_progress pack='{packId}' phase='end' index='{boundedIndex}' total='{boundedTotal}' " +
+                $"elapsed_ms='{boundedElapsedMs}' tools_registered='{boundedToolsRegistered}' total_tools='{boundedTotalTools}' failed='{(failed.GetValueOrDefault() ? 1 : 0)}'");
+            return;
+        }
+
+        onRegistrationProgressWarning(
+            $"[startup] pack_register_progress pack='{packId}' phase='begin' index='{boundedIndex}' total='{boundedTotal}'");
     }
 
     internal static IToolPack WithSourceKind(IToolPack pack, string sourceKind) {

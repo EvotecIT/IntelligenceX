@@ -20,7 +20,7 @@ public sealed class ToolRegistryReplacementTests {
                 name: "custom_probe",
                 description: "v1",
                 parameters: null,
-                tags: new[] { "first" },
+                tags: new[] { "first", "pack:custom" },
                 aliases: new[] {
                     new ToolAliasDefinition(
                         name: "custom_probe_alias",
@@ -38,7 +38,7 @@ public sealed class ToolRegistryReplacementTests {
                 name: "custom_probe",
                 description: "v2",
                 parameters: null,
-                tags: new[] { "second" },
+                tags: new[] { "second", "pack:custom" },
                 aliases: new[] {
                     new ToolAliasDefinition(
                         name: "custom_probe_new_alias",
@@ -82,7 +82,8 @@ public sealed class ToolRegistryReplacementTests {
             new ToolDefinition(
                 name: "ad_custom_probe",
                 description: "Probe",
-                parameters: null)));
+                parameters: null,
+                tags: new[] { "pack:active_directory" })));
 
         Assert.True(registry.TryGetDefinition("ad_custom_probe", out var definition));
         Assert.NotNull(definition);
@@ -98,13 +99,15 @@ public sealed class ToolRegistryReplacementTests {
             new ToolDefinition(
                 name: "custom_probe",
                 description: "Probe",
-                parameters: null),
+                parameters: null,
+                tags: new[] { "pack:custom" }),
             output: "probe");
         var searchTool = new StubTool(
             new ToolDefinition(
                 name: "custom_search",
                 description: "Search",
-                parameters: null),
+                parameters: null,
+                tags: new[] { "pack:custom" }),
             output: "search");
 
         registry.Register(probeTool);

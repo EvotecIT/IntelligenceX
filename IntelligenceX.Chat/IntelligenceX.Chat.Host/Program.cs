@@ -76,7 +76,9 @@ internal static partial class Program {
             warning => CollectPackWarning(startupPackWarnings, warning));
         var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
         var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
-        var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(packs);
+        var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
+            packs,
+            requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
         WritePolicyBanner(
             options,
             packs,
@@ -179,7 +181,9 @@ internal static partial class Program {
                 throw;
             }
 
-            var nextRegistry = new ToolRegistry();
+            var nextRegistry = new ToolRegistry {
+                RequireExplicitRoutingMetadata = runtimePolicyContext.Options.RequireExplicitRoutingMetadata
+            };
             ToolPackBootstrap.RegisterAll(nextRegistry, nextPacks);
             var runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(nextRegistry, runtimePolicyContext);
             var runtimeRoutingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(nextRegistry);
@@ -311,7 +315,9 @@ internal static partial class Program {
                                     warning => CollectPackWarning(profilePackWarnings, warning));
                                 var profileRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(profileRuntimePolicyContext);
                                 var profilePacks = BuildPacks(options, profileRuntimePolicyContext, warning => CollectPackWarning(profilePackWarnings, warning));
-                                var profileRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(profilePacks);
+                                var profileRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
+                                    profilePacks,
+                                    requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
                                 WritePolicyBanner(
                                     options,
                                     profilePacks,

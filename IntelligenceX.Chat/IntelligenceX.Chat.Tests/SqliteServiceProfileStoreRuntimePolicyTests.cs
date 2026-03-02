@@ -70,7 +70,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.Equal("enforced", loaded!.WriteGovernanceMode);
             Assert.Equal("none", loaded.WriteAuditSinkMode);
             Assert.Equal("default", loaded.AuthenticationRuntimePreset);
-            Assert.False(loaded.RequireExplicitRoutingMetadata);
+            Assert.True(loaded.RequireExplicitRoutingMetadata);
             Assert.Null(loaded.WriteAuditSinkPath);
             Assert.Null(loaded.RunAsProfilePath);
             Assert.Null(loaded.AuthenticationProfilePath);
@@ -281,7 +281,7 @@ CREATE TABLE ix_service_profiles (
   write_governance_mode TEXT NOT NULL DEFAULT 'enforced',
   require_write_governance_runtime INTEGER NOT NULL DEFAULT 1,
   require_write_audit_sink INTEGER NOT NULL DEFAULT 0,
-  require_explicit_routing_metadata INTEGER NOT NULL DEFAULT 0,
+  require_explicit_routing_metadata INTEGER NOT NULL DEFAULT 1,
   write_audit_sink_mode TEXT NOT NULL DEFAULT 'none',
   write_audit_sink_path TEXT NULL,
   authentication_runtime_preset TEXT NOT NULL DEFAULT 'default',

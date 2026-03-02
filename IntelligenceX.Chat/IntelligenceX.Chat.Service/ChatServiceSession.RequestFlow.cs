@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -53,7 +54,7 @@ internal sealed partial class ChatServiceSession {
                 Name = defs[i].Name,
                 Description = defs[i].Description ?? string.Empty,
                 DisplayName = ResolveToolDisplayName(defs[i]),
-                Category = InferToolCategory(packId, ResolveToolCategory(defs[i])),
+                Category = ResolveToolListCategory(ResolveToolCategory(defs[i])),
                 Tags = defs[i].Tags.Count == 0 ? null : defs[i].Tags.ToArray(),
                 PackId = packId.Length == 0 ? null : packId,
                 PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
@@ -185,10 +186,26 @@ internal sealed partial class ChatServiceSession {
 
         var requestThreadId = ResolveRecoveredThreadAlias(request.ThreadId);
         var routedActiveThreadId = ResolveRecoveredThreadAlias(activeThreadId);
+        long? ensureThreadMs = null;
+        var preflightThreadId = !string.IsNullOrWhiteSpace(requestThreadId)
+            ? requestThreadId
+            : !string.IsNullOrWhiteSpace(routedActiveThreadId)
+                ? routedActiveThreadId
+                : string.Empty;
+
+        await TryWriteStatusAsync(
+                writer,
+                request.RequestId,
+                preflightThreadId,
+                status: ChatStatusCodes.Thinking,
+                message: "Request accepted. Preparing conversation context...")
+            .ConfigureAwait(false);
 
         try {
+            var ensureThreadStopwatch = Stopwatch.StartNew();
             activeThreadId = await EnsureThreadAsync(client, requestThreadId, routedActiveThreadId, request.Options?.Model, cancellationToken)
                 .ConfigureAwait(false);
+            ensureThreadMs = Math.Max(0L, ensureThreadStopwatch.ElapsedMilliseconds);
 
             var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
             if (normalizedActiveThreadId.Length > 0) {
@@ -202,6 +219,14 @@ internal sealed partial class ChatServiceSession {
                     RememberRecoveredThreadAlias(routedActiveThreadId, normalizedActiveThreadId);
                 }
             }
+
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    normalizedActiveThreadId,
+                    status: ChatStatusCodes.Thinking,
+                    message: "Conversation context ready. Starting routing and planning...")
+                .ConfigureAwait(false);
         } catch (OpenAIAuthenticationRequiredException) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
@@ -235,6 +260,8 @@ internal sealed partial class ChatServiceSession {
             var toolCallsCount = 0;
             var toolRounds = 0;
             var projectionFallbackCount = 0;
+            long? weightedSubsetSelectionMs = null;
+            long? resolveModelMs = null;
             IReadOnlyList<ToolErrorMetricDto>? toolErrors = null;
             IReadOnlyList<TurnCounterMetricDto>? autonomyCounters = null;
             var outcome = "ok";
@@ -275,6 +302,8 @@ internal sealed partial class ChatServiceSession {
                 toolCallsCount = result.ToolCallsCount;
                 toolRounds = result.ToolRounds;
                 projectionFallbackCount = result.ProjectionFallbackCount;
+                weightedSubsetSelectionMs = result.WeightedSubsetSelectionMs;
+                resolveModelMs = result.ResolveModelMs;
                 toolErrors = result.ToolErrors;
                 autonomyCounters = result.AutonomyCounters;
                 telemetryModel = ResolveEffectiveTurnModelForTelemetry(
@@ -337,6 +366,9 @@ internal sealed partial class ChatServiceSession {
                         CompletedAtUtc = completedAtUtc,
                         DurationMs = durationMs,
                         TtftMs = ttftMs,
+                        EnsureThreadMs = ensureThreadMs,
+                        WeightedSubsetSelectionMs = weightedSubsetSelectionMs,
+                        ResolveModelMs = resolveModelMs,
                         Usage = usageDto,
                         ToolCallsCount = toolCallsCount,
                         ToolRounds = toolRounds,

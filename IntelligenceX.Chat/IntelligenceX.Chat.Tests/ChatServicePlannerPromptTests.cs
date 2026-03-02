@@ -80,7 +80,15 @@ public sealed class ChatServicePlannerPromptTests {
                 "Domain posture summary.",
                 ToolSchema.Object(("domain", ToolSchema.String("Domain name."))).Required("domain").NoAdditionalProperties(),
                 category: "dns",
-                tags: new[] { "intent:public_domain", "pack:domaindetective" })
+                tags: new[] { "intent:public_domain", "pack:domaindetective", "domain_family:public_domain" },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "domaindetective",
+                    Role = ToolRoutingTaxonomy.RoleOperational,
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic
+                })
         };
 
         var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
@@ -91,7 +99,7 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("category: dns", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("family: public_domain", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("tags: intent:public_domain", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("intent:public_domain", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:domaindetective", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -115,11 +123,17 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildToolRoutingSearchText_IncludesPackTokensFromNameFallback() {
+    public void BuildToolRoutingSearchText_IncludesPackTokensFromExplicitRoutingMetadata() {
         var definition = new ToolDefinition(
             "ad_get_users",
             "Read directory users.",
-            ToolSchema.Object(("domain", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties());
+            ToolSchema.Object(("domain", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
 
@@ -129,12 +143,18 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildToolRoutingSearchText_IncludesActiveDirectoryLiteralAliasWhenPackCategoryIsAd() {
+    public void BuildToolRoutingSearchText_IncludesActiveDirectoryLiteralAliasWhenPackIsExplicit() {
         var definition = new ToolDefinition(
             "directory_scope_probe",
             "Directory scope probe.",
             ToolSchema.Object(("domain", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties(),
-            category: "ad");
+            category: "ad",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
 
@@ -146,12 +166,18 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildToolRoutingSearchText_IncludesComputerXAliasForSystemPack() {
+    public void BuildToolRoutingSearchText_IncludesComputerXAliasForExplicitSystemPack() {
         var definition = new ToolDefinition(
             "inventory_collect",
             "Collect host inventory.",
             ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
-            category: "computerx");
+            category: "computerx",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
 
@@ -162,11 +188,17 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildToolRoutingSearchText_IncludesDnsClientXAliasTokensFromToolNamePrefixFallback() {
+    public void BuildToolRoutingSearchText_IncludesDnsClientXAliasTokensFromExplicitPackMetadata() {
         var definition = new ToolDefinition(
             "dns_client_x_query",
             "Query DNS records.",
-            ToolSchema.Object(("name", ToolSchema.String("Name."))).NoAdditionalProperties());
+            ToolSchema.Object(("name", ToolSchema.String("Name."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "dnsclientx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
 
@@ -177,11 +209,17 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildToolRoutingSearchText_IncludesDomainDetectivePackTokensFromHyphenatedToolNamePrefixFallback() {
+    public void BuildToolRoutingSearchText_IncludesDomainDetectivePackTokensFromExplicitPackMetadata() {
         var definition = new ToolDefinition(
             "domain-detective-query",
             "Query domain evidence.",
-            ToolSchema.Object(("name", ToolSchema.String("Name."))).NoAdditionalProperties());
+            ToolSchema.Object(("name", ToolSchema.String("Name."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "domaindetective",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
 
@@ -192,12 +230,18 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildToolRoutingSearchText_IncludesTestimoXUnderscoreAliasTokens() {
+    public void BuildToolRoutingSearchText_IncludesTestimoXUnderscoreAliasTokensForExplicitPack() {
         var definition = new ToolDefinition(
             "health_rules",
             "Run TestimoX rules.",
             ToolSchema.Object(("scope", ToolSchema.String("Scope."))).NoAdditionalProperties(),
-            category: "testimox");
+            category: "testimox",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "testimox",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
 
@@ -208,12 +252,18 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildToolRoutingSearchText_IncludesEventLogUnderscoreAliasTokens() {
+    public void BuildToolRoutingSearchText_IncludesEventLogUnderscoreAliasTokensForExplicitPack() {
         var definition = new ToolDefinition(
             "event_log_query",
             "Query event log entries.",
             ToolSchema.Object(("log_name", ToolSchema.String("Log name."))).NoAdditionalProperties(),
-            category: "event_log");
+            category: "event_log",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
 
         var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
 

@@ -1,4 +1,6 @@
+using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,6 +56,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.NotNull(result);
         Assert.Equal(1, server.ChatCompletionRequestCount);
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.True(statuses.Count(static status => string.Equals(status, "phase_plan", StringComparison.OrdinalIgnoreCase)) >= 2);
 
         var recoveredThreadId = session.ResolveRecoveredThreadAliasForTesting(missingThreadId);
         Assert.False(string.IsNullOrWhiteSpace(recoveredThreadId));

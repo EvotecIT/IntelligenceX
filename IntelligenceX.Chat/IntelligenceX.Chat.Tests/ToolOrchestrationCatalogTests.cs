@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using Xunit;
@@ -86,7 +85,7 @@ public sealed class ToolOrchestrationCatalogTests {
     }
 
     [Fact]
-    public void Build_UsesRegisteredPackAssignmentsWhenRoutingPackIsMissing() {
+    public void Build_DoesNotAssignPackWhenRoutingPackIsMissing() {
         var definitions = new[] {
             CreateDefinition(
                 name: "orphan_tool",
@@ -97,19 +96,9 @@ public sealed class ToolOrchestrationCatalogTests {
                 })
         };
 
-        var catalogWithoutFallback = ToolOrchestrationCatalog.Build(definitions);
-        Assert.False(catalogWithoutFallback.TryGetPackId("orphan_tool", out _));
-
-        var registeredPackIdsByToolName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
-            ["orphan_tool"] = "System"
-        };
-        var catalogWithFallback = ToolOrchestrationCatalog.Build(definitions, registeredPackIdsByToolName);
-
-        Assert.True(catalogWithFallback.TryGetPackId("orphan_tool", out var packId));
-        Assert.Equal("system", packId);
-        var byPack = catalogWithFallback.GetByPackId("system");
-        Assert.Single(byPack);
-        Assert.Equal("orphan_tool", byPack[0].ToolName);
+        var catalog = ToolOrchestrationCatalog.Build(definitions);
+        Assert.False(catalog.TryGetPackId("orphan_tool", out _));
+        Assert.Empty(catalog.GetByPackId("system"));
     }
 
     private static ToolDefinition CreateDefinition(

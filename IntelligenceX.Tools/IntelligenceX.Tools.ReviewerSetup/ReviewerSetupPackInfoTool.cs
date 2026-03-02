@@ -14,7 +14,13 @@ public sealed class ReviewerSetupPackInfoTool : ReviewerSetupToolBase, ITool {
     private static readonly ToolDefinition DefinitionValue = new(
         "reviewer_setup_pack_info",
         "Return reviewer onboarding path definitions (new-setup, refresh-auth, cleanup, maintenance) and recommended command flows. Call this first before onboarding automation.",
-        ToolSchema.Object().NoAdditionalProperties());
+        ToolSchema.Object().NoAdditionalProperties(),
+        routing: new ToolRoutingContract {
+            IsRoutingAware = true,
+            RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+            PackId = "reviewer_setup",
+            Role = ToolRoutingTaxonomy.RolePackInfo
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ReviewerSetupPackInfoTool"/> class.

@@ -397,6 +397,12 @@ public sealed class ToolWriteGovernanceRegistryTests {
                     ("write_rollback_plan_id", ToolSchema.String()))
                 .WithWriteGovernanceMetadata()
                 .NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "write_testing",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
             writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
                 intentArgumentName: "send",
                 confirmationArgumentName: "allow_write"));
@@ -417,6 +423,12 @@ public sealed class ToolWriteGovernanceRegistryTests {
                     ("custom_audit_correlation_id", ToolSchema.String()))
                 .WithWriteGovernanceMetadata()
                 .NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "write_testing",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
             writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
                 intentArgumentName: "send",
                 confirmationArgumentName: "allow_write"));

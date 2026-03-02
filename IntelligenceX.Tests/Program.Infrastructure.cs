@@ -45,7 +45,11 @@ internal static partial class Program {
         private readonly ToolDefinition _definition;
 
         public StubTool(string name) {
-            _definition = new ToolDefinition(name, "Stub tool", new JsonObject().Add("type", "object"));
+            _definition = new ToolDefinition(
+                name,
+                "Stub tool",
+                new JsonObject().Add("type", "object"),
+                routing: CreateTestRoutingContract());
         }
 
         public ToolDefinition Definition => _definition;
@@ -63,7 +67,11 @@ internal static partial class Program {
 
         public GateTool(string name, TaskCompletionSource<bool> startGate, TaskCompletionSource<bool> releaseGate,
             Func<int> increment, int expected) {
-            _definition = new ToolDefinition(name, "Gate tool", new JsonObject().Add("type", "object"));
+            _definition = new ToolDefinition(
+                name,
+                "Gate tool",
+                new JsonObject().Add("type", "object"),
+                routing: CreateTestRoutingContract());
             _startGate = startGate;
             _releaseGate = releaseGate;
             _increment = increment;
@@ -238,9 +246,17 @@ internal static partial class Program {
         }
     }
 
+    private static ToolRoutingContract CreateTestRoutingContract(string packId = "test-pack") {
+        return new ToolRoutingContract {
+            PackId = packId,
+            Role = ToolRoutingTaxonomy.RoleOperational,
+            RoutingSource = ToolRoutingTaxonomy.SourceExplicit
+        };
+    }
+
     private sealed class TestTool : ITool {
         public TestTool(string name) {
-            Definition = new ToolDefinition(name, "test tool");
+            Definition = new ToolDefinition(name, "test tool", routing: CreateTestRoutingContract());
         }
 
         public ToolDefinition Definition { get; }

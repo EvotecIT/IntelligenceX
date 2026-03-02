@@ -485,6 +485,7 @@ public sealed partial class MainWindow : Window {
                         LogStartupConnectPhase("ensure_sidecar", "failed");
                         await client.DisposeAsync().ConfigureAwait(false);
                         _isConnected = false;
+                        EndStartupMetadataSyncTracking();
                         MarkDispatchConnectFailure();
                         await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
                         EnsureAutoReconnectLoop();
@@ -499,6 +500,7 @@ public sealed partial class MainWindow : Window {
                 if (!connected) {
                     await client.DisposeAsync().ConfigureAwait(false);
                     _isConnected = false;
+                    EndStartupMetadataSyncTracking();
                     MarkDispatchConnectFailure();
                     await SetStatusAsync(SessionStatus.ConnectFailed()).ConfigureAwait(false);
                     EnsureAutoReconnectLoop();
@@ -514,6 +516,7 @@ public sealed partial class MainWindow : Window {
 
             _client = client;
             _isConnected = true;
+            BeginStartupMetadataSyncTracking("preparing runtime metadata sync");
             ClearDispatchConnectFailure();
             StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
@@ -529,6 +532,10 @@ public sealed partial class MainWindow : Window {
                 deferStartupModelProfileSync: ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry));
             if (deferredMetadataPlan.DeferStartupMetadataSync) {
                 _sessionPolicy = null;
+                UpdateStartupMetadataSyncPhase(
+                    deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated
+                        ? "waiting for sign-in to finish startup sync"
+                        : "startup metadata sync queued");
                 await SetStatusAsync(
                     deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated
                         ? "Runtime connected. Sign in to finish loading tool packs..."
@@ -541,6 +548,7 @@ public sealed partial class MainWindow : Window {
                 }
             } else {
                 try {
+                    UpdateStartupMetadataSyncPhase("syncing session policy");
                     LogStartupConnectPhase("hello", "begin");
                     var hello = await _client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     _sessionPolicy = hello.Policy;
@@ -556,6 +564,7 @@ public sealed partial class MainWindow : Window {
 
             if (!deferredMetadataPlan.DeferStartupMetadataSync) {
                 try {
+                    UpdateStartupMetadataSyncPhase("loading tool catalog");
                     LogStartupConnectPhase("list_tools", "begin");
                     var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     UpdateToolCatalog(toolList.Tools);
@@ -579,6 +588,7 @@ public sealed partial class MainWindow : Window {
             } else {
                 LogStartupConnectPhase("auth_refresh", "begin");
                 try {
+                    UpdateStartupMetadataSyncPhase("refreshing authentication");
                     _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
                     LogStartupConnectPhase("auth_refresh", "done");
                 } catch {
@@ -593,6 +603,7 @@ public sealed partial class MainWindow : Window {
                 QueueDeferredStartupModelProfileSync();
             } else {
                 try {
+                    UpdateStartupMetadataSyncPhase("syncing model and profile state");
                     LogStartupConnectPhase("model_profile_sync", "begin");
                     await SyncConnectedServiceProfileAndModelsAsync(
                         forceModelRefresh: false,
@@ -606,6 +617,15 @@ public sealed partial class MainWindow : Window {
                     }
                 }
             }
+
+            if (!deferredMetadataPlan.DeferStartupMetadataSync) {
+                EndStartupMetadataSyncTracking();
+                await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                LogStartupConnectPhase("ready", "inline_metadata_sync_done");
+            }
+        } catch {
+            EndStartupMetadataSyncTracking();
+            throw;
         } finally {
             _connectGate.Release();
         }

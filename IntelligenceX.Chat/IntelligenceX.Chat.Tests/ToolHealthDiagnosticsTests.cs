@@ -330,7 +330,7 @@ public sealed class ToolHealthDiagnosticsTests {
     }
 
     [Fact]
-    public void GetPackInfoToolNames_PrefersRoutingRoleWithSuffixFallback() {
+    public void GetPackInfoToolNames_UsesPackInfoRoleOnly() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
             "custom_pack_summary",
@@ -355,12 +355,12 @@ public sealed class ToolHealthDiagnosticsTests {
         var names = ToolHealthDiagnostics.GetPackInfoToolNames(registry);
 
         Assert.Contains("custom_pack_summary", names, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("legacy_pack_info", names, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("legacy_pack_info", names, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("custom_operational_tool", names, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void GetPackInfoToolNames_WhenStrictRoleRequired_ExcludesSuffixOnlyPackInfoDefinitions() {
+    public void GetPackInfoToolNames_WhenExplicitRoleRequired_ExcludesNonExplicitPackInfoDefinitions() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool(
             "custom_pack_summary",
@@ -371,16 +371,26 @@ public sealed class ToolHealthDiagnosticsTests {
                 PackId = "customx",
                 Role = ToolRoutingTaxonomy.RolePackInfo
             }));
+        registry.Register(new StubTool(
+            "inferred_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceInferred,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
         registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
 
         var names = ToolHealthDiagnostics.GetPackInfoToolNames(registry, requireExplicitPackInfoRole: true);
 
         Assert.Contains("custom_pack_summary", names, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("inferred_pack_info", names, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("legacy_pack_info", names, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task ProbeAsync_WhenStrictRoleRequired_DoesNotRunSmokeForSuffixOnlyPackInfoDefinition() {
+    public async Task ProbeAsync_DoesNotRunSmokeForSuffixOnlyToolWithoutPackInfoRole() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
         registry.Register(new StubTool("legacy_diagnostic", static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"Should not run."}""")));
@@ -389,8 +399,7 @@ public sealed class ToolHealthDiagnosticsTests {
             registry,
             toolName: "legacy_pack_info",
             timeoutSeconds: 2,
-            cancellationToken: CancellationToken.None,
-            requireExplicitPackInfoRole: true);
+            cancellationToken: CancellationToken.None);
 
         Assert.True(result.Ok);
         Assert.Null(result.ErrorCode);
@@ -404,7 +413,13 @@ public sealed class ToolHealthDiagnosticsTests {
             Func<JsonObject?, CancellationToken, Task<string>> invoke,
             ToolRoutingContract? routing = null,
             JsonObject? parameters = null) {
-            Definition = new ToolDefinition(name, description: "stub", parameters: parameters, routing: routing);
+            var effectiveRouting = routing ?? new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = ResolveDefaultPackId(name),
+                Role = ToolRoutingTaxonomy.RoleOperational
+            };
+            Definition = new ToolDefinition(name, description: "stub", parameters: parameters, routing: effectiveRouting);
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 
@@ -412,6 +427,20 @@ public sealed class ToolHealthDiagnosticsTests {
 
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             return _invoke(arguments, cancellationToken);
+        }
+
+        private static string ResolveDefaultPackId(string name) {
+            var normalizedName = (name ?? string.Empty).Trim();
+            if (normalizedName.Length == 0) {
+                return "test";
+            }
+
+            var separator = normalizedName.IndexOf('_');
+            var candidate = separator <= 0
+                ? normalizedName
+                : normalizedName.Substring(0, separator);
+            var normalizedPackId = ToolSelectionMetadata.NormalizePackId(candidate);
+            return string.IsNullOrWhiteSpace(normalizedPackId) ? "test" : normalizedPackId;
         }
     }
 }

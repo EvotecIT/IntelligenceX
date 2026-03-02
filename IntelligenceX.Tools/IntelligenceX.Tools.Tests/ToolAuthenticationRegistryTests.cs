@@ -16,6 +16,7 @@ public sealed class ToolAuthenticationRegistryTests {
             parameters: ToolSchema.Object(
                     ("query", ToolSchema.String()))
                 .NoAdditionalProperties(),
+            tags: new[] { "pack:auth_testing" },
             authentication: ToolAuthenticationConventions.ProfileReference());
 
         var registry = new ToolRegistry();
@@ -31,6 +32,7 @@ public sealed class ToolAuthenticationRegistryTests {
                     ("query", ToolSchema.String()))
                 .WithAuthenticationProfileReference()
                 .NoAdditionalProperties(),
+            tags: new[] { "pack:auth_testing" },
             authentication: ToolAuthenticationConventions.ProfileReference());
 
         var registry = new ToolRegistry();
@@ -45,6 +47,7 @@ public sealed class ToolAuthenticationRegistryTests {
             parameters: ToolSchema.Object(
                     ("query", ToolSchema.String()))
                 .NoAdditionalProperties(),
+            tags: new[] { "pack:auth_testing" },
             authentication: ToolAuthenticationConventions.HostManaged());
 
         var registry = new ToolRegistry();
@@ -59,6 +62,7 @@ public sealed class ToolAuthenticationRegistryTests {
             parameters: ToolSchema.Object(
                     ("query", ToolSchema.String()))
                 .NoAdditionalProperties(),
+            tags: new[] { "pack:auth_testing" },
             authentication: ToolAuthenticationConventions.HostManaged(
                 supportsConnectivityProbe: true,
                 probeToolName: "smtp_probe"));
@@ -77,6 +81,7 @@ public sealed class ToolAuthenticationRegistryTests {
                     ("query", ToolSchema.String()))
                 .WithAuthenticationProbeReference()
                 .NoAdditionalProperties(),
+            tags: new[] { "pack:auth_testing" },
             authentication: ToolAuthenticationConventions.HostManaged(
                 supportsConnectivityProbe: true,
                 probeToolName: "smtp_probe"));

@@ -18,9 +18,6 @@ internal static partial class Program {
             : ResolveToolGroupLabel(toolName, prefix);
 
         var title = ToTitle(suffix);
-        if (toolName.Equals("wsl_status", StringComparison.OrdinalIgnoreCase)) {
-            title = "WSL Status";
-        }
 
         return string.IsNullOrWhiteSpace(group) ? title : $"{group} / {title}";
     }

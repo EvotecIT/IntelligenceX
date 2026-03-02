@@ -356,8 +356,8 @@ public static partial class ToolRuntimePolicyBootstrap {
         writeLine("  --write-audit-sink-mode <MODE>  Write audit sink mode: none|file|sqlite (default: none).");
         writeLine("  --write-audit-sink-path <PATH>  Write audit sink path (JSONL file or SQLite db).");
         writeLine("  --auth-runtime-preset <MODE>  Auth runtime preset: default|strict|lab (default: default).");
-        writeLine("  --require-explicit-routing-metadata  Require explicit routing metadata during tool registration.");
-        writeLine("  --allow-inferred-routing-metadata  Allow inferred routing metadata during tool registration (default).");
+        writeLine("  --require-explicit-routing-metadata  Require explicit routing metadata during tool registration (default: on).");
+        writeLine("  --allow-inferred-routing-metadata  Allow inferred routing metadata during tool registration.");
         writeLine("  --require-auth-runtime   Require strict auth runtime gating for write-capable auth flows.");
         writeLine("  --no-require-auth-runtime Disable strict auth runtime requirement.");
         writeLine("  --run-as-profile-path <PATH>  Run-as profile catalog path for auth-aware packs.");

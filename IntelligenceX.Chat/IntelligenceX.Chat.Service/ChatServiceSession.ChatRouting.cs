@@ -62,6 +62,8 @@ internal sealed partial class ChatServiceSession {
         var domainIntentFamilyAvailability = ResolveDomainIntentFamilyAvailability(fullToolDefs);
         var originalToolCount = toolDefs.Count;
         var routingInsights = new List<ToolRoutingInsight>();
+        long? weightedSubsetSelectionMs = null;
+        long? resolveModelMs = null;
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
         var userRequest = ExtractPrimaryUserRequest(request.Text);
         var userIntent = ExtractIntentUserText(request.Text);
@@ -107,6 +109,14 @@ internal sealed partial class ChatServiceSession {
                     // short continuation requests (for example compact follow-up text or ordinal selections).
                     routingInsights = new List<ToolRoutingInsight>();
                 } else if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.Routing,
+                            message: $"Selecting relevant tools from {toolDefs.Count} available candidate(s)...")
+                        .ConfigureAwait(false);
+                    var weightedSubsetStopwatch = Stopwatch.StartNew();
                     var routed = await SelectWeightedToolSubsetAsync(
                             client,
                             threadId,
@@ -115,6 +125,7 @@ internal sealed partial class ChatServiceSession {
                             maxCandidateTools,
                             cancellationToken)
                         .ConfigureAwait(false);
+                    weightedSubsetSelectionMs = Math.Max(0L, weightedSubsetStopwatch.ElapsedMilliseconds);
                     toolDefs = routed.Definitions;
                     routingInsights = routed.Insights;
                 } else {
@@ -365,11 +376,23 @@ internal sealed partial class ChatServiceSession {
                     ProjectionFallbackCount: 0,
                     ToolErrors: Array.Empty<ToolErrorMetricDto>(),
                     AutonomyCounters: Array.Empty<TurnCounterMetricDto>(),
-                    ResolvedModel: null);
+                    ResolvedModel: null,
+                    WeightedSubsetSelectionMs: weightedSubsetSelectionMs,
+                    ResolveModelMs: resolveModelMs);
             }
         }
 
+        await TryWriteStatusAsync(
+                writer,
+                request.RequestId,
+                threadId,
+                status: ChatStatusCodes.Thinking,
+                message: "Resolving runtime model and preparing first response...")
+            .ConfigureAwait(false);
+
+        var resolveModelStopwatch = Stopwatch.StartNew();
         var resolvedModel = await ResolveTurnModelAsync(client, request, turnToken).ConfigureAwait(false);
+        resolveModelMs = Math.Max(0L, resolveModelStopwatch.ElapsedMilliseconds);
 
         var options = new ChatOptions {
             Model = resolvedModel,
@@ -576,6 +599,8 @@ internal sealed partial class ChatServiceSession {
                         isLocalCompatibleLoopback: isLocalCompatibleLoopback,
                         supportsSyntheticHostReplayItems: supportsSyntheticHostReplayItems,
                         resolvedModel: resolvedModel,
+                        weightedSubsetSelectionMs: weightedSubsetSelectionMs,
+                        resolveModelMs: resolveModelMs,
                         userIntent: userIntent,
                         fullToolDefs: fullToolDefs,
                         mutatingToolHints: mutatingToolHints,

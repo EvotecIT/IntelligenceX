@@ -966,6 +966,206 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain(resultMessage2.Tools.Calls, call => call.CallId.StartsWith("host_pack_preflight_", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_DoesNotAutoSwitchPacksAfterToolFailure() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-no-cross-pack-fallback-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_ad_search_fail_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "ad_search",
+                                        arguments = JsonSerializer.Serialize(new { query = "dc-2 reboot timeline" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-no-cross-pack-fallback-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "   "
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-no-cross-pack-fallback-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+
+        var dnsClientXCalls = 0;
+        registry.Register(new RoundTripStubTool(
+            "ad_search",
+            static (_, _) => throw new InvalidOperationException("Injected permanent failure for regression coverage.")));
+        registry.Register(new RoundTripStubTool(
+            "dnsclientx_query",
+            (_, _) => {
+                Interlocked.Increment(ref dnsClientXCalls);
+                return Task.FromResult("""{"ok":true,"summary_markdown":"dns fallback executed"}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-no-cross-pack-fallback-after-failure",
+            ThreadId = thread.Id,
+            Text = "Run AD search for reboot anomalies and summarize what happened.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(2, server.ChatCompletionRequestCount);
+        Assert.Equal(0, Volatile.Read(ref dnsClientXCalls));
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Single(resultMessage.Tools!.Calls);
+        Assert.Single(resultMessage.Tools.Outputs);
+        Assert.Equal("ad_search", resultMessage.Tools.Calls[0].Name);
+        Assert.Equal("call_ad_search_fail_1", resultMessage.Tools.Calls[0].CallId);
+        Assert.DoesNotContain(resultMessage.Tools.Calls, static call =>
+            string.Equals(call.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("call_ad_search_fail_1", resultMessage.Tools.Outputs[0].CallId);
+        Assert.Equal("tool_exception", resultMessage.Tools.Outputs[0].ErrorCode);
+
+        var reviewRequestBody = server.GetChatRequestBody(1);
+        Assert.True(ContainsToolMessageForCallId(reviewRequestBody, "call_ad_search_fail_1"));
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RequestsDomainScopeClarificationForAmbiguousMixedSignalsBeforeExecution() {
+        using var server = new DeterministicCompatibleHttpServer();
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool("ad_scope_discovery", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new RoundTripStubTool("dnsclientx_query", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-domain-intent-clarify-ambiguous",
+            ThreadId = thread.Id,
+            Text = "Please run AD LDAP and DNS MX checks together now.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = true,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(0, server.ChatCompletionRequestCount);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Null(resultMessage.Tools);
+        Assert.Contains("I need a quick scope choice before continuing.", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1.", resultMessage.Text, StringComparison.Ordinal);
+        Assert.Contains("2.", resultMessage.Text, StringComparison.Ordinal);
+        Assert.Contains("AD domain", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Public domain", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void SetSessionRegistry(ChatServiceSession session, ToolRegistry registry) {
         RegistryField.SetValue(session, registry);
         var catalog = ToolOrchestrationCatalog.Build(registry.GetDefinitions());

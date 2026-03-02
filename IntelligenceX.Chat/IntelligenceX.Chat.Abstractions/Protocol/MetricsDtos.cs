@@ -32,6 +32,18 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// Time-to-first-token (milliseconds) when streaming is enabled.
     /// </summary>
     public long? TtftMs { get; init; }
+    /// <summary>
+    /// Time spent ensuring/recovering thread context before turn execution (milliseconds).
+    /// </summary>
+    public long? EnsureThreadMs { get; init; }
+    /// <summary>
+    /// Time spent in weighted tool-subset selection when planner scoring runs (milliseconds).
+    /// </summary>
+    public long? WeightedSubsetSelectionMs { get; init; }
+    /// <summary>
+    /// Time spent resolving the effective runtime model for the turn (milliseconds).
+    /// </summary>
+    public long? ResolveModelMs { get; init; }
 
     /// <summary>
     /// Token usage details when available.

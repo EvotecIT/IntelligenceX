@@ -111,8 +111,12 @@ internal static partial class Program {
         Console.WriteLine($"  Dangerous tools: {(dangerousEnabled ? "enabled (explicit opt-in)" : "disabled")}");
     }
 
-    private static ToolRoutingCatalogDiagnostics BuildRoutingCatalogDiagnostics(IReadOnlyList<IToolPack> packs) {
-        var registry = new ToolRegistry();
+    private static ToolRoutingCatalogDiagnostics BuildRoutingCatalogDiagnostics(
+        IReadOnlyList<IToolPack> packs,
+        bool requireExplicitRoutingMetadata) {
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = requireExplicitRoutingMetadata
+        };
         ToolPackBootstrap.RegisterAll(registry, packs);
         return ToolRoutingCatalogDiagnosticsBuilder.Build(registry);
     }

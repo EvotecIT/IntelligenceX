@@ -104,7 +104,10 @@ public sealed partial class ChatServiceRoutingTrimTests {    private static asyn
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 
         public RoundTripStubTool(string name, Func<JsonObject?, CancellationToken, Task<string>> invoke) {
-            Definition = new ToolDefinition(name, description: "roundtrip stub");
+            Definition = new ToolDefinition(
+                name,
+                description: "roundtrip stub",
+                routing: BuildRoutingContract(name));
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 
@@ -112,6 +115,53 @@ public sealed partial class ChatServiceRoutingTrimTests {    private static asyn
 
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             return _invoke(arguments, cancellationToken);
+        }
+
+        private static ToolRoutingContract BuildRoutingContract(string toolName) {
+            var normalizedToolName = (toolName ?? string.Empty).Trim();
+            var separatorIndex = normalizedToolName.IndexOf('_');
+            if (separatorIndex < 0) {
+                var hyphenIndex = normalizedToolName.IndexOf('-');
+                if (hyphenIndex >= 0) {
+                    separatorIndex = hyphenIndex;
+                }
+            }
+
+            var rawPackToken = separatorIndex > 0
+                ? normalizedToolName.Substring(0, separatorIndex)
+                : normalizedToolName;
+            var packId = ToolSelectionMetadata.NormalizePackId(rawPackToken);
+            if (packId.Length == 0) {
+                packId = "test_pack";
+            }
+
+            var role = ToolRoutingTaxonomy.RoleOperational;
+            if (normalizedToolName.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase)
+                || normalizedToolName.EndsWith("-pack-info", StringComparison.OrdinalIgnoreCase)) {
+                role = ToolRoutingTaxonomy.RolePackInfo;
+            } else if (normalizedToolName.EndsWith("_environment_discover", StringComparison.OrdinalIgnoreCase)
+                       || normalizedToolName.EndsWith("-environment-discover", StringComparison.OrdinalIgnoreCase)) {
+                role = ToolRoutingTaxonomy.RoleEnvironmentDiscover;
+            }
+
+            var routing = new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = packId,
+                Role = role
+            };
+
+            if (string.Equals(packId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(packId, "eventlog", StringComparison.OrdinalIgnoreCase)) {
+                routing.DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd;
+                routing.DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd;
+            } else if (string.Equals(packId, "dnsclientx", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(packId, "domaindetective", StringComparison.OrdinalIgnoreCase)) {
+                routing.DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic;
+                routing.DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic;
+            }
+
+            return routing;
         }
     }
 
@@ -500,4 +550,3 @@ public sealed partial class ChatServiceRoutingTrimTests {    private static asyn
         }
     }
 }
-

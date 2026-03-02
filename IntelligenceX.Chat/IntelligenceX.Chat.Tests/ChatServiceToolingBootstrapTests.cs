@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using Xunit;
@@ -30,6 +31,24 @@ public sealed class ChatServiceToolingBootstrapTests {
         var officeImo = Assert.Single(rebuiltAvailability, static item =>
             string.Equals(item.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
         Assert.False(officeImo.Enabled);
+    }
+
+    [Fact]
+    public void RebuildToolingFromOptions_CapturesStartupBootstrapPhases() {
+        var startupBootstrapField = typeof(ChatServiceSession).GetField("_startupBootstrap", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(startupBootstrapField);
+
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(session));
+
+        Assert.Equal(5, startupBootstrap.Phases.Length);
+        Assert.Equal("runtime_policy", startupBootstrap.Phases[0].Id);
+        Assert.Equal("pack_load", startupBootstrap.Phases[2].Id);
+        Assert.Equal("pack_register", startupBootstrap.Phases[3].Id);
+        Assert.Equal("registry_finalize", startupBootstrap.Phases[4].Id);
+        Assert.True(startupBootstrap.Phases[2].DurationMs >= 1);
+        Assert.False(string.IsNullOrWhiteSpace(startupBootstrap.SlowestPhaseId));
+        Assert.True(startupBootstrap.SlowestPhaseMs >= 1);
     }
 
     [Fact]
@@ -174,5 +193,32 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.Contains(
             warnings,
             static w => w.StartsWith("[startup] pack load progress: processed 1/3 bootstrap steps (begin=3, end=1).", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SummarizeSlowPluginLoadWarnings_CompressesPackRegistrationProgressWarnings() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "SummarizeSlowPluginLoadWarnings",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string> {
+            "[startup] pack_register_progress pack='eventlog' phase='begin' index='1' total='3'",
+            "[startup] pack_register_progress pack='eventlog' phase='end' index='1' total='3' elapsed_ms='1200' tools_registered='10' total_tools='10' failed='0'",
+            "[startup] pack_register_progress pack='active_directory' phase='begin' index='2' total='3'",
+            "[startup] pack_register_progress pack='active_directory' phase='end' index='2' total='3' elapsed_ms='220' tools_registered='14' total_tools='24' failed='0'",
+            "[startup] pack_register_progress pack='plugins' phase='begin' index='3' total='3'",
+            "[plugin] path_not_found path='C:\\plugins\\missing'"
+        };
+
+        method!.Invoke(null, new object?[] { warnings });
+
+        Assert.DoesNotContain(warnings, static w => w.StartsWith("[startup] pack_register_progress", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static w => w.StartsWith("[plugin] path_not_found", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static w => w.StartsWith("[startup] pack registration progress: processed 2/3 packs (begin=3, end=2).", StringComparison.OrdinalIgnoreCase));
+
+        var slowRegistrations = Assert.Single(warnings, static w => w.StartsWith("[startup] slow pack registrations top", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("eventlog=1200ms", slowRegistrations, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tools=10", slowRegistrations, StringComparison.OrdinalIgnoreCase);
     }
 }
