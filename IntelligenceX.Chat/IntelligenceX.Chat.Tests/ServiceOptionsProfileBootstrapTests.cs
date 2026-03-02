@@ -94,8 +94,9 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(error), error);
             Assert.Equal("default", options.ProfileName);
             Assert.Equal(OpenAICompatibleHttpAuthMode.Bearer, options.OpenAIAuthMode);
-            Assert.Contains("legacyalpha", options.DisabledPackIds);
-            Assert.Contains("legacybeta", options.EnabledPackIds);
+            Assert.Contains("testimox", options.DisabledPackIds);
+            Assert.Contains("officeimo", options.EnabledPackIds);
+            Assert.Contains("powershell", options.EnabledPackIds);
         } finally {
             TryDelete(dbPath);
         }
@@ -453,9 +454,10 @@ CREATE TABLE IF NOT EXISTS ix_service_profiles (
   ad_domain_controller TEXT NULL,
   ad_default_search_base_dn TEXT NULL,
   ad_max_results INTEGER NOT NULL,
-  enable_legacyalpha_pack INTEGER NOT NULL,
+  enable_powershell_pack INTEGER NOT NULL,
+  enable_testimox_pack INTEGER NOT NULL,
   powershell_allow_write INTEGER NOT NULL,
-  enable_legacybeta_pack INTEGER NOT NULL,
+  enable_officeimo_pack INTEGER NOT NULL,
   enable_default_plugin_paths INTEGER NOT NULL,
   updated_utc TEXT NOT NULL
 );
@@ -471,7 +473,7 @@ INSERT INTO ix_service_profiles (
   max_tool_rounds, parallel_tools, turn_timeout_seconds, tool_timeout_seconds,
   instructions_file, max_table_rows, max_sample, redact,
   ad_domain_controller, ad_default_search_base_dn, ad_max_results,
-  enable_legacyalpha_pack, powershell_allow_write, enable_legacybeta_pack, enable_default_plugin_paths,
+  enable_powershell_pack, enable_testimox_pack, powershell_allow_write, enable_officeimo_pack, enable_default_plugin_paths,
   updated_utc
 ) VALUES (
   @name, @model, @transport_kind, @openai_base_url, @openai_api_key,
@@ -480,7 +482,7 @@ INSERT INTO ix_service_profiles (
   @max_tool_rounds, @parallel_tools, @turn_timeout_seconds, @tool_timeout_seconds,
   @instructions_file, @max_table_rows, @max_sample, @redact,
   @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
-  @enable_legacyalpha_pack, @powershell_allow_write, @enable_legacybeta_pack, @enable_default_plugin_paths,
+  @enable_powershell_pack, @enable_testimox_pack, @powershell_allow_write, @enable_officeimo_pack, @enable_default_plugin_paths,
   @updated_utc
 );
 """,
@@ -508,9 +510,10 @@ INSERT INTO ix_service_profiles (
                 ["@ad_domain_controller"] = null,
                 ["@ad_default_search_base_dn"] = null,
                 ["@ad_max_results"] = 1000,
-                ["@enable_legacyalpha_pack"] = 0,
+                ["@enable_powershell_pack"] = 1,
+                ["@enable_testimox_pack"] = 0,
                 ["@powershell_allow_write"] = 0,
-                ["@enable_legacybeta_pack"] = 1,
+                ["@enable_officeimo_pack"] = 1,
                 ["@enable_default_plugin_paths"] = 1,
                 ["@updated_utc"] = DateTime.UtcNow.ToString("O")
             });
