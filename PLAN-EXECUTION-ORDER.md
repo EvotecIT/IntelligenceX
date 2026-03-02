@@ -4,6 +4,10 @@
 
 Execute `PLAN.md` in small, merge-safe increments with clear dependencies, parallel work, and explicit stop points.
 
+## Progress Update (2026-03-02)
+
+- [x] PR #985 merged (`2f649d62d164185755c19e33906a7064ae4ff132`): contract-first pack toggles, startup bootstrap visibility, and migration hardening are now on `master`.
+
 ## Rules For This Migration
 
 - [ ] Keep each PR focused to one objective and one rollback boundary.
@@ -228,7 +232,7 @@ Dependency: PR 8, PR 10
 
 ## Release Safety Checkpoints
 
-1. [ ] Checkpoint A (after PR 4): catalog live, no behavior deletion yet.
-2. [ ] Checkpoint B (after PR 6 + PR 7): contract-driven selection/preflight proven in tests.
-3. [ ] Checkpoint C (after PR 8): Chat fallback engine removed.
+1. [x] Checkpoint A (after PR 4): catalog live, no behavior deletion yet.
+2. [x] Checkpoint B (after PR 6 + PR 7): contract-driven selection/preflight proven in tests.
+3. [x] Checkpoint C (after PR 8): Chat fallback engine removed.
 4. [ ] Checkpoint D (after PR 11): all DoD checks complete.

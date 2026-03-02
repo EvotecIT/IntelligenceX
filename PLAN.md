@@ -16,6 +16,13 @@ Build a contract-first architecture where:
 - [x] PR #976 merged: make planner candidate selection core static with explicit `ToolOrchestrationCatalog` input (keep compatibility wrapper for existing test reflection contract).
 - [x] Architecture guardrails active in Chat to prevent reintroduction of legacy pack-capability fallback source files/symbols.
 
+## Checkpoint Updates (2026-03-02)
+
+- [x] PR #985 merged: generic runtime pack toggles are fully list-driven (`EnabledPackIds`/`DisabledPackIds`) across app/client/host/profile paths.
+- [x] Startup bootstrap visibility landed end-to-end (structured telemetry + status parsing + UI surfacing for runtime/tool-pack loading progress).
+- [x] SQLite profile migration now preserves legacy `enable_*_pack` intent by translating into pack-id lists before deprecated columns are dropped.
+- [x] Regression coverage added for legacy pack-toggle migration and unknown-required-column insert backfill behavior.
+
 ## Hard Decisions (Locked)
 
 - [x] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).
@@ -28,8 +35,8 @@ Build a contract-first architecture where:
 
 - [x] `G1` Chat has hardcoded cross-pack fallback builders in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.PackCapabilityFallback.cs`.
 - [x] `G2` Chat triggers fallback replay in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.
-- [ ] `G3` Chat uses suffix/name heuristics for pack preflight in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.PackPreflight.cs`.
-- [ ] `G4` Chat deterministic routing still uses suffix/prefix name heuristics in `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ChatRouting.RoutingScoring.cs`.
+- [x] `G3` Chat pack preflight no longer depends on `_pack_info`/`_environment_discover` suffix selection.
+- [x] `G4` Chat deterministic routing now relies on contract metadata rather than suffix/prefix family-key inference paths.
 - [ ] `G5` Tools metadata enrichment still contains hardcoded pack/category inference maps in `IntelligenceX/Tools/ToolSelectionMetadata.cs`.
 - [x] `G6` Fallback behavior is partly metadata-driven, partly hardcoded; split must become tool-contract only.
 
@@ -70,14 +77,14 @@ Build a contract-first architecture where:
 3. [x] Remove `_packCapabilityFallbackContractsByPackId` state from `ChatServiceSession.cs`.
 4. [x] Remove `RebuildPackCapabilityFallbackContracts(...)` call in `ChatServiceSession.ProfilesAndModels.cs`.
 5. [x] Remove fallback replay branch in `ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.
-6. [ ] Keep normal model-driven retries/review loops; do not auto-run substitute tools in Chat.
-7. [ ] For resilience use-case support, route it into tool internals (engine/tool package), not Chat orchestration.
+6. [x] Keep normal model-driven retries/review loops; do not auto-run substitute tools in Chat.
+7. [x] For resilience use-case support, route it into tool internals (engine/tool package), not Chat orchestration.
 
 ## Phase 4 - Replace Heuristics With Contracts
 
-1. [ ] Replace pack preflight suffix detection in `ChatServiceSession.PackPreflight.cs` with role-based contract selection.
-2. [ ] Replace deterministic family key heuristics in `ChatServiceSession.ChatRouting.RoutingScoring.cs` with contract pack/role fields.
-3. [ ] Ensure domain-intent signals in `ChatServiceSession.ToolRouting.DomainIntentSignals.cs` come from registered contract signals only.
+1. [x] Replace pack preflight suffix detection in `ChatServiceSession.PackPreflight.cs` with role-based contract selection.
+2. [x] Replace deterministic family key heuristics in `ChatServiceSession.ChatRouting.RoutingScoring.cs` with contract pack/role fields.
+3. [x] Ensure domain-intent signals in `ChatServiceSession.ToolRouting.DomainIntentSignals.cs` come from registered contract signals only.
 4. [ ] Keep Unicode-safe ordinal parsing in `ChatServiceSession.PendingActions.IntentParsing.cs` (this is generic and should remain).
 5. [ ] Remove remaining routing paths that depend on tool name prefix assumptions when contract fields exist.
 
@@ -100,7 +107,7 @@ Build a contract-first architecture where:
 
 ## Phase 7 - Test Migration And Coverage
 
-1. [ ] Replace reflection-heavy fallback tests in `IntelligenceX.Chat/IntelligenceX.Chat.Tests/ChatServiceRoutingTrimTests.*PackFallback*.cs` with internal helper exposure tests or remove if behavior deleted.
+1. [x] Replace reflection-heavy fallback tests in `IntelligenceX.Chat/IntelligenceX.Chat.Tests/ChatServiceRoutingTrimTests.*PackFallback*.cs` with internal helper exposure tests or remove if behavior deleted.
 2. [ ] Add contract-driven routing tests in Chat that use synthetic tools with explicit contracts.
 3. [ ] Add regression tests verifying Chat does not auto-switch packs after tool failure.
 4. [ ] Add tests ensuring preflight uses role contracts, not suffixes.
@@ -125,11 +132,11 @@ Build a contract-first architecture where:
 ## Definition Of Done
 
 - [x] `DoD1` No Chat file contains cross-pack fallback execution methods.
-- [ ] `DoD2` Chat does not decide substitute tools based on hardcoded pack names.
-- [ ] `DoD3` Pack preflight/routing relies on contracts, not suffix/prefix naming.
+- [x] `DoD2` Chat does not decide substitute tools based on hardcoded pack names.
+- [x] `DoD3` Pack preflight/routing relies on contracts, not suffix/prefix naming.
 - [ ] `DoD4` Every registered tool has explicit routing role + pack metadata.
 - [ ] `DoD5` New synthetic pack/tool can be added in tests without Chat code changes.
-- [ ] `DoD6` DomainDetective vs ADPlayground separation enforced by contracts/tests.
+- [x] `DoD6` DomainDetective vs ADPlayground separation enforced by contracts/tests.
 - [ ] `DoD7` Full build/test suite passes after legacy fallback removal.
 
 ## Suggested Session Plan
