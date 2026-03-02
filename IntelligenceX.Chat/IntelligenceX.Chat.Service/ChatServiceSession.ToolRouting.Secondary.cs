@@ -324,7 +324,6 @@ internal sealed partial class ChatServiceSession {
             var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var hasTableViewProjection);
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             var category = ResolvePlannerCategory(definition);
-            var packHint = ResolvePlannerPackHint(definition);
             var domainIntentFamily = ResolveDomainIntentFamily(definition);
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
             sb.Append(i + 1).Append(". ").Append(name);
@@ -333,13 +332,6 @@ internal sealed partial class ChatServiceSession {
             }
             if (category.Length > 0) {
                 sb.Append(" | category: ").Append(category);
-            }
-            if (packHint.Length > 0) {
-                sb.Append(" | pack: ").Append(packHint);
-                var packAliases = ResolvePlannerPackAliases(packHint);
-                if (packAliases.Length > 0) {
-                    sb.Append(" | pack_aliases: ").Append(string.Join(", ", packAliases));
-                }
             }
             if (domainIntentFamily.Length > 0) {
                 sb.Append(" | family: ").Append(domainIntentFamily);
@@ -369,47 +361,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         return (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
-    }
-
-    private static string ResolvePlannerPackHint(ToolDefinition definition) {
-        var routingPackId = NormalizePackId(definition.Routing?.PackId);
-        if (routingPackId.Length > 0) {
-            return routingPackId;
-        }
-
-        if (ToolSelectionMetadata.TryResolvePackId(definition, out var resolvedPackId)) {
-            var normalizedResolvedPackId = NormalizePackId(resolvedPackId);
-            if (normalizedResolvedPackId.Length > 0) {
-                return normalizedResolvedPackId;
-            }
-        }
-
-        return string.Empty;
-    }
-
-    private static string[] ResolvePlannerPackAliases(string packHint) {
-        var normalizedPackHint = (packHint ?? string.Empty).Trim();
-        if (normalizedPackHint.Length == 0) {
-            return Array.Empty<string>();
-        }
-
-        var aliases = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { normalizedPackHint };
-        foreach (var token in ToolSelectionMetadata.GetPackSearchTokens(normalizedPackHint)) {
-            var alias = (token ?? string.Empty).Trim();
-            if (alias.Length == 0 || !seen.Add(alias)) {
-                continue;
-            }
-
-            aliases.Add(alias);
-        }
-
-        if (aliases.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        aliases.Sort(StringComparer.OrdinalIgnoreCase);
-        return aliases.ToArray();
     }
 
     private static string[] ExtractPlannerTags(ToolDefinition definition, int maxCount) {
