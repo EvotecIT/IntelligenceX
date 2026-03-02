@@ -224,6 +224,7 @@ internal static partial class Program {
         var tool = new ConfiguredTool(new ToolDefinition(
             name: "ad_search",
             description: "Search Active Directory",
+            routing: CreateTestRoutingContract(),
             aliases: new[] {
                 new ToolAliasDefinition("ad_find", tags: new[] { "search" }),
                 new ToolAliasDefinition("ad_lookup")
@@ -248,6 +249,7 @@ internal static partial class Program {
         var tool = new ConfiguredTool(new ToolDefinition(
             name: "system_info",
             description: "Read system summary",
+            routing: CreateTestRoutingContract(),
             tags: new[] { "system", "inventory" }));
 
         registry.Register(tool);
