@@ -104,14 +104,14 @@
     "Breadcrumbs": true,
     "OrganizationLegalName": "Evotec Services sp. z o.o.",
     "OrganizationDescription": "Zero-trust AI platform for code review, chat, and developer tooling.",
-    "OrganizationLogo": "/favicon.svg",
+    "OrganizationLogo": "https://evotec.xyz/favicon.svg",
     "OrganizationSameAs": [
       "https://github.com/EvotecIT/IntelligenceX",
       "https://evotec.xyz",
       "https://evo.yt/discord"
     ],
     "OrganizationEmail": "support@evotec.xyz",
-    "OrganizationContactUrl": "/docs/getting-started/"
+    "OrganizationContactUrl": "https://evotec.xyz/docs/getting-started/"
   },
   "EditLinks": {
     "Enabled": true,
