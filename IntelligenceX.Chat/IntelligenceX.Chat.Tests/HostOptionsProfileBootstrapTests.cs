@@ -20,6 +20,7 @@ public sealed class HostOptionsProfileBootstrapTests {
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error));
         Assert.True(ReadBoolProperty(options!, "ParallelToolCalls"));
+        Assert.True(ReadBoolProperty(options!, "RequireExplicitRoutingMetadata"));
     }
 
     [Fact]
@@ -106,12 +107,12 @@ public sealed class HostOptionsProfileBootstrapTests {
         Assert.NotNull(applyProfile);
 
         var profile = new ServiceProfile {
-            DisabledPackIds = new List<string> { "custompluginpack" },
+            DisabledPackIds = new List<string> { "custom_plugin_pack" },
             EnabledPackIds = new List<string> { "powershell" }
         };
 
         applyProfile!.Invoke(options, new object?[] { profile });
-        Assert.Contains("custompluginpack", ReadStringListProperty(options, "DisabledPackIds"));
+        Assert.Contains("custom_plugin_pack", ReadStringListProperty(options, "DisabledPackIds"));
         Assert.Contains("powershell", ReadStringListProperty(options, "EnabledPackIds"));
     }
 
@@ -230,7 +231,7 @@ public sealed class HostOptionsProfileBootstrapTests {
 
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error), error);
-        Assert.Contains("custompluginpack", ReadStringListProperty(options!, "DisabledPackIds"));
+        Assert.Contains("custom_plugin_pack", ReadStringListProperty(options!, "DisabledPackIds"));
     }
 
     [Fact]

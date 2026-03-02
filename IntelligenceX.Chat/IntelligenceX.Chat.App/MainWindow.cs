@@ -66,6 +66,8 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan ServiceDrivenSessionPublishMinInterval = TimeSpan.FromMilliseconds(140);
     private static readonly TimeSpan TurnWatchdogTickInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TurnWatchdogHintThreshold = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan TurnWatchdogAwaitingAckHintThreshold = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan TurnWatchdogAwaitingFirstTokenHintThreshold = TimeSpan.FromSeconds(12);
     private static readonly TimeSpan WheelForwardCoalesceInterval = TimeSpan.FromMilliseconds(12);
     private static readonly TimeSpan DragMoveWatchdogInterval = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan StartupInitialPipeConnectTimeout = TimeSpan.FromSeconds(2);
@@ -394,6 +396,10 @@ public sealed partial class MainWindow : Window {
     private int _startupDispatchPrewarmDeferredQueued;
     private int _startupFirstTurnLatencyNoticePending = 1;
     private int _startupInteractivePriorityRequested;
+    private readonly object _startupMetadataSyncLock = new();
+    private int _startupMetadataSyncInProgress;
+    private long _startupMetadataSyncStartedUtcTicks;
+    private string _startupMetadataSyncPhase = string.Empty;
     private string _themePreset = "default";
     private string? _sessionUserNameOverride;
     private string? _sessionAssistantPersonaOverride;
@@ -519,6 +525,9 @@ public sealed partial class MainWindow : Window {
         long? QueueWaitMs,
         long? AuthProbeMs,
         long? ConnectMs,
+        long? EnsureThreadMs,
+        long? WeightedSubsetSelectionMs,
+        long? ResolveModelMs,
         long? DispatchToFirstStatusMs,
         long? DispatchToModelSelectedMs,
         long? DispatchToFirstToolRunningMs,

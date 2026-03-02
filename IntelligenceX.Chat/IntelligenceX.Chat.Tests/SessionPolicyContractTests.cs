@@ -42,6 +42,8 @@ public sealed class SessionPolicyContractTests {
                     RuntimePolicyMs = 35,
                     BootstrapOptionsMs = 14,
                     PackLoadMs = 3988,
+                    PackRegisterMs = 52,
+                    RegistryFinalizeMs = 31,
                     RegistryMs = 83,
                     Tools = 142,
                     PacksLoaded = 10,
@@ -54,7 +56,24 @@ public sealed class SessionPolicyContractTests {
                     SlowPluginCount = 3,
                     SlowPluginTopCount = 3,
                     PluginProgressProcessed = 5,
-                    PluginProgressTotal = 5
+                    PluginProgressTotal = 5,
+                    Phases = new[] {
+                        new SessionStartupBootstrapPhaseTelemetryDto {
+                            Id = "runtime_policy",
+                            Label = "runtime policy",
+                            DurationMs = 35,
+                            Order = 1
+                        },
+                        new SessionStartupBootstrapPhaseTelemetryDto {
+                            Id = "pack_load",
+                            Label = "pack load",
+                            DurationMs = 3988,
+                            Order = 2
+                        }
+                    },
+                    SlowestPhaseId = "pack_load",
+                    SlowestPhaseLabel = "pack load",
+                    SlowestPhaseMs = 3988
                 },
                 PluginSearchPaths = new[] {
                     "C:\\Users\\user\\AppData\\Local\\IntelligenceX.Chat\\plugins",
@@ -98,11 +117,16 @@ public sealed class SessionPolicyContractTests {
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(policy.StartupBootstrap);
         Assert.Equal(4120, startupBootstrap.TotalMs);
         Assert.Equal(3988, startupBootstrap.PackLoadMs);
+        Assert.Equal(52, startupBootstrap.PackRegisterMs);
+        Assert.Equal(31, startupBootstrap.RegistryFinalizeMs);
         Assert.Equal(2, startupBootstrap.SlowPackCount);
         Assert.Equal(12, startupBootstrap.PackProgressProcessed);
         Assert.Equal(12, startupBootstrap.PackProgressTotal);
         Assert.Equal(5, startupBootstrap.PluginProgressProcessed);
         Assert.Equal(5, startupBootstrap.PluginProgressTotal);
+        Assert.Equal(2, startupBootstrap.Phases.Length);
+        Assert.Equal("pack_load", startupBootstrap.SlowestPhaseId);
+        Assert.Equal(3988, startupBootstrap.SlowestPhaseMs);
         Assert.False(policy.AllowMutatingParallelToolCalls);
         Assert.Single(policy.Packs);
         Assert.False(policy.Packs[0].Enabled);

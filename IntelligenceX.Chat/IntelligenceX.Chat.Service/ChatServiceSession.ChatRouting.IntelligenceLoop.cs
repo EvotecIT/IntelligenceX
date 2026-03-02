@@ -31,7 +31,9 @@ internal sealed partial class ChatServiceSession {
         int ProjectionFallbackCount,
         IReadOnlyList<ToolErrorMetricDto> ToolErrors,
         IReadOnlyList<TurnCounterMetricDto> AutonomyCounters,
-        string? ResolvedModel);
+        string? ResolvedModel,
+        long? WeightedSubsetSelectionMs,
+        long? ResolveModelMs);
     internal sealed record ProactiveFollowUpReviewDecision(
         bool ShouldAttempt,
         string Reason,

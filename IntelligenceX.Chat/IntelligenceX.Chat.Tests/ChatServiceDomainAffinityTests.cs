@@ -16,11 +16,11 @@ public sealed class ChatServiceDomainAffinityTests {
         session.SetPreferredDomainIntentFamilyForTesting("thread-domain", "ad_domain");
 
         var tools = new List<ToolDefinition> {
-            new("ad_scope_discovery", description: "AD scope"),
-            new("ad_domain_controllers", description: "AD DCs"),
-            new("dnsclientx_query", description: "DNS query"),
-            new("domaindetective_domain_summary", description: "Domain summary"),
-            new("eventlog_live_query", description: "Event log")
+            new("ad_scope_discovery", description: "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new("ad_domain_controllers", description: "AD DCs", tags: new[] { "domain_family:ad_domain" }),
+            new("dnsclientx_query", description: "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new("domaindetective_domain_summary", description: "Domain summary", tags: new[] { "domain_family:public_domain" }),
+            new("eventlog_live_query", description: "Event log", tags: new[] { "domain_family:ad_domain" })
         };
 
         var applied = session.TryApplyDomainIntentAffinityForTesting(
@@ -40,14 +40,14 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
-    public void TryApplyDomainIntentAffinity_UsesToolMetadataCategory_WhenNamesDoNotUseLegacyPrefixes() {
+    public void TryApplyDomainIntentAffinity_UsesExplicitDomainFamilyMetadata_WhenNamesDoNotUseLegacyPrefixes() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.SetPreferredDomainIntentFamilyForTesting("thread-domain", "ad_domain");
 
         var tools = new List<ToolDefinition> {
-            new("directory_context_discover", description: "AD scope", category: "active_directory"),
-            new("resolver_domain_overview", description: "DNS summary", category: "dns"),
-            new("eventlog_live_query", description: "Event log")
+            new("directory_context_discover", description: "AD scope", category: "active_directory", tags: new[] { "domain_family:ad_domain" }),
+            new("resolver_domain_overview", description: "DNS summary", category: "dns", tags: new[] { "domain_family:public_domain" }),
+            new("eventlog_live_query", description: "Event log", tags: new[] { "domain_family:ad_domain" })
         };
 
         var applied = session.TryApplyDomainIntentAffinityForTesting(
@@ -187,8 +187,8 @@ public sealed class ChatServiceDomainAffinityTests {
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
                 Stream.Null);
             var tools = new[] {
-                new ToolDefinition("ad_scope_discovery", "AD scope"),
-                new ToolDefinition("dnsclientx_query", "DNS query")
+                new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+                new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
             };
 
             var applied = readerSession.TryApplyDomainIntentAffinityForTesting(
@@ -234,8 +234,8 @@ public sealed class ChatServiceDomainAffinityTests {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-unavailable");
         var availableDefinitions = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("ad_domain_controllers", "AD DCs")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("ad_domain_controllers", "AD DCs", tags: new[] { "domain_family:ad_domain" })
         };
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -254,8 +254,8 @@ public sealed class ChatServiceDomainAffinityTests {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-single-family");
         var availableDefinitions = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("ad_domain_controllers", "AD DCs")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("ad_domain_controllers", "AD DCs", tags: new[] { "domain_family:ad_domain" })
         };
 
         var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
@@ -584,10 +584,10 @@ public sealed class ChatServiceDomainAffinityTests {
     public void TryApplyDomainIntentSignalRoutingHint_FiltersMixedToolsAndRemembersAdPreference() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("ad_domain_controllers", "AD DCs"),
-            new ToolDefinition("dnsclientx_query", "DNS query"),
-            new ToolDefinition("domaindetective_domain_summary", "Domain summary")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("ad_domain_controllers", "AD DCs", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new ToolDefinition("domaindetective_domain_summary", "Domain summary", tags: new[] { "domain_family:public_domain" })
         };
 
         var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
@@ -610,9 +610,9 @@ public sealed class ChatServiceDomainAffinityTests {
     public void TryApplyDomainIntentSignalRoutingHint_FiltersMixedToolsAndRemembersPublicPreference() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("dnsclientx_query", "DNS query"),
-            new ToolDefinition("domaindetective_domain_summary", "Domain summary")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new ToolDefinition("domaindetective_domain_summary", "Domain summary", tags: new[] { "domain_family:public_domain" })
         };
 
         var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
@@ -635,8 +635,8 @@ public sealed class ChatServiceDomainAffinityTests {
     public void TryApplyDomainIntentSignalRoutingHint_DoesNotApplyWhenSignalsConflict() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("dnsclientx_query", "DNS query")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
         };
 
         var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
@@ -673,8 +673,8 @@ public sealed class ChatServiceDomainAffinityTests {
     [Fact]
     public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsTrueWhenSignalsConflictAndFamiliesAvailable() {
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("dnsclientx_query", "DNS query")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
         };
 
         var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
@@ -687,8 +687,8 @@ public sealed class ChatServiceDomainAffinityTests {
     [Fact]
     public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsFalseWhenExplicitFamilyMarkerIsPresent() {
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("dnsclientx_query", "DNS query")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
         };
 
         var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
@@ -706,8 +706,8 @@ public sealed class ChatServiceDomainAffinityTests {
     [Fact]
     public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsFalseWhenOnlyOneFamilyIsAvailable() {
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("ad_domain_controllers", "AD DCs")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("ad_domain_controllers", "AD DCs", tags: new[] { "domain_family:ad_domain" })
         };
 
         var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
@@ -782,8 +782,8 @@ public sealed class ChatServiceDomainAffinityTests {
     public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsTrueForParentChildDomainPairWithoutLexicalSignals(
         string input) {
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("dnsclientx_query", "DNS query")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
         };
 
         var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
@@ -796,8 +796,8 @@ public sealed class ChatServiceDomainAffinityTests {
     [Fact]
     public void ShouldForceDomainIntentClarificationForConflictingSignalsForTesting_ReturnsFalseForUnrelatedDomainPairWithoutLexicalSignals() {
         var tools = new[] {
-            new ToolDefinition("ad_scope_discovery", "AD scope"),
-            new ToolDefinition("dnsclientx_query", "DNS query")
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
         };
 
         var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
@@ -877,7 +877,8 @@ public sealed class ChatServiceDomainAffinityTests {
                 name: "eventlog_live_query",
                 description: "Event log query",
                 parameters: null,
-                category: "eventlog"));
+                category: "eventlog",
+                tags: new[] { "domain_family:ad_domain" }));
 
         Assert.True(adTagged);
         Assert.True(adHostTagged);

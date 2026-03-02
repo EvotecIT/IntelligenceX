@@ -35,7 +35,7 @@ internal static partial class Program {
         var requireExplicitPackInfoRole = options.RequireExplicitRoutingMetadata;
         var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(registry, requireExplicitPackInfoRole);
         if (packInfoDefinitions.Length == 0) {
-            Console.WriteLine("No *_pack_info tools are registered in this session.");
+            Console.WriteLine("No pack-info role tools are registered in this session.");
             return;
         }
 
@@ -45,7 +45,7 @@ internal static partial class Program {
         var failCount = 0;
 
         foreach (var definition in packInfoDefinitions) {
-            var resolvedPackId = ResolveToolHealthPackId(definition, allowNameSuffixFallback: !requireExplicitPackInfoRole);
+            var resolvedPackId = ResolveToolHealthPackId(definition);
             packMetadataById.TryGetValue(resolvedPackId, out var metadata);
 
             var effectivePackId = metadata.PackId.Length == 0 ? resolvedPackId : metadata.PackId;
@@ -70,7 +70,7 @@ internal static partial class Program {
         Console.WriteLine($"Running tool health checks for {selectedProbeCount}/{packInfoDefinitions.Length} pack probes{selectedLabel}...");
 
         foreach (var definition in packInfoDefinitions) {
-            var resolvedPackId = ResolveToolHealthPackId(definition, allowNameSuffixFallback: !requireExplicitPackInfoRole);
+            var resolvedPackId = ResolveToolHealthPackId(definition);
             packMetadataById.TryGetValue(resolvedPackId, out var metadata);
 
             var effectivePackId = metadata.PackId.Length == 0 ? resolvedPackId : metadata.PackId;
@@ -269,8 +269,8 @@ internal static partial class Program {
             : $" [{idAndName}, source={normalizedSource}]";
     }
 
-    private static string ResolveToolHealthPackId(ToolDefinition definition, bool allowNameSuffixFallback) {
-        if (ToolHealthDiagnostics.TryResolvePackId(definition, out var packId, allowNameSuffixFallback)) {
+    private static string ResolveToolHealthPackId(ToolDefinition definition) {
+        if (ToolHealthDiagnostics.TryResolvePackId(definition, out var packId)) {
             return packId;
         }
 

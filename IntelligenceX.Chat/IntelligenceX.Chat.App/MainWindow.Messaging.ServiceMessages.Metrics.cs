@@ -12,6 +12,11 @@ public sealed partial class MainWindow {
                + metrics.DurationMs.ToString(CultureInfo.InvariantCulture)
                + "ms"
                + (metrics.TtftMs is null ? string.Empty : " ttft=" + metrics.TtftMs.Value.ToString(CultureInfo.InvariantCulture) + "ms")
+               + (metrics.EnsureThreadMs is null ? string.Empty : " ensure_thread=" + metrics.EnsureThreadMs.Value.ToString(CultureInfo.InvariantCulture) + "ms")
+               + (metrics.WeightedSubsetSelectionMs is null
+                   ? string.Empty
+                   : " weighted_subset=" + metrics.WeightedSubsetSelectionMs.Value.ToString(CultureInfo.InvariantCulture) + "ms")
+               + (metrics.ResolveModelMs is null ? string.Empty : " resolve_model=" + metrics.ResolveModelMs.Value.ToString(CultureInfo.InvariantCulture) + "ms")
                + (metrics.Usage?.TotalTokens is null ? string.Empty : " tokens=" + metrics.Usage.TotalTokens.Value.ToString(CultureInfo.InvariantCulture))
                + " tools=" + metrics.ToolCallsCount.ToString(CultureInfo.InvariantCulture)
                + " rounds=" + metrics.ToolRounds.ToString(CultureInfo.InvariantCulture)
@@ -69,4 +74,3 @@ public sealed partial class MainWindow {
         return parts.Count == 0 ? string.Empty : " autonomy={" + string.Join(", ", parts) + "}";
     }
 }
-

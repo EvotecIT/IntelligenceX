@@ -246,6 +246,12 @@ public sealed partial class MainWindow : Window {
     }
 
     private Task SetStatusAsync(SessionStatus status) {
+        if (status.Kind is SessionStatusKind.Connected or SessionStatusKind.SignInRequired) {
+            if (TryBuildStartupMetadataSyncStatusText(out var startupSyncStatusText)) {
+                return SetStatusAsync(startupSyncStatusText, SessionStatusTone.Warn);
+            }
+        }
+
         return SetStatusAsync(
             SessionStatusFormatter.Format(status),
             SessionStatusToneResolver.Resolve(status),

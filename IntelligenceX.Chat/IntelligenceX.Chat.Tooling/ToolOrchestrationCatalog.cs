@@ -154,11 +154,8 @@ public sealed class ToolOrchestrationCatalog {
     /// Builds orchestration catalog from registry definitions.
     /// </summary>
     /// <param name="definitions">Tool definitions.</param>
-    /// <param name="registeredPackIdsByToolName">Optional pack id assignments captured at registration time.</param>
     /// <returns>Normalized orchestration catalog.</returns>
-    public static ToolOrchestrationCatalog Build(
-        IReadOnlyList<ToolDefinition> definitions,
-        IReadOnlyDictionary<string, string>? registeredPackIdsByToolName = null) {
+    public static ToolOrchestrationCatalog Build(IReadOnlyList<ToolDefinition> definitions) {
         if (definitions is null) {
             throw new ArgumentNullException(nameof(definitions));
         }
@@ -178,11 +175,6 @@ public sealed class ToolOrchestrationCatalog {
             var routingInfo = ToolSelectionMetadata.ResolveRouting(definition);
             var routing = definition.Routing;
             var packId = NormalizePackId(routing?.PackId);
-            if (packId.Length == 0
-                && registeredPackIdsByToolName is not null
-                && registeredPackIdsByToolName.TryGetValue(toolName, out var assignedPackId)) {
-                packId = NormalizePackId(assignedPackId);
-            }
 
             var role = NormalizeToken(routing?.Role);
             if (!ToolRoutingTaxonomy.IsAllowedRole(role)) {

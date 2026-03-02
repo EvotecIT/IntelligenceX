@@ -271,18 +271,18 @@ public sealed class ToolRegistry {
         }
 
         contract.Validate();
+        if (string.IsNullOrWhiteSpace(contract.PackId)) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' must declare Routing.PackId.");
+        }
+
+        var normalizedRole = (contract.Role ?? string.Empty).Trim();
+        if (normalizedRole.Length == 0) {
+            throw new InvalidOperationException(
+                $"Tool '{definition.Name}' must declare Routing.Role.");
+        }
+
         if (RequireExplicitRoutingMetadata) {
-            if (string.IsNullOrWhiteSpace(contract.PackId)) {
-                throw new InvalidOperationException(
-                    $"Tool '{definition.Name}' must declare Routing.PackId when RequireExplicitRoutingMetadata is enabled.");
-            }
-
-            var normalizedRole = (contract.Role ?? string.Empty).Trim();
-            if (normalizedRole.Length == 0) {
-                throw new InvalidOperationException(
-                    $"Tool '{definition.Name}' must declare Routing.Role when RequireExplicitRoutingMetadata is enabled.");
-            }
-
             if (!string.Equals(
                     (contract.RoutingSource ?? string.Empty).Trim(),
                     ToolRoutingTaxonomy.SourceExplicit,

@@ -102,6 +102,7 @@
           Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll')">
     <ItemGroup>
       <_ChatServiceFiles Include="$(ChatServiceBin)**\\*.*" />
+      <_ChatServiceFiles Remove="@(_ChatServiceFiles)" Condition="!Exists('%(Identity)')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_ChatServiceFiles)"
@@ -121,6 +122,7 @@
           Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
     <ItemGroup>
       <_ChatServiceFilesForPublish Include="$(ChatServiceBin)**\\*.*" />
+      <_ChatServiceFilesForPublish Remove="@(_ChatServiceFilesForPublish)" Condition="!Exists('%(Identity)')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_ChatServiceFilesForPublish)"

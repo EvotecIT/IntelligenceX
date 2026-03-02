@@ -571,8 +571,6 @@ public sealed partial class MainWindow : Window {
             role = "security analyst";
         } else if (text.Contains("analyst", StringComparison.OrdinalIgnoreCase)) {
             role = "analyst";
-        } else if (text.Contains("ad engineer", StringComparison.OrdinalIgnoreCase)) {
-            role = "AD engineer";
         } else if (text.Contains("engineer", StringComparison.OrdinalIgnoreCase)) {
             role = "engineer";
         } else if (!string.IsNullOrWhiteSpace(GetEffectiveAssistantPersona())) {

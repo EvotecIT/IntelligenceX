@@ -20,11 +20,17 @@ public sealed partial class MainWindow {
     private static readonly Regex ServiceBootstrapPackProgressRegex = new(
         @"^\[startup\]\s+pack_load_progress\s+pack='(?<pack>[^']*)'\s+phase='(?<phase>[^']*)'\s+index='(?<index>\d+)'\s+total='(?<total>\d+)'",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ServiceBootstrapPackRegistrationProgressRegex = new(
+        @"^\[startup\]\s+pack_register_progress\s+pack='(?<pack>[^']*)'\s+phase='(?<phase>[^']*)'\s+index='(?<index>\d+)'\s+total='(?<total>\d+)'",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ServiceBootstrapProgressSummaryRegex = new(
         @"^\[startup\]\s+plugin load progress:\s+processed\s+(?<processed>\d+)\/(?<total>\d+)\s+plugin folders",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ServiceBootstrapTimingRegex = new(
         @"^\[startup\]\s+tooling bootstrap timings\s+total=(?<total>[^\s]+)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ServiceBootstrapElapsedMsRegex = new(
+        @"(?:^|\s)elapsed_ms='(?<elapsed>\d+)'",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private async Task<bool> EnsureServiceRunningAsync(string pipeName) {
@@ -249,13 +255,44 @@ public sealed partial class MainWindow {
             normalized = normalized.Substring(packWarningPrefix.Length).Trim();
         }
 
-        var packProgressMatch = ServiceBootstrapPackProgressRegex.Match(normalized);
-        if (packProgressMatch.Success) {
-            var phase = packProgressMatch.Groups["phase"].Value.Trim();
-            if (!string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+        var packRegistrationProgressMatch = ServiceBootstrapPackRegistrationProgressRegex.Match(normalized);
+        if (packRegistrationProgressMatch.Success) {
+            var phase = packRegistrationProgressMatch.Groups["phase"].Value.Trim();
+            var pack = packRegistrationProgressMatch.Groups["pack"].Value.Trim();
+            if (!int.TryParse(packRegistrationProgressMatch.Groups["index"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)) {
+                return false;
+            }
+            if (!int.TryParse(packRegistrationProgressMatch.Groups["total"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var total)) {
                 return false;
             }
 
+            index = Math.Max(1, index);
+            total = Math.Max(index, total);
+            var packLabel = string.IsNullOrWhiteSpace(pack) ? "pack" : pack;
+            if (packLabel.Length > 42) {
+                packLabel = packLabel.Substring(0, 39) + "...";
+            }
+
+            if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+                statusText = $"Starting runtime... registering tool pack {index}/{total} ({packLabel})";
+                return true;
+            }
+
+            if (string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)) {
+                var elapsedMs = TryReadBootstrapElapsedMs(normalized);
+                var elapsedLabel = elapsedMs.HasValue
+                    ? $"{Math.Max(1, elapsedMs.Value)}ms"
+                    : "done";
+                statusText = $"Starting runtime... registered tool pack {index}/{total} ({packLabel}, {elapsedLabel})";
+                return true;
+            }
+
+            return false;
+        }
+
+        var packProgressMatch = ServiceBootstrapPackProgressRegex.Match(normalized);
+        if (packProgressMatch.Success) {
+            var phase = packProgressMatch.Groups["phase"].Value.Trim();
             var pack = packProgressMatch.Groups["pack"].Value.Trim();
             if (!int.TryParse(packProgressMatch.Groups["index"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)) {
                 return false;
@@ -271,17 +308,26 @@ public sealed partial class MainWindow {
                 packLabel = packLabel.Substring(0, 39) + "...";
             }
 
-            statusText = $"Starting runtime... initializing tool packs {index}/{total} ({packLabel})";
-            return true;
+            if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+                statusText = $"Starting runtime... initializing tool packs {index}/{total} ({packLabel})";
+                return true;
+            }
+
+            if (string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)) {
+                var elapsedMs = TryReadBootstrapElapsedMs(normalized);
+                var elapsedLabel = elapsedMs.HasValue
+                    ? $"{Math.Max(1, elapsedMs.Value)}ms"
+                    : "done";
+                statusText = $"Starting runtime... initialized tool packs {index}/{total} ({packLabel}, {elapsedLabel})";
+                return true;
+            }
+
+            return false;
         }
 
         var pluginProgressMatch = ServiceBootstrapPluginProgressRegex.Match(normalized);
         if (pluginProgressMatch.Success) {
             var phase = pluginProgressMatch.Groups["phase"].Value.Trim();
-            if (!string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
-                return false;
-            }
-
             var plugin = pluginProgressMatch.Groups["plugin"].Value.Trim();
             if (!int.TryParse(pluginProgressMatch.Groups["index"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)) {
                 return false;
@@ -297,8 +343,21 @@ public sealed partial class MainWindow {
                 pluginLabel = pluginLabel.Substring(0, 39) + "...";
             }
 
-            statusText = $"Starting runtime... loading tool packs {index}/{total} ({pluginLabel})";
-            return true;
+            if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+                statusText = $"Starting runtime... loading tool packs {index}/{total} ({pluginLabel})";
+                return true;
+            }
+
+            if (string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)) {
+                var elapsedMs = TryReadBootstrapElapsedMs(normalized);
+                var elapsedLabel = elapsedMs.HasValue
+                    ? $"{Math.Max(1, elapsedMs.Value)}ms"
+                    : "done";
+                statusText = $"Starting runtime... loaded tool packs {index}/{total} ({pluginLabel}, {elapsedLabel})";
+                return true;
+            }
+
+            return false;
         }
 
         var progressSummaryMatch = ServiceBootstrapProgressSummaryRegex.Match(normalized);
@@ -330,10 +389,24 @@ public sealed partial class MainWindow {
         return false;
     }
 
+    private static int? TryReadBootstrapElapsedMs(string normalizedLine) {
+        var elapsedMatch = ServiceBootstrapElapsedMsRegex.Match(normalizedLine);
+        if (!elapsedMatch.Success) {
+            return null;
+        }
+
+        if (!int.TryParse(elapsedMatch.Groups["elapsed"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var elapsedMs)) {
+            return null;
+        }
+
+        return Math.Max(1, elapsedMs);
+    }
+
     private void StopServiceIfOwned() {
         var p = _serviceProcess;
         _serviceProcess = null;
         _servicePipeName = null;
+        EndStartupMetadataSyncTracking();
 
         if (p is null) {
             return;

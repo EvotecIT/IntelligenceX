@@ -33,6 +33,8 @@ internal sealed partial class ChatServiceSession {
         bool isLocalCompatibleLoopback,
         bool supportsSyntheticHostReplayItems,
         string? resolvedModel,
+        long? weightedSubsetSelectionMs,
+        long? resolveModelMs,
         string userIntent,
         ToolDefinition[] fullToolDefs,
         IReadOnlyDictionary<string, bool> mutatingToolHints,
@@ -547,7 +549,9 @@ internal sealed partial class ChatServiceSession {
                     ProjectionFallbackCount: projectionFallbackCount,
                     ToolErrors: BuildToolErrorMetrics(toolCalls, toolOutputs),
                     AutonomyCounters: autonomyCounters,
-                    ResolvedModel: resolvedModel));
+                    ResolvedModel: resolvedModel,
+                    WeightedSubsetSelectionMs: weightedSubsetSelectionMs,
+                    ResolveModelMs: resolveModelMs));
         NoExtractedToolRoundOutcome ContinueRound() {
             PersistState();
             return NoExtractedToolRoundOutcome.ContinueRound();

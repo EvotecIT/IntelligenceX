@@ -1,0 +1,58 @@
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.App;
+using Xunit;
+
+namespace IntelligenceX.Chat.App.Tests;
+
+/// <summary>
+/// Verifies startup bootstrap summary rendering helpers.
+/// </summary>
+public sealed class MainWindowStartupBootstrapSummaryTests {
+    /// <summary>
+    /// Includes phase timeline and slowest-phase details in startup summary output.
+    /// </summary>
+    [Fact]
+    public void BuildStartupBootstrapSummaryLines_IncludesPhaseTimelineAndSlowestPhase() {
+        var telemetry = new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 1000,
+            RuntimePolicyMs = 50,
+            BootstrapOptionsMs = 30,
+            PackLoadMs = 800,
+            PackRegisterMs = 90,
+            RegistryFinalizeMs = 30,
+            RegistryMs = 120,
+            Tools = 142,
+            PacksLoaded = 10,
+            PacksDisabled = 1,
+            Phases = new[] {
+                new SessionStartupBootstrapPhaseTelemetryDto { Id = "runtime_policy", Label = "runtime policy", DurationMs = 50, Order = 1 },
+                new SessionStartupBootstrapPhaseTelemetryDto { Id = "bootstrap_options", Label = "bootstrap options", DurationMs = 30, Order = 2 },
+                new SessionStartupBootstrapPhaseTelemetryDto { Id = "pack_load", Label = "pack load", DurationMs = 800, Order = 3 },
+                new SessionStartupBootstrapPhaseTelemetryDto { Id = "registry_build", Label = "registry build", DurationMs = 120, Order = 4 }
+            },
+            SlowestPhaseId = "pack_load",
+            SlowestPhaseLabel = "pack load",
+            SlowestPhaseMs = 800
+        };
+
+        var lines = MainWindow.BuildStartupBootstrapSummaryLines(telemetry);
+
+        Assert.Contains("- Startup phases: runtime policy 50ms, bootstrap options 30ms, pack load 800ms, registry build 120ms", lines);
+        Assert.Contains("- Slowest phase: pack load (800ms, 80%)", lines);
+        Assert.Contains("- Total: 1.0s (pack load 800ms, pack register 90ms, registry finalize 30ms, registry total 120ms)", lines);
+    }
+
+    /// <summary>
+    /// Suppresses startup summary notices for fast bootstrap runs without slow-load signals.
+    /// </summary>
+    [Fact]
+    public void IsStartupBootstrapSignalWorthy_ReturnsFalseForFastBootstrapWithoutSlowSignals() {
+        var telemetry = new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 420,
+            PackLoadMs = 300,
+            RegistryMs = 80
+        };
+
+        Assert.False(MainWindow.IsStartupBootstrapSignalWorthy(telemetry));
+    }
+}

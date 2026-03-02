@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -85,7 +89,7 @@ public sealed class ToolPackBootstrapMetadataTests {
     [InlineData("event-log", "eventlog")]
     [InlineData("file system", "filesystem")]
     [InlineData("testimoxpack", "testimox")]
-    [InlineData("custom pack", "custompack")]
+    [InlineData("custom pack", "custom_pack")]
     public void NormalizePackId_UsesCanonicalShape(string input, string expected) {
         var normalized = ToolPackBootstrap.NormalizePackId(input);
         Assert.Equal(expected, normalized);
@@ -200,6 +204,61 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void RegisterAll_DefaultLoadedPacks_ExposeExplicitRoutingContracts_ForPackInfoTools() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnablePluginFolderLoading = false,
+            EnableDefaultPluginPaths = false
+        });
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+
+        ToolPackBootstrap.RegisterAll(registry, packs);
+
+        var packInfoDefinitions = registry.GetDefinitions()
+            .Where(static definition => definition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static definition => definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.NotEmpty(packInfoDefinitions);
+
+        foreach (var definition in packInfoDefinitions) {
+            var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
+            Assert.True(routing.IsRoutingAware);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+            Assert.False(string.IsNullOrWhiteSpace(routing.PackId));
+            Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, routing.Role, ignoreCase: true);
+        }
+    }
+
+    [Fact]
+    public void RegisterAll_AndCatalog_SupportSyntheticPackWithoutChatHardcoding() {
+        var packs = new IToolPack[] {
+            new SyntheticPack("sample-pack-v2", "Sample Pack v2")
+        };
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+        var toolPackIdsByToolName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        ToolPackBootstrap.RegisterAll(registry, packs, toolPackIdsByToolName);
+
+        Assert.True(registry.TryGetDefinition("sample_inventory_query", out var definition));
+        Assert.NotNull(definition);
+        Assert.Equal("sample_pack_v2", definition!.Routing!.PackId, ignoreCase: true);
+
+        Assert.True(toolPackIdsByToolName.TryGetValue("sample_inventory_query", out var assignedPackId));
+        Assert.Equal("sample_pack_v2", assignedPackId);
+
+        var catalog = ToolOrchestrationCatalog.Build(registry.GetDefinitions());
+        Assert.True(catalog.TryGetEntry("sample_inventory_query", out var entry));
+        Assert.Equal("sample_pack_v2", entry.PackId);
+        Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.Role);
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, entry.RoutingSource);
+        Assert.Equal("corp_internal", entry.DomainIntentFamily);
+    }
+
+    [Fact]
     public void RegisterAll_Throws_WhenDistinctPackIdsCollideAfterNormalization() {
         var packs = new IToolPack[] {
             new TestPack("event-log", "EventLog A"),
@@ -254,6 +313,62 @@ public sealed class ToolPackBootstrapMetadataTests {
 
         public void Register(ToolRegistry registry) {
             _ = registry;
+        }
+    }
+
+    private sealed class SyntheticPack : IToolPack {
+        public SyntheticPack(string id, string name) {
+            Descriptor = new ToolPackDescriptor {
+                Id = id,
+                Name = name,
+                Tier = ToolCapabilityTier.ReadOnly,
+                SourceKind = "open_source"
+            };
+        }
+
+        public ToolPackDescriptor Descriptor { get; }
+
+        public void Register(ToolRegistry registry) {
+            if (registry is null) {
+                throw new ArgumentNullException(nameof(registry));
+            }
+
+            registry.Register(new SyntheticTool(ToolPackBootstrap.NormalizePackId(Descriptor.Id)));
+        }
+    }
+
+    private sealed class SyntheticTool : ITool {
+        public SyntheticTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "sample_inventory_query",
+                description: "Synthetic sample tool for bootstrap/catalog contract tests.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add(
+                        "properties",
+                        new JsonObject()
+                            .Add("target", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                tags: new[] {
+                    "pack:sample_pack_v2",
+                    "domain_family:corp_internal"
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RoleOperational,
+                    DomainIntentFamily = "corp_internal",
+                    DomainIntentActionId = "act_domain_scope_corp_internal"
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult("{}");
         }
     }
 

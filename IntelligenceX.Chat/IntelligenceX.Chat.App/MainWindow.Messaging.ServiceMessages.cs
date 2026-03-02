@@ -522,6 +522,12 @@ public sealed partial class MainWindow : Window {
                               ?? (sameRequestAsPrior ? prior!.AuthProbeMs : null);
             var connectMs = completion?.ConnectMs
                             ?? (sameRequestAsPrior ? prior!.ConnectMs : null);
+            var ensureThreadMs = metrics.EnsureThreadMs
+                                 ?? (sameRequestAsPrior ? prior!.EnsureThreadMs : null);
+            var weightedSubsetSelectionMs = metrics.WeightedSubsetSelectionMs
+                                            ?? (sameRequestAsPrior ? prior!.WeightedSubsetSelectionMs : null);
+            var resolveModelMs = metrics.ResolveModelMs
+                                 ?? (sameRequestAsPrior ? prior!.ResolveModelMs : null);
             var dispatchToFirstStatusMs = completion?.DispatchToFirstStatusMs
                                          ?? (sameRequestAsPrior ? prior!.DispatchToFirstStatusMs : null);
             var dispatchToModelSelectedMs = completion?.DispatchToModelSelectedMs
@@ -549,6 +555,9 @@ public sealed partial class MainWindow : Window {
                 QueueWaitMs: queueWaitMs,
                 AuthProbeMs: authProbeMs,
                 ConnectMs: connectMs,
+                EnsureThreadMs: ensureThreadMs,
+                WeightedSubsetSelectionMs: weightedSubsetSelectionMs,
+                ResolveModelMs: resolveModelMs,
                 DispatchToFirstStatusMs: dispatchToFirstStatusMs,
                 DispatchToModelSelectedMs: dispatchToModelSelectedMs,
                 DispatchToFirstToolRunningMs: dispatchToFirstToolRunningMs,
@@ -637,6 +646,7 @@ public sealed partial class MainWindow : Window {
             ResetEnsureLoginProbeCache();
             _loginInProgress = false;
             _isConnected = false;
+            EndStartupMetadataSyncTracking();
             _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
             // Keep the sidecar process alive on transient pipe disconnects.
             // This avoids unnecessary process churn while the client auto-reconnect loop runs.
@@ -767,4 +777,3 @@ public sealed partial class MainWindow : Window {
     }
 
 }
-

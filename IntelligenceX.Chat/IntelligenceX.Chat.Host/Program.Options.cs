@@ -76,7 +76,7 @@ internal static partial class Program {
         public ToolWriteAuditSinkMode WriteAuditSinkMode { get; set; } = ToolWriteAuditSinkMode.None;
         public string? WriteAuditSinkPath { get; set; }
         public ToolAuthenticationRuntimePreset AuthenticationRuntimePreset { get; set; } = ToolAuthenticationRuntimePreset.Default;
-        public bool RequireExplicitRoutingMetadata { get; set; }
+        public bool RequireExplicitRoutingMetadata { get; set; } = true;
         public bool RequireAuthenticationRuntime { get; set; }
         public string? RunAsProfilePath { get; set; }
         public string? AuthenticationProfilePath { get; set; }

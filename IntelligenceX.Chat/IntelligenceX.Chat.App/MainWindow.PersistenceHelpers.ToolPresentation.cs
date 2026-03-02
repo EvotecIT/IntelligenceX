@@ -101,28 +101,6 @@ public sealed partial class MainWindow : Window {
         return list.ToArray();
     }
 
-    private static string InferToolCategory(string toolName) {
-        if (string.IsNullOrWhiteSpace(toolName)) {
-            return "general";
-        }
-
-        var idx = toolName.IndexOf('_');
-        if (idx <= 0) {
-            return "general";
-        }
-
-        var prefix = toolName.Substring(0, idx);
-        return prefix.ToLowerInvariant() switch {
-            "ad" => "active-directory",
-            "eventlog" => "event-log",
-            "system" => "system",
-            "fs" => "file-system",
-            "email" => "email",
-            "wsl" => "system",
-            _ => "general"
-        };
-    }
-
     private string[] BuildKnownProfiles() {
         var set = new HashSet<string>(_knownProfiles, StringComparer.OrdinalIgnoreCase) { _appProfileName };
         var list = new List<string>(set);

@@ -426,14 +426,14 @@ public class ToolDefinitionContractTests {
                 name: "custom_probe",
                 description: "Probe v1",
                 parameters: ToolSchema.Object().NoAdditionalProperties(),
-                tags: new[] { "scope:host", "operation:read", "routing:explicit", "custom" })));
+                tags: new[] { "scope:host", "operation:read", "routing:explicit", "pack:custom", "custom" })));
 
         registry.Register(new StubTool(
             new ToolDefinition(
                 name: "custom_probe",
                 description: "Probe v2",
                 parameters: ToolSchema.Object().NoAdditionalProperties(),
-                tags: new[] { "scope:domain", "operation:query", "routing:explicit", "custom2" })),
+                tags: new[] { "scope:domain", "operation:query", "routing:explicit", "pack:custom", "custom2" })),
             replaceExisting: true);
 
         Assert.True(registry.TryGetDefinition("custom_probe", out var definition));

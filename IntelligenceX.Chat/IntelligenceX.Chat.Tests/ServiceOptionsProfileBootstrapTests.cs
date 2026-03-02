@@ -27,6 +27,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.Equal(0, options.MaxTableRows);
         Assert.Equal(0, options.MaxSample);
         Assert.False(options.AllowMutatingParallelToolCalls);
+        Assert.True(options.RequireExplicitRoutingMetadata);
     }
 
     [Fact]
@@ -182,7 +183,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         var options = ServiceOptions.Parse(new[] { "--disable-pack-id", "custom_plugin_pack" }, out var error);
 
         Assert.True(string.IsNullOrWhiteSpace(error));
-        Assert.Contains("custompluginpack", options.DisabledPackIds);
+        Assert.Contains("custom_plugin_pack", options.DisabledPackIds);
     }
 
     [Fact]
@@ -398,7 +399,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.Equal("C:/temp/runas-profiles.json", loaded.RunAsProfilePath);
             Assert.Equal("C:/temp/auth-profiles.json", loaded.AuthenticationProfilePath);
             Assert.DoesNotContain("powershell", loaded.DisabledPackIds);
-            Assert.Contains("custompluginpack", loaded.DisabledPackIds);
+            Assert.Contains("custom_plugin_pack", loaded.DisabledPackIds);
             Assert.Contains("powershell", loaded.EnabledPackIds);
         } finally {
             TryDelete(dbPath);

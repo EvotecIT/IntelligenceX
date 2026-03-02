@@ -22,7 +22,13 @@ public sealed class ReviewerSetupContractVerifyTool : ReviewerSetupToolBase, ITo
                 ("pack_contract_fingerprint", ToolSchema.String("Optional. `setup_hints.contract_fingerprint` value from `reviewer_setup_pack_info`.")),
                 ("include_maintenance_path", ToolSchema.Boolean("Optional. Defaults to this pack's maintenance setting.")))
             .Required("autodetect_contract_version", "autodetect_contract_fingerprint")
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        routing: new ToolRoutingContract {
+            IsRoutingAware = true,
+            RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+            PackId = "reviewer_setup",
+            Role = ToolRoutingTaxonomy.RoleDiagnostic
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ReviewerSetupContractVerifyTool"/> class.

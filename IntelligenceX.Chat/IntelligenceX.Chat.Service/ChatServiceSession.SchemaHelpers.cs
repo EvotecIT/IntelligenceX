@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using JsonValueKind = System.Text.Json.JsonValueKind;
@@ -225,22 +224,12 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
-    private static string InferToolCategory(string? explicitPackId, string? explicitCategory) {
-        var normalizedCategory = NormalizeCategoryLabel(explicitCategory);
-        if (normalizedCategory.Length > 0) {
-            return normalizedCategory;
-        }
-
-        var packId = NormalizePackId(explicitPackId);
-        if (packId.Length == 0) {
-            return "other";
-        }
-
-        var normalizedFromPackId = NormalizeCategoryLabel(packId);
-        return normalizedFromPackId.Length == 0 ? "other" : normalizedFromPackId;
+    internal static string ResolveToolListCategory(string? explicitCategory) {
+        var normalized = NormalizeToolListCategoryToken(explicitCategory);
+        return normalized.Length == 0 ? "other" : normalized;
     }
 
-    private static string NormalizeCategoryLabel(string? value) {
+    private static string NormalizeToolListCategoryToken(string? value) {
         var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
         if (normalized.Length == 0) {
             return string.Empty;
@@ -248,21 +237,11 @@ internal sealed partial class ChatServiceSession {
 
         normalized = normalized.Replace("_", "-", StringComparison.Ordinal)
             .Replace(" ", "-", StringComparison.Ordinal);
-        normalized = Regex.Replace(normalized, "-{2,}", "-", RegexOptions.CultureInvariant);
+        while (normalized.Contains("--", StringComparison.Ordinal)) {
+            normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
+        }
 
-        return normalized switch {
-            "ad" => "active-directory",
-            "active-directory" => "active-directory",
-            "activedirectory" => "active-directory",
-            "eventlog" => "event-log",
-            "event-log" => "event-log",
-            "fs" => "file-system",
-            "file-system" => "file-system",
-            "filesystem" => "file-system",
-            "reviewersetup" => "reviewer-setup",
-            "reviewer-setup" => "reviewer-setup",
-            _ => normalized
-        };
+        return normalized.Trim('-');
     }
 
     private static string ReadOptionalToolMetadata(ToolDefinition definition, string propertyName) {

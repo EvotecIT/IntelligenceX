@@ -2794,6 +2794,39 @@
           ? ", tokens " + formatTokenCount(totalTokens)
           : "";
         parts.push("Last turn: " + outcome + " in " + durationText + ", tools " + callsText + queueWaitText + tokenText + ".");
+        var ensureThreadMs = Number(metrics.ensureThreadMs);
+        var weightedSubsetSelectionMs = Number(metrics.weightedSubsetSelectionMs);
+        var resolveModelMs = Number(metrics.resolveModelMs);
+        var slowestPhaseLabel = "";
+        var slowestPhaseMs = -1;
+        var phaseParts = [];
+        if (Number.isFinite(ensureThreadMs) && ensureThreadMs >= 0) {
+          if (ensureThreadMs > slowestPhaseMs) {
+            slowestPhaseMs = ensureThreadMs;
+            slowestPhaseLabel = "ensure-thread";
+          }
+          phaseParts.push("ensure-thread " + Math.floor(ensureThreadMs) + "ms");
+        }
+        if (Number.isFinite(weightedSubsetSelectionMs) && weightedSubsetSelectionMs >= 0) {
+          if (weightedSubsetSelectionMs > slowestPhaseMs) {
+            slowestPhaseMs = weightedSubsetSelectionMs;
+            slowestPhaseLabel = "weighted-subset";
+          }
+          phaseParts.push("weighted-subset " + Math.floor(weightedSubsetSelectionMs) + "ms");
+        }
+        if (Number.isFinite(resolveModelMs) && resolveModelMs >= 0) {
+          if (resolveModelMs > slowestPhaseMs) {
+            slowestPhaseMs = resolveModelMs;
+            slowestPhaseLabel = "resolve-model";
+          }
+          phaseParts.push("resolve-model " + Math.floor(resolveModelMs) + "ms");
+        }
+        if (phaseParts.length > 0) {
+          parts.push("Turn phases: " + phaseParts.join(", ") + ".");
+          if (slowestPhaseLabel && Number.isFinite(slowestPhaseMs) && slowestPhaseMs >= 0) {
+            parts.push("Slowest turn stage: " + slowestPhaseLabel + " (" + Math.floor(slowestPhaseMs) + "ms).");
+          }
+        }
 
         var autonomyCounters = Array.isArray(metrics.autonomyCounters) ? metrics.autonomyCounters : [];
         if (autonomyCounters.length > 0) {

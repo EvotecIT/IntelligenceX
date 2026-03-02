@@ -245,10 +245,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly FieldInfo LastUserIntentSeenUtcTicksField =
         typeof(ChatServiceSession).GetField("_lastUserIntentSeenUtcTicks", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_lastUserIntentSeenUtcTicks not found.");
-    private static readonly FieldInfo ToolPackIdsByToolNameField =
-        typeof(ChatServiceSession).GetField("_toolPackIdsByToolName", BindingFlags.NonPublic | BindingFlags.Instance)
-        ?? throw new InvalidOperationException("_toolPackIdsByToolName not found.");
-
     [Fact]
     public void TrimToolRoutingStatsForTesting_RemovesNonPositiveTimestampEntriesFirst() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();

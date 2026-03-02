@@ -158,7 +158,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Equal(1, diagnostics.HandoffAwareTools);
         Assert.Equal(1, diagnostics.RecoveryAwareTools);
         Assert.Equal(3, diagnostics.DomainFamilyTools);
-        Assert.Equal(1, diagnostics.ExpectedDomainFamilyMissingTools);
+        Assert.Equal(0, diagnostics.ExpectedDomainFamilyMissingTools);
         Assert.Equal(1, diagnostics.DomainFamilyMissingActionTools);
         Assert.Equal(1, diagnostics.ActionWithoutFamilyTools);
         Assert.Equal(1, diagnostics.FamilyActionConflictFamilies);
@@ -168,7 +168,6 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Contains(warnings, static line => line.Contains("inferred routing metadata", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("missing routing pack id", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("missing routing role", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(warnings, static line => line.Contains("missing domain intent family", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("miss action id", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("action id without a domain intent family", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("multiple action ids", StringComparison.OrdinalIgnoreCase));

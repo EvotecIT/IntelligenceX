@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.App.Conversation;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
@@ -80,18 +81,116 @@ public sealed partial class MainWindow : Window {
             }
 
             var startedUtc = new DateTime(startedTicks, DateTimeKind.Utc);
-            var elapsed = DateTime.UtcNow - startedUtc;
-            if (elapsed < TurnWatchdogHintThreshold) {
+            string? activeRequestId;
+            lock (_activeTurnLifecycleSync) {
+                activeRequestId = _activeTurnRequestId;
+            }
+
+            var hasSnapshot = TryGetTurnWatchdogProgressSnapshot(activeRequestId, out var watchdogSnapshot);
+            var elapsedAnchorUtc = hasSnapshot ? watchdogSnapshot.DispatchStartedUtc : startedUtc;
+            var elapsed = DateTime.UtcNow - elapsedAnchorUtc;
+            var hintThreshold = hasSnapshot
+                ? ResolveTurnWatchdogHintThreshold(
+                    hasFirstStatus: watchdogSnapshot.HasFirstStatus,
+                    hasFirstDelta: watchdogSnapshot.HasFirstDelta)
+                : TurnWatchdogHintThreshold;
+            if (elapsed < hintThreshold) {
                 continue;
             }
 
-            var baseActivity = string.IsNullOrWhiteSpace(_latestServiceActivityText)
+            var watchdogProgressLabel = hasSnapshot
+                ? BuildTurnWatchdogProgressLabel(
+                    hasFirstStatus: watchdogSnapshot.HasFirstStatus,
+                    hasModelSelected: watchdogSnapshot.HasModelSelected,
+                    hasFirstToolRunning: watchdogSnapshot.HasFirstToolRunning,
+                    hasFirstDelta: watchdogSnapshot.HasFirstDelta,
+                    firstStatusCode: watchdogSnapshot.FirstStatusCode)
+                : string.Empty;
+            var baseActivity = !string.IsNullOrWhiteSpace(watchdogProgressLabel)
+                ? watchdogProgressLabel
+                : string.IsNullOrWhiteSpace(_latestServiceActivityText)
                 ? "Working..."
                 : _latestServiceActivityText;
             var elapsedSeconds = Math.Max(1, (int)Math.Round(elapsed.TotalSeconds));
             var watchdogText = $"{baseActivity} ({elapsedSeconds}s elapsed - press Stop to cancel)";
             await SetActivityAsync(watchdogText, SnapshotActivityTimeline()).ConfigureAwait(false);
+            if (ShouldUpdateTurnWatchdogStatus(_statusText)) {
+                await SetStatusAsync(BuildTurnWatchdogStatusText(baseActivity, elapsedSeconds), SessionStatusTone.Warn).ConfigureAwait(false);
+            }
         }
+    }
+
+    internal static TimeSpan ResolveTurnWatchdogHintThreshold(bool hasFirstStatus, bool hasFirstDelta) {
+        if (!hasFirstStatus) {
+            return TurnWatchdogAwaitingAckHintThreshold;
+        }
+
+        if (!hasFirstDelta) {
+            return TurnWatchdogAwaitingFirstTokenHintThreshold;
+        }
+
+        return TurnWatchdogHintThreshold;
+    }
+
+    internal static string BuildTurnWatchdogProgressLabel(
+        bool hasFirstStatus,
+        bool hasModelSelected,
+        bool hasFirstToolRunning,
+        bool hasFirstDelta,
+        string? firstStatusCode) {
+        if (hasFirstDelta) {
+            return "Streaming response...";
+        }
+
+        if (hasFirstToolRunning) {
+            return "Tool execution is running...";
+        }
+
+        if (hasModelSelected) {
+            return "Model selected. Waiting for first token...";
+        }
+
+        if (hasFirstStatus) {
+            return "Runtime acknowledged request. Waiting for first token...";
+        }
+
+        var normalizedStatusCode = (firstStatusCode ?? string.Empty).Trim();
+        if (normalizedStatusCode.Length > 0) {
+            return "Waiting for runtime acknowledgement (" + normalizedStatusCode + ")...";
+        }
+
+        return "Waiting for runtime acknowledgement...";
+    }
+
+    internal static string BuildTurnWatchdogStatusText(string baseActivity, int elapsedSeconds) {
+        var normalizedActivity = (baseActivity ?? string.Empty).Trim();
+        if (normalizedActivity.Length == 0) {
+            normalizedActivity = "Working...";
+        }
+
+        var boundedElapsedSeconds = Math.Max(1, elapsedSeconds);
+        return "Runtime processing request... "
+               + normalizedActivity
+               + " ("
+               + boundedElapsedSeconds.ToString(CultureInfo.InvariantCulture)
+               + "s elapsed - press Stop to cancel)";
+    }
+
+    private static bool ShouldUpdateTurnWatchdogStatus(string currentStatusText) {
+        var normalized = (currentStatusText ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return true;
+        }
+
+        if (normalized.StartsWith("Canceling", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (normalized.StartsWith("Last turn failed:", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return true;
     }
 
     private string FormatActivityText(ChatStatusMessage status) {
@@ -214,6 +313,9 @@ public sealed partial class MainWindow : Window {
             queueWaitMs = snapshot.QueueWaitMs,
             authProbeMs = snapshot.AuthProbeMs,
             connectMs = snapshot.ConnectMs,
+            ensureThreadMs = snapshot.EnsureThreadMs,
+            weightedSubsetSelectionMs = snapshot.WeightedSubsetSelectionMs,
+            resolveModelMs = snapshot.ResolveModelMs,
             firstStatusMs = snapshot.DispatchToFirstStatusMs,
             modelSelectedMs = snapshot.DispatchToModelSelectedMs,
             firstToolRunningMs = snapshot.DispatchToFirstToolRunningMs,

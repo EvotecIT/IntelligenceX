@@ -55,7 +55,8 @@ public sealed class ToolPackRegistryTests {
             Definition = new ToolDefinition(
                 name,
                 description,
-                ToolSchema.Object(("q", ToolSchema.String("query"))).NoAdditionalProperties());
+                ToolSchema.Object(("q", ToolSchema.String("query"))).NoAdditionalProperties(),
+                tags: new[] { "pack:stub_pack" });
         }
 
         public ToolDefinition Definition { get; }

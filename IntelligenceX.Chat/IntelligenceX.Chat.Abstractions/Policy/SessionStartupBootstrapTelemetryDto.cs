@@ -1,3 +1,5 @@
+using System;
+
 namespace IntelligenceX.Chat.Abstractions.Policy;
 
 /// <summary>
@@ -23,6 +25,16 @@ public sealed record SessionStartupBootstrapTelemetryDto {
     /// Tool pack bootstrap/load duration in milliseconds.
     /// </summary>
     public long PackLoadMs { get; init; }
+
+    /// <summary>
+    /// Tool-pack registration duration in milliseconds.
+    /// </summary>
+    public long PackRegisterMs { get; init; }
+
+    /// <summary>
+    /// Registry finalization duration in milliseconds (catalog + policy + diagnostics).
+    /// </summary>
+    public long RegistryFinalizeMs { get; init; }
 
     /// <summary>
     /// Registry build duration in milliseconds.
@@ -88,4 +100,44 @@ public sealed record SessionStartupBootstrapTelemetryDto {
     /// Total number of plugin folders scheduled by startup progress tracking.
     /// </summary>
     public int PluginProgressTotal { get; init; }
+
+    /// <summary>
+    /// Total number of slow pack-registration steps detected.
+    /// </summary>
+    public int SlowPackRegistrationCount { get; init; }
+
+    /// <summary>
+    /// Number of slow pack-registration steps included in the summary top list.
+    /// </summary>
+    public int SlowPackRegistrationTopCount { get; init; }
+
+    /// <summary>
+    /// Number of pack registration steps processed by startup progress tracking.
+    /// </summary>
+    public int PackRegistrationProgressProcessed { get; init; }
+
+    /// <summary>
+    /// Total number of pack registration steps scheduled by startup progress tracking.
+    /// </summary>
+    public int PackRegistrationProgressTotal { get; init; }
+
+    /// <summary>
+    /// Ordered startup phase timings captured during bootstrap.
+    /// </summary>
+    public SessionStartupBootstrapPhaseTelemetryDto[] Phases { get; init; } = Array.Empty<SessionStartupBootstrapPhaseTelemetryDto>();
+
+    /// <summary>
+    /// Slowest startup phase identifier.
+    /// </summary>
+    public string? SlowestPhaseId { get; init; }
+
+    /// <summary>
+    /// Slowest startup phase display label.
+    /// </summary>
+    public string? SlowestPhaseLabel { get; init; }
+
+    /// <summary>
+    /// Slowest startup phase duration in milliseconds.
+    /// </summary>
+    public long SlowestPhaseMs { get; init; }
 }

@@ -91,17 +91,23 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
-        public void TryResolveDomainIntentFamily_ShouldInferFromCategoryAndName() {
+        public void TryResolveDomainIntentFamily_ShouldResolveFromExplicitRoutingContract() {
             var adDefinition = new ToolDefinition(
                 name: "active-directory-scope-discovery",
                 description: "AD scope",
                 parameters: null,
-                category: "active_directory");
+                category: "active_directory",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                });
             var dnsDefinition = new ToolDefinition(
                 name: "dns-client-x-query",
                 description: "DNS query",
                 parameters: null,
-                category: "dns");
+                category: "dns",
+                tags: new[] { "domain_family:public_domain" });
 
             var adResolved = ToolSelectionMetadata.TryResolveDomainIntentFamily(adDefinition, out var adFamily);
             var dnsResolved = ToolSelectionMetadata.TryResolveDomainIntentFamily(dnsDefinition, out var dnsFamily);
@@ -113,7 +119,7 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
-        public void TryResolveDomainIntentFamily_ShouldTreatEventLogAsAdDomainFamily() {
+        public void TryResolveDomainIntentFamily_ShouldRequireExplicitMetadata_WhenOnlyCategoryIsPresent() {
             var eventLogDefinition = new ToolDefinition(
                 name: "eventlog_live_query",
                 description: "Event log",
@@ -122,8 +128,8 @@ namespace IntelligenceX.UnitTests {
 
             var resolved = ToolSelectionMetadata.TryResolveDomainIntentFamily(eventLogDefinition, out var family);
 
-            Assert.True(resolved);
-            Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, family);
+            Assert.False(resolved);
+            Assert.Equal(string.Empty, family);
         }
 
         [Fact]
@@ -156,21 +162,19 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Theory]
-        [InlineData("active-directory-scope-discovery", ToolSelectionMetadata.DomainIntentFamilyAd)]
-        [InlineData("adplayground-domain-controllers", ToolSelectionMetadata.DomainIntentFamilyAd)]
-        [InlineData("dns-client-x-query", ToolSelectionMetadata.DomainIntentFamilyPublic)]
-        [InlineData("domain-detective-domain-summary", ToolSelectionMetadata.DomainIntentFamilyPublic)]
-        public void TryResolveDomainIntentFamily_ShouldResolveCompactPrefixFamilies(
-            string toolName,
-            string expectedFamily) {
+        [InlineData("active-directory-scope-discovery")]
+        [InlineData("adplayground-domain-controllers")]
+        [InlineData("dns-client-x-query")]
+        [InlineData("domain-detective-domain-summary")]
+        public void TryResolveDomainIntentFamily_ShouldNotInferFromNamePrefixes(string toolName) {
             var resolved = ToolSelectionMetadata.TryResolveDomainIntentFamily(
                 toolName: toolName,
                 category: null,
                 tags: null,
                 out var family);
 
-            Assert.True(resolved);
-            Assert.Equal(expectedFamily, family);
+            Assert.False(resolved);
+            Assert.Equal(string.Empty, family);
         }
 
         [Fact]
@@ -188,19 +192,19 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Theory]
-        [InlineData("computerx_inventory_snapshot", "system")]
-        [InlineData("domain_detective_domain_summary", "domaindetective")]
-        [InlineData("dns_client_x_query", "dnsclientx")]
-        [InlineData("testimo_x_rules_list", "testimox")]
-        public void TryResolvePackId_ShouldResolveFromMetadataFriendlyNamePatterns(string toolName, string expectedPackId) {
+        [InlineData("computerx_inventory_snapshot")]
+        [InlineData("domain_detective_domain_summary")]
+        [InlineData("dns_client_x_query")]
+        [InlineData("testimo_x_rules_list")]
+        public void TryResolvePackId_ShouldNotInferFromMetadataFriendlyNamePatterns(string toolName) {
             var resolved = ToolSelectionMetadata.TryResolvePackId(
                 toolName: toolName,
                 category: null,
                 tags: null,
                 out var packId);
 
-            Assert.True(resolved);
-            Assert.Equal(expectedPackId, packId);
+            Assert.False(resolved);
+            Assert.Equal(string.Empty, packId);
         }
 
         [Fact]
@@ -226,7 +230,13 @@ namespace IntelligenceX.UnitTests {
             var definition = new ToolDefinition(
                 name: "computerx_inventory_snapshot",
                 description: "ComputerX inventory",
-                parameters: null);
+                parameters: null,
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                });
 
             var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
 

@@ -15,11 +15,10 @@ using JsonValueKind = System.Text.Json.JsonValueKind;
 namespace IntelligenceX.Chat.Tooling;
 
 /// <summary>
-/// Shared helpers for probing <c>*_pack_info</c> tools and normalizing health failures.
+/// Shared helpers for probing pack-info role tools and normalizing health failures.
 /// </summary>
 public static class ToolHealthDiagnostics {
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private const string PackInfoSuffix = "_pack_info";
     private const int SmokePagingDefaultValue = 25;
     // Keep recursive schema traversal bounded so pathological contracts cannot blow up probe classification time.
     // Policy: fail-open past this depth (treat as no additional "required" discovery) to preserve probe availability.
@@ -45,8 +44,8 @@ public static class ToolHealthDiagnostics {
         long DurationMs);
 
     /// <summary>
-    /// Returns registered pack-info definitions (sorted, case-insensitive).
-    /// Prefers routing-role metadata and can optionally require explicit pack-info role metadata.
+    /// Returns registered pack-info role definitions (sorted, case-insensitive).
+    /// Can optionally require explicit routing-source metadata for pack-info role tools.
     /// </summary>
     public static ToolDefinition[] GetPackInfoDefinitions(ToolRegistry registry, bool requireExplicitPackInfoRole = false) {
         if (registry is null) {
@@ -228,35 +227,14 @@ public static class ToolHealthDiagnostics {
     }
 
     /// <summary>
-    /// Resolves canonical pack id for a tool definition using routing metadata first, then metadata inference,
-    /// and optionally legacy <c>*_pack_info</c> name suffix fallback.
+    /// Resolves canonical pack id for a tool definition from explicit routing metadata only.
     /// </summary>
     /// <param name="definition">Tool definition to inspect.</param>
     /// <param name="packId">Resolved canonical pack id when available.</param>
-    /// <param name="allowNameSuffixFallback">When true, allows legacy name-suffix based resolution for compatibility.</param>
     /// <returns><c>true</c> when a pack id was resolved.</returns>
-    public static bool TryResolvePackId(ToolDefinition definition, out string packId, bool allowNameSuffixFallback = true) {
+    public static bool TryResolvePackId(ToolDefinition definition, out string packId) {
         packId = ToolPackBootstrap.NormalizePackId(definition.Routing?.PackId);
-        if (packId.Length > 0) {
-            return true;
-        }
-
-        if (ToolSelectionMetadata.TryResolvePackId(definition, out var inferred) && !string.IsNullOrWhiteSpace(inferred)) {
-            packId = ToolPackBootstrap.NormalizePackId(inferred);
-            return packId.Length > 0;
-        }
-
-        if (allowNameSuffixFallback) {
-            var normalizedName = (definition.Name ?? string.Empty).Trim();
-            if (normalizedName.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
-                packId = ToolPackBootstrap.NormalizePackId(normalizedName[..^PackInfoSuffix.Length]);
-                if (packId.Length > 0) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return packId.Length > 0;
     }
 
     private static bool TryResolveOperationalSmokeProbePlan(ToolRegistry registry, string packInfoToolName, bool requireExplicitPackInfoRole,
@@ -267,8 +245,6 @@ public static class ToolHealthDiagnostics {
 
     private static Dictionary<string, SmokeProbePlan> BuildSmokeProbePlanIndex(IReadOnlyList<ToolDefinition> definitions, bool requireExplicitPackInfoRole) {
         var plans = new Dictionary<string, SmokeProbePlan>(StringComparer.OrdinalIgnoreCase);
-        var allowNameSuffixFallback = !requireExplicitPackInfoRole;
-
         var bestCandidatesByPack = new Dictionary<string, SmokeProbeCandidate>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
@@ -280,7 +256,7 @@ public static class ToolHealthDiagnostics {
                 continue;
             }
 
-            if (!TryResolvePackId(definition, out var packId, allowNameSuffixFallback) || packId.Length == 0) {
+            if (!TryResolvePackId(definition, out var packId) || packId.Length == 0) {
                 continue;
             }
 
@@ -301,7 +277,7 @@ public static class ToolHealthDiagnostics {
                 continue;
             }
 
-            if (!TryResolvePackId(definition, out var packId, allowNameSuffixFallback) || packId.Length == 0) {
+            if (!TryResolvePackId(definition, out var packId) || packId.Length == 0) {
                 continue;
             }
 
@@ -552,10 +528,6 @@ public static class ToolHealthDiagnostics {
             return string.Equals(routingSource, ToolRoutingTaxonomy.SourceExplicit, StringComparison.OrdinalIgnoreCase);
         }
 
-        if (requireExplicitPackInfoRole) {
-            return false;
-        }
-
-        return definition.Name.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 }
