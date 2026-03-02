@@ -59,6 +59,7 @@ internal sealed partial class ChatServiceSession {
                 PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
                 PackDescription = string.IsNullOrWhiteSpace(packDescription) ? null : packDescription,
                 PackSourceKind = packSourceKind,
+                IsWriteCapable = defs[i].WriteGovernance?.IsWriteCapable == true,
                 ParametersJson = parametersJson,
                 RequiredArguments = required,
                 Parameters = parameters

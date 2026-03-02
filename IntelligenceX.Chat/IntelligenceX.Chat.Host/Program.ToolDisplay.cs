@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Host;
 
@@ -12,15 +13,9 @@ internal static partial class Program {
 
         // Keep stable tool ids (machine-friendly), but display a friendlier title for humans.
         var (prefix, suffix) = SplitPrefix(toolName.Trim());
-        var group = prefix switch {
-            "ad" => "Active Directory",
-            "eventlog" => "Event Log",
-            "system" => "System",
-            "fs" => "File System",
-            "wsl" => "System",
-            "testimox" => "TestimoX",
-            _ => string.Empty
-        };
+        var group = string.Equals(prefix, suffix, StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : ResolveToolGroupLabel(toolName, prefix);
 
         var title = ToTitle(suffix);
         if (toolName.Equals("wsl_status", StringComparison.OrdinalIgnoreCase)) {
@@ -28,6 +23,19 @@ internal static partial class Program {
         }
 
         return string.IsNullOrWhiteSpace(group) ? title : $"{group} / {title}";
+    }
+
+    private static string ResolveToolGroupLabel(string toolName, string prefix) {
+        if (ToolSelectionMetadata.TryResolvePackId(
+                toolName,
+                category: null,
+                tags: null,
+                out var packId)
+            && packId.Length > 0) {
+            return ToTitle(packId);
+        }
+
+        return ToTitle(prefix);
     }
 
     private static (string Prefix, string Suffix) SplitPrefix(string toolName) {

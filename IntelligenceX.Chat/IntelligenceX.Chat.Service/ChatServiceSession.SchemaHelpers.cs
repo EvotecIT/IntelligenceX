@@ -232,22 +232,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         var packId = NormalizePackId(explicitPackId);
-        return packId switch {
-            "ad" => "active-directory",
-            "active_directory" => "active-directory",
-            "eventlog" => "event-log",
-            "fs" => "file-system",
-            "system" => "system",
-            "powershell" => "powershell",
-            "email" => "email",
-            "testimox" => "testimox",
-            "officeimo" => "officeimo",
-            "reviewersetup" => "reviewer-setup",
-            "reviewer_setup" => "reviewer-setup",
-            "reviewer-setup" => "reviewer-setup",
-            "filesystem" => "file-system",
-            _ => "other"
-        };
+        if (packId.Length == 0) {
+            return "other";
+        }
+
+        var normalizedFromPackId = NormalizeCategoryLabel(packId);
+        return normalizedFromPackId.Length == 0 ? "other" : normalizedFromPackId;
     }
 
     private static string NormalizeCategoryLabel(string? value) {

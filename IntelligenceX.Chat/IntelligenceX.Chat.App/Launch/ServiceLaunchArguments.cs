@@ -8,6 +8,8 @@ namespace IntelligenceX.Chat.App.Launch;
 /// Provides typed construction of local runtime service launch arguments.
 /// </summary>
 internal static class ServiceLaunchArguments {
+    internal sealed record PackToggle(string PackId, bool Enabled);
+
     internal sealed class ProfileOptions {
         public string? LoadProfileName { get; init; }
         public string? SaveProfileName { get; init; }
@@ -27,9 +29,7 @@ internal static class ServiceLaunchArguments {
         public string? ReasoningSummary { get; init; }
         public string? TextVerbosity { get; init; }
         public double? Temperature { get; init; }
-        public bool? EnablePowerShellPack { get; init; }
-        public bool? EnableTestimoXPack { get; init; }
-        public bool? EnableOfficeImoPack { get; init; }
+        public IReadOnlyList<PackToggle>? PackToggles { get; init; }
     }
 
     /// <summary>
@@ -104,17 +104,7 @@ internal static class ServiceLaunchArguments {
                 args.Add(profileOptions.Temperature.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
 
-            if (profileOptions.EnablePowerShellPack.HasValue) {
-                args.Add(profileOptions.EnablePowerShellPack.Value ? "--enable-powershell-pack" : "--disable-powershell-pack");
-            }
-
-            if (profileOptions.EnableTestimoXPack.HasValue) {
-                args.Add(profileOptions.EnableTestimoXPack.Value ? "--enable-testimox-pack" : "--disable-testimox-pack");
-            }
-
-            if (profileOptions.EnableOfficeImoPack.HasValue) {
-                args.Add(profileOptions.EnableOfficeImoPack.Value ? "--enable-officeimo-pack" : "--disable-officeimo-pack");
-            }
+            AddPackToggleArgs(args, profileOptions.PackToggles);
         }
 
         AddMultiValueArg(args, "--plugin-path", additionalPluginPaths);
@@ -172,6 +162,50 @@ internal static class ServiceLaunchArguments {
         }
 
         return trimmed;
+    }
+
+    private static void AddPackToggleArgs(List<string> args, IReadOnlyList<PackToggle>? packToggles) {
+        if (packToggles is null || packToggles.Count == 0) {
+            return;
+        }
+
+        var effectiveToggles = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < packToggles.Count; i++) {
+            var toggle = packToggles[i];
+            var normalizedPackId = NormalizePackId(toggle.PackId);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            effectiveToggles[normalizedPackId] = toggle.Enabled;
+        }
+
+        if (effectiveToggles.Count == 0) {
+            return;
+        }
+
+        var ids = new List<string>(effectiveToggles.Keys);
+        ids.Sort(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < ids.Count; i++) {
+            var normalizedPackId = ids[i];
+            args.Add(effectiveToggles[normalizedPackId] ? "--enable-pack-id" : "--disable-pack-id");
+            args.Add(normalizedPackId);
+        }
+    }
+
+    private static string NormalizePackId(string? packId) {
+        var normalized = (packId ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        normalized = normalized
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(".", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        return normalized;
     }
 
     private static void AddKeyValueArg(List<string> args, string key, string? value) {

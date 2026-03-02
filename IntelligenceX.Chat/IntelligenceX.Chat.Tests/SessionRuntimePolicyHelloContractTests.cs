@@ -65,6 +65,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             },
             Array.Empty<ToolPackAvailabilityInfo>(),
             Array.Empty<string>(),
+            null,
             Array.Empty<string>(),
             runtimePolicy,
             routingCatalog);
@@ -128,6 +129,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             },
             Array.Empty<ToolPackAvailabilityInfo>(),
             Array.Empty<string>(),
+            null,
             Array.Empty<string>(),
             new ToolRuntimePolicyDiagnostics {
                 WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
@@ -155,6 +157,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             },
             Array.Empty<ToolPackAvailabilityInfo>(),
             Array.Empty<string>(),
+            null,
             Array.Empty<string>(),
             new ToolRuntimePolicyDiagnostics {
                 WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,

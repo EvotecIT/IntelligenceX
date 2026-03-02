@@ -54,6 +54,7 @@ internal sealed partial class ChatServiceSession {
     private IReadOnlyList<IToolPack> _packs;
     private ToolPackAvailabilityInfo[] _packAvailability;
     private string[] _startupWarnings;
+    private SessionStartupBootstrapTelemetryDto? _startupBootstrap;
     private string[] _pluginSearchPaths;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
@@ -237,6 +238,7 @@ internal sealed partial class ChatServiceSession {
                                 _options,
                                 _packAvailability,
                                 _startupWarnings,
+                                _startupBootstrap,
                                 _pluginSearchPaths,
                                 _runtimePolicyDiagnostics,
                                 _routingCatalogDiagnostics)

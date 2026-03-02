@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using IntelligenceX.Chat.Service;
@@ -15,14 +16,12 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.NotNull(rebuildMethod);
         Assert.NotNull(packAvailabilityField);
 
-        var options = new ServiceOptions {
-            EnableOfficeImoPack = true
-        };
+        var options = new ServiceOptions();
         var session = new ChatServiceSession(options, Stream.Null);
 
         var initialAvailability = Assert.IsType<ToolPackAvailabilityInfo[]>(packAvailabilityField!.GetValue(session));
 
-        options.EnableOfficeImoPack = false;
+        options.DisabledPackIds.Add("officeimo");
         rebuildMethod!.Invoke(session, Array.Empty<object>());
 
         var rebuiltAvailability = Assert.IsType<ToolPackAvailabilityInfo[]>(packAvailabilityField.GetValue(session));
@@ -31,5 +30,106 @@ public sealed class ChatServiceToolingBootstrapTests {
         var officeImo = Assert.Single(rebuiltAvailability, static item =>
             string.Equals(item.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
         Assert.False(officeImo.Enabled);
+    }
+
+    [Fact]
+    public void SummarizeSlowPluginLoadWarnings_CompressesAndSortsTopEntries() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "SummarizeSlowPluginLoadWarnings",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string> {
+            "[plugin] path_not_found path='C:\\plugins\\missing'",
+            "[plugin] load_timing plugin='delta' elapsed_ms='650' entry_assemblies='1' candidate_types='1' loaded='1' disabled='0' duplicate='0' failed='0'",
+            "[plugin] load_timing plugin='alpha' elapsed_ms='1400' entry_assemblies='1' candidate_types='1' loaded='1' disabled='0' duplicate='0' failed='0'",
+            "[plugin] load_timing plugin='beta' elapsed_ms='900' entry_assemblies='1' candidate_types='1' loaded='0' disabled='1' duplicate='0' failed='0'",
+            "[plugin] load_timing plugin='gamma' elapsed_ms='1200' entry_assemblies='1' candidate_types='1' loaded='0' disabled='0' duplicate='0' failed='1'",
+            "[plugin] load_timing plugin='alpha' elapsed_ms='1100' entry_assemblies='1' candidate_types='1' loaded='1' disabled='0' duplicate='0' failed='0'"
+        };
+
+        method!.Invoke(null, new object?[] { warnings });
+
+        Assert.Contains(warnings, static w => w.StartsWith("[plugin] path_not_found", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(warnings, static w => w.StartsWith("[plugin] load_timing", StringComparison.OrdinalIgnoreCase));
+
+        var summary = Assert.Single(warnings, static w => w.StartsWith("[startup] slow plugin loads top", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("alpha=1400ms", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("gamma=1200ms", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("beta=900ms", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("delta=650ms", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(warnings, static w => w.StartsWith("[startup] additional slow plugins omitted: 1.", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SummarizeSlowPluginLoadWarnings_NoTimingWarnings_LeavesCollectionUntouched() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "SummarizeSlowPluginLoadWarnings",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string> {
+            "[plugin] path_not_found path='C:\\plugins\\missing'",
+            "[plugin] init_failed plugin='alpha' error='missing dep'"
+        };
+
+        method!.Invoke(null, new object?[] { warnings });
+
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains("[plugin] path_not_found path='C:\\plugins\\missing'", warnings);
+        Assert.Contains("[plugin] init_failed plugin='alpha' error='missing dep'", warnings);
+    }
+
+    [Fact]
+    public void SummarizeSlowPluginLoadWarnings_CompressesPluginProgressWarnings() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "SummarizeSlowPluginLoadWarnings",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string> {
+            "[plugin] load_progress plugin='alpha' phase='begin' index='1' total='3'",
+            "[plugin] load_progress plugin='alpha' phase='end' index='1' total='3' elapsed_ms='800' loaded='1' disabled='0' duplicate='0' failed='0'",
+            "[plugin] load_progress plugin='beta' phase='begin' index='2' total='3'",
+            "[plugin] load_progress plugin='beta' phase='end' index='2' total='3' elapsed_ms='300' loaded='0' disabled='1' duplicate='0' failed='0'",
+            "[plugin] load_progress plugin='gamma' phase='begin' index='3' total='3'",
+            "[plugin] load_progress plugin='gamma' phase='end' index='3' total='3' elapsed_ms='400' loaded='1' disabled='0' duplicate='0' failed='0'",
+            "[plugin] path_not_found path='C:\\plugins\\missing'"
+        };
+
+        method!.Invoke(null, new object?[] { warnings });
+
+        Assert.DoesNotContain(warnings, static w => w.StartsWith("[plugin] load_progress", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static w => w.StartsWith("[plugin] path_not_found", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings,
+            static w => w.StartsWith("[startup] plugin load progress: processed 3/3 plugin folders (begin=3, end=3).", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SummarizeSlowPluginLoadWarnings_CompressesPackProgressWarnings() {
+        var method = typeof(ChatServiceSession).GetMethod(
+            "SummarizeSlowPluginLoadWarnings",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string> {
+            "[startup] pack_load_progress pack='eventlog' phase='begin' index='1' total='3'",
+            "[startup] pack_load_progress pack='eventlog' phase='end' index='1' total='3' elapsed_ms='120' failed='0'",
+            "[startup] pack_load_progress pack='active_directory' phase='begin' index='2' total='3'",
+            "[startup] pack_load_progress pack='active_directory' phase='end' index='2' total='3' elapsed_ms='1400' failed='0'",
+            "[startup] pack_load_progress pack='plugins' phase='begin' index='3' total='3'",
+            "[startup] pack_load_progress pack='plugins' phase='end' index='3' total='3' elapsed_ms='900' failed='1'",
+            "[plugin] path_not_found path='C:\\plugins\\missing'"
+        };
+
+        method!.Invoke(null, new object?[] { warnings });
+
+        Assert.DoesNotContain(warnings, static w => w.StartsWith("[startup] pack_load_progress", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static w => w.StartsWith("[plugin] path_not_found", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(warnings, static w => w.StartsWith("[startup] pack load progress: processed 3/3 bootstrap steps (begin=3, end=3).", StringComparison.OrdinalIgnoreCase));
+
+        var slowPacks = Assert.Single(warnings, static w => w.StartsWith("[startup] slow pack loads top", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("active_directory=1400ms", slowPacks, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("plugins=900ms", slowPacks, StringComparison.OrdinalIgnoreCase);
     }
 }

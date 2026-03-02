@@ -66,6 +66,7 @@ namespace IntelligenceX.Chat.Abstractions.Serialization;
 [JsonSerializable(typeof(ToolErrorMetricDto))]
 [JsonSerializable(typeof(TurnCounterMetricDto))]
 [JsonSerializable(typeof(SessionPolicyDto))]
+[JsonSerializable(typeof(SessionStartupBootstrapTelemetryDto))]
 [JsonSerializable(typeof(SessionRuntimePolicyDto))]
 [JsonSerializable(typeof(SessionRoutingCatalogDiagnosticsDto))]
 [JsonSerializable(typeof(SessionRoutingFamilyActionSummaryDto))]

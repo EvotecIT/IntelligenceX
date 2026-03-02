@@ -931,6 +931,7 @@
     }
 
     var startupWarnings = toStringArray(p.startupWarnings);
+    var startupBootstrap = normalizeStartupBootstrap(p.startupBootstrap);
     var pluginSearchPaths = toStringArray(p.pluginSearchPaths);
     var runtimePolicy = normalizeRuntimePolicy(p.runtimePolicy);
     var routingCatalog = normalizeRoutingCatalog(p.routingCatalog);
@@ -954,7 +955,8 @@
         : (routingCatalog.isExplicitRoutingReady ? "Yes" : ("No (" + explicitReadinessIssueCount + ")"))],
       ["Routing families", !routingCatalog ? "N/A" : String(routingCatalog.familyActions.length)],
       ["Plugin roots", pluginSearchPaths.length === 0 ? "None" : String(pluginSearchPaths.length)],
-      ["Runtime notices", runtimeNotices.length === 0 ? "None" : String(runtimeNotices.length)]
+      ["Runtime notices", runtimeNotices.length === 0 ? "None" : String(runtimeNotices.length)],
+      ["Tool bootstrap", !startupBootstrap ? "N/A" : formatStartupBootstrapSummary(startupBootstrap)]
     ];
 
     for (var i = 0; i < rows.length; i++) {
@@ -1017,6 +1019,71 @@
       runAsProfilePath: normalizeOptionalPath(value.runAsProfilePath),
       authenticationProfilePath: normalizeOptionalPath(value.authenticationProfilePath)
     };
+  }
+
+  function normalizeStartupBootstrap(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    return {
+      totalMs: toNonNegativeInt(value.totalMs),
+      runtimePolicyMs: toNonNegativeInt(value.runtimePolicyMs),
+      bootstrapOptionsMs: toNonNegativeInt(value.bootstrapOptionsMs),
+      packLoadMs: toNonNegativeInt(value.packLoadMs),
+      registryMs: toNonNegativeInt(value.registryMs),
+      tools: toNonNegativeInt(value.tools),
+      packsLoaded: toNonNegativeInt(value.packsLoaded),
+      packsDisabled: toNonNegativeInt(value.packsDisabled),
+      pluginRoots: toNonNegativeInt(value.pluginRoots),
+      slowPackCount: toNonNegativeInt(value.slowPackCount),
+      slowPackTopCount: toNonNegativeInt(value.slowPackTopCount),
+      packProgressProcessed: toNonNegativeInt(value.packProgressProcessed),
+      packProgressTotal: toNonNegativeInt(value.packProgressTotal),
+      slowPluginCount: toNonNegativeInt(value.slowPluginCount),
+      slowPluginTopCount: toNonNegativeInt(value.slowPluginTopCount),
+      pluginProgressProcessed: toNonNegativeInt(value.pluginProgressProcessed),
+      pluginProgressTotal: toNonNegativeInt(value.pluginProgressTotal)
+    };
+  }
+
+  function formatStartupBootstrapDuration(ms) {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return "0ms";
+    }
+
+    if (ms >= 1000) {
+      return (ms / 1000).toFixed(1) + "s";
+    }
+
+    return String(ms) + "ms";
+  }
+
+  function formatStartupBootstrapSummary(telemetry) {
+    if (!telemetry) {
+      return "N/A";
+    }
+
+    var segments = [];
+    segments.push("total " + formatStartupBootstrapDuration(telemetry.totalMs));
+    segments.push("pack-load " + formatStartupBootstrapDuration(telemetry.packLoadMs));
+    segments.push("registry " + formatStartupBootstrapDuration(telemetry.registryMs));
+    segments.push("tools " + String(telemetry.tools));
+    segments.push("enabled-packs " + String(telemetry.packsLoaded) + "/" + String(Math.max(telemetry.packsLoaded, telemetry.packsDisabled + telemetry.packsLoaded)));
+    if (telemetry.packProgressTotal > 0 || telemetry.packProgressProcessed > 0) {
+      segments.push("pack-steps " + String(telemetry.packProgressProcessed) + "/" + String(Math.max(telemetry.packProgressTotal, telemetry.packProgressProcessed)));
+    }
+    if (telemetry.slowPackCount > 0) {
+      segments.push("slow-packs " + String(telemetry.slowPackCount));
+    }
+    if (telemetry.pluginProgressTotal > 0 || telemetry.pluginProgressProcessed > 0) {
+      segments.push("plugins " + String(telemetry.pluginProgressProcessed) + "/" + String(Math.max(telemetry.pluginProgressTotal, telemetry.pluginProgressProcessed)));
+    }
+    if (telemetry.slowPluginCount > 0) {
+      segments.push("slow " + String(telemetry.slowPluginCount));
+    }
+
+    return segments.join("; ");
   }
 
   function computeRoutingCatalogIssueCount(routingCatalog) {

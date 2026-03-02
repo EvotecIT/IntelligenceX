@@ -25,8 +25,8 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     internal static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<ToolPackAvailabilityInfo> packAvailability,
-        IReadOnlyList<string> startupWarnings, IReadOnlyList<string> pluginSearchPaths, ToolRuntimePolicyDiagnostics runtimePolicy,
-        ToolRoutingCatalogDiagnostics? routingCatalog = null) {
+        IReadOnlyList<string> startupWarnings, SessionStartupBootstrapTelemetryDto? startupBootstrap, IReadOnlyList<string> pluginSearchPaths,
+        ToolRuntimePolicyDiagnostics runtimePolicy, ToolRoutingCatalogDiagnostics? routingCatalog = null) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
         var packList = new List<ToolPackInfoDto>();
@@ -70,6 +70,7 @@ internal sealed partial class ChatServiceSession {
             MaxSample = options.MaxSample <= 0 ? null : options.MaxSample,
             Redact = options.Redact,
             StartupWarnings = startupWarnings.Count == 0 ? Array.Empty<string>() : startupWarnings.ToArray(),
+            StartupBootstrap = startupBootstrap,
             PluginSearchPaths = pluginSearchPaths.Count == 0 ? Array.Empty<string>() : pluginSearchPaths.ToArray(),
             RuntimePolicy = new SessionRuntimePolicyDto {
                 WriteGovernanceMode = ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(runtimePolicy.WriteGovernanceMode),

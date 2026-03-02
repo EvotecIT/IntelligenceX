@@ -604,6 +604,7 @@ public sealed partial class MainWindow : Window {
                     setProfileNewThread: true,
                     appendWarnings: false).ConfigureAwait(false);
                 if (!profileApplied) {
+                    BuildRuntimePackToggleLists(out var enablePackIds, out var disablePackIds);
                     var liveSynced = await TryApplyRuntimeSettingsLiveAsync(
                             profileSaved: true,
                             model: _localProviderModel,
@@ -622,9 +623,8 @@ public sealed partial class MainWindow : Window {
                             reasoningSummary: _localProviderReasoningSummary,
                             textVerbosity: _localProviderTextVerbosity,
                             temperature: _localProviderTemperature,
-                            enablePowerShellPack: ResolveRuntimeManagedPackEnabled("powershell"),
-                            enableTestimoXPack: ResolveRuntimeManagedPackEnabled("testimox"),
-                            enableOfficeImoPack: ResolveRuntimeManagedPackEnabled("officeimo")).ConfigureAwait(false);
+                            enablePackIds: enablePackIds,
+                            disablePackIds: disablePackIds).ConfigureAwait(false);
                     if (liveSynced) {
                         await SyncConnectedServiceProfileAndModelsAsync(
                             forceModelRefresh: false,

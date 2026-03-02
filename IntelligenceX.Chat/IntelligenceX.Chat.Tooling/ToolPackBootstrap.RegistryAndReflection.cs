@@ -497,5 +497,6 @@ public static partial class ToolPackBootstrap {
         string Description,
         ToolCapabilityTier Tier,
         bool IsDangerous,
-        string SourceKind);
+        string SourceKind,
+        bool DefaultEnabled);
 }

@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Copilot;
@@ -19,6 +22,12 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const string DefaultRuntimeModel = "gpt-5.3-codex";
+    private const string PluginLoadTimingWarningPrefix = "[plugin] load_timing ";
+    private const string PluginLoadProgressWarningPrefix = "[plugin] load_progress ";
+    private const string PackLoadProgressWarningPrefix = "[startup] pack_load_progress ";
+    private const int SlowPluginSummaryTopCount = 3;
+    private const int SlowPackSummaryTopCount = 3;
+    private const long SlowPackSummaryThresholdMs = 500;
     private sealed record SetProfileResult(bool ReconnectClient, bool ModelChanged);
     private sealed record ModelListCacheEntry(string Key, DateTime ExpiresAtUtc, ModelListResult Result);
 
@@ -470,14 +479,41 @@ internal sealed partial class ChatServiceSession {
                 _options.Temperature = temperature;
             }
 
-            if (request.EnablePowerShellPack.HasValue) {
-                _options.EnablePowerShellPack = request.EnablePowerShellPack.Value;
+            if (request.EnablePackIds is { Length: > 0 } enablePackIds) {
+                for (var i = 0; i < enablePackIds.Length; i++) {
+                    if (!ServiceOptions.TryApplyPackEnablement(
+                            _options,
+                            enablePackIds[i],
+                            enabled: true,
+                            argumentName: "enablePackIds",
+                            out var packToggleError)) {
+                        await WriteAsync(writer, new ErrorMessage {
+                            Kind = ChatServiceMessageKind.Response,
+                            RequestId = request.RequestId,
+                            Error = packToggleError ?? "Invalid enablePackIds entry.",
+                            Code = "invalid_argument"
+                        }, cancellationToken).ConfigureAwait(false);
+                        return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                    }
+                }
             }
-            if (request.EnableTestimoXPack.HasValue) {
-                _options.EnableTestimoXPack = request.EnableTestimoXPack.Value;
-            }
-            if (request.EnableOfficeImoPack.HasValue) {
-                _options.EnableOfficeImoPack = request.EnableOfficeImoPack.Value;
+            if (request.DisablePackIds is { Length: > 0 } disablePackIds) {
+                for (var i = 0; i < disablePackIds.Length; i++) {
+                    if (!ServiceOptions.TryApplyPackEnablement(
+                            _options,
+                            disablePackIds[i],
+                            enabled: false,
+                            argumentName: "disablePackIds",
+                            out var packToggleError)) {
+                        await WriteAsync(writer, new ErrorMessage {
+                            Kind = ChatServiceMessageKind.Response,
+                            RequestId = request.RequestId,
+                            Error = packToggleError ?? "Invalid disablePackIds entry.",
+                            Code = "invalid_argument"
+                        }, cancellationToken).ConfigureAwait(false);
+                        return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                    }
+                }
             }
 
             var saveProfileName = (request.ProfileName ?? string.Empty).Trim();
@@ -568,17 +604,32 @@ internal sealed partial class ChatServiceSession {
         nameof(_toolOrchestrationCatalog))]
     private void RebuildToolingCore(bool clearRoutingCaches) {
         var startupWarnings = new List<string>();
+        var totalStopwatch = Stopwatch.StartNew();
+        static string FormatElapsed(TimeSpan elapsed) {
+            return elapsed.TotalSeconds >= 1
+                ? $"{elapsed.TotalSeconds:0.0}s"
+                : $"{Math.Max(1, elapsed.TotalMilliseconds):0}ms";
+        }
+
+        var runtimePolicyStopwatch = Stopwatch.StartNew();
         var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
             BuildRuntimePolicyOptions(_options),
             warning => RecordBootstrapWarning(startupWarnings, warning));
+        runtimePolicyStopwatch.Stop();
+
+        var bootstrapOptionsStopwatch = Stopwatch.StartNew();
         var bootstrapOptions = ToolPackBootstrap.CreateRuntimeBootstrapOptions(
             _options,
             runtimePolicyContext,
             warning => RecordBootstrapWarning(startupWarnings, warning));
-        var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
-        var pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
-        var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
+        bootstrapOptionsStopwatch.Stop();
 
+        var packBootstrapStopwatch = Stopwatch.StartNew();
+        var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
+        packBootstrapStopwatch.Stop();
+        var pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
+
+        var registryBuildStopwatch = Stopwatch.StartNew();
         var registry = new ToolRegistry();
         _toolPackIdsByToolName.Clear();
         ToolPackBootstrap.RegisterAll(registry, bootstrapResult.Packs, _toolPackIdsByToolName);
@@ -586,11 +637,54 @@ internal sealed partial class ChatServiceSession {
         _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, _toolPackIdsByToolName);
         _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
         _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+        registryBuildStopwatch.Stop();
+
+        totalStopwatch.Stop();
+        var availability = bootstrapResult.PackAvailability;
+        var disabledPackCount = 0;
+        for (var i = 0; i < availability.Count; i++) {
+            if (!availability[i].Enabled) {
+                disabledPackCount++;
+            }
+        }
+
+        if (totalStopwatch.Elapsed >= TimeSpan.FromMilliseconds(600)) {
+            RecordBootstrapWarning(
+                startupWarnings,
+                $"[startup] tooling bootstrap timings total={FormatElapsed(totalStopwatch.Elapsed)} " +
+                $"policy={FormatElapsed(runtimePolicyStopwatch.Elapsed)} " +
+                $"options={FormatElapsed(bootstrapOptionsStopwatch.Elapsed)} " +
+                $"packs={FormatElapsed(packBootstrapStopwatch.Elapsed)} " +
+                $"registry={FormatElapsed(registryBuildStopwatch.Elapsed)} " +
+                $"tools={definitions.Count} packsLoaded={bootstrapResult.Packs.Count} packsDisabled={disabledPackCount} pluginRoots={pluginSearchPaths.Length}.");
+        }
+
+        var warningSummary = SummarizeStartupLoadWarnings(startupWarnings);
+        var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
 
         _packs = bootstrapResult.Packs;
         _packAvailability = bootstrapResult.PackAvailability.ToArray();
         _pluginSearchPaths = pluginSearchPaths;
         _startupWarnings = warnings;
+        _startupBootstrap = new SessionStartupBootstrapTelemetryDto {
+            TotalMs = Math.Max(1, (long)totalStopwatch.Elapsed.TotalMilliseconds),
+            RuntimePolicyMs = Math.Max(1, (long)runtimePolicyStopwatch.Elapsed.TotalMilliseconds),
+            BootstrapOptionsMs = Math.Max(1, (long)bootstrapOptionsStopwatch.Elapsed.TotalMilliseconds),
+            PackLoadMs = Math.Max(1, (long)packBootstrapStopwatch.Elapsed.TotalMilliseconds),
+            RegistryMs = Math.Max(1, (long)registryBuildStopwatch.Elapsed.TotalMilliseconds),
+            Tools = definitions.Count,
+            PacksLoaded = bootstrapResult.Packs.Count,
+            PacksDisabled = disabledPackCount,
+            PluginRoots = pluginSearchPaths.Length,
+            SlowPackCount = warningSummary.SlowPackCount,
+            SlowPackTopCount = warningSummary.SlowPackTopCount,
+            PackProgressProcessed = warningSummary.PackProgressProcessed,
+            PackProgressTotal = warningSummary.PackProgressTotal,
+            SlowPluginCount = warningSummary.SlowPluginCount,
+            SlowPluginTopCount = warningSummary.SlowPluginTopCount,
+            PluginProgressProcessed = warningSummary.PluginProgressProcessed,
+            PluginProgressTotal = warningSummary.PluginProgressTotal
+        };
         _registry = registry;
 
         UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
@@ -634,6 +728,385 @@ internal sealed partial class ChatServiceSession {
         ClearToolRoutingStatsSnapshots();
         ClearWorkingMemoryCheckpoints();
     }
+
+    private static StartupLoadWarningSummary SummarizeStartupLoadWarnings(List<string> startupWarnings) {
+        if (startupWarnings is null || startupWarnings.Count == 0) {
+            return default;
+        }
+
+        var retainedWarnings = new List<string>(startupWarnings.Count);
+        var pluginEntries = new Dictionary<string, SlowPluginLoadEntry>(StringComparer.OrdinalIgnoreCase);
+        var packEntries = new Dictionary<string, SlowPackLoadEntry>(StringComparer.OrdinalIgnoreCase);
+
+        var pluginProgressBeginCount = 0;
+        var pluginProgressEndCount = 0;
+        var pluginProgressLatestIndex = 0;
+        var pluginProgressLatestTotal = 0;
+
+        var packProgressBeginCount = 0;
+        var packProgressEndCount = 0;
+        var packProgressLatestIndex = 0;
+        var packProgressLatestTotal = 0;
+
+        for (var i = 0; i < startupWarnings.Count; i++) {
+            var warning = startupWarnings[i];
+            if (TryParseSlowPluginLoadWarning(warning, out var pluginEntry)) {
+                if (!pluginEntries.TryGetValue(pluginEntry.PluginId, out var existingPlugin) || existingPlugin.ElapsedMs < pluginEntry.ElapsedMs) {
+                    pluginEntries[pluginEntry.PluginId] = pluginEntry;
+                }
+                continue;
+            }
+
+            if (TryParsePluginLoadProgressWarning(warning, out var pluginProgressEntry)) {
+                if (pluginProgressEntry.IsBegin) {
+                    pluginProgressBeginCount++;
+                } else {
+                    pluginProgressEndCount++;
+                }
+
+                if (pluginProgressEntry.Index > pluginProgressLatestIndex) {
+                    pluginProgressLatestIndex = pluginProgressEntry.Index;
+                }
+                if (pluginProgressEntry.Total > pluginProgressLatestTotal) {
+                    pluginProgressLatestTotal = pluginProgressEntry.Total;
+                }
+                continue;
+            }
+
+            if (TryParsePackLoadProgressWarning(warning, out var packProgressEntry)) {
+                if (packProgressEntry.IsBegin) {
+                    packProgressBeginCount++;
+                } else {
+                    packProgressEndCount++;
+                    if (packProgressEntry.ElapsedMs >= SlowPackSummaryThresholdMs) {
+                        if (!packEntries.TryGetValue(packProgressEntry.PackId, out var existingPack)
+                            || existingPack.ElapsedMs < packProgressEntry.ElapsedMs) {
+                            packEntries[packProgressEntry.PackId] = new SlowPackLoadEntry(
+                                PackId: packProgressEntry.PackId,
+                                ElapsedMs: packProgressEntry.ElapsedMs,
+                                Failed: packProgressEntry.Failed);
+                        }
+                    }
+                }
+
+                if (packProgressEntry.Index > packProgressLatestIndex) {
+                    packProgressLatestIndex = packProgressEntry.Index;
+                }
+                if (packProgressEntry.Total > packProgressLatestTotal) {
+                    packProgressLatestTotal = packProgressEntry.Total;
+                }
+                continue;
+            }
+
+            retainedWarnings.Add(warning);
+        }
+
+        if (pluginEntries.Count > 0) {
+            var orderedPlugins = pluginEntries.Values
+                .OrderByDescending(static e => e.ElapsedMs)
+                .ThenBy(static e => e.PluginId, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var pluginTopCount = Math.Min(SlowPluginSummaryTopCount, orderedPlugins.Length);
+
+            var pluginSegments = new List<string>(pluginTopCount);
+            for (var i = 0; i < pluginTopCount; i++) {
+                var entry = orderedPlugins[i];
+                pluginSegments.Add($"{entry.PluginId}={entry.ElapsedMs}ms (loaded={entry.Loaded}, disabled={entry.Disabled}, failed={entry.Failed})");
+            }
+
+            retainedWarnings.Add($"[startup] slow plugin loads top {pluginTopCount}/{orderedPlugins.Length}: {string.Join("; ", pluginSegments)}");
+            if (orderedPlugins.Length > pluginTopCount) {
+                retainedWarnings.Add($"[startup] additional slow plugins omitted: {orderedPlugins.Length - pluginTopCount}.");
+            }
+        }
+
+        if (packEntries.Count > 0) {
+            var orderedPacks = packEntries.Values
+                .OrderByDescending(static e => e.ElapsedMs)
+                .ThenBy(static e => e.PackId, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var packTopCount = Math.Min(SlowPackSummaryTopCount, orderedPacks.Length);
+
+            var packSegments = new List<string>(packTopCount);
+            for (var i = 0; i < packTopCount; i++) {
+                var entry = orderedPacks[i];
+                var failedToken = entry.Failed ? ", failed=1" : string.Empty;
+                packSegments.Add($"{entry.PackId}={entry.ElapsedMs}ms{failedToken}");
+            }
+
+            retainedWarnings.Add($"[startup] slow pack loads top {packTopCount}/{orderedPacks.Length}: {string.Join("; ", packSegments)}");
+            if (orderedPacks.Length > packTopCount) {
+                retainedWarnings.Add($"[startup] additional slow packs omitted: {orderedPacks.Length - packTopCount}.");
+            }
+        }
+
+        if (pluginProgressBeginCount > 0 || pluginProgressEndCount > 0) {
+            AppendPluginLoadProgressSummary(
+                retainedWarnings,
+                pluginProgressBeginCount,
+                pluginProgressEndCount,
+                pluginProgressLatestIndex,
+                pluginProgressLatestTotal);
+        }
+
+        if (packProgressBeginCount > 0 || packProgressEndCount > 0) {
+            AppendPackLoadProgressSummary(
+                retainedWarnings,
+                packProgressBeginCount,
+                packProgressEndCount,
+                packProgressLatestIndex,
+                packProgressLatestTotal);
+        }
+
+        startupWarnings.Clear();
+        startupWarnings.AddRange(retainedWarnings);
+        var pluginProcessed = ResolvePluginProgressProcessed(pluginProgressEndCount, pluginProgressLatestIndex);
+        var pluginTotal = ResolvePluginProgressTotal(pluginProgressBeginCount, pluginProgressEndCount, pluginProgressLatestTotal, pluginProcessed);
+        var packProcessed = ResolvePackProgressProcessed(packProgressEndCount, packProgressLatestIndex);
+        var packTotal = ResolvePackProgressTotal(packProgressBeginCount, packProgressEndCount, packProgressLatestTotal, packProcessed);
+        var pluginTop = pluginEntries.Count == 0 ? 0 : Math.Min(SlowPluginSummaryTopCount, pluginEntries.Count);
+        var packTop = packEntries.Count == 0 ? 0 : Math.Min(SlowPackSummaryTopCount, packEntries.Count);
+        return new StartupLoadWarningSummary(
+            SlowPluginCount: pluginEntries.Count,
+            SlowPluginTopCount: pluginTop,
+            PluginProgressProcessed: pluginProcessed,
+            PluginProgressTotal: pluginTotal,
+            SlowPackCount: packEntries.Count,
+            SlowPackTopCount: packTop,
+            PackProgressProcessed: packProcessed,
+            PackProgressTotal: packTotal);
+    }
+
+    private static StartupLoadWarningSummary SummarizeSlowPluginLoadWarnings(List<string> startupWarnings) {
+        return SummarizeStartupLoadWarnings(startupWarnings);
+    }
+
+    private static void AppendPluginLoadProgressSummary(
+        List<string> retainedWarnings,
+        int progressBeginCount,
+        int progressEndCount,
+        int progressLatestIndex,
+        int progressLatestTotal) {
+        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
+        var total = progressLatestTotal > 0
+            ? progressLatestTotal
+            : Math.Max(processed, Math.Max(progressBeginCount, progressEndCount));
+        processed = Math.Clamp(processed, 0, Math.Max(1, total));
+        total = Math.Max(1, total);
+
+        retainedWarnings.Add(
+            $"[startup] plugin load progress: processed {processed}/{total} plugin folders (begin={progressBeginCount}, end={progressEndCount}).");
+    }
+
+    private static int ResolvePluginProgressProcessed(int progressEndCount, int progressLatestIndex) {
+        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
+        return Math.Max(0, processed);
+    }
+
+    private static int ResolvePluginProgressTotal(int progressBeginCount, int progressEndCount, int progressLatestTotal, int processed) {
+        var total = progressLatestTotal > 0
+            ? progressLatestTotal
+            : Math.Max(processed, Math.Max(progressBeginCount, progressEndCount));
+        return Math.Max(0, total);
+    }
+
+    private static void AppendPackLoadProgressSummary(
+        List<string> retainedWarnings,
+        int progressBeginCount,
+        int progressEndCount,
+        int progressLatestIndex,
+        int progressLatestTotal) {
+        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
+        var total = progressLatestTotal > 0
+            ? progressLatestTotal
+            : Math.Max(processed, Math.Max(progressBeginCount, progressEndCount));
+        processed = Math.Clamp(processed, 0, Math.Max(1, total));
+        total = Math.Max(1, total);
+
+        retainedWarnings.Add(
+            $"[startup] pack load progress: processed {processed}/{total} bootstrap steps (begin={progressBeginCount}, end={progressEndCount}).");
+    }
+
+    private static int ResolvePackProgressProcessed(int progressEndCount, int progressLatestIndex) {
+        var processed = progressLatestIndex > 0 ? progressLatestIndex : progressEndCount;
+        return Math.Max(0, processed);
+    }
+
+    private static int ResolvePackProgressTotal(int progressBeginCount, int progressEndCount, int progressLatestTotal, int processed) {
+        var total = progressLatestTotal > 0
+            ? progressLatestTotal
+            : Math.Max(processed, Math.Max(progressBeginCount, progressEndCount));
+        return Math.Max(0, total);
+    }
+
+    private static bool TryParseSlowPluginLoadWarning(string warning, out SlowPluginLoadEntry entry) {
+        entry = default;
+        if (string.IsNullOrWhiteSpace(warning)
+            || !warning.StartsWith(PluginLoadTimingWarningPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!TryReadQuotedToken(warning, "plugin", out var pluginId)
+            || !TryReadQuotedToken(warning, "elapsed_ms", out var elapsedRaw)
+            || !long.TryParse(elapsedRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var elapsedMs)
+            || elapsedMs <= 0) {
+            return false;
+        }
+
+        var loaded = TryReadQuotedIntToken(warning, "loaded", out var loadedValue) ? loadedValue : 0;
+        var disabled = TryReadQuotedIntToken(warning, "disabled", out var disabledValue) ? disabledValue : 0;
+        var failed = TryReadQuotedIntToken(warning, "failed", out var failedValue) ? failedValue : 0;
+
+        entry = new SlowPluginLoadEntry(
+            PluginId: pluginId,
+            ElapsedMs: elapsedMs,
+            Loaded: loaded,
+            Disabled: disabled,
+            Failed: failed);
+        return true;
+    }
+
+    private static bool TryReadQuotedIntToken(string warning, string token, out int value) {
+        value = 0;
+        if (!TryReadQuotedToken(warning, token, out var raw)) {
+            return false;
+        }
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static bool TryParsePluginLoadProgressWarning(string warning, out PluginLoadProgressEntry entry) {
+        entry = default;
+        if (string.IsNullOrWhiteSpace(warning)
+            || !warning.StartsWith(PluginLoadProgressWarningPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!TryReadQuotedToken(warning, "plugin", out var pluginId)
+            || !TryReadQuotedToken(warning, "phase", out var phase)
+            || !TryReadQuotedIntToken(warning, "index", out var index)
+            || !TryReadQuotedIntToken(warning, "total", out var total)
+            || index <= 0
+            || total <= 0) {
+            return false;
+        }
+
+        var isBegin = string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase);
+        var isEnd = string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase);
+        if (!isBegin && !isEnd) {
+            return false;
+        }
+
+        entry = new PluginLoadProgressEntry(
+            PluginId: pluginId,
+            IsBegin: isBegin,
+            Index: index,
+            Total: total);
+        return true;
+    }
+
+    private static bool TryParsePackLoadProgressWarning(string warning, out PackLoadProgressEntry entry) {
+        entry = default;
+        if (string.IsNullOrWhiteSpace(warning)
+            || !warning.StartsWith(PackLoadProgressWarningPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!TryReadQuotedToken(warning, "pack", out var packId)
+            || !TryReadQuotedToken(warning, "phase", out var phase)
+            || !TryReadQuotedIntToken(warning, "index", out var index)
+            || !TryReadQuotedIntToken(warning, "total", out var total)
+            || index <= 0
+            || total <= 0) {
+            return false;
+        }
+
+        var isBegin = string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase);
+        var isEnd = string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase);
+        if (!isBegin && !isEnd) {
+            return false;
+        }
+
+        var elapsedMs = 0L;
+        if (isEnd && (!TryReadQuotedLongToken(warning, "elapsed_ms", out elapsedMs) || elapsedMs < 0)) {
+            return false;
+        }
+
+        var failed = false;
+        if (isEnd && TryReadQuotedIntToken(warning, "failed", out var failedValue)) {
+            failed = failedValue != 0;
+        }
+
+        entry = new PackLoadProgressEntry(
+            PackId: packId,
+            IsBegin: isBegin,
+            Index: index,
+            Total: total,
+            ElapsedMs: elapsedMs,
+            Failed: failed);
+        return true;
+    }
+
+    private static bool TryReadQuotedToken(string warning, string token, out string value) {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(warning) || string.IsNullOrWhiteSpace(token)) {
+            return false;
+        }
+
+        var key = token + "='";
+        var keyIndex = warning.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+        if (keyIndex < 0) {
+            return false;
+        }
+
+        var valueStart = keyIndex + key.Length;
+        var valueEnd = warning.IndexOf('\'', valueStart);
+        if (valueEnd <= valueStart) {
+            return false;
+        }
+
+        value = warning.Substring(valueStart, valueEnd - valueStart).Trim();
+        return value.Length != 0;
+    }
+
+    private static bool TryReadQuotedLongToken(string warning, string token, out long value) {
+        value = 0;
+        if (!TryReadQuotedToken(warning, token, out var raw)) {
+            return false;
+        }
+        return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    private readonly record struct SlowPluginLoadEntry(
+        string PluginId,
+        long ElapsedMs,
+        int Loaded,
+        int Disabled,
+        int Failed);
+    private readonly record struct SlowPackLoadEntry(
+        string PackId,
+        long ElapsedMs,
+        bool Failed);
+    private readonly record struct PluginLoadProgressEntry(
+        string PluginId,
+        bool IsBegin,
+        int Index,
+        int Total);
+    private readonly record struct PackLoadProgressEntry(
+        string PackId,
+        bool IsBegin,
+        int Index,
+        int Total,
+        long ElapsedMs,
+        bool Failed);
+    private readonly record struct StartupLoadWarningSummary(
+        int SlowPluginCount,
+        int SlowPluginTopCount,
+        int PluginProgressProcessed,
+        int PluginProgressTotal,
+        int SlowPackCount,
+        int SlowPackTopCount,
+        int PackProgressProcessed,
+        int PackProgressTotal);
     internal static (bool ReconnectClient, bool ModelChanged) ResolveRuntimeClientReconfigureDecision(
         OpenAITransportKind previousTransport,
         OpenAITransportKind currentTransport,

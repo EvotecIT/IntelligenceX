@@ -74,7 +74,8 @@ internal static partial class PluginFolderToolPackLoader {
         List<IToolPack> packs,
         ToolPackBootstrapOptions options,
         HashSet<string> existingPackIds,
-        Action<string>? onWarning) {
+        Action<string>? onWarning,
+        Action<ToolPackAvailabilityInfo>? onPackAvailability = null) {
         if (packs is null) {
             throw new ArgumentNullException(nameof(packs));
         }
@@ -86,6 +87,7 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var roots = ResolvePluginSearchRoots(options);
+        var pendingPluginDirectories = new List<(string PluginDirectory, bool IsExplicitRoot)>();
         foreach (var root in roots) {
             if (!Directory.Exists(root.Path)) {
                 if (root.IsExplicit) {
@@ -95,14 +97,23 @@ internal static partial class PluginFolderToolPackLoader {
             }
 
             foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, options, onWarning)) {
-                TryLoadPluginDirectory(
-                    pluginDirectory: pluginDirectory,
-                    isExplicitRoot: root.IsExplicit,
-                    options: options,
-                    packs: packs,
-                    existingPackIds: existingPackIds,
-                    onWarning: onWarning);
+                pendingPluginDirectories.Add((pluginDirectory, root.IsExplicit));
             }
+        }
+
+        var total = pendingPluginDirectories.Count;
+        for (var i = 0; i < pendingPluginDirectories.Count; i++) {
+            var pending = pendingPluginDirectories[i];
+            TryLoadPluginDirectory(
+                pluginDirectory: pending.PluginDirectory,
+                isExplicitRoot: pending.IsExplicitRoot,
+                options: options,
+                packs: packs,
+                existingPackIds: existingPackIds,
+                onWarning: onWarning,
+                onPackAvailability: onPackAvailability,
+                loadIndex: i + 1,
+                loadTotal: total);
         }
     }
 
@@ -431,6 +442,8 @@ internal static partial class PluginFolderToolPackLoader {
         public string? DisplayName { get; set; }
         public string? PackageId { get; set; }
         public string? Version { get; set; }
+        public bool? DefaultEnabled { get; set; }
+        public bool? IsDangerous { get; set; }
         public string? SourceKind { get; set; }
         public string? Source { get; set; }
         public string? Visibility { get; set; }

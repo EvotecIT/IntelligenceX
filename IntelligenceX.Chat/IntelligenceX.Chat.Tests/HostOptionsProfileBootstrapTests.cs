@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
@@ -96,6 +97,25 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void ApplyProfile_PropagatesPackToggleLists() {
+        var options = CreateHostOptionsInstance();
+        Assert.NotNull(options);
+
+        var replOptionsType = options!.GetType();
+        var applyProfile = replOptionsType.GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(applyProfile);
+
+        var profile = new ServiceProfile {
+            DisabledPackIds = new List<string> { "custompluginpack" },
+            EnabledPackIds = new List<string> { "powershell" }
+        };
+
+        applyProfile!.Invoke(options, new object?[] { profile });
+        Assert.Contains("custompluginpack", ReadStringListProperty(options, "DisabledPackIds"));
+        Assert.Contains("powershell", ReadStringListProperty(options, "EnabledPackIds"));
+    }
+
+    [Fact]
     public void Parse_ProfileDefaultMutatingParallelTrue_IsAppliedWithoutCliOverride() {
         var dbPath = CreateTempProfileDbPath();
         try {
@@ -183,6 +203,37 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_DisablePackId_DisablesKnownPackAndTracksId() {
+        var options = ParseHostOptions(new[] { "--disable-pack-id", "testimox" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.Contains("testimox", ReadStringListProperty(options!, "DisabledPackIds"));
+        Assert.DoesNotContain("testimox", ReadStringListProperty(options!, "EnabledPackIds"));
+    }
+
+    [Fact]
+    public void Parse_EnablePackId_AfterDisable_ReEnablesKnownPackAndClearsTrackedId() {
+        var options = ParseHostOptions(
+            new[] { "--disable-pack-id", "testimox", "--enable-pack-id", "testimox" },
+            out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.DoesNotContain("testimox", ReadStringListProperty(options!, "DisabledPackIds"));
+        Assert.Contains("testimox", ReadStringListProperty(options!, "EnabledPackIds"));
+    }
+
+    [Fact]
+    public void Parse_DisablePackId_TracksUnknownPackId() {
+        var options = ParseHostOptions(new[] { "--disable-pack-id", "custom_plugin_pack" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.Contains("custompluginpack", ReadStringListProperty(options!, "DisabledPackIds"));
+    }
+
+    [Fact]
     public void Parse_ScenarioFileAndOutput_AreApplied() {
         var options = ParseHostOptions(
             new[] { "--scenario-file", "scenario.json", "--scenario-output", "artifacts\\scenario-report.md" },
@@ -247,6 +298,14 @@ public sealed class HostOptionsProfileBootstrapTests {
         Assert.NotNull(property);
         var value = property!.GetValue(instance);
         return value as string;
+    }
+
+    private static IReadOnlyList<string> ReadStringListProperty(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        var value = property!.GetValue(instance);
+        Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+        return (IReadOnlyList<string>)value!;
     }
 
     private static string CreateTempProfileDbPath() {

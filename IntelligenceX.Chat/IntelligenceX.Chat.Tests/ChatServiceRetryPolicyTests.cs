@@ -190,7 +190,7 @@ public sealed class ChatServiceRetryPolicyTests {
                 description: "Custom DNS diagnostics",
                 parameters: null,
                 category: "dns",
-                tags: new[] { "pack:dnsclientx", "resolver" }));
+                tags: new[] { "pack:custom_dns_tools", "resolver" }));
         var output = new ToolOutputDto {
             CallId = "call-3g",
             Output = "{\"error\":\"Service temporarily unavailable.\"}",
@@ -246,6 +246,90 @@ public sealed class ChatServiceRetryPolicyTests {
         var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
 
         Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_DoesNotRetryTransportForCustomFileScopePack() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_file_reader",
+            new ToolDefinition(
+                name: "custom_file_reader",
+                description: "Custom file reader",
+                parameters: null,
+                category: "filesystem",
+                tags: new[] { "pack:custom_file_tools" }));
+        var output = new ToolOutputDto {
+            CallId = "call-3h",
+            Output = "{\"error\":\"Service temporarily unavailable.\"}",
+            Ok = false,
+            ErrorCode = "transport_unavailable",
+            Error = "Service temporarily unavailable."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_UsesRecoveryContractRetryBudgetForGenericPack() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_domain_lookup",
+            new ToolDefinition(
+                name: "custom_domain_lookup",
+                description: "Custom resolver",
+                parameters: null,
+                category: "dns",
+                tags: new[] { "pack:custom_domain_tools", "resolver" },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 2,
+                    RetryableErrorCodes = new[] { "timeout" }
+                }));
+        var output = new ToolOutputDto {
+            CallId = "call-3i",
+            Output = "{\"error\":\"Tool timed out.\"}",
+            Ok = false,
+            ErrorCode = "tool_timeout",
+            Error = "Tool timed out."
+        };
+
+        var retryAttempt0 = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+        var retryAttempt1 = InvokeShouldRetryToolCall(output, profile, attemptIndex: 1);
+        var retryAttempt2 = InvokeShouldRetryToolCall(output, profile, attemptIndex: 2);
+
+        Assert.True(retryAttempt0);
+        Assert.True(retryAttempt1);
+        Assert.False(retryAttempt2);
+    }
+
+    [Fact]
+    public void ShouldRetryToolCall_RespectsRecoveryContractWhenTransientRetryDisabled() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_inventory_probe",
+            new ToolDefinition(
+                name: "custom_inventory_probe",
+                description: "Custom inventory probe",
+                parameters: null,
+                category: "system",
+                tags: new[] { "pack:custom_system_tools" },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = false,
+                    MaxRetryAttempts = 0
+                }));
+        var output = new ToolOutputDto {
+            CallId = "call-3j",
+            Output = "{\"error\":\"Tool timed out.\"}",
+            Ok = false,
+            ErrorCode = "tool_timeout",
+            Error = "Tool timed out."
+        };
+
+        var shouldRetry = InvokeShouldRetryToolCall(output, profile, attemptIndex: 0);
+
+        Assert.False(shouldRetry);
     }
 
     [Fact]

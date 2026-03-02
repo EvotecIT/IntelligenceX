@@ -75,6 +75,27 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
         }
     }
 
+    [Fact]
+    public async Task UpsertAndGet_PackToggleLists_RoundTripWithDedupedOrder() {
+        var dbPath = CreateTempDbPath();
+        try {
+            using var store = new SqliteServiceProfileStore(dbPath);
+            var profile = new ServiceProfile {
+                DisabledPackIds = new() { " powershell ", "custom_pack", "PowerShell" },
+                EnabledPackIds = new() { "dnsclientx", " custom_pack ", "DNSClientX" }
+            };
+
+            await store.UpsertAsync("pack-toggles", profile, CancellationToken.None);
+            var loaded = await store.GetAsync("pack-toggles", CancellationToken.None);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(new[] { "powershell", "custom_pack" }, loaded!.DisabledPackIds);
+            Assert.Equal(new[] { "dnsclientx", "custom_pack" }, loaded.EnabledPackIds);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
     private static string CreateTempDbPath() {
         return Path.Combine(Path.GetTempPath(), $"ix-chat-profiles-{Guid.NewGuid():N}.db");
     }

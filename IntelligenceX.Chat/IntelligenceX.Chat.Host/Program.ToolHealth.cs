@@ -240,12 +240,12 @@ internal static partial class Program {
         Console.WriteLine("Usage: /toolhealth [filters]");
         Console.WriteLine("Filters can be combined with spaces or commas.");
         Console.WriteLine("Source filters: open, closed/private, builtin.");
-        Console.WriteLine("Pack filters: pack:<id> where id is canonical (for example: system, ad, testimox, eventlog, fs).");
+        Console.WriteLine("Pack filters: pack:<id> where id is canonical runtime metadata.");
         Console.WriteLine("Examples:");
         Console.WriteLine("  /toolhealth");
         Console.WriteLine("  /toolhealth closed");
-        Console.WriteLine("  /toolhealth open,pack:eventlog");
-        Console.WriteLine("  /toolhealth private pack:system pack:ad pack:testimox");
+        Console.WriteLine("  /toolhealth open,pack:<id>");
+        Console.WriteLine("  /toolhealth private pack:<id1> pack:<id2>");
     }
 
     private static string FormatProbeScope(string packId, string? packName, string sourceKind) {

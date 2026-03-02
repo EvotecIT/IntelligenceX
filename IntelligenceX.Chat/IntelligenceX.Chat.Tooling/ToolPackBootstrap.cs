@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using IntelligenceX.Tools;
@@ -32,56 +33,6 @@ public sealed record ToolPackBootstrapOptions {
     /// Max AD results returned by AD tools (0 or less = default).
     /// </summary>
     public int AdMaxResults { get; init; } = 1000;
-
-    /// <summary>
-    /// Enables IX.FileSystem pack when available.
-    /// </summary>
-    public bool EnableFileSystemPack { get; init; } = true;
-
-    /// <summary>
-    /// Enables private IX.System pack when available.
-    /// </summary>
-    public bool EnableSystemPack { get; init; } = true;
-
-    /// <summary>
-    /// Enables private IX.ADPlayground pack when available.
-    /// </summary>
-    public bool EnableActiveDirectoryPack { get; init; } = true;
-
-    /// <summary>
-    /// Enables dangerous IX.PowerShell runtime pack when available.
-    /// </summary>
-    public bool EnablePowerShellPack { get; init; }
-
-    /// <summary>
-    /// Enables IX.TestimoX diagnostics pack when available.
-    /// </summary>
-    public bool EnableTestimoXPack { get; init; } = true;
-
-    /// <summary>
-    /// Enables IX.OfficeIMO read-only document ingestion pack when available.
-    /// </summary>
-    public bool EnableOfficeImoPack { get; init; } = true;
-
-    /// <summary>
-    /// Enables IX.DnsClientX open-source DNS query tools when available.
-    /// </summary>
-    public bool EnableDnsClientXPack { get; init; } = true;
-
-    /// <summary>
-    /// Enables IX.DomainDetective open-source domain diagnostics tools when available.
-    /// </summary>
-    public bool EnableDomainDetectivePack { get; init; } = true;
-
-    /// <summary>
-    /// Enables reviewer setup guidance pack.
-    /// </summary>
-    public bool EnableReviewerSetupPack { get; init; } = true;
-
-    /// <summary>
-    /// Enables Mailozaurr-backed Email pack when available.
-    /// </summary>
-    public bool EnableEmailPack { get; init; } = true;
 
     /// <summary>
     /// Includes maintenance path in reviewer setup guidance output.
@@ -160,6 +111,17 @@ public sealed record ToolPackBootstrapOptions {
     public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Explicitly disabled pack ids (normalized at consumption time).
+    /// </summary>
+    public IReadOnlyList<string> DisabledPackIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Explicitly enabled pack ids (normalized at consumption time).
+    /// Used to opt-in packs whose manifest default is disabled.
+    /// </summary>
+    public IReadOnlyList<string> EnabledPackIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Optional plugin archive extraction cache root.
     /// Defaults to %LOCALAPPDATA%\IntelligenceX.Chat\plugin-cache when not provided.
     /// </summary>
@@ -191,34 +153,9 @@ public interface IToolPackRuntimeSettings {
     int AdMaxResults { get; }
 
     /// <summary>
-    /// Enables dangerous IX.PowerShell runtime pack when available.
-    /// </summary>
-    bool EnablePowerShellPack { get; }
-
-    /// <summary>
     /// Enables read-write intent for IX.PowerShell runtime pack.
     /// </summary>
     bool PowerShellAllowWrite { get; }
-
-    /// <summary>
-    /// Enables IX.TestimoX diagnostics pack when available.
-    /// </summary>
-    bool EnableTestimoXPack { get; }
-
-    /// <summary>
-    /// Enables IX.OfficeIMO read-only document ingestion pack when available.
-    /// </summary>
-    bool EnableOfficeImoPack { get; }
-
-    /// <summary>
-    /// Enables IX.DnsClientX open-source DNS query tools when available.
-    /// </summary>
-    bool EnableDnsClientXPack { get; }
-
-    /// <summary>
-    /// Enables IX.DomainDetective open-source domain diagnostics tools when available.
-    /// </summary>
-    bool EnableDomainDetectivePack { get; }
 
     /// <summary>
     /// Enables default plugin search roots.
@@ -229,6 +166,16 @@ public interface IToolPackRuntimeSettings {
     /// Additional plugin search paths (repeatable).
     /// </summary>
     IReadOnlyList<string> PluginPaths { get; }
+
+    /// <summary>
+    /// Explicitly disabled pack ids (normalized at consumption time).
+    /// </summary>
+    IReadOnlyList<string> DisabledPackIds { get; }
+
+    /// <summary>
+    /// Explicitly enabled pack ids (normalized at consumption time).
+    /// </summary>
+    IReadOnlyList<string> EnabledPackIds { get; }
 }
 
 /// <summary>
@@ -318,7 +265,17 @@ public static partial class ToolPackBootstrap {
         "Safe-by-default file system reads (restricted to AllowedRoots).",
         ToolCapabilityTier.ReadOnly,
         IsDangerous: false,
-        PackSourceBuiltin);
+        PackSourceBuiltin,
+        DefaultEnabled: true);
+
+    private static readonly KnownPackDefinition EventLogPackDefinition = new(
+        "eventlog",
+        "Event Log",
+        "Windows Event Log query and analysis helpers.",
+        ToolCapabilityTier.ReadOnly,
+        IsDangerous: false,
+        PackSourceBuiltin,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition SystemPackDefinition = new(
         "system",
@@ -326,7 +283,8 @@ public static partial class ToolPackBootstrap {
         "ComputerX host inventory and diagnostics (read-only).",
         ToolCapabilityTier.ReadOnly,
         IsDangerous: false,
-        PackSourceClosedSource);
+        PackSourceClosedSource,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition ActiveDirectoryPackDefinition = new(
         "ad",
@@ -334,7 +292,8 @@ public static partial class ToolPackBootstrap {
         "ADPlayground-backed Active Directory analysis tools (read-oriented).",
         ToolCapabilityTier.SensitiveRead,
         IsDangerous: false,
-        PackSourceClosedSource);
+        PackSourceClosedSource,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition PowerShellPackDefinition = new(
         "powershell",
@@ -342,7 +301,8 @@ public static partial class ToolPackBootstrap {
         "Opt-in shell runtime execution (windows_powershell / pwsh / cmd).",
         ToolCapabilityTier.DangerousWrite,
         IsDangerous: true,
-        PackSourceBuiltin);
+        PackSourceBuiltin,
+        DefaultEnabled: false);
 
     private static readonly KnownPackDefinition TestimoXPackDefinition = new(
         "testimox",
@@ -350,7 +310,8 @@ public static partial class ToolPackBootstrap {
         "TestimoX rule discovery and targeted rule execution (read-oriented diagnostics).",
         ToolCapabilityTier.SensitiveRead,
         IsDangerous: false,
-        PackSourceClosedSource);
+        PackSourceClosedSource,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition OfficeImoPackDefinition = new(
         "officeimo",
@@ -358,7 +319,8 @@ public static partial class ToolPackBootstrap {
         "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader.",
         ToolCapabilityTier.ReadOnly,
         IsDangerous: false,
-        PackSourceOpenSource);
+        PackSourceOpenSource,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition DnsClientXPackDefinition = new(
         "dnsclientx",
@@ -366,7 +328,8 @@ public static partial class ToolPackBootstrap {
         "Open-source DNS query and record inspection tools.",
         ToolCapabilityTier.ReadOnly,
         IsDangerous: false,
-        PackSourceOpenSource);
+        PackSourceOpenSource,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition DomainDetectivePackDefinition = new(
         "domaindetective",
@@ -374,7 +337,8 @@ public static partial class ToolPackBootstrap {
         "Open-source domain/server diagnostics and posture analysis tools.",
         ToolCapabilityTier.ReadOnly,
         IsDangerous: false,
-        PackSourceOpenSource);
+        PackSourceOpenSource,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition ReviewerSetupPackDefinition = new(
         "reviewersetup",
@@ -382,7 +346,8 @@ public static partial class ToolPackBootstrap {
         "Path contract and execution guidance for IntelligenceX reviewer onboarding.",
         ToolCapabilityTier.ReadOnly,
         IsDangerous: false,
-        PackSourceBuiltin);
+        PackSourceBuiltin,
+        DefaultEnabled: true);
 
     private static readonly KnownPackDefinition EmailPackDefinition = new(
         "email",
@@ -390,7 +355,8 @@ public static partial class ToolPackBootstrap {
         "IMAP/SMTP workflows (search/get/send) via Mailozaurr.",
         ToolCapabilityTier.SensitiveRead,
         IsDangerous: false,
-        PackSourceBuiltin);
+        PackSourceBuiltin,
+        DefaultEnabled: true);
 
     /// <summary>
     /// Creates runtime bootstrap options from shared host/service settings and policy context.
@@ -412,20 +378,19 @@ public static partial class ToolPackBootstrap {
 
         var allowedRoots = settings.AllowedRoots?.ToArray() ?? Array.Empty<string>();
         var pluginPaths = settings.PluginPaths?.ToArray() ?? Array.Empty<string>();
+        var disabledPackIds = settings.DisabledPackIds?.ToArray() ?? Array.Empty<string>();
+        var enabledPackIds = settings.EnabledPackIds?.ToArray() ?? Array.Empty<string>();
 
         return new ToolPackBootstrapOptions {
             AllowedRoots = allowedRoots,
             AdDomainController = settings.AdDomainController,
             AdDefaultSearchBaseDn = settings.AdDefaultSearchBaseDn,
             AdMaxResults = settings.AdMaxResults,
-            EnablePowerShellPack = settings.EnablePowerShellPack,
             PowerShellAllowWrite = settings.PowerShellAllowWrite,
-            EnableTestimoXPack = settings.EnableTestimoXPack,
-            EnableOfficeImoPack = settings.EnableOfficeImoPack,
-            EnableDnsClientXPack = settings.EnableDnsClientXPack,
-            EnableDomainDetectivePack = settings.EnableDomainDetectivePack,
             EnableDefaultPluginPaths = settings.EnableDefaultPluginPaths,
             PluginPaths = pluginPaths,
+            DisabledPackIds = disabledPackIds,
+            EnabledPackIds = enabledPackIds,
             AuthenticationProbeStore = runtimePolicyContext.AuthenticationProbeStore,
             RequireSuccessfulSmtpProbeForSend = runtimePolicyContext.RequireSuccessfulSmtpProbeForSend,
             SmtpProbeMaxAgeSeconds = runtimePolicyContext.SmtpProbeMaxAgeSeconds,
@@ -457,170 +422,278 @@ public static partial class ToolPackBootstrap {
         var allowedRoots = options.AllowedRoots
             .Where(static root => !string.IsNullOrWhiteSpace(root))
             .ToArray();
+        var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
+        var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
 
         var packs = new List<IToolPack>();
         var availabilityById = new Dictionary<string, ToolPackAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
+        var knownBootstrapStepTotal = 11 + (options.EnablePluginFolderLoading ? 1 : 0);
+        var knownBootstrapStepIndex = 0;
+
+        void RunBootstrapStep(string stepId, Action action) {
+            knownBootstrapStepIndex++;
+            var normalizedStepId = NormalizePackId(stepId);
+            if (normalizedStepId.Length == 0) {
+                normalizedStepId = $"step_{knownBootstrapStepIndex}";
+            }
+
+            var stepIndex = Math.Clamp(knownBootstrapStepIndex, 1, Math.Max(1, knownBootstrapStepTotal));
+            var stepTotal = Math.Max(stepIndex, knownBootstrapStepTotal);
+            options.OnBootstrapWarning?.Invoke(
+                $"[startup] pack_load_progress pack='{normalizedStepId}' phase='begin' index='{stepIndex}' total='{stepTotal}'");
+            var stepStopwatch = Stopwatch.StartNew();
+            var failed = false;
+            try {
+                action();
+            } catch {
+                failed = true;
+                throw;
+            } finally {
+                stepStopwatch.Stop();
+                options.OnBootstrapWarning?.Invoke(
+                    $"[startup] pack_load_progress pack='{normalizedStepId}' phase='end' index='{stepIndex}' total='{stepTotal}' " +
+                    $"elapsed_ms='{Math.Max(1, (long)stepStopwatch.Elapsed.TotalMilliseconds)}' failed='{(failed ? 1 : 0)}'");
+            }
+        }
 
         var evxOptions = new EventLogToolOptions();
         foreach (var root in allowedRoots) {
             evxOptions.AllowedRoots.Add(root);
         }
 
-        var eventLogPack = RequireDeclaredSourceKind(new EventLogToolPack(evxOptions), "Event Log");
-        packs.Add(eventLogPack);
-        UpsertAvailability(
-            availabilityById,
-            CreateAvailabilityFromDescriptor(
-                descriptor: eventLogPack.Descriptor,
-                enabled: true,
-                disabledReason: null));
+        RunBootstrapStep(EventLogPackDefinition.Id, () => {
+            if (!ResolveKnownPackEnabled(
+                    packId: EventLogPackDefinition.Id,
+                    enabledByDefault: EventLogPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds)) {
+                UpsertAvailability(
+                    availabilityById,
+                    CreateAvailabilityFromDefinition(
+                        definition: EventLogPackDefinition,
+                        enabled: false,
+                        disabledReason: DisabledByRuntimeConfigurationReason));
+            } else {
+                var eventLogPack = RequireDeclaredSourceKind(new EventLogToolPack(evxOptions), "Event Log");
+                packs.Add(eventLogPack);
+                UpsertAvailability(
+                    availabilityById,
+                    CreateAvailabilityFromDescriptor(
+                        descriptor: eventLogPack.Descriptor,
+                        enabled: true,
+                        disabledReason: null));
+            }
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableFileSystemPack,
-            definition: FileSystemPackDefinition,
-            packLabel: "IX.FileSystem",
-            packTypeName: FileSystemPackTypeName,
-            optionsTypeName: FileSystemOptionsTypeName,
-            configureOptions: fsOptions => {
-                AddStringListValuesIfPresent(fsOptions, "AllowedRoots", allowedRoots);
-            },
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(FileSystemPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: FileSystemPackDefinition.Id,
+                    enabledByDefault: FileSystemPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: FileSystemPackDefinition,
+                packLabel: "IX.FileSystem",
+                packTypeName: FileSystemPackTypeName,
+                optionsTypeName: FileSystemOptionsTypeName,
+                configureOptions: fsOptions => {
+                    AddStringListValuesIfPresent(fsOptions, "AllowedRoots", allowedRoots);
+                },
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableSystemPack,
-            definition: SystemPackDefinition,
-            packLabel: "IX.System",
-            packTypeName: SystemPackTypeName,
-            optionsTypeName: SystemOptionsTypeName,
-            configureOptions: null,
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(SystemPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: SystemPackDefinition.Id,
+                    enabledByDefault: SystemPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: SystemPackDefinition,
+                packLabel: "IX.System",
+                packTypeName: SystemPackTypeName,
+                optionsTypeName: SystemOptionsTypeName,
+                configureOptions: null,
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableActiveDirectoryPack,
-            definition: ActiveDirectoryPackDefinition,
-            packLabel: "IX.ADPlayground",
-            packTypeName: ActiveDirectoryPackTypeName,
-            optionsTypeName: ActiveDirectoryOptionsTypeName,
-            configureOptions: adOptions => {
-                SetPropertyIfPresent(adOptions, "DomainController", options.AdDomainController);
-                SetPropertyIfPresent(adOptions, "DefaultSearchBaseDn", options.AdDefaultSearchBaseDn);
-                SetPropertyIfPresent(adOptions, "MaxResults", options.AdMaxResults > 0 ? options.AdMaxResults : 1000);
-            },
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(ActiveDirectoryPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: ActiveDirectoryPackDefinition.Id,
+                    enabledByDefault: ActiveDirectoryPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: ActiveDirectoryPackDefinition,
+                packLabel: "IX.ADPlayground",
+                packTypeName: ActiveDirectoryPackTypeName,
+                optionsTypeName: ActiveDirectoryOptionsTypeName,
+                configureOptions: adOptions => {
+                    SetPropertyIfPresent(adOptions, "DomainController", options.AdDomainController);
+                    SetPropertyIfPresent(adOptions, "DefaultSearchBaseDn", options.AdDefaultSearchBaseDn);
+                    SetPropertyIfPresent(adOptions, "MaxResults", options.AdMaxResults > 0 ? options.AdMaxResults : 1000);
+                },
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnablePowerShellPack,
-            definition: PowerShellPackDefinition,
-            packLabel: "IX.PowerShell",
-            packTypeName: PowerShellPackTypeName,
-            optionsTypeName: PowerShellOptionsTypeName,
-            configureOptions: psOptions => {
-                SetPropertyIfPresent(psOptions, "Enabled", true);
-                SetPropertyIfPresent(psOptions, "DefaultTimeoutMs", options.PowerShellDefaultTimeoutMs);
-                SetPropertyIfPresent(psOptions, "MaxTimeoutMs", options.PowerShellMaxTimeoutMs);
-                SetPropertyIfPresent(psOptions, "DefaultMaxOutputChars", options.PowerShellDefaultMaxOutputChars);
-                SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
-                SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
-            },
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(PowerShellPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: PowerShellPackDefinition.Id,
+                    enabledByDefault: PowerShellPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: PowerShellPackDefinition,
+                packLabel: "IX.PowerShell",
+                packTypeName: PowerShellPackTypeName,
+                optionsTypeName: PowerShellOptionsTypeName,
+                configureOptions: psOptions => {
+                    SetPropertyIfPresent(psOptions, "Enabled", true);
+                    SetPropertyIfPresent(psOptions, "DefaultTimeoutMs", options.PowerShellDefaultTimeoutMs);
+                    SetPropertyIfPresent(psOptions, "MaxTimeoutMs", options.PowerShellMaxTimeoutMs);
+                    SetPropertyIfPresent(psOptions, "DefaultMaxOutputChars", options.PowerShellDefaultMaxOutputChars);
+                    SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
+                    SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
+                },
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableTestimoXPack,
-            definition: TestimoXPackDefinition,
-            packLabel: "IX.TestimoX",
-            packTypeName: TestimoXPackTypeName,
-            optionsTypeName: TestimoXOptionsTypeName,
-            configureOptions: testimoOptions => {
-                SetPropertyIfPresent(testimoOptions, "Enabled", true);
-            },
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(TestimoXPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: TestimoXPackDefinition.Id,
+                    enabledByDefault: TestimoXPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: TestimoXPackDefinition,
+                packLabel: "IX.TestimoX",
+                packTypeName: TestimoXPackTypeName,
+                optionsTypeName: TestimoXOptionsTypeName,
+                configureOptions: testimoOptions => {
+                    SetPropertyIfPresent(testimoOptions, "Enabled", true);
+                },
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableOfficeImoPack,
-            definition: OfficeImoPackDefinition,
-            packLabel: "IX.OfficeIMO",
-            packTypeName: OfficeImoPackTypeName,
-            optionsTypeName: OfficeImoOptionsTypeName,
-            configureOptions: officeImoOptions => {
-                AddStringListValuesIfPresent(officeImoOptions, "AllowedRoots", allowedRoots);
-            },
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(OfficeImoPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: OfficeImoPackDefinition.Id,
+                    enabledByDefault: OfficeImoPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: OfficeImoPackDefinition,
+                packLabel: "IX.OfficeIMO",
+                packTypeName: OfficeImoPackTypeName,
+                optionsTypeName: OfficeImoOptionsTypeName,
+                configureOptions: officeImoOptions => {
+                    AddStringListValuesIfPresent(officeImoOptions, "AllowedRoots", allowedRoots);
+                },
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableDnsClientXPack,
-            definition: DnsClientXPackDefinition,
-            packLabel: "IX.DnsClientX",
-            packTypeName: DnsClientXPackTypeName,
-            optionsTypeName: DnsClientXOptionsTypeName,
-            configureOptions: null,
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(DnsClientXPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: DnsClientXPackDefinition.Id,
+                    enabledByDefault: DnsClientXPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: DnsClientXPackDefinition,
+                packLabel: "IX.DnsClientX",
+                packTypeName: DnsClientXPackTypeName,
+                optionsTypeName: DnsClientXOptionsTypeName,
+                configureOptions: null,
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableDomainDetectivePack,
-            definition: DomainDetectivePackDefinition,
-            packLabel: "IX.DomainDetective",
-            packTypeName: DomainDetectivePackTypeName,
-            optionsTypeName: DomainDetectiveOptionsTypeName,
-            configureOptions: null,
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(DomainDetectivePackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: DomainDetectivePackDefinition.Id,
+                    enabledByDefault: DomainDetectivePackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: DomainDetectivePackDefinition,
+                packLabel: "IX.DomainDetective",
+                packTypeName: DomainDetectivePackTypeName,
+                optionsTypeName: DomainDetectiveOptionsTypeName,
+                configureOptions: null,
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalBuiltInPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableReviewerSetupPack,
-            definition: ReviewerSetupPackDefinition,
-            createPack: () => RequireDeclaredSourceKind(
-                new ReviewerSetupToolPack(new ReviewerSetupToolOptions {
-                    IncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath
-                }),
-                packLabel: "Reviewer Setup"),
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(ReviewerSetupPackDefinition.Id, () => {
+            AddOptionalBuiltInPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: ReviewerSetupPackDefinition.Id,
+                    enabledByDefault: ReviewerSetupPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: ReviewerSetupPackDefinition,
+                createPack: () => RequireDeclaredSourceKind(
+                    new ReviewerSetupToolPack(new ReviewerSetupToolOptions {
+                        IncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath
+                    }),
+                    packLabel: "Reviewer Setup"),
+                onWarning: options.OnBootstrapWarning);
+        });
 
-        AddOptionalReflectionPack(
-            packs: packs,
-            availabilityById: availabilityById,
-            enabledByConfiguration: options.EnableEmailPack,
-            definition: EmailPackDefinition,
-            packLabel: "IX.Email",
-            packTypeName: EmailPackTypeName,
-            optionsTypeName: EmailOptionsTypeName,
-            configureOptions: emailOptions => {
-                SetPropertyIfPresent(emailOptions, "AuthenticationProbeStore", options.AuthenticationProbeStore);
-                SetPropertyIfPresent(emailOptions, "RequireSuccessfulSmtpProbeForSend", options.RequireSuccessfulSmtpProbeForSend);
-                SetPropertyIfPresent(emailOptions, "SmtpProbeMaxAgeSeconds", options.SmtpProbeMaxAgeSeconds);
-                SetPropertyIfPresent(emailOptions, "RunAsProfilePath", options.RunAsProfilePath);
-                SetPropertyIfPresent(emailOptions, "AuthenticationProfilePath", options.AuthenticationProfilePath);
-            },
-            onWarning: options.OnBootstrapWarning);
+        RunBootstrapStep(EmailPackDefinition.Id, () => {
+            AddOptionalReflectionPack(
+                packs: packs,
+                availabilityById: availabilityById,
+                enabledByConfiguration: ResolveKnownPackEnabled(
+                    packId: EmailPackDefinition.Id,
+                    enabledByDefault: EmailPackDefinition.DefaultEnabled,
+                    disabledPackIds: disabledPackIds,
+                    enabledPackIds: enabledPackIds),
+                definition: EmailPackDefinition,
+                packLabel: "IX.Email",
+                packTypeName: EmailPackTypeName,
+                optionsTypeName: EmailOptionsTypeName,
+                configureOptions: emailOptions => {
+                    SetPropertyIfPresent(emailOptions, "AuthenticationProbeStore", options.AuthenticationProbeStore);
+                    SetPropertyIfPresent(emailOptions, "RequireSuccessfulSmtpProbeForSend", options.RequireSuccessfulSmtpProbeForSend);
+                    SetPropertyIfPresent(emailOptions, "SmtpProbeMaxAgeSeconds", options.SmtpProbeMaxAgeSeconds);
+                    SetPropertyIfPresent(emailOptions, "RunAsProfilePath", options.RunAsProfilePath);
+                    SetPropertyIfPresent(emailOptions, "AuthenticationProfilePath", options.AuthenticationProfilePath);
+                },
+                onWarning: options.OnBootstrapWarning);
+        });
 
         if (options.EnablePluginFolderLoading) {
-            var existingPackIds = new HashSet<string>(
-                packs
-                    .Select(static pack => NormalizePackId(pack.Descriptor.Id))
-                    .Where(static id => !string.IsNullOrWhiteSpace(id)),
-                StringComparer.OrdinalIgnoreCase);
+            RunBootstrapStep("plugins", () => {
+                var existingPackIds = new HashSet<string>(
+                    packs
+                        .Select(static pack => NormalizePackId(pack.Descriptor.Id))
+                        .Where(static id => !string.IsNullOrWhiteSpace(id)),
+                    StringComparer.OrdinalIgnoreCase);
 
-            PluginFolderToolPackLoader.AddPluginPacks(
-                packs: packs,
-                options: options,
-                existingPackIds: existingPackIds,
-                onWarning: options.OnBootstrapWarning);
+                PluginFolderToolPackLoader.AddPluginPacks(
+                    packs: packs,
+                    options: options,
+                    existingPackIds: existingPackIds,
+                    onWarning: options.OnBootstrapWarning,
+                    onPackAvailability: availability => UpsertAvailability(availabilityById, availability));
+            });
         }
 
         for (var i = 0; i < packs.Count; i++) {
@@ -642,6 +715,44 @@ public static partial class ToolPackBootstrap {
             Packs = packs,
             PackAvailability = availability
         };
+    }
+
+    private static HashSet<string> BuildNormalizedPackIdSet(IReadOnlyList<string>? packIds) {
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (packIds is null || packIds.Count == 0) {
+            return normalized;
+        }
+
+        for (var i = 0; i < packIds.Count; i++) {
+            var packId = NormalizePackId(packIds[i]);
+            if (packId.Length == 0) {
+                continue;
+            }
+            normalized.Add(packId);
+        }
+
+        return normalized;
+    }
+
+    private static bool ResolveKnownPackEnabled(
+        string packId,
+        bool enabledByDefault,
+        HashSet<string> disabledPackIds,
+        HashSet<string> enabledPackIds) {
+        var normalizedPackId = NormalizePackId(packId);
+        if (normalizedPackId.Length == 0) {
+            return enabledByDefault;
+        }
+
+        if (disabledPackIds.Contains(normalizedPackId)) {
+            return false;
+        }
+
+        if (enabledPackIds.Contains(normalizedPackId)) {
+            return true;
+        }
+
+        return enabledByDefault;
     }
 
 
