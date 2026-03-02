@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.Client;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -430,9 +431,8 @@ public sealed partial class MainWindow : Window {
                 reasoningSummary: _localProviderReasoningSummary,
                 textVerbosity: _localProviderTextVerbosity,
                 temperature: _localProviderTemperature,
-                enablePowerShellPack: null,
-                enableTestimoXPack: null,
-                enableOfficeImoPack: null).ConfigureAwait(false);
+                enablePackIds: null,
+                disablePackIds: null).ConfigureAwait(false);
         if (liveApply) {
             ClearConversationThreadIds();
             await PersistAppStateAsync().ConfigureAwait(false);
@@ -478,9 +478,8 @@ public sealed partial class MainWindow : Window {
         string? reasoningSummary,
         string? textVerbosity,
         double? temperature,
-        bool? enablePowerShellPack,
-        bool? enableTestimoXPack,
-        bool? enableOfficeImoPack) {
+        IReadOnlyList<string>? enablePackIds,
+        IReadOnlyList<string>? disablePackIds) {
         var client = _client;
         if (client is null || !await IsClientAliveAsync(client).ConfigureAwait(false)) {
             if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
@@ -512,9 +511,8 @@ public sealed partial class MainWindow : Window {
                     reasoningSummary: reasoningSummary,
                     textVerbosity: textVerbosity,
                     temperature: temperature,
-                    enablePowerShellPack: enablePowerShellPack,
-                    enableTestimoXPack: enableTestimoXPack,
-                    enableOfficeImoPack: enableOfficeImoPack,
+                    enablePackIds: enablePackIds,
+                    disablePackIds: disablePackIds,
                     profileName: profileSaved ? _appProfileName : null,
                     cancellationToken: cts.Token)
                 .ConfigureAwait(false);
@@ -604,30 +602,61 @@ public sealed partial class MainWindow : Window {
             ReasoningSummary = reasoningSummary.Length == 0 ? null : reasoningSummary,
             TextVerbosity = textVerbosity.Length == 0 ? null : textVerbosity,
             Temperature = _localProviderTemperature,
-            EnablePowerShellPack = ResolveRuntimeManagedPackEnabled("powershell"),
-            EnableTestimoXPack = ResolveRuntimeManagedPackEnabled("testimox"),
-            EnableOfficeImoPack = ResolveRuntimeManagedPackEnabled("officeimo")
+            PackToggles = BuildRuntimePackTogglesFromSessionPolicy()
         };
     }
 
-    private bool? ResolveRuntimeManagedPackEnabled(string packId) {
+    private ServiceLaunchArguments.PackToggle[]? BuildRuntimePackTogglesFromSessionPolicy() {
         if (_sessionPolicy?.Packs is not { Length: > 0 }) {
             return null;
         }
 
-        var normalizedPackId = (packId ?? string.Empty).Trim();
-        if (normalizedPackId.Length == 0) {
+        var togglesById = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < _sessionPolicy.Packs.Length; i++) {
+            var pack = _sessionPolicy.Packs[i];
+            var normalizedPackId = NormalizePackId(pack.Id);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            togglesById[normalizedPackId] = pack.Enabled;
+        }
+
+        if (togglesById.Count == 0) {
             return null;
         }
 
-        for (var i = 0; i < _sessionPolicy.Packs.Length; i++) {
-            var pack = _sessionPolicy.Packs[i];
-            if (string.Equals(pack.Id, normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
-                return pack.Enabled;
+        var ids = new List<string>(togglesById.Keys);
+        ids.Sort(StringComparer.OrdinalIgnoreCase);
+        var toggles = new ServiceLaunchArguments.PackToggle[ids.Count];
+        for (var i = 0; i < ids.Count; i++) {
+            var packId = ids[i];
+            toggles[i] = new ServiceLaunchArguments.PackToggle(packId, togglesById[packId]);
+        }
+
+        return toggles;
+    }
+
+    private void BuildRuntimePackToggleLists(out string[]? enablePackIds, out string[]? disablePackIds) {
+        enablePackIds = null;
+        disablePackIds = null;
+        var packToggles = BuildRuntimePackTogglesFromSessionPolicy();
+        if (packToggles is null || packToggles.Length == 0) {
+            return;
+        }
+
+        var enableList = new List<string>();
+        var disableList = new List<string>();
+        for (var i = 0; i < packToggles.Length; i++) {
+            if (packToggles[i].Enabled) {
+                enableList.Add(packToggles[i].PackId);
+            } else {
+                disableList.Add(packToggles[i].PackId);
             }
         }
 
-        return null;
+        enablePackIds = enableList.Count == 0 ? null : enableList.ToArray();
+        disablePackIds = disableList.Count == 0 ? null : disableList.ToArray();
     }
 
     private void ClearConversationThreadIds() {

@@ -46,6 +46,10 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public ToolPackSourceKind? PackSourceKind { get; init; }
     /// <summary>
+    /// Whether the tool is write-capable (mutating).
+    /// </summary>
+    public bool IsWriteCapable { get; init; }
+    /// <summary>
     /// JSON serialized input schema from the runtime tool definition.
     /// </summary>
     public string ParametersJson { get; init; } = "{}";

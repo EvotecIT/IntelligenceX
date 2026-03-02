@@ -203,17 +203,13 @@ public sealed record ApplyRuntimeSettingsRequest : ChatServiceRequest {
     /// </summary>
     public double? Temperature { get; init; }
     /// <summary>
-    /// Optional runtime pack toggle for PowerShell pack.
+    /// Optional runtime pack ids to enable for the active session/profile.
     /// </summary>
-    public bool? EnablePowerShellPack { get; init; }
+    public string[]? EnablePackIds { get; init; }
     /// <summary>
-    /// Optional runtime pack toggle for TestimoX pack.
+    /// Optional runtime pack ids to disable for the active session/profile.
     /// </summary>
-    public bool? EnableTestimoXPack { get; init; }
-    /// <summary>
-    /// Optional runtime pack toggle for OfficeIMO pack.
-    /// </summary>
-    public bool? EnableOfficeImoPack { get; init; }
+    public string[]? DisablePackIds { get; init; }
     /// <summary>
     /// Optional profile name to persist updated settings into.
     /// </summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -13,6 +14,19 @@ using IntelligenceX.Chat.Client;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
+    private static readonly Regex ServiceBootstrapPluginProgressRegex = new(
+        @"^\[plugin\]\s+load_progress\s+plugin='(?<plugin>[^']*)'\s+phase='(?<phase>[^']*)'\s+index='(?<index>\d+)'\s+total='(?<total>\d+)'",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ServiceBootstrapPackProgressRegex = new(
+        @"^\[startup\]\s+pack_load_progress\s+pack='(?<pack>[^']*)'\s+phase='(?<phase>[^']*)'\s+index='(?<index>\d+)'\s+total='(?<total>\d+)'",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ServiceBootstrapProgressSummaryRegex = new(
+        @"^\[startup\]\s+plugin load progress:\s+processed\s+(?<processed>\d+)\/(?<total>\d+)\s+plugin folders",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ServiceBootstrapTimingRegex = new(
+        @"^\[startup\]\s+tooling bootstrap timings\s+total=(?<total>[^\s]+)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private async Task<bool> EnsureServiceRunningAsync(string pipeName) {
         if (_serviceProcess is not null && !_serviceProcess.HasExited) {
             return true;
@@ -69,9 +83,7 @@ public sealed partial class MainWindow {
                     ReasoningSummary = pending.ReasoningSummary,
                     TextVerbosity = pending.TextVerbosity,
                     Temperature = pending.Temperature,
-                    EnablePowerShellPack = pending.EnablePowerShellPack,
-                    EnableTestimoXPack = pending.EnableTestimoXPack,
-                    EnableOfficeImoPack = pending.EnableOfficeImoPack
+                    PackToggles = pending.PackToggles
                 },
                 additionalPluginPaths: launchPluginPaths);
             var hasExe = File.Exists(exe);
@@ -105,6 +117,7 @@ public sealed partial class MainWindow {
             p.OutputDataReceived += (_, e) => {
                 if (!string.IsNullOrWhiteSpace(e.Data)) {
                     StartupLog.Write("[service] " + e.Data);
+                    PublishServiceBootstrapStatusFromLogLine(e.Data);
                 }
                 if ((VerboseServiceLogs || _debugMode) && !string.IsNullOrWhiteSpace(e.Data)) {
                     _ = _dispatcher.TryEnqueue(() => AppendSystem(SystemNotice.ServiceStdOut(e.Data)));
@@ -113,6 +126,7 @@ public sealed partial class MainWindow {
             p.ErrorDataReceived += (_, e) => {
                 if (!string.IsNullOrWhiteSpace(e.Data)) {
                     StartupLog.Write("[service:err] " + e.Data);
+                    PublishServiceBootstrapStatusFromLogLine(e.Data);
                 }
                 if ((VerboseServiceLogs || _debugMode) && !string.IsNullOrWhiteSpace(e.Data)) {
                     _ = _dispatcher.TryEnqueue(() => AppendSystem(SystemNotice.ServiceStdErr(e.Data)));
@@ -207,6 +221,113 @@ public sealed partial class MainWindow {
         }
 
         paths.Add(fullPath);
+    }
+
+    private void PublishServiceBootstrapStatusFromLogLine(string rawServiceLine) {
+        if (!TryBuildServiceBootstrapStatus(rawServiceLine, out var statusText)) {
+            return;
+        }
+
+        _ = _dispatcher.TryEnqueue(() => {
+            if (_shutdownRequested || _isConnected || _isSending || _turnStartupInProgress) {
+                return;
+            }
+
+            _ = SetStatusAsync(statusText, SessionStatusTone.Warn);
+        });
+    }
+
+    internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText) {
+        statusText = string.Empty;
+        var normalized = (rawServiceLine ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        const string packWarningPrefix = "[pack warning]";
+        if (normalized.StartsWith(packWarningPrefix, StringComparison.OrdinalIgnoreCase)) {
+            normalized = normalized.Substring(packWarningPrefix.Length).Trim();
+        }
+
+        var packProgressMatch = ServiceBootstrapPackProgressRegex.Match(normalized);
+        if (packProgressMatch.Success) {
+            var phase = packProgressMatch.Groups["phase"].Value.Trim();
+            if (!string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            var pack = packProgressMatch.Groups["pack"].Value.Trim();
+            if (!int.TryParse(packProgressMatch.Groups["index"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)) {
+                return false;
+            }
+            if (!int.TryParse(packProgressMatch.Groups["total"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var total)) {
+                return false;
+            }
+
+            index = Math.Max(1, index);
+            total = Math.Max(index, total);
+            var packLabel = string.IsNullOrWhiteSpace(pack) ? "pack" : pack;
+            if (packLabel.Length > 42) {
+                packLabel = packLabel.Substring(0, 39) + "...";
+            }
+
+            statusText = $"Starting runtime... initializing tool packs {index}/{total} ({packLabel})";
+            return true;
+        }
+
+        var pluginProgressMatch = ServiceBootstrapPluginProgressRegex.Match(normalized);
+        if (pluginProgressMatch.Success) {
+            var phase = pluginProgressMatch.Groups["phase"].Value.Trim();
+            if (!string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+
+            var plugin = pluginProgressMatch.Groups["plugin"].Value.Trim();
+            if (!int.TryParse(pluginProgressMatch.Groups["index"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)) {
+                return false;
+            }
+            if (!int.TryParse(pluginProgressMatch.Groups["total"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var total)) {
+                return false;
+            }
+
+            index = Math.Max(1, index);
+            total = Math.Max(index, total);
+            var pluginLabel = string.IsNullOrWhiteSpace(plugin) ? "plugin" : plugin;
+            if (pluginLabel.Length > 42) {
+                pluginLabel = pluginLabel.Substring(0, 39) + "...";
+            }
+
+            statusText = $"Starting runtime... loading tool packs {index}/{total} ({pluginLabel})";
+            return true;
+        }
+
+        var progressSummaryMatch = ServiceBootstrapProgressSummaryRegex.Match(normalized);
+        if (progressSummaryMatch.Success) {
+            if (!int.TryParse(progressSummaryMatch.Groups["processed"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var processed)) {
+                return false;
+            }
+            if (!int.TryParse(progressSummaryMatch.Groups["total"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var total)) {
+                return false;
+            }
+
+            processed = Math.Max(0, processed);
+            total = Math.Max(processed, total);
+            statusText = $"Starting runtime... plugin folder scan {processed}/{total}";
+            return true;
+        }
+
+        var timingMatch = ServiceBootstrapTimingRegex.Match(normalized);
+        if (timingMatch.Success) {
+            var total = timingMatch.Groups["total"].Value.Trim();
+            if (total.Length == 0) {
+                total = "unknown";
+            }
+
+            statusText = $"Starting runtime... tool bootstrap finished ({total}), finalizing runtime connection";
+            return true;
+        }
+
+        return false;
     }
 
     private void StopServiceIfOwned() {

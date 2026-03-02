@@ -216,17 +216,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static int ResolveStartupToolHealthTimeoutSeconds(int configuredTimeoutSeconds, ToolPackSourceKind sourceKind, string? packId = null) {
-        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
-        var isTestimoX = string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase);
         if (configuredTimeoutSeconds <= 0) {
-            var timeout = sourceKind == ToolPackSourceKind.ClosedSource ? 8 : 4;
-            return isTestimoX
-                ? Math.Clamp(Math.Max(timeout, 12), 12, 30)
-                : timeout;
-        }
-
-        if (isTestimoX) {
-            return Math.Clamp(configuredTimeoutSeconds, 12, 30);
+            return sourceKind == ToolPackSourceKind.ClosedSource ? 8 : 4;
         }
 
         return sourceKind == ToolPackSourceKind.ClosedSource
@@ -235,21 +226,14 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static int ResolveStartupToolHealthRetryTimeoutSeconds(int initialTimeoutSeconds, ToolPackSourceKind sourceKind, string? packId = null) {
-        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
         if (initialTimeoutSeconds <= 0) {
-            var timeout = sourceKind == ToolPackSourceKind.ClosedSource ? 12 : 6;
-            return string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase)
-                ? Math.Clamp(Math.Max(timeout, 20), 20, 45)
-                : timeout;
+            return sourceKind == ToolPackSourceKind.ClosedSource ? 12 : 6;
         }
 
         var doubled = initialTimeoutSeconds * 2;
-        var resolved = sourceKind == ToolPackSourceKind.ClosedSource
+        return sourceKind == ToolPackSourceKind.ClosedSource
             ? Math.Clamp(doubled, 10, 30)
             : Math.Clamp(doubled, 4, 12);
-        return string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase)
-            ? Math.Clamp(Math.Max(resolved, 20), 20, 45)
-            : resolved;
     }
 
     internal static bool ShouldDowngradeStartupToolHealthFailure(ToolPackSourceKind sourceKind, string? errorCode) {
@@ -308,16 +292,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static int ResolveStartupToolHealthBackoffFloorMinutes(ToolPackSourceKind sourceKind, string? packId, string? errorCode) {
-        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
         var normalizedErrorCode = NormalizeHealthErrorCode(errorCode);
         var isTimeout = string.Equals(normalizedErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase);
-        var isTestimoX = string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase);
 
         if (isTimeout) {
-            if (isTestimoX) {
-                return 20;
-            }
-
             return sourceKind == ToolPackSourceKind.ClosedSource ? 10 : 5;
         }
 
@@ -325,16 +303,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static int ResolveStartupToolHealthBackoffCeilingMinutes(ToolPackSourceKind sourceKind, string? packId, string? errorCode) {
-        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
         var normalizedErrorCode = NormalizeHealthErrorCode(errorCode);
         var isTimeout = string.Equals(normalizedErrorCode, "tool_timeout", StringComparison.OrdinalIgnoreCase);
-        var isTestimoX = string.Equals(normalizedPackId, "testimox", StringComparison.OrdinalIgnoreCase);
 
         if (isTimeout) {
-            if (isTestimoX) {
-                return 180;
-            }
-
             return sourceKind == ToolPackSourceKind.ClosedSource ? 120 : 45;
         }
 

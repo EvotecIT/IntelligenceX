@@ -50,14 +50,19 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         AdDomainController = profile.AdDomainController;
         AdDefaultSearchBaseDn = profile.AdDefaultSearchBaseDn;
         AdMaxResults = profile.AdMaxResults;
-        EnablePowerShellPack = profile.EnablePowerShellPack;
         PowerShellAllowWrite = profile.PowerShellAllowWrite;
-        EnableTestimoXPack = profile.EnableTestimoXPack;
-        EnableOfficeImoPack = profile.EnableOfficeImoPack;
         EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
         PluginPaths.Clear();
         if (profile.PluginPaths != null && profile.PluginPaths.Count > 0) {
             PluginPaths.AddRange(profile.PluginPaths);
+        }
+        DisabledPackIds.Clear();
+        if (profile.DisabledPackIds is { Count: > 0 }) {
+            DisabledPackIds.AddRange(profile.DisabledPackIds);
+        }
+        EnabledPackIds.Clear();
+        if (profile.EnabledPackIds is { Count: > 0 }) {
+            EnabledPackIds.AddRange(profile.EnabledPackIds);
         }
         ToolRuntimePolicyBootstrap.ApplyProfileRuntimePolicy(
             writeGovernanceMode: profile.WriteGovernanceMode,
@@ -113,12 +118,11 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             AdDomainController = AdDomainController,
             AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
             AdMaxResults = AdMaxResults,
-            EnablePowerShellPack = EnablePowerShellPack,
             PowerShellAllowWrite = PowerShellAllowWrite,
-            EnableTestimoXPack = EnableTestimoXPack,
-            EnableOfficeImoPack = EnableOfficeImoPack,
             EnableDefaultPluginPaths = EnableDefaultPluginPaths,
             PluginPaths = new List<string>(PluginPaths),
+            DisabledPackIds = new List<string>(DisabledPackIds),
+            EnabledPackIds = new List<string>(EnabledPackIds),
             WriteGovernanceMode = ToolRuntimePolicyBootstrap.FormatWriteGovernanceMode(WriteGovernanceMode),
             RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,
             RequireWriteAuditSinkForWriteOperations = RequireWriteAuditSinkForWriteOperations,

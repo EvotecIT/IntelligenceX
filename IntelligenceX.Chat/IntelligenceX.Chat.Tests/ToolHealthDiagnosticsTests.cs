@@ -58,7 +58,15 @@ public sealed class ToolHealthDiagnosticsTests {
     public async Task ProbeAsync_RunsOperationalSmokeTool_WhenAvailable() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("system_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
-        registry.Register(new StubTool("system_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool(
+            "system_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+            }));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
 
@@ -70,7 +78,15 @@ public sealed class ToolHealthDiagnosticsTests {
     public async Task ProbeAsync_FailsWhenOperationalSmokeToolFails() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("system_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
-        registry.Register(new StubTool("system_info", static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"WMI not available."}""")));
+        registry.Register(new StubTool(
+            "system_info",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"WMI not available."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+            }));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
 
@@ -96,11 +112,60 @@ public sealed class ToolHealthDiagnosticsTests {
     [Fact]
     public async Task ProbeAsync_DoesNotRunContractVerifySmoke_ForReviewerSetupPackInfo() {
         var registry = new ToolRegistry();
-        registry.Register(new StubTool("reviewer_setup_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool(
+            "reviewer_setup_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "reviewersetup",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
         registry.Register(new StubTool("reviewer_setup_contract_verify",
-            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"invalid_argument","error":"autodetect_contract_version is required."}""")));
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"invalid_argument","error":"autodetect_contract_version is required."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "reviewersetup",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("required", new JsonArray().Add("autodetect_contract_version"))));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "reviewer_setup_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_DoesNotRunWriteCapableSmokeCandidate() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "custom_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "custom",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "custom_apply_change",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"should_not_run","error":"write tool invoked unexpectedly"}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "custom",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            parameters: BuildWriteCapableSchema(),
+            writeGovernance: new ToolWriteGovernanceContract {
+                IsWriteCapable = true
+            }));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "custom_pack_info", timeoutSeconds: 2, CancellationToken.None);
 
         Assert.True(result.Ok);
         Assert.Null(result.ErrorCode);
@@ -142,8 +207,10 @@ public sealed class ToolHealthDiagnosticsTests {
         public StubTool(
             string name,
             Func<JsonObject?, CancellationToken, Task<string>> invoke,
-            ToolRoutingContract? routing = null) {
-            Definition = new ToolDefinition(name, description: "stub", routing: routing);
+            ToolRoutingContract? routing = null,
+            JsonObject? parameters = null,
+            ToolWriteGovernanceContract? writeGovernance = null) {
+            Definition = new ToolDefinition(name, description: "stub", routing: routing, parameters: parameters, writeGovernance: writeGovernance);
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 
@@ -152,5 +219,20 @@ public sealed class ToolHealthDiagnosticsTests {
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             return _invoke(arguments, cancellationToken);
         }
+    }
+
+    private static JsonObject BuildWriteCapableSchema() {
+        var properties = new JsonObject()
+            .Add(ToolWriteGovernanceArgumentNames.OperationId, new JsonObject().Add("type", "string"))
+            .Add(ToolWriteGovernanceArgumentNames.ExecutionId, new JsonObject().Add("type", "string"))
+            .Add(ToolWriteGovernanceArgumentNames.ActorId, new JsonObject().Add("type", "string"))
+            .Add(ToolWriteGovernanceArgumentNames.ChangeReason, new JsonObject().Add("type", "string"))
+            .Add(ToolWriteGovernanceArgumentNames.RollbackPlanId, new JsonObject().Add("type", "string"))
+            .Add(ToolWriteGovernanceArgumentNames.RollbackProviderId, new JsonObject().Add("type", "string"))
+            .Add(ToolWriteGovernanceArgumentNames.AuditCorrelationId, new JsonObject().Add("type", "string"));
+
+        return new JsonObject()
+            .Add("type", "object")
+            .Add("properties", properties);
     }
 }

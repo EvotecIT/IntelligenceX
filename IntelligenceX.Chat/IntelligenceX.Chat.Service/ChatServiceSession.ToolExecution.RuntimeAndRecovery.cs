@@ -547,45 +547,98 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static ToolRetryProfile ResolveRetryProfile(string? toolName, ToolDefinition? definition) {
-        if (!TryResolveRetryProfilePackId(toolName, definition, out var packId)) {
+        var retryDefinition = ResolveRetryProfileDefinition(toolName, definition);
+        if (retryDefinition is null) {
             return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
         }
 
-        return packId switch {
-            "active_directory" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 200, RetryOnTimeout: true, RetryOnTransport: true),
-            "eventlog" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 150, RetryOnTimeout: true, RetryOnTransport: true),
-            "system" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 120, RetryOnTimeout: true, RetryOnTransport: true),
-            "domaindetective" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
-            "dnsclientx" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
-            "testimox" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 180, RetryOnTimeout: true, RetryOnTransport: true),
-            "filesystem" => new ToolRetryProfile(MaxAttempts: 2, DelayBaseMs: 90, RetryOnTimeout: true, RetryOnTransport: false),
-            _ => new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false)
-        };
-    }
-
-    private static bool TryResolveRetryProfilePackId(string? toolName, ToolDefinition? definition, out string packId) {
-        packId = string.Empty;
-        if (definition is not null) {
-            if (ToolSelectionMetadata.TryResolvePackId(definition, out packId) && packId.Length > 0) {
-                return true;
-            }
-
-            if (ToolSelectionMetadata.TryResolvePackId(
-                    definition.Name,
-                    definition.Category,
-                    definition.Tags,
-                    out packId)
-                && packId.Length > 0) {
-                return true;
-            }
+        var routing = ToolSelectionMetadata.ResolveRouting(retryDefinition);
+        var role = NormalizeRetryProfileToken(retryDefinition.Routing?.Role, ToolRoutingTaxonomy.RoleOperational);
+        var scope = NormalizeRetryProfileToken(routing.Scope, ToolRoutingTaxonomy.ScopeGeneral);
+        var operation = NormalizeRetryProfileToken(routing.Operation, ToolRoutingTaxonomy.OperationRead);
+        var writeCapable = retryDefinition.WriteGovernance?.IsWriteCapable == true
+                           || string.Equals(operation, "write", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(operation, "execute_write", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase) || writeCapable) {
+            return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
         }
 
-        return ToolSelectionMetadata.TryResolvePackId(
-                   toolName,
-                   category: null,
-                   tags: null,
-                   out packId)
-               && packId.Length > 0;
+        var recovery = retryDefinition.Recovery;
+        if (recovery is { IsRecoveryAware: true, SupportsTransientRetry: false }) {
+            return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
+        }
+
+        var maxAttempts = ResolveRetryProfileMaxAttempts(recovery, defaultAttempts: 2);
+        if (maxAttempts <= 1) {
+            return new ToolRetryProfile(MaxAttempts: 1, DelayBaseMs: 0, RetryOnTimeout: false, RetryOnTransport: false);
+        }
+
+        var delayBaseMs = ResolveRetryProfileDelayBaseMs(scope, role);
+        var retryOnTransport = !string.Equals(scope, "file", StringComparison.OrdinalIgnoreCase);
+        return new ToolRetryProfile(
+            MaxAttempts: maxAttempts,
+            DelayBaseMs: delayBaseMs,
+            RetryOnTimeout: true,
+            RetryOnTransport: retryOnTransport);
+    }
+
+    private static ToolDefinition? ResolveRetryProfileDefinition(string? toolName, ToolDefinition? definition) {
+        if (definition is not null) {
+            return ToolSelectionMetadata.Enrich(definition, toolType: null);
+        }
+
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return null;
+        }
+
+        return ToolSelectionMetadata.Enrich(
+            new ToolDefinition(name: normalizedToolName),
+            toolType: null);
+    }
+
+    private static int ResolveRetryProfileMaxAttempts(ToolRecoveryContract? recovery, int defaultAttempts) {
+        if (recovery is not { IsRecoveryAware: true }) {
+            return Math.Max(1, defaultAttempts);
+        }
+
+        if (!recovery.SupportsTransientRetry) {
+            return 1;
+        }
+
+        // Contract value represents additional retry attempts. Cap to keep latency bounded.
+        var retries = Math.Clamp(recovery.MaxRetryAttempts, 1, 3);
+        return 1 + retries;
+    }
+
+    private static int ResolveRetryProfileDelayBaseMs(string scope, string role) {
+        var baseDelay = scope switch {
+            "file" => 90,
+            "host" => 120,
+            "domain" => 180,
+            "repository" => 160,
+            "message" => 140,
+            _ => 150
+        };
+
+        if (string.Equals(role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+            return Math.Max(baseDelay, 200);
+        }
+
+        if (string.Equals(role, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase)) {
+            return baseDelay + 20;
+        }
+
+        if (string.Equals(role, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase)) {
+            return baseDelay + 10;
+        }
+
+        return baseDelay;
+    }
+
+    private static string NormalizeRetryProfileToken(string? value, string fallback) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? fallback : normalized;
     }
 
 }

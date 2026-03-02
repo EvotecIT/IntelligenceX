@@ -387,9 +387,8 @@ public sealed class ChatServiceClient : IAsyncDisposable {
         string? reasoningSummary = null,
         string? textVerbosity = null,
         double? temperature = null,
-        bool? enablePowerShellPack = null,
-        bool? enableTestimoXPack = null,
-        bool? enableOfficeImoPack = null,
+        IReadOnlyList<string>? enablePackIds = null,
+        IReadOnlyList<string>? disablePackIds = null,
         string? profileName = null,
         CancellationToken cancellationToken = default) {
         return RequestAsync<AckMessage>(new ApplyRuntimeSettingsRequest {
@@ -410,9 +409,8 @@ public sealed class ChatServiceClient : IAsyncDisposable {
             ReasoningSummary = reasoningSummary,
             TextVerbosity = textVerbosity,
             Temperature = temperature,
-            EnablePowerShellPack = enablePowerShellPack,
-            EnableTestimoXPack = enableTestimoXPack,
-            EnableOfficeImoPack = enableOfficeImoPack,
+            EnablePackIds = enablePackIds is { Count: > 0 } ? enablePackIds.ToArray() : null,
+            DisablePackIds = disablePackIds is { Count: > 0 } ? disablePackIds.ToArray() : null,
             ProfileName = profileName
         }, cancellationToken);
     }

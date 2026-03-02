@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
@@ -11,6 +10,19 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed class ToolPackBootstrapMetadataTests {
+    private static readonly string[] DefaultEnabledKnownPackIds = {
+        "filesystem",
+        "eventlog",
+        "system",
+        "active_directory",
+        "testimox",
+        "officeimo",
+        "dnsclientx",
+        "domaindetective",
+        "reviewer_setup",
+        "email"
+    };
+
     [Fact]
     public void CreateRuntimeBootstrapOptions_MapsSettingsAndRuntimePolicyContext() {
         var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
@@ -25,14 +37,11 @@ public sealed class ToolPackBootstrapMetadataTests {
                 AdDomainController = "dc.contoso.local",
                 AdDefaultSearchBaseDn = "DC=contoso,DC=local",
                 AdMaxResults = 2222,
-                EnablePowerShellPack = true,
                 PowerShellAllowWrite = true,
-                EnableTestimoXPack = false,
-                EnableOfficeImoPack = false,
-                EnableDnsClientXPack = false,
-                EnableDomainDetectivePack = false,
                 EnableDefaultPluginPaths = false,
-                PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" }
+                PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" },
+                DisabledPackIds = new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" },
+                EnabledPackIds = new[] { "powershell", "plugin-loader-test" }
             },
             runtimePolicyContext);
 
@@ -40,14 +49,11 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("dc.contoso.local", options.AdDomainController);
         Assert.Equal("DC=contoso,DC=local", options.AdDefaultSearchBaseDn);
         Assert.Equal(2222, options.AdMaxResults);
-        Assert.True(options.EnablePowerShellPack);
         Assert.True(options.PowerShellAllowWrite);
-        Assert.False(options.EnableTestimoXPack);
-        Assert.False(options.EnableOfficeImoPack);
-        Assert.False(options.EnableDnsClientXPack);
-        Assert.False(options.EnableDomainDetectivePack);
         Assert.False(options.EnableDefaultPluginPaths);
         Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
+        Assert.Equal(new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" }, options.DisabledPackIds);
+        Assert.Equal(new[] { "powershell", "plugin-loader-test" }, options.EnabledPackIds);
         Assert.Same(runtimePolicyContext.AuthenticationProbeStore, options.AuthenticationProbeStore);
         Assert.True(options.RequireSuccessfulSmtpProbeForSend);
         Assert.Equal(600, options.SmtpProbeMaxAgeSeconds);
@@ -86,13 +92,7 @@ public sealed class ToolPackBootstrapMetadataTests {
     [Fact]
     public void CreateDefaultReadOnlyPacks_IncludesOfficeImoPack_ByDefault() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
-            EnableFileSystemPack = false,
-            EnableSystemPack = false,
-            EnableActiveDirectoryPack = false,
-            EnablePowerShellPack = false,
-            EnableTestimoXPack = false,
-            EnableEmailPack = false,
-            EnableReviewerSetupPack = false,
+            DisabledPackIds = DisableDefaultsExcept("officeimo"),
             EnableDefaultPluginPaths = false
         });
 
@@ -102,15 +102,30 @@ public sealed class ToolPackBootstrapMetadataTests {
     [Fact]
     public void CreateDefaultReadOnlyPacks_RespectsDisableOfficeImoPack() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
-            EnableFileSystemPack = false,
-            EnableSystemPack = false,
-            EnableActiveDirectoryPack = false,
-            EnablePowerShellPack = false,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false,
-            EnableEmailPack = false,
-            EnableReviewerSetupPack = false,
+            DisabledPackIds = DefaultEnabledKnownPackIds,
             EnableDefaultPluginPaths = false
+        });
+
+        Assert.DoesNotContain(packs, static pack => string.Equals(pack.Descriptor.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_EnabledPackIds_OverridesDefaultDisabledKnownPack() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            DisabledPackIds = DefaultEnabledKnownPackIds,
+            EnableDefaultPluginPaths = false,
+            EnabledPackIds = new[] { "powershell" }
+        });
+
+        Assert.Contains(packs, static pack => string.Equals(pack.Descriptor.Id, "powershell", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_DisabledPackIds_TakesPrecedenceOverEnabledPackIds() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            DisabledPackIds = DefaultEnabledKnownPackIds,
+            EnableDefaultPluginPaths = false,
+            EnabledPackIds = new[] { "officeimo" }
         });
 
         Assert.DoesNotContain(packs, static pack => string.Equals(pack.Descriptor.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
@@ -119,14 +134,7 @@ public sealed class ToolPackBootstrapMetadataTests {
     [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDisabledReason_WhenPackDisabledByConfiguration() {
         var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
-            EnableFileSystemPack = false,
-            EnableSystemPack = false,
-            EnableActiveDirectoryPack = false,
-            EnablePowerShellPack = false,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false,
-            EnableEmailPack = false,
-            EnableReviewerSetupPack = false,
+            DisabledPackIds = DefaultEnabledKnownPackIds,
             EnableDefaultPluginPaths = false
         });
 
@@ -141,13 +149,7 @@ public sealed class ToolPackBootstrapMetadataTests {
     [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ReportsEnabled_WhenPackLoaded() {
         var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
-            EnableFileSystemPack = false,
-            EnableSystemPack = false,
-            EnableActiveDirectoryPack = false,
-            EnablePowerShellPack = false,
-            EnableTestimoXPack = false,
-            EnableEmailPack = false,
-            EnableReviewerSetupPack = false,
+            DisabledPackIds = DisableDefaultsExcept("officeimo"),
             EnableDefaultPluginPaths = false
         });
 
@@ -160,16 +162,7 @@ public sealed class ToolPackBootstrapMetadataTests {
     [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDisabledReason_ForDnsOpenSourcePacksWhenDisabledByConfiguration() {
         var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
-            EnableFileSystemPack = false,
-            EnableSystemPack = false,
-            EnableActiveDirectoryPack = false,
-            EnablePowerShellPack = false,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false,
-            EnableDnsClientXPack = false,
-            EnableDomainDetectivePack = false,
-            EnableEmailPack = false,
-            EnableReviewerSetupPack = false,
+            DisabledPackIds = DefaultEnabledKnownPackIds,
             EnableDefaultPluginPaths = false
         });
 
@@ -189,13 +182,7 @@ public sealed class ToolPackBootstrapMetadataTests {
     [Fact]
     public void RegisterAll_AssignsPackIds_ForRegisteredTools() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
-            EnableFileSystemPack = false,
-            EnableSystemPack = false,
-            EnableActiveDirectoryPack = false,
-            EnablePowerShellPack = false,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false,
-            EnableEmailPack = false,
+            DisabledPackIds = DisableDefaultsExcept("eventlog", "reviewer_setup"),
             EnableDefaultPluginPaths = false
         });
         var registry = new ToolRegistry();
@@ -244,14 +231,11 @@ public sealed class ToolPackBootstrapMetadataTests {
         public string? AdDomainController { get; init; }
         public string? AdDefaultSearchBaseDn { get; init; }
         public int AdMaxResults { get; init; } = 1000;
-        public bool EnablePowerShellPack { get; init; }
         public bool PowerShellAllowWrite { get; init; }
-        public bool EnableTestimoXPack { get; init; } = true;
-        public bool EnableOfficeImoPack { get; init; } = true;
-        public bool EnableDnsClientXPack { get; init; } = true;
-        public bool EnableDomainDetectivePack { get; init; } = true;
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> DisabledPackIds { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> EnabledPackIds { get; init; } = Array.Empty<string>();
     }
 
     private sealed class TestPack : IToolPack {
@@ -269,5 +253,27 @@ public sealed class ToolPackBootstrapMetadataTests {
         public void Register(ToolRegistry registry) {
             _ = registry;
         }
+    }
+
+    private static string[] DisableDefaultsExcept(params string[] keepEnabledPackIds) {
+        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < keepEnabledPackIds.Length; i++) {
+            var normalized = ToolPackBootstrap.NormalizePackId(keepEnabledPackIds[i]);
+            if (normalized.Length > 0) {
+                keep.Add(normalized);
+            }
+        }
+
+        var disabled = new List<string>();
+        for (var i = 0; i < DefaultEnabledKnownPackIds.Length; i++) {
+            var normalized = ToolPackBootstrap.NormalizePackId(DefaultEnabledKnownPackIds[i]);
+            if (normalized.Length == 0 || keep.Contains(normalized)) {
+                continue;
+            }
+
+            disabled.Add(normalized);
+        }
+
+        return disabled.ToArray();
     }
 }

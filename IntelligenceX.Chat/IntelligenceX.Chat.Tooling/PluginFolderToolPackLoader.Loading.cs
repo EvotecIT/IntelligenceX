@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -11,13 +12,22 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Tooling;
 
 internal static partial class PluginFolderToolPackLoader {
+    private const string DisabledByRuntimeConfigurationReason = "Disabled by runtime configuration.";
+    private const string DisabledByPluginManifestDefaultReason = "Disabled by plugin manifest default.";
+    private const string DisabledByPluginRiskClassificationReason = "Disabled by plugin risk classification (dangerous plugin).";
+    private const string DisabledByDuplicatePackReason = "Duplicate pack id already loaded.";
+    private static readonly TimeSpan SlowPluginLoadWarningThreshold = TimeSpan.FromMilliseconds(500);
+
     private static void TryLoadPluginDirectory(
         string pluginDirectory,
         bool isExplicitRoot,
         ToolPackBootstrapOptions options,
         List<IToolPack> packs,
         HashSet<string> existingPackIds,
-        Action<string>? onWarning) {
+        Action<string>? onWarning,
+        Action<ToolPackAvailabilityInfo>? onPackAvailability,
+        int loadIndex,
+        int loadTotal) {
         PluginManifest? manifest = null;
         var manifestPath = Path.Combine(pluginDirectory, ManifestFileName);
         if (File.Exists(manifestPath)) {
@@ -25,70 +35,129 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var pluginId = DeterminePluginId(pluginDirectory, manifest);
-        var entryAssemblyPaths = ResolveEntryAssemblyPaths(pluginDirectory, manifest, pluginId, onWarning);
-        if (entryAssemblyPaths.Count == 0) {
-            return;
-        }
+        var progressTotal = Math.Max(1, loadTotal);
+        var progressIndex = Math.Clamp(loadIndex, 1, progressTotal);
+        onWarning?.Invoke(
+            $"[plugin] load_progress plugin='{pluginId}' phase='begin' index='{progressIndex}' total='{progressTotal}'");
 
-        PreloadPluginDependencies(pluginDirectory, entryAssemblyPaths, pluginId, onWarning);
+        var loadStopwatch = Stopwatch.StartNew();
+        var entryAssemblyCount = 0;
+        var candidateTypeCount = 0;
+        var loadedPackCount = 0;
+        var disabledPackCount = 0;
+        var duplicatePackCount = 0;
+        var failedPackCount = 0;
 
-        IReadOnlyList<Type> candidateTypes = Array.Empty<Type>();
-        for (var i = 0; i < entryAssemblyPaths.Count; i++) {
-            var assemblyPath = entryAssemblyPaths[i];
-            var warnOnLoadFailure = i == entryAssemblyPaths.Count - 1;
-            var entryAssembly = TryLoadAssembly(assemblyPath, pluginId, onWarning, warnOnFailure: warnOnLoadFailure);
-            if (entryAssembly is null) {
-                continue;
+        try {
+            var entryAssemblyPaths = ResolveEntryAssemblyPaths(pluginDirectory, manifest, pluginId, onWarning);
+            entryAssemblyCount = entryAssemblyPaths.Count;
+            if (entryAssemblyPaths.Count == 0) {
+                return;
             }
 
-            candidateTypes = ResolveCandidatePackTypes(entryAssembly, manifest, pluginId, onWarning);
-            if (candidateTypes.Count > 0) {
-                break;
-            }
-        }
+            PreloadPluginDependencies(pluginDirectory, entryAssemblyPaths, pluginId, onWarning);
 
-        if (candidateTypes.Count == 0) {
-            if (string.IsNullOrWhiteSpace(manifest?.EntryType)) {
-                onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' error='no IToolPack implementations found in plugin folder'");
-            }
-            return;
-        }
-
-        foreach (var candidateType in candidateTypes) {
-            if (!TryCreatePack(candidateType, options, out var pack, out var error)) {
-                onWarning?.Invoke($"[plugin] init_failed plugin='{pluginId}' type='{candidateType.FullName}' error='{error}'");
-                continue;
-            }
-
-            var descriptorId = pack.Descriptor.Id?.Trim();
-            var normalizedDescriptorId = ToolPackBootstrap.NormalizePackId(descriptorId);
-            if (normalizedDescriptorId.Length == 0) {
-                onWarning?.Invoke($"[plugin] init_failed plugin='{pluginId}' type='{candidateType.FullName}' error='descriptor id is empty'");
-                continue;
-            }
-
-            if (existingPackIds.Contains(normalizedDescriptorId)) {
-                if (isExplicitRoot) {
-                    onWarning?.Invoke($"[plugin] duplicate_pack plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
+            IReadOnlyList<Type> candidateTypes = Array.Empty<Type>();
+            for (var i = 0; i < entryAssemblyPaths.Count; i++) {
+                var assemblyPath = entryAssemblyPaths[i];
+                var warnOnLoadFailure = i == entryAssemblyPaths.Count - 1;
+                var entryAssembly = TryLoadAssembly(assemblyPath, pluginId, onWarning, warnOnFailure: warnOnLoadFailure);
+                if (entryAssembly is null) {
+                    continue;
                 }
-                continue;
-            }
 
-            if (!IsPackEnabledByOptions(normalizedDescriptorId, options)) {
-                if (isExplicitRoot) {
-                    onWarning?.Invoke($"[plugin] pack_disabled plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
+                candidateTypes = ResolveCandidatePackTypes(entryAssembly, manifest, pluginId, onWarning);
+                if (candidateTypes.Count > 0) {
+                    break;
                 }
-                continue;
             }
 
-            if (!TryResolvePluginSourceKind(manifest, pack, out var sourceKind, out var sourceKindError)) {
-                onWarning?.Invoke($"[plugin] source_kind_missing plugin='{pluginId}' descriptor='{descriptorId}' error='{sourceKindError}'");
-                continue;
+            if (candidateTypes.Count == 0) {
+                if (string.IsNullOrWhiteSpace(manifest?.EntryType)) {
+                    onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' error='no IToolPack implementations found in plugin folder'");
+                }
+                return;
             }
+            candidateTypeCount = candidateTypes.Count;
 
-            pack = ToolPackBootstrap.WithSourceKind(pack, sourceKind);
-            existingPackIds.Add(normalizedDescriptorId);
-            packs.Add(pack);
+            foreach (var candidateType in candidateTypes) {
+                if (!TryCreatePack(candidateType, options, out var pack, out var error)) {
+                    onWarning?.Invoke($"[plugin] init_failed plugin='{pluginId}' type='{candidateType.FullName}' error='{error}'");
+                    failedPackCount++;
+                    continue;
+                }
+
+                var descriptorId = pack.Descriptor.Id?.Trim();
+                var normalizedDescriptorId = ToolPackBootstrap.NormalizePackId(descriptorId);
+                if (normalizedDescriptorId.Length == 0) {
+                    onWarning?.Invoke($"[plugin] init_failed plugin='{pluginId}' type='{candidateType.FullName}' error='descriptor id is empty'");
+                    failedPackCount++;
+                    continue;
+                }
+
+                if (existingPackIds.Contains(normalizedDescriptorId)) {
+                    if (isExplicitRoot) {
+                        onWarning?.Invoke($"[plugin] duplicate_pack plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
+                    }
+                    duplicatePackCount++;
+                    onPackAvailability?.Invoke(CreatePluginPackAvailability(
+                        pack: pack,
+                        normalizedDescriptorId: normalizedDescriptorId,
+                        manifest: manifest,
+                        enabled: false,
+                        disabledReason: DisabledByDuplicatePackReason));
+                    continue;
+                }
+
+                var enablementDecision = ResolvePackEnablement(normalizedDescriptorId, manifest, options);
+                if (!enablementDecision.Enabled) {
+                    if (isExplicitRoot) {
+                        onWarning?.Invoke($"[plugin] pack_disabled plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
+                    }
+                    disabledPackCount++;
+                    onPackAvailability?.Invoke(CreatePluginPackAvailability(
+                        pack: pack,
+                        normalizedDescriptorId: normalizedDescriptorId,
+                        manifest: manifest,
+                        enabled: false,
+                        disabledReason: enablementDecision.DisabledReason));
+                    continue;
+                }
+
+                if (!TryResolvePluginSourceKind(manifest, pack, out var sourceKind, out var sourceKindError)) {
+                    onWarning?.Invoke($"[plugin] source_kind_missing plugin='{pluginId}' descriptor='{descriptorId}' error='{sourceKindError}'");
+                    failedPackCount++;
+                    onPackAvailability?.Invoke(CreatePluginPackAvailability(
+                        pack: pack,
+                        normalizedDescriptorId: normalizedDescriptorId,
+                        manifest: manifest,
+                        enabled: false,
+                        disabledReason: sourceKindError));
+                    continue;
+                }
+
+                pack = ToolPackBootstrap.WithSourceKind(pack, sourceKind);
+                existingPackIds.Add(normalizedDescriptorId);
+                packs.Add(pack);
+                loadedPackCount++;
+            }
+        } finally {
+            loadStopwatch.Stop();
+            onWarning?.Invoke(
+                $"[plugin] load_progress plugin='{pluginId}' phase='end' index='{progressIndex}' total='{progressTotal}' " +
+                $"elapsed_ms='{Math.Max(1, (long)loadStopwatch.Elapsed.TotalMilliseconds)}' " +
+                $"loaded='{loadedPackCount}' disabled='{disabledPackCount}' duplicate='{duplicatePackCount}' failed='{failedPackCount}'");
+            if (loadStopwatch.Elapsed >= SlowPluginLoadWarningThreshold) {
+                onWarning?.Invoke(
+                    $"[plugin] load_timing plugin='{pluginId}' " +
+                    $"elapsed_ms='{Math.Max(1, (long)loadStopwatch.Elapsed.TotalMilliseconds)}' " +
+                    $"entry_assemblies='{entryAssemblyCount}' " +
+                    $"candidate_types='{candidateTypeCount}' " +
+                    $"loaded='{loadedPackCount}' " +
+                    $"disabled='{disabledPackCount}' " +
+                    $"duplicate='{duplicatePackCount}' " +
+                    $"failed='{failedPackCount}'");
+            }
         }
     }
 
@@ -408,28 +477,98 @@ internal static partial class PluginFolderToolPackLoader {
         }
     }
 
-    private static bool IsPackEnabledByOptions(string descriptorId, ToolPackBootstrapOptions options) {
-        var normalized = ToolPackBootstrap.NormalizePackId(descriptorId);
-        if (normalized.Length == 0) {
+    private static PackEnablementDecision ResolvePackEnablement(
+        string normalizedPackId,
+        PluginManifest? manifest,
+        ToolPackBootstrapOptions options) {
+        if (string.IsNullOrWhiteSpace(normalizedPackId)) {
+            return new PackEnablementDecision(Enabled: false, DisabledReason: DisabledByRuntimeConfigurationReason);
+        }
+
+        if (ContainsNormalizedPackId(options.DisabledPackIds, normalizedPackId)) {
+            return new PackEnablementDecision(Enabled: false, DisabledReason: DisabledByRuntimeConfigurationReason);
+        }
+
+        if (ContainsNormalizedPackId(options.EnabledPackIds, normalizedPackId)) {
+            return new PackEnablementDecision(Enabled: true, DisabledReason: null);
+        }
+
+        if (manifest?.DefaultEnabled is bool defaultEnabled && !defaultEnabled) {
+            return new PackEnablementDecision(Enabled: false, DisabledReason: DisabledByPluginManifestDefaultReason);
+        }
+
+        if (manifest is { DefaultEnabled: null, IsDangerous: true }) {
+            return new PackEnablementDecision(Enabled: false, DisabledReason: DisabledByPluginRiskClassificationReason);
+        }
+
+        return new PackEnablementDecision(Enabled: true, DisabledReason: null);
+    }
+
+    private static bool ContainsNormalizedPackId(IReadOnlyList<string>? packIds, string normalizedPackId) {
+        if (packIds is null || packIds.Count == 0 || string.IsNullOrWhiteSpace(normalizedPackId)) {
             return false;
         }
 
-        return normalized switch {
-            "fs" => options.EnableFileSystemPack,
-            "filesystem" => options.EnableFileSystemPack,
-            "system" => options.EnableSystemPack,
-            "ad" => options.EnableActiveDirectoryPack,
-            "active_directory" => options.EnableActiveDirectoryPack,
-            "powershell" => options.EnablePowerShellPack,
-            "testimox" => options.EnableTestimoXPack,
-            "officeimo" => options.EnableOfficeImoPack,
-            "dnsclientx" => options.EnableDnsClientXPack,
-            "domaindetective" => options.EnableDomainDetectivePack,
-            "reviewersetup" => options.EnableReviewerSetupPack,
-            "reviewer_setup" => options.EnableReviewerSetupPack,
-            "email" => options.EnableEmailPack,
-            _ => true
+        for (var i = 0; i < packIds.Count; i++) {
+            var normalized = ToolPackBootstrap.NormalizePackId(packIds[i]);
+            if (normalized.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(normalized, normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static ToolPackAvailabilityInfo CreatePluginPackAvailability(
+        IToolPack pack,
+        string normalizedDescriptorId,
+        PluginManifest? manifest,
+        bool enabled,
+        string? disabledReason) {
+        var descriptor = pack.Descriptor;
+        var name = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedDescriptorId : descriptor.Name.Trim();
+        var description = string.IsNullOrWhiteSpace(descriptor.Description) ? null : descriptor.Description.Trim();
+        var sourceKind = TryResolveAvailabilitySourceKind(manifest, descriptor, out var resolvedSourceKind)
+            ? resolvedSourceKind
+            : ToolPackBootstrap.PackSourceOpenSource;
+
+        return new ToolPackAvailabilityInfo {
+            Id = normalizedDescriptorId,
+            Name = name,
+            Description = description,
+            Tier = descriptor.Tier,
+            IsDangerous = manifest?.IsDangerous ?? descriptor.IsDangerous,
+            SourceKind = sourceKind,
+            Enabled = enabled,
+            DisabledReason = enabled ? null : disabledReason
         };
+    }
+
+    private static bool TryResolveAvailabilitySourceKind(
+        PluginManifest? manifest,
+        ToolPackDescriptor descriptor,
+        out string sourceKind) {
+        sourceKind = string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(descriptor.SourceKind)
+            && ToolPackBootstrap.TryNormalizeSourceKind(descriptor.SourceKind, out sourceKind)) {
+            return true;
+        }
+
+        var configured = manifest?.SourceKind;
+        if (string.IsNullOrWhiteSpace(configured)) {
+            configured = manifest?.Source;
+        }
+        if (string.IsNullOrWhiteSpace(configured)) {
+            configured = manifest?.Visibility;
+        }
+
+        return !string.IsNullOrWhiteSpace(configured)
+               && ToolPackBootstrap.TryNormalizeSourceKind(configured, out sourceKind);
     }
 
     private static bool TryResolvePluginSourceKind(PluginManifest? manifest, IToolPack pack, out string sourceKind, out string error) {
@@ -466,5 +605,7 @@ internal static partial class PluginFolderToolPackLoader {
         error = $"invalid manifest source kind '{configured}'.";
         return false;
     }
+
+    private readonly record struct PackEnablementDecision(bool Enabled, string? DisabledReason);
 
 }

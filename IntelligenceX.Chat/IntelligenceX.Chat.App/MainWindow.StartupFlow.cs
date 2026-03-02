@@ -318,13 +318,78 @@ public sealed partial class MainWindow : Window {
                     return;
                 }
 
+                if (!_isSending && !_turnStartupInProgress) {
+                    await SetStatusAsync("Runtime connected. Loading tool packs in background...", SessionStatusTone.Warn).ConfigureAwait(false);
+                }
+
+                async Task SetMetadataSyncStatusAsync(string message) {
+                    if (_isConnected && !_isSending && !_turnStartupInProgress) {
+                        await SetStatusAsync(message, SessionStatusTone.Warn).ConfigureAwait(false);
+                    }
+                }
+
+                static string FormatPhaseDuration(TimeSpan elapsed) {
+                    return elapsed.TotalSeconds >= 1
+                        ? $"{elapsed.TotalSeconds:0.0}s"
+                        : $"{Math.Max(1, elapsed.TotalMilliseconds):0}ms";
+                }
+
+                async Task<T> AwaitWithMetadataHeartbeatAsync<T>(
+                    Func<Task<T>> operationFactory,
+                    string initialMessage,
+                    string heartbeatMessagePrefix) {
+                    await SetMetadataSyncStatusAsync(initialMessage).ConfigureAwait(false);
+                    var started = Stopwatch.StartNew();
+                    var operationTask = operationFactory();
+                    while (!operationTask.IsCompleted) {
+                        var completed = await Task.WhenAny(operationTask, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false);
+                        if (ReferenceEquals(completed, operationTask)) {
+                            break;
+                        }
+
+                        await SetMetadataSyncStatusAsync(
+                                $"{heartbeatMessagePrefix} ({FormatPhaseDuration(started.Elapsed)} elapsed)...")
+                            .ConfigureAwait(false);
+                    }
+
+                    return await operationTask.ConfigureAwait(false);
+                }
+
+                TimeSpan? helloDuration = null;
+                TimeSpan? toolCatalogDuration = null;
+                TimeSpan? authRefreshDuration = null;
+                var enabledPackCount = 0;
+                var totalPackCount = 0;
+                var listedToolCount = 0;
+
                 try {
+                    var helloStopwatch = Stopwatch.StartNew();
                     StartupLog.Write("StartupConnect.hello begin");
-                    var hello = await client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+                    var hello = await AwaitWithMetadataHeartbeatAsync(
+                            operationFactory: () => client.RequestAsync<HelloMessage>(
+                                new HelloRequest { RequestId = NextId() },
+                                CancellationToken.None),
+                            initialMessage: "Runtime connected. Syncing session policy...",
+                            heartbeatMessagePrefix: "Runtime connected. Session policy sync in progress")
+                        .ConfigureAwait(false);
+                    helloStopwatch.Stop();
+                    helloDuration = helloStopwatch.Elapsed;
                     _sessionPolicy = hello.Policy;
                     StartupLog.Write("StartupConnect.hello done");
                     AppendStartupToolHealthWarningsFromPolicy();
                     AppendUnavailablePacksFromPolicy();
+                    AppendStartupBootstrapSummaryFromPolicy();
+                    if (hello.Policy is { Packs: { } packs }) {
+                        totalPackCount = packs.Length;
+                        for (var i = 0; i < packs.Length; i++) {
+                            if (packs[i].Enabled) {
+                                enabledPackCount++;
+                            }
+                        }
+                    }
+                    await SetMetadataSyncStatusAsync(
+                            $"Runtime connected. Session policy synced in {FormatPhaseDuration(helloStopwatch.Elapsed)} ({enabledPackCount}/{Math.Max(totalPackCount, 0)} packs enabled).")
+                        .ConfigureAwait(false);
                 } catch (Exception ex) {
                     _sessionPolicy = null;
                     StartupLog.Write("StartupConnect.hello failed");
@@ -334,10 +399,23 @@ public sealed partial class MainWindow : Window {
                 }
 
                 try {
+                    var listToolsStopwatch = Stopwatch.StartNew();
                     StartupLog.Write("StartupConnect.list_tools begin");
-                    var toolList = await client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+                    var toolList = await AwaitWithMetadataHeartbeatAsync(
+                            operationFactory: () => client.RequestAsync<ToolListMessage>(
+                                new ListToolsRequest { RequestId = NextId() },
+                                CancellationToken.None),
+                            initialMessage: "Runtime connected. Loading tool catalog...",
+                            heartbeatMessagePrefix: "Runtime connected. Tool catalog load in progress")
+                        .ConfigureAwait(false);
+                    listToolsStopwatch.Stop();
+                    toolCatalogDuration = listToolsStopwatch.Elapsed;
                     UpdateToolCatalog(toolList.Tools);
+                    listedToolCount = toolList.Tools?.Length ?? 0;
                     StartupLog.Write("StartupConnect.list_tools done");
+                    await SetMetadataSyncStatusAsync(
+                            $"Runtime connected. Tool catalog loaded ({listedToolCount} tools, {FormatPhaseDuration(listToolsStopwatch.Elapsed)}).")
+                        .ConfigureAwait(false);
                 } catch (Exception ex) {
                     StartupLog.Write("StartupConnect.list_tools failed");
                     if (VerboseServiceLogs || _debugMode) {
@@ -346,9 +424,19 @@ public sealed partial class MainWindow : Window {
                 }
 
                 try {
+                    var authRefreshStopwatch = Stopwatch.StartNew();
                     StartupLog.Write("StartupConnect.auth_refresh begin");
-                    _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+                    _ = await AwaitWithMetadataHeartbeatAsync(
+                            operationFactory: () => RefreshAuthenticationStateAsync(updateStatus: true),
+                            initialMessage: "Runtime connected. Refreshing authentication state...",
+                            heartbeatMessagePrefix: "Runtime connected. Authentication refresh in progress")
+                        .ConfigureAwait(false);
+                    authRefreshStopwatch.Stop();
+                    authRefreshDuration = authRefreshStopwatch.Elapsed;
                     StartupLog.Write("StartupConnect.auth_refresh done");
+                    await SetMetadataSyncStatusAsync(
+                            $"Runtime connected. Authentication refreshed in {FormatPhaseDuration(authRefreshStopwatch.Elapsed)}.")
+                        .ConfigureAwait(false);
                 } catch (Exception ex) {
                     StartupLog.Write("StartupConnect.auth_refresh failed");
                     if (VerboseServiceLogs || _debugMode) {
@@ -357,6 +445,26 @@ public sealed partial class MainWindow : Window {
                 }
 
                 await PublishOptionsStateSafeAsync().ConfigureAwait(false);
+                if ((helloDuration.HasValue || toolCatalogDuration.HasValue || authRefreshDuration.HasValue)
+                    && (toolCatalogDuration.GetValueOrDefault() >= TimeSpan.FromSeconds(2)
+                        || helloDuration.GetValueOrDefault() >= TimeSpan.FromSeconds(2)
+                        || authRefreshDuration.GetValueOrDefault() >= TimeSpan.FromSeconds(2))) {
+                    var summaryParts = new List<string>();
+                    if (helloDuration.HasValue) {
+                        summaryParts.Add($"policy {FormatPhaseDuration(helloDuration.Value)}");
+                    }
+                    if (toolCatalogDuration.HasValue) {
+                        summaryParts.Add($"tool catalog {FormatPhaseDuration(toolCatalogDuration.Value)} ({listedToolCount} tools)");
+                    }
+                    if (authRefreshDuration.HasValue) {
+                        summaryParts.Add($"auth {FormatPhaseDuration(authRefreshDuration.Value)}");
+                    }
+
+                    AppendSystem("Runtime startup sync timing: " + string.Join(", ", summaryParts) + ".");
+                }
+                if (_isConnected && !_isSending && !_turnStartupInProgress) {
+                    await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                }
             } catch (Exception ex) {
                 StartupLog.Write("StartupConnect.metadata_sync failed: " + ex.Message);
             } finally {
@@ -652,7 +760,7 @@ public sealed partial class MainWindow : Window {
         _toolStates.Clear();
         ClearToolRoutingInsights();
         foreach (var toolName in knownToolNames) {
-            _toolStates[toolName] = true;
+            _toolStates[toolName] = !_toolWriteCapabilities.TryGetValue(toolName, out var isWriteCapable) || !isWriteCapable;
         }
 
         if (_appState.DisabledTools is { Count: > 0 }) {

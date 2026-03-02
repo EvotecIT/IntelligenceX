@@ -199,8 +199,8 @@ Progress:
   - `EnableDnsClientXPack`
   - `EnableDomainDetectivePack`
 - Added host/service runtime CLI toggles to control these packs per run:
-  - `--enable/--disable-dnsclientx-pack`
-  - `--enable/--disable-domaindetective-pack`
+  - `--enable-pack-id/--disable-pack-id dnsclientx`
+  - `--enable-pack-id/--disable-pack-id domaindetective`
 - Added runner-script pass-through switches for scenario/live/preflight harnesses:
   - `-Enable/-DisableDnsClientXPack`
   - `-Enable/-DisableDomainDetectivePack`

@@ -86,7 +86,7 @@ public static class ToolHealthDiagnostics {
                     return new ProbeResult(normalizedToolName, Ok: false, ErrorCode: errorCode, Error: error, DurationMs: sw.ElapsedMilliseconds);
                 }
 
-                if (TryResolveOperationalSmokeProbe(normalizedToolName, out var smokeToolName, out var smokeArguments)
+                if (TryResolveOperationalSmokeProbe(registry, normalizedToolName, out var smokeToolName, out var smokeArguments)
                     && registry.TryGet(smokeToolName, out var smokeTool)) {
                     var smokeRaw = await smokeTool.InvokeAsync(smokeArguments, toolToken).ConfigureAwait(false) ?? string.Empty;
                     if (TryReadFailure(smokeRaw, out var smokeErrorCode, out var smokeError)) {
@@ -192,37 +192,122 @@ public static class ToolHealthDiagnostics {
         return cts;
     }
 
-    private static bool TryResolveOperationalSmokeProbe(string packInfoToolName, out string smokeToolName, out JsonObject smokeArguments) {
+    private static bool TryResolveOperationalSmokeProbe(ToolRegistry registry, string packInfoToolName, out string smokeToolName, out JsonObject smokeArguments) {
         smokeToolName = string.Empty;
         smokeArguments = new JsonObject();
 
-        var normalized = (packInfoToolName ?? string.Empty).Trim();
-        if (normalized.Length == 0 || !normalized.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+        if (registry is null) {
             return false;
         }
 
-        var packId = ToolPackBootstrap.NormalizePackId(normalized[..^PackInfoSuffix.Length]);
-        switch (packId) {
-            case "system":
-                smokeToolName = "system_info";
-                return true;
-            case "ad":
-            case "active_directory":
-                smokeToolName = "ad_environment_discover";
-                return true;
-            case "eventlog":
-                smokeToolName = "eventlog_named_events_catalog";
-                return true;
-            case "testimox":
-                smokeToolName = "testimox_rules_list";
-                smokeArguments.Add("page_size", 25);
-                return true;
-            case "powershell":
-                smokeToolName = "powershell_environment_discover";
-                return true;
-            default:
-                return false;
+        var normalized = (packInfoToolName ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
         }
+
+        if (!registry.TryGetDefinition(normalized, out var packInfoDefinition) || packInfoDefinition is null) {
+            return false;
+        }
+
+        if (!IsPackInfoDefinition(packInfoDefinition)) {
+            return false;
+        }
+
+        var packId = ResolveNormalizedPackId(packInfoDefinition);
+        if (packId.Length == 0 && normalized.EndsWith(PackInfoSuffix, StringComparison.OrdinalIgnoreCase)) {
+            packId = ToolPackBootstrap.NormalizePackId(normalized[..^PackInfoSuffix.Length]);
+        }
+        if (packId.Length == 0) {
+            return false;
+        }
+
+        var candidates = registry.GetDefinitions()
+            .Where(def => ShouldIncludeSmokeCandidate(def, packInfoDefinition.Name, packId))
+            .OrderByDescending(GetSmokeProbeCandidatePriority)
+            .ThenBy(static def => def.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (candidates.Length == 0) {
+            return false;
+        }
+
+        smokeToolName = candidates[0].Name;
+        return true;
+    }
+
+    private static bool ShouldIncludeSmokeCandidate(ToolDefinition definition, string packInfoToolName, string normalizedPackId) {
+        if (definition is null) {
+            return false;
+        }
+
+        if (string.Equals(definition.Name, packInfoToolName, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (IsPackInfoDefinition(definition)) {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.AliasOf)) {
+            return false;
+        }
+
+        if (definition.WriteGovernance?.IsWriteCapable == true) {
+            return false;
+        }
+
+        if (HasRequiredParameters(definition.Parameters)) {
+            return false;
+        }
+
+        var candidatePackId = ResolveNormalizedPackId(definition);
+        if (candidatePackId.Length == 0 || !string.Equals(candidatePackId, normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string ResolveNormalizedPackId(ToolDefinition definition) {
+        var routingPackId = (definition.Routing?.PackId ?? string.Empty).Trim();
+        return ToolPackBootstrap.NormalizePackId(routingPackId);
+    }
+
+    private static int GetSmokeProbeCandidatePriority(ToolDefinition definition) {
+        var normalizedRole = (definition.Routing?.Role ?? string.Empty).Trim();
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+            return 30;
+        }
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase)) {
+            return 20;
+        }
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase)) {
+            return 15;
+        }
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleOperational, StringComparison.OrdinalIgnoreCase)) {
+            return 10;
+        }
+
+        return 0;
+    }
+
+    private static bool HasRequiredParameters(JsonObject? parametersSchema) {
+        if (parametersSchema is null) {
+            return false;
+        }
+
+        var required = parametersSchema.GetArray("required");
+        if (required is null || required.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < required.Count; i++) {
+            var requiredName = required[i].AsString();
+            if (!string.IsNullOrWhiteSpace(requiredName)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsPackInfoDefinition(ToolDefinition definition) {

@@ -47,10 +47,10 @@ public sealed class StartupToolHealthTimeoutPolicyTests {
     }
 
     [Theory]
-    [InlineData(0, ToolPackSourceKind.ClosedSource, "testimox", 12)]
-    [InlineData(2, ToolPackSourceKind.ClosedSource, "testimox", 12)]
-    [InlineData(60, ToolPackSourceKind.ClosedSource, "testimox", 30)]
-    public void ResolveStartupToolHealthTimeoutSeconds_UsesHigherFloorForTestimoX(
+    [InlineData(0, ToolPackSourceKind.ClosedSource, "custom-closed-pack", 8)]
+    [InlineData(2, ToolPackSourceKind.ClosedSource, "custom-closed-pack", 4)]
+    [InlineData(60, ToolPackSourceKind.ClosedSource, "custom-closed-pack", 20)]
+    public void ResolveStartupToolHealthTimeoutSeconds_PackIdDoesNotOverrideSourcePolicy(
         int configuredTimeoutSeconds,
         ToolPackSourceKind sourceKind,
         string packId,
@@ -61,10 +61,10 @@ public sealed class StartupToolHealthTimeoutPolicyTests {
     }
 
     [Theory]
-    [InlineData(0, ToolPackSourceKind.ClosedSource, "testimox", 20)]
-    [InlineData(8, ToolPackSourceKind.ClosedSource, "testimox", 20)]
-    [InlineData(24, ToolPackSourceKind.ClosedSource, "testimox", 30)]
-    public void ResolveStartupToolHealthRetryTimeoutSeconds_UsesHigherFloorForTestimoX(
+    [InlineData(0, ToolPackSourceKind.ClosedSource, "custom-closed-pack", 12)]
+    [InlineData(8, ToolPackSourceKind.ClosedSource, "custom-closed-pack", 16)]
+    [InlineData(24, ToolPackSourceKind.ClosedSource, "custom-closed-pack", 30)]
+    public void ResolveStartupToolHealthRetryTimeoutSeconds_PackIdDoesNotOverrideSourcePolicy(
         int initialTimeoutSeconds,
         ToolPackSourceKind sourceKind,
         string packId,
@@ -108,17 +108,17 @@ public sealed class StartupToolHealthTimeoutPolicyTests {
     }
 
     [Fact]
-    public void ComputeNextStartupToolHealthProbeUtc_UsesLongerBackoffForTestimoXTimeouts() {
+    public void ComputeNextStartupToolHealthProbeUtc_UsesSourceKindBackoffForTimeouts() {
         var now = new DateTime(2026, 2, 17, 12, 0, 0, DateTimeKind.Utc);
 
         var next = ChatServiceSession.ComputeNextStartupToolHealthProbeUtc(
             nowUtc: now,
             sourceKind: ToolPackSourceKind.ClosedSource,
-            packId: "testimox",
+            packId: "custom-closed-pack",
             errorCode: "tool_timeout",
             consecutiveFailures: 1);
 
-        Assert.Equal(now.AddMinutes(20), next);
+        Assert.Equal(now.AddMinutes(10), next);
     }
 
     [Fact]

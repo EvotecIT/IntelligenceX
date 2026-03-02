@@ -42,8 +42,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIAuthMode = authMode,
             OpenAIApiKey = apiKey.Length == 0 ? null : apiKey,
             Model = model,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
 

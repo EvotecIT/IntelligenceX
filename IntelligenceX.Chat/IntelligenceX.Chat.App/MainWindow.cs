@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
+using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
@@ -329,12 +330,13 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolPackIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolPackNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolParameterDto[]> _toolParameters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _toolWriteCapabilities = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
-    private bool _powerShellOnboardingHintShownThisSession;
     private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupUnavailablePackSignatures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _startupBootstrapSummarySignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, MemorySemanticVectorCacheEntry> _memorySemanticVectorCache = new(StringComparer.OrdinalIgnoreCase);
     // Guards memory semantic cache + memory diagnostics snapshot/history across UI/async paths.
     private readonly object _memoryDiagnosticsSync = new();
@@ -573,9 +575,7 @@ public sealed partial class MainWindow : Window {
         public string? ReasoningSummary { get; init; }
         public string? TextVerbosity { get; init; }
         public double? Temperature { get; init; }
-        public bool? EnablePowerShellPack { get; init; }
-        public bool? EnableTestimoXPack { get; init; }
-        public bool? EnableOfficeImoPack { get; init; }
+        public IReadOnlyList<ServiceLaunchArguments.PackToggle>? PackToggles { get; init; }
     }
 
 

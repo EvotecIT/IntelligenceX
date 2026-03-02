@@ -118,14 +118,36 @@ public sealed class ServiceLaunchArgumentsTests {
             detachedServiceMode: true,
             parentProcessId: 12345,
             new ServiceLaunchArguments.ProfileOptions {
-                EnablePowerShellPack = true,
-                EnableTestimoXPack = false,
-                EnableOfficeImoPack = true
+                PackToggles = new[] {
+                    new ServiceLaunchArguments.PackToggle("powershell", true),
+                    new ServiceLaunchArguments.PackToggle("testimox", false),
+                    new ServiceLaunchArguments.PackToggle("officeimo", true)
+                }
             });
 
-        Assert.Contains("--enable-powershell-pack", args);
-        Assert.Contains("--disable-testimox-pack", args);
-        Assert.Contains("--enable-officeimo-pack", args);
+        Assert.Equal(new[] { "officeimo", "powershell" }, ExtractArgumentValues(args, "--enable-pack-id"));
+        Assert.Equal(new[] { "testimox" }, ExtractArgumentValues(args, "--disable-pack-id"));
+    }
+
+    /// <summary>
+    /// Ensures pack toggle arguments normalize ids and honor the last toggle per id.
+    /// </summary>
+    [Fact]
+    public void Build_NormalizesAndDeDuplicatesRuntimePackToggleFlags_WhenConfigured() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                PackToggles = new[] {
+                    new ServiceLaunchArguments.PackToggle("Power-Shell", true),
+                    new ServiceLaunchArguments.PackToggle("power_shell", false),
+                    new ServiceLaunchArguments.PackToggle(" testimo x ", true)
+                }
+            });
+
+        Assert.Equal(new[] { "testimox" }, ExtractArgumentValues(args, "--enable-pack-id"));
+        Assert.Equal(new[] { "powershell" }, ExtractArgumentValues(args, "--disable-pack-id"));
     }
 
     /// <summary>

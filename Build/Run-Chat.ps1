@@ -81,22 +81,22 @@ if ($EchoToolOutputs) {
     $runArgs += '--echo-tool-outputs'
 }
 if ($EnablePowerShellPack) {
-    $runArgs += '--enable-powershell-pack'
+    $runArgs += @('--enable-pack-id', 'powershell')
 }
 if ($EnableTestimoXPack) {
-    $runArgs += '--enable-testimox-pack'
+    $runArgs += @('--enable-pack-id', 'testimox')
 }
 if ($EnableDnsClientXPack) {
-    $runArgs += '--enable-dnsclientx-pack'
+    $runArgs += @('--enable-pack-id', 'dnsclientx')
 }
 if ($DisableDnsClientXPack) {
-    $runArgs += '--disable-dnsclientx-pack'
+    $runArgs += @('--disable-pack-id', 'dnsclientx')
 }
 if ($EnableDomainDetectivePack) {
-    $runArgs += '--enable-domaindetective-pack'
+    $runArgs += @('--enable-pack-id', 'domaindetective')
 }
 if ($DisableDomainDetectivePack) {
-    $runArgs += '--disable-domaindetective-pack'
+    $runArgs += @('--disable-pack-id', 'domaindetective')
 }
 if ($PluginPath -and $PluginPath.Count -gt 0) {
     foreach ($path in $PluginPath) {

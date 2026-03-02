@@ -55,7 +55,7 @@ internal sealed partial class ChatServiceSession {
             error:
             $"Blocked '{call.Name}' host target(s) in ad_domain scope because they match prior public_domain evidence: {blockedPreview}.",
             hints: new[] {
-                "Run ad_scope_discovery or ad_domain_controllers first, then retry AD/eventlog checks with AD-derived hosts.",
+                "Run ad_scope_discovery or ad_domain_controllers first, then retry AD-scope host checks with AD-derived hosts.",
                 "If this exact host is intended, include it explicitly in this turn's user request."
             },
             isTransient: false);
@@ -74,28 +74,14 @@ internal sealed partial class ChatServiceSession {
                 && string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
                 return true;
             }
-
-            if (ToolSelectionMetadata.TryResolvePackId(definition, out var packId)
-                && string.Equals(packId, "eventlog", StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
         }
 
-        if (ToolSelectionMetadata.TryResolveDomainIntentFamily(
-                normalizedToolName,
-                definition?.Category,
-                definition?.Tags,
-                out var inferredFamily)
-            && string.Equals(inferredFamily, DomainIntentFamilyAd, StringComparison.Ordinal)) {
-            return true;
-        }
-
-        return ToolSelectionMetadata.TryResolvePackId(
+        return ToolSelectionMetadata.TryResolveDomainIntentFamily(
                    normalizedToolName,
                    definition?.Category,
                    definition?.Tags,
-                   out var inferredPackId)
-               && string.Equals(inferredPackId, "eventlog", StringComparison.OrdinalIgnoreCase);
+                   out var inferredFamily)
+               && string.Equals(inferredFamily, DomainIntentFamilyAd, StringComparison.Ordinal);
     }
 
     private static string[] ExtractHostScopedTargets(JsonObject? arguments) {

@@ -43,8 +43,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIStreaming = false,
             Model = "mock-local-model",
             MaxToolRounds = 4,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
         var registry = new ToolRegistry();
@@ -186,8 +185,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIStreaming = false,
             Model = "mock-local-model",
             MaxToolRounds = 3,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
         var registry = new ToolRegistry();
@@ -312,8 +310,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Model = "mock-local-model",
             MaxToolRounds = 3,
             Redact = true,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
         var registry = new ToolRegistry();
@@ -450,8 +447,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIStreaming = false,
             Model = "mock-local-model",
             MaxToolRounds = 4,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
         var registry = new ToolRegistry();
@@ -600,8 +596,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIStreaming = false,
             Model = "mock-local-model",
             MaxToolRounds = 4,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
         var registry = new ToolRegistry();
@@ -726,8 +721,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIStreaming = false,
             Model = "mock-local-model",
             MaxToolRounds = 4,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
         var registry = new ToolRegistry();
@@ -889,8 +883,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIStreaming = false,
             Model = "mock-local-model",
             MaxToolRounds = 4,
-            EnableTestimoXPack = false,
-            EnableOfficeImoPack = false
+            DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
         var registry = new ToolRegistry();
