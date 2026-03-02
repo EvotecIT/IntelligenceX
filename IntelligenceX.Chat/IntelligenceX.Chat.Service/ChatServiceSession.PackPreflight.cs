@@ -87,6 +87,80 @@ internal sealed partial class ChatServiceSession {
         return preflightCalls.Count == 0 ? Array.Empty<ToolCall>() : preflightCalls;
     }
 
+    private bool TryBuildHostDomainIntentEnvironmentBootstrapCall(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out ToolCall call,
+        out string reason) {
+        call = default!;
+        reason = string.Empty;
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || toolDefinitions.Count == 0) {
+            return false;
+        }
+
+        if (!TryGetCurrentDomainIntentFamily(normalizedThreadId, out var family)
+            && !TryResolveDomainIntentFamilyFromUserSignals(userRequest, toolDefinitions, out family)) {
+            return false;
+        }
+
+        if (!TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
+            return false;
+        }
+
+        var candidates = new List<(ToolDefinition Definition, string PackId, string Family)>();
+        for (var i = 0; i < toolDefinitions.Count; i++) {
+            var definition = toolDefinitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var toolName = (definition.Name ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                continue;
+            }
+
+            if (!_toolOrchestrationCatalog.TryGetEntry(toolName, out var entry)
+                || !string.Equals(entry.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)
+                || entry.PackId.Length == 0
+                || ToolDefinitionHasRequiredArguments(definition)) {
+                continue;
+            }
+
+            var candidateFamily = string.Empty;
+            if (TryNormalizeDomainIntentFamily(entry.DomainIntentFamily, out var catalogFamily)) {
+                candidateFamily = catalogFamily;
+            } else {
+                candidateFamily = ResolveDomainIntentFamily(definition);
+            }
+
+            if (!string.Equals(candidateFamily, normalizedFamily, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            candidates.Add((definition, entry.PackId, candidateFamily));
+        }
+
+        if (candidates.Count == 0) {
+            return false;
+        }
+
+        var selected = candidates
+            .OrderBy(static candidate => candidate.PackId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static candidate => candidate.Definition.Name, StringComparer.OrdinalIgnoreCase)
+            .First();
+        var selectedToolName = (selected.Definition.Name ?? string.Empty).Trim();
+        if (selectedToolName.Length == 0) {
+            return false;
+        }
+
+        call = BuildHostPackPreflightCall(selectedToolName, ToolRoutingTaxonomy.RoleEnvironmentDiscover);
+        reason = $"domain_intent_family_{normalizedFamily}_pack_{selected.PackId}";
+        return true;
+    }
+
     private void RememberSuccessfulPackPreflightCalls(
         string threadId,
         IReadOnlyList<ToolCall> executedCalls,

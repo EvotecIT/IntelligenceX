@@ -55,6 +55,7 @@ internal sealed partial class ChatServiceSession {
         var continuationSubsetEscapeUsed = state.ContinuationSubsetEscapeUsed;
         var autoPendingActionReplayUsed = state.AutoPendingActionReplayUsed;
         var hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;
+        var hostDomainIntentBootstrapReplayUsed = state.HostDomainIntentBootstrapReplayUsed;
         var lastNonEmptyAssistantDraft = state.LastNonEmptyAssistantDraft;
         var nudgeUnknownEnvelopeReplanCount = state.NudgeUnknownEnvelopeReplanCount;
         var noTextRecoveryHitCount = state.NoTextRecoveryHitCount;
@@ -446,6 +447,131 @@ internal sealed partial class ChatServiceSession {
                     return ContinueRound();
                 }
 
+                if (!hostDomainIntentBootstrapReplayUsed
+                    && !executionContractApplies
+                    && toolCalls.Count == 0
+                    && toolOutputs.Count == 0
+                    && TryBuildHostDomainIntentEnvironmentBootstrapCall(
+                        threadId: threadId,
+                        userRequest: routedUserRequest,
+                        toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
+                        out var hostDomainBootstrapCall,
+                        out var hostDomainBootstrapReason)) {
+                    hostDomainIntentBootstrapReplayUsed = true;
+                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+
+                    Trace.WriteLine(
+                        $"[host-domain-bootstrap] outcome=execute reason={hostDomainBootstrapReason} continuation={continuationFollowUpTurn} tool={hostDomainBootstrapCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+
+                    toolRounds++;
+                    var hostDomainBootstrapRoundNumber = round + 1;
+                    await WriteToolRoundStartedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostDomainBootstrapRoundNumber,
+                            maxRounds,
+                            1,
+                            parallelTools,
+                            allowMutatingParallel)
+                        .ConfigureAwait(false);
+                    if (planExecuteReviewLoop) {
+                        await TryWriteStatusAsync(
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                status: ChatStatusCodes.PhaseExecute,
+                                message: $"Executing domain-scope bootstrap ({hostDomainBootstrapCall.Name})...")
+                            .ConfigureAwait(false);
+                    }
+
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.ToolCall,
+                            toolName: hostDomainBootstrapCall.Name,
+                            toolCallId: hostDomainBootstrapCall.CallId)
+                        .ConfigureAwait(false);
+                    toolCalls.Add(new ToolCallDto {
+                        CallId = hostDomainBootstrapCall.CallId,
+                        Name = hostDomainBootstrapCall.Name,
+                        ArgumentsJson = hostDomainBootstrapCall.Arguments is null
+                            ? "{}"
+                            : JsonLite.Serialize(hostDomainBootstrapCall.Arguments)
+                    });
+
+                    var hostDomainBootstrapCalls = new[] { hostDomainBootstrapCall };
+                    var hostDomainBootstrapOutputs = await ExecuteToolsAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostDomainBootstrapCalls,
+                            parallel: false,
+                            allowMutatingParallel: allowMutatingParallel,
+                            mutatingToolHintsByName: mutatingToolHints,
+                            toolTimeoutSeconds: toolTimeoutSeconds,
+                            userRequest: routedUserRequest,
+                            cancellationToken: turnToken)
+                        .ConfigureAwait(false);
+                    var hostDomainBootstrapFailedCalls = CountFailedToolOutputs(hostDomainBootstrapOutputs);
+                    await WriteToolRoundCompletedStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostDomainBootstrapRoundNumber,
+                            maxRounds,
+                            hostDomainBootstrapOutputs.Count,
+                            hostDomainBootstrapFailedCalls)
+                        .ConfigureAwait(false);
+                    UpdateToolRoutingStats(hostDomainBootstrapCalls, hostDomainBootstrapOutputs);
+                    RememberSuccessfulPackPreflightCalls(threadId, hostDomainBootstrapCalls, hostDomainBootstrapOutputs);
+                    foreach (var output in hostDomainBootstrapOutputs) {
+                        if (WasProjectionFallbackApplied(output)) {
+                            projectionFallbackCount++;
+                        }
+
+                        toolOutputs.Add(new ToolOutputDto {
+                            CallId = output.CallId,
+                            Output = output.Output,
+                            Ok = output.Ok,
+                            ErrorCode = output.ErrorCode,
+                            Error = output.Error,
+                            Hints = output.Hints,
+                            IsTransient = output.IsTransient,
+                            SummaryMarkdown = output.SummaryMarkdown,
+                            MetaJson = output.MetaJson,
+                            RenderJson = output.RenderJson,
+                            FailureJson = output.FailureJson
+                        });
+                    }
+
+                    var hostDomainBootstrapNextInput = BuildHostReplayReviewInput(
+                        hostDomainBootstrapCall,
+                        hostDomainBootstrapOutputs,
+                        supportsSyntheticHostReplayItems);
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            hostDomainBootstrapNextInput,
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
+                            phaseMessage: "Reviewing domain-scope bootstrap results...",
+                            heartbeatLabel: "Reviewing domain bootstrap",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    return ContinueRound();
+                }
+
 
         PersistState();
         return NoExtractedToolRoundOutcome.ProceedToFinalize();
@@ -474,6 +600,7 @@ internal sealed partial class ChatServiceSession {
             state.ContinuationSubsetEscapeUsed = continuationSubsetEscapeUsed;
             state.AutoPendingActionReplayUsed = autoPendingActionReplayUsed;
             state.HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;
+            state.HostDomainIntentBootstrapReplayUsed = hostDomainIntentBootstrapReplayUsed;
             state.LastNonEmptyAssistantDraft = lastNonEmptyAssistantDraft;
             state.NudgeUnknownEnvelopeReplanCount = nudgeUnknownEnvelopeReplanCount;
             state.NoTextRecoveryHitCount = noTextRecoveryHitCount;

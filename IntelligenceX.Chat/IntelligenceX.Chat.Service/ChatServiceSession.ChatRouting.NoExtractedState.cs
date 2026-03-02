@@ -45,6 +45,7 @@ internal sealed partial class ChatServiceSession {
             bool structuredNextActionRetryUsed,
             bool toolProgressRecoveryUsed,
             bool hostStructuredNextActionReplayUsed,
+            bool hostDomainIntentBootstrapReplayUsed,
             bool noResultPhaseLoopWatchdogUsed,
             string lastNonEmptyAssistantDraft,
             int nudgeUnknownEnvelopeReplanCount,
@@ -77,6 +78,7 @@ internal sealed partial class ChatServiceSession {
             StructuredNextActionRetryUsed = structuredNextActionRetryUsed;
             ToolProgressRecoveryUsed = toolProgressRecoveryUsed;
             HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;
+            HostDomainIntentBootstrapReplayUsed = hostDomainIntentBootstrapReplayUsed;
             NoResultPhaseLoopWatchdogUsed = noResultPhaseLoopWatchdogUsed;
             LastNonEmptyAssistantDraft = lastNonEmptyAssistantDraft;
             NudgeUnknownEnvelopeReplanCount = nudgeUnknownEnvelopeReplanCount;
@@ -134,6 +136,8 @@ internal sealed partial class ChatServiceSession {
 
         public bool HostStructuredNextActionReplayUsed { get; set; }
 
+        public bool HostDomainIntentBootstrapReplayUsed { get; set; }
+
         public bool NoResultPhaseLoopWatchdogUsed { get; set; }
 
         public string LastNonEmptyAssistantDraft { get; set; }
@@ -176,6 +180,7 @@ internal sealed partial class ChatServiceSession {
         ref bool structuredNextActionRetryUsed,
         ref bool toolProgressRecoveryUsed,
         ref bool hostStructuredNextActionReplayUsed,
+        ref bool hostDomainIntentBootstrapReplayUsed,
         ref bool noResultPhaseLoopWatchdogUsed,
         ref string lastNonEmptyAssistantDraft,
         ref int nudgeUnknownEnvelopeReplanCount,
@@ -206,6 +211,7 @@ internal sealed partial class ChatServiceSession {
         structuredNextActionRetryUsed = state.StructuredNextActionRetryUsed;
         toolProgressRecoveryUsed = state.ToolProgressRecoveryUsed;
         hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;
+        hostDomainIntentBootstrapReplayUsed = state.HostDomainIntentBootstrapReplayUsed;
         noResultPhaseLoopWatchdogUsed = state.NoResultPhaseLoopWatchdogUsed;
         lastNonEmptyAssistantDraft = state.LastNonEmptyAssistantDraft;
         nudgeUnknownEnvelopeReplanCount = state.NudgeUnknownEnvelopeReplanCount;
