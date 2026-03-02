@@ -15,7 +15,7 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed class PluginFolderLoaderTests {
-    private static readonly string[] DefaultDisabledKnownPackIds = {
+    private static readonly string[] DefaultEnabledKnownPackIds = {
         "filesystem",
         "eventlog",
         "system",
@@ -59,7 +59,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
@@ -108,7 +108,7 @@ public sealed class PluginFolderLoaderTests {
             var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
             });
 
@@ -158,7 +158,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 EnabledPackIds = new[] { "plugin-loader-test" },
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
             });
@@ -203,7 +203,7 @@ public sealed class PluginFolderLoaderTests {
             var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
             });
 
@@ -254,7 +254,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 EnabledPackIds = new[] { "plugin-loader-test" },
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
             });
@@ -299,7 +299,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
             });
 
@@ -335,7 +335,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
@@ -386,7 +386,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
@@ -418,7 +418,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
@@ -453,7 +453,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
@@ -506,7 +506,7 @@ public sealed class PluginFolderLoaderTests {
                 var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                     EnableDefaultPluginPaths = false,
                     PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                    DisabledPackIds = DefaultEnabledKnownPackIds,
                     PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                     OnBootstrapWarning = warning => warnings.Add(warning)
                 });
@@ -558,7 +558,7 @@ public sealed class PluginFolderLoaderTests {
             var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { pluginRoot },
-                DisabledPackIds = DefaultDisabledKnownPackIds,
+                DisabledPackIds = DefaultEnabledKnownPackIds,
                 PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
                 RunAsProfilePath = "C:/temp/run-as-profiles.json",
                 AuthenticationProfilePath = "C:/temp/auth-profiles.json"

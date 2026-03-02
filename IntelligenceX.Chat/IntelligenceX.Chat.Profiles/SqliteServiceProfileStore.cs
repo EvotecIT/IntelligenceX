@@ -8,6 +8,7 @@ using DBAClientX;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.CompatibleHttp;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Profiles;
 
@@ -151,7 +152,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
 
         var refreshedProfileColumns = TryGetTableColumns(ProfileTable);
         if (HasDeprecatedPackToggleColumns(refreshedProfileColumns)) {
-            MigrateProfileTableDroppingDeprecatedPackToggleColumns();
+            MigrateProfileTableDroppingDeprecatedPackToggleColumns(refreshedProfileColumns);
         }
     }
 
@@ -181,7 +182,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         }
 
         try {
-            var schemaProbe = _db.Query(_dbPath, $"SELECT * FROM {tableName} LIMIT 0");
+            var schemaProbe = _db.Query(_dbPath, $"SELECT * FROM {tableName} LIMIT 1");
             if (schemaProbe is DataTable dt && dt.Columns.Count > 0) {
                 foreach (DataColumn col in dt.Columns) {
                     var name = col.ColumnName;
@@ -212,7 +213,114 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
             // Best-effort metadata probe only.
         }
 
+        if (columns.Count > 0) {
+            return columns;
+        }
+
+        try {
+            var createTableSql = QueryAsTable(_db.Query(
+                _dbPath,
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = @name LIMIT 1;",
+                parameters: new Dictionary<string, object?> { ["@name"] = tableName }));
+            var createSql = createTableSql?.Rows.Count > 0
+                ? createTableSql.Rows[0][0]?.ToString()
+                : null;
+            if (!string.IsNullOrWhiteSpace(createSql)) {
+                foreach (var parsed in ParseColumnNamesFromCreateSql(createSql)) {
+                    columns.Add(parsed);
+                }
+            }
+        } catch {
+            // Best-effort metadata probe only.
+        }
+
         return columns;
+    }
+
+    private static IReadOnlyList<string> ParseColumnNamesFromCreateSql(string createTableSql) {
+        var sql = (createTableSql ?? string.Empty).Trim();
+        if (sql.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var openIndex = sql.IndexOf('(');
+        var closeIndex = sql.LastIndexOf(')');
+        if (openIndex < 0 || closeIndex <= openIndex) {
+            return Array.Empty<string>();
+        }
+
+        var body = sql.Substring(openIndex + 1, closeIndex - openIndex - 1);
+        var parts = new List<string>();
+        var depth = 0;
+        var segmentStart = 0;
+        for (var i = 0; i < body.Length; i++) {
+            var ch = body[i];
+            if (ch == '(') {
+                depth++;
+                continue;
+            }
+
+            if (ch == ')') {
+                depth = Math.Max(0, depth - 1);
+                continue;
+            }
+
+            if (ch != ',' || depth != 0) {
+                continue;
+            }
+
+            parts.Add(body.Substring(segmentStart, i - segmentStart));
+            segmentStart = i + 1;
+        }
+        if (segmentStart < body.Length) {
+            parts.Add(body.Substring(segmentStart));
+        }
+
+        var columns = new List<string>(parts.Count);
+        for (var i = 0; i < parts.Count; i++) {
+            var part = (parts[i] ?? string.Empty).Trim();
+            if (part.Length == 0) {
+                continue;
+            }
+
+            if (part.StartsWith("PRIMARY KEY", StringComparison.OrdinalIgnoreCase)
+                || part.StartsWith("CONSTRAINT", StringComparison.OrdinalIgnoreCase)
+                || part.StartsWith("UNIQUE", StringComparison.OrdinalIgnoreCase)
+                || part.StartsWith("CHECK", StringComparison.OrdinalIgnoreCase)
+                || part.StartsWith("FOREIGN KEY", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var token = ExtractLeadingSqlIdentifier(part);
+            if (!string.IsNullOrWhiteSpace(token)) {
+                columns.Add(token);
+            }
+        }
+
+        return columns;
+    }
+
+    private static string ExtractLeadingSqlIdentifier(string segment) {
+        var value = (segment ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        if (value[0] == '"' || value[0] == '`' || value[0] == '[') {
+            var close = value[0] == '[' ? ']' : value[0];
+            var closeIndex = value.IndexOf(close, 1);
+            if (closeIndex > 1) {
+                return value.Substring(1, closeIndex - 1).Trim();
+            }
+        }
+
+        var end = 0;
+        while (end < value.Length && !char.IsWhiteSpace(value[end])) {
+            end++;
+        }
+
+        var token = value.Substring(0, end).Trim();
+        return token.Trim('"', '`', '[', ']');
     }
 
     private void EnsureColumnExists(string tableName, HashSet<string> knownColumns, string columnName, string columnDefinition) {
@@ -256,9 +364,23 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         return !string.Equals(normalized, "enable_default_plugin_paths", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void MigrateProfileTableDroppingDeprecatedPackToggleColumns() {
+    private static List<string> ResolveDeprecatedPackToggleColumns(IEnumerable<string> columns) {
+        var result = new List<string>();
+        foreach (var column in columns) {
+            if (!IsDeprecatedPackToggleColumn(column)) {
+                continue;
+            }
+
+            result.Add(column);
+        }
+
+        return result;
+    }
+
+    private void MigrateProfileTableDroppingDeprecatedPackToggleColumns(IEnumerable<string>? knownColumns = null) {
         const string migratedTable = "ix_service_profiles_v2";
         const string currentColumnList = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
+        var legacyToggleColumns = ResolveDeprecatedPackToggleColumns(knownColumns ?? TryGetTableColumns(ProfileTable));
 
         _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
         try {
@@ -311,6 +433,7 @@ CREATE TABLE {migratedTable} (
 INSERT INTO {migratedTable} ({currentColumnList})
 SELECT {currentColumnList}
 FROM {ProfileTable};");
+            MigrateLegacyPackToggleOverrides(legacyToggleColumns);
             _db.ExecuteNonQuery(_dbPath, $"DROP TABLE {ProfileTable};");
             _db.ExecuteNonQuery(_dbPath, $"ALTER TABLE {migratedTable} RENAME TO {ProfileTable};");
             _db.ExecuteNonQuery(_dbPath, $"CREATE INDEX IF NOT EXISTS ix_service_profiles_updated_utc ON {ProfileTable}(updated_utc);");
@@ -325,6 +448,110 @@ FROM {ProfileTable};");
 
             throw;
         }
+    }
+
+    private void MigrateLegacyPackToggleOverrides(IReadOnlyList<string> legacyToggleColumns) {
+        if (legacyToggleColumns is null || legacyToggleColumns.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < legacyToggleColumns.Count; i++) {
+            var column = (legacyToggleColumns[i] ?? string.Empty).Trim();
+            if (column.Length == 0 || !IsSafeSqlIdentifier(column)) {
+                continue;
+            }
+
+            if (!TryResolveDeprecatedPackIdFromColumn(column, out var packId)) {
+                continue;
+            }
+
+            var parameters = new Dictionary<string, object?> {
+                ["@pack_id"] = packId
+            };
+
+            _db.ExecuteNonQuery(
+                _dbPath,
+                $@"
+DELETE FROM {DisabledPackIdsTable}
+WHERE path = @pack_id
+  AND profile_name IN (
+      SELECT name
+      FROM {ProfileTable}
+      WHERE COALESCE(CAST({column} AS INTEGER), 0) <> 0
+  );",
+                parameters: parameters);
+            _db.ExecuteNonQuery(
+                _dbPath,
+                $@"
+INSERT OR IGNORE INTO {EnabledPackIdsTable} (profile_name, ord, path)
+SELECT p.name,
+       COALESCE((SELECT MAX(e.ord) + 1 FROM {EnabledPackIdsTable} e WHERE e.profile_name = p.name), 0),
+       @pack_id
+FROM {ProfileTable} p
+WHERE COALESCE(CAST(p.{column} AS INTEGER), 0) <> 0;",
+                parameters: parameters);
+
+            _db.ExecuteNonQuery(
+                _dbPath,
+                $@"
+DELETE FROM {EnabledPackIdsTable}
+WHERE path = @pack_id
+  AND profile_name IN (
+      SELECT name
+      FROM {ProfileTable}
+      WHERE COALESCE(CAST({column} AS INTEGER), 0) = 0
+  );",
+                parameters: parameters);
+            _db.ExecuteNonQuery(
+                _dbPath,
+                $@"
+INSERT OR IGNORE INTO {DisabledPackIdsTable} (profile_name, ord, path)
+SELECT p.name,
+       COALESCE((SELECT MAX(d.ord) + 1 FROM {DisabledPackIdsTable} d WHERE d.profile_name = p.name), 0),
+       @pack_id
+FROM {ProfileTable} p
+WHERE COALESCE(CAST(p.{column} AS INTEGER), 0) = 0;",
+                parameters: parameters);
+        }
+    }
+
+    private static bool TryResolveDeprecatedPackIdFromColumn(string? columnName, out string packId) {
+        packId = string.Empty;
+        var normalized = (columnName ?? string.Empty).Trim();
+        if (!IsDeprecatedPackToggleColumn(normalized)) {
+            return false;
+        }
+
+        const string prefix = "enable_";
+        const string suffix = "_pack";
+        if (!normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            || !normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            || normalized.Length <= prefix.Length + suffix.Length) {
+            return false;
+        }
+
+        var tokenLength = normalized.Length - prefix.Length - suffix.Length;
+        var token = normalized.Substring(prefix.Length, tokenLength);
+        var normalizedPackId = ToolSelectionMetadata.NormalizePackId(token);
+        if (normalizedPackId.Length == 0) {
+            return false;
+        }
+
+        packId = normalizedPackId;
+        return true;
+    }
+
+    private static bool IsSafeSqlIdentifier(string value) {
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (ch == '_' || char.IsLetterOrDigit(ch)) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return value.Length > 0;
     }
 
     public Task<ServiceProfile?> GetAsync(string name, CancellationToken cancellationToken) {
@@ -637,7 +864,7 @@ ON CONFLICT(name) DO UPDATE SET
         var required = new List<string>();
         var existingColumns = TryGetTableColumns(ProfileTable);
         foreach (var column in existingColumns) {
-            if (knownColumns.Contains(column) || !IsDeprecatedPackToggleColumn(column)) {
+            if (knownColumns.Contains(column)) {
                 continue;
             }
 

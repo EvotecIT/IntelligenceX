@@ -113,6 +113,20 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
+        public void TryResolveDomainIntentFamily_ShouldTreatEventLogAsAdDomainFamily() {
+            var eventLogDefinition = new ToolDefinition(
+                name: "eventlog_live_query",
+                description: "Event log",
+                parameters: null,
+                category: "eventlog");
+
+            var resolved = ToolSelectionMetadata.TryResolveDomainIntentFamily(eventLogDefinition, out var family);
+
+            Assert.True(resolved);
+            Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, family);
+        }
+
+        [Fact]
         public void TryResolveDomainIntentFamily_ShouldPreferExplicitDomainFamilyTagOverride() {
             var definition = new ToolDefinition(
                 name: "dnsclientx_query",

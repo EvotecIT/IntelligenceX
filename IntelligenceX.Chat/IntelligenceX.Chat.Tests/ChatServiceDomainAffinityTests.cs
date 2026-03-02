@@ -871,10 +871,18 @@ public sealed class ChatServiceDomainAffinityTests {
                 description: "Custom DNS probe",
                 parameters: null,
                 tags: new[] { "domain_family:public_domain", "pack:dnsclientx" }));
+        var eventLogCategory = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "eventlog_live_query",
+            new ToolDefinition(
+                name: "eventlog_live_query",
+                description: "Event log query",
+                parameters: null,
+                category: "eventlog"));
 
         Assert.True(adTagged);
         Assert.True(adHostTagged);
         Assert.False(dnsTagged);
+        Assert.True(eventLogCategory);
     }
 
     [Fact]

@@ -534,7 +534,8 @@ public static class ToolSelectionMetadata {
         }
 
         var normalizedCategory = NormalizeToken(category, fallback: string.Empty);
-        if (string.Equals(normalizedCategory, "active_directory", StringComparison.Ordinal)) {
+        if (string.Equals(normalizedCategory, "active_directory", StringComparison.Ordinal)
+            || string.Equals(normalizedCategory, "eventlog", StringComparison.Ordinal)) {
             family = DomainIntentFamilyAd;
             return true;
         }
@@ -545,7 +546,8 @@ public static class ToolSelectionMetadata {
         }
 
         var inferredCategory = NormalizeToken(InferCategory(toolName, toolType: null), fallback: string.Empty);
-        if (string.Equals(inferredCategory, "active_directory", StringComparison.Ordinal)) {
+        if (string.Equals(inferredCategory, "active_directory", StringComparison.Ordinal)
+            || string.Equals(inferredCategory, "eventlog", StringComparison.Ordinal)) {
             family = DomainIntentFamilyAd;
             return true;
         }
