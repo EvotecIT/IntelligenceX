@@ -231,6 +231,40 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(new[] { ToolSetupRequirementKinds.Authentication }, entry.SetupRequirementKinds);
     }
 
+    [Fact]
+    public void Build_ExcludesHandoffRoutesWhenNormalizedBindingsAreEmpty() {
+        var definition = CreateDefinition(
+            name: "custom_pack_info",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            },
+            handoff: new ToolHandoffContract {
+                IsHandoffAware = true,
+                OutboundRoutes = new[] {
+                    new ToolHandoffRoute {
+                        TargetPackId = "dnsclientx",
+                        TargetToolName = "dns_lookup",
+                        Bindings = new[] {
+                            new ToolHandoffBinding { SourceField = "host", TargetArgument = "target" }
+                        }
+                    }
+                }
+            });
+
+        // Simulate a malformed in-memory mutation after contract validation.
+        definition.Handoff!.OutboundRoutes![0].Bindings![0].SourceField = " ";
+
+        var catalog = ToolOrchestrationCatalog.Build(new[] { definition });
+
+        Assert.True(catalog.TryGetEntry("custom_pack_info", out var entry));
+        Assert.Equal(0, entry.HandoffRouteCount);
+        Assert.Equal(0, entry.HandoffBindingCount);
+        Assert.Empty(entry.HandoffEdges);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolRoutingContract? routing = null,

@@ -294,6 +294,10 @@ public sealed class ToolOrchestrationCatalog {
                     }
 
                     var normalizedBindingPairs = NormalizeDistinctTokens(bindingPairs);
+                    if (normalizedBindingPairs.Length == 0) {
+                        continue;
+                    }
+
                     handoffBindingCount += normalizedBindingPairs.Length;
                     handoffEdges.Add(new ToolOrchestrationHandoffEdge {
                         TargetPackId = NormalizePackId(route?.TargetPackId),
