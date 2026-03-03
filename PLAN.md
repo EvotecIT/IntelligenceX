@@ -48,6 +48,8 @@ Build a contract-first architecture where:
 - [x] Hotfix landed: deferred startup metadata flow no longer skips metadata sync purely because authentication is initially unknown (skip now applies only when interactive login is already in progress).
 - [x] Hotfix landed: startup bootstrap status publishing now stays visible while connected startup metadata sync is in progress.
 - [x] Closed (mitigated): server-scoped tooling bootstrap cache now reuses prior bootstrap snapshots across reconnect/session churn, avoiding repeated full pack bootstrap on warm path.
+- [x] Hotfix landed: carryover structured-next-action replay now accepts compact non-question follow-ups even when continuation expansion is unavailable, while still rejecting contextual-anchor and question turns.
+- [x] Hotfix landed: Chat service now suppresses duplicate final `ChatResultMessage` publishes for the same request/thread/text to prevent repeated assistant finals.
 
 ## Hard Decisions (Locked)
 
