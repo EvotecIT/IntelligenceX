@@ -301,4 +301,38 @@ public sealed class ChatServiceToolEvidenceCacheTests {
 
         Assert.False(built);
     }
+
+    [Fact]
+    public void ToolEvidenceCache_DoesNotReuseFamilyMatchedEvidenceForExplicitOtherToolReference() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "ad_replication_summary",
+                ArgumentsJson = "{\"scope\":\"forest\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"health\":\"healthy\"}",
+                SummaryMarkdown = "Forest replication health is healthy."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-explicit-other-tool",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.SetPreferredDomainIntentFamilyForTesting("thread-explicit-other-tool", "ad_domain");
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-explicit-other-tool",
+            "what does eventlog_evtx_query do?",
+            out _);
+
+        Assert.False(built);
+    }
 }

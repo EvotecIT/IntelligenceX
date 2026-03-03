@@ -81,6 +81,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Follow-up question turns should not be rewritten into blocker/cached-evidence output.
+        // Keep the model's direct answer path so tool-capability questions remain conversational.
+        if ((continuationFollowUpTurn || compactFollowUpTurn)
+            && ContainsQuestionSignal(userRequest)) {
+            return false;
+        }
+
         var draft = (assistantDraft ?? string.Empty).Trim();
         var looksLikeExecutionIntentPlaceholder = LooksLikeExecutionIntentPlaceholderDraft(userRequest, draft);
 

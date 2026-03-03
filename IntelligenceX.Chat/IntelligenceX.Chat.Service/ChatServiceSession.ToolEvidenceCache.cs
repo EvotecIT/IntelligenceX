@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using JsonValueKind = System.Text.Json.JsonValueKind;
 
@@ -120,6 +121,7 @@ internal sealed partial class ChatServiceSession {
         TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
 
         var requestTokens = TokenizeRoutingTokens(userRequest, maxTokens: 10);
+        var requestedToolNames = ExtractExplicitRequestedToolNames(userRequest);
         var requestedFamily = ResolveRequestedToolEvidenceFamily(normalizedThreadId, userRequest);
         var hasRequestedFamily = requestedFamily.Length > 0;
         ThreadToolEvidenceEntry[] selected;
@@ -186,6 +188,15 @@ internal sealed partial class ChatServiceSession {
                     } else if (!hasRequestedFamily) {
                         hasCandidates = false;
                     }
+                }
+            }
+
+            if (hasCandidates
+                && candidates.Count > 0
+                && requestedToolNames.Length > 0) {
+                candidates.RemoveAll(candidate => !MatchesExplicitRequestedToolName(candidate.Entry.ToolName, requestedToolNames));
+                if (candidates.Count == 0) {
+                    hasCandidates = false;
                 }
             }
 
@@ -305,6 +316,59 @@ internal sealed partial class ChatServiceSession {
 
         var normalizedArgs = NormalizeArgumentsJsonForReplayContract(argumentsJson);
         return normalizedToolName.ToLowerInvariant() + "|" + normalizedArgs;
+    }
+
+    private static string[] ExtractExplicitRequestedToolNames(string userRequest) {
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var matches = Regex.Matches(
+            request,
+            @"\b[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (matches.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var names = new List<string>(Math.Min(8, matches.Count));
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < matches.Count && names.Count < 8; i++) {
+            var value = (matches[i].Value ?? string.Empty).Trim();
+            if (value.Length == 0) {
+                continue;
+            }
+
+            var normalized = NormalizeCompactToken(value.AsSpan());
+            if (normalized.Length == 0 || !seen.Add(normalized)) {
+                continue;
+            }
+
+            names.Add(normalized);
+        }
+
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+    }
+
+    private static bool MatchesExplicitRequestedToolName(string toolName, IReadOnlyList<string> requestedToolNames) {
+        var normalizedToolName = NormalizeCompactToken((toolName ?? string.Empty).AsSpan());
+        if (normalizedToolName.Length == 0 || requestedToolNames.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < requestedToolNames.Count; i++) {
+            var requested = (requestedToolNames[i] ?? string.Empty).Trim();
+            if (requested.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(normalizedToolName, requested, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static double ComputeToolEvidenceTokenScore(int tokenHits, int strongTokenHits) {

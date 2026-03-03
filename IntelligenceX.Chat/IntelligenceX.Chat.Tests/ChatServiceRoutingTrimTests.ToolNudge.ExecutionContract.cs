@@ -704,6 +704,25 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerForCompactFollowUpQuestion() {
+        var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
+            null,
+            new object?[] {
+                "aale to chyba masz toole do event logow?",
+                false,
+                false,
+                false,
+                false,
+                true,
+                true,
+                false,
+                "W tej sesji nie mam aktywnego eventlog packa."
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerWhenToolActivityExists() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
