@@ -27,6 +27,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: host structured next-action auto-replay now blocks same-tool/same-arguments self-loops (`next_action_self_loop`) to prevent repeated AD0-style churn.
 - [x] Stabilization hotfix: carryover structured-next-action auto-replay now suppresses repeated identical tool+args replays until fresh context is provided (or explicit host pin matches).
 - [x] Startup stabilization hotfix: transient reconnects now preserve interactive auth state when appropriate (authenticated or login-in-progress without explicit unauthenticated probe), reducing sign-in/connect churn.
+- [x] Startup visibility hotfix: connect stage now publishes per-attempt retry/timeout/delay progress status during pipe-connect retries.
 - [x] Validation checkpoint: `analyze validate-catalog` currently reports `pass (0 error(s), 0 warning(s))` on this branch.
 - [x] Stabilization hotfix: contextual follow-up detection now reads the `Follow-up:` tail from legacy continuation expansion before carryover replay decisions.
 - [x] Stabilization cleanup: removed standalone lowercase `ad` lexical alias auto-routing from domain-intent signal resolution.
