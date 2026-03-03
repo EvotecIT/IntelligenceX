@@ -173,16 +173,13 @@ internal sealed partial class ChatServiceSession {
         var requestId = (result.RequestId ?? string.Empty).Trim();
         var threadId = (result.ThreadId ?? string.Empty).Trim();
         var text = (result.Text ?? string.Empty).Trim();
-        if (requestId.Length == 0 || threadId.Length == 0 || text.Length == 0) {
-            _lastFinalResultRequestId = requestId;
-            _lastFinalResultThreadId = threadId;
-            _lastFinalResultText = text;
-            return false;
-        }
-
-        if (string.Equals(_lastFinalResultRequestId, requestId, StringComparison.Ordinal)
-            && string.Equals(_lastFinalResultThreadId, threadId, StringComparison.Ordinal)
-            && string.Equals(_lastFinalResultText, text, StringComparison.Ordinal)) {
+        if (ShouldSuppressDuplicateFinalResultForRequest(
+                previousRequestId: _lastFinalResultRequestId,
+                previousThreadId: _lastFinalResultThreadId,
+                previousText: _lastFinalResultText,
+                requestId: requestId,
+                threadId: threadId,
+                text: text)) {
             Trace.WriteLine($"[chat-result] duplicate_final_result_suppressed requestId={requestId} threadId={threadId}");
             return true;
         }
@@ -191,6 +188,38 @@ internal sealed partial class ChatServiceSession {
         _lastFinalResultThreadId = threadId;
         _lastFinalResultText = text;
         return false;
+    }
+
+    internal static bool ShouldSuppressDuplicateFinalResultForRequest(
+        string? previousRequestId,
+        string? previousThreadId,
+        string? previousText,
+        string? requestId,
+        string? threadId,
+        string? text) {
+        var normalizedRequestId = (requestId ?? string.Empty).Trim();
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedRequestId.Length == 0 || normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        var normalizedPreviousRequestId = (previousRequestId ?? string.Empty).Trim();
+        var normalizedPreviousThreadId = (previousThreadId ?? string.Empty).Trim();
+        if (!string.Equals(normalizedPreviousRequestId, normalizedRequestId, StringComparison.Ordinal)
+            || !string.Equals(normalizedPreviousThreadId, normalizedThreadId, StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var normalizedPreviousText = (previousText ?? string.Empty).Trim();
+        var normalizedText = (text ?? string.Empty).Trim();
+        if (normalizedPreviousText.Length == 0 && normalizedText.Length > 0) {
+            // Recovery allowance: if a runtime emitted an empty final first, allow a later non-empty
+            // final for the same request/thread to surface once.
+            return false;
+        }
+
+        // Protocol guardrail: emit at most one meaningful final result envelope per request/thread pair.
+        return true;
     }
 
     private void CancelLoginIfActive() {
