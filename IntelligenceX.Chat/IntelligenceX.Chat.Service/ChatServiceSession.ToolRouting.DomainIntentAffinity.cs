@@ -533,7 +533,7 @@ internal sealed partial class ChatServiceSession {
         string userRequest,
         IReadOnlyList<ToolDefinition> allDefinitions,
         IReadOnlySet<string> preferredToolNames) {
-        var normalizedRequest = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
+        var normalizedRequest = NormalizeRequestForExplicitToolReferenceMatch(userRequest);
         if (normalizedRequest.Length == 0 || allDefinitions is null || allDefinitions.Count == 0) {
             return false;
         }
@@ -550,6 +550,17 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static string NormalizeRequestForExplicitToolReferenceMatch(string? userRequest) {
+        var normalized = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalized
+            .Replace("\\_", "_", StringComparison.Ordinal)
+            .Replace("\\-", "-", StringComparison.Ordinal);
     }
 
     private static bool ContainsExplicitToolNameReference(string normalizedRequest, string toolName) {
