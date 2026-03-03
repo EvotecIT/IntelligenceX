@@ -139,6 +139,15 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldBlockSingleHostStructuredReplayForScopeShift(
+                normalizedThreadId,
+                userRequest,
+                normalizedArguments)) {
+            RemoveStructuredNextActionCarryover(normalizedThreadId);
+            reason = "carryover_scope_shift_requires_fresh_plan";
+            return false;
+        }
+
         var serializedArguments = JsonLite.Serialize(normalizedArguments);
         if (ShouldBlockRepeatedCarryoverAutoReplay(
                 normalizedThreadId,
@@ -378,6 +387,72 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
+    }
+
+    private bool ShouldBlockSingleHostStructuredReplayForScopeShift(
+        string normalizedThreadId,
+        string userRequest,
+        JsonObject normalizedArguments) {
+        var request = NormalizeContextualFollowUpRequest(userRequest);
+        if (request.Length == 0
+            || request.Length > FollowUpShapeShortCharLimit
+            || ContainsQuestionSignal(request)
+            || LooksLikeActionSelectionPayload(request)) {
+            return false;
+        }
+
+        // Keep one-token acknowledgements ("continue", "run") eligible for carryover replay.
+        // Scope-shift follow-ups like "other dcs" still carry enough context to require fresh planning.
+        var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 12);
+        if (requestTokens.Count < 2) {
+            return false;
+        }
+
+        var carryoverTargets = ExtractHostScopedTargets(normalizedArguments);
+        if (carryoverTargets.Length == 0 || carryoverTargets.Length >= CarryoverHostHintMultiHostThreshold) {
+            return false;
+        }
+
+        var userHostHints = CollectHostHintsFromUserRequest(request);
+        if (userHostHints.Length > 0) {
+            for (var i = 0; i < carryoverTargets.Length; i++) {
+                if (HostMatchesAnyCandidate(carryoverTargets[i], userHostHints)) {
+                    return false;
+                }
+            }
+        }
+
+        var knownThreadHosts = CollectThreadHostCandidatesForScopeShiftReplayGuard(normalizedThreadId);
+        if (knownThreadHosts.Length < CarryoverHostHintMultiHostThreshold) {
+            return false;
+        }
+
+        // Carryover replay is still scoped to a single remembered host while thread context
+        // already includes multi-host evidence and the user gave a contextual compact follow-up.
+        return true;
+    }
+
+    private string[] CollectThreadHostCandidatesForScopeShiftReplayGuard(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
+
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        lock (_threadToolEvidenceLock) {
+            if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature) || bySignature.Count == 0) {
+                return Array.Empty<string>();
+            }
+
+            foreach (var entry in bySignature.Values) {
+                CollectHostCandidatesFromSerializedJson(entry.ArgumentsJson, candidates);
+                CollectHostCandidatesFromSerializedJson(entry.Output, candidates);
+            }
+        }
+
+        return candidates.Count == 0 ? Array.Empty<string>() : candidates.ToArray();
     }
 
     private static bool ShouldTreatCarryoverHostHintsAsMultiHostMismatch(
