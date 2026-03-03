@@ -647,16 +647,33 @@ public sealed partial class MainWindow : Window {
             }
 
             await DisposeClientAsync().ConfigureAwait(false);
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
-            ResetEnsureLoginProbeCache();
-            _loginInProgress = false;
+            var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
+            var preserveInteractiveAuthState = ShouldPreserveInteractiveAuthStateOnReconnect(
+                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                isAuthenticated: _isAuthenticated,
+                hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot(),
+                loginInProgress: _loginInProgress);
+            if (!preserveInteractiveAuthState) {
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                ResetEnsureLoginProbeCache();
+                _loginInProgress = false;
+            } else if (!_isAuthenticated) {
+                _authenticatedAccountId = null;
+            }
             _isConnected = false;
             EndStartupMetadataSyncTracking();
             _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
             // Keep the sidecar process alive on transient pipe disconnects.
             // This avoids unnecessary process churn while the client auto-reconnect loop runs.
-            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            if (preserveInteractiveAuthState && _loginInProgress) {
+                await SetStatusAsync(
+                        "Runtime connection dropped during sign-in. Reconnecting...",
+                        SessionStatusTone.Warn)
+                    .ConfigureAwait(false);
+            } else {
+                await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            }
             EnsureAutoReconnectLoop();
         });
     }

@@ -71,6 +71,26 @@ public sealed partial class MainWindow : Window {
         return requiresInteractiveSignIn && !isAuthenticated && hasExplicitUnauthenticatedProbeSnapshot;
     }
 
+    internal static bool ShouldPreserveInteractiveAuthStateOnReconnect(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool hasExplicitUnauthenticatedProbeSnapshot,
+        bool loginInProgress) {
+        if (!requiresInteractiveSignIn) {
+            return false;
+        }
+
+        if (loginInProgress) {
+            return true;
+        }
+
+        if (hasExplicitUnauthenticatedProbeSnapshot) {
+            return false;
+        }
+
+        return isAuthenticated;
+    }
+
     private void ResetEnsureLoginProbeCache() {
         _ensureLoginProbeCacheHasValue = false;
         _ensureLoginProbeCachedIsAuthenticated = false;

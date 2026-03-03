@@ -344,11 +344,23 @@ public sealed partial class MainWindow : Window {
             await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(false);
             await SetConnectProgressStatusAsync("Starting runtime... (connecting to service)").ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
-            _loginInProgress = false;
-            if (!RequiresInteractiveSignInForCurrentTransport()) {
+            var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
+            var preserveInteractiveAuthState = ShouldPreserveInteractiveAuthStateOnReconnect(
+                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                isAuthenticated: _isAuthenticated,
+                hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot(),
+                loginInProgress: _loginInProgress);
+            if (!requiresInteractiveSignIn) {
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                _loginInProgress = false;
                 ApplyNonNativeAuthenticationStateIfNeeded();
+            } else if (!preserveInteractiveAuthState) {
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                _loginInProgress = false;
+            } else if (!_isAuthenticated) {
+                _authenticatedAccountId = null;
             }
 
             var pipeName = _pipeName;
