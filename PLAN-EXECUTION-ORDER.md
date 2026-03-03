@@ -32,6 +32,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: carryover host-hint mismatch detection now consumes assistant-draft host targets as contextual hints, blocking stale single-host replay after multi-host continuation guidance.
 - [x] Stabilization hotfix: carryover host-hint gating now rejects single-host auto-replay whenever follow-up context contains multi-host hints (including mixed stale/fresh host mentions).
 - [x] Stabilization hotfix: carryover replay freshness/scope-shift guards now read raw user request text (assistant draft host hints remain mismatch-only), preventing repeated AD0 replay caused by assistant-draft host echo.
+- [x] Stabilization hardening: carryover replay now uses separate replay-intent and host-hint inputs (no in-band text marker coupling), reducing marker-collision risk while keeping assistant-draft mismatch safeguards.
 - [x] Startup stabilization hotfix: transient reconnects now preserve interactive auth state when appropriate (authenticated or login-in-progress without explicit unauthenticated probe), reducing sign-in/connect churn.
 - [x] Startup visibility hotfix: connect stage now publishes per-attempt retry/timeout/delay progress status during pipe-connect retries.
 - [x] Validation checkpoint: `analyze validate-catalog` currently reports `pass (0 error(s), 0 warning(s))` on this branch.

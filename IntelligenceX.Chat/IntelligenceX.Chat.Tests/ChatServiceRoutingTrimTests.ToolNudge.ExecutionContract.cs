@@ -774,25 +774,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
             session,
             new object?[] { "thread-carryover-repeat-assistant-host", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
 
-        var firstArgs = new object?[] { "thread-carryover-repeat-assistant-host", "go ahead", toolDefinitions, mutabilityHints, null, null };
-        var firstResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, firstArgs);
-        Assert.True(Assert.IsType<bool>(firstResult));
+        var firstResult = session.TryBuildCarryoverStructuredNextActionToolCallForTesting(
+            threadId: "thread-carryover-repeat-assistant-host",
+            replayDecisionUserRequest: "go ahead",
+            hostHintUserRequest: "go ahead",
+            toolDefinitions: toolDefinitions,
+            mutatingToolHintsByName: mutabilityHints,
+            toolCall: out _,
+            reason: out var firstReason);
+        Assert.True(firstResult);
+        Assert.Equal("carryover_structured_next_action_readonly_autorun", firstReason);
 
         var assistantPinnedInput = ChatServiceSession.BuildCarryoverHostHintInputForTesting(
             "go ahead",
             "Still AD0.ad.evotec.xyz evidence in this replay.");
-        var secondArgs = new object?[] {
-            "thread-carryover-repeat-assistant-host",
-            assistantPinnedInput,
-            toolDefinitions,
-            mutabilityHints,
-            null,
-            null
-        };
-        var secondResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, secondArgs);
+        var secondResult = session.TryBuildCarryoverStructuredNextActionToolCallForTesting(
+            threadId: "thread-carryover-repeat-assistant-host",
+            replayDecisionUserRequest: "go ahead",
+            hostHintUserRequest: assistantPinnedInput,
+            toolDefinitions: toolDefinitions,
+            mutatingToolHintsByName: mutabilityHints,
+            toolCall: out _,
+            reason: out var secondReason);
 
-        Assert.False(Assert.IsType<bool>(secondResult));
-        Assert.Equal("carryover_replay_requires_new_context", Assert.IsType<string>(secondArgs[5]));
+        Assert.False(secondResult);
+        Assert.Equal("carryover_replay_requires_new_context", secondReason);
     }
 
     [Fact]
