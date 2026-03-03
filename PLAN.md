@@ -78,6 +78,7 @@ Build a contract-first architecture where:
 - [x] Contract-alignment cleanup: routing/output lifecycle tests now reflect strict routing-contract enforcement and single-meaningful-final result policy for the same request/thread pair.
 - [x] Startup stability hotfix: deferred startup metadata sync now supports rerun requests when login succeeds during an in-flight sync, preventing dropped post-login `hello/list_tools/auth_refresh` refreshes and stale tool-catalog visibility.
 - [x] Stabilization hotfix: continuation subset reuse now recognizes escaped Markdown tool ids (for example ``eventlog\_live\_query``) as explicit tool references, forcing fresh routing when follow-ups switch tools across packs.
+- [x] Regression coverage expanded: deferred startup metadata rerun path now has explicit dispatch-safety tests (rerun requested + connected + not shutting down) alongside busy-sync rerun-request checks.
 
 ## Hard Decisions (Locked)
 

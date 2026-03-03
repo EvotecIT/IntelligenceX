@@ -47,6 +47,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Contract-alignment cleanup: updated routing/output lifecycle tests to match strict routing metadata requirements and one-meaningful-final-per-request output policy.
 - [x] Startup stability hotfix: deferred startup metadata sync now reruns when login success arrives during an in-flight metadata sync, preventing dropped post-login `hello/list_tools/auth_refresh` refreshes and stale tool visibility.
 - [x] Stabilization hotfix: continuation subset follow-ups now treat escaped Markdown tool ids as explicit tool references, preventing stale subset reuse when users switch to tools outside the remembered subset.
+- [x] Stabilization regression coverage: startup metadata rerun scheduling now includes dedicated dispatch-gating tests for shutdown/connectivity safety.
 
 ## Rules For This Migration
 
