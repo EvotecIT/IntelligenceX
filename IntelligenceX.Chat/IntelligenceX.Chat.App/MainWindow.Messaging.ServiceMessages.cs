@@ -680,7 +680,7 @@ public sealed partial class MainWindow : Window {
             // This avoids unnecessary process churn while the client auto-reconnect loop runs.
             if (preserveInteractiveAuthState && _loginInProgress) {
                 await SetStatusAsync(
-                        "Runtime connection dropped during sign-in. Reconnecting...",
+                        "Runtime connection dropped during sign-in. Reconnecting... (cause runtime_disconnect)",
                         SessionStatusTone.Warn)
                     .ConfigureAwait(false);
             } else {
