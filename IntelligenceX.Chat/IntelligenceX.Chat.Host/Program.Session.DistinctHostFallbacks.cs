@@ -442,8 +442,8 @@ internal static partial class Program {
                     Index = index,
                     Score = ComputeHostTargetSpecificity(value)
                 })
-                .OrderByDescending(static candidate => candidate.Score)
-                .ThenByDescending(static candidate => candidate.Index)
+                .OrderByDescending(static candidate => candidate.Index)
+                .ThenByDescending(static candidate => candidate.Score)
                 .Select(static candidate => candidate.Value)
                 .ToList();
         }
