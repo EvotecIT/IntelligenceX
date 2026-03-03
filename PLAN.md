@@ -64,6 +64,7 @@ Build a contract-first architecture where:
 - [x] Validation checkpoint: `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .` passes with `0 error(s), 0 warning(s)` on this branch.
 - [x] Hotfix landed: contextual follow-up detection now evaluates the `Follow-up:` tail from legacy continuation expansion when deciding carryover replay eligibility.
 - [x] Closed: standalone lowercase `ad` alias auto-routing was removed from domain-intent signal resolution to keep Chat lexical routing generic.
+- [x] Hotfix landed: continuation subset reuse now exits when follow-up text explicitly names a tool outside the remembered subset (for example `eventlog_live_query`), forcing fresh candidate routing.
 
 ## Hard Decisions (Locked)
 
