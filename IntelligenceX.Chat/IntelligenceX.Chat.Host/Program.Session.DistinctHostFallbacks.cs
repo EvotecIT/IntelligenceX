@@ -56,6 +56,7 @@ internal static partial class Program {
                 return calls;
             }
 
+            orderedAllowedKnownTargets = OrderScenarioFallbackHostTargetCandidates(orderedAllowedKnownTargets);
             var patchedCalls = calls.ToList();
             var patchedAny = false;
             var callIds = new HashSet<string>(StringComparer.Ordinal);
@@ -428,6 +429,23 @@ internal static partial class Program {
             }
 
             return requiredDistinctHostCoverage;
+        }
+
+        private static List<string> OrderScenarioFallbackHostTargetCandidates(IReadOnlyList<string> candidates) {
+            if (candidates.Count <= 1) {
+                return candidates as List<string> ?? candidates.ToList();
+            }
+
+            return candidates
+                .Select(static (value, index) => new {
+                    Value = value,
+                    Index = index,
+                    Score = ComputeHostTargetSpecificity(value)
+                })
+                .OrderByDescending(static candidate => candidate.Score)
+                .ThenByDescending(static candidate => candidate.Index)
+                .Select(static candidate => candidate.Value)
+                .ToList();
         }
 
         private static bool IsHostTargetAlias(string key) {

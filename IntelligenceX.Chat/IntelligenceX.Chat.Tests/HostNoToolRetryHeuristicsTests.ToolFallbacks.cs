@@ -208,6 +208,43 @@ Continue that failure-signature collection across all remaining DCs in this turn
     }
 
     [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_PrefersMostRecentFqdnFallbackTarget() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*stats*
+distinct_tool_inputs: machine_name>=2
+User request:
+Continue that failure-signature collection across all remaining DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_stats", """{"log_name":"System","machine_name":"localhost"}"""),
+            BuildToolCall("call_2", "eventlog_live_stats", """{"log_name":"Directory Service","machine_name":"localhost"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0.ad.evotec.xyz", "AD2.ad.evotec.xyz", "localhost" });
+
+        Assert.Equal(2, repaired.Count);
+        Assert.Equal("AD2.ad.evotec.xyz", repaired[0].Arguments?.GetString("machine_name"));
+        Assert.Equal("localhost", repaired[1].Arguments?.GetString("machine_name"));
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_DoesNotPatchWhenDistinctMachineCoverageIsAlreadyMet() {
         const string request = """
 [Scenario execution contract]
