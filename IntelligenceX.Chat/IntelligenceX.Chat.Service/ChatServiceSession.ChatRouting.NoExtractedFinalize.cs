@@ -100,7 +100,7 @@ internal sealed partial class ChatServiceSession {
                         out var hostStructuredNextActionReason)) {
                     if (ShouldBlockSingleHostStructuredReplayForScopeShift(
                             threadId,
-                            userIntent,
+                            ResolveFinalizeHostScopeShiftUserRequest(userIntent, routedUserRequest),
                             hostStructuredNextActionCall.Arguments ?? new JsonObject())) {
                         hostStructuredNextActionReplayUsed = true;
                         Trace.WriteLine(
@@ -601,5 +601,18 @@ internal sealed partial class ChatServiceSession {
             state.ProactiveSkipUnknownCount = proactiveSkipUnknownCount;
             state.InterimResultSent = interimResultSent;
         }
+    }
+
+    private static string ResolveFinalizeHostScopeShiftUserRequest(string userIntent, string routedUserRequest) {
+        var normalizedUserIntent = NormalizeContextualFollowUpRequest(userIntent);
+        if (normalizedUserIntent.Length > 0) {
+            return normalizedUserIntent;
+        }
+
+        return NormalizeContextualFollowUpRequest(routedUserRequest);
+    }
+
+    internal static string ResolveFinalizeHostScopeShiftUserRequestForTesting(string userIntent, string routedUserRequest) {
+        return ResolveFinalizeHostScopeShiftUserRequest(userIntent, routedUserRequest);
     }
 }

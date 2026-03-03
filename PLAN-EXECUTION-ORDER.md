@@ -54,6 +54,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: quoted/multiline tool-descriptor references now keep explicit tool-capability routing (no finalize-time cached-evidence rewrite), and explicit tool-id extraction now strips invisible Unicode format chars to keep descriptor parsing robust.
 - [x] Startup/dispatch stabilization hotfix: app turn dispatch startup/send transitions now claim lifecycle state atomically under lock, preventing sign-in/manual-send double-dispatch races and duplicate assistant finals.
 - [x] Stabilization hotfix: contextual compact follow-up questions now block stale single-host carryover replay when thread evidence is multi-host, while short acknowledgement questions stay replay-eligible.
+- [x] Startup UX hotfix: login-completed status now queues deferred startup metadata sync before publishing connected status, avoiding transient ready-state flicker while startup sync is still pending.
+- [x] Stabilization regression coverage: finalize host scope-shift user-request resolution now has explicit tests proving raw user intent takes precedence over routed rewrite text.
 
 ## Rules For This Migration
 
@@ -287,10 +289,10 @@ Files (expected):
 
 Checklist:
 
-- [ ] Escape continuation subset reuse for language-neutral tool-capability question turns (even without explicit tool-id literals) to restore cross-pack follow-up awareness.
-- [ ] Extend startup status/debug timeline with churn cause labels (`auth_wait`, `pipe_retry`, `metadata_retry`, `runtime_disconnect`) so reconnect loops are diagnosable from UI alone.
-- [ ] Add finalize-path regression that proves contextual follow-up scope shifts are evaluated from raw user intent and cannot replay stale single-host next actions.
-- [ ] Validate with targeted chat tests + catalog validation before PR open.
+- [x] Escape continuation subset reuse for language-neutral tool-capability question turns (even without explicit tool-id literals) to restore cross-pack follow-up awareness.
+- [x] Extend startup status/debug timeline with churn cause labels (`auth_wait`, `pipe_retry`, `metadata_retry`, `runtime_disconnect`) so reconnect loops are diagnosable from UI alone.
+- [x] Add finalize-path regression that proves contextual follow-up scope shifts are evaluated from raw user intent and cannot replay stale single-host next actions.
+- [x] Validate with targeted chat tests + catalog validation before PR open.
 
 ## Parallelization Map
 

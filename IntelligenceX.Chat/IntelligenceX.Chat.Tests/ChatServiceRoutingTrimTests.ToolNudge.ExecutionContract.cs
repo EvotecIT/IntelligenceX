@@ -354,6 +354,24 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveFinalizeHostScopeShiftUserRequestForTesting_PrefersRawUserIntentOverRoutedRewrite() {
+        var resolved = ResolveFinalizeHostScopeShiftUserRequestForTestingMethod.Invoke(
+            null,
+            new object?[] { "other dcs", "go ahead AD0.ad.evotec.xyz" });
+
+        Assert.Equal("other dcs", Assert.IsType<string>(resolved));
+    }
+
+    [Fact]
+    public void ResolveFinalizeHostScopeShiftUserRequestForTesting_FallsBackToRoutedRewriteWhenRawIntentMissing() {
+        var resolved = ResolveFinalizeHostScopeShiftUserRequestForTestingMethod.Invoke(
+            null,
+            new object?[] { "   ", "other dcs" });
+
+        Assert.Equal("other dcs", Assert.IsType<string>(resolved));
+    }
+
+    [Fact]
     public void TryBuildCarryoverStructuredNextActionToolCall_BuildsReadOnlyCallFromRememberedNextAction() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var schema = ToolSchema.Object(

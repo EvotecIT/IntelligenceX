@@ -161,7 +161,6 @@ public sealed partial class MainWindow : Window {
                         ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
                     }
                     _isConnected = _client is not null;
-                    _ = SetStatusAsync(done.Ok ? SessionStatus.Connected() : SessionStatus.SignInFailed());
                     if (!done.Ok && !string.IsNullOrWhiteSpace(done.Error)) {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
@@ -177,6 +176,7 @@ public sealed partial class MainWindow : Window {
                         }
                         QueuePostLoginCompletion();
                     }
+                    _ = SetStatusAsync(done.Ok ? SessionStatus.Connected() : SessionStatus.SignInFailed());
                     break;
                 case ErrorMessage err:
                     if (string.Equals(err.Code, "not_authenticated", StringComparison.OrdinalIgnoreCase)) {
