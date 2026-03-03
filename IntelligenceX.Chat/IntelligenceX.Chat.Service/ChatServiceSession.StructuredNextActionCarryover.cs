@@ -9,6 +9,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int CarryoverHostHintMultiHostThreshold = 2;
     private readonly record struct StructuredNextActionSnapshot(
         string ToolName,
         string ArgumentsJson,
@@ -258,6 +259,10 @@ internal sealed partial class ChatServiceSession {
         var userHostHints = CollectHostHintsFromUserRequest(userRequest);
         if (userHostHints.Length > 0) {
             var carryoverTargets = ExtractHostScopedTargets(normalizedArguments);
+            if (ShouldTreatCarryoverHostHintsAsMultiHostMismatch(userHostHints, carryoverTargets)) {
+                return true;
+            }
+
             for (var i = 0; i < carryoverTargets.Length; i++) {
                 if (HostMatchesAnyCandidate(carryoverTargets[i], userHostHints)) {
                     return false;
@@ -362,6 +367,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldTreatCarryoverHostHintsAsMultiHostMismatch(userHostHints, carryoverTargets)) {
+            return true;
+        }
+
         for (var i = 0; i < carryoverTargets.Length; i++) {
             if (HostMatchesAnyCandidate(carryoverTargets[i], userHostHints)) {
                 return false;
@@ -369,6 +378,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
+    }
+
+    private static bool ShouldTreatCarryoverHostHintsAsMultiHostMismatch(
+        IReadOnlyList<string> userHostHints,
+        IReadOnlyList<string> carryoverTargets) {
+        if (userHostHints is null || carryoverTargets is null) {
+            return false;
+        }
+
+        return userHostHints.Count >= CarryoverHostHintMultiHostThreshold
+               && carryoverTargets.Count > 0
+               && carryoverTargets.Count < CarryoverHostHintMultiHostThreshold;
     }
 
     private static string BuildCarryoverHostHintInput(string userRequest, string assistantDraft) {
