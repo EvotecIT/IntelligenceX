@@ -80,6 +80,8 @@ Build a contract-first architecture where:
 - [x] Stabilization hotfix: continuation subset reuse now recognizes escaped Markdown tool ids (for example ``eventlog\_live\_query``) as explicit tool references, forcing fresh routing when follow-ups switch tools across packs.
 - [x] Regression coverage expanded: deferred startup metadata rerun path now has explicit dispatch-safety tests (rerun requested + connected + not shutting down) alongside busy-sync rerun-request checks.
 - [x] Stabilization hotfix: explicit quoted tool-descriptor follow-ups (including multiline/backticked catalog snippets and invisible format chars inside tool ids) now bypass finalize-time cached-evidence fallback rewrites and stay on direct tool-capability answer paths.
+- [x] Startup/dispatch stabilization hotfix: `SendPromptAsync` now claims startup/send lifecycle state atomically behind the active-turn lock, preventing manual-send vs auto-dispatch races that produced duplicate assistant replies.
+- [x] Carryover stabilization hotfix: contextual compact follow-up questions now block stale single-host structured replay when thread evidence is multi-host, while short acknowledgement questions remain replay-eligible.
 
 ## Hard Decisions (Locked)
 

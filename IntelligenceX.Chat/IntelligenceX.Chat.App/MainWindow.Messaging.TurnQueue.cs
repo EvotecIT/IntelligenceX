@@ -45,7 +45,7 @@ public sealed partial class MainWindow : Window {
             _ = TryRemoveEquivalentQueuedPromptAfterLogin(text, targetConversationId, out _);
         }
 
-        if (IsTurnDispatchInProgress()) {
+        if (!TryBeginTurnDispatchStartup()) {
             var queueConversationId = string.IsNullOrWhiteSpace(preferredConversationId)
                 ? _activeConversationId
                 : preferredConversationId;
@@ -59,7 +59,6 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        _turnStartupInProgress = true;
         var dispatchRequestId = string.Empty;
         Task<bool>? connectWarmupTask = null;
         DateTime? connectWarmupStartedUtc = null;
@@ -138,9 +137,8 @@ public sealed partial class MainWindow : Window {
             }
 
             ResetActiveTurnAssistantVisuals(turn.ConversationId);
-            _turnStartupInProgress = false;
+            PromoteTurnDispatchStartupToSending();
             var requestId = turn.RequestId;
-            _isSending = true;
             _latestServiceActivityText = string.Empty;
             _activeTurnQueueWaitMs = queueWaitMs;
             ResetActivityTimeline();
@@ -163,7 +161,7 @@ public sealed partial class MainWindow : Window {
                 await ExecuteChatTurnWithReconnectAsync(turn, turnRequestCts.Token).ConfigureAwait(false);
             } finally {
                 StopTurnWatchdog();
-                _isSending = false;
+                CompleteActiveTurnDispatchSend();
                 lock (_activeTurnLifecycleSync) {
                     if (string.Equals(_activeTurnRequestId, requestId, StringComparison.Ordinal)) {
                         _activeTurnRequestId = null;
@@ -211,8 +209,7 @@ public sealed partial class MainWindow : Window {
                 _ = ObserveConnectWarmupCompletionAsync(connectWarmupTask);
             }
 
-            if (_turnStartupInProgress) {
-                _turnStartupInProgress = false;
+            if (TryClearTurnDispatchStartup()) {
                 try {
                     await PublishSessionStateAsync().ConfigureAwait(false);
                 } finally {
@@ -636,7 +633,60 @@ public sealed partial class MainWindow : Window {
     }
 
     private bool IsTurnDispatchInProgress() {
-        return _isSending || _turnStartupInProgress;
+        lock (_activeTurnLifecycleSync) {
+            return IsTurnDispatchInProgress(_isSending, _turnStartupInProgress);
+        }
+    }
+
+    internal static bool IsTurnDispatchInProgress(bool isSending, bool turnStartupInProgress) {
+        return isSending || turnStartupInProgress;
+    }
+
+    internal static bool TryBeginTurnDispatchStartup(ref bool isSending, ref bool turnStartupInProgress) {
+        if (IsTurnDispatchInProgress(isSending, turnStartupInProgress)) {
+            return false;
+        }
+
+        turnStartupInProgress = true;
+        return true;
+    }
+
+    internal static void PromoteTurnDispatchStartupToSending(ref bool isSending, ref bool turnStartupInProgress) {
+        isSending = true;
+        turnStartupInProgress = false;
+    }
+
+    internal static bool TryClearTurnDispatchStartup(ref bool turnStartupInProgress) {
+        if (!turnStartupInProgress) {
+            return false;
+        }
+
+        turnStartupInProgress = false;
+        return true;
+    }
+
+    private bool TryBeginTurnDispatchStartup() {
+        lock (_activeTurnLifecycleSync) {
+            return TryBeginTurnDispatchStartup(ref _isSending, ref _turnStartupInProgress);
+        }
+    }
+
+    private void PromoteTurnDispatchStartupToSending() {
+        lock (_activeTurnLifecycleSync) {
+            PromoteTurnDispatchStartupToSending(ref _isSending, ref _turnStartupInProgress);
+        }
+    }
+
+    private bool TryClearTurnDispatchStartup() {
+        lock (_activeTurnLifecycleSync) {
+            return TryClearTurnDispatchStartup(ref _turnStartupInProgress);
+        }
+    }
+
+    private void CompleteActiveTurnDispatchSend() {
+        lock (_activeTurnLifecycleSync) {
+            _isSending = false;
+        }
     }
 
     private bool TryConsumeQueuedPromptUsageLimitBypassAfterSwitchAccount() {
