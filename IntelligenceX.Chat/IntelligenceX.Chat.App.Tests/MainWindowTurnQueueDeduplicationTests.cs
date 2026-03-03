@@ -44,9 +44,24 @@ public sealed class MainWindowTurnQueueDeduplicationTests {
             leftText: "Hello Mr",
             leftConversationId: string.Empty,
             rightText: " hello   mr ",
-            rightConversationId: "thread-1");
+            rightConversationId: "thread-1",
+            allowOneSidedMissingConversationId: true);
 
         Assert.True(equivalent);
+    }
+
+    /// <summary>
+    /// One-sided empty conversation ids should not dedupe outside startup/login-gated queue operations.
+    /// </summary>
+    [Fact]
+    public void AreQueuedPromptsEquivalentForDispatch_ReturnsFalse_WhenOneConversationIdIsMissing_WithoutStartupScope() {
+        var equivalent = MainWindow.AreQueuedPromptsEquivalentForDispatch(
+            leftText: "Hello Mr",
+            leftConversationId: string.Empty,
+            rightText: " hello   mr ",
+            rightConversationId: "thread-2");
+
+        Assert.False(equivalent);
     }
 
     /// <summary>

@@ -383,7 +383,8 @@ public sealed partial class MainWindow : Window {
                         pending.Text,
                         pending.ConversationId,
                         trimmedText,
-                        trimmedConversationId)) {
+                        trimmedConversationId,
+                        allowOneSidedMissingConversationId: true)) {
                     continue;
                 }
 
@@ -425,7 +426,8 @@ public sealed partial class MainWindow : Window {
                         pending.Text,
                         pending.ConversationId,
                         normalizedText,
-                        normalizedConversationId)) {
+                        normalizedConversationId,
+                        allowOneSidedMissingConversationId: true)) {
                     removed = true;
                     continue;
                 }
@@ -447,7 +449,8 @@ public sealed partial class MainWindow : Window {
         string? leftText,
         string? leftConversationId,
         string? rightText,
-        string? rightConversationId) {
+        string? rightConversationId,
+        bool allowOneSidedMissingConversationId = false) {
         var normalizedLeftText = NormalizeQueuedPromptTextForDispatch(leftText);
         var normalizedRightText = NormalizeQueuedPromptTextForDispatch(rightText);
         if (normalizedLeftText.Length == 0 || normalizedRightText.Length == 0) {
@@ -464,8 +467,12 @@ public sealed partial class MainWindow : Window {
             return true;
         }
 
+        if (!allowOneSidedMissingConversationId) {
+            return false;
+        }
+
         // Startup/login queue entries can be captured before a stable conversation id is assigned.
-        // Treat one-sided empty ids as equivalent to avoid double-dispatching the same user prompt.
+        // Only startup/login-gated callers should opt into this one-sided-empty-id fallback.
         return normalizedLeftConversationId.Length == 0 || normalizedRightConversationId.Length == 0;
     }
 
