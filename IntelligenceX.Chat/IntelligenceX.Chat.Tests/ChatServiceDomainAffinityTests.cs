@@ -531,6 +531,62 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_KeepsFirstCustomActionIdWhenFamilyMappingsConflict() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict");
+
+        var availableDefinitions = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info_primary",
+                description: "AD pack primary mapping",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_ad_primary"
+                }),
+            new(
+                name: "ad_pack_info_secondary",
+                description: "AD pack conflicting mapping",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_ad_secondary"
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_public_custom"
+                })
+        };
+
+        var conflictingActionResolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict",
+            "/act act_domain_scope_ad_secondary",
+            availableDefinitions,
+            out var conflictingFamily);
+
+        Assert.False(conflictingActionResolved);
+        Assert.Equal(string.Empty, conflictingFamily);
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-conflict"));
+
+        var primaryActionResolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict",
+            "/act act_domain_scope_ad_primary",
+            availableDefinitions,
+            out var primaryFamily);
+
+        Assert.True(primaryActionResolved);
+        Assert.Equal("ad_domain", primaryFamily);
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-conflict"));
+    }
+
+    [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_UsesFamilyDefaultActionWhenCatalogMappingIsMissing() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-default-fallback");

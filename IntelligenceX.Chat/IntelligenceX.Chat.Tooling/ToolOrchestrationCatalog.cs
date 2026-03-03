@@ -100,7 +100,9 @@ public sealed record ToolOrchestrationCatalogEntry {
     public bool IsSetupAware { get; init; }
 
     /// <summary>
-    /// Number of declared setup requirements.
+    /// Number of distinct normalized setup requirement (<c>id</c>, <c>kind</c>) pairs.
+    /// This aggregate is independent from <see cref="SetupRequirementIds"/> and
+    /// <see cref="SetupRequirementKinds"/>, which are each distinct lists projected separately.
     /// </summary>
     public int SetupRequirementCount { get; init; }
 
@@ -155,7 +157,9 @@ public sealed record ToolOrchestrationCatalogEntry {
     public IReadOnlyList<ToolOrchestrationHandoffEdge> HandoffEdges { get; init; } = Array.Empty<ToolOrchestrationHandoffEdge>();
 
     /// <summary>
-    /// Indicates whether tool declares recovery behavior.
+    /// Indicates whether tool declares effective recovery behavior in normalized projection.
+    /// This can remain true for flag-only contracts (for example transient retry support)
+    /// even when detail lists like <see cref="RetryableErrorCodes"/> are empty.
     /// </summary>
     public bool IsRecoveryAware { get; init; }
 

@@ -96,6 +96,7 @@ Build a contract-first architecture where:
 - [x] Catalog contract projection now includes setup requirements/hints, normalized handoff edges, and recovery-policy details (`retryable_error_codes`, alternate engines) in `ToolOrchestrationCatalog`.
 - [x] Contract-first domain intent alignment: runtime `/act` resolution now requires catalog-mapped action ids (no undeclared default-action fallback when custom routing action ids are registered), and domain host guardrail candidate detection no longer infers AD scope from tool-name patterns.
 - [x] Regression coverage now asserts cross-pack isolation in orchestration catalog: no ADPlayground -> DomainDetective handoff is inferred without explicit `ToolHandoffContract` edges.
+- [x] Live strict scenario validation: `ad-ad0-then-all-dcs-followthrough-10-turn` passes end-to-end in host runtime with cross-DC fanout (`machine_name>=2`) and no duplicate tool-call/output ids.
 
 ## Hard Decisions (Locked)
 
