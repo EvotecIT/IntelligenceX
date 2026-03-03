@@ -385,4 +385,12 @@ public sealed class ChatServiceToolEvidenceCacheTests {
         var extracted = ChatServiceSession.ExtractExplicitRequestedToolNamesForTesting(input);
         Assert.NotNull(extracted);
     }
+
+    [Fact]
+    public void ToolEvidenceCache_ExtractExplicitRequestedToolNames_StripsFormatCharactersFromToolId() {
+        var extracted = ChatServiceSession.ExtractExplicitRequestedToolNamesForTesting(
+            "co to `eventlog_\u200bevtx_query · Event Log (EventViewerX)`");
+
+        Assert.Contains("eventlogevtxquery", extracted);
+    }
 }

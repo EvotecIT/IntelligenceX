@@ -132,12 +132,38 @@ internal sealed partial class ChatServiceSession {
 
     private static bool LooksLikeExplicitToolQuestionTurn(string userRequest) {
         var request = (userRequest ?? string.Empty).Trim();
-        if (request.Length == 0 || !ContainsQuestionSignal(request)) {
+        if (request.Length == 0) {
             return false;
         }
 
         var requestedToolNames = ExtractExplicitRequestedToolNames(request);
-        return requestedToolNames.Length > 0;
+        if (requestedToolNames.Length == 0) {
+            return false;
+        }
+
+        if (ContainsQuestionSignal(request)) {
+            return true;
+        }
+
+        return LooksLikeQuotedToolDescriptorReference(request);
+    }
+
+    private static bool LooksLikeQuotedToolDescriptorReference(string request) {
+        if (string.IsNullOrWhiteSpace(request) || request.IndexOf('`') < 0) {
+            return false;
+        }
+
+        if (request.IndexOf('\n') >= 0 || request.IndexOf('\r') >= 0) {
+            return true;
+        }
+
+        if (request.IndexOf('·') >= 0 || request.IndexOf('•') >= 0 || request.IndexOf('・') >= 0) {
+            return true;
+        }
+
+        var openParenIndex = request.IndexOf('(');
+        var closeParenIndex = request.IndexOf(')');
+        return openParenIndex >= 0 && closeParenIndex > openParenIndex;
     }
 
     private static bool ShouldAttemptNoToolExecutionWatchdog(

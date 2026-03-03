@@ -47,6 +47,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldForceExecutionContractBlockerAtFinalizeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldForceExecutionContractBlockerAtFinalize", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldForceExecutionContractBlockerAtFinalize not found.");
+    private static readonly MethodInfo LooksLikeExplicitToolQuestionTurnMethod =
+        typeof(ChatServiceSession).GetMethod("LooksLikeExplicitToolQuestionTurn", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("LooksLikeExplicitToolQuestionTurn not found.");
     private static readonly MethodInfo ShouldAttemptContinuationSubsetEscapeMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAttemptContinuationSubsetEscape", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptContinuationSubsetEscape not found.");
