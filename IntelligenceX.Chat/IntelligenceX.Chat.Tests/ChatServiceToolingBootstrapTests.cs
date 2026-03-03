@@ -52,6 +52,62 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public void Constructor_UsesSharedToolingBootstrapCache_WhenProvided() {
+        var startupBootstrapField = typeof(ChatServiceSession).GetField("_startupBootstrap", BindingFlags.NonPublic | BindingFlags.Instance);
+        var startupWarningsField = typeof(ChatServiceSession).GetField("_startupWarnings", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(startupBootstrapField);
+        Assert.NotNull(startupWarningsField);
+
+        var cache = new ChatServiceToolingBootstrapCache();
+
+        var firstSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
+        var firstBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(firstSession));
+        Assert.NotEmpty(firstBootstrap.Phases);
+        Assert.NotEqual("cache_hit", firstBootstrap.Phases[0].Id);
+
+        var secondSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
+        var secondBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField.GetValue(secondSession));
+        Assert.Single(secondBootstrap.Phases);
+        Assert.Equal("cache_hit", secondBootstrap.Phases[0].Id);
+
+        var secondWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(secondSession));
+        Assert.Contains(secondWarnings, static warning => warning.Contains("tooling bootstrap cache hit", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildToolingBootstrapCacheKey_IncludesResolvedSmtpProbePolicyDimensions() {
+        var keyMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(keyMethod);
+
+        var options = new ServiceOptions();
+        var runtimePolicyOptions = new ToolRuntimePolicyOptions {
+            AuthenticationPreset = ToolAuthenticationRuntimePreset.Strict,
+            RequireAuthenticationRuntime = true
+        };
+
+        var strictResolved = new ToolRuntimePolicyResolvedOptions {
+            Options = runtimePolicyOptions,
+            RequireSuccessfulSmtpProbeForSend = true,
+            SmtpProbeMaxAgeSeconds = 600
+        };
+        var relaxedResolved = strictResolved with {
+            RequireSuccessfulSmtpProbeForSend = false,
+            SmtpProbeMaxAgeSeconds = 60
+        };
+
+        var strictKey = Assert.IsType<string>(keyMethod!.Invoke(null, new object?[] { options, runtimePolicyOptions, strictResolved }));
+        var relaxedKey = Assert.IsType<string>(keyMethod.Invoke(null, new object?[] { options, runtimePolicyOptions, relaxedResolved }));
+
+        Assert.Contains("require_smtp_probe=1;", strictKey, StringComparison.Ordinal);
+        Assert.Contains("smtp_probe_max_age_seconds=600;", strictKey, StringComparison.Ordinal);
+        Assert.Contains("require_smtp_probe=0;", relaxedKey, StringComparison.Ordinal);
+        Assert.Contains("smtp_probe_max_age_seconds=60;", relaxedKey, StringComparison.Ordinal);
+        Assert.NotEqual(strictKey, relaxedKey);
+    }
+
+    [Fact]
     public void SummarizeSlowPluginLoadWarnings_CompressesAndSortsTopEntries() {
         var method = typeof(ChatServiceSession).GetMethod(
             "SummarizeSlowPluginLoadWarnings",

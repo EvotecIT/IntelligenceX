@@ -144,6 +144,7 @@ public sealed partial class MainWindow : Window {
                     break;
                 case ChatGptLoginUrlMessage url:
                     _loginInProgress = true;
+                    Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
                     _ = SetStatusAsync(SessionStatus.CompleteSignInInBrowser());
                     _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url.Url));
                     break;
@@ -156,6 +157,7 @@ public sealed partial class MainWindow : Window {
                     _isAuthenticated = done.Ok;
                     if (!done.Ok) {
                         _authenticatedAccountId = null;
+                        Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
                         ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
                     }
                     _isConnected = _client is not null;
@@ -164,6 +166,15 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
                     if (done.Ok) {
+                        var shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync = ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
+                                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                                isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport());
+                        if (ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess(
+                                shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync: shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+                                loginSuccessMetadataSyncAlreadyQueued: Volatile.Read(ref _startupLoginSuccessMetadataSyncQueued) != 0)
+                            && Interlocked.CompareExchange(ref _startupLoginSuccessMetadataSyncQueued, 1, 0) == 0) {
+                            QueueDeferredStartupConnectMetadataSync();
+                        }
                         QueuePostLoginCompletion();
                     }
                     break;
@@ -171,6 +182,7 @@ public sealed partial class MainWindow : Window {
                     if (string.Equals(err.Code, "not_authenticated", StringComparison.OrdinalIgnoreCase)) {
                         _isAuthenticated = false;
                         _authenticatedAccountId = null;
+                        Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
                         _ = SetStatusAsync(SessionStatus.SignInRequired());
                     } else if (!string.IsNullOrWhiteSpace(err.RequestId)) {
                         var requestId = err.RequestId.Trim();
@@ -641,16 +653,39 @@ public sealed partial class MainWindow : Window {
             }
 
             await DisposeClientAsync().ConfigureAwait(false);
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
-            ResetEnsureLoginProbeCache();
-            _loginInProgress = false;
+            var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
+            var preserveInteractiveAuthState = ShouldPreserveInteractiveAuthStateOnReconnect(
+                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                isAuthenticated: _isAuthenticated,
+                hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot(),
+                loginInProgress: _loginInProgress);
+            var resetEnsureLoginProbeCache = ShouldResetEnsureLoginProbeCacheOnReconnectAuthReset(
+                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                preserveInteractiveAuthState: preserveInteractiveAuthState);
+            if (!preserveInteractiveAuthState) {
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                _loginInProgress = false;
+                Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
+            } else if (!_isAuthenticated) {
+                _authenticatedAccountId = null;
+            }
+            if (resetEnsureLoginProbeCache) {
+                ResetEnsureLoginProbeCache();
+            }
             _isConnected = false;
             EndStartupMetadataSyncTracking();
             _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
             // Keep the sidecar process alive on transient pipe disconnects.
             // This avoids unnecessary process churn while the client auto-reconnect loop runs.
-            await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            if (preserveInteractiveAuthState && _loginInProgress) {
+                await SetStatusAsync(
+                        "Runtime connection dropped during sign-in. Reconnecting...",
+                        SessionStatusTone.Warn)
+                    .ConfigureAwait(false);
+            } else {
+                await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
+            }
             EnsureAutoReconnectLoop();
         });
     }

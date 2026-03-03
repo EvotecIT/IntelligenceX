@@ -5,8 +5,6 @@ using System.Linq;
 using System.Reflection;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
-using IntelligenceX.Tools.EventLog;
-using IntelligenceX.Tools.ReviewerSetup;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -24,6 +22,248 @@ public static partial class ToolPackBootstrap {
         return PluginFolderToolPackLoader.ResolvePluginSearchRoots(options)
             .Select(static root => root.Path)
             .ToArray();
+    }
+
+    private static IReadOnlyList<BuiltInPackRegistrationCandidate> DiscoverBuiltInPacks(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var candidates = new List<BuiltInPackRegistrationCandidate>();
+        var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var packTypes = DiscoverBuiltInPackTypes(options.OnBootstrapWarning);
+
+        for (var i = 0; i < packTypes.Count; i++) {
+            var packType = packTypes[i];
+            if (!TryCreateBuiltInPack(packType, options, out var pack, out var error)) {
+                Warn(
+                    options.OnBootstrapWarning,
+                    $"[startup] built_in_pack_skipped type='{packType.FullName ?? packType.Name}' reason='{NormalizeDisabledReason(error)}'",
+                    shouldWarn: true);
+                continue;
+            }
+
+            IToolPack normalizedPack;
+            try {
+                normalizedPack = RequireDeclaredSourceKind(pack, packType.FullName ?? packType.Name);
+            } catch (Exception ex) {
+                Warn(
+                    options.OnBootstrapWarning,
+                    $"[startup] built_in_pack_skipped type='{packType.FullName ?? packType.Name}' reason='{NormalizeDisabledReason(ex.Message)}'",
+                    shouldWarn: true);
+                continue;
+            }
+
+            var normalizedPackId = NormalizePackId(normalizedPack.Descriptor.Id);
+            if (normalizedPackId.Length == 0) {
+                Warn(
+                    options.OnBootstrapWarning,
+                    $"[startup] built_in_pack_skipped type='{packType.FullName ?? packType.Name}' reason='descriptor id is missing.'",
+                    shouldWarn: true);
+                continue;
+            }
+
+            EnsureNoPackIdNormalizationCollision(
+                descriptorIdsByNormalizedPackId,
+                normalizedPack.Descriptor.Id,
+                normalizedPackId);
+
+            var defaultEnabled = !normalizedPack.Descriptor.IsDangerous
+                                 && normalizedPack.Descriptor.Tier != ToolCapabilityTier.DangerousWrite;
+            candidates.Add(new BuiltInPackRegistrationCandidate(normalizedPackId, normalizedPack, defaultEnabled));
+        }
+
+        return candidates
+            .OrderBy(static candidate => candidate.PackId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<Type> DiscoverBuiltInPackTypes(Action<string>? onWarning) {
+        var toolPackTypes = new List<Type>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var assemblyName in EnumerateToolAssemblyNamesForDiscovery()) {
+            var assembly = TryLoadToolAssembly(assemblyName, onWarning);
+            if (assembly is null) {
+                continue;
+            }
+
+            foreach (var type in EnumerateLoadableTypes(assembly, onWarning)) {
+                var fullName = type.FullName;
+                if (string.IsNullOrWhiteSpace(fullName) || !seen.Add(fullName)) {
+                    continue;
+                }
+
+                if (!type.IsClass
+                    || type.IsAbstract
+                    || type.ContainsGenericParameters
+                    || !typeof(IToolPack).IsAssignableFrom(type)) {
+                    continue;
+                }
+
+                toolPackTypes.Add(type);
+            }
+        }
+
+        return toolPackTypes
+            .OrderBy(static type => type.FullName, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IEnumerable<AssemblyName> EnumerateToolAssemblyNamesForDiscovery() {
+        var discovered = new Dictionary<string, AssemblyName>(StringComparer.OrdinalIgnoreCase);
+        var bootstrapAssembly = typeof(ToolPackBootstrap).Assembly;
+        var referencedToolAssemblies = bootstrapAssembly
+            .GetReferencedAssemblies()
+            .Where(static reference => !string.IsNullOrWhiteSpace(reference.Name) && IsBuiltInToolAssemblyName(reference.Name))
+            .ToArray();
+        var allowedAssemblyNames = new HashSet<string>(
+            referencedToolAssemblies
+                .Select(static reference => reference.Name ?? string.Empty)
+                .Where(static name => name.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
+        void AddAssemblyName(AssemblyName? candidate) {
+            if (candidate is null
+                || string.IsNullOrWhiteSpace(candidate.Name)
+                || !IsBuiltInToolAssemblyName(candidate.Name)
+                || !allowedAssemblyNames.Contains(candidate.Name)) {
+                return;
+            }
+
+            if (!discovered.ContainsKey(candidate.Name)) {
+                discovered[candidate.Name] = candidate;
+            }
+        }
+
+        foreach (var reference in referencedToolAssemblies) {
+            AddAssemblyName(reference);
+        }
+
+        foreach (var loadedAssembly in AppDomain.CurrentDomain.GetAssemblies()) {
+            AddAssemblyName(loadedAssembly.GetName());
+        }
+
+        return discovered.Values
+            .OrderBy(static name => name.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool IsBuiltInToolAssemblyName(string? assemblyName) {
+        if (string.IsNullOrWhiteSpace(assemblyName)) {
+            return false;
+        }
+
+        var normalized = assemblyName.Trim();
+        if (!normalized.StartsWith("IntelligenceX.Tools.", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return normalized.IndexOf(".Tests", StringComparison.OrdinalIgnoreCase) < 0
+               && normalized.IndexOf(".Benchmarks", StringComparison.OrdinalIgnoreCase) < 0;
+    }
+
+    private static Assembly? TryLoadToolAssembly(AssemblyName assemblyName, Action<string>? onWarning) {
+        try {
+            return Assembly.Load(assemblyName);
+        } catch (Exception ex) {
+            Warn(
+                onWarning,
+                $"[startup] built_in_pack_assembly_skipped assembly='{assemblyName.Name ?? "<unknown>"}' reason='{NormalizeDisabledReason(ex.Message)}'",
+                shouldWarn: true);
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<Type> EnumerateLoadableTypes(Assembly assembly, Action<string>? onWarning) {
+        try {
+            return assembly.GetTypes();
+        } catch (ReflectionTypeLoadException ex) {
+            var types = ex.Types
+                .Where(static type => type is not null)
+                .Cast<Type>()
+                .ToArray();
+            if (types.Length == 0) {
+                var firstLoaderError = ex.LoaderExceptions?.FirstOrDefault();
+                Warn(
+                    onWarning,
+                    $"[startup] built_in_pack_assembly_skipped assembly='{assembly.GetName().Name ?? "<unknown>"}' reason='{NormalizeDisabledReason(firstLoaderError?.Message)}'",
+                    shouldWarn: true);
+            }
+            return types;
+        }
+    }
+
+    private static bool TryCreateBuiltInPack(
+        Type packType,
+        ToolPackBootstrapOptions bootstrapOptions,
+        out IToolPack pack,
+        out string error) {
+        pack = null!;
+        error = string.Empty;
+
+        try {
+            var parameterlessCtor = packType.GetConstructor(Type.EmptyTypes);
+            if (parameterlessCtor is not null) {
+                var created = parameterlessCtor.Invoke(parameters: null);
+                if (created is IToolPack parameterlessPack) {
+                    pack = parameterlessPack;
+                    return true;
+                }
+            }
+
+            var constructors = packType.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+            for (var i = 0; i < constructors.Length; i++) {
+                var constructor = constructors[i];
+                var parameters = constructor.GetParameters();
+                if (parameters.Length != 1) {
+                    continue;
+                }
+
+                object? options;
+                try {
+                    options = Activator.CreateInstance(parameters[0].ParameterType);
+                } catch {
+                    continue;
+                }
+
+                if (options is null) {
+                    continue;
+                }
+
+                ConfigurePackOptions(options, bootstrapOptions);
+                var created = constructor.Invoke(new[] { options });
+                if (created is IToolPack optionsPack) {
+                    pack = optionsPack;
+                    return true;
+                }
+            }
+
+            error = "No supported constructor found (expected parameterless or single-options constructor).";
+            return false;
+        } catch (Exception ex) {
+            error = $"{ex.GetType().Name}: {ex.Message}";
+            return false;
+        }
+    }
+
+    private static void ConfigurePackOptions(object options, ToolPackBootstrapOptions bootstrapOptions) {
+        AddStringListValuesIfPresent(options, "AllowedRoots", bootstrapOptions.AllowedRoots);
+        SetPropertyIfPresent(options, "DomainController", bootstrapOptions.AdDomainController);
+        SetPropertyIfPresent(options, "DefaultSearchBaseDn", bootstrapOptions.AdDefaultSearchBaseDn);
+        SetPropertyIfPresent(options, "MaxResults", bootstrapOptions.AdMaxResults > 0 ? bootstrapOptions.AdMaxResults : 1000);
+        SetPropertyIfPresent(options, "Enabled", true);
+        SetPropertyIfPresent(options, "DefaultTimeoutMs", bootstrapOptions.PowerShellDefaultTimeoutMs);
+        SetPropertyIfPresent(options, "MaxTimeoutMs", bootstrapOptions.PowerShellMaxTimeoutMs);
+        SetPropertyIfPresent(options, "DefaultMaxOutputChars", bootstrapOptions.PowerShellDefaultMaxOutputChars);
+        SetPropertyIfPresent(options, "MaxOutputChars", bootstrapOptions.PowerShellMaxOutputChars);
+        SetPropertyIfPresent(options, "AllowWrite", bootstrapOptions.PowerShellAllowWrite);
+        SetPropertyIfPresent(options, "IncludeMaintenancePath", bootstrapOptions.ReviewerSetupIncludeMaintenancePath);
+        SetPropertyIfPresent(options, "AuthenticationProbeStore", bootstrapOptions.AuthenticationProbeStore);
+        SetPropertyIfPresent(options, "RequireSuccessfulSmtpProbeForSend", bootstrapOptions.RequireSuccessfulSmtpProbeForSend);
+        SetPropertyIfPresent(options, "SmtpProbeMaxAgeSeconds", bootstrapOptions.SmtpProbeMaxAgeSeconds);
+        SetPropertyIfPresent(options, "RunAsProfilePath", bootstrapOptions.RunAsProfilePath);
+        SetPropertyIfPresent(options, "AuthenticationProfilePath", bootstrapOptions.AuthenticationProfilePath);
     }
 
     /// <summary>
@@ -279,97 +519,6 @@ public static partial class ToolPackBootstrap {
         return new DescriptorOverrideToolPack(pack, descriptor with { SourceKind = normalized });
     }
 
-    private static void AddOptionalReflectionPack(
-        List<IToolPack> packs,
-        Dictionary<string, ToolPackAvailabilityInfo> availabilityById,
-        bool enabledByConfiguration,
-        KnownPackDefinition definition,
-        string packLabel,
-        string packTypeName,
-        string? optionsTypeName,
-        Action<object>? configureOptions,
-        Action<string>? onWarning) {
-        if (!enabledByConfiguration) {
-            UpsertAvailability(availabilityById, CreateAvailabilityFromDefinition(definition, enabled: false, DisabledByRuntimeConfigurationReason));
-            return;
-        }
-
-        var loaded = TryAddPack(
-            packs: packs,
-            packLabel: packLabel,
-            packTypeName: packTypeName,
-            optionsTypeName: optionsTypeName,
-            configureOptions: configureOptions,
-            warnWhenUnavailable: true,
-            onWarning: onWarning,
-            loadedPack: out var loadedPack,
-            unavailableReason: out var unavailableReason);
-
-        if (loaded && loadedPack is not null) {
-            UpsertAvailability(
-                availabilityById,
-                CreateAvailabilityFromDescriptor(
-                    descriptor: loadedPack.Descriptor,
-                    enabled: true,
-                    disabledReason: null));
-            return;
-        }
-
-        UpsertAvailability(
-            availabilityById,
-            CreateAvailabilityFromDefinition(
-                definition: definition,
-                enabled: false,
-                disabledReason: unavailableReason));
-    }
-
-    private static void AddOptionalBuiltInPack(
-        List<IToolPack> packs,
-        Dictionary<string, ToolPackAvailabilityInfo> availabilityById,
-        bool enabledByConfiguration,
-        KnownPackDefinition definition,
-        Func<IToolPack> createPack,
-        Action<string>? onWarning) {
-        if (!enabledByConfiguration) {
-            UpsertAvailability(availabilityById, CreateAvailabilityFromDefinition(definition, enabled: false, DisabledByRuntimeConfigurationReason));
-            return;
-        }
-
-        try {
-            var pack = createPack();
-            packs.Add(pack);
-            UpsertAvailability(
-                availabilityById,
-                CreateAvailabilityFromDescriptor(
-                    descriptor: pack.Descriptor,
-                    enabled: true,
-                    disabledReason: null));
-        } catch (Exception ex) {
-            var reason = NormalizeDisabledReason(ex.Message);
-            Warn(onWarning, $"{definition.Name} pack skipped: {reason}", shouldWarn: true);
-            UpsertAvailability(
-                availabilityById,
-                CreateAvailabilityFromDefinition(
-                    definition: definition,
-                    enabled: false,
-                    disabledReason: reason));
-        }
-    }
-
-    private static ToolPackAvailabilityInfo CreateAvailabilityFromDefinition(KnownPackDefinition definition, bool enabled, string? disabledReason) {
-        var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
-        return new ToolPackAvailabilityInfo {
-            Id = definition.Id,
-            Name = definition.Name,
-            Description = definition.Description,
-            Tier = definition.Tier,
-            IsDangerous = definition.IsDangerous,
-            SourceKind = NormalizeSourceKind(definition.SourceKind, definition.Id),
-            Enabled = enabled,
-            DisabledReason = enabled ? null : normalizedReason
-        };
-    }
-
     private static ToolPackAvailabilityInfo CreateAvailabilityFromDescriptor(ToolPackDescriptor descriptor, bool enabled, string? disabledReason) {
         if (descriptor is null) {
             throw new ArgumentNullException(nameof(descriptor));
@@ -403,66 +552,6 @@ public static partial class ToolPackBootstrap {
         availabilityById[normalizedPackId] = availability with { Id = normalizedPackId, Name = normalizedName };
     }
 
-    private static bool TryAddPack(
-        List<IToolPack> packs,
-        string packLabel,
-        string packTypeName,
-        string? optionsTypeName,
-        Action<object>? configureOptions,
-        bool warnWhenUnavailable,
-        Action<string>? onWarning,
-        out IToolPack? loadedPack,
-        out string unavailableReason) {
-        loadedPack = null;
-        unavailableReason = UnavailableReasonFallback;
-
-        try {
-            var packType = ResolveType(packTypeName);
-            if (packType is null) {
-                unavailableReason = "Required assembly was not found.";
-                Warn(onWarning, $"{packLabel} pack unavailable (assembly not found).", warnWhenUnavailable);
-                return false;
-            }
-
-            object? options = null;
-            if (!string.IsNullOrWhiteSpace(optionsTypeName)) {
-                var optionsType = ResolveType(optionsTypeName);
-                if (optionsType is null) {
-                    unavailableReason = "Pack options type was not found.";
-                    Warn(onWarning, $"{packLabel} pack unavailable (options type not found).", warnWhenUnavailable);
-                    return false;
-                }
-
-                options = Activator.CreateInstance(optionsType);
-                if (options is null) {
-                    unavailableReason = "Could not create pack options.";
-                    Warn(onWarning, $"{packLabel} pack unavailable (cannot create options instance).", warnWhenUnavailable);
-                    return false;
-                }
-                configureOptions?.Invoke(options);
-            }
-
-            object? instance = options is null
-                ? Activator.CreateInstance(packType)
-                : Activator.CreateInstance(packType, options);
-
-            if (instance is not IToolPack pack) {
-                unavailableReason = "Pack type does not implement IToolPack.";
-                Warn(onWarning, $"{packLabel} pack unavailable (does not implement IToolPack).", warnWhenUnavailable);
-                return false;
-            }
-
-            loadedPack = RequireDeclaredSourceKind(pack, packLabel);
-            packs.Add(loadedPack);
-            unavailableReason = string.Empty;
-            return true;
-        } catch (Exception ex) {
-            unavailableReason = NormalizeDisabledReason(ex.Message);
-            Warn(onWarning, $"{packLabel} pack skipped: {unavailableReason}", warnWhenUnavailable);
-            return false;
-        }
-    }
-
     private static IToolPack RequireDeclaredSourceKind(IToolPack pack, string packLabel) {
         var descriptorSourceKind = (pack.Descriptor.SourceKind ?? string.Empty).Trim();
         if (descriptorSourceKind.Length == 0) {
@@ -470,25 +559,6 @@ public static partial class ToolPackBootstrap {
         }
 
         return WithSourceKind(pack, descriptorSourceKind);
-    }
-
-    private static Type? ResolveType(string assemblyQualifiedTypeName) {
-        var resolved = Type.GetType(assemblyQualifiedTypeName, throwOnError: false);
-        if (resolved is not null) {
-            return resolved;
-        }
-
-        var parts = assemblyQualifiedTypeName.Split(',', count: 2, options: StringSplitOptions.TrimEntries);
-        if (parts.Length != 2) {
-            return null;
-        }
-
-        try {
-            var assembly = Assembly.Load(new AssemblyName(parts[1]));
-            return assembly.GetType(parts[0], throwOnError: false, ignoreCase: false);
-        } catch {
-            return null;
-        }
     }
 
     private static void SetPropertyIfPresent(object instance, string propertyName, object? value) {
@@ -572,12 +642,9 @@ public static partial class ToolPackBootstrap {
         }
     }
 
-    private sealed record KnownPackDefinition(
-        string Id,
-        string Name,
-        string Description,
-        ToolCapabilityTier Tier,
-        bool IsDangerous,
-        string SourceKind,
+    private sealed record BuiltInPackRegistrationCandidate(
+        string PackId,
+        IToolPack Pack,
         bool DefaultEnabled);
+
 }

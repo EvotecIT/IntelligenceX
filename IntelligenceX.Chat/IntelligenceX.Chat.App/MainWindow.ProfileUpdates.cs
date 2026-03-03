@@ -44,6 +44,21 @@ public sealed partial class MainWindow : Window {
     }
 
     private static void AppendAssistantText(ConversationRuntime conversation, string text) {
+        if (conversation.Messages.Count > 0) {
+            var last = conversation.Messages[^1];
+            if (!ShouldAppendAssistantSnapshot(
+                    candidateAssistantText: text,
+                    previousRole: last.Role,
+                    previousAssistantText: last.Text)) {
+                return;
+            }
+        } else if (!ShouldAppendAssistantSnapshot(
+                       candidateAssistantText: text,
+                       previousRole: null,
+                       previousAssistantText: null)) {
+            return;
+        }
+
         var nowLocal = DateTime.Now;
         var modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim();
         conversation.Messages.Add(("Assistant", text, nowLocal, modelLabel));
@@ -51,9 +66,9 @@ public sealed partial class MainWindow : Window {
 
     private static void ReplaceLastAssistantText(ConversationRuntime conversation, string text) {
         var nowLocal = DateTime.Now;
-        if (conversation.Messages.Count > 0
-            && string.Equals(conversation.Messages[^1].Role, "Assistant", StringComparison.Ordinal)) {
-            var existing = conversation.Messages[^1];
+        var replaceIndex = ResolveAssistantReplaceIndexForUpdate(conversation.Messages);
+        if (replaceIndex >= 0) {
+            var existing = conversation.Messages[replaceIndex];
             var updatedTimestamp = ResolveAssistantTimestampForUpdate(
                 existing.Time,
                 existing.Text,
@@ -62,12 +77,38 @@ public sealed partial class MainWindow : Window {
             var updatedModel = string.IsNullOrWhiteSpace(existing.Model)
                 ? string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim()
                 : existing.Model;
-            conversation.Messages[^1] = ("Assistant", text, updatedTimestamp, updatedModel);
+            conversation.Messages[replaceIndex] = ("Assistant", text, updatedTimestamp, updatedModel);
             return;
         }
 
         var modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim();
         conversation.Messages.Add(("Assistant", text, nowLocal, modelLabel));
+    }
+
+    internal static int ResolveAssistantReplaceIndexForUpdate(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages) {
+        if (messages is null || messages.Count == 0) {
+            return -1;
+        }
+
+        var lastIndex = messages.Count - 1;
+        if (string.Equals(messages[lastIndex].Role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+            return lastIndex;
+        }
+
+        // If no user message appeared after the most-recent assistant row, this is still the same
+        // user turn progression and should update that assistant bubble instead of appending a duplicate.
+        for (var i = lastIndex; i >= 0; i--) {
+            var role = messages[i].Role;
+            if (string.Equals(role, "User", StringComparison.OrdinalIgnoreCase)) {
+                return -1;
+            }
+
+            if (string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase)) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     internal static DateTime ResolveAssistantTimestampForUpdate(

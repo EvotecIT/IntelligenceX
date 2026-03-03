@@ -514,6 +514,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ReferencesToolOutsideContinuationSubset(userRequest, allDefinitions, preferred)) {
+            return false;
+        }
+
         var refreshedTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
             _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = refreshedTicks;
@@ -523,6 +527,63 @@ internal sealed partial class ChatServiceSession {
 
         subset = selected;
         return true;
+    }
+
+    private static bool ReferencesToolOutsideContinuationSubset(
+        string userRequest,
+        IReadOnlyList<ToolDefinition> allDefinitions,
+        IReadOnlySet<string> preferredToolNames) {
+        var normalizedRequest = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
+        if (normalizedRequest.Length == 0 || allDefinitions is null || allDefinitions.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < allDefinitions.Count; i++) {
+            var toolName = (allDefinitions[i].Name ?? string.Empty).Trim();
+            if (toolName.Length == 0 || preferredToolNames.Contains(toolName)) {
+                continue;
+            }
+
+            if (ContainsExplicitToolNameReference(normalizedRequest, toolName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsExplicitToolNameReference(string normalizedRequest, string toolName) {
+        if (normalizedRequest.Length == 0 || string.IsNullOrWhiteSpace(toolName)) {
+            return false;
+        }
+
+        var normalizedToolName = toolName.Trim();
+        var start = 0;
+        while (start < normalizedRequest.Length) {
+            var index = normalizedRequest.IndexOf(normalizedToolName, start, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) {
+                return false;
+            }
+
+            var hasLeftBoundary = index == 0
+                                  || !IsToolNameTokenChar(normalizedRequest[index - 1]);
+            var rightIndex = index + normalizedToolName.Length;
+            var hasRightBoundary = rightIndex >= normalizedRequest.Length
+                                   || !IsToolNameTokenChar(normalizedRequest[rightIndex]);
+            if (hasLeftBoundary && hasRightBoundary) {
+                return true;
+            }
+
+            start = index + normalizedToolName.Length;
+        }
+
+        return false;
+    }
+
+    private static bool IsToolNameTokenChar(char value) {
+        return char.IsLetterOrDigit(value)
+               || value == '_'
+               || value == '-';
     }
 
     private void RememberWeightedToolSubset(string threadId, IReadOnlyList<ToolDefinition> selectedDefinitions, int allToolCount) {

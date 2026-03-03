@@ -123,4 +123,31 @@ public sealed class MainWindowServiceBootstrapStatusTests {
         Assert.False(parsed);
         Assert.Equal(string.Empty, statusText);
     }
+
+    /// <summary>
+    /// Publishes bootstrap progress while disconnected, and while connected only when startup metadata sync is still active.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, false, false, false, true)]
+    [InlineData(false, true, false, false, false, false)]
+    [InlineData(false, true, false, false, true, true)]
+    [InlineData(true, false, false, false, false, false)]
+    [InlineData(false, false, true, false, false, false)]
+    [InlineData(false, false, false, true, false, false)]
+    public void ShouldPublishServiceBootstrapStatus_ReturnsExpectedValue(
+        bool shutdownRequested,
+        bool isConnected,
+        bool isSending,
+        bool turnStartupInProgress,
+        bool startupMetadataSyncInProgress,
+        bool expected) {
+        var shouldPublish = MainWindow.ShouldPublishServiceBootstrapStatus(
+            shutdownRequested,
+            isConnected,
+            isSending,
+            turnStartupInProgress,
+            startupMetadataSyncInProgress);
+
+        Assert.Equal(expected, shouldPublish);
+    }
 }

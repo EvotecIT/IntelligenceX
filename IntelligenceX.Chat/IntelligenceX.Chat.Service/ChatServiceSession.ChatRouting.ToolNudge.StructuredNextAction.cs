@@ -139,17 +139,56 @@ internal sealed partial class ChatServiceSession {
         bool compactFollowUpTurn,
         string userRequest,
         string assistantDraft) {
-        if (!continuationFollowUpTurn || !compactFollowUpTurn) {
+        if (!compactFollowUpTurn) {
+            return false;
+        }
+
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0 || ContainsQuestionSignal(request)) {
+            return false;
+        }
+
+        if (ExtractExplicitRequestedToolNames(request).Length > 0) {
             return false;
         }
 
         // If this turn is already anchored to new contextual request content, avoid replaying stale carryover
         // actions from previous turns and let normal tool planning proceed.
-        if (LooksLikeContextualFollowUpForExecutionNudge(userRequest, assistantDraft)) {
+        if (LooksLikeContextualFollowUpForExecutionNudge(request, assistantDraft)) {
             return false;
         }
 
+        // Guard against stale single-host carryover replays on compact but contextual follow-ups
+        // (for example scope-shift replies), even when the current assistant draft has not yet
+        // echoed the new context.
+        if (LooksLikeContextualCompactFollowUpWithoutDraftAnchor(request)) {
+            return false;
+        }
+
+        // Non-expanded compact follow-ups (e.g. "go ahead") should still be allowed to replay carryover.
+        if (!continuationFollowUpTurn) {
+            if (LooksLikeActionSelectionPayload(request)) {
+                return false;
+            }
+        }
+
         return true;
+    }
+
+    private static bool LooksLikeContextualCompactFollowUpWithoutDraftAnchor(string userRequest) {
+        var request = NormalizeContextualFollowUpRequest(userRequest);
+        if (request.Length == 0 || request.Length > FollowUpShapeShortCharLimit || ContainsQuestionSignal(request)) {
+            return false;
+        }
+
+        if (LooksLikeActionSelectionPayload(request)) {
+            return false;
+        }
+
+        // Require at least three meaningful tokens before treating the compact turn as a
+        // contextual scope shift instead of a passive acknowledgement.
+        var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 12);
+        return requestTokens.Count >= 3;
     }
 
     private static bool ShouldTriggerNoResultPhaseLoopWatchdog(
@@ -344,6 +383,13 @@ internal sealed partial class ChatServiceSession {
 
         if (!TryParseStructuredNextActionArguments(argumentsJson, toolDefinition, out var normalizedArguments, out var argumentReason)) {
             reason = argumentReason;
+            return false;
+        }
+
+        // Prevent host-driven structured next-action loops from replaying the exact same
+        // tool + normalized arguments that already ran in this turn.
+        if (HasEquivalentToolCallArguments(toolCalls, nextTool, toolDefinition, normalizedArguments)) {
+            reason = "next_action_self_loop";
             return false;
         }
 

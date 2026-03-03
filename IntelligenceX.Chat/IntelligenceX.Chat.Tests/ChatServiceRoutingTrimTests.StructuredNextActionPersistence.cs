@@ -53,16 +53,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var session2 = new ChatServiceSession(
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
                 Stream.Null);
-            var args = new object?[] { threadId, toolDefinitions, mutabilityHints, null, null };
+            var args = new object?[] { threadId, "go ahead", toolDefinitions, mutabilityHints, null, null };
             var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session2, args);
 
             Assert.True(Assert.IsType<bool>(result));
-            var toolCall = Assert.IsType<ToolCall>(args[3]);
+            var toolCall = Assert.IsType<ToolCall>(args[4]);
             Assert.Equal("ad_scope_discovery", toolCall.Name);
             Assert.NotNull(toolCall.Arguments);
             Assert.True(toolCall.Arguments!.GetBoolean("include_trusts", defaultValue: false));
             Assert.Equal(3, toolCall.Arguments.GetInt64("max_domains"));
-            Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(args[4]));
+            Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(args[5]));
         } finally {
             try {
                 if (Directory.Exists(root)) {

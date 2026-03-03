@@ -75,9 +75,23 @@ internal sealed partial class ChatServiceSession {
         bool noToolExecutionWatchdogUsed,
         bool continuationFollowUpTurn,
         bool compactFollowUpTurn,
+        bool explicitToolQuestionTurn,
         bool toolActivityDetected,
         string assistantDraft) {
         if (toolActivityDetected) {
+            return false;
+        }
+
+        // Explicit tool-capability questions should remain conversational even when an earlier
+        // recovery path was active in this turn.
+        if (explicitToolQuestionTurn) {
+            return false;
+        }
+
+        // Follow-up question turns should not be rewritten into blocker/cached-evidence output.
+        // Keep the model's direct answer path so tool-capability questions remain conversational.
+        if ((continuationFollowUpTurn || compactFollowUpTurn)
+            && ContainsQuestionSignal(userRequest)) {
             return false;
         }
 
@@ -114,6 +128,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
+    }
+
+    private static bool LooksLikeExplicitToolQuestionTurn(string userRequest) {
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0 || !ContainsQuestionSignal(request)) {
+            return false;
+        }
+
+        var requestedToolNames = ExtractExplicitRequestedToolNames(request);
+        return requestedToolNames.Length > 0;
     }
 
     private static bool ShouldAttemptNoToolExecutionWatchdog(

@@ -212,6 +212,43 @@ public sealed partial class MainWindow : Window {
         return true;
     }
 
+    internal static bool ShouldSuppressConsecutiveAssistantDuplicate(string? candidateAssistantText, string? previousAssistantText) {
+        var candidate = NormalizeAssistantSnapshotForAppendDecision(candidateAssistantText);
+        if (candidate.Length == 0) {
+            return false;
+        }
+
+        var previous = NormalizeAssistantSnapshotForAppendDecision(previousAssistantText);
+        if (previous.Length == 0) {
+            return false;
+        }
+
+        if (string.Equals(candidate, previous, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (AreNearDuplicateAssistantSnapshots(candidate, previous)
+            || AreNearDuplicateAssistantSnapshots(previous, candidate)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    internal static bool ShouldAppendAssistantSnapshot(string? candidateAssistantText, string? previousRole, string? previousAssistantText) {
+        if (NormalizeAssistantSnapshotForAppendDecision(candidateAssistantText).Length == 0) {
+            return false;
+        }
+
+        if (!string.Equals((previousRole ?? string.Empty).Trim(), "Assistant", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return !ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: candidateAssistantText,
+            previousAssistantText: previousAssistantText);
+    }
+
     internal static bool ShouldRenderFinalAssistantAsSeparateBubbleAfterInterim() {
         return false;
     }

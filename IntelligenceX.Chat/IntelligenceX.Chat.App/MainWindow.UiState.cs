@@ -250,6 +250,10 @@ public sealed partial class MainWindow : Window {
             if (TryBuildStartupMetadataSyncStatusText(out var startupSyncStatusText)) {
                 return SetStatusAsync(startupSyncStatusText, SessionStatusTone.Warn);
             }
+
+            if (TryBuildStartupPendingStatusText(status, out var startupPendingStatusText)) {
+                return SetStatusAsync(startupPendingStatusText, SessionStatusTone.Warn);
+            }
         }
 
         return SetStatusAsync(

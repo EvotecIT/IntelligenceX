@@ -304,6 +304,20 @@ public sealed partial class MainWindow : Window {
         return lines.ToArray();
     }
 
+    internal static string BuildStartupBootstrapStatusDetail(SessionStartupBootstrapTelemetryDto? telemetry) {
+        if (telemetry is null || telemetry.TotalMs <= 0) {
+            return string.Empty;
+        }
+
+        var detail = "tool bootstrap " + FormatBootstrapDuration(telemetry.TotalMs);
+        var slowestPhaseLabel = ResolveSlowestPhaseLabel(telemetry);
+        if (slowestPhaseLabel is null || telemetry.SlowestPhaseMs <= 0) {
+            return detail;
+        }
+
+        return detail + $" (slowest: {slowestPhaseLabel} {FormatBootstrapDuration(telemetry.SlowestPhaseMs)})";
+    }
+
     private static string FormatBootstrapDuration(long milliseconds) {
         var bounded = Math.Max(0, milliseconds);
         var elapsed = TimeSpan.FromMilliseconds(bounded);

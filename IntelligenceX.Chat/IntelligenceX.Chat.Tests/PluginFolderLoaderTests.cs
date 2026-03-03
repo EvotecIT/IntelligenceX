@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
+using SystemPackType = IntelligenceX.Tools.System.SystemToolPack;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -70,6 +71,55 @@ public sealed class PluginFolderLoaderTests {
                 warnings,
                 static w => w.Contains("plugin-loader-test", StringComparison.OrdinalIgnoreCase)
                             && !w.Contains("load_progress", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_DuplicateBuiltInPluginUsesFastpathSkip() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "duplicate-system-plugin");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var builtInAssemblyPath = typeof(SystemPackType).Assembly.Location;
+            var entryAssemblyName = Path.GetFileName(builtInAssemblyPath);
+            Assert.False(string.IsNullOrWhiteSpace(entryAssemblyName));
+            File.Copy(builtInAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+
+            var entryType = typeof(SystemPackType).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "duplicate-system-plugin",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var warnings = new List<string>();
+            var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
+                OnBootstrapWarning = warning => warnings.Add(warning)
+            });
+
+            Assert.Contains(
+                warnings,
+                static warning => warning.Contains("[plugin] duplicate_pack plugin='duplicate-system-plugin'", StringComparison.OrdinalIgnoreCase)
+                                  && (warning.Contains("mode='assembly_map'", StringComparison.OrdinalIgnoreCase)
+                                      || warning.Contains("mode='fastpath'", StringComparison.OrdinalIgnoreCase)));
+            Assert.DoesNotContain(
+                warnings,
+                static warning => warning.Contains("[plugin] load_timing plugin='duplicate-system-plugin'", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(1, result.Packs.Count(static pack => string.Equals(pack.Descriptor.Id, "system", StringComparison.OrdinalIgnoreCase)));
         } finally {
             if (Directory.Exists(tempRoot)) {
                 Directory.Delete(tempRoot, recursive: true);

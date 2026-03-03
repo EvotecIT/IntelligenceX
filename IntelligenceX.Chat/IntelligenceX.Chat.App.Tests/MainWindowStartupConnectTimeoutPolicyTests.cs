@@ -212,6 +212,99 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures connect attempt status text includes phase, attempt ordinal, and timeout labels.
+    /// </summary>
+    [Theory]
+    [InlineData("connecting to service", 1, 3, 900, "Starting runtime... (connecting to service, attempt 1/3, timeout 900ms)")]
+    [InlineData("retrying service connection", 2, 4, 2100, "Starting runtime... (retrying service connection, attempt 2/4, timeout 2.1s)")]
+    public void BuildStartupConnectAttemptStatusText_FormatsExpectedText(
+        string phaseLabel,
+        int attemptNumber,
+        int totalAttempts,
+        int timeoutMs,
+        string expected) {
+        var text = MainWindow.BuildStartupConnectAttemptStatusText(
+            phaseLabel,
+            attemptNumber,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(timeoutMs));
+
+        Assert.Equal(expected, text);
+    }
+
+    /// <summary>
+    /// Ensures retry-delay status text reports wait duration and next attempt ordinal.
+    /// </summary>
+    [Theory]
+    [InlineData(2, 4, 300, "Starting runtime... (waiting 300ms before retry 2/4)")]
+    [InlineData(5, 4, 1250, "Starting runtime... (waiting 1.3s before retry 5/5)")]
+    public void BuildStartupConnectRetryDelayStatusText_FormatsExpectedText(
+        int nextAttemptNumber,
+        int totalAttempts,
+        int delayMs,
+        string expected) {
+        var text = MainWindow.BuildStartupConnectRetryDelayStatusText(
+            nextAttemptNumber,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(delayMs));
+
+        Assert.Equal(expected, text);
+    }
+
+    /// <summary>
+    /// Ensures startup retry attempt ordinals include the initial cold-connect attempt.
+    /// </summary>
+    [Theory]
+    [InlineData(-10, 2)]
+    [InlineData(0, 2)]
+    [InlineData(1, 3)]
+    [InlineData(4, 6)]
+    public void ResolveStartupConnectRetryDisplayAttemptNumber_ReturnsExpectedValue(
+        int retryAttemptIndex,
+        int expectedDisplayAttemptNumber) {
+        var displayAttemptNumber = MainWindow.ResolveStartupConnectRetryDisplayAttemptNumber(retryAttemptIndex);
+        Assert.Equal(expectedDisplayAttemptNumber, displayAttemptNumber);
+    }
+
+    /// <summary>
+    /// Ensures startup retry total attempts include the initial cold-connect attempt.
+    /// </summary>
+    [Theory]
+    [InlineData(-1, 1)]
+    [InlineData(0, 1)]
+    [InlineData(3, 4)]
+    public void ResolveStartupConnectRetryDisplayTotalAttempts_ReturnsExpectedValue(
+        int retryAttemptSlots,
+        int expectedDisplayTotalAttempts) {
+        var displayTotalAttempts = MainWindow.ResolveStartupConnectRetryDisplayTotalAttempts(retryAttemptSlots);
+        Assert.Equal(expectedDisplayTotalAttempts, displayTotalAttempts);
+    }
+
+    /// <summary>
+    /// Ensures startup retry progress and delay statuses stay aligned across loop iterations.
+    /// </summary>
+    [Fact]
+    public void StartupRetryStatusText_UsesAttemptOrdinalsIncludingInitialConnect() {
+        var totalAttempts = MainWindow.ResolveStartupConnectRetryDisplayTotalAttempts(3);
+        var firstRetryAttempt = MainWindow.ResolveStartupConnectRetryDisplayAttemptNumber(0);
+        var secondRetryAttempt = MainWindow.ResolveStartupConnectRetryDisplayAttemptNumber(1);
+
+        var retryProgressText = MainWindow.BuildStartupConnectAttemptStatusText(
+            "retrying service connection",
+            firstRetryAttempt,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(900));
+        var retryDelayText = MainWindow.BuildStartupConnectRetryDelayStatusText(
+            nextAttemptNumber: firstRetryAttempt + 1,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(300));
+
+        Assert.Equal(3, secondRetryAttempt);
+        Assert.Equal("Starting runtime... (retrying service connection, attempt 2/4, timeout 900ms)", retryProgressText);
+        Assert.Equal("Starting runtime... (waiting 300ms before retry 3/4)", retryDelayText);
+    }
+
+    /// <summary>
     /// Ensures dispatch cooldown applies only for non-priority paths without a tracked running sidecar.
     /// Priority login/queued-turn recovery should bypass cooldown and attempt reconnect immediately.
     /// </summary>
@@ -424,7 +517,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
 
     /// <summary>
     /// Ensures deferred startup metadata sync is skipped only for unauthenticated
-    /// native sessions where deferred mode is enabled and interactive login is idle.
+    /// native sessions where deferred mode is enabled and an interactive login flow is not already active.
     /// </summary>
     [Theory]
     [InlineData(false, true, false, false, false)]
@@ -448,7 +541,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
 
     /// <summary>
     /// Ensures deferred startup metadata plan always queues metadata sync when deferred,
-    /// including the unauthenticated native defer path.
+    /// and only skips deferred metadata while interactive sign-in is pending.
     /// </summary>
     [Theory]
     [InlineData(true, false, false, true, false, false, false, false, true, true, true, false, false)]
@@ -520,6 +613,57 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             startupFlowState,
             startupMetadataSyncQueued);
         Assert.Equal(expected, shouldShow);
+    }
+
+    /// <summary>
+    /// Ensures startup pending status text is explicit about sign-in gating vs generic metadata sync.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, "Runtime connected. Sign in to finish loading tool packs...")]
+    [InlineData(true, true, "Runtime connected. Loading tool packs in background...")]
+    [InlineData(false, false, "Runtime connected. Loading tool packs in background...")]
+    public void BuildStartupPendingStatusText_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        string expected) {
+        var text = MainWindow.BuildStartupPendingStatusText(requiresInteractiveSignIn, isAuthenticated);
+        Assert.Equal(expected, text);
+    }
+
+    /// <summary>
+    /// Ensures deferred startup metadata sync waits for authenticated runtime state only when
+    /// the active transport requires interactive sign-in.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    public void ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool expected) {
+        var shouldWait = MainWindow.ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
+            requiresInteractiveSignIn,
+            isAuthenticated);
+        Assert.Equal(expected, shouldWait);
+    }
+
+    /// <summary>
+    /// Ensures post-login deferred metadata sync scheduling is queued once per login-success cycle.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public void ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess_ReturnsExpectedValue(
+        bool shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+        bool loginSuccessMetadataSyncAlreadyQueued,
+        bool expected) {
+        var shouldQueue = MainWindow.ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess(
+            shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+            loginSuccessMetadataSyncAlreadyQueued);
+        Assert.Equal(expected, shouldQueue);
     }
 
     /// <summary>

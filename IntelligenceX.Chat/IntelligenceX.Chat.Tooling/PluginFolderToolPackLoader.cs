@@ -104,17 +104,48 @@ internal static partial class PluginFolderToolPackLoader {
         var total = pendingPluginDirectories.Count;
         for (var i = 0; i < pendingPluginDirectories.Count; i++) {
             var pending = pendingPluginDirectories[i];
+            var loadedPacksByAssemblyName = BuildLoadedPacksByAssemblyName(packs);
             TryLoadPluginDirectory(
                 pluginDirectory: pending.PluginDirectory,
                 isExplicitRoot: pending.IsExplicitRoot,
                 options: options,
                 packs: packs,
                 existingPackIds: existingPackIds,
+                loadedPacksByAssemblyName: loadedPacksByAssemblyName,
                 onWarning: onWarning,
                 onPackAvailability: onPackAvailability,
                 loadIndex: i + 1,
                 loadTotal: total);
         }
+    }
+
+    private static Dictionary<string, IReadOnlyList<IToolPack>> BuildLoadedPacksByAssemblyName(IReadOnlyList<IToolPack> packs) {
+        var byAssemblyName = new Dictionary<string, List<IToolPack>>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < packs.Count; i++) {
+            var pack = packs[i];
+            if (pack is null) {
+                continue;
+            }
+
+            var assemblyName = (pack.GetType().Assembly.GetName().Name ?? string.Empty).Trim();
+            if (assemblyName.Length == 0) {
+                continue;
+            }
+
+            if (!byAssemblyName.TryGetValue(assemblyName, out var bucket)) {
+                bucket = new List<IToolPack>();
+                byAssemblyName[assemblyName] = bucket;
+            }
+
+            bucket.Add(pack);
+        }
+
+        var normalized = new Dictionary<string, IReadOnlyList<IToolPack>>(byAssemblyName.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in byAssemblyName) {
+            normalized[pair.Key] = pair.Value;
+        }
+
+        return normalized;
     }
 
     private static IEnumerable<string> EnumeratePluginDirectories(string rootPath, ToolPackBootstrapOptions options, Action<string>? onWarning) {

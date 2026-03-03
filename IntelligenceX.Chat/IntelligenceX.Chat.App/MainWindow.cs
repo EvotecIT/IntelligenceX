@@ -391,6 +391,7 @@ public sealed partial class MainWindow : Window {
     private int _startupAuthDeferredQueued;
     private int _startupOnboardingDeferredQueued;
     private int _startupConnectMetadataDeferredQueued;
+    private int _startupLoginSuccessMetadataSyncQueued;
     private int _startupModelProfileSyncDeferredQueued;
     private int _startupWebViewPostInitDeferredQueued;
     private int _startupDispatchPrewarmDeferredQueued;

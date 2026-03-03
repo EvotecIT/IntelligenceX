@@ -88,6 +88,81 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
+    /// Ensures consecutive assistant appends suppress duplicate formatting-only retries.
+    /// </summary>
+    [Fact]
+    public void ShouldSuppressConsecutiveAssistantDuplicate_SuppressesEquivalentFormattingDiffs() {
+        var suppress = MainWindow.ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: "  Hey Przemek 👋  Mr. IntelligenceX reporting in—online and ready.  ",
+            previousAssistantText: "Hey Przemek 👋\nMr. IntelligenceX reporting in—online and ready!");
+
+        Assert.True(suppress);
+    }
+
+    /// <summary>
+    /// Ensures short suffix-only restatements are treated as near-duplicate consecutive assistant rows.
+    /// </summary>
+    [Fact]
+    public void ShouldSuppressConsecutiveAssistantDuplicate_SuppressesShortSuffixNearDuplicates() {
+        var suppress = MainWindow.ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: "Checked AD0 now. Pulling reboot markers.",
+            previousAssistantText: "Checked AD0 now.");
+
+        Assert.True(suppress);
+    }
+
+    /// <summary>
+    /// Ensures materially different assistant turns are not suppressed.
+    /// </summary>
+    [Fact]
+    public void ShouldSuppressConsecutiveAssistantDuplicate_DoesNotSuppressDistinctMessages() {
+        var suppress = MainWindow.ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: "AD replication is healthy.",
+            previousAssistantText: "LDAP probes on AD2 are healthy.");
+
+        Assert.False(suppress);
+    }
+
+    /// <summary>
+    /// Ensures append suppression applies only when the prior message role is assistant.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendAssistantSnapshot_AllowsAppendWhenPreviousRoleIsNotAssistant() {
+        var append = MainWindow.ShouldAppendAssistantSnapshot(
+            candidateAssistantText: "Hey Przemek, running checks now.",
+            previousRole: "User",
+            previousAssistantText: "Hey Przemek, running checks now.");
+
+        Assert.True(append);
+    }
+
+    /// <summary>
+    /// Ensures equivalent consecutive assistant snapshots are not appended.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendAssistantSnapshot_DoesNotAppendEquivalentConsecutiveAssistantSnapshots() {
+        var append = MainWindow.ShouldAppendAssistantSnapshot(
+            candidateAssistantText: "  Hey Przemek 👋  Mr. IntelligenceX reporting in—online and ready.  ",
+            previousRole: "Assistant",
+            previousAssistantText: "Hey Przemek 👋\nMr. IntelligenceX reporting in—online and ready!");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures empty assistant snapshots are not appended.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendAssistantSnapshot_DoesNotAppendEmptyAssistantSnapshots() {
+        var append = MainWindow.ShouldAppendAssistantSnapshot(
+            candidateAssistantText: "   ",
+            previousRole: "Assistant",
+            previousAssistantText: "Prior content");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
     /// Ensures finalized text replaces streamed draft content instead of creating duplicate assistant bubbles.
     /// </summary>
     [Fact]

@@ -157,6 +157,72 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
+    private static string FormatStartupConnectDurationLabel(TimeSpan duration) {
+        if (duration <= TimeSpan.Zero) {
+            return "0ms";
+        }
+
+        if (duration.TotalSeconds >= 1d) {
+            return duration.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s";
+        }
+
+        return Math.Max(1, Math.Round(duration.TotalMilliseconds))
+            .ToString(CultureInfo.InvariantCulture)
+               + "ms";
+    }
+
+    internal static string BuildStartupConnectAttemptStatusText(
+        string phaseLabel,
+        int attemptNumber,
+        int totalAttempts,
+        TimeSpan timeout) {
+        var phase = (phaseLabel ?? string.Empty).Trim();
+        if (phase.Length == 0) {
+            phase = "connecting";
+        }
+
+        var boundedAttempt = Math.Max(1, attemptNumber);
+        var boundedTotal = Math.Max(boundedAttempt, totalAttempts);
+        var timeoutLabel = FormatStartupConnectDurationLabel(timeout);
+        return "Starting runtime... ("
+               + phase
+               + ", attempt "
+               + boundedAttempt.ToString(CultureInfo.InvariantCulture)
+               + "/"
+               + boundedTotal.ToString(CultureInfo.InvariantCulture)
+               + ", timeout "
+               + timeoutLabel
+               + ")";
+    }
+
+    internal static string BuildStartupConnectRetryDelayStatusText(
+        int nextAttemptNumber,
+        int totalAttempts,
+        TimeSpan delay) {
+        var boundedAttempt = Math.Max(1, nextAttemptNumber);
+        var boundedTotal = Math.Max(boundedAttempt, totalAttempts);
+        var delayLabel = FormatStartupConnectDurationLabel(delay);
+        return "Starting runtime... (waiting "
+               + delayLabel
+               + " before retry "
+               + boundedAttempt.ToString(CultureInfo.InvariantCulture)
+               + "/"
+               + boundedTotal.ToString(CultureInfo.InvariantCulture)
+               + ")";
+    }
+
+    internal static int ResolveStartupConnectRetryDisplayAttemptNumber(int retryAttemptIndex) {
+        var boundedRetryIndex = Math.Max(0, retryAttemptIndex);
+        // Display attempt numbering includes the initial cold connect attempt.
+        return boundedRetryIndex + 2;
+    }
+
+    internal static int ResolveStartupConnectRetryDisplayTotalAttempts(int retryAttemptSlots) {
+        var boundedRetrySlots = Math.Max(0, retryAttemptSlots);
+        // Total displayed attempts include the initial cold connect attempt.
+        return boundedRetrySlots + 1;
+    }
+
     internal static bool ShouldDeferStartupWebViewPostInitialization(bool captureStartupPhaseTelemetry) {
         return captureStartupPhaseTelemetry;
     }
@@ -344,11 +410,31 @@ public sealed partial class MainWindow : Window {
             await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(false);
             await SetConnectProgressStatusAsync("Starting runtime... (connecting to service)").ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
-            _loginInProgress = false;
-            if (!RequiresInteractiveSignInForCurrentTransport()) {
+            var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
+            var preserveInteractiveAuthState = ShouldPreserveInteractiveAuthStateOnReconnect(
+                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                isAuthenticated: _isAuthenticated,
+                hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot(),
+                loginInProgress: _loginInProgress);
+            var resetEnsureLoginProbeCache = ShouldResetEnsureLoginProbeCacheOnReconnectAuthReset(
+                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                preserveInteractiveAuthState: preserveInteractiveAuthState);
+            if (!requiresInteractiveSignIn) {
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                _loginInProgress = false;
                 ApplyNonNativeAuthenticationStateIfNeeded();
+                Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
+            } else if (!preserveInteractiveAuthState) {
+                _isAuthenticated = false;
+                _authenticatedAccountId = null;
+                _loginInProgress = false;
+                Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
+            } else if (!_isAuthenticated) {
+                _authenticatedAccountId = null;
+            }
+            if (resetEnsureLoginProbeCache) {
+                ResetEnsureLoginProbeCache();
             }
 
             var pipeName = _pipeName;
@@ -375,6 +461,13 @@ public sealed partial class MainWindow : Window {
 
                 var initialHardTimeout = ResolveConnectAttemptHardTimeout(initialAttemptTimeout);
                 LogConnectAttemptStart("pipe_connect.initial", 1, initialPipeConnectTimeout, initialAttemptTimeout, initialHardTimeout);
+                await SetConnectProgressStatusAsync(
+                        BuildStartupConnectAttemptStatusText(
+                            phaseLabel: "connecting to service",
+                            attemptNumber: 1,
+                            totalAttempts: 1,
+                            timeout: initialAttemptTimeout))
+                    .ConfigureAwait(false);
                 initialAttemptStopwatch = Stopwatch.StartNew();
                 await ConnectClientWithTimeoutAsync(
                     client,
@@ -422,6 +515,7 @@ public sealed partial class MainWindow : Window {
                         await SetConnectProgressStatusAsync("Starting runtime... (retrying service connection)").ConfigureAwait(false);
                         LogStartupConnectPhase("ensure_sidecar", "done");
                         LogStartupConnectPhase("pipe_connect.retry", "begin");
+                        var startupRetryDisplayTotalAttempts = ResolveStartupConnectRetryDisplayTotalAttempts(StartupConnectRetryTimeouts.Length);
                         for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
                             if (_serviceProcess is { HasExited: true }) {
                                 sidecarConnectException = new InvalidOperationException("Service process exited before pipe connect retry could begin.");
@@ -439,9 +533,17 @@ public sealed partial class MainWindow : Window {
 
                             Stopwatch? retryAttemptStopwatch = null;
                             var retryAttemptNumber = attempt + 1;
+                            var retryDisplayAttemptNumber = ResolveStartupConnectRetryDisplayAttemptNumber(attempt);
                             try {
                                 var retryHardTimeout = ResolveConnectAttemptHardTimeout(retryTimeout);
                                 LogConnectAttemptStart("pipe_connect.retry", retryAttemptNumber, requestedRetryTimeout, retryTimeout, retryHardTimeout);
+                                await SetConnectProgressStatusAsync(
+                                        BuildStartupConnectAttemptStatusText(
+                                            phaseLabel: "retrying service connection",
+                                            attemptNumber: retryDisplayAttemptNumber,
+                                            totalAttempts: startupRetryDisplayTotalAttempts,
+                                            timeout: retryTimeout))
+                                    .ConfigureAwait(false);
                                 retryAttemptStopwatch = Stopwatch.StartNew();
                                 await ConnectClientWithTimeoutAsync(client, pipeName, retryTimeout, retryHardTimeout).ConfigureAwait(false);
                                 var retryAttemptElapsed = retryAttemptStopwatch.Elapsed;
@@ -471,6 +573,12 @@ public sealed partial class MainWindow : Window {
                                         break;
                                     }
 
+                                    await SetConnectProgressStatusAsync(
+                                            BuildStartupConnectRetryDelayStatusText(
+                                                nextAttemptNumber: retryDisplayAttemptNumber + 1,
+                                                totalAttempts: startupRetryDisplayTotalAttempts,
+                                                delay: retryDelay))
+                                        .ConfigureAwait(false);
                                     await Task.Delay(retryDelay).ConfigureAwait(false);
                                 }
                             }

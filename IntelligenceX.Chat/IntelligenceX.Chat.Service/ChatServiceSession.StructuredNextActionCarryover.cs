@@ -9,10 +9,14 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int CarryoverHostHintMultiHostThreshold = 2;
     private readonly record struct StructuredNextActionSnapshot(
         string ToolName,
         string ArgumentsJson,
         ActionMutability Mutability,
+        long SeenUtcTicks);
+    private readonly record struct StructuredNextActionAutoReplaySnapshot(
+        string Signature,
         long SeenUtcTicks);
 
     private void RememberStructuredNextActionCarryover(
@@ -63,6 +67,11 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        if (HasEquivalentToolCallArguments(toolCalls, nextTool, toolDefinition, normalizedArguments)) {
+            RemoveStructuredNextActionCarryover(normalizedThreadId);
+            return;
+        }
+
         var snapshot = new StructuredNextActionSnapshot(
             ToolName: nextTool,
             ArgumentsJson: JsonLite.Serialize(normalizedArguments),
@@ -77,6 +86,7 @@ internal sealed partial class ChatServiceSession {
 
     private bool TryBuildCarryoverStructuredNextActionToolCall(
         string threadId,
+        string userRequest,
         IReadOnlyList<ToolDefinition> toolDefinitions,
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out ToolCall toolCall,
@@ -123,7 +133,25 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (HasCarryoverHostHintMismatch(userRequest, normalizedArguments)) {
+            RemoveStructuredNextActionCarryover(normalizedThreadId);
+            reason = "carryover_host_hint_mismatch";
+            return false;
+        }
+
         var serializedArguments = JsonLite.Serialize(normalizedArguments);
+        if (ShouldBlockRepeatedCarryoverAutoReplay(
+                normalizedThreadId,
+                userRequest,
+                snapshot.ToolName,
+                serializedArguments,
+                normalizedArguments)) {
+            RemoveStructuredNextActionCarryover(normalizedThreadId);
+            reason = "carryover_replay_requires_new_context";
+            return false;
+        }
+
+        RememberCarryoverAutoReplay(normalizedThreadId, snapshot.ToolName, serializedArguments);
         var callId = "host_carryover_next_action_" + Guid.NewGuid().ToString("N");
         var raw = new JsonObject()
             .Add("type", "tool_call")
@@ -217,6 +245,70 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
+    private bool ShouldBlockRepeatedCarryoverAutoReplay(
+        string normalizedThreadId,
+        string userRequest,
+        string toolName,
+        string serializedArguments,
+        JsonObject normalizedArguments) {
+        var replaySignature = BuildCarryoverAutoReplaySignature(toolName, serializedArguments);
+        if (replaySignature.Length == 0) {
+            return false;
+        }
+
+        var userHostHints = CollectHostHintsFromUserRequest(userRequest);
+        if (userHostHints.Length > 0) {
+            var carryoverTargets = ExtractHostScopedTargets(normalizedArguments);
+            if (ShouldTreatCarryoverHostHintsAsMultiHostMismatch(userHostHints, carryoverTargets)) {
+                return true;
+            }
+
+            for (var i = 0; i < carryoverTargets.Length; i++) {
+                if (HostMatchesAnyCandidate(carryoverTargets[i], userHostHints)) {
+                    return false;
+                }
+            }
+        }
+
+        lock (_toolRoutingContextLock) {
+            if (!_structuredNextActionAutoReplayByThreadId.TryGetValue(normalizedThreadId, out var priorReplay)) {
+                return false;
+            }
+
+            if (!TryGetUtcDateTimeFromTicks(priorReplay.SeenUtcTicks, out var seenUtc)
+                || DateTime.UtcNow - seenUtc > StructuredNextActionContextMaxAge) {
+                _structuredNextActionAutoReplayByThreadId.Remove(normalizedThreadId);
+                return false;
+            }
+
+            return string.Equals(priorReplay.Signature, replaySignature, StringComparison.Ordinal);
+        }
+    }
+
+    private void RememberCarryoverAutoReplay(string normalizedThreadId, string toolName, string serializedArguments) {
+        var replaySignature = BuildCarryoverAutoReplaySignature(toolName, serializedArguments);
+        if (replaySignature.Length == 0) {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _structuredNextActionAutoReplayByThreadId[normalizedThreadId] = new StructuredNextActionAutoReplaySnapshot(
+                Signature: replaySignature,
+                SeenUtcTicks: DateTime.UtcNow.Ticks);
+            TrimWeightedRoutingContextsNoLock();
+        }
+    }
+
+    private static string BuildCarryoverAutoReplaySignature(string toolName, string serializedArguments) {
+        var normalizedTool = (toolName ?? string.Empty).Trim();
+        var normalizedArguments = (serializedArguments ?? string.Empty).Trim();
+        if (normalizedTool.Length == 0 || normalizedArguments.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalizedTool.ToLowerInvariant() + "|" + normalizedArguments;
+    }
+
     private void RemoveStructuredNextActionCarryover(string threadId) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0) {
@@ -228,5 +320,98 @@ internal sealed partial class ChatServiceSession {
             TrimWeightedRoutingContextsNoLock();
         }
         RemoveStructuredNextActionSnapshot(normalizedThreadId);
+    }
+
+    private static bool HasEquivalentToolCallArguments(
+        IReadOnlyList<ToolCallDto> toolCalls,
+        string toolName,
+        ToolDefinition toolDefinition,
+        JsonObject normalizedArguments) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0 || toolCalls.Count == 0) {
+            return false;
+        }
+
+        var normalizedArgumentsJson = JsonLite.Serialize(normalizedArguments);
+        for (var i = toolCalls.Count - 1; i >= 0; i--) {
+            var call = toolCalls[i];
+            var callName = (call.Name ?? string.Empty).Trim();
+            if (!string.Equals(callName, normalizedToolName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (!TryParseStructuredNextActionArguments(
+                    call.ArgumentsJson,
+                    toolDefinition,
+                    out var existingArguments,
+                    out _)) {
+                continue;
+            }
+
+            if (string.Equals(JsonLite.Serialize(existingArguments), normalizedArgumentsJson, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasCarryoverHostHintMismatch(string userRequest, JsonObject normalizedArguments) {
+        var userHostHints = CollectHostHintsFromUserRequest(userRequest);
+        if (userHostHints.Length == 0) {
+            return false;
+        }
+
+        var carryoverTargets = ExtractHostScopedTargets(normalizedArguments);
+        if (carryoverTargets.Length == 0) {
+            return false;
+        }
+
+        if (ShouldTreatCarryoverHostHintsAsMultiHostMismatch(userHostHints, carryoverTargets)) {
+            return true;
+        }
+
+        for (var i = 0; i < carryoverTargets.Length; i++) {
+            if (HostMatchesAnyCandidate(carryoverTargets[i], userHostHints)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool ShouldTreatCarryoverHostHintsAsMultiHostMismatch(
+        IReadOnlyList<string> userHostHints,
+        IReadOnlyList<string> carryoverTargets) {
+        if (userHostHints is null || carryoverTargets is null) {
+            return false;
+        }
+
+        return userHostHints.Count >= CarryoverHostHintMultiHostThreshold
+               && carryoverTargets.Count > 0
+               && carryoverTargets.Count < CarryoverHostHintMultiHostThreshold;
+    }
+
+    private static string BuildCarryoverHostHintInput(string userRequest, string assistantDraft) {
+        var request = (userRequest ?? string.Empty).Trim();
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0) {
+            return request;
+        }
+
+        // Keep host-hint enrichment bounded and language-neutral by carrying only recent draft text.
+        if (draft.Length > 2048) {
+            draft = draft[..2048];
+        }
+
+        if (request.Length == 0) {
+            return draft;
+        }
+
+        return request + "\n" + draft;
+    }
+
+    internal static string BuildCarryoverHostHintInputForTesting(string userRequest, string assistantDraft) {
+        return BuildCarryoverHostHintInput(userRequest, assistantDraft);
     }
 }

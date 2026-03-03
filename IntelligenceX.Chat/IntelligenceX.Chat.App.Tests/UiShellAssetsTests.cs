@@ -47,6 +47,25 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures header status diagnostics keep a bounded runtime lifecycle history for tooltip/debug visibility.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesRuntimeLifecycleStatusTimelineDiagnostics() {
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+        var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var toolsScript = File.ReadAllText(toolsScriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("statusTimeline: []", coreScript, StringComparison.Ordinal);
+        Assert.Contains("function appendStatusTimelineEntry(value)", coreScript, StringComparison.Ordinal);
+        Assert.Contains("statusEl.title = buildStatusChipTitle(displayValue, rawValue);", coreScript, StringComparison.Ordinal);
+        Assert.Contains("Runtime lifecycle: \" + state.statusTimeline.join(\" > \")", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("if (Array.isArray(nextState.statusTimeline)) {", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures routing-catalog normalization remains backward compatible for older payloads
     /// that do not include newer explicit-routing readiness counters.
     /// </summary>

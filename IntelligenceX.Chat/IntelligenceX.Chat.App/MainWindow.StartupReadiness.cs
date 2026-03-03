@@ -1,11 +1,33 @@
 using System;
 using System.Globalization;
 using System.Threading;
+using IntelligenceX.Chat.App.Conversation;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    internal static string BuildStartupPendingStatusText(bool requiresInteractiveSignIn, bool isAuthenticated) {
+        if (requiresInteractiveSignIn && !isAuthenticated) {
+            return "Runtime connected. Sign in to finish loading tool packs...";
+        }
+
+        return "Runtime connected. Loading tool packs in background...";
+    }
+
+    internal static bool ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated) {
+        return requiresInteractiveSignIn && !isAuthenticated;
+    }
+
+    internal static bool ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess(
+        bool shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+        bool loginSuccessMetadataSyncAlreadyQueued) {
+        return !shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync
+               && !loginSuccessMetadataSyncAlreadyQueued;
+    }
+
     private static string NormalizeStartupMetadataSyncPhase(string? phase) {
         var normalized = (phase ?? string.Empty).Trim();
         return normalized.Length == 0 ? "syncing startup metadata" : normalized;
@@ -66,6 +88,26 @@ public sealed partial class MainWindow : Window {
             ? elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s"
             : Math.Max(1, (long)elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture) + "ms";
         statusText = $"Runtime connected. Startup sync in progress ({phase}, {elapsedLabel}).";
+        return true;
+    }
+
+    private bool TryBuildStartupPendingStatusText(SessionStatus status, out string statusText) {
+        statusText = string.Empty;
+        if (!ShouldShowToolsLoading(
+                isConnected: _isConnected,
+                hasSessionPolicy: _sessionPolicy is not null,
+                startupFlowState: Volatile.Read(ref _startupFlowState),
+                startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0)) {
+            return false;
+        }
+
+        var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
+        var isAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
+        if (status.Kind == SessionStatusKind.SignInRequired) {
+            isAuthenticated = false;
+        }
+
+        statusText = BuildStartupPendingStatusText(requiresInteractiveSignIn, isAuthenticated);
         return true;
     }
 }

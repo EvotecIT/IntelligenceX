@@ -155,6 +155,8 @@ internal sealed partial class ChatServiceSession {
             }
         } catch (JsonException) {
             return false;
+        } catch (ArgumentException) {
+            return false;
         }
 
         return false;
@@ -190,8 +192,7 @@ internal sealed partial class ChatServiceSession {
 
         var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
         var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
-                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd)
-                           || IsStandaloneDomainSignalAlias(normalized, "ad");
+                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
         var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
         if (hasAdSignals == hasPublicSignals) {
             return false;
@@ -213,8 +214,7 @@ internal sealed partial class ChatServiceSession {
 
         var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
         var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
-                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd)
-                           || IsStandaloneDomainSignalAlias(normalized, "ad");
+                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
         var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
         return hasAdSignals && hasPublicSignals;
     }
@@ -468,47 +468,6 @@ internal sealed partial class ChatServiceSession {
 
     private static bool IsDomainSignalTokenCharacter(char ch) {
         return char.IsLetterOrDigit(ch) || ch is '_' or '-';
-    }
-
-    private static bool IsStandaloneDomainSignalAlias(string text, string alias) {
-        var normalizedText = (text ?? string.Empty).Trim();
-        var normalizedAlias = NormalizeDomainSignalTokenValue(alias);
-        if (normalizedText.Length == 0 || normalizedAlias.Length == 0) {
-            return false;
-        }
-
-        var index = 0;
-        var tokenCount = 0;
-        string token = string.Empty;
-        while (index < normalizedText.Length) {
-            while (index < normalizedText.Length && !IsDomainSignalTokenCharacter(normalizedText[index])) {
-                index++;
-            }
-
-            if (index >= normalizedText.Length) {
-                break;
-            }
-
-            var start = index;
-            while (index < normalizedText.Length && IsDomainSignalTokenCharacter(normalizedText[index])) {
-                index++;
-            }
-
-            var length = index - start;
-            if (length <= 0) {
-                continue;
-            }
-
-            tokenCount++;
-            if (tokenCount > 1) {
-                return false;
-            }
-
-            token = NormalizeDomainSignalTokenValue(normalizedText.Substring(start, length));
-        }
-
-        return tokenCount == 1
-               && string.Equals(token, normalizedAlias, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeDomainSignalTokenValue(string value) {

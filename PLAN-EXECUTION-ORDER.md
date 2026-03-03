@@ -9,6 +9,43 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] PR #985 merged (`2f649d62d164185755c19e33906a7064ae4ff132`): contract-first pack toggles, startup bootstrap visibility, and migration hardening are now on `master`.
 - [x] PR #986 merged (`4db3931ac8cbb753da7ff160311a4f8e0d6904a3`): removed planner prompt pack-hint inference (`pack`/`pack_aliases`) to keep Chat planner context generic.
 
+## Audit Update (2026-03-03)
+
+- [x] Stabilization hotfix: structured-next-action carryover replay now blocks stale self-loop replays and host-hint-conflicting replays.
+- [x] Stabilization hotfix: startup deferred metadata no longer skips metadata sync solely due to initial unauthenticated state.
+- [x] Stabilization hotfix: bootstrap progress status can publish while connected startup metadata sync is still active.
+- [x] Closed migration gap: `ToolPackBootstrap` now performs descriptor-driven built-in pack discovery (no hardcoded per-pack bootstrap chain).
+- [x] Closed migration gap: host-hint helpers moved to `ChatServiceSession.HostHints.cs` (fallback-era naming removed).
+- [x] Closed startup perf gap (warm path): server-scoped tooling bootstrap snapshot cache now avoids repeated full bootstrap during reconnect/session churn.
+- [x] Stabilization hotfix: carryover structured-next-action replay now accepts compact non-question follow-ups without requiring continuation-expansion text rewrites.
+- [x] Stabilization hotfix: duplicate final `chat_result` publishes are suppressed per request/thread/text at the service writer boundary.
+- [x] Stabilization hotfix: connected session status now stays in startup-pending mode until metadata/tool-pack readiness settles.
+- [x] Stabilization regression: added end-to-end two-turn `go ahead` carryover replay test to prevent follow-up execution stalls.
+- [x] Stabilization hotfix: compact follow-up question turns no longer force blocker/cached-evidence finalize rewrites, preserving direct tool-capability answers.
+- [x] Stabilization hotfix: cached evidence fallback now requires explicit tool-name match when request text references a concrete tool id.
+- [x] Stabilization hotfix: deferred startup metadata sync now waits for authenticated state and is re-queued after login completion.
+- [x] Stabilization hotfix: host structured next-action auto-replay now blocks same-tool/same-arguments self-loops (`next_action_self_loop`) to prevent repeated AD0-style churn.
+- [x] Stabilization hotfix: carryover structured-next-action auto-replay now suppresses repeated identical tool+args replays until fresh context is provided (or explicit host pin matches).
+- [x] Stabilization hotfix: carryover host-hint mismatch detection now consumes assistant-draft host targets as contextual hints, blocking stale single-host replay after multi-host continuation guidance.
+- [x] Stabilization hotfix: carryover host-hint gating now rejects single-host auto-replay whenever follow-up context contains multi-host hints (including mixed stale/fresh host mentions).
+- [x] Startup stabilization hotfix: transient reconnects now preserve interactive auth state when appropriate (authenticated or login-in-progress without explicit unauthenticated probe), reducing sign-in/connect churn.
+- [x] Startup visibility hotfix: connect stage now publishes per-attempt retry/timeout/delay progress status during pipe-connect retries.
+- [x] Validation checkpoint: `analyze validate-catalog` currently reports `pass (0 error(s), 0 warning(s))` on this branch.
+- [x] Stabilization hotfix: contextual follow-up detection now reads the `Follow-up:` tail from legacy continuation expansion before carryover replay decisions.
+- [x] Stabilization cleanup: removed standalone lowercase `ad` lexical alias auto-routing from domain-intent signal resolution.
+- [x] Stabilization hotfix: continuation subset reuse now skips when follow-up explicitly references a tool outside the remembered subset, enabling fresh cross-pack tool routing.
+- [x] Startup visibility hotfix: header chip diagnostics now maintain a bounded runtime lifecycle timeline (tooltip + debug panel) across connect/auth/bootstrap transitions.
+- [x] Stabilization hotfix: routing-meta activity timeline labels now include strategy + selected/total tool counts for explicit route-stage observability.
+- [x] Stabilization hotfix: explicit tool-capability questions now bypass finalize-time execution-blocker cached-evidence substitution, preventing stale evidence fallbacks on `tool_name?` clarification turns.
+- [x] Stabilization hotfix: carryover structured-next-action auto-replay now skips compact contextual scope-shift follow-ups (for example "other DCs"), forcing fresh routing instead of stale single-host replay.
+- [x] Startup perf hotfix: plugin duplicate packs are now skipped via loaded-assembly fast-path before dependency preload/reflection, cutting avoidable bootstrap latency on first metadata sync.
+- [x] Stabilization hotfix: explicit tool-id follow-ups now bypass pending-action/carryover auto-replay rewrites, and escaped Markdown tool ids (for example `eventlog\_evtx\_query`) are honored by cached-evidence gating.
+- [x] Startup resilience hotfix: deferred metadata sync phases now retry once on transient disconnects (`hello/list_tools/auth_refresh`), reducing cold-start states where runtime is connected but catalog/policy sync is missing.
+- [x] Startup/turn UX hotfix: final assistant replacement now targets the latest assistant row when only `System/Tools` rows followed (no newer user turn), reducing duplicate assistant finals across reconnect/retry churn.
+- [x] Stabilization hotfix: carryover structured-next-action replay now evaluates compact follow-up eligibility from raw user text (instead of routed payload rewrite text), restoring queued `go ahead` follow-up execution.
+- [x] Stabilization hotfix: domain-intent payload parsing now safely handles invalid UTF-16 input (`ArgumentException` + `JsonException`) to avoid compact follow-up expansion crashes.
+- [x] Contract-alignment cleanup: updated routing/output lifecycle tests to match strict routing metadata requirements and one-meaningful-final-per-request output policy.
+
 ## Rules For This Migration
 
 - [ ] Keep each PR focused to one objective and one rollback boundary.
@@ -146,7 +183,7 @@ Dependency: PR 2
 Files:
 
 - `ChatServiceSession.PackCapabilityFallback.cs`
-- `ChatServiceSession.PackCapabilityFallback.HostHints.cs`
+- `ChatServiceSession.HostHints.cs`
 - `ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`
 - `ChatServiceSession.cs`
 - `ChatServiceSession.ProfilesAndModels.cs`
@@ -209,6 +246,25 @@ Checklist:
 - [ ] Validate final DoD from `PLAN.md`.
 
 Dependency: PR 8, PR 10
+
+### PR 12 - Startup Perf And Decoupling Reality-Close
+
+Files (expected):
+
+- `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceServer.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession*.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.Tooling/ToolPackBootstrap*.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.App/MainWindow*.cs`
+- `PLAN.md`
+- `PLAN-EXECUTION-ORDER.md`
+
+Checklist:
+
+- [x] Move tooling bootstrap out of per-connection session constructor into reusable runtime cache/lifecycle.
+- [x] Keep startup status truthful: do not surface "ready" semantics until metadata/auth probes settle or explicitly fail-open with reason.
+- [x] Replace hardcoded known-pack bootstrap chain with descriptor/manifest-driven registration.
+- [x] Remove/rename fallback-era host-hint file so architecture guardrails match current source layout.
+- [x] Add regression tests for reconnect warm path and multi-turn follow-up carryover against host scope changes.
 
 ## Parallelization Map
 

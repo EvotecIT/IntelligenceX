@@ -40,6 +40,43 @@ Build a contract-first architecture where:
 - [x] Regression coverage added for legacy pack-toggle migration and unknown-required-column insert backfill behavior.
 - [x] PR #986 merged: planner prompt no longer emits inferred `pack`/`pack_aliases`; Chat planner context stays generic (`category`/`family`/`tags`) while routing search tokens remain metadata-backed.
 
+## Audit Corrections (2026-03-03)
+
+- [x] Closed: Chat bootstrap now discovers built-in packs generically from tool assemblies/descriptors in `ToolPackBootstrap` (no hardcoded per-pack bootstrap chain).
+- [x] Closed: host-hint helpers were re-scoped into `ChatServiceSession.HostHints.cs` (fallback-era file naming removed).
+- [x] Hotfix landed: stale structured-next-action carryover replay now suppresses self-loop replays (same tool + equivalent args) and rejects host-hint-conflicting carryover execution.
+- [x] Hotfix landed: deferred startup metadata flow no longer skips metadata sync purely because authentication is initially unknown (skip now applies only when interactive login is already in progress).
+- [x] Hotfix landed: startup bootstrap status publishing now stays visible while connected startup metadata sync is in progress.
+- [x] Closed (mitigated): server-scoped tooling bootstrap cache now reuses prior bootstrap snapshots across reconnect/session churn, avoiding repeated full pack bootstrap on warm path.
+- [x] Hotfix landed: carryover structured-next-action replay now accepts compact non-question follow-ups even when continuation expansion is unavailable, while still rejecting contextual-anchor and question turns.
+- [x] Hotfix landed: carryover structured-next-action replay now treats compact contextual scope-shift follow-ups (for example "other DCs") as fresh planning turns, preventing stale single-host auto-replay loops.
+- [x] Hotfix landed: Chat service now suppresses duplicate final `ChatResultMessage` publishes for the same request/thread/text to prevent repeated assistant finals.
+- [x] Hotfix landed: session header status now keeps startup-pending messaging while metadata/tool-pack readiness is still unresolved (no premature "Ready" flip).
+- [x] Regression coverage added: two-turn carryover scenario now proves `go ahead` follow-up replays queued structured next-action tool calls (host carryover call-id path).
+- [x] Hotfix landed: compact follow-up question turns no longer force execution-blocker/cached-evidence rewrite at finalize (tool-capability questions keep direct conversational handling).
+- [x] Hotfix landed: cached evidence fallback now requires explicit tool-name match when the user references a specific tool id, preventing unrelated stale evidence reuse.
+- [x] Hotfix landed: deferred startup metadata sync now waits for authenticated runtime state and is re-queued after successful login completion, avoiding premature metadata churn during sign-in.
+- [x] Hotfix landed: host structured next-action replay now skips same-tool/same-arguments loops (`next_action_self_loop`) to avoid repeated AD0-style replay churn.
+- [x] Hotfix landed: carryover structured-next-action auto-replay now blocks repeated identical tool+argument replays until fresh context is provided (for example explicit host pin), reducing AD0-style replay churn across turns.
+- [x] Hotfix landed: carryover replay host-hint gating now incorporates assistant draft host targets (not just user text), preventing stale single-host (`AD0`) replay after multi-host follow-up plans.
+- [x] Hotfix landed: carryover host-hint gating now treats multi-host follow-up hints as incompatible with single-host auto-replay, preventing mixed-hint (`AD0` + `AD1/AD2`) stale carryover execution loops.
+- [x] Startup stabilization: transient runtime reconnects now preserve interactive auth state when prior state is authenticated or login is in-flight (unless explicit unauthenticated probe exists), reducing sign-in/connect-disconnect churn.
+- [x] Startup visibility: connect flow now surfaces per-attempt pipe connect/retry timeout and retry-delay progress in status text (instead of generic "starting runtime" only).
+- [x] Validation checkpoint: `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .` passes with `0 error(s), 0 warning(s)` on this branch.
+- [x] Hotfix landed: contextual follow-up detection now evaluates the `Follow-up:` tail from legacy continuation expansion when deciding carryover replay eligibility.
+- [x] Closed: standalone lowercase `ad` alias auto-routing was removed from domain-intent signal resolution to keep Chat lexical routing generic.
+- [x] Hotfix landed: continuation subset reuse now exits when follow-up text explicitly names a tool outside the remembered subset (for example `eventlog_live_query`), forcing fresh candidate routing.
+- [x] Startup visibility hotfix: header status now keeps a bounded runtime lifecycle timeline (status tooltip + debug panel) so long connect/auth/bootstrap phases are traceable instead of collapsing into a single generic chip.
+- [x] Startup/turn diagnostics hotfix: routing-meta activity timeline labels now include selected strategy and tool counts (`strategy`, `selected/total`) instead of a generic `route strategy` marker.
+- [x] Stabilization hotfix: finalize-time execution blocker now skips cached-evidence substitution for explicit tool-capability questions (for example `eventlog_evtx_query?`), preserving direct conversational/tool-availability answers.
+- [x] Startup perf hotfix: plugin duplicate detection now has a loaded-assembly fast-path (skip before dependency preload/reflection), reducing first-session tool bootstrap stalls and preventing avoidable reconnect churn during deferred metadata sync.
+- [x] Stabilization hotfix: explicit tool-id follow-ups now suppress pending-action/carryover auto-replay rewrites, and escaped Markdown tool ids (for example `eventlog\_evtx\_query`) are recognized by cached-evidence gating.
+- [x] Startup resilience hotfix: deferred startup metadata phases (`hello`, `list_tools`, `auth_refresh`) now retry once on transient disconnect errors to reduce "connected but packs/catalog missing" startup failures.
+- [x] Startup/turn UX hotfix: assistant final-message replacement now reuses the most-recent assistant bubble when only `System/Tools` rows followed (no intervening user), preventing duplicate assistant finals during retry/reconnect churn.
+- [x] Stabilization hotfix: carryover structured-next-action replay eligibility now evaluates compact follow-up intent from raw user text (not routed payload rewrite text), restoring `go ahead` follow-up auto-execution after pending-action routing hints.
+- [x] Stabilization hotfix: domain-intent payload parsing now handles invalid UTF-16 input safely (catches `ArgumentException` in addition to `JsonException`) to keep compact follow-up expansion Unicode-safe.
+- [x] Contract-alignment cleanup: routing/output lifecycle tests now reflect strict routing-contract enforcement and single-meaningful-final result policy for the same request/thread pair.
+
 ## Hard Decisions (Locked)
 
 - [x] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).
@@ -90,7 +127,7 @@ Build a contract-first architecture where:
 ## Phase 3 - Remove Chat Fallback Engine
 
 1. [x] Delete cross-pack fallback builders from `ChatServiceSession.PackCapabilityFallback.cs`.
-2. [x] Delete fallback host-hint helpers tied to that flow from `ChatServiceSession.PackCapabilityFallback.HostHints.cs`.
+2. [x] Delete fallback host-hint helpers tied to that flow from `ChatServiceSession.HostHints.cs`.
 3. [x] Remove `_packCapabilityFallbackContractsByPackId` state from `ChatServiceSession.cs`.
 4. [x] Remove `RebuildPackCapabilityFallbackContracts(...)` call in `ChatServiceSession.ProfilesAndModels.cs`.
 5. [x] Remove fallback replay branch in `ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.

@@ -208,6 +208,9 @@
     if (Array.isArray(nextState.activityTimeline)) {
       state.activityTimeline = nextState.activityTimeline;
     }
+    if (Array.isArray(nextState.statusTimeline)) {
+      state.statusTimeline = nextState.statusTimeline;
+    }
     if (nextState.lastTurnMetrics && typeof nextState.lastTurnMetrics === "object") {
       state.lastTurnMetrics = nextState.lastTurnMetrics;
     } else if (nextState.lastTurnMetrics === null) {

@@ -2875,6 +2875,10 @@
         parts.push("Sign-in queue: " + Math.floor(queuedPromptCount) + ".");
       }
 
+      if (Array.isArray(state.statusTimeline) && state.statusTimeline.length > 0) {
+        parts.push("Runtime lifecycle: " + state.statusTimeline.join(" > "));
+      }
+
       if (Array.isArray(state.activityTimeline) && state.activityTimeline.length > 0) {
         parts.push("Live timeline: " + state.activityTimeline.join(" > "));
       }

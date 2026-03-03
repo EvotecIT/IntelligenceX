@@ -278,6 +278,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildHostStructuredNextActionToolCall_DoesNotAutoRunSelfLoopArguments() {
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-self-loop",
+                Name = "eventlog_live_query",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-self-loop",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+
+        var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("next_action_self_loop", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
     public void TryBuildCarryoverStructuredNextActionToolCall_BuildsReadOnlyCallFromRememberedNextAction() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var schema = ToolSchema.Object(
@@ -308,16 +344,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
             session,
             new object?[] { "thread-carryover", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
 
-        var args = new object?[] { "thread-carryover", toolDefinitions, mutabilityHints, null, null };
+        var args = new object?[] { "thread-carryover", "go ahead", toolDefinitions, mutabilityHints, null, null };
         var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var toolCall = Assert.IsType<ToolCall>(args[3]);
+        var toolCall = Assert.IsType<ToolCall>(args[4]);
         Assert.Equal("ad_scope_discovery", toolCall.Name);
         Assert.NotNull(toolCall.Arguments);
         Assert.True(toolCall.Arguments!.GetBoolean("include_trusts", defaultValue: false));
         Assert.Equal(3, toolCall.Arguments.GetInt64("max_domains"));
-        Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(args[4]));
+        Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(args[5]));
     }
 
     [Fact]
@@ -345,19 +381,334 @@ public sealed partial class ChatServiceRoutingTrimTests {
             session,
             new object?[] { "thread-carryover-mut", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
 
-        var args = new object?[] { "thread-carryover-mut", toolDefinitions, mutabilityHints, null, null };
+        var args = new object?[] { "thread-carryover-mut", "continue", toolDefinitions, mutabilityHints, null, null };
         var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("carryover_missing", Assert.IsType<string>(args[4]));
+        Assert.Equal("carryover_missing", Assert.IsType<string>(args[5]));
     }
 
     [Fact]
-    public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactContinuation() {
+    public void RememberStructuredNextActionCarryover_DoesNotPersistSelfLoopArguments() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-loop",
+                Name = "eventlog_live_query",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-loop",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-loop", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var args = new object?[] { "thread-carryover-loop", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_missing", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_SkipsWhenUserHostHintConflicts() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-top",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-top",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-host", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var args = new object?[] {
+            "thread-carryover-host",
+            "Run this against AD1.ad.evotec.xyz now.",
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_host_hint_mismatch", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_SkipsWhenAssistantDraftHostHintsConflict() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-assistant-host",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-assistant-host",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-assistant-host", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var hostHintInput = ChatServiceSession.BuildCarryoverHostHintInputForTesting(
+            "go ahead",
+            "Proceeding now for AD1.ad.evotec.xyz and AD2.ad.evotec.xyz.");
+        var args = new object?[] {
+            "thread-carryover-assistant-host",
+            hostHintInput,
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_host_hint_mismatch", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_SkipsWhenAssistantDraftContainsMixedHostHintsForMultiHostScope() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-mixed-hosts",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-mixed-hosts",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-mixed-hosts", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var hostHintInput = ChatServiceSession.BuildCarryoverHostHintInputForTesting(
+            "go ahead",
+            "Proceeding now for AD1.ad.evotec.xyz and AD2.ad.evotec.xyz. Previous evidence for AD0.ad.evotec.xyz remains partial.");
+        var args = new object?[] {
+            "thread-carryover-mixed-hosts",
+            hostHintInput,
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_host_hint_mismatch", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_SkipsRepeatedAutoReplayWithoutFreshContext() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-repeat",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-repeat",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-repeat", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var firstArgs = new object?[] { "thread-carryover-repeat", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var firstResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, firstArgs);
+        Assert.True(Assert.IsType<bool>(firstResult));
+
+        var secondArgs = new object?[] { "thread-carryover-repeat", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var secondResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, secondArgs);
+
+        Assert.False(Assert.IsType<bool>(secondResult));
+        Assert.Equal("carryover_replay_requires_new_context", Assert.IsType<string>(secondArgs[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_AllowsRepeatedReplayWhenUserPinsSameHost() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-repeat-host",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-repeat-host",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-repeat-host", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var firstArgs = new object?[] { "thread-carryover-repeat-host", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var firstResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, firstArgs);
+        Assert.True(Assert.IsType<bool>(firstResult));
+
+        var secondArgs = new object?[] {
+            "thread-carryover-repeat-host",
+            "Run this against AD0.ad.evotec.xyz once more.",
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var secondResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, secondArgs);
+
+        Assert.True(Assert.IsType<bool>(secondResult));
+        Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(secondArgs[5]));
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactFollowUp() {
         var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
             continuationFollowUpTurn: true,
             compactFollowUpTurn: false,
             userRequest: "continue",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_AllowsCompactAcknowledgeWithoutExpandedContinuation() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "go ahead",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsCompactQuestions() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "why?",
             assistantDraft: "I can run the next action now.");
 
         Assert.False(result);
@@ -370,6 +721,43 @@ public sealed partial class ChatServiceRoutingTrimTests {
             compactFollowUpTurn: true,
             userRequest: "i mean other dcs",
             assistantDraft: "Perfect, understood: other DCs only. I will compare AD1 and AD2 now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsContextualCompactFollowUpWithoutDraftAnchor() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "i mean other dcs",
+            assistantDraft: "On it.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsWhenLongLegacyExpansionContainsContextualFollowUp() {
+        var legacyExpandedRequest =
+            new string('a', 520)
+            + "\nFollow-up: i mean other dcs";
+
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            userRequest: legacyExpandedRequest,
+            assistantDraft: "Perfect, understood: other DCs only. I will compare AD1 and AD2 now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsWhenUserExplicitlyReferencesToolId() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "go with eventlog_evtx_query now",
+            assistantDraft: "I can run the next action now.");
 
         Assert.False(result);
     }
@@ -586,16 +974,56 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_TriggersWhenExecutionPathHadNoToolEvidence() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, "On it." });
+            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, false, "On it." });
 
         Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerForCompactFollowUpQuestion() {
+        var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
+            null,
+            new object?[] {
+                "aale to chyba masz toole do event logow?",
+                false,
+                false,
+                false,
+                false,
+                true,
+                true,
+                false,
+                false,
+                "W tej sesji nie mam aktywnego eventlog packa."
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerForExplicitToolQuestionOutsideFollowUpShape() {
+        var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
+            null,
+            new object?[] {
+                "dobra a co to eventlog_evtx_query?",
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                true,
+                false,
+                "W tej sesji narzedzie eventlog_evtx_query nie jest aktywne."
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
     }
 
     [Fact]
     public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerWhenToolActivityExists() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, true, "Completed." });
+            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, false, true, "Completed." });
 
         Assert.False(Assert.IsType<bool>(result));
     }
