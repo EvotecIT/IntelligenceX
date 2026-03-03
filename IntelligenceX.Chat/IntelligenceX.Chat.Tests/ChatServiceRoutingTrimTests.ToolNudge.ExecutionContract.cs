@@ -1101,6 +1101,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void LooksLikeExplicitToolQuestionTurn_DetectsQuotedDescriptorWithoutQuestionMark() {
+        var request = """
+                      dobra a co to `eventlog_evtx_query · Event Log (EventViewerX)
+                      Read events from a local .evtx file with basic filters`
+                      """;
+
+        var result = LooksLikeExplicitToolQuestionTurnMethod.Invoke(null, new object?[] { request });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerWhenToolActivityExists() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,

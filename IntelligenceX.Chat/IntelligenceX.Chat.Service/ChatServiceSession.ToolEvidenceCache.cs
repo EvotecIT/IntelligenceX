@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -323,7 +324,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string[] ExtractExplicitRequestedToolNames(string userRequest) {
-        var request = (userRequest ?? string.Empty).Trim();
+        var request = NormalizeExplicitToolReferenceInput(userRequest);
         if (request.Length == 0) {
             return Array.Empty<string>();
         }
@@ -358,6 +359,27 @@ internal sealed partial class ChatServiceSession {
         }
 
         return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+    }
+
+    private static string NormalizeExplicitToolReferenceInput(string userRequest) {
+        var raw = (userRequest ?? string.Empty).Trim();
+        if (raw.Length == 0) {
+            return string.Empty;
+        }
+
+        var normalized = raw.Normalize(NormalizationForm.FormKC);
+        var sb = new StringBuilder(normalized.Length);
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            var category = CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (category == UnicodeCategory.Format) {
+                continue;
+            }
+
+            sb.Append(ch);
+        }
+
+        return sb.ToString();
     }
 
     private static bool MatchesExplicitRequestedToolName(string toolName, IReadOnlyList<string> requestedToolNames) {
