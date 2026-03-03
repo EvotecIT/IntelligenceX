@@ -370,4 +370,27 @@ internal sealed partial class ChatServiceSession {
 
         return true;
     }
+
+    private static string BuildCarryoverHostHintInput(string userRequest, string assistantDraft) {
+        var request = (userRequest ?? string.Empty).Trim();
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length == 0) {
+            return request;
+        }
+
+        // Keep host-hint enrichment bounded and language-neutral by carrying only recent draft text.
+        if (draft.Length > 2048) {
+            draft = draft[..2048];
+        }
+
+        if (request.Length == 0) {
+            return draft;
+        }
+
+        return request + "\n" + draft;
+    }
+
+    internal static string BuildCarryoverHostHintInputForTesting(string userRequest, string assistantDraft) {
+        return BuildCarryoverHostHintInput(userRequest, assistantDraft);
+    }
 }

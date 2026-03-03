@@ -104,127 +104,129 @@ internal sealed partial class ChatServiceSession {
                         userRequest: routedUserRequest,
                         assistantDraft: text)
                     && toolCalls.Count == 0
-                    && toolOutputs.Count == 0
-                    && TryBuildCarryoverStructuredNextActionToolCall(
+                    && toolOutputs.Count == 0) {
+                    var carryoverHostHintInput = BuildCarryoverHostHintInput(routedUserRequest, text);
+                    if (TryBuildCarryoverStructuredNextActionToolCall(
                         threadId: threadId,
-                        userRequest: routedUserRequest,
+                        userRequest: carryoverHostHintInput,
                         toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
                         mutatingToolHintsByName: mutatingToolHints,
                         out var carryoverStructuredNextActionCall,
                         out var carryoverStructuredNextActionReason)) {
-                    hostStructuredNextActionReplayUsed = true;
-                    RemoveStructuredNextActionCarryover(threadId);
-                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
-                        usedContinuationSubset = false;
-                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
-                    }
+                        hostStructuredNextActionReplayUsed = true;
+                        RemoveStructuredNextActionCarryover(threadId);
+                        if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                            toolDefs = fullToolDefs;
+                            options.Tools = fullToolDefs;
+                            options.ToolChoice = ToolChoice.Auto;
+                            usedContinuationSubset = false;
+                            RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                        }
 
-                    Trace.WriteLine(
-                        $"[host-structured-next-action] outcome=execute reason={carryoverStructuredNextActionReason} continuation={continuationFollowUpTurn} tool={carryoverStructuredNextActionCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                        Trace.WriteLine(
+                            $"[host-structured-next-action] outcome=execute reason={carryoverStructuredNextActionReason} continuation={continuationFollowUpTurn} tool={carryoverStructuredNextActionCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
 
-                    toolRounds++;
-                    var carryoverHostRoundNumber = round + 1;
-                    await WriteToolRoundStartedStatusAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            carryoverHostRoundNumber,
-                            maxRounds,
-                            1,
-                            parallelTools,
-                            allowMutatingParallel)
-                        .ConfigureAwait(false);
-                    if (planExecuteReviewLoop) {
+                        toolRounds++;
+                        var carryoverHostRoundNumber = round + 1;
+                        await WriteToolRoundStartedStatusAsync(
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                carryoverHostRoundNumber,
+                                maxRounds,
+                                1,
+                                parallelTools,
+                                allowMutatingParallel)
+                            .ConfigureAwait(false);
+                        if (planExecuteReviewLoop) {
+                            await TryWriteStatusAsync(
+                                    writer,
+                                    request.RequestId,
+                                    threadId,
+                                    status: ChatStatusCodes.PhaseExecute,
+                                    message: $"Executing queued read-only follow-up action ({carryoverStructuredNextActionCall.Name})...")
+                                .ConfigureAwait(false);
+                        }
+
                         await TryWriteStatusAsync(
                                 writer,
                                 request.RequestId,
                                 threadId,
-                                status: ChatStatusCodes.PhaseExecute,
-                                message: $"Executing queued read-only follow-up action ({carryoverStructuredNextActionCall.Name})...")
+                                status: ChatStatusCodes.ToolCall,
+                                toolName: carryoverStructuredNextActionCall.Name,
+                                toolCallId: carryoverStructuredNextActionCall.CallId)
                             .ConfigureAwait(false);
-                    }
+                        toolCalls.Add(new ToolCallDto {
+                            CallId = carryoverStructuredNextActionCall.CallId,
+                            Name = carryoverStructuredNextActionCall.Name,
+                            ArgumentsJson = carryoverStructuredNextActionCall.Arguments is null
+                                ? "{}"
+                                : JsonLite.Serialize(carryoverStructuredNextActionCall.Arguments)
+                        });
 
-                    await TryWriteStatusAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            status: ChatStatusCodes.ToolCall,
-                            toolName: carryoverStructuredNextActionCall.Name,
-                            toolCallId: carryoverStructuredNextActionCall.CallId)
-                        .ConfigureAwait(false);
-                    toolCalls.Add(new ToolCallDto {
-                        CallId = carryoverStructuredNextActionCall.CallId,
-                        Name = carryoverStructuredNextActionCall.Name,
-                        ArgumentsJson = carryoverStructuredNextActionCall.Arguments is null
-                            ? "{}"
-                            : JsonLite.Serialize(carryoverStructuredNextActionCall.Arguments)
-                    });
+                        var carryoverHostCalls = new[] { carryoverStructuredNextActionCall };
+                        var carryoverHostOutputs = await ExecuteToolsAsync(
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                carryoverHostCalls,
+                                parallel: false,
+                                allowMutatingParallel: allowMutatingParallel,
+                                mutatingToolHintsByName: mutatingToolHints,
+                                toolTimeoutSeconds: toolTimeoutSeconds,
+                                userRequest: routedUserRequest,
+                                cancellationToken: turnToken)
+                            .ConfigureAwait(false);
+                        var carryoverHostFailedCalls = CountFailedToolOutputs(carryoverHostOutputs);
+                        await WriteToolRoundCompletedStatusAsync(
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                carryoverHostRoundNumber,
+                                maxRounds,
+                                carryoverHostOutputs.Count,
+                                carryoverHostFailedCalls)
+                            .ConfigureAwait(false);
+                        UpdateToolRoutingStats(carryoverHostCalls, carryoverHostOutputs);
+                        foreach (var output in carryoverHostOutputs) {
+                            if (WasProjectionFallbackApplied(output)) {
+                                projectionFallbackCount++;
+                            }
 
-                    var carryoverHostCalls = new[] { carryoverStructuredNextActionCall };
-                    var carryoverHostOutputs = await ExecuteToolsAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            carryoverHostCalls,
-                            parallel: false,
-                            allowMutatingParallel: allowMutatingParallel,
-                            mutatingToolHintsByName: mutatingToolHints,
-                            toolTimeoutSeconds: toolTimeoutSeconds,
-                            userRequest: routedUserRequest,
-                            cancellationToken: turnToken)
-                        .ConfigureAwait(false);
-                    var carryoverHostFailedCalls = CountFailedToolOutputs(carryoverHostOutputs);
-                    await WriteToolRoundCompletedStatusAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            carryoverHostRoundNumber,
-                            maxRounds,
-                            carryoverHostOutputs.Count,
-                            carryoverHostFailedCalls)
-                        .ConfigureAwait(false);
-                    UpdateToolRoutingStats(carryoverHostCalls, carryoverHostOutputs);
-                    foreach (var output in carryoverHostOutputs) {
-                        if (WasProjectionFallbackApplied(output)) {
-                            projectionFallbackCount++;
+                            toolOutputs.Add(new ToolOutputDto {
+                                CallId = output.CallId,
+                                Output = output.Output,
+                                Ok = output.Ok,
+                                ErrorCode = output.ErrorCode,
+                                Error = output.Error,
+                                Hints = output.Hints,
+                                IsTransient = output.IsTransient,
+                                SummaryMarkdown = output.SummaryMarkdown,
+                                MetaJson = output.MetaJson,
+                                RenderJson = output.RenderJson,
+                                FailureJson = output.FailureJson
+                            });
                         }
 
-                        toolOutputs.Add(new ToolOutputDto {
-                            CallId = output.CallId,
-                            Output = output.Output,
-                            Ok = output.Ok,
-                            ErrorCode = output.ErrorCode,
-                            Error = output.Error,
-                            Hints = output.Hints,
-                            IsTransient = output.IsTransient,
-                            SummaryMarkdown = output.SummaryMarkdown,
-                            MetaJson = output.MetaJson,
-                            RenderJson = output.RenderJson,
-                            FailureJson = output.FailureJson
-                        });
+                        var carryoverHostNextInput = BuildHostReplayReviewInput(
+                            carryoverStructuredNextActionCall,
+                            carryoverHostOutputs,
+                            supportsSyntheticHostReplayItems);
+                        turn = await RunModelPhaseWithProgressAsync(
+                                client,
+                                writer,
+                                request.RequestId,
+                                threadId,
+                                carryoverHostNextInput,
+                                CopyChatOptions(options, newThreadOverride: false),
+                                turnToken,
+                                phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
+                                phaseMessage: "Reviewing queued follow-up action results...",
+                                heartbeatLabel: "Reviewing queued action",
+                                heartbeatSeconds: modelHeartbeatSeconds)
+                            .ConfigureAwait(false);
+                        return ContinueRound();
                     }
-
-                    var carryoverHostNextInput = BuildHostReplayReviewInput(
-                        carryoverStructuredNextActionCall,
-                        carryoverHostOutputs,
-                        supportsSyntheticHostReplayItems);
-                    turn = await RunModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            carryoverHostNextInput,
-                            CopyChatOptions(options, newThreadOverride: false),
-                            turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
-                            phaseMessage: "Reviewing queued follow-up action results...",
-                            heartbeatLabel: "Reviewing queued action",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
                 }
 
                 var shouldAttemptExecutionNudge = false;
