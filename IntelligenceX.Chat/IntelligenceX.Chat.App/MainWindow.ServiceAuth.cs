@@ -297,6 +297,12 @@ public sealed partial class MainWindow : Window {
             var prioritizeLatency = ShouldPrioritizeAutoReconnectLatency();
             var baseDelay = AutoReconnectBackoffDelays[Math.Min(attempt, AutoReconnectBackoffDelays.Length - 1)];
             var delay = ResolveAutoReconnectDelay(baseDelay, prioritizeLatency, hasTrackedRunningServiceProcess, attempt);
+            if (!_shutdownRequested && !_isSending && !_turnStartupInProgress) {
+                await SetStatusAsync(
+                        BuildAutoReconnectStatusText(attempt + 1, delay),
+                        SessionStatusTone.Warn)
+                    .ConfigureAwait(false);
+            }
 
             try {
                 if (delay > TimeSpan.Zero) {
@@ -376,6 +382,18 @@ public sealed partial class MainWindow : Window {
         return baseDelay;
     }
 
+    internal static string BuildAutoReconnectStatusText(int attempt, TimeSpan delay) {
+        var normalizedAttempt = Math.Max(1, attempt);
+        if (delay <= TimeSpan.Zero) {
+            return $"Runtime connection dropped. Reconnecting now (attempt {normalizedAttempt.ToString(CultureInfo.InvariantCulture)}).";
+        }
+
+        var delayLabel = delay.TotalSeconds >= 1
+            ? delay.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s"
+            : Math.Max(1L, (long)Math.Round(delay.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture) + "ms";
+        return $"Runtime connection dropped. Reconnecting in {delayLabel} (attempt {normalizedAttempt.ToString(CultureInfo.InvariantCulture)}).";
+    }
+
     private async Task AppendSystemBestEffortAsync(string text) {
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {
@@ -398,5 +416,3 @@ public sealed partial class MainWindow : Window {
 
 
 }
-
-
