@@ -514,6 +514,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldBypassContinuationSubsetForFollowUpQuestion(userRequest)) {
+            return false;
+        }
+
         if (ReferencesToolOutsideContinuationSubset(userRequest, allDefinitions, preferred)) {
             return false;
         }
@@ -550,6 +554,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool ShouldBypassContinuationSubsetForFollowUpQuestion(string userRequest) {
+        var request = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
+        if (request.Length == 0 || !ContainsQuestionSignal(request) || LooksLikeActionSelectionPayload(request)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(request, maxTokens: 24);
+        if (tokenCount == 0) {
+            return false;
+        }
+
+        // Keep short acknowledgement questions (for example "go ahead?") on fast subset reuse.
+        return !(tokenCount <= 2 && request.Length <= FollowUpShapeShortCharLimit);
     }
 
     private static string NormalizeRequestForExplicitToolReferenceMatch(string? userRequest) {

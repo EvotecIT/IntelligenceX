@@ -42,6 +42,9 @@ Build a contract-first architecture where:
 
 ## Audit Corrections (2026-03-03)
 
+- [x] Decoupling cleanup: AD domain guardrail hint text is now capability-based (no hardcoded tool ids in user-facing guidance).
+- [x] Stabilization hotfix: finalize-time host structured next-action replay now blocks stale host-target replays when user/assistant host hints conflict.
+- [x] Stabilization hotfix: finalize-time single-host scope-shift guard now evaluates raw user intent (not routed rewrite payload), reducing stale AD0-style replay loops on contextual follow-ups.
 - [x] Closed: Chat bootstrap now discovers built-in packs generically from tool assemblies/descriptors in `ToolPackBootstrap` (no hardcoded per-pack bootstrap chain).
 - [x] Closed: host-hint helpers were re-scoped into `ChatServiceSession.HostHints.cs` (fallback-era file naming removed).
 - [x] Hotfix landed: stale structured-next-action carryover replay now suppresses self-loop replays (same tool + equivalent args) and rejects host-hint-conflicting carryover execution.
@@ -188,6 +191,13 @@ Build a contract-first architecture where:
 2. [ ] `Track B (Chat Core)` Orchestration catalog + heuristic removal + fallback deletion.
 3. [ ] `Track C (Tests/Quality)` Architecture tests + regression suite updates + docs.
 4. [ ] Merge order: Track A foundational contracts first, Track B next, Track C continuously.
+
+## Immediate Next Steps (Post-Audit)
+
+1. [ ] Add continuation-subset escape for tool-capability question turns that do not reference explicit tool ids, so follow-up capability questions do not get trapped in stale subset visibility.
+2. [ ] Add startup churn diagnostics classification in app status/debug (for example `auth_wait`, `pipe_retry`, `metadata_retry`, `runtime_disconnect`) so connect/disconnect loops are attributable without log digging.
+3. [ ] Add end-to-end regression covering contextual follow-up scope-shift + host structured next-action finalize path using routed rewrite text to prevent stale single-host replay regressions.
+4. [ ] Run full release preflight (`dotnet build`, `dotnet test`, harness net8/net10) before PR merge.
 
 ## Definition Of Done
 
