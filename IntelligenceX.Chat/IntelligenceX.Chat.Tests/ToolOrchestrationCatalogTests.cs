@@ -302,6 +302,68 @@ public sealed class ToolOrchestrationCatalogTests {
             entry.SetupRequirementKinds);
     }
 
+    [Fact]
+    public void Build_DowngradesAwarenessFlagsWhenProjectedContractStateIsMalformedAfterMutation() {
+        var definition = CreateDefinition(
+            name: "custom_stateful_tool",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupHintKeys = new[] { "needs_auth" },
+                Requirements = new[] {
+                    new ToolSetupRequirement {
+                        RequirementId = "auth.session",
+                        Kind = ToolSetupRequirementKinds.Authentication
+                    }
+                }
+            },
+            handoff: new ToolHandoffContract {
+                IsHandoffAware = true,
+                OutboundRoutes = new[] {
+                    new ToolHandoffRoute {
+                        TargetPackId = "dnsclientx",
+                        TargetToolName = "dns_lookup",
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "host",
+                                TargetArgument = "target"
+                            }
+                        }
+                    }
+                }
+            },
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                SupportsTransientRetry = true,
+                MaxRetryAttempts = 2,
+                RetryableErrorCodes = new[] { "timeout" }
+            });
+
+        // Simulate malformed in-memory mutations after contract validation.
+        definition.Setup!.SetupHintKeys = Array.Empty<string>();
+        definition.Setup.SetupToolName = string.Empty;
+        definition.Setup.Requirements![0].RequirementId = " ";
+        definition.Setup.Requirements[0].Kind = " ";
+        definition.Handoff!.OutboundRoutes![0].Bindings![0].SourceField = " ";
+        definition.Recovery!.SupportsTransientRetry = false;
+        definition.Recovery.MaxRetryAttempts = 0;
+        definition.Recovery.SupportsAlternateEngines = false;
+        definition.Recovery.RetryableErrorCodes = Array.Empty<string>();
+        definition.Recovery.AlternateEngineIds = Array.Empty<string>();
+        definition.Recovery.RecoveryContractId = string.Empty;
+
+        var catalog = ToolOrchestrationCatalog.Build(new[] { definition });
+        Assert.True(catalog.TryGetEntry("custom_stateful_tool", out var entry));
+        Assert.False(entry.IsSetupAware);
+        Assert.False(entry.IsHandoffAware);
+        Assert.False(entry.IsRecoveryAware);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolRoutingContract? routing = null,

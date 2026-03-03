@@ -325,7 +325,11 @@ public sealed class ToolOrchestrationCatalog {
                     var requirementKind = requirement?.Kind ?? string.Empty;
                     setupRequirementIds.Add(requirementId);
                     setupRequirementKinds.Add(requirementKind);
-                    setupRequirementPairs.Add(requirementId + "|" + requirementKind);
+                    var normalizedRequirementId = NormalizeToken(requirementId);
+                    var normalizedRequirementKind = NormalizeToken(requirementKind);
+                    if (normalizedRequirementId.Length > 0 && normalizedRequirementKind.Length > 0) {
+                        setupRequirementPairs.Add(normalizedRequirementId + "|" + normalizedRequirementKind);
+                    }
                     if (requirement?.HintKeys is not { Count: > 0 }) {
                         continue;
                     }
@@ -342,11 +346,29 @@ public sealed class ToolOrchestrationCatalog {
             var normalizedSetupRequirementKinds = NormalizeDistinctTokens(setupRequirementKinds);
             var normalizedSetupRequirementPairs = NormalizeDistinctTokens(setupRequirementPairs);
             var normalizedSetupHintKeys = NormalizeDistinctTokens(setupHintKeys);
+            var normalizedSetupToolName = NormalizeToken(setup?.SetupToolName);
+            var isSetupAware = setup?.IsSetupAware == true
+                               && (normalizedSetupRequirementPairs.Length > 0
+                                   || normalizedSetupHintKeys.Length > 0
+                                   || normalizedSetupToolName.Length > 0);
             var normalizedHandoffEdges = handoffEdges
                 .OrderBy(static edge => edge.TargetPackId, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static edge => edge.TargetRole, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static edge => edge.TargetToolName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+            var normalizedHandoffContractId = NormalizeToken(handoff?.HandoffContractId);
+            var isHandoffAware = handoff?.IsHandoffAware == true && normalizedHandoffEdges.Length > 0;
+            var normalizedRecoveryContractId = NormalizeToken(recovery?.RecoveryContractId);
+            var maxRetryAttempts = Math.Max(0, recovery?.MaxRetryAttempts ?? 0);
+            var supportsTransientRetry = recovery?.SupportsTransientRetry == true;
+            var supportsAlternateEngines = recovery?.SupportsAlternateEngines == true;
+            var isRecoveryAware = recovery?.IsRecoveryAware == true
+                                  && (normalizedRecoveryContractId.Length > 0
+                                      || retryableErrorCodes.Length > 0
+                                      || alternateEngineCount > 0
+                                      || supportsTransientRetry
+                                      || supportsAlternateEngines
+                                      || maxRetryAttempts > 0);
 
             entriesByToolName[toolName] = new ToolOrchestrationCatalogEntry {
                 ToolName = toolName,
@@ -360,24 +382,24 @@ public sealed class ToolOrchestrationCatalog {
                 Risk = NormalizeToken(routingInfo.Risk, ToolRoutingTaxonomy.RiskLow),
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = actionId,
-                IsSetupAware = setup?.IsSetupAware == true,
+                IsSetupAware = isSetupAware,
                 SetupRequirementCount = normalizedSetupRequirementPairs.Length,
-                SetupToolName = NormalizeToken(setup?.SetupToolName),
+                SetupToolName = normalizedSetupToolName,
                 SetupContractId = NormalizeToken(setup?.SetupContractId),
                 SetupRequirementIds = normalizedSetupRequirementIds,
                 SetupRequirementKinds = normalizedSetupRequirementKinds,
                 SetupHintKeys = normalizedSetupHintKeys,
-                IsHandoffAware = handoff?.IsHandoffAware == true,
+                IsHandoffAware = isHandoffAware,
                 HandoffRouteCount = normalizedHandoffEdges.Length,
                 HandoffBindingCount = handoffBindingCount,
-                HandoffContractId = NormalizeToken(handoff?.HandoffContractId),
+                HandoffContractId = normalizedHandoffContractId,
                 HandoffEdges = normalizedHandoffEdges,
-                IsRecoveryAware = recovery?.IsRecoveryAware == true,
-                SupportsTransientRetry = recovery?.SupportsTransientRetry == true,
-                MaxRetryAttempts = Math.Max(0, recovery?.MaxRetryAttempts ?? 0),
-                SupportsAlternateEngines = recovery?.SupportsAlternateEngines == true,
+                IsRecoveryAware = isRecoveryAware,
+                SupportsTransientRetry = supportsTransientRetry,
+                MaxRetryAttempts = maxRetryAttempts,
+                SupportsAlternateEngines = supportsAlternateEngines,
                 AlternateEngineCount = alternateEngineCount,
-                RecoveryContractId = NormalizeToken(recovery?.RecoveryContractId),
+                RecoveryContractId = normalizedRecoveryContractId,
                 RetryableErrorCodes = retryableErrorCodes,
                 AlternateEngineIds = alternateEngineIds
             };
