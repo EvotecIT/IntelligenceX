@@ -752,6 +752,146 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_SkipsQuestionScopeShiftWhenThreadHasMultiHostEvidence() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-scope-shift-question",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-scope-shift-question",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false,
+            ["eventlog_top_events"] = false
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-carryover-scope-shift-question",
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "evidence-question-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"log_name":"System","machine_name":"AD1.ad.evotec.xyz"}"""
+                },
+                new() {
+                    CallId = "evidence-question-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"log_name":"System","machine_name":"AD2.ad.evotec.xyz"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() { CallId = "evidence-question-1", Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""", Ok = true },
+                new() { CallId = "evidence-question-2", Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""", Ok = true }
+            },
+            mutabilityHints);
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-scope-shift-question", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var args = new object?[] {
+            "thread-carryover-scope-shift-question",
+            "those are correct dcs, go ahead?",
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_scope_shift_requires_fresh_plan", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_AllowsShortQuestionAcknowledgementReplay() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-short-question-ack",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-short-question-ack",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false,
+            ["eventlog_top_events"] = false
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-carryover-short-question-ack",
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "evidence-ack-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"log_name":"System","machine_name":"AD1.ad.evotec.xyz"}"""
+                },
+                new() {
+                    CallId = "evidence-ack-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"log_name":"System","machine_name":"AD2.ad.evotec.xyz"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() { CallId = "evidence-ack-1", Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""", Ok = true },
+                new() { CallId = "evidence-ack-2", Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""", Ok = true }
+            },
+            mutabilityHints);
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-short-question-ack", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var args = new object?[] {
+            "thread-carryover-short-question-ack",
+            "continue now?",
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
     public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactFollowUp() {
         var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
             continuationFollowUpTurn: true,

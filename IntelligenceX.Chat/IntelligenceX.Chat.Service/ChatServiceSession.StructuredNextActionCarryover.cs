@@ -396,15 +396,19 @@ internal sealed partial class ChatServiceSession {
         var request = NormalizeContextualFollowUpRequest(userRequest);
         if (request.Length == 0
             || request.Length > FollowUpShapeShortCharLimit
-            || ContainsQuestionSignal(request)
             || LooksLikeActionSelectionPayload(request)) {
             return false;
         }
 
-        // Keep one-token acknowledgements ("continue", "run") eligible for carryover replay.
-        // Scope-shift follow-ups like "other dcs" still carry enough context to require fresh planning.
         var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 12);
         if (requestTokens.Count < 2) {
+            return false;
+        }
+
+        // Keep short acknowledgement questions (for example "go ahead?") eligible for replay.
+        // Multi-token contextual questions can still represent scope-shifts and should continue
+        // through guard evaluation.
+        if (ContainsQuestionSignal(request) && requestTokens.Count <= 2) {
             return false;
         }
 
