@@ -726,6 +726,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsContextualCompactFollowUpWithoutDraftAnchor() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "i mean other dcs",
+            assistantDraft: "On it.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsWhenLongLegacyExpansionContainsContextualFollowUp() {
         var legacyExpandedRequest =
             new string('a', 520)
