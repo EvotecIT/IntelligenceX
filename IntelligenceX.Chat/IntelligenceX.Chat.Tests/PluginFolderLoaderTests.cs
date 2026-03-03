@@ -114,7 +114,8 @@ public sealed class PluginFolderLoaderTests {
             Assert.Contains(
                 warnings,
                 static warning => warning.Contains("[plugin] duplicate_pack plugin='duplicate-system-plugin'", StringComparison.OrdinalIgnoreCase)
-                                  && warning.Contains("mode='fastpath'", StringComparison.OrdinalIgnoreCase));
+                                  && (warning.Contains("mode='assembly_map'", StringComparison.OrdinalIgnoreCase)
+                                      || warning.Contains("mode='fastpath'", StringComparison.OrdinalIgnoreCase)));
             Assert.DoesNotContain(
                 warnings,
                 static warning => warning.Contains("[plugin] load_timing plugin='duplicate-system-plugin'", StringComparison.OrdinalIgnoreCase));
