@@ -15,6 +15,12 @@ public sealed partial class MainWindow : Window {
         return "Runtime connected. Loading tool packs in background...";
     }
 
+    internal static bool ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated) {
+        return requiresInteractiveSignIn && !isAuthenticated;
+    }
+
     private static string NormalizeStartupMetadataSyncPhase(string? phase) {
         var normalized = (phase ?? string.Empty).Trim();
         return normalized.Length == 0 ? "syncing startup metadata" : normalized;

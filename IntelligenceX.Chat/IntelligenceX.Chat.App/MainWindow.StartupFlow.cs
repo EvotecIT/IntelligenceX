@@ -318,6 +318,25 @@ public sealed partial class MainWindow : Window {
                     return;
                 }
 
+                var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
+                var isAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
+                if (ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
+                        requiresInteractiveSignIn: requiresInteractiveSignIn,
+                        isAuthenticated: isAuthenticated)) {
+                    BeginStartupMetadataSyncTracking("waiting for sign-in to finish startup sync");
+                    if (_isConnected && !_isSending && !_turnStartupInProgress) {
+                        await SetStatusAsync(
+                                BuildStartupPendingStatusText(
+                                    requiresInteractiveSignIn: requiresInteractiveSignIn,
+                                    isAuthenticated: isAuthenticated),
+                                SessionStatusTone.Warn)
+                            .ConfigureAwait(false);
+                    }
+
+                    StartupLog.Write("StartupConnect.metadata_sync deferred_unauthenticated");
+                    return;
+                }
+
                 BeginStartupMetadataSyncTracking("startup metadata sync queued");
                 if (!_isSending && !_turnStartupInProgress) {
                     UpdateStartupMetadataSyncPhase("loading tool packs in background");

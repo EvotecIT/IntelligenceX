@@ -164,6 +164,12 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
                     if (done.Ok) {
+                        if (ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
+                                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                                isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport())
+                            == false) {
+                            QueueDeferredStartupConnectMetadataSync();
+                        }
                         QueuePostLoginCompletion();
                     }
                     break;

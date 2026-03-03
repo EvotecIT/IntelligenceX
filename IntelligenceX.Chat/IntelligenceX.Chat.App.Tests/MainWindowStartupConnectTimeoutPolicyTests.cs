@@ -538,6 +538,25 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures deferred startup metadata sync waits for authenticated runtime state only when
+    /// the active transport requires interactive sign-in.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    public void ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool expected) {
+        var shouldWait = MainWindow.ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
+            requiresInteractiveSignIn,
+            isAuthenticated);
+        Assert.Equal(expected, shouldWait);
+    }
+
+    /// <summary>
     /// Ensures startup dispatch prewarm system summary includes stable timing details.
     /// </summary>
     [Theory]
