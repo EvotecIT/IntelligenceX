@@ -330,6 +330,9 @@ public sealed class ToolOrchestrationCatalog {
             var retryableErrorCodes = NormalizeDistinctTokens(recovery?.RetryableErrorCodes);
             var alternateEngineIds = NormalizeDistinctTokens(recovery?.AlternateEngineIds);
             var alternateEngineCount = alternateEngineIds.Length;
+            var normalizedSetupRequirementIds = NormalizeDistinctTokens(setupRequirementIds);
+            var normalizedSetupRequirementKinds = NormalizeDistinctTokens(setupRequirementKinds);
+            var normalizedSetupHintKeys = NormalizeDistinctTokens(setupHintKeys);
             var normalizedHandoffEdges = handoffEdges
                 .OrderBy(static edge => edge.TargetPackId, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static edge => edge.TargetRole, StringComparer.OrdinalIgnoreCase)
@@ -349,12 +352,12 @@ public sealed class ToolOrchestrationCatalog {
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = actionId,
                 IsSetupAware = setup?.IsSetupAware == true,
-                SetupRequirementCount = setup?.Requirements?.Count ?? 0,
+                SetupRequirementCount = normalizedSetupRequirementIds.Length,
                 SetupToolName = NormalizeToken(setup?.SetupToolName),
                 SetupContractId = NormalizeToken(setup?.SetupContractId),
-                SetupRequirementIds = NormalizeDistinctTokens(setupRequirementIds),
-                SetupRequirementKinds = NormalizeDistinctTokens(setupRequirementKinds),
-                SetupHintKeys = NormalizeDistinctTokens(setupHintKeys),
+                SetupRequirementIds = normalizedSetupRequirementIds,
+                SetupRequirementKinds = normalizedSetupRequirementKinds,
+                SetupHintKeys = normalizedSetupHintKeys,
                 IsHandoffAware = handoff?.IsHandoffAware == true,
                 HandoffRouteCount = normalizedHandoffEdges.Length,
                 HandoffBindingCount = handoffBindingCount,

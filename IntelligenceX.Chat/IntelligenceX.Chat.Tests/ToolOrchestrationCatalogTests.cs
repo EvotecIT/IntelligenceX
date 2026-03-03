@@ -191,6 +191,46 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(new[] { "host->target" }, entry.HandoffEdges[0].BindingPairs);
     }
 
+    [Fact]
+    public void Build_NormalizesSetupRequirementCountAgainstProjectedRequirements() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "custom_setup_tool",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupHintKeys = new[] { "needs_auth", "needs_auth" },
+                    Requirements = new[] {
+                        new ToolSetupRequirement {
+                            RequirementId = "auth.session",
+                            Kind = ToolSetupRequirementKinds.Authentication,
+                            IsRequired = true,
+                            HintKeys = new[] { "auth_required" }
+                        },
+                        new ToolSetupRequirement {
+                            RequirementId = "auth.session",
+                            Kind = ToolSetupRequirementKinds.Authentication,
+                            IsRequired = true,
+                            HintKeys = new[] { "auth_required" }
+                        }
+                    }
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("custom_setup_tool", out var entry));
+        Assert.True(entry.IsSetupAware);
+        Assert.Equal(1, entry.SetupRequirementCount);
+        Assert.Equal(entry.SetupRequirementIds.Count, entry.SetupRequirementCount);
+        Assert.Equal(entry.SetupRequirementKinds.Count, entry.SetupRequirementCount);
+        Assert.Equal(new[] { "auth.session" }, entry.SetupRequirementIds);
+        Assert.Equal(new[] { ToolSetupRequirementKinds.Authentication }, entry.SetupRequirementKinds);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolRoutingContract? routing = null,
