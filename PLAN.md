@@ -61,6 +61,7 @@ Build a contract-first architecture where:
 - [x] Hotfix landed: deferred startup metadata sync now waits for authenticated runtime state and is re-queued after successful login completion, avoiding premature metadata churn during sign-in.
 - [x] Hotfix landed: host structured next-action replay now skips same-tool/same-arguments loops (`next_action_self_loop`) to avoid repeated AD0-style replay churn.
 - [x] Hotfix landed: carryover structured-next-action auto-replay now blocks repeated identical tool+argument replays until fresh context is provided (for example explicit host pin), reducing AD0-style replay churn across turns.
+- [x] Hotfix landed: carryover structured-next-action auto-replay now also blocks same-tool single-host replay loops when argument payload drifts but host scope remains unchanged, unless fresh host context is provided.
 - [x] Hotfix landed: carryover replay host-hint gating now incorporates assistant draft host targets (not just user text), preventing stale single-host (`AD0`) replay after multi-host follow-up plans.
 - [x] Hotfix landed: carryover host-hint gating now treats multi-host follow-up hints as incompatible with single-host auto-replay, preventing mixed-hint (`AD0` + `AD1/AD2`) stale carryover execution loops.
 - [x] Hotfix landed: carryover replay freshness/scope guards now evaluate raw user request text even when assistant draft host hints are appended for mismatch detection, preventing AD0-only replay loops from assistant-draft host echo.
@@ -88,6 +89,9 @@ Build a contract-first architecture where:
 - [x] Startup/dispatch stabilization hotfix: `SendPromptAsync` now claims startup/send lifecycle state atomically behind the active-turn lock, preventing manual-send vs auto-dispatch races that produced duplicate assistant replies.
 - [x] Carryover stabilization hotfix: contextual compact follow-up questions now block stale single-host structured replay when thread evidence is multi-host, while short acknowledgement questions remain replay-eligible.
 - [x] Startup UX hotfix: login-completed status updates now queue deferred startup metadata sync before publishing connected status, avoiding transient "ready" flips while tool-pack startup is still pending.
+- [x] Startup UX hotfix: startup pending/status overlay now includes browser sign-in-in-progress states, and startup-time reconnect churn surfaces explicit reconnect-sync status (instead of generic disconnected text).
+- [x] Startup/send hotfix: queued-after-login prompt deduplication now treats one-sided empty conversation ids as equivalent for normalized prompt text, preventing duplicate dispatch after startup/sign-in transitions.
+- [x] Contract guardrail expanded: bootstrap metadata tests now assert all canonical built-in tools register with explicit routing source + pack id + role under strict registration (not only `_pack_info` tools).
 - [x] Stabilization regression coverage: finalize host scope-shift guard now has explicit precedence tests proving raw user intent is used ahead of routed rewrite text when deciding stale single-host replay blocking.
 
 ## Hard Decisions (Locked)

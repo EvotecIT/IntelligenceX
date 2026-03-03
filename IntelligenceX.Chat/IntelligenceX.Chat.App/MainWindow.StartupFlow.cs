@@ -339,7 +339,8 @@ public sealed partial class MainWindow : Window {
                         await SetStatusAsync(
                                 BuildStartupPendingStatusText(
                                     requiresInteractiveSignIn: requiresInteractiveSignIn,
-                                    isAuthenticated: isAuthenticated),
+                                    isAuthenticated: isAuthenticated,
+                                    loginInProgress: _loginInProgress),
                                 SessionStatusTone.Warn)
                             .ConfigureAwait(false);
                     }
@@ -354,7 +355,8 @@ public sealed partial class MainWindow : Window {
                     await SetStatusAsync(
                             BuildStartupPendingStatusText(
                                 requiresInteractiveSignIn: requiresInteractiveSignIn,
-                                isAuthenticated: isAuthenticated),
+                                isAuthenticated: isAuthenticated,
+                                loginInProgress: _loginInProgress),
                             SessionStatusTone.Warn)
                         .ConfigureAwait(false);
                 }

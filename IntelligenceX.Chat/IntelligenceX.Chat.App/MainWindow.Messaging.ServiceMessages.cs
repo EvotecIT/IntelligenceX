@@ -685,6 +685,15 @@ public sealed partial class MainWindow : Window {
                             StartupStatusCauseRuntimeDisconnect),
                         SessionStatusTone.Warn)
                     .ConfigureAwait(false);
+            } else if (Volatile.Read(ref _startupFlowState) == StartupFlowStateRunning
+                       || Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0
+                       || Volatile.Read(ref _startupMetadataSyncInProgress) != 0) {
+                await SetStatusAsync(
+                        AppendStartupStatusCause(
+                            "Runtime connection dropped. Reconnecting startup sync...",
+                            StartupStatusCauseRuntimeDisconnect),
+                        SessionStatusTone.Warn)
+                    .ConfigureAwait(false);
             } else {
                 await SetStatusAsync(SessionStatus.Disconnected()).ConfigureAwait(false);
             }

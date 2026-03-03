@@ -371,6 +371,9 @@ public sealed partial class MainWindow : Window {
         bool skipUserBubbleOnDispatch = false) {
         var trimmedText = (text ?? string.Empty).Trim();
         var trimmedConversationId = (conversationId ?? string.Empty).Trim();
+        var startupScopeConversationId = trimmedConversationId.Length == 0
+            ? NormalizeQueuedPromptConversationId(_activeConversationId)
+            : trimmedConversationId;
         var enqueued = false;
         lock (_queuedAfterLoginSync) {
             if (trimmedText.Length == 0 || _queuedTurnsAfterLogin.Count >= MaxQueuedTurns) {
@@ -383,7 +386,9 @@ public sealed partial class MainWindow : Window {
                         pending.Text,
                         pending.ConversationId,
                         trimmedText,
-                        trimmedConversationId)) {
+                        trimmedConversationId,
+                        allowOneSidedMissingConversationId: true,
+                        startupScopeConversationId: startupScopeConversationId)) {
                     continue;
                 }
 
@@ -409,6 +414,9 @@ public sealed partial class MainWindow : Window {
         out int remainingCount) {
         var normalizedText = NormalizeQueuedPromptTextForDispatch(text);
         var normalizedConversationId = NormalizeQueuedPromptConversationId(conversationId);
+        var startupScopeConversationId = normalizedConversationId.Length == 0
+            ? NormalizeQueuedPromptConversationId(_activeConversationId)
+            : normalizedConversationId;
         var removed = false;
         lock (_queuedAfterLoginSync) {
             if (_queuedTurnsAfterLogin.Count == 0
@@ -425,7 +433,9 @@ public sealed partial class MainWindow : Window {
                         pending.Text,
                         pending.ConversationId,
                         normalizedText,
-                        normalizedConversationId)) {
+                        normalizedConversationId,
+                        allowOneSidedMissingConversationId: true,
+                        startupScopeConversationId: startupScopeConversationId)) {
                     removed = true;
                     continue;
                 }
@@ -447,7 +457,9 @@ public sealed partial class MainWindow : Window {
         string? leftText,
         string? leftConversationId,
         string? rightText,
-        string? rightConversationId) {
+        string? rightConversationId,
+        bool allowOneSidedMissingConversationId = false,
+        string? startupScopeConversationId = null) {
         var normalizedLeftText = NormalizeQueuedPromptTextForDispatch(leftText);
         var normalizedRightText = NormalizeQueuedPromptTextForDispatch(rightText);
         if (normalizedLeftText.Length == 0 || normalizedRightText.Length == 0) {
@@ -460,7 +472,35 @@ public sealed partial class MainWindow : Window {
 
         var normalizedLeftConversationId = NormalizeQueuedPromptConversationId(leftConversationId);
         var normalizedRightConversationId = NormalizeQueuedPromptConversationId(rightConversationId);
-        return string.Equals(normalizedLeftConversationId, normalizedRightConversationId, StringComparison.OrdinalIgnoreCase);
+        if (normalizedLeftConversationId.Length == 0 && normalizedRightConversationId.Length == 0) {
+            return false;
+        }
+
+        if (string.Equals(normalizedLeftConversationId, normalizedRightConversationId, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (!allowOneSidedMissingConversationId) {
+            return false;
+        }
+
+        var normalizedScopeConversationId = NormalizeQueuedPromptConversationId(startupScopeConversationId);
+        if (normalizedScopeConversationId.Length == 0) {
+            return false;
+        }
+
+        var scopedConversationId = normalizedLeftConversationId.Length == 0
+            ? normalizedRightConversationId
+            : normalizedLeftConversationId;
+        if (scopedConversationId.Length == 0) {
+            return false;
+        }
+
+        // Startup/login queue entries can be captured before a stable conversation id is assigned.
+        // Only startup/login-gated callers should opt into this one-sided-empty-id fallback,
+        // and only for the active scoped conversation.
+        return (normalizedLeftConversationId.Length == 0 || normalizedRightConversationId.Length == 0)
+               && string.Equals(scopedConversationId, normalizedScopeConversationId, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeQueuedPromptTextForDispatch(string? text) {

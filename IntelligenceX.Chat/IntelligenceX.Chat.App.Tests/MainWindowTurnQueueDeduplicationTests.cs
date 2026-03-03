@@ -36,6 +36,68 @@ public sealed class MainWindowTurnQueueDeduplicationTests {
     }
 
     /// <summary>
+    /// One-sided empty conversation ids should still dedupe equivalent prompts captured during startup/login transition.
+    /// </summary>
+    [Fact]
+    public void AreQueuedPromptsEquivalentForDispatch_ReturnsTrue_WhenOneConversationIdIsMissing() {
+        var equivalent = MainWindow.AreQueuedPromptsEquivalentForDispatch(
+            leftText: "Hello Mr",
+            leftConversationId: string.Empty,
+            rightText: " hello   mr ",
+            rightConversationId: "thread-1",
+            allowOneSidedMissingConversationId: true,
+            startupScopeConversationId: "thread-1");
+
+        Assert.True(equivalent);
+    }
+
+    /// <summary>
+    /// One-sided empty conversation ids should not dedupe outside startup/login-gated queue operations.
+    /// </summary>
+    [Fact]
+    public void AreQueuedPromptsEquivalentForDispatch_ReturnsFalse_WhenOneConversationIdIsMissing_WithoutStartupScope() {
+        var equivalent = MainWindow.AreQueuedPromptsEquivalentForDispatch(
+            leftText: "Hello Mr",
+            leftConversationId: string.Empty,
+            rightText: " hello   mr ",
+            rightConversationId: "thread-2");
+
+        Assert.False(equivalent);
+    }
+
+    /// <summary>
+    /// Startup/login one-sided fallback should stay scoped to the active conversation key.
+    /// </summary>
+    [Fact]
+    public void AreQueuedPromptsEquivalentForDispatch_ReturnsFalse_WhenOneConversationIdIsMissing_WithMismatchedStartupScope() {
+        var equivalent = MainWindow.AreQueuedPromptsEquivalentForDispatch(
+            leftText: "Hello Mr",
+            leftConversationId: string.Empty,
+            rightText: " hello   mr ",
+            rightConversationId: "thread-2",
+            allowOneSidedMissingConversationId: true,
+            startupScopeConversationId: "thread-1");
+
+        Assert.False(equivalent);
+    }
+
+    /// <summary>
+    /// Two missing conversation ids do not provide enough scope evidence for safe deduplication.
+    /// </summary>
+    [Fact]
+    public void AreQueuedPromptsEquivalentForDispatch_ReturnsFalse_WhenBothConversationIdsAreMissing_EvenWithStartupScope() {
+        var equivalent = MainWindow.AreQueuedPromptsEquivalentForDispatch(
+            leftText: "Hello Mr",
+            leftConversationId: string.Empty,
+            rightText: " hello   mr ",
+            rightConversationId: string.Empty,
+            allowOneSidedMissingConversationId: true,
+            startupScopeConversationId: "thread-1");
+
+        Assert.False(equivalent);
+    }
+
+    /// <summary>
     /// Empty prompt text should never be treated as a deduplication match.
     /// </summary>
     [Fact]

@@ -626,8 +626,25 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
         string expected) {
-        var text = MainWindow.BuildStartupPendingStatusText(requiresInteractiveSignIn, isAuthenticated);
+        var text = MainWindow.BuildStartupPendingStatusText(
+            requiresInteractiveSignIn,
+            isAuthenticated,
+            loginInProgress: false);
         Assert.Equal(expected, text);
+    }
+
+    /// <summary>
+    /// Ensures startup pending status text uses explicit browser-completion copy while sign-in is in progress.
+    /// </summary>
+    [Fact]
+    public void BuildStartupPendingStatusText_UsesBrowserContinuationCopy_WhenLoginInProgress() {
+        var text = MainWindow.BuildStartupPendingStatusText(
+            requiresInteractiveSignIn: true,
+            isAuthenticated: false,
+            loginInProgress: true);
+        Assert.Equal(
+            "Runtime connected. Finish sign-in in browser to continue loading tool packs... (cause auth_wait)",
+            text);
     }
 
     /// <summary>
