@@ -479,6 +479,105 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_SkipsRepeatedAutoReplayWithoutFreshContext() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-repeat",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-repeat",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-repeat", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var firstArgs = new object?[] { "thread-carryover-repeat", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var firstResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, firstArgs);
+        Assert.True(Assert.IsType<bool>(firstResult));
+
+        var secondArgs = new object?[] { "thread-carryover-repeat", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var secondResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, secondArgs);
+
+        Assert.False(Assert.IsType<bool>(secondResult));
+        Assert.Equal("carryover_replay_requires_new_context", Assert.IsType<string>(secondArgs[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_AllowsRepeatedReplayWhenUserPinsSameHost() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-repeat-host",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-repeat-host",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-repeat-host", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var firstArgs = new object?[] { "thread-carryover-repeat-host", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var firstResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, firstArgs);
+        Assert.True(Assert.IsType<bool>(firstResult));
+
+        var secondArgs = new object?[] {
+            "thread-carryover-repeat-host",
+            "Run this against AD0.ad.evotec.xyz once more.",
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var secondResult = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, secondArgs);
+
+        Assert.True(Assert.IsType<bool>(secondResult));
+        Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(secondArgs[5]));
+    }
+
+    [Fact]
     public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactFollowUp() {
         var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
             continuationFollowUpTurn: true,

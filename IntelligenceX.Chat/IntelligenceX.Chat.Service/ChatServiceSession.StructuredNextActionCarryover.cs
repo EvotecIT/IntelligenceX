@@ -14,6 +14,9 @@ internal sealed partial class ChatServiceSession {
         string ArgumentsJson,
         ActionMutability Mutability,
         long SeenUtcTicks);
+    private readonly record struct StructuredNextActionAutoReplaySnapshot(
+        string Signature,
+        long SeenUtcTicks);
 
     private void RememberStructuredNextActionCarryover(
         string threadId,
@@ -136,6 +139,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         var serializedArguments = JsonLite.Serialize(normalizedArguments);
+        if (ShouldBlockRepeatedCarryoverAutoReplay(
+                normalizedThreadId,
+                userRequest,
+                snapshot.ToolName,
+                serializedArguments,
+                normalizedArguments)) {
+            RemoveStructuredNextActionCarryover(normalizedThreadId);
+            reason = "carryover_replay_requires_new_context";
+            return false;
+        }
+
+        RememberCarryoverAutoReplay(normalizedThreadId, snapshot.ToolName, serializedArguments);
         var callId = "host_carryover_next_action_" + Guid.NewGuid().ToString("N");
         var raw = new JsonObject()
             .Add("type", "tool_call")
@@ -227,6 +242,66 @@ internal sealed partial class ChatServiceSession {
 
         reason = "carryover_ready";
         return true;
+    }
+
+    private bool ShouldBlockRepeatedCarryoverAutoReplay(
+        string normalizedThreadId,
+        string userRequest,
+        string toolName,
+        string serializedArguments,
+        JsonObject normalizedArguments) {
+        var replaySignature = BuildCarryoverAutoReplaySignature(toolName, serializedArguments);
+        if (replaySignature.Length == 0) {
+            return false;
+        }
+
+        var userHostHints = CollectHostHintsFromUserRequest(userRequest);
+        if (userHostHints.Length > 0) {
+            var carryoverTargets = ExtractHostScopedTargets(normalizedArguments);
+            for (var i = 0; i < carryoverTargets.Length; i++) {
+                if (HostMatchesAnyCandidate(carryoverTargets[i], userHostHints)) {
+                    return false;
+                }
+            }
+        }
+
+        lock (_toolRoutingContextLock) {
+            if (!_structuredNextActionAutoReplayByThreadId.TryGetValue(normalizedThreadId, out var priorReplay)) {
+                return false;
+            }
+
+            if (!TryGetUtcDateTimeFromTicks(priorReplay.SeenUtcTicks, out var seenUtc)
+                || DateTime.UtcNow - seenUtc > StructuredNextActionContextMaxAge) {
+                _structuredNextActionAutoReplayByThreadId.Remove(normalizedThreadId);
+                return false;
+            }
+
+            return string.Equals(priorReplay.Signature, replaySignature, StringComparison.Ordinal);
+        }
+    }
+
+    private void RememberCarryoverAutoReplay(string normalizedThreadId, string toolName, string serializedArguments) {
+        var replaySignature = BuildCarryoverAutoReplaySignature(toolName, serializedArguments);
+        if (replaySignature.Length == 0) {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _structuredNextActionAutoReplayByThreadId[normalizedThreadId] = new StructuredNextActionAutoReplaySnapshot(
+                Signature: replaySignature,
+                SeenUtcTicks: DateTime.UtcNow.Ticks);
+            TrimWeightedRoutingContextsNoLock();
+        }
+    }
+
+    private static string BuildCarryoverAutoReplaySignature(string toolName, string serializedArguments) {
+        var normalizedTool = (toolName ?? string.Empty).Trim();
+        var normalizedArguments = (serializedArguments ?? string.Empty).Trim();
+        if (normalizedTool.Length == 0 || normalizedArguments.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalizedTool.ToLowerInvariant() + "|" + normalizedArguments;
     }
 
     private void RemoveStructuredNextActionCarryover(string threadId) {

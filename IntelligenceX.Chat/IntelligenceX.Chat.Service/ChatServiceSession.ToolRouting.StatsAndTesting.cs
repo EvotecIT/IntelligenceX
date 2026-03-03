@@ -186,13 +186,16 @@ internal sealed partial class ChatServiceSession {
     private void TrimWeightedRoutingContextsNoLock() {
         Debug.Assert(Monitor.IsEntered(_toolRoutingContextLock));
 
-        // Weighted-tool-subset, user-intent, pending-action, structured-next-action, planner-thread, domain-intent, and pack-preflight
+        // Weighted-tool-subset, user-intent, pending-action, structured-next-action, structured-next-action replay-guard,
+        // planner-thread, domain-intent, and pack-preflight
         // contexts share the same
         // key space (active thread id), so trim all when any grows beyond its cap.
         var weightedRemoveCount = _lastWeightedToolNamesByThreadId.Count - MaxTrackedWeightedRoutingContexts;
         var intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
         var pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
         var structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
+        var structuredNextActionReplayGuardRemoveCount =
+            _structuredNextActionAutoReplayByThreadId.Count - MaxTrackedStructuredNextActionReplayGuardContexts;
         var plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
         var domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
         var domainClarificationRemoveCount =
@@ -200,7 +203,11 @@ internal sealed partial class ChatServiceSession {
         var packPreflightRemoveCount = _packPreflightToolNamesByThreadId.Count - MaxTrackedPackPreflightContexts;
         var removeCount = Math.Max(
             Math.Max(
-                Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
+                Math.Max(
+                    Math.Max(weightedRemoveCount, intentRemoveCount),
+                    Math.Max(
+                        pendingRemoveCount,
+                        Math.Max(structuredNextActionRemoveCount, structuredNextActionReplayGuardRemoveCount))),
                 Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, Math.Max(domainClarificationRemoveCount, packPreflightRemoveCount)))),
             0);
         if (removeCount <= 0) {
@@ -247,6 +254,24 @@ internal sealed partial class ChatServiceSession {
             var age = DateTime.UtcNow - seenUtc;
             if (age > StructuredNextActionContextMaxAge) {
                 _structuredNextActionByThreadId.Remove(threadId);
+                removedInvalid = true;
+            }
+        }
+        foreach (var threadId in _structuredNextActionAutoReplayByThreadId.Keys.ToArray()) {
+            if (!_structuredNextActionAutoReplayByThreadId.TryGetValue(threadId, out var snapshot) || snapshot.SeenUtcTicks <= 0) {
+                _structuredNextActionAutoReplayByThreadId.Remove(threadId);
+                removedInvalid = true;
+                continue;
+            }
+
+            if (!TryGetUtcDateTimeFromTicks(snapshot.SeenUtcTicks, out var seenUtc)) {
+                _structuredNextActionAutoReplayByThreadId.Remove(threadId);
+                removedInvalid = true;
+                continue;
+            }
+
+            if (DateTime.UtcNow - seenUtc > StructuredNextActionContextMaxAge) {
+                _structuredNextActionAutoReplayByThreadId.Remove(threadId);
                 removedInvalid = true;
             }
         }
@@ -306,6 +331,8 @@ internal sealed partial class ChatServiceSession {
             intentRemoveCount = _lastUserIntentByThreadId.Count - MaxTrackedUserIntentContexts;
             pendingRemoveCount = _pendingActionsByThreadId.Count - MaxTrackedPendingActionContexts;
             structuredNextActionRemoveCount = _structuredNextActionByThreadId.Count - MaxTrackedStructuredNextActionContexts;
+            structuredNextActionReplayGuardRemoveCount =
+                _structuredNextActionAutoReplayByThreadId.Count - MaxTrackedStructuredNextActionReplayGuardContexts;
             plannerRemoveCount = _plannerThreadIdByActiveThreadId.Count - MaxTrackedPlannerThreadContexts;
             domainIntentRemoveCount = _domainIntentFamilyByThreadId.Count - MaxTrackedDomainIntentFamilyContexts;
             domainClarificationRemoveCount =
@@ -313,7 +340,11 @@ internal sealed partial class ChatServiceSession {
             packPreflightRemoveCount = _packPreflightToolNamesByThreadId.Count - MaxTrackedPackPreflightContexts;
             removeCount = Math.Max(
                 Math.Max(
-                    Math.Max(Math.Max(weightedRemoveCount, intentRemoveCount), Math.Max(pendingRemoveCount, structuredNextActionRemoveCount)),
+                    Math.Max(
+                        Math.Max(weightedRemoveCount, intentRemoveCount),
+                        Math.Max(
+                            pendingRemoveCount,
+                            Math.Max(structuredNextActionRemoveCount, structuredNextActionReplayGuardRemoveCount))),
                     Math.Max(plannerRemoveCount, Math.Max(domainIntentRemoveCount, Math.Max(domainClarificationRemoveCount, packPreflightRemoveCount)))),
                 0);
             if (removeCount <= 0) {
@@ -329,6 +360,9 @@ internal sealed partial class ChatServiceSession {
             seenThreadIds.Add(threadId);
         }
         foreach (var threadId in _structuredNextActionByThreadId.Keys) {
+            seenThreadIds.Add(threadId);
+        }
+        foreach (var threadId in _structuredNextActionAutoReplayByThreadId.Keys) {
             seenThreadIds.Add(threadId);
         }
         foreach (var threadId in _plannerThreadIdByActiveThreadId.Keys) {
@@ -360,6 +394,10 @@ internal sealed partial class ChatServiceSession {
                     && structuredNextAction.SeenUtcTicks > ticks) {
                     ticks = structuredNextAction.SeenUtcTicks;
                 }
+                if (_structuredNextActionAutoReplayByThreadId.TryGetValue(threadId, out var structuredNextActionReplay)
+                    && structuredNextActionReplay.SeenUtcTicks > ticks) {
+                    ticks = structuredNextActionReplay.SeenUtcTicks;
+                }
                 if (_plannerThreadSeenUtcTicksByActiveThreadId.TryGetValue(threadId, out var plannerTicks) && plannerTicks > ticks) {
                     ticks = plannerTicks;
                 }
@@ -389,6 +427,7 @@ internal sealed partial class ChatServiceSession {
             _pendingActionsSeenUtcTicks.Remove(threadId);
             _pendingActionsCallToActionTokensByThreadId.Remove(threadId);
             _structuredNextActionByThreadId.Remove(threadId);
+            _structuredNextActionAutoReplayByThreadId.Remove(threadId);
             _plannerThreadIdByActiveThreadId.Remove(threadId);
             _plannerThreadSeenUtcTicksByActiveThreadId.Remove(threadId);
             _domainIntentFamilyByThreadId.Remove(threadId);

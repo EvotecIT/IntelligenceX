@@ -29,6 +29,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxTrackedUserIntentContexts = 256;
     private const int MaxTrackedPendingActionContexts = 256;
     private const int MaxTrackedStructuredNextActionContexts = 256;
+    private const int MaxTrackedStructuredNextActionReplayGuardContexts = 256;
     private const int MaxTrackedPlannerThreadContexts = 128;
     private const int MaxTrackedDomainIntentFamilyContexts = 256;
     private const int MaxTrackedDomainIntentClarificationContexts = 256;
@@ -74,6 +75,7 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, long> _pendingActionsSeenUtcTicks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string[]> _pendingActionsCallToActionTokensByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StructuredNextActionSnapshot> _structuredNextActionByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, StructuredNextActionAutoReplaySnapshot> _structuredNextActionAutoReplayByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _plannerThreadIdByActiveThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _plannerThreadSeenUtcTicksByActiveThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _domainIntentFamilyByThreadId = new(StringComparer.Ordinal);
