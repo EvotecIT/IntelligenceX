@@ -531,6 +531,46 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_UsesFamilyDefaultActionWhenCatalogMappingIsMissing() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-default-fallback");
+
+        var availableDefinitions = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info",
+                description: "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_public_custom"
+                })
+        };
+
+        // Simulate partial in-memory contract drift after validation.
+        availableDefinitions[0].Routing!.DomainIntentActionId = string.Empty;
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-default-fallback",
+            "/act act_domain_scope_ad",
+            availableDefinitions,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-default-fallback"));
+    }
+
+    [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesExplicitActSelectionCommand() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-explicit-act");

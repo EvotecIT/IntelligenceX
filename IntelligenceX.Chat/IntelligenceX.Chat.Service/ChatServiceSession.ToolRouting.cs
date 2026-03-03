@@ -559,7 +559,31 @@ internal sealed partial class ChatServiceSession {
             familyActionIds[normalizedFamily] = actionId;
         }
 
+        if (!familyActionIds.ContainsKey(DomainIntentFamilyAd)
+            && DefinitionsContainDomainIntentFamily(definitions, DomainIntentFamilyAd)) {
+            familyActionIds[DomainIntentFamilyAd] = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd);
+        }
+
+        if (!familyActionIds.ContainsKey(DomainIntentFamilyPublic)
+            && DefinitionsContainDomainIntentFamily(definitions, DomainIntentFamilyPublic)) {
+            familyActionIds[DomainIntentFamilyPublic] = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic);
+        }
+
         return new DomainIntentActionCatalog(familyActionIds);
+    }
+
+    private static bool DefinitionsContainDomainIntentFamily(IReadOnlyList<ToolDefinition> definitions, string family) {
+        if (definitions is null || definitions.Count == 0 || !TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
+            return false;
+        }
+
+        for (var i = 0; i < definitions.Count; i++) {
+            if (string.Equals(ResolveDomainIntentFamily(definitions[i]), normalizedFamily, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static DomainIntentActionCatalog BuildDefaultDomainIntentActionCatalog() {
