@@ -85,6 +85,7 @@ internal sealed partial class ChatServiceSession {
                     out _,
                     out _);
                 var allowHostStructuredReplay = ShouldAllowHostStructuredNextActionReplay(text);
+                var hostStructuredReplayHintInput = BuildCarryoverHostHintInput(userIntent, text);
                 if (!hostStructuredNextActionReplayUsed
                     && allowHostStructuredReplay
                     && toolCalls.Count > 0
@@ -93,12 +94,13 @@ internal sealed partial class ChatServiceSession {
                         toolDefinitions: structuredNextActionToolDefs,
                         toolCalls: toolCalls,
                         toolOutputs: toolOutputs,
+                        userRequest: hostStructuredReplayHintInput,
                         mutatingToolHintsByName: mutatingToolHints,
                         out var hostStructuredNextActionCall,
                         out var hostStructuredNextActionReason)) {
                     if (ShouldBlockSingleHostStructuredReplayForScopeShift(
                             threadId,
-                            routedUserRequest,
+                            ResolveFinalizeHostScopeShiftUserRequest(userIntent, routedUserRequest),
                             hostStructuredNextActionCall.Arguments ?? new JsonObject())) {
                         hostStructuredNextActionReplayUsed = true;
                         Trace.WriteLine(
@@ -599,5 +601,18 @@ internal sealed partial class ChatServiceSession {
             state.ProactiveSkipUnknownCount = proactiveSkipUnknownCount;
             state.InterimResultSent = interimResultSent;
         }
+    }
+
+    private static string ResolveFinalizeHostScopeShiftUserRequest(string userIntent, string routedUserRequest) {
+        var normalizedUserIntent = NormalizeContextualFollowUpRequest(userIntent);
+        if (normalizedUserIntent.Length > 0) {
+            return normalizedUserIntent;
+        }
+
+        return NormalizeContextualFollowUpRequest(routedUserRequest);
+    }
+
+    internal static string ResolveFinalizeHostScopeShiftUserRequestForTesting(string userIntent, string routedUserRequest) {
+        return ResolveFinalizeHostScopeShiftUserRequest(userIntent, routedUserRequest);
     }
 }

@@ -619,9 +619,9 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     /// Ensures startup pending status text is explicit about sign-in gating vs generic metadata sync.
     /// </summary>
     [Theory]
-    [InlineData(true, false, "Runtime connected. Sign in to finish loading tool packs...")]
-    [InlineData(true, true, "Runtime connected. Loading tool packs in background...")]
-    [InlineData(false, false, "Runtime connected. Loading tool packs in background...")]
+    [InlineData(true, false, "Runtime connected. Sign in to finish loading tool packs... (cause auth_wait)")]
+    [InlineData(true, true, "Runtime connected. Loading tool packs in background... (cause metadata_sync)")]
+    [InlineData(false, false, "Runtime connected. Loading tool packs in background... (cause metadata_sync)")]
     public void BuildStartupPendingStatusText_ReturnsExpectedValue(
         bool requiresInteractiveSignIn,
         bool isAuthenticated,

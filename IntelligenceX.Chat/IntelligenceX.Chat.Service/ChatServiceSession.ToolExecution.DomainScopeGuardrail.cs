@@ -55,7 +55,7 @@ internal sealed partial class ChatServiceSession {
             error:
             $"Blocked '{call.Name}' host target(s) in ad_domain scope because they match prior public_domain evidence: {blockedPreview}.",
             hints: new[] {
-                "Run ad_scope_discovery or ad_domain_controllers first, then retry AD-scope host checks with AD-derived hosts.",
+                "Run directory scope discovery first, then retry AD-scope host checks with directory-derived hosts.",
                 "If this exact host is intended, include it explicitly in this turn's user request."
             },
             isTransient: false);

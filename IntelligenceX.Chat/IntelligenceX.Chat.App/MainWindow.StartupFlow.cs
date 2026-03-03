@@ -351,7 +351,12 @@ public sealed partial class MainWindow : Window {
                 BeginStartupMetadataSyncTracking("startup metadata sync queued");
                 if (!_isSending && !_turnStartupInProgress) {
                     UpdateStartupMetadataSyncPhase("loading tool packs in background");
-                    await SetStatusAsync("Runtime connected. Loading tool packs in background...", SessionStatusTone.Warn).ConfigureAwait(false);
+                    await SetStatusAsync(
+                            BuildStartupPendingStatusText(
+                                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                                isAuthenticated: isAuthenticated),
+                            SessionStatusTone.Warn)
+                        .ConfigureAwait(false);
                 }
 
                 async Task SetMetadataSyncStatusAsync(string message, string? phase = null) {
@@ -436,7 +441,7 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    "Runtime connected. Session policy sync interrupted; retrying...",
+                                    "Runtime connected. Session policy sync interrupted; retrying... (cause metadata_retry)",
                                     phase: "syncing session policy")
                                 .ConfigureAwait(false);
                             await Task.Delay(250).ConfigureAwait(false);
@@ -526,7 +531,7 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    "Runtime connected. Tool catalog sync interrupted; retrying...",
+                                    "Runtime connected. Tool catalog sync interrupted; retrying... (cause metadata_retry)",
                                     phase: "loading tool catalog")
                                 .ConfigureAwait(false);
                             await Task.Delay(250).ConfigureAwait(false);
@@ -597,7 +602,7 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    "Runtime connected. Authentication refresh interrupted; retrying...",
+                                    "Runtime connected. Authentication refresh interrupted; retrying... (cause metadata_retry)",
                                     phase: "refreshing authentication")
                                 .ConfigureAwait(false);
                             await Task.Delay(250).ConfigureAwait(false);

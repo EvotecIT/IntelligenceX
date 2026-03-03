@@ -83,6 +83,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ShouldAllowHostStructuredNextActionReplayMethod =
         typeof(ChatServiceSession).GetMethod("ShouldAllowHostStructuredNextActionReplay", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAllowHostStructuredNextActionReplay not found.");
+    private static readonly MethodInfo ResolveFinalizeHostScopeShiftUserRequestForTestingMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveFinalizeHostScopeShiftUserRequestForTesting", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ResolveFinalizeHostScopeShiftUserRequestForTesting not found.");
     private static readonly MethodInfo SupportsSyntheticHostReplayItemsMethod =
         typeof(ChatServiceSession).GetMethod("SupportsSyntheticHostReplayItems", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("SupportsSyntheticHostReplayItems not found.");

@@ -42,6 +42,9 @@ Build a contract-first architecture where:
 
 ## Audit Corrections (2026-03-03)
 
+- [x] Decoupling cleanup: AD domain guardrail hint text is now capability-based (no hardcoded tool ids in user-facing guidance).
+- [x] Stabilization hotfix: finalize-time host structured next-action replay now blocks stale host-target replays when user/assistant host hints conflict.
+- [x] Stabilization hotfix: finalize-time single-host scope-shift guard now evaluates raw user intent (not routed rewrite payload), reducing stale AD0-style replay loops on contextual follow-ups.
 - [x] Closed: Chat bootstrap now discovers built-in packs generically from tool assemblies/descriptors in `ToolPackBootstrap` (no hardcoded per-pack bootstrap chain).
 - [x] Closed: host-hint helpers were re-scoped into `ChatServiceSession.HostHints.cs` (fallback-era file naming removed).
 - [x] Hotfix landed: stale structured-next-action carryover replay now suppresses self-loop replays (same tool + equivalent args) and rejects host-hint-conflicting carryover execution.
@@ -82,6 +85,8 @@ Build a contract-first architecture where:
 - [x] Stabilization hotfix: explicit quoted tool-descriptor follow-ups (including multiline/backticked catalog snippets and invisible format chars inside tool ids) now bypass finalize-time cached-evidence fallback rewrites and stay on direct tool-capability answer paths.
 - [x] Startup/dispatch stabilization hotfix: `SendPromptAsync` now claims startup/send lifecycle state atomically behind the active-turn lock, preventing manual-send vs auto-dispatch races that produced duplicate assistant replies.
 - [x] Carryover stabilization hotfix: contextual compact follow-up questions now block stale single-host structured replay when thread evidence is multi-host, while short acknowledgement questions remain replay-eligible.
+- [x] Startup UX hotfix: login-completed status updates now queue deferred startup metadata sync before publishing connected status, avoiding transient "ready" flips while tool-pack startup is still pending.
+- [x] Stabilization regression coverage: finalize host scope-shift guard now has explicit precedence tests proving raw user intent is used ahead of routed rewrite text when deciding stale single-host replay blocking.
 
 ## Hard Decisions (Locked)
 
@@ -189,6 +194,13 @@ Build a contract-first architecture where:
 3. [ ] `Track C (Tests/Quality)` Architecture tests + regression suite updates + docs.
 4. [ ] Merge order: Track A foundational contracts first, Track B next, Track C continuously.
 
+## Immediate Next Steps (Post-Audit)
+
+1. [x] Add continuation-subset escape for tool-capability question turns that do not reference explicit tool ids, so follow-up capability questions do not get trapped in stale subset visibility.
+2. [x] Add startup churn diagnostics classification in app status/debug (for example `auth_wait`, `pipe_retry`, `metadata_retry`, `runtime_disconnect`) so connect/disconnect loops are attributable without log digging.
+3. [x] Add end-to-end regression covering contextual follow-up scope-shift + host structured next-action finalize path using routed rewrite text to prevent stale single-host replay regressions.
+4. [x] Run full release preflight (`dotnet build`, `dotnet test`, harness net8/net10) before PR merge.
+
 ## Definition Of Done
 
 - [x] `DoD1` No Chat file contains cross-pack fallback execution methods.
@@ -197,7 +209,7 @@ Build a contract-first architecture where:
 - [ ] `DoD4` Every registered tool has explicit routing role + pack metadata.
 - [x] `DoD5` New synthetic pack/tool can be added in tests without Chat code changes.
 - [x] `DoD6` DomainDetective vs ADPlayground separation enforced by contracts/tests.
-- [ ] `DoD7` Full build/test suite passes after legacy fallback removal.
+- [x] `DoD7` Full build/test suite passes after legacy fallback removal.
 
 ## Suggested Session Plan
 

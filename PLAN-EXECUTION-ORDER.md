@@ -11,6 +11,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 
 ## Audit Update (2026-03-03)
 
+- [x] Decoupling cleanup: AD domain guardrail user hint text no longer hardcodes tool ids (`ad_scope_discovery`/`ad_domain_controllers`).
+- [x] Stabilization hotfix: finalize-time host structured next-action replay now rejects stale single-host replays when user/assistant host hints indicate different or multi-host scope.
+- [x] Stabilization hotfix: finalize-time scope-shift guard now evaluates raw user intent (instead of routed rewrite payload), reducing stale AD0 replay on contextual compact follow-ups.
 - [x] Stabilization hotfix: structured-next-action carryover replay now blocks stale self-loop replays and host-hint-conflicting replays.
 - [x] Stabilization hotfix: startup deferred metadata no longer skips metadata sync solely due to initial unauthenticated state.
 - [x] Stabilization hotfix: bootstrap progress status can publish while connected startup metadata sync is still active.
@@ -51,6 +54,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: quoted/multiline tool-descriptor references now keep explicit tool-capability routing (no finalize-time cached-evidence rewrite), and explicit tool-id extraction now strips invisible Unicode format chars to keep descriptor parsing robust.
 - [x] Startup/dispatch stabilization hotfix: app turn dispatch startup/send transitions now claim lifecycle state atomically under lock, preventing sign-in/manual-send double-dispatch races and duplicate assistant finals.
 - [x] Stabilization hotfix: contextual compact follow-up questions now block stale single-host carryover replay when thread evidence is multi-host, while short acknowledgement questions stay replay-eligible.
+- [x] Startup UX hotfix: login-completed status now queues deferred startup metadata sync before publishing connected status, avoiding transient ready-state flicker while startup sync is still pending.
+- [x] Stabilization regression coverage: finalize host scope-shift user-request resolution now has explicit tests proving raw user intent takes precedence over routed rewrite text.
 
 ## Rules For This Migration
 
@@ -271,6 +276,23 @@ Checklist:
 - [x] Replace hardcoded known-pack bootstrap chain with descriptor/manifest-driven registration.
 - [x] Remove/rename fallback-era host-hint file so architecture guardrails match current source layout.
 - [x] Add regression tests for reconnect warm path and multi-turn follow-up carryover against host scope changes.
+
+### PR 13 - Follow-Up Execution Reliability + Startup Churn Visibility
+
+Files (expected):
+
+- `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ToolRouting.DomainIntentAffinity.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.App/MainWindow.Messaging.Connection.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.App/MainWindow.StartupReadiness.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.Tests/ChatServiceRoutingTrimTests.*`
+
+Checklist:
+
+- [x] Escape continuation subset reuse for language-neutral tool-capability question turns (even without explicit tool-id literals) to restore cross-pack follow-up awareness.
+- [x] Extend startup status/debug timeline with churn cause labels (`auth_wait`, `pipe_retry`, `metadata_retry`, `runtime_disconnect`) so reconnect loops are diagnosable from UI alone.
+- [x] Add finalize-path regression that proves contextual follow-up scope shifts are evaluated from raw user intent and cannot replay stale single-host next actions.
+- [x] Validate with targeted chat tests + catalog validation before PR open.
 
 ## Parallelization Map
 

@@ -79,6 +79,54 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Empty(subset);
     }
 
+    [Fact]
+    public void TryGetContinuationToolSubset_SkipsSubsetForMultiTokenFollowUpQuestion() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-subset-followup-question";
+        var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
+        var previousSubset = new List<ToolDefinition> {
+            allDefinitions[0],
+            allDefinitions[1]
+        };
+        var userRequest = "go ahead, but do you have event log tools?";
+
+        Assert.True(Assert.IsType<bool>(LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userRequest })));
+
+        RememberWeightedToolSubsetMethod.Invoke(session, new object?[] { threadId, previousSubset, allDefinitions.Count });
+
+        var args = new object?[] { threadId, userRequest, allDefinitions, null };
+        var result = TryGetContinuationToolSubsetMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        var subset = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(args[3]);
+        Assert.Empty(subset);
+    }
+
+    [Fact]
+    public void TryGetContinuationToolSubset_ReusesSubsetForShortAcknowledgementQuestion() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-subset-short-question";
+        var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
+        var previousSubset = new List<ToolDefinition> {
+            allDefinitions[0],
+            allDefinitions[1]
+        };
+        var userRequest = "go ahead?";
+
+        Assert.True(Assert.IsType<bool>(LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userRequest })));
+
+        RememberWeightedToolSubsetMethod.Invoke(session, new object?[] { threadId, previousSubset, allDefinitions.Count });
+
+        var args = new object?[] { threadId, userRequest, allDefinitions, null };
+        var result = TryGetContinuationToolSubsetMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var subset = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(args[3]);
+        Assert.Equal(2, subset.Count);
+        Assert.Equal("dnsclientx_query", subset[0].Name);
+        Assert.Equal("dnsclientx_ping", subset[1].Name);
+    }
+
     private static List<ToolDefinition> BuildContinuationSubsetTestToolDefinitions() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         return new List<ToolDefinition> {

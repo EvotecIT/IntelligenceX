@@ -9,10 +9,10 @@ namespace IntelligenceX.Chat.App;
 public sealed partial class MainWindow : Window {
     internal static string BuildStartupPendingStatusText(bool requiresInteractiveSignIn, bool isAuthenticated) {
         if (requiresInteractiveSignIn && !isAuthenticated) {
-            return "Runtime connected. Sign in to finish loading tool packs...";
+            return "Runtime connected. Sign in to finish loading tool packs... (cause auth_wait)";
         }
 
-        return "Runtime connected. Loading tool packs in background...";
+        return "Runtime connected. Loading tool packs in background... (cause metadata_sync)";
     }
 
     internal static bool ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(

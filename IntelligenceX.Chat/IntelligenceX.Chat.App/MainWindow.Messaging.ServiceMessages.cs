@@ -161,7 +161,6 @@ public sealed partial class MainWindow : Window {
                         ClearQueuedPromptUsageLimitBypassAfterSwitchAccount();
                     }
                     _isConnected = _client is not null;
-                    _ = SetStatusAsync(done.Ok ? SessionStatus.Connected() : SessionStatus.SignInFailed());
                     if (!done.Ok && !string.IsNullOrWhiteSpace(done.Error)) {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
@@ -177,6 +176,7 @@ public sealed partial class MainWindow : Window {
                         }
                         QueuePostLoginCompletion();
                     }
+                    _ = SetStatusAsync(done.Ok ? SessionStatus.Connected() : SessionStatus.SignInFailed());
                     break;
                 case ErrorMessage err:
                     if (string.Equals(err.Code, "not_authenticated", StringComparison.OrdinalIgnoreCase)) {
@@ -680,7 +680,7 @@ public sealed partial class MainWindow : Window {
             // This avoids unnecessary process churn while the client auto-reconnect loop runs.
             if (preserveInteractiveAuthState && _loginInProgress) {
                 await SetStatusAsync(
-                        "Runtime connection dropped during sign-in. Reconnecting...",
+                        "Runtime connection dropped during sign-in. Reconnecting... (cause runtime_disconnect)",
                         SessionStatusTone.Warn)
                     .ConfigureAwait(false);
             } else {
