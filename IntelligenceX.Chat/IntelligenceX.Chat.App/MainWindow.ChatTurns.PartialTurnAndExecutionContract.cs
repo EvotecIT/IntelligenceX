@@ -235,6 +235,20 @@ public sealed partial class MainWindow : Window {
         return false;
     }
 
+    internal static bool ShouldAppendAssistantSnapshot(string? candidateAssistantText, string? previousRole, string? previousAssistantText) {
+        if (NormalizeAssistantSnapshotForAppendDecision(candidateAssistantText).Length == 0) {
+            return false;
+        }
+
+        if (!string.Equals((previousRole ?? string.Empty).Trim(), "Assistant", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return !ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: candidateAssistantText,
+            previousAssistantText: previousAssistantText);
+    }
+
     internal static bool ShouldRenderFinalAssistantAsSeparateBubbleAfterInterim() {
         return false;
     }

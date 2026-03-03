@@ -124,6 +124,45 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
+    /// Ensures append suppression applies only when the prior message role is assistant.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendAssistantSnapshot_AllowsAppendWhenPreviousRoleIsNotAssistant() {
+        var append = MainWindow.ShouldAppendAssistantSnapshot(
+            candidateAssistantText: "Hey Przemek, running checks now.",
+            previousRole: "User",
+            previousAssistantText: "Hey Przemek, running checks now.");
+
+        Assert.True(append);
+    }
+
+    /// <summary>
+    /// Ensures equivalent consecutive assistant snapshots are not appended.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendAssistantSnapshot_DoesNotAppendEquivalentConsecutiveAssistantSnapshots() {
+        var append = MainWindow.ShouldAppendAssistantSnapshot(
+            candidateAssistantText: "  Hey Przemek 👋  Mr. IntelligenceX reporting in—online and ready.  ",
+            previousRole: "Assistant",
+            previousAssistantText: "Hey Przemek 👋\nMr. IntelligenceX reporting in—online and ready!");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
+    /// Ensures empty assistant snapshots are not appended.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendAssistantSnapshot_DoesNotAppendEmptyAssistantSnapshots() {
+        var append = MainWindow.ShouldAppendAssistantSnapshot(
+            candidateAssistantText: "   ",
+            previousRole: "Assistant",
+            previousAssistantText: "Prior content");
+
+        Assert.False(append);
+    }
+
+    /// <summary>
     /// Ensures finalized text replaces streamed draft content instead of creating duplicate assistant bubbles.
     /// </summary>
     [Fact]

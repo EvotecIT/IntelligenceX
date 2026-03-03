@@ -44,6 +44,21 @@ public sealed partial class MainWindow : Window {
     }
 
     private static void AppendAssistantText(ConversationRuntime conversation, string text) {
+        if (conversation.Messages.Count > 0) {
+            var last = conversation.Messages[^1];
+            if (!ShouldAppendAssistantSnapshot(
+                    candidateAssistantText: text,
+                    previousRole: last.Role,
+                    previousAssistantText: last.Text)) {
+                return;
+            }
+        } else if (!ShouldAppendAssistantSnapshot(
+                       candidateAssistantText: text,
+                       previousRole: null,
+                       previousAssistantText: null)) {
+            return;
+        }
+
         var nowLocal = DateTime.Now;
         var modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim();
         conversation.Messages.Add(("Assistant", text, nowLocal, modelLabel));
