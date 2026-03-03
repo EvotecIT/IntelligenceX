@@ -10,7 +10,6 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int CarryoverHostHintMultiHostThreshold = 2;
-    private const string CarryoverAssistantHostHintsMarker = "\nixcarryoverassistanthosthints\n";
     private readonly record struct StructuredNextActionSnapshot(
         string ToolName,
         string ArgumentsJson,
@@ -92,6 +91,24 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out ToolCall toolCall,
         out string reason) {
+        return TryBuildCarryoverStructuredNextActionToolCallCore(
+            threadId: threadId,
+            replayDecisionUserRequest: userRequest,
+            hostHintUserRequest: userRequest,
+            toolDefinitions: toolDefinitions,
+            mutatingToolHintsByName: mutatingToolHintsByName,
+            toolCall: out toolCall,
+            reason: out reason);
+    }
+
+    private bool TryBuildCarryoverStructuredNextActionToolCallCore(
+        string threadId,
+        string replayDecisionUserRequest,
+        string hostHintUserRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
         toolCall = null!;
         reason = "not_eligible";
 
@@ -134,8 +151,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var replayDecisionUserRequest = ExtractCarryoverReplayDecisionUserRequest(userRequest);
-        if (HasCarryoverHostHintMismatch(userRequest, normalizedArguments)) {
+        if (HasCarryoverHostHintMismatch(hostHintUserRequest, normalizedArguments)) {
             RemoveStructuredNextActionCarryover(normalizedThreadId);
             reason = "carryover_host_hint_mismatch";
             return false;
@@ -476,10 +492,6 @@ internal sealed partial class ChatServiceSession {
     private static string BuildCarryoverHostHintInput(string userRequest, string assistantDraft) {
         var request = (userRequest ?? string.Empty).Trim();
         var draft = (assistantDraft ?? string.Empty).Trim();
-        if (request.Length == 0 && draft.Length == 0) {
-            return string.Empty;
-        }
-
         if (draft.Length == 0) {
             return request;
         }
@@ -490,27 +502,31 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (request.Length == 0) {
-            return CarryoverAssistantHostHintsMarker + draft;
+            return draft;
         }
 
-        return request + CarryoverAssistantHostHintsMarker + draft;
-    }
-
-    private static string ExtractCarryoverReplayDecisionUserRequest(string userRequest) {
-        var normalized = (userRequest ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return string.Empty;
-        }
-
-        var markerIndex = normalized.IndexOf(CarryoverAssistantHostHintsMarker, StringComparison.Ordinal);
-        if (markerIndex < 0) {
-            return normalized;
-        }
-
-        return normalized[..markerIndex].Trim();
+        return request + "\n" + draft;
     }
 
     internal static string BuildCarryoverHostHintInputForTesting(string userRequest, string assistantDraft) {
         return BuildCarryoverHostHintInput(userRequest, assistantDraft);
+    }
+
+    internal bool TryBuildCarryoverStructuredNextActionToolCallForTesting(
+        string threadId,
+        string replayDecisionUserRequest,
+        string hostHintUserRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out ToolCall toolCall,
+        out string reason) {
+        return TryBuildCarryoverStructuredNextActionToolCallCore(
+            threadId: threadId,
+            replayDecisionUserRequest: replayDecisionUserRequest,
+            hostHintUserRequest: hostHintUserRequest,
+            toolDefinitions: toolDefinitions,
+            mutatingToolHintsByName: mutatingToolHintsByName,
+            toolCall: out toolCall,
+            reason: out reason);
     }
 }

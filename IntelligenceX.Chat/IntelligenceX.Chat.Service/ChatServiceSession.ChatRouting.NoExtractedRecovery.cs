@@ -109,9 +109,10 @@ internal sealed partial class ChatServiceSession {
                     && toolCalls.Count == 0
                     && toolOutputs.Count == 0) {
                     var carryoverHostHintInput = BuildCarryoverHostHintInput(userRequest, text);
-                    if (TryBuildCarryoverStructuredNextActionToolCall(
+                    if (TryBuildCarryoverStructuredNextActionToolCallCore(
                         threadId: threadId,
-                        userRequest: carryoverHostHintInput,
+                        replayDecisionUserRequest: userRequest,
+                        hostHintUserRequest: carryoverHostHintInput,
                         toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
                         mutatingToolHintsByName: mutatingToolHints,
                         out var carryoverStructuredNextActionCall,
