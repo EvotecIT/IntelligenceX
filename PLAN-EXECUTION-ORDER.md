@@ -34,6 +34,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: contextual follow-up detection now reads the `Follow-up:` tail from legacy continuation expansion before carryover replay decisions.
 - [x] Stabilization cleanup: removed standalone lowercase `ad` lexical alias auto-routing from domain-intent signal resolution.
 - [x] Stabilization hotfix: continuation subset reuse now skips when follow-up explicitly references a tool outside the remembered subset, enabling fresh cross-pack tool routing.
+- [x] Startup visibility hotfix: header chip diagnostics now maintain a bounded runtime lifecycle timeline (tooltip + debug panel) across connect/auth/bootstrap transitions.
+- [x] Stabilization hotfix: routing-meta activity timeline labels now include strategy + selected/total tool counts for explicit route-stage observability.
 
 ## Rules For This Migration
 

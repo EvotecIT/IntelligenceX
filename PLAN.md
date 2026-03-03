@@ -65,6 +65,8 @@ Build a contract-first architecture where:
 - [x] Hotfix landed: contextual follow-up detection now evaluates the `Follow-up:` tail from legacy continuation expansion when deciding carryover replay eligibility.
 - [x] Closed: standalone lowercase `ad` alias auto-routing was removed from domain-intent signal resolution to keep Chat lexical routing generic.
 - [x] Hotfix landed: continuation subset reuse now exits when follow-up text explicitly names a tool outside the remembered subset (for example `eventlog_live_query`), forcing fresh candidate routing.
+- [x] Startup visibility hotfix: header status now keeps a bounded runtime lifecycle timeline (status tooltip + debug panel) so long connect/auth/bootstrap phases are traceable instead of collapsing into a single generic chip.
+- [x] Startup/turn diagnostics hotfix: routing-meta activity timeline labels now include selected strategy and tool counts (`strategy`, `selected/total`) instead of a generic `route strategy` marker.
 
 ## Hard Decisions (Locked)
 
