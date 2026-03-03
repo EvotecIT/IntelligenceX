@@ -39,5 +39,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.True(Assert.IsType<bool>(result));
     }
-}
 
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForLocalizedContinuationTailWithoutEnglishMarker() {
+        var userRequest = """
+                          Prosze przeanalizowac stan replikacji katalogu dla wszystkich kontrolerow domeny i przygotowac porownanie opoznien wraz z krotkim podsumowaniem najwazniejszych roznic miedzy lokalizacjami i serwerami.
+                          Dalszy krok: uruchom teraz
+                          """;
+        var assistantDraft = "Uruchom teraz porownanie opoznien replikacji i za chwile zwroce podsumowanie roznic.";
+
+        var result = ShouldAttemptToolExecutionNudgeMethod.Invoke(
+            null,
+            new object?[] { userRequest, assistantDraft, true, 0, 0, false });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+}

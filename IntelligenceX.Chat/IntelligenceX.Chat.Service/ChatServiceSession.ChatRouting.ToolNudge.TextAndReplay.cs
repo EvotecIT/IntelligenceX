@@ -145,9 +145,9 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeContextualFollowUpForExecutionNudge(string userRequest, string assistantDraft) {
-        // Continuation expansion may include a newline-delimited context block (for example:
-        // "<prior intent>\nFollow-up: <compact reply>"). Normalize it so contextual-anchor
-        // checks remain effective and language-neutral.
+        // Continuation expansion may include a newline-delimited context block where the final line
+        // contains a localized label/value tail (for example: "<prior intent>\n<label>: <compact reply>").
+        // Normalize it so contextual-anchor checks remain effective and language-neutral.
         var request = NormalizeContextualFollowUpRequest(userRequest);
         if (request.Length == 0 || request.Length > 480) {
             return false;
@@ -179,39 +179,95 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
-        if (TryExtractLegacyContinuationFollowUp(raw, out var followUp)) {
+        if (TryExtractContextualFollowUpTail(raw, out var followUp)) {
             return CollapseWhitespace(followUp);
         }
 
         return CollapseWhitespace(raw);
     }
 
-    private static bool TryExtractLegacyContinuationFollowUp(string rawRequest, out string followUp) {
+    private static bool TryExtractContextualFollowUpTail(string rawRequest, out string followUp) {
         followUp = string.Empty;
         var raw = (rawRequest ?? string.Empty).Trim();
-        if (raw.Length == 0) {
+        if (raw.Length == 0 || raw.IndexOf('\n') < 0) {
             return false;
         }
 
-        const string marker = "Follow-up:";
-        var markerIndex = raw.IndexOf("\n" + marker, StringComparison.OrdinalIgnoreCase);
-        var start = -1;
-        if (markerIndex >= 0) {
-            start = markerIndex + 1 + marker.Length;
-        } else if (raw.StartsWith(marker, StringComparison.OrdinalIgnoreCase)) {
-            start = marker.Length;
+        var lines = raw.Split('\n');
+        var lastLineIndex = lines.Length - 1;
+        while (lastLineIndex >= 0 && string.IsNullOrWhiteSpace(lines[lastLineIndex])) {
+            lastLineIndex--;
         }
 
-        if (start < 0 || start >= raw.Length) {
+        if (lastLineIndex <= 0) {
             return false;
         }
 
-        var candidate = raw[start..].Trim();
-        if (candidate.Length == 0) {
+        var hasContextLine = false;
+        var hasParagraphSeparator = false;
+        for (var i = 0; i < lastLineIndex; i++) {
+            if (string.IsNullOrWhiteSpace(lines[i])) {
+                hasParagraphSeparator = true;
+                continue;
+            }
+
+            hasContextLine = true;
+        }
+
+        if (!hasContextLine) {
+            return false;
+        }
+
+        var tailLine = lines[lastLineIndex].Trim();
+        if (tailLine.Length == 0) {
+            return false;
+        }
+
+        string candidate;
+        if (TryExtractLabeledContinuationTailValue(tailLine, out var labeledValue)) {
+            candidate = labeledValue;
+        } else {
+            // Without a label/value split, only accept explicit paragraph-style tails
+            // so ordinary multi-line prompts are not rewritten aggressively.
+            if (!hasParagraphSeparator) {
+                return false;
+            }
+
+            candidate = tailLine;
+        }
+
+        candidate = CollapseWhitespace(candidate);
+        if (!LooksLikeFollowUpShape(candidate, ContinuationFollowUpQuestionCharLimit)) {
             return false;
         }
 
         followUp = candidate;
+        return true;
+    }
+
+    private static bool TryExtractLabeledContinuationTailValue(string tailLine, out string value) {
+        value = string.Empty;
+        var line = (tailLine ?? string.Empty).Trim();
+        if (line.Length == 0) {
+            return false;
+        }
+
+        var separatorIndex = line.IndexOfAny(CallToActionColonPunctuation);
+        if (separatorIndex <= 0 || separatorIndex >= line.Length - 1) {
+            return false;
+        }
+
+        var label = line[..separatorIndex].Trim();
+        var candidate = line[(separatorIndex + 1)..].Trim();
+        if (label.Length == 0 || candidate.Length == 0) {
+            return false;
+        }
+
+        if (CountLetterDigitTokens(label, maxTokens: 4) == 0) {
+            return false;
+        }
+
+        value = candidate;
         return true;
     }
 
