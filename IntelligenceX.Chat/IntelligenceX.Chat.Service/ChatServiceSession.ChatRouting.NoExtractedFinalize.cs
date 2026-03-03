@@ -416,6 +416,7 @@ internal sealed partial class ChatServiceSession {
                     return ContinueRound();
                 }
 
+                var explicitToolQuestionTurn = LooksLikeExplicitToolQuestionTurn(routedUserRequest);
                 if (ShouldForceExecutionContractBlockerAtFinalize(
                         userRequest: routedUserRequest,
                         executionContractApplies: executionContractApplies,
@@ -424,6 +425,7 @@ internal sealed partial class ChatServiceSession {
                         noToolExecutionWatchdogUsed: noToolExecutionWatchdogUsed,
                         continuationFollowUpTurn: continuationFollowUpTurn,
                         compactFollowUpTurn: compactFollowUpTurn,
+                        explicitToolQuestionTurn: explicitToolQuestionTurn,
                         toolActivityDetected: hasToolActivity,
                         assistantDraft: text)) {
                     var blockerReason = noToolExecutionWatchdogUsed

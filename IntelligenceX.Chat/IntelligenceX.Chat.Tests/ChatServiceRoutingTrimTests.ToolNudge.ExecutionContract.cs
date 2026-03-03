@@ -952,7 +952,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_TriggersWhenExecutionPathHadNoToolEvidence() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, "On it." });
+            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, false, "On it." });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -970,7 +970,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 true,
                 false,
+                false,
                 "W tej sesji nie mam aktywnego eventlog packa."
+            });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerForExplicitToolQuestionOutsideFollowUpShape() {
+        var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
+            null,
+            new object?[] {
+                "dobra a co to eventlog_evtx_query?",
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                true,
+                false,
+                "W tej sesji narzedzie eventlog_evtx_query nie jest aktywne."
             });
 
         Assert.False(Assert.IsType<bool>(result));
@@ -980,7 +1001,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerWhenToolActivityExists() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, true, "Completed." });
+            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, false, true, "Completed." });
 
         Assert.False(Assert.IsType<bool>(result));
     }

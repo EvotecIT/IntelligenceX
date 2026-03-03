@@ -36,6 +36,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: continuation subset reuse now skips when follow-up explicitly references a tool outside the remembered subset, enabling fresh cross-pack tool routing.
 - [x] Startup visibility hotfix: header chip diagnostics now maintain a bounded runtime lifecycle timeline (tooltip + debug panel) across connect/auth/bootstrap transitions.
 - [x] Stabilization hotfix: routing-meta activity timeline labels now include strategy + selected/total tool counts for explicit route-stage observability.
+- [x] Stabilization hotfix: explicit tool-capability questions now bypass finalize-time execution-blocker cached-evidence substitution, preventing stale evidence fallbacks on `tool_name?` clarification turns.
 
 ## Rules For This Migration
 
