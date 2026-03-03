@@ -49,6 +49,7 @@ Build a contract-first architecture where:
 - [x] Hotfix landed: startup bootstrap status publishing now stays visible while connected startup metadata sync is in progress.
 - [x] Closed (mitigated): server-scoped tooling bootstrap cache now reuses prior bootstrap snapshots across reconnect/session churn, avoiding repeated full pack bootstrap on warm path.
 - [x] Hotfix landed: carryover structured-next-action replay now accepts compact non-question follow-ups even when continuation expansion is unavailable, while still rejecting contextual-anchor and question turns.
+- [x] Hotfix landed: carryover structured-next-action replay now treats compact contextual scope-shift follow-ups (for example "other DCs") as fresh planning turns, preventing stale single-host auto-replay loops.
 - [x] Hotfix landed: Chat service now suppresses duplicate final `ChatResultMessage` publishes for the same request/thread/text to prevent repeated assistant finals.
 - [x] Hotfix landed: session header status now keeps startup-pending messaging while metadata/tool-pack readiness is still unresolved (no premature "Ready" flip).
 - [x] Regression coverage added: two-turn carryover scenario now proves `go ahead` follow-up replays queued structured next-action tool calls (host carryover call-id path).
@@ -68,6 +69,7 @@ Build a contract-first architecture where:
 - [x] Startup visibility hotfix: header status now keeps a bounded runtime lifecycle timeline (status tooltip + debug panel) so long connect/auth/bootstrap phases are traceable instead of collapsing into a single generic chip.
 - [x] Startup/turn diagnostics hotfix: routing-meta activity timeline labels now include selected strategy and tool counts (`strategy`, `selected/total`) instead of a generic `route strategy` marker.
 - [x] Stabilization hotfix: finalize-time execution blocker now skips cached-evidence substitution for explicit tool-capability questions (for example `eventlog_evtx_query?`), preserving direct conversational/tool-availability answers.
+- [x] Startup perf hotfix: plugin duplicate detection now has a loaded-assembly fast-path (skip before dependency preload/reflection), reducing first-session tool bootstrap stalls and preventing avoidable reconnect churn during deferred metadata sync.
 
 ## Hard Decisions (Locked)
 

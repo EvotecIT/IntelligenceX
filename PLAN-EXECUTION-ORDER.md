@@ -37,6 +37,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Startup visibility hotfix: header chip diagnostics now maintain a bounded runtime lifecycle timeline (tooltip + debug panel) across connect/auth/bootstrap transitions.
 - [x] Stabilization hotfix: routing-meta activity timeline labels now include strategy + selected/total tool counts for explicit route-stage observability.
 - [x] Stabilization hotfix: explicit tool-capability questions now bypass finalize-time execution-blocker cached-evidence substitution, preventing stale evidence fallbacks on `tool_name?` clarification turns.
+- [x] Stabilization hotfix: carryover structured-next-action auto-replay now skips compact contextual scope-shift follow-ups (for example "other DCs"), forcing fresh routing instead of stale single-host replay.
+- [x] Startup perf hotfix: plugin duplicate packs are now skipped via loaded-assembly fast-path before dependency preload/reflection, cutting avoidable bootstrap latency on first metadata sync.
 
 ## Rules For This Migration
 
