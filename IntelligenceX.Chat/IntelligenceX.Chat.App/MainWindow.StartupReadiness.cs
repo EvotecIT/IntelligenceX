@@ -34,6 +34,13 @@ public sealed partial class MainWindow : Window {
         return metadataSyncAlreadyQueued && requestRerunIfBusy;
     }
 
+    internal static bool ShouldDispatchDeferredStartupMetadataSyncRerun(
+        bool rerunRequested,
+        bool shutdownRequested,
+        bool isConnected) {
+        return rerunRequested && !shutdownRequested && isConnected;
+    }
+
     private static string NormalizeStartupMetadataSyncPhase(string? phase) {
         var normalized = (phase ?? string.Empty).Trim();
         return normalized.Length == 0 ? "syncing startup metadata" : normalized;

@@ -664,9 +664,11 @@ public sealed partial class MainWindow : Window {
                 }
                 Interlocked.Exchange(ref _startupConnectMetadataDeferredQueued, 0);
                 Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
-                if (Interlocked.Exchange(ref _startupConnectMetadataDeferredRerunRequested, 0) != 0
-                    && !_shutdownRequested
-                    && _isConnected) {
+                var shouldDispatchRerun = ShouldDispatchDeferredStartupMetadataSyncRerun(
+                    rerunRequested: Interlocked.Exchange(ref _startupConnectMetadataDeferredRerunRequested, 0) != 0,
+                    shutdownRequested: _shutdownRequested,
+                    isConnected: _isConnected);
+                if (shouldDispatchRerun) {
                     StartupLog.Write("StartupConnect.metadata_sync rerun_dispatch");
                     QueueDeferredStartupConnectMetadataSync();
                 }
