@@ -154,7 +154,7 @@ public sealed class EventLogNamedEventsCatalogTool : EventLogToolBase, ITool {
             Items: selectedRows);
 
         var response = ToolResultV2.OkAutoTableResponse(
-            arguments: context.Arguments,
+            arguments: SanitizeProjectionArguments(context.Arguments, selectedRows),
             model: result,
             sourceRows: selectedRows,
             viewRowsPath: "items_view",

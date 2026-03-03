@@ -190,8 +190,9 @@ public sealed class EventLogTopEventsTool : EventLogToolBase, ITool {
                 logName: request.LogName);
         }
 
+        var tableArguments = SanitizeProjectionArguments(context.Arguments, root!.Events);
         return ToolResultV2.OkAutoTableResponse(
-            arguments: context.Arguments,
+            arguments: tableArguments,
             model: root!,
             sourceRows: root!.Events,
             viewRowsPath: "events_view",

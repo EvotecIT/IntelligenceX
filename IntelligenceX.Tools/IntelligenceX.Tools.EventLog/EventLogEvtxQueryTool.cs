@@ -230,7 +230,7 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
         }
 
         var response = ToolResultV2.OkAutoTableResponse(
-            arguments: context.Arguments,
+            arguments: SanitizeProjectionArguments(context.Arguments, root.Events),
             model: root,
             sourceRows: root.Events,
             viewRowsPath: "events_view",

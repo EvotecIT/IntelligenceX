@@ -382,6 +382,16 @@ public abstract class EventLogToolBase : ToolBase {
     }
 
     /// <summary>
+    /// Sanitizes projection arguments (<c>columns</c>/<c>sort_by</c>) against the row model for Event Log tools.
+    /// </summary>
+    protected static JsonObject? SanitizeProjectionArguments<TRow>(JsonObject? arguments, IReadOnlyList<TRow> sourceRows) {
+        _ = sourceRows;
+        return EventLogProjectionArgumentSanitizer.SanitizeProjectionArguments(
+            arguments,
+            ToolAutoTableColumns.GetColumnKeys<TRow>());
+    }
+
+    /// <summary>
     /// Adds language-neutral chaining/discovery metadata for read-only event-log triage tools.
     /// </summary>
     protected static void AddReadOnlyTriageChainingMeta(

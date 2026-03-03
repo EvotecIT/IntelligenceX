@@ -274,7 +274,7 @@ public sealed class EventLogEvtxFindTool : EventLogToolBase, ITool {
             Truncated: truncated);
 
         return ToolResultV2.OkAutoTableResponse(
-            arguments: arguments,
+            arguments: SanitizeProjectionArguments(arguments, selected),
             model: result,
             sourceRows: selected,
             viewRowsPath: "files_view",

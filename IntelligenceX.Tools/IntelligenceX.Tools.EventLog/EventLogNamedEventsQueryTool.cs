@@ -275,7 +275,7 @@ public sealed class EventLogNamedEventsQueryTool : EventLogToolBase, ITool {
             Confidence: chain.Confidence);
 
         return ToolResultV2.OkAutoTableResponse(
-            arguments: context.Arguments,
+            arguments: SanitizeProjectionArguments(context.Arguments, rows),
             model: result,
             sourceRows: rows,
             viewRowsPath: "events_view",
