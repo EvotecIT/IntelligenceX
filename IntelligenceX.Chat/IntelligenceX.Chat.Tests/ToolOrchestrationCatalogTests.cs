@@ -110,6 +110,130 @@ public sealed class ToolOrchestrationCatalogTests {
     }
 
     [Fact]
+    public void Build_ProjectsReadOnlyCollections_ForEntryAndIndexes() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "custom_pack_info",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RolePackInfo
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupHintKeys = new[] { "needs_auth" },
+                    Requirements = new[] {
+                        new ToolSetupRequirement {
+                            RequirementId = "auth.session",
+                            Kind = ToolSetupRequirementKinds.Authentication
+                        }
+                    }
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "dnsclientx",
+                            TargetToolName = "dns_lookup",
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "host",
+                                    TargetArgument = "target"
+                                }
+                            }
+                        }
+                    }
+                }),
+            CreateDefinition(
+                name: "custom_operational_query",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("custom_pack_info", out var entry));
+        var setupRequirementIds = Assert.IsAssignableFrom<IList<string>>(entry.SetupRequirementIds);
+        Assert.Throws<NotSupportedException>(() => setupRequirementIds[0] = "tampered");
+        Assert.Equal("auth.session", entry.SetupRequirementIds[0]);
+
+        var handoffBindingPairs = Assert.IsAssignableFrom<IList<string>>(entry.HandoffEdges[0].BindingPairs);
+        Assert.Throws<NotSupportedException>(() => handoffBindingPairs[0] = "tampered->tampered");
+        Assert.Equal("host->target", entry.HandoffEdges[0].BindingPairs[0]);
+
+        var handoffEdges = Assert.IsAssignableFrom<IList<ToolOrchestrationHandoffEdge>>(entry.HandoffEdges);
+        Assert.Throws<NotSupportedException>(() => handoffEdges.Add(new ToolOrchestrationHandoffEdge()));
+
+        var byPack = Assert.IsAssignableFrom<IList<ToolOrchestrationCatalogEntry>>(catalog.GetByPackId("customx"));
+        Assert.Throws<NotSupportedException>(() => byPack.Clear());
+    }
+
+    [Fact]
+    public void Build_DefensivelyCopiesProjectedCollections_FromDefinitionContracts() {
+        var definition = CreateDefinition(
+            name: "custom_pack_info",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupHintKeys = new[] { "needs_auth" },
+                Requirements = new[] {
+                    new ToolSetupRequirement {
+                        RequirementId = "auth.session",
+                        Kind = ToolSetupRequirementKinds.Authentication
+                    }
+                }
+            },
+            handoff: new ToolHandoffContract {
+                IsHandoffAware = true,
+                OutboundRoutes = new[] {
+                    new ToolHandoffRoute {
+                        TargetPackId = "dnsclientx",
+                        TargetToolName = "dns_lookup",
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "host",
+                                TargetArgument = "target"
+                            }
+                        }
+                    }
+                }
+            },
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                RetryableErrorCodes = new[] { "timeout" },
+                AlternateEngineIds = new[] { "cim" }
+            });
+
+        var catalog = ToolOrchestrationCatalog.Build(new[] { definition });
+        Assert.True(catalog.TryGetEntry("custom_pack_info", out var entryBeforeMutation));
+
+        definition.Setup!.SetupHintKeys = new[] { "mutated_hint" };
+        definition.Setup.Requirements![0].RequirementId = "mutated.id";
+        definition.Setup.Requirements[0].Kind = "mutated.kind";
+        definition.Handoff!.OutboundRoutes![0].Bindings![0].SourceField = "mutated_source";
+        definition.Handoff.OutboundRoutes[0].Bindings[0].TargetArgument = "mutated_target";
+        definition.Recovery!.RetryableErrorCodes = new[] { "mutated_error" };
+        definition.Recovery.AlternateEngineIds = new[] { "mutated_engine" };
+
+        Assert.True(catalog.TryGetEntry("custom_pack_info", out var entryAfterMutation));
+        Assert.Equal(new[] { "auth.session" }, entryAfterMutation.SetupRequirementIds);
+        Assert.Equal(new[] { ToolSetupRequirementKinds.Authentication }, entryAfterMutation.SetupRequirementKinds);
+        Assert.Equal(new[] { "needs_auth" }, entryAfterMutation.SetupHintKeys);
+        Assert.Equal(new[] { "host->target" }, entryAfterMutation.HandoffEdges[0].BindingPairs);
+        Assert.Equal(new[] { "timeout" }, entryAfterMutation.RetryableErrorCodes);
+        Assert.Equal(new[] { "cim" }, entryAfterMutation.AlternateEngineIds);
+        Assert.Equal(entryBeforeMutation, entryAfterMutation);
+    }
+
+    [Fact]
     public void Build_DoesNotAssignPackWhenRoutingPackIsMissing() {
         var definitions = new[] {
             CreateDefinition(

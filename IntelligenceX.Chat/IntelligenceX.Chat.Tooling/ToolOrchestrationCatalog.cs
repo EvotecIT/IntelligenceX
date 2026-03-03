@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using IntelligenceX.Tools;
 
@@ -203,20 +204,21 @@ public sealed record ToolOrchestrationCatalogEntry {
 /// Contract-first orchestration catalog built from tool definitions.
 /// </summary>
 public sealed class ToolOrchestrationCatalog {
-    private readonly Dictionary<string, ToolOrchestrationCatalogEntry> _entriesByToolName;
-    private readonly Dictionary<string, ToolOrchestrationCatalogEntry[]> _entriesByPackId;
-    private readonly Dictionary<string, ToolOrchestrationCatalogEntry[]> _entriesByRole;
-    private readonly Dictionary<string, ToolOrchestrationCatalogEntry[]> _entriesByPackAndRole;
+    private readonly IReadOnlyDictionary<string, ToolOrchestrationCatalogEntry> _entriesByToolName;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByPackId;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByRole;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByPackAndRole;
 
     private ToolOrchestrationCatalog(
         Dictionary<string, ToolOrchestrationCatalogEntry> entriesByToolName,
-        Dictionary<string, ToolOrchestrationCatalogEntry[]> entriesByPackId,
-        Dictionary<string, ToolOrchestrationCatalogEntry[]> entriesByRole,
-        Dictionary<string, ToolOrchestrationCatalogEntry[]> entriesByPackAndRole) {
-        _entriesByToolName = entriesByToolName;
-        _entriesByPackId = entriesByPackId;
-        _entriesByRole = entriesByRole;
-        _entriesByPackAndRole = entriesByPackAndRole;
+        Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> entriesByPackId,
+        Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> entriesByRole,
+        Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> entriesByPackAndRole) {
+        _entriesByToolName = new ReadOnlyDictionary<string, ToolOrchestrationCatalogEntry>(
+            new Dictionary<string, ToolOrchestrationCatalogEntry>(entriesByToolName, StringComparer.OrdinalIgnoreCase));
+        _entriesByPackId = FreezeEntryListDictionary(entriesByPackId);
+        _entriesByRole = FreezeEntryListDictionary(entriesByRole);
+        _entriesByPackAndRole = FreezeEntryListDictionary(entriesByPackAndRole);
     }
 
     /// <summary>
@@ -308,7 +310,7 @@ public sealed class ToolOrchestrationCatalog {
                         TargetToolName = NormalizeToken(route?.TargetToolName),
                         TargetRole = NormalizeToken(route?.TargetRole),
                         BindingCount = normalizedBindingPairs.Length,
-                        BindingPairs = normalizedBindingPairs
+                        BindingPairs = FreezeStringList(normalizedBindingPairs)
                     });
                 }
             }
@@ -360,8 +362,9 @@ public sealed class ToolOrchestrationCatalog {
                 .ThenBy(static edge => edge.TargetRole, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static edge => edge.TargetToolName, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+            var frozenHandoffEdges = FreezeHandoffEdges(normalizedHandoffEdges);
             var normalizedHandoffContractId = NormalizeToken(handoff?.HandoffContractId);
-            var isHandoffAware = handoff?.IsHandoffAware == true && normalizedHandoffEdges.Length > 0;
+            var isHandoffAware = handoff?.IsHandoffAware == true && frozenHandoffEdges.Count > 0;
             var normalizedRecoveryContractId = NormalizeToken(recovery?.RecoveryContractId);
             var maxRetryAttempts = Math.Max(0, recovery?.MaxRetryAttempts ?? 0);
             var supportsTransientRetry = recovery?.SupportsTransientRetry == true;
@@ -390,22 +393,22 @@ public sealed class ToolOrchestrationCatalog {
                 SetupRequirementCount = normalizedSetupRequirementPairs.Length,
                 SetupToolName = normalizedSetupToolName,
                 SetupContractId = NormalizeToken(setup?.SetupContractId),
-                SetupRequirementIds = normalizedSetupRequirementIds,
-                SetupRequirementKinds = normalizedSetupRequirementKinds,
-                SetupHintKeys = normalizedSetupHintKeys,
+                SetupRequirementIds = FreezeStringList(normalizedSetupRequirementIds),
+                SetupRequirementKinds = FreezeStringList(normalizedSetupRequirementKinds),
+                SetupHintKeys = FreezeStringList(normalizedSetupHintKeys),
                 IsHandoffAware = isHandoffAware,
-                HandoffRouteCount = normalizedHandoffEdges.Length,
+                HandoffRouteCount = frozenHandoffEdges.Count,
                 HandoffBindingCount = handoffBindingCount,
                 HandoffContractId = normalizedHandoffContractId,
-                HandoffEdges = normalizedHandoffEdges,
+                HandoffEdges = frozenHandoffEdges,
                 IsRecoveryAware = isRecoveryAware,
                 SupportsTransientRetry = supportsTransientRetry,
                 MaxRetryAttempts = maxRetryAttempts,
                 SupportsAlternateEngines = supportsAlternateEngines,
                 AlternateEngineCount = alternateEngineCount,
                 RecoveryContractId = normalizedRecoveryContractId,
-                RetryableErrorCodes = retryableErrorCodes,
-                AlternateEngineIds = alternateEngineIds
+                RetryableErrorCodes = FreezeStringList(retryableErrorCodes),
+                AlternateEngineIds = FreezeStringList(alternateEngineIds)
             };
         }
 
@@ -414,18 +417,14 @@ public sealed class ToolOrchestrationCatalog {
             .GroupBy(static entry => entry.PackId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 static group => group.Key,
-                static group => group
-                    .OrderBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
+                static group => FreezeEntryList(group.OrderBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)),
                 StringComparer.OrdinalIgnoreCase);
 
         var entriesByRole = entriesByToolName.Values
             .GroupBy(static entry => entry.Role, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 static group => group.Key,
-                static group => group
-                    .OrderBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
+                static group => FreezeEntryList(group.OrderBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)),
                 StringComparer.OrdinalIgnoreCase);
 
         var entriesByPackAndRole = entriesByToolName.Values
@@ -433,9 +432,7 @@ public sealed class ToolOrchestrationCatalog {
             .GroupBy(static entry => BuildPackRoleKey(entry.PackId, entry.Role), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 static group => group.Key,
-                static group => group
-                    .OrderBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
+                static group => FreezeEntryList(group.OrderBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)),
                 StringComparer.OrdinalIgnoreCase);
 
         return new ToolOrchestrationCatalog(entriesByToolName, entriesByPackId, entriesByRole, entriesByPackAndRole);
@@ -535,5 +532,64 @@ public sealed class ToolOrchestrationCatalog {
         return unique.Count == 0
             ? Array.Empty<string>()
             : unique.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static IReadOnlyList<string> FreezeStringList(IReadOnlyList<string> values) {
+        if (values is null || values.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var copy = new string[values.Count];
+        for (var i = 0; i < values.Count; i++) {
+            copy[i] = values[i];
+        }
+
+        return Array.AsReadOnly(copy);
+    }
+
+    private static IReadOnlyList<ToolOrchestrationHandoffEdge> FreezeHandoffEdges(
+        IReadOnlyList<ToolOrchestrationHandoffEdge> edges) {
+        if (edges is null || edges.Count == 0) {
+            return Array.Empty<ToolOrchestrationHandoffEdge>();
+        }
+
+        var copy = new ToolOrchestrationHandoffEdge[edges.Count];
+        for (var i = 0; i < edges.Count; i++) {
+            copy[i] = edges[i];
+        }
+
+        return Array.AsReadOnly(copy);
+    }
+
+    private static IReadOnlyList<ToolOrchestrationCatalogEntry> FreezeEntryList(
+        IEnumerable<ToolOrchestrationCatalogEntry> entries) {
+        if (entries is null) {
+            return Array.Empty<ToolOrchestrationCatalogEntry>();
+        }
+
+        var copy = entries.ToArray();
+        return copy.Length == 0
+            ? Array.Empty<ToolOrchestrationCatalogEntry>()
+            : Array.AsReadOnly(copy);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> FreezeEntryListDictionary(
+        IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> source) {
+        if (source is null || source.Count == 0) {
+            return new ReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>>(
+                new Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        var copy = new Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in source) {
+            var key = NormalizeToken(pair.Key);
+            if (key.Length == 0 || copy.ContainsKey(key)) {
+                continue;
+            }
+
+            copy[key] = FreezeEntryList(pair.Value);
+        }
+
+        return new ReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>>(copy);
     }
 }
