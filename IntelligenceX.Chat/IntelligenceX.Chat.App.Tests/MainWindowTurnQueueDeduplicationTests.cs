@@ -36,6 +36,20 @@ public sealed class MainWindowTurnQueueDeduplicationTests {
     }
 
     /// <summary>
+    /// One-sided empty conversation ids should still dedupe equivalent prompts captured during startup/login transition.
+    /// </summary>
+    [Fact]
+    public void AreQueuedPromptsEquivalentForDispatch_ReturnsTrue_WhenOneConversationIdIsMissing() {
+        var equivalent = MainWindow.AreQueuedPromptsEquivalentForDispatch(
+            leftText: "Hello Mr",
+            leftConversationId: string.Empty,
+            rightText: " hello   mr ",
+            rightConversationId: "thread-1");
+
+        Assert.True(equivalent);
+    }
+
+    /// <summary>
     /// Empty prompt text should never be treated as a deduplication match.
     /// </summary>
     [Fact]

@@ -460,7 +460,13 @@ public sealed partial class MainWindow : Window {
 
         var normalizedLeftConversationId = NormalizeQueuedPromptConversationId(leftConversationId);
         var normalizedRightConversationId = NormalizeQueuedPromptConversationId(rightConversationId);
-        return string.Equals(normalizedLeftConversationId, normalizedRightConversationId, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(normalizedLeftConversationId, normalizedRightConversationId, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        // Startup/login queue entries can be captured before a stable conversation id is assigned.
+        // Treat one-sided empty ids as equivalent to avoid double-dispatching the same user prompt.
+        return normalizedLeftConversationId.Length == 0 || normalizedRightConversationId.Length == 0;
     }
 
     private static string NormalizeQueuedPromptTextForDispatch(string? text) {
