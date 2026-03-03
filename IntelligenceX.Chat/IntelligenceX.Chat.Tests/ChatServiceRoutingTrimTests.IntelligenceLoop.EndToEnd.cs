@@ -509,6 +509,194 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_ReplaysCarryoverStructuredNextActionForCompactGoAheadFollowUp() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-carryover-seed-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_scope_discovery",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_discover_tool",
+                                        arguments = "{}"
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-carryover-seed-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Environment discovery completed for the requested scope. Do you want me to run the live follow-up now?"
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-carryover-followup-draft",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Confirmed. Scope evidence is sufficient."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            4 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-carryover-followup-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Follow-up execution completed from the queued read-only action."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_discover_tool",
+            static (_, _) => Task.FromResult("""
+                                             {"ok":true,"next_actions":[{"tool":"mock_followup_tool","mutating":false,"arguments":{"scope":"live"}}]}
+                                             """)));
+        registry.Register(new RoundTripStubTool(
+            "mock_followup_tool",
+            static (_, _) => Task.FromResult("""
+                                             {"ok":true,"summary_markdown":"follow-up completed"}
+                                             """)));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var turn1 = new ChatRequest {
+            RequestId = "req-carryover-seed",
+            ThreadId = thread.Id,
+            Text = "Discover the environment scope and return baseline evidence.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        using var captureTurn1 = new SynchronizedCaptureStream();
+        using var writerTurn1 = new StreamWriter(captureTurn1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResultTurn1 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerTurn1,
+            turn1,
+            thread.Id,
+            CancellationToken.None);
+        var resultMessageTurn1 = GetPropertyValue<ChatResultMessage>(runResultTurn1, "Result");
+        Assert.NotNull(resultMessageTurn1.Tools);
+        Assert.Single(resultMessageTurn1.Tools!.Calls);
+        Assert.Equal("mock_discover_tool", resultMessageTurn1.Tools.Calls[0].Name);
+
+        var turn2 = new ChatRequest {
+            RequestId = "req-carryover-followup",
+            ThreadId = thread.Id,
+            Text = "go ahead",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        using var captureTurn2 = new SynchronizedCaptureStream();
+        using var writerTurn2 = new StreamWriter(captureTurn2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResultTurn2 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerTurn2,
+            turn2,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.InRange(server.ChatCompletionRequestCount, 4, 6);
+
+        var resultMessageTurn2 = GetPropertyValue<ChatResultMessage>(runResultTurn2, "Result");
+        Assert.NotNull(resultMessageTurn2.Tools);
+        Assert.Single(resultMessageTurn2.Tools!.Calls);
+        Assert.Single(resultMessageTurn2.Tools.Outputs);
+        Assert.Equal("mock_followup_tool", resultMessageTurn2.Tools.Calls[0].Name);
+        Assert.StartsWith("host_carryover_next_action_", resultMessageTurn2.Tools.Calls[0].CallId, StringComparison.Ordinal);
+        Assert.Equal(resultMessageTurn2.Tools.Calls[0].CallId, resultMessageTurn2.Tools.Outputs[0].CallId);
+        var replayCallObservedInModelContext = false;
+        for (var i = 0; i < server.ChatCompletionRequestCount; i++) {
+            if (ContainsToolMessageForCallId(server.GetChatRequestBody(i), resultMessageTurn2.Tools.Calls[0].CallId)) {
+                replayCallObservedInModelContext = true;
+                break;
+            }
+        }
+
+        Assert.True(replayCallObservedInModelContext);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_AutoBootstrapsDomainEnvironmentAfterNoToolBlockerLoop() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => JsonSerializer.Serialize(new {
