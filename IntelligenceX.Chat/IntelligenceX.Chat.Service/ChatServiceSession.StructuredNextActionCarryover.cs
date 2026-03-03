@@ -10,6 +10,7 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int CarryoverHostHintMultiHostThreshold = 2;
+    private const string CarryoverAssistantHostHintsMarker = "\nixcarryoverassistanthosthints\n";
     private readonly record struct StructuredNextActionSnapshot(
         string ToolName,
         string ArgumentsJson,
@@ -133,6 +134,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var replayDecisionUserRequest = ExtractCarryoverReplayDecisionUserRequest(userRequest);
         if (HasCarryoverHostHintMismatch(userRequest, normalizedArguments)) {
             RemoveStructuredNextActionCarryover(normalizedThreadId);
             reason = "carryover_host_hint_mismatch";
@@ -141,7 +143,7 @@ internal sealed partial class ChatServiceSession {
 
         if (ShouldBlockSingleHostStructuredReplayForScopeShift(
                 normalizedThreadId,
-                userRequest,
+                replayDecisionUserRequest,
                 normalizedArguments)) {
             RemoveStructuredNextActionCarryover(normalizedThreadId);
             reason = "carryover_scope_shift_requires_fresh_plan";
@@ -151,7 +153,7 @@ internal sealed partial class ChatServiceSession {
         var serializedArguments = JsonLite.Serialize(normalizedArguments);
         if (ShouldBlockRepeatedCarryoverAutoReplay(
                 normalizedThreadId,
-                userRequest,
+                replayDecisionUserRequest,
                 snapshot.ToolName,
                 serializedArguments,
                 normalizedArguments)) {
@@ -474,6 +476,10 @@ internal sealed partial class ChatServiceSession {
     private static string BuildCarryoverHostHintInput(string userRequest, string assistantDraft) {
         var request = (userRequest ?? string.Empty).Trim();
         var draft = (assistantDraft ?? string.Empty).Trim();
+        if (request.Length == 0 && draft.Length == 0) {
+            return string.Empty;
+        }
+
         if (draft.Length == 0) {
             return request;
         }
@@ -484,10 +490,24 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (request.Length == 0) {
-            return draft;
+            return CarryoverAssistantHostHintsMarker + draft;
         }
 
-        return request + "\n" + draft;
+        return request + CarryoverAssistantHostHintsMarker + draft;
+    }
+
+    private static string ExtractCarryoverReplayDecisionUserRequest(string userRequest) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var markerIndex = normalized.IndexOf(CarryoverAssistantHostHintsMarker, StringComparison.Ordinal);
+        if (markerIndex < 0) {
+            return normalized;
+        }
+
+        return normalized[..markerIndex].Trim();
     }
 
     internal static string BuildCarryoverHostHintInputForTesting(string userRequest, string assistantDraft) {
