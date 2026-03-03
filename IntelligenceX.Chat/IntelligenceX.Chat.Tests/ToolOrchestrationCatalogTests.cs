@@ -157,6 +157,40 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Empty(publicEntry.HandoffEdges);
     }
 
+    [Fact]
+    public void Build_NormalizesHandoffCountersAgainstProjectedBindings() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "custom_pack_info",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RolePackInfo
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "dnsclientx",
+                            TargetToolName = "dns_lookup",
+                            Bindings = new[] {
+                                new ToolHandoffBinding { SourceField = "host", TargetArgument = "target" },
+                                new ToolHandoffBinding { SourceField = "HOST", TargetArgument = "TARGET" }
+                            }
+                        }
+                    }
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("custom_pack_info", out var entry));
+        Assert.Equal(1, entry.HandoffRouteCount);
+        Assert.Equal(1, entry.HandoffBindingCount);
+        Assert.Single(entry.HandoffEdges);
+        Assert.Equal(1, entry.HandoffEdges[0].BindingCount);
+        Assert.Equal(new[] { "host->target" }, entry.HandoffEdges[0].BindingPairs);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolRoutingContract? routing = null,

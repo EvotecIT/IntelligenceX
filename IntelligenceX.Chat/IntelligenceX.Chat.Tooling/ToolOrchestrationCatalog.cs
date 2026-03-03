@@ -281,7 +281,6 @@ public sealed class ToolOrchestrationCatalog {
                         continue;
                     }
 
-                    handoffBindingCount += bindings.Count;
                     var bindingPairs = new List<string>(bindings.Count);
                     for (var bindingIndex = 0; bindingIndex < bindings.Count; bindingIndex++) {
                         var binding = bindings[bindingIndex];
@@ -294,12 +293,14 @@ public sealed class ToolOrchestrationCatalog {
                         bindingPairs.Add(source + "->" + target);
                     }
 
+                    var normalizedBindingPairs = NormalizeDistinctTokens(bindingPairs);
+                    handoffBindingCount += normalizedBindingPairs.Length;
                     handoffEdges.Add(new ToolOrchestrationHandoffEdge {
                         TargetPackId = NormalizePackId(route?.TargetPackId),
                         TargetToolName = NormalizeToken(route?.TargetToolName),
                         TargetRole = NormalizeToken(route?.TargetRole),
-                        BindingCount = bindings.Count,
-                        BindingPairs = NormalizeDistinctTokens(bindingPairs)
+                        BindingCount = normalizedBindingPairs.Length,
+                        BindingPairs = normalizedBindingPairs
                     });
                 }
             }
@@ -329,6 +330,11 @@ public sealed class ToolOrchestrationCatalog {
             var retryableErrorCodes = NormalizeDistinctTokens(recovery?.RetryableErrorCodes);
             var alternateEngineIds = NormalizeDistinctTokens(recovery?.AlternateEngineIds);
             var alternateEngineCount = alternateEngineIds.Length;
+            var normalizedHandoffEdges = handoffEdges
+                .OrderBy(static edge => edge.TargetPackId, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static edge => edge.TargetRole, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static edge => edge.TargetToolName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
             entriesByToolName[toolName] = new ToolOrchestrationCatalogEntry {
                 ToolName = toolName,
@@ -350,14 +356,10 @@ public sealed class ToolOrchestrationCatalog {
                 SetupRequirementKinds = NormalizeDistinctTokens(setupRequirementKinds),
                 SetupHintKeys = NormalizeDistinctTokens(setupHintKeys),
                 IsHandoffAware = handoff?.IsHandoffAware == true,
-                HandoffRouteCount = handoff?.OutboundRoutes?.Count ?? 0,
+                HandoffRouteCount = normalizedHandoffEdges.Length,
                 HandoffBindingCount = handoffBindingCount,
                 HandoffContractId = NormalizeToken(handoff?.HandoffContractId),
-                HandoffEdges = handoffEdges
-                    .OrderBy(static edge => edge.TargetPackId, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(static edge => edge.TargetRole, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(static edge => edge.TargetToolName, StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
+                HandoffEdges = normalizedHandoffEdges,
                 IsRecoveryAware = recovery?.IsRecoveryAware == true,
                 SupportsTransientRetry = recovery?.SupportsTransientRetry == true,
                 MaxRetryAttempts = Math.Max(0, recovery?.MaxRetryAttempts ?? 0),
