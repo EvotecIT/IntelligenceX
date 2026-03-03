@@ -107,6 +107,7 @@ internal sealed partial class ChatServiceSession {
                     && toolOutputs.Count == 0
                     && TryBuildCarryoverStructuredNextActionToolCall(
                         threadId: threadId,
+                        userRequest: routedUserRequest,
                         toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
                         mutatingToolHintsByName: mutatingToolHints,
                         out var carryoverStructuredNextActionCall,

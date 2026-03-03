@@ -9,6 +9,15 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] PR #985 merged (`2f649d62d164185755c19e33906a7064ae4ff132`): contract-first pack toggles, startup bootstrap visibility, and migration hardening are now on `master`.
 - [x] PR #986 merged (`4db3931ac8cbb753da7ff160311a4f8e0d6904a3`): removed planner prompt pack-hint inference (`pack`/`pack_aliases`) to keep Chat planner context generic.
 
+## Audit Update (2026-03-03)
+
+- [x] Stabilization hotfix: structured-next-action carryover replay now blocks stale self-loop replays and host-hint-conflicting replays.
+- [x] Stabilization hotfix: startup deferred metadata no longer skips metadata sync solely due to initial unauthenticated state.
+- [x] Stabilization hotfix: bootstrap progress status can publish while connected startup metadata sync is still active.
+- [ ] Re-opened migration gap: `ToolPackBootstrap` remains known-pack hardcoded rather than fully manifest/plugin-driven.
+- [ ] Re-opened migration gap: `ChatServiceSession.PackCapabilityFallback.HostHints.cs` still exists and should be either removed or renamed/re-scoped to avoid fallback-era ambiguity.
+- [ ] Re-opened startup perf gap: tooling bootstrap is still session-scoped (`new ChatServiceSession(...)` path), so reconnects may pay full bootstrap cost.
+
 ## Rules For This Migration
 
 - [ ] Keep each PR focused to one objective and one rollback boundary.
@@ -209,6 +218,25 @@ Checklist:
 - [ ] Validate final DoD from `PLAN.md`.
 
 Dependency: PR 8, PR 10
+
+### PR 12 - Startup Perf And Decoupling Reality-Close
+
+Files (expected):
+
+- `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceServer.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.Service/ChatServiceSession*.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.Tooling/ToolPackBootstrap*.cs`
+- `IntelligenceX.Chat/IntelligenceX.Chat.App/MainWindow*.cs`
+- `PLAN.md`
+- `PLAN-EXECUTION-ORDER.md`
+
+Checklist:
+
+- [ ] Move tooling bootstrap out of per-connection session constructor into reusable runtime cache/lifecycle.
+- [ ] Keep startup status truthful: do not surface "ready" semantics until metadata/auth probes settle or explicitly fail-open with reason.
+- [ ] Replace hardcoded known-pack bootstrap chain with descriptor/manifest-driven registration.
+- [ ] Remove/rename fallback-era host-hint file so architecture guardrails match current source layout.
+- [ ] Add regression tests for reconnect warm path and multi-turn follow-up carryover against host scope changes.
 
 ## Parallelization Map
 

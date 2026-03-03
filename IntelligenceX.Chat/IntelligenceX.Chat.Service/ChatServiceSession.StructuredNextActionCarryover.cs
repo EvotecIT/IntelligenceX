@@ -63,6 +63,11 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        if (HasEquivalentToolCallArguments(toolCalls, nextTool, toolDefinition, normalizedArguments)) {
+            RemoveStructuredNextActionCarryover(normalizedThreadId);
+            return;
+        }
+
         var snapshot = new StructuredNextActionSnapshot(
             ToolName: nextTool,
             ArgumentsJson: JsonLite.Serialize(normalizedArguments),
@@ -77,6 +82,7 @@ internal sealed partial class ChatServiceSession {
 
     private bool TryBuildCarryoverStructuredNextActionToolCall(
         string threadId,
+        string userRequest,
         IReadOnlyList<ToolDefinition> toolDefinitions,
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out ToolCall toolCall,
@@ -120,6 +126,12 @@ internal sealed partial class ChatServiceSession {
         if (!TryParseStructuredNextActionArguments(snapshot.ArgumentsJson, toolDefinition, out var normalizedArguments, out var argumentReason)) {
             RemoveStructuredNextActionCarryover(normalizedThreadId);
             reason = "carryover_" + argumentReason;
+            return false;
+        }
+
+        if (HasCarryoverHostHintMismatch(userRequest, normalizedArguments)) {
+            RemoveStructuredNextActionCarryover(normalizedThreadId);
+            reason = "carryover_host_hint_mismatch";
             return false;
         }
 
@@ -228,5 +240,59 @@ internal sealed partial class ChatServiceSession {
             TrimWeightedRoutingContextsNoLock();
         }
         RemoveStructuredNextActionSnapshot(normalizedThreadId);
+    }
+
+    private static bool HasEquivalentToolCallArguments(
+        IReadOnlyList<ToolCallDto> toolCalls,
+        string toolName,
+        ToolDefinition toolDefinition,
+        JsonObject normalizedArguments) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0 || toolCalls.Count == 0) {
+            return false;
+        }
+
+        var normalizedArgumentsJson = JsonLite.Serialize(normalizedArguments);
+        for (var i = toolCalls.Count - 1; i >= 0; i--) {
+            var call = toolCalls[i];
+            var callName = (call.Name ?? string.Empty).Trim();
+            if (!string.Equals(callName, normalizedToolName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (!TryParseStructuredNextActionArguments(
+                    call.ArgumentsJson,
+                    toolDefinition,
+                    out var existingArguments,
+                    out _)) {
+                continue;
+            }
+
+            if (string.Equals(JsonLite.Serialize(existingArguments), normalizedArgumentsJson, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasCarryoverHostHintMismatch(string userRequest, JsonObject normalizedArguments) {
+        var userHostHints = CollectHostHintsFromUserRequest(userRequest);
+        if (userHostHints.Length == 0) {
+            return false;
+        }
+
+        var carryoverTargets = ExtractHostScopedTargets(normalizedArguments);
+        if (carryoverTargets.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < carryoverTargets.Length; i++) {
+            if (HostMatchesAnyCandidate(carryoverTargets[i], userHostHints)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

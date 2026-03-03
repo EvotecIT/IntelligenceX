@@ -308,16 +308,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
             session,
             new object?[] { "thread-carryover", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
 
-        var args = new object?[] { "thread-carryover", toolDefinitions, mutabilityHints, null, null };
+        var args = new object?[] { "thread-carryover", "go ahead", toolDefinitions, mutabilityHints, null, null };
         var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var toolCall = Assert.IsType<ToolCall>(args[3]);
+        var toolCall = Assert.IsType<ToolCall>(args[4]);
         Assert.Equal("ad_scope_discovery", toolCall.Name);
         Assert.NotNull(toolCall.Arguments);
         Assert.True(toolCall.Arguments!.GetBoolean("include_trusts", defaultValue: false));
         Assert.Equal(3, toolCall.Arguments.GetInt64("max_domains"));
-        Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(args[4]));
+        Assert.Equal("carryover_structured_next_action_readonly_autorun", Assert.IsType<string>(args[5]));
     }
 
     [Fact]
@@ -345,11 +345,101 @@ public sealed partial class ChatServiceRoutingTrimTests {
             session,
             new object?[] { "thread-carryover-mut", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
 
-        var args = new object?[] { "thread-carryover-mut", toolDefinitions, mutabilityHints, null, null };
+        var args = new object?[] { "thread-carryover-mut", "continue", toolDefinitions, mutabilityHints, null, null };
         var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("carryover_missing", Assert.IsType<string>(args[4]));
+        Assert.Equal("carryover_missing", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
+    public void RememberStructuredNextActionCarryover_DoesNotPersistSelfLoopArguments() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-loop",
+                Name = "eventlog_live_query",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-loop",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-loop", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var args = new object?[] { "thread-carryover-loop", "go ahead", toolDefinitions, mutabilityHints, null, null };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_missing", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
+    public void TryBuildCarryoverStructuredNextActionToolCall_SkipsWhenUserHostHintConflicts() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-evx-top",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-evx-top",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+
+        RememberStructuredNextActionCarryoverMethod.Invoke(
+            session,
+            new object?[] { "thread-carryover-host", toolDefinitions, toolCalls, toolOutputs, mutabilityHints });
+
+        var args = new object?[] {
+            "thread-carryover-host",
+            "Run this against AD1.ad.evotec.xyz now.",
+            toolDefinitions,
+            mutabilityHints,
+            null,
+            null
+        };
+        var result = TryBuildCarryoverStructuredNextActionToolCallMethod.Invoke(session, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("carryover_host_hint_mismatch", Assert.IsType<string>(args[5]));
     }
 
     [Fact]

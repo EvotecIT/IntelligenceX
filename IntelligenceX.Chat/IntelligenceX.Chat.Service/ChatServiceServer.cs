@@ -7,6 +7,7 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed class ChatServiceServer {
     private readonly ServiceOptions _options;
+    private readonly ChatServiceToolingBootstrapCache _toolingBootstrapCache = new();
 
     public ChatServiceServer(ServiceOptions options) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -30,7 +31,7 @@ internal sealed class ChatServiceServer {
             await server.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
             Console.WriteLine("Client connected.");
 
-            var session = new ChatServiceSession(_options, server);
+            var session = new ChatServiceSession(_options, server, _toolingBootstrapCache);
             try {
                 await session.RunAsync(cancellationToken).ConfigureAwait(false);
             } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {

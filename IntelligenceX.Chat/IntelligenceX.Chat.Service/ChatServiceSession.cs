@@ -49,6 +49,7 @@ internal sealed partial class ChatServiceSession {
     private static readonly TimeSpan StartupToolHealthHelloWaitBudget = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan NativeUsageRefreshInterval = TimeSpan.FromMinutes(1);
     private readonly ServiceOptions _options;
+    private readonly ChatServiceToolingBootstrapCache? _toolingBootstrapCache;
     private readonly Stream _stream;
     private ToolRegistry _registry;
     private IReadOnlyList<IToolPack> _packs;
@@ -104,8 +105,9 @@ internal sealed partial class ChatServiceSession {
     private static readonly Regex UserRequestSectionRegex =
         new(@"\bUser request:\s*(?<value>[\s\S]+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    public ChatServiceSession(ServiceOptions options, Stream stream) {
+    public ChatServiceSession(ServiceOptions options, Stream stream, ChatServiceToolingBootstrapCache? toolingBootstrapCache = null) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _toolingBootstrapCache = toolingBootstrapCache;
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         RebuildToolingCore(clearRoutingCaches: false);
 

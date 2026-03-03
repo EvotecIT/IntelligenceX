@@ -52,6 +52,29 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public void Constructor_UsesSharedToolingBootstrapCache_WhenProvided() {
+        var startupBootstrapField = typeof(ChatServiceSession).GetField("_startupBootstrap", BindingFlags.NonPublic | BindingFlags.Instance);
+        var startupWarningsField = typeof(ChatServiceSession).GetField("_startupWarnings", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(startupBootstrapField);
+        Assert.NotNull(startupWarningsField);
+
+        var cache = new ChatServiceToolingBootstrapCache();
+
+        var firstSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
+        var firstBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(firstSession));
+        Assert.NotEmpty(firstBootstrap.Phases);
+        Assert.NotEqual("cache_hit", firstBootstrap.Phases[0].Id);
+
+        var secondSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
+        var secondBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField.GetValue(secondSession));
+        Assert.Single(secondBootstrap.Phases);
+        Assert.Equal("cache_hit", secondBootstrap.Phases[0].Id);
+
+        var secondWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(secondSession));
+        Assert.Contains(secondWarnings, static warning => warning.Contains("tooling bootstrap cache hit", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void SummarizeSlowPluginLoadWarnings_CompressesAndSortsTopEntries() {
         var method = typeof(ChatServiceSession).GetMethod(
             "SummarizeSlowPluginLoadWarnings",

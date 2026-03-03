@@ -169,7 +169,7 @@ public sealed partial class MainWindow : Window {
         return deferStartupMetadataSync
                && requiresInteractiveSignIn
                && !isAuthenticated
-               && !loginInProgress;
+               && loginInProgress;
     }
 
     internal readonly record struct DeferredStartupMetadataPlan(

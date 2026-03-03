@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -235,12 +236,35 @@ public sealed partial class MainWindow {
         }
 
         _ = _dispatcher.TryEnqueue(() => {
-            if (_shutdownRequested || _isConnected || _isSending || _turnStartupInProgress) {
+            var startupMetadataSyncInProgress = Volatile.Read(ref _startupMetadataSyncInProgress) != 0;
+            if (!ShouldPublishServiceBootstrapStatus(
+                    shutdownRequested: _shutdownRequested,
+                    isConnected: _isConnected,
+                    isSending: _isSending,
+                    turnStartupInProgress: _turnStartupInProgress,
+                    startupMetadataSyncInProgress: startupMetadataSyncInProgress)) {
                 return;
             }
 
             _ = SetStatusAsync(statusText, SessionStatusTone.Warn);
         });
+    }
+
+    internal static bool ShouldPublishServiceBootstrapStatus(
+        bool shutdownRequested,
+        bool isConnected,
+        bool isSending,
+        bool turnStartupInProgress,
+        bool startupMetadataSyncInProgress) {
+        if (shutdownRequested || isSending || turnStartupInProgress) {
+            return false;
+        }
+
+        if (!isConnected) {
+            return true;
+        }
+
+        return startupMetadataSyncInProgress;
     }
 
     internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText) {

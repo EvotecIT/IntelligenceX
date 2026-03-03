@@ -40,6 +40,15 @@ Build a contract-first architecture where:
 - [x] Regression coverage added for legacy pack-toggle migration and unknown-required-column insert backfill behavior.
 - [x] PR #986 merged: planner prompt no longer emits inferred `pack`/`pack_aliases`; Chat planner context stays generic (`category`/`family`/`tags`) while routing search tokens remain metadata-backed.
 
+## Audit Corrections (2026-03-03)
+
+- [ ] Re-opened: Chat bootstrap still carries a hardcoded known-pack table (`testimox`, `dnsclientx`, `domaindetective`, etc.) in `ToolPackBootstrap`; this is not yet fully plugin/manifest-driven.
+- [ ] Re-opened: `ChatServiceSession.PackCapabilityFallback.HostHints.cs` still exists and is reused by active host-hint logic; fallback helper deletion is incomplete (or needs rename/re-scope to match current intent).
+- [x] Hotfix landed: stale structured-next-action carryover replay now suppresses self-loop replays (same tool + equivalent args) and rejects host-hint-conflicting carryover execution.
+- [x] Hotfix landed: deferred startup metadata flow no longer skips metadata sync purely because authentication is initially unknown (skip now applies only when interactive login is already in progress).
+- [x] Hotfix landed: startup bootstrap status publishing now stays visible while connected startup metadata sync is in progress.
+- [ ] Re-opened: service still rebuilds tooling in each `ChatServiceSession` constructor; repeated connect/disconnect cycles can re-trigger full pack bootstrap cost.
+
 ## Hard Decisions (Locked)
 
 - [x] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).

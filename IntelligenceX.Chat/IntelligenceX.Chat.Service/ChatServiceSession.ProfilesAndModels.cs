@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -606,6 +607,16 @@ internal sealed partial class ChatServiceSession {
         nameof(_routingCatalogDiagnostics),
         nameof(_toolOrchestrationCatalog))]
     private void RebuildToolingCore(bool clearRoutingCaches) {
+        var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
+        var bootstrapCacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions);
+        if (!clearRoutingCaches
+            && _toolingBootstrapCache is not null
+            && _toolingBootstrapCache.TryGetSnapshot(bootstrapCacheKey, out var cachedSnapshot)) {
+            var cacheHitStopwatch = Stopwatch.StartNew();
+            ApplyToolingBootstrapCacheSnapshot(cachedSnapshot, clearRoutingCaches, cacheHitStopwatch.Elapsed);
+            return;
+        }
+
         var startupWarnings = new List<string>();
         var totalStopwatch = Stopwatch.StartNew();
         static string FormatElapsed(TimeSpan elapsed) {
@@ -616,7 +627,7 @@ internal sealed partial class ChatServiceSession {
 
         var runtimePolicyStopwatch = Stopwatch.StartNew();
         var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
-            BuildRuntimePolicyOptions(_options),
+            runtimePolicyOptions,
             warning => RecordBootstrapWarning(startupWarnings, warning));
         runtimePolicyStopwatch.Stop();
 
@@ -722,11 +733,13 @@ internal sealed partial class ChatServiceSession {
         var warningSummary = SummarizeStartupLoadWarnings(startupWarnings);
         var warnings = NormalizeDistinctStrings(startupWarnings, maxItems: 64);
 
-        _packs = bootstrapResult.Packs;
-        _packAvailability = bootstrapResult.PackAvailability.ToArray();
+        var packs = bootstrapResult.Packs.ToArray();
+        var packAvailability = bootstrapResult.PackAvailability.ToArray();
+        _packs = packs;
+        _packAvailability = packAvailability;
         _pluginSearchPaths = pluginSearchPaths;
         _startupWarnings = warnings;
-        _startupBootstrap = new SessionStartupBootstrapTelemetryDto {
+        var startupBootstrap = new SessionStartupBootstrapTelemetryDto {
             TotalMs = totalMs,
             RuntimePolicyMs = runtimePolicyMs,
             BootstrapOptionsMs = bootstrapOptionsMs,
@@ -755,13 +768,129 @@ internal sealed partial class ChatServiceSession {
             SlowestPhaseLabel = slowestPhase?.Label,
             SlowestPhaseMs = slowestPhase?.DurationMs ?? 0
         };
+        _startupBootstrap = startupBootstrap;
         _registry = registry;
+
+        _toolingBootstrapCache?.StoreSnapshot(
+            bootstrapCacheKey,
+            new ChatServiceToolingBootstrapSnapshot {
+                Registry = registry,
+                Packs = packs,
+                PackAvailability = packAvailability,
+                StartupWarnings = warnings,
+                StartupBootstrap = startupBootstrap,
+                PluginSearchPaths = pluginSearchPaths,
+                RuntimePolicyDiagnostics = _runtimePolicyDiagnostics,
+                RoutingCatalogDiagnostics = _routingCatalogDiagnostics,
+                ToolOrchestrationCatalog = _toolOrchestrationCatalog
+            });
 
         UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();
         }
+    }
+
+    [MemberNotNull(
+        nameof(_registry),
+        nameof(_packs),
+        nameof(_packAvailability),
+        nameof(_startupWarnings),
+        nameof(_pluginSearchPaths),
+        nameof(_runtimePolicyDiagnostics),
+        nameof(_routingCatalogDiagnostics),
+        nameof(_toolOrchestrationCatalog))]
+    private void ApplyToolingBootstrapCacheSnapshot(
+        ChatServiceToolingBootstrapSnapshot snapshot,
+        bool clearRoutingCaches,
+        TimeSpan cacheHitElapsed) {
+        _registry = snapshot.Registry;
+        _packs = snapshot.Packs;
+        _packAvailability = snapshot.PackAvailability.ToArray();
+        _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
+        _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
+        _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;
+        _toolOrchestrationCatalog = snapshot.ToolOrchestrationCatalog;
+
+        var cacheHitMs = Math.Max(1, (long)Math.Round(Math.Max(1, cacheHitElapsed.TotalMilliseconds)));
+        var warnings = new List<string>(snapshot.StartupWarnings.Length + 1);
+        warnings.AddRange(snapshot.StartupWarnings);
+        warnings.Add(
+            $"[startup] tooling bootstrap cache hit elapsed={cacheHitMs}ms tools={snapshot.StartupBootstrap.Tools} packsLoaded={snapshot.StartupBootstrap.PacksLoaded}.");
+        _startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 64);
+        _startupBootstrap = snapshot.StartupBootstrap with {
+            TotalMs = cacheHitMs,
+            RuntimePolicyMs = cacheHitMs,
+            BootstrapOptionsMs = 0,
+            PackLoadMs = 0,
+            PackRegisterMs = 0,
+            RegistryFinalizeMs = 0,
+            RegistryMs = cacheHitMs,
+            Phases = new[] {
+                new SessionStartupBootstrapPhaseTelemetryDto {
+                    Id = "cache_hit",
+                    Label = "cache hit",
+                    DurationMs = cacheHitMs,
+                    Order = 1
+                }
+            },
+            SlowestPhaseId = "cache_hit",
+            SlowestPhaseLabel = "cache hit",
+            SlowestPhaseMs = cacheHitMs
+        };
+
+        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
+
+        if (clearRoutingCaches) {
+            ClearToolRoutingCaches();
+        }
+    }
+
+    private static string BuildToolingBootstrapCacheKey(
+        ServiceOptions options,
+        ToolRuntimePolicyOptions runtimePolicyOptions) {
+        static string Normalize(string? value) {
+            return (value ?? string.Empty).Trim();
+        }
+
+        static void AppendStringList(StringBuilder builder, string key, IEnumerable<string>? values, bool normalizePackId = false) {
+            var normalized = values is null
+                ? Array.Empty<string>()
+                : values
+                    .Select(static value => value ?? string.Empty)
+                    .Select(value => normalizePackId ? ToolPackBootstrap.NormalizePackId(value) : value.Trim())
+                    .Where(static value => value.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            builder.Append(key);
+            builder.Append('=');
+            builder.Append(string.Join("|", normalized));
+            builder.Append(';');
+        }
+
+        var builder = new StringBuilder(capacity: 768);
+        builder.Append("ad_dc=").Append(Normalize(options.AdDomainController)).Append(';');
+        builder.Append("ad_base=").Append(Normalize(options.AdDefaultSearchBaseDn)).Append(';');
+        builder.Append("ad_max=").Append(options.AdMaxResults.ToString(CultureInfo.InvariantCulture)).Append(';');
+        builder.Append("ps_allow_write=").Append(options.PowerShellAllowWrite ? '1' : '0').Append(';');
+        builder.Append("default_plugin_paths=").Append(options.EnableDefaultPluginPaths ? '1' : '0').Append(';');
+        AppendStringList(builder, "allowed_roots", options.AllowedRoots);
+        AppendStringList(builder, "plugin_paths", options.PluginPaths);
+        AppendStringList(builder, "enabled_packs", options.EnabledPackIds, normalizePackId: true);
+        AppendStringList(builder, "disabled_packs", options.DisabledPackIds, normalizePackId: true);
+        builder.Append("write_mode=").Append(runtimePolicyOptions.WriteGovernanceMode.ToString()).Append(';');
+        builder.Append("require_write_runtime=").Append(runtimePolicyOptions.RequireWriteGovernanceRuntime ? '1' : '0').Append(';');
+        builder.Append("require_write_audit=").Append(runtimePolicyOptions.RequireWriteAuditSinkForWriteOperations ? '1' : '0').Append(';');
+        builder.Append("write_audit_mode=").Append(runtimePolicyOptions.WriteAuditSinkMode.ToString()).Append(';');
+        builder.Append("write_audit_path=").Append(Normalize(runtimePolicyOptions.WriteAuditSinkPath)).Append(';');
+        builder.Append("auth_preset=").Append(runtimePolicyOptions.AuthenticationPreset.ToString()).Append(';');
+        builder.Append("require_explicit_routing=").Append(runtimePolicyOptions.RequireExplicitRoutingMetadata ? '1' : '0').Append(';');
+        builder.Append("require_auth_runtime=").Append(runtimePolicyOptions.RequireAuthenticationRuntime ? '1' : '0').Append(';');
+        builder.Append("runas_profile_path=").Append(Normalize(runtimePolicyOptions.RunAsProfilePath)).Append(';');
+        builder.Append("auth_profile_path=").Append(Normalize(runtimePolicyOptions.AuthenticationProfilePath)).Append(';');
+        return builder.ToString();
     }
 
     private void ClearToolRoutingCaches() {

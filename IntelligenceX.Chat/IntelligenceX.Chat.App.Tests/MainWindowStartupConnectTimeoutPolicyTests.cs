@@ -424,14 +424,14 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
 
     /// <summary>
     /// Ensures deferred startup metadata sync is skipped only for unauthenticated
-    /// native sessions where deferred mode is enabled and interactive login is idle.
+    /// native sessions where deferred mode is enabled and an interactive login flow is already active.
     /// </summary>
     [Theory]
     [InlineData(false, true, false, false, false)]
     [InlineData(true, false, false, false, false)]
     [InlineData(true, true, true, false, false)]
-    [InlineData(true, true, false, true, false)]
-    [InlineData(true, true, false, false, true)]
+    [InlineData(true, true, false, true, true)]
+    [InlineData(true, true, false, false, false)]
     public void ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative_ReturnsExpectedValue(
         bool deferStartupMetadataSync,
         bool requiresInteractiveSignIn,
@@ -448,10 +448,10 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
 
     /// <summary>
     /// Ensures deferred startup metadata plan always queues metadata sync when deferred,
-    /// including the unauthenticated native defer path.
+    /// and only skips deferred metadata while interactive sign-in is in progress.
     /// </summary>
     [Theory]
-    [InlineData(true, false, false, true, false, false, false, false, true, true, true, false, false)]
+    [InlineData(true, false, false, true, false, false, false, false, true, true, false, true, true)]
     [InlineData(false, true, false, false, false, true, true, true, true, true, false, true, true)]
     [InlineData(false, false, false, false, false, false, false, false, false, false, false, false, false)]
     public void ResolveDeferredStartupMetadataPlan_ReturnsExpectedValue(
