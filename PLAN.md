@@ -130,7 +130,7 @@ Build a contract-first architecture where:
 6. [x] Extend `ToolDefinition` validation in `IntelligenceX/Tools/ToolRegistry.cs` to require explicit pack/routing role metadata.
 7. [x] Remove implicit pack/category/domain-family inference pathways from `IntelligenceX/Tools/ToolSelectionMetadata.cs` (or gate them behind hard-fail mode that is always enabled).
 8. [ ] Enforce one canonical source for domain intent family/action mapping from routing contracts.
-9. [ ] Ensure all `_pack_info` tools define explicit routing contracts (not inference).
+9. [x] Ensure all `_pack_info` tools define explicit routing contracts (not inference).
 10. [ ] Keep `ToolPackGuidance` as rich documentation contract, but make routing-critical fields available without calling tools.
 
 ## Phase 2 - Build Runtime Orchestration Catalog (Chat Reads Contracts, Not Names)
@@ -180,7 +180,7 @@ Build a contract-first architecture where:
 ## Phase 7 - Test Migration And Coverage
 
 1. [x] Replace reflection-heavy fallback tests in `IntelligenceX.Chat/IntelligenceX.Chat.Tests/ChatServiceRoutingTrimTests.*PackFallback*.cs` with internal helper exposure tests or remove if behavior deleted.
-2. [ ] Add contract-driven routing tests in Chat that use synthetic tools with explicit contracts.
+2. [x] Add contract-driven routing tests in Chat that use synthetic tools with explicit contracts.
 3. [x] Add regression tests verifying Chat does not auto-switch packs after tool failure.
 4. [x] Add tests ensuring preflight uses role contracts, not suffixes.
 5. [ ] Add tests ensuring DomainDetective and ADPlayground remain isolated unless handoff contract explicitly connects them.
