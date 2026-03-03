@@ -58,6 +58,7 @@ Build a contract-first architecture where:
 - [x] Hotfix landed: host structured next-action replay now skips same-tool/same-arguments loops (`next_action_self_loop`) to avoid repeated AD0-style replay churn.
 - [x] Hotfix landed: carryover structured-next-action auto-replay now blocks repeated identical tool+argument replays until fresh context is provided (for example explicit host pin), reducing AD0-style replay churn across turns.
 - [x] Hotfix landed: carryover replay host-hint gating now incorporates assistant draft host targets (not just user text), preventing stale single-host (`AD0`) replay after multi-host follow-up plans.
+- [x] Hotfix landed: carryover host-hint gating now treats multi-host follow-up hints as incompatible with single-host auto-replay, preventing mixed-hint (`AD0` + `AD1/AD2`) stale carryover execution loops.
 - [x] Startup stabilization: transient runtime reconnects now preserve interactive auth state when prior state is authenticated or login is in-flight (unless explicit unauthenticated probe exists), reducing sign-in/connect-disconnect churn.
 - [x] Startup visibility: connect flow now surfaces per-attempt pipe connect/retry timeout and retry-delay progress in status text (instead of generic "starting runtime" only).
 - [x] Validation checkpoint: `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .` passes with `0 error(s), 0 warning(s)` on this branch.
