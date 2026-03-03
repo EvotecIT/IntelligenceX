@@ -359,6 +359,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Prevent host-driven structured next-action loops from replaying the exact same
+        // tool + normalized arguments that already ran in this turn.
+        if (HasEquivalentToolCallArguments(toolCalls, nextTool, toolDefinition, normalizedArguments)) {
+            reason = "next_action_self_loop";
+            return false;
+        }
+
         var serializedArguments = JsonLite.Serialize(normalizedArguments);
         var callId = "host_next_action_" + Guid.NewGuid().ToString("N");
         var raw = new JsonObject()

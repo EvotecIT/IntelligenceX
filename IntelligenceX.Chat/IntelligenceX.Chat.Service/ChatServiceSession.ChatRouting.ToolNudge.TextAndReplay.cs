@@ -148,7 +148,7 @@ internal sealed partial class ChatServiceSession {
         // Continuation expansion may include a newline-delimited context block (for example:
         // "<prior intent>\nFollow-up: <compact reply>"). Normalize it so contextual-anchor
         // checks remain effective and language-neutral.
-        var request = CollapseWhitespace((userRequest ?? string.Empty).Trim());
+        var request = NormalizeContextualFollowUpRequest(userRequest);
         if (request.Length == 0 || request.Length > 480) {
             return false;
         }
@@ -171,6 +171,48 @@ internal sealed partial class ChatServiceSession {
         }
 
         return AssistantDraftHasContextualAnchor(request, assistantDraft);
+    }
+
+    private static string NormalizeContextualFollowUpRequest(string userRequest) {
+        var raw = (userRequest ?? string.Empty).Trim();
+        if (raw.Length == 0) {
+            return string.Empty;
+        }
+
+        if (TryExtractLegacyContinuationFollowUp(raw, out var followUp)) {
+            return CollapseWhitespace(followUp);
+        }
+
+        return CollapseWhitespace(raw);
+    }
+
+    private static bool TryExtractLegacyContinuationFollowUp(string rawRequest, out string followUp) {
+        followUp = string.Empty;
+        var raw = (rawRequest ?? string.Empty).Trim();
+        if (raw.Length == 0) {
+            return false;
+        }
+
+        const string marker = "Follow-up:";
+        var markerIndex = raw.IndexOf("\n" + marker, StringComparison.OrdinalIgnoreCase);
+        var start = -1;
+        if (markerIndex >= 0) {
+            start = markerIndex + 1 + marker.Length;
+        } else if (raw.StartsWith(marker, StringComparison.OrdinalIgnoreCase)) {
+            start = marker.Length;
+        }
+
+        if (start < 0 || start >= raw.Length) {
+            return false;
+        }
+
+        var candidate = raw[start..].Trim();
+        if (candidate.Length == 0) {
+            return false;
+        }
+
+        followUp = candidate;
+        return true;
     }
 
     private static bool AssistantDraftHasContextualAnchor(string userRequest, string assistantDraft) {

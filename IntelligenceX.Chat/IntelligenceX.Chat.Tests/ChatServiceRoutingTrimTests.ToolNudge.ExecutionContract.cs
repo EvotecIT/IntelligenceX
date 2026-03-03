@@ -278,6 +278,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryBuildHostStructuredNextActionToolCall_DoesNotAutoRunSelfLoopArguments() {
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-self-loop",
+                Name = "eventlog_live_query",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-self-loop",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+
+        var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("next_action_self_loop", Assert.IsType<string>(args[5]));
+    }
+
+    [Fact]
     public void TryBuildCarryoverStructuredNextActionToolCall_BuildsReadOnlyCallFromRememberedNextAction() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var schema = ToolSchema.Object(
@@ -481,6 +517,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
             continuationFollowUpTurn: true,
             compactFollowUpTurn: true,
             userRequest: "i mean other dcs",
+            assistantDraft: "Perfect, understood: other DCs only. I will compare AD1 and AD2 now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsWhenLongLegacyExpansionContainsContextualFollowUp() {
+        var legacyExpandedRequest =
+            new string('a', 520)
+            + "\nFollow-up: i mean other dcs";
+
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            userRequest: legacyExpandedRequest,
             assistantDraft: "Perfect, understood: other DCs only. I will compare AD1 and AD2 now.");
 
         Assert.False(result);
