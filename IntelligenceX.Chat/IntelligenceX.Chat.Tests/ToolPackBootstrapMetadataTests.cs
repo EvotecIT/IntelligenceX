@@ -335,6 +335,40 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void RegisterAll_DefaultLoadedPacks_ExposeExplicitRoutingContracts_ForAllCanonicalTools() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnablePluginFolderLoading = false,
+            EnableDefaultPluginPaths = false
+        });
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+
+        ToolPackBootstrap.RegisterAll(registry, packs);
+
+        var canonicalDefinitions = registry.GetDefinitions()
+            .Where(static definition => string.IsNullOrWhiteSpace(definition.AliasOf))
+            .OrderBy(static definition => definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.NotEmpty(canonicalDefinitions);
+
+        foreach (var definition in canonicalDefinitions) {
+            var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
+            Assert.True(routing.IsRoutingAware);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+            Assert.False(string.IsNullOrWhiteSpace(routing.PackId));
+            Assert.Contains(routing.Role, ToolRoutingTaxonomy.AllowedRoles, StringComparer.Ordinal);
+
+            if (!string.IsNullOrWhiteSpace(routing.DomainIntentFamily)) {
+                Assert.False(
+                    string.IsNullOrWhiteSpace(routing.DomainIntentActionId),
+                    $"Tool '{definition.Name}' declares domain family '{routing.DomainIntentFamily}' but has no action id.");
+            }
+        }
+    }
+
+    [Fact]
     public void RegisterAll_AndCatalog_SupportSyntheticPackWithoutChatHardcoding() {
         var packs = new IToolPack[] {
             new SyntheticPack("sample-pack-v2", "Sample Pack v2")

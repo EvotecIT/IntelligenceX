@@ -91,6 +91,7 @@ Build a contract-first architecture where:
 - [x] Startup UX hotfix: login-completed status updates now queue deferred startup metadata sync before publishing connected status, avoiding transient "ready" flips while tool-pack startup is still pending.
 - [x] Startup UX hotfix: startup pending/status overlay now includes browser sign-in-in-progress states, and startup-time reconnect churn surfaces explicit reconnect-sync status (instead of generic disconnected text).
 - [x] Startup/send hotfix: queued-after-login prompt deduplication now treats one-sided empty conversation ids as equivalent for normalized prompt text, preventing duplicate dispatch after startup/sign-in transitions.
+- [x] Contract guardrail expanded: bootstrap metadata tests now assert all canonical built-in tools register with explicit routing source + pack id + role under strict registration (not only `_pack_info` tools).
 - [x] Stabilization regression coverage: finalize host scope-shift guard now has explicit precedence tests proving raw user intent is used ahead of routed rewrite text when deciding stale single-host replay blocking.
 
 ## Hard Decisions (Locked)
