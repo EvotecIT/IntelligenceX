@@ -126,6 +126,37 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Empty(catalog.GetByPackId("system"));
     }
 
+    [Fact]
+    public void Build_DoesNotInferCrossPackHandoffWithoutExplicitContracts() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "ad_replication_probe",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            CreateDefinition(
+                name: "domaindetective_domain_summary",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "domaindetective",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("ad_replication_probe", out var adEntry));
+        Assert.True(catalog.TryGetEntry("domaindetective_domain_summary", out var publicEntry));
+        Assert.False(adEntry.IsHandoffAware);
+        Assert.False(publicEntry.IsHandoffAware);
+        Assert.Equal(0, adEntry.HandoffRouteCount);
+        Assert.Equal(0, publicEntry.HandoffRouteCount);
+        Assert.Empty(adEntry.HandoffEdges);
+        Assert.Empty(publicEntry.HandoffEdges);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolRoutingContract? routing = null,

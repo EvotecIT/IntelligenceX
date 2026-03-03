@@ -95,6 +95,7 @@ Build a contract-first architecture where:
 - [x] Stabilization regression coverage: finalize host scope-shift guard now has explicit precedence tests proving raw user intent is used ahead of routed rewrite text when deciding stale single-host replay blocking.
 - [x] Catalog contract projection now includes setup requirements/hints, normalized handoff edges, and recovery-policy details (`retryable_error_codes`, alternate engines) in `ToolOrchestrationCatalog`.
 - [x] Contract-first domain intent alignment: runtime `/act` resolution now requires catalog-mapped action ids (no undeclared default-action fallback when custom routing action ids are registered), and domain host guardrail candidate detection no longer infers AD scope from tool-name patterns.
+- [x] Regression coverage now asserts cross-pack isolation in orchestration catalog: no ADPlayground -> DomainDetective handoff is inferred without explicit `ToolHandoffContract` edges.
 
 ## Hard Decisions (Locked)
 
@@ -184,7 +185,7 @@ Build a contract-first architecture where:
 2. [x] Add contract-driven routing tests in Chat that use synthetic tools with explicit contracts.
 3. [x] Add regression tests verifying Chat does not auto-switch packs after tool failure.
 4. [x] Add tests ensuring preflight uses role contracts, not suffixes.
-5. [ ] Add tests ensuring DomainDetective and ADPlayground remain isolated unless handoff contract explicitly connects them.
+5. [x] Add tests ensuring DomainDetective and ADPlayground remain isolated unless handoff contract explicitly connects them.
 6. [ ] Keep existing language-neutral routing/ordinal tests green.
 
 ## Phase 8 - Cutover And Cleanup
