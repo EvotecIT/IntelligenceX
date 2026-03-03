@@ -93,6 +93,7 @@ Build a contract-first architecture where:
 - [x] Startup/send hotfix: queued-after-login prompt deduplication now treats one-sided empty conversation ids as equivalent for normalized prompt text, preventing duplicate dispatch after startup/sign-in transitions.
 - [x] Contract guardrail expanded: bootstrap metadata tests now assert all canonical built-in tools register with explicit routing source + pack id + role under strict registration (not only `_pack_info` tools).
 - [x] Stabilization regression coverage: finalize host scope-shift guard now has explicit precedence tests proving raw user intent is used ahead of routed rewrite text when deciding stale single-host replay blocking.
+- [x] Catalog contract projection now includes setup requirements/hints, normalized handoff edges, and recovery-policy details (`retryable_error_codes`, alternate engines) in `ToolOrchestrationCatalog`.
 
 ## Hard Decisions (Locked)
 
@@ -135,7 +136,7 @@ Build a contract-first architecture where:
 ## Phase 2 - Build Runtime Orchestration Catalog (Chat Reads Contracts, Not Names)
 
 1. [x] Introduce `ToolOrchestrationCatalog` in Chat bootstrapping built from `ToolRegistry.GetDefinitions()`.
-2. [ ] Include in catalog: pack id, role, scope/operation/entity/risk, domain family/action, setup requirements, handoff edges, recovery policy.
+2. [x] Include in catalog: pack id, role, scope/operation/entity/risk, domain family/action, setup requirements, handoff edges, recovery policy.
 3. [x] Replace direct `_toolPackIdsByToolName` and suffix inference consumers with catalog queries.
 4. [x] Keep Chat startup diagnostics but add new contract health metrics (missing role, missing handoff schema, invalid setup contracts).
 5. [x] Surface catalog health in existing routing policy UI payloads.

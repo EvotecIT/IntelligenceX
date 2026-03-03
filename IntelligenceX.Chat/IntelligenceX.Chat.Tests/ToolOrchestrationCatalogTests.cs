@@ -19,13 +19,23 @@ public sealed class ToolOrchestrationCatalogTests {
                 },
                 setup: new ToolSetupContract {
                     IsSetupAware = true,
-                    SetupToolName = "custom_setup"
+                    SetupToolName = "custom_setup",
+                    SetupHintKeys = new[] { "needs_auth" },
+                    Requirements = new[] {
+                        new ToolSetupRequirement {
+                            RequirementId = "auth.session",
+                            Kind = ToolSetupRequirementKinds.Authentication,
+                            IsRequired = true,
+                            HintKeys = new[] { "auth_required" }
+                        }
+                    }
                 },
                 handoff: new ToolHandoffContract {
                     IsHandoffAware = true,
                     OutboundRoutes = new[] {
                         new ToolHandoffRoute {
                             TargetPackId = "dnsclientx",
+                            TargetToolName = "dns_lookup",
                             TargetRole = ToolRoutingTaxonomy.RoleOperational,
                             Bindings = new[] {
                                 new ToolHandoffBinding {
@@ -40,6 +50,7 @@ public sealed class ToolOrchestrationCatalogTests {
                     IsRecoveryAware = true,
                     SupportsTransientRetry = true,
                     MaxRetryAttempts = 3,
+                    RetryableErrorCodes = new[] { "timeout", "query_failed" },
                     SupportsAlternateEngines = true,
                     AlternateEngineIds = new[] { "wmi", "cim" }
                 }),
@@ -61,13 +72,27 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, entry.RoutingSource);
         Assert.True(entry.IsRoutingAware);
         Assert.True(entry.IsSetupAware);
+        Assert.Equal(ToolSetupContract.DefaultContractId, entry.SetupContractId);
+        Assert.Equal(new[] { "auth.session" }, entry.SetupRequirementIds);
+        Assert.Equal(new[] { ToolSetupRequirementKinds.Authentication }, entry.SetupRequirementKinds);
+        Assert.Equal(new[] { "auth_required", "needs_auth" }, entry.SetupHintKeys);
         Assert.Equal(1, entry.HandoffRouteCount);
         Assert.Equal(1, entry.HandoffBindingCount);
+        Assert.Equal(ToolHandoffContract.DefaultContractId, entry.HandoffContractId);
+        Assert.Single(entry.HandoffEdges);
+        Assert.Equal("dnsclientx", entry.HandoffEdges[0].TargetPackId);
+        Assert.Equal("dns_lookup", entry.HandoffEdges[0].TargetToolName);
+        Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.HandoffEdges[0].TargetRole);
+        Assert.Equal(1, entry.HandoffEdges[0].BindingCount);
+        Assert.Equal(new[] { "host->target" }, entry.HandoffEdges[0].BindingPairs);
         Assert.True(entry.IsRecoveryAware);
+        Assert.Equal(ToolRecoveryContract.DefaultContractId, entry.RecoveryContractId);
         Assert.True(entry.SupportsTransientRetry);
         Assert.Equal(3, entry.MaxRetryAttempts);
+        Assert.Equal(new[] { "query_failed", "timeout" }, entry.RetryableErrorCodes);
         Assert.True(entry.SupportsAlternateEngines);
         Assert.Equal(2, entry.AlternateEngineCount);
+        Assert.Equal(new[] { "cim", "wmi" }, entry.AlternateEngineIds);
         Assert.Equal("custom_setup", entry.SetupToolName);
 
         var byPack = catalog.GetByPackId("customx");
