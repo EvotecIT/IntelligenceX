@@ -63,6 +63,7 @@
     cancelable: false,
     cancelRequested: false,
     activityTimeline: [],
+    statusTimeline: [],
     lastTurnMetrics: null,
     latencySummary: null,
     providerCircuit: null,
@@ -734,9 +735,60 @@
     }
   }
 
+  var STATUS_TIMELINE_MAX_ENTRIES = 16;
+
+  function normalizeStatusTimelineEntry(value) {
+    var normalized = String(value || "").trim();
+    if (!normalized) {
+      return "";
+    }
+    normalized = normalized.replace(/\s+/g, " ");
+    if (normalized.length > 96) {
+      normalized = normalized.slice(0, 93).trimEnd() + "...";
+    }
+    return normalized;
+  }
+
+  function appendStatusTimelineEntry(value) {
+    var entry = normalizeStatusTimelineEntry(value);
+    if (!entry) {
+      return;
+    }
+
+    if (!Array.isArray(state.statusTimeline)) {
+      state.statusTimeline = [];
+    }
+
+    if (state.statusTimeline.length > 0 && state.statusTimeline[state.statusTimeline.length - 1] === entry) {
+      return;
+    }
+
+    state.statusTimeline.push(entry);
+    while (state.statusTimeline.length > STATUS_TIMELINE_MAX_ENTRIES) {
+      state.statusTimeline.shift();
+    }
+  }
+
+  function buildStatusChipTitle(displayValue, rawValue) {
+    var lines = [];
+    var normalizedDisplay = normalizeStatusTimelineEntry(displayValue);
+    var normalizedRaw = normalizeStatusTimelineEntry(rawValue);
+    if (normalizedDisplay) {
+      lines.push("Status: " + normalizedDisplay);
+    }
+    if (normalizedRaw && normalizedRaw !== normalizedDisplay) {
+      lines.push("Detail: " + normalizedRaw);
+    }
+    if (Array.isArray(state.statusTimeline) && state.statusTimeline.length > 0) {
+      lines.push("Lifecycle: " + state.statusTimeline.join(" > "));
+    }
+    return lines.join("\n");
+  }
+
   function updateStatusVisual(text, tone) {
     var statusEl = byId("status");
-    var value = String(text || "").trim();
+    var rawValue = String(text || "").trim();
+    var value = rawValue;
     var normalizedTone = "";
     if (typeof tone === "string") {
       normalizedTone = tone.trim().toLowerCase();
@@ -746,6 +798,7 @@
       value = fallbackStatus.text;
       normalizedTone = fallbackStatus.tone;
     }
+    appendStatusTimelineEntry(rawValue || value);
     var shouldAppendRuntime = value.indexOf("|") < 0;
     var displayValue = value;
 
@@ -757,6 +810,7 @@
     }
 
     statusEl.textContent = displayValue;
+    statusEl.title = buildStatusChipTitle(displayValue, rawValue);
     var lower = displayValue.toLowerCase();
     statusEl.classList.remove("ok", "warn", "bad");
     if (normalizedTone === "ok") {
