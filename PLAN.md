@@ -70,6 +70,7 @@ Build a contract-first architecture where:
 - [x] Startup/turn diagnostics hotfix: routing-meta activity timeline labels now include selected strategy and tool counts (`strategy`, `selected/total`) instead of a generic `route strategy` marker.
 - [x] Stabilization hotfix: finalize-time execution blocker now skips cached-evidence substitution for explicit tool-capability questions (for example `eventlog_evtx_query?`), preserving direct conversational/tool-availability answers.
 - [x] Startup perf hotfix: plugin duplicate detection now has a loaded-assembly fast-path (skip before dependency preload/reflection), reducing first-session tool bootstrap stalls and preventing avoidable reconnect churn during deferred metadata sync.
+- [x] Stabilization hotfix: explicit tool-id follow-ups now suppress pending-action/carryover auto-replay rewrites, and escaped Markdown tool ids (for example `eventlog\_evtx\_query`) are recognized by cached-evidence gating.
 
 ## Hard Decisions (Locked)
 
