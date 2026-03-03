@@ -41,6 +41,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Startup perf hotfix: plugin duplicate packs are now skipped via loaded-assembly fast-path before dependency preload/reflection, cutting avoidable bootstrap latency on first metadata sync.
 - [x] Stabilization hotfix: explicit tool-id follow-ups now bypass pending-action/carryover auto-replay rewrites, and escaped Markdown tool ids (for example `eventlog\_evtx\_query`) are honored by cached-evidence gating.
 - [x] Startup resilience hotfix: deferred metadata sync phases now retry once on transient disconnects (`hello/list_tools/auth_refresh`), reducing cold-start states where runtime is connected but catalog/policy sync is missing.
+- [x] Startup/turn UX hotfix: final assistant replacement now targets the latest assistant row when only `System/Tools` rows followed (no newer user turn), reducing duplicate assistant finals across reconnect/retry churn.
 
 ## Rules For This Migration
 

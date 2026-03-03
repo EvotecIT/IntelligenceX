@@ -72,6 +72,7 @@ Build a contract-first architecture where:
 - [x] Startup perf hotfix: plugin duplicate detection now has a loaded-assembly fast-path (skip before dependency preload/reflection), reducing first-session tool bootstrap stalls and preventing avoidable reconnect churn during deferred metadata sync.
 - [x] Stabilization hotfix: explicit tool-id follow-ups now suppress pending-action/carryover auto-replay rewrites, and escaped Markdown tool ids (for example `eventlog\_evtx\_query`) are recognized by cached-evidence gating.
 - [x] Startup resilience hotfix: deferred startup metadata phases (`hello`, `list_tools`, `auth_refresh`) now retry once on transient disconnect errors to reduce "connected but packs/catalog missing" startup failures.
+- [x] Startup/turn UX hotfix: assistant final-message replacement now reuses the most-recent assistant bubble when only `System/Tools` rows followed (no intervening user), preventing duplicate assistant finals during retry/reconnect churn.
 
 ## Hard Decisions (Locked)
 
