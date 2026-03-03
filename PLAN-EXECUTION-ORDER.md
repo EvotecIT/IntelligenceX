@@ -24,6 +24,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: compact follow-up question turns no longer force blocker/cached-evidence finalize rewrites, preserving direct tool-capability answers.
 - [x] Stabilization hotfix: cached evidence fallback now requires explicit tool-name match when request text references a concrete tool id.
 - [x] Stabilization hotfix: deferred startup metadata sync now waits for authenticated state and is re-queued after login completion.
+- [x] Stabilization hotfix: host structured next-action auto-replay now blocks same-tool/same-arguments self-loops (`next_action_self_loop`) to prevent repeated AD0-style churn.
+- [x] Stabilization hotfix: contextual follow-up detection now reads the `Follow-up:` tail from legacy continuation expansion before carryover replay decisions.
+- [x] Stabilization cleanup: removed standalone lowercase `ad` lexical alias auto-routing from domain-intent signal resolution.
 
 ## Rules For This Migration
 
