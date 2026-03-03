@@ -56,6 +56,8 @@ Build a contract-first architecture where:
 - [x] Hotfix landed: cached evidence fallback now requires explicit tool-name match when the user references a specific tool id, preventing unrelated stale evidence reuse.
 - [x] Hotfix landed: deferred startup metadata sync now waits for authenticated runtime state and is re-queued after successful login completion, avoiding premature metadata churn during sign-in.
 - [x] Hotfix landed: host structured next-action replay now skips same-tool/same-arguments loops (`next_action_self_loop`) to avoid repeated AD0-style replay churn.
+- [x] Hotfix landed: carryover structured-next-action auto-replay now blocks repeated identical tool+argument replays until fresh context is provided (for example explicit host pin), reducing AD0-style replay churn across turns.
+- [x] Validation checkpoint: `dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .` passes with `0 error(s), 0 warning(s)` on this branch.
 - [x] Hotfix landed: contextual follow-up detection now evaluates the `Follow-up:` tail from legacy continuation expansion when deciding carryover replay eligibility.
 - [x] Closed: standalone lowercase `ad` alias auto-routing was removed from domain-intent signal resolution to keep Chat lexical routing generic.
 
