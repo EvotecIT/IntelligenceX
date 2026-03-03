@@ -24,6 +24,9 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private string? _lastFinalResultRequestId;
+    private string? _lastFinalResultThreadId;
+    private string? _lastFinalResultText;
 
     private static ToolOutputMetadata TryExtractToolOutputMetadata(string output) {
         if (string.IsNullOrWhiteSpace(output)) {
@@ -151,11 +154,43 @@ internal sealed partial class ChatServiceSession {
     private async Task WriteAsync(StreamWriter writer, ChatServiceMessage message, CancellationToken cancellationToken) {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
+            if (ShouldSuppressDuplicateFinalResultMessage(message)) {
+                return;
+            }
+
             var json = JsonSerializer.Serialize(message, ChatServiceJsonContext.Default.ChatServiceMessage);
             await writer.WriteLineAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
         } finally {
             _writeLock.Release();
         }
+    }
+
+    private bool ShouldSuppressDuplicateFinalResultMessage(ChatServiceMessage message) {
+        if (message is not ChatResultMessage result) {
+            return false;
+        }
+
+        var requestId = (result.RequestId ?? string.Empty).Trim();
+        var threadId = (result.ThreadId ?? string.Empty).Trim();
+        var text = (result.Text ?? string.Empty).Trim();
+        if (requestId.Length == 0 || threadId.Length == 0 || text.Length == 0) {
+            _lastFinalResultRequestId = requestId;
+            _lastFinalResultThreadId = threadId;
+            _lastFinalResultText = text;
+            return false;
+        }
+
+        if (string.Equals(_lastFinalResultRequestId, requestId, StringComparison.Ordinal)
+            && string.Equals(_lastFinalResultThreadId, threadId, StringComparison.Ordinal)
+            && string.Equals(_lastFinalResultText, text, StringComparison.Ordinal)) {
+            Trace.WriteLine($"[chat-result] duplicate_final_result_suppressed requestId={requestId} threadId={threadId}");
+            return true;
+        }
+
+        _lastFinalResultRequestId = requestId;
+        _lastFinalResultThreadId = threadId;
+        _lastFinalResultText = text;
+        return false;
     }
 
     private void CancelLoginIfActive() {
