@@ -2,11 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Reflection;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
-using IntelligenceX.Tools.EventLog;
-using IntelligenceX.Tools.ReviewerSetup;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -234,129 +231,12 @@ public sealed record ToolPackBootstrapResult {
 /// Shared tool pack bootstrap for both Host and Service.
 /// </summary>
 public static partial class ToolPackBootstrap {
-    private const string FileSystemPackTypeName = "IntelligenceX.Tools.FileSystem.FileSystemToolPack, IntelligenceX.Tools.FileSystem";
-    private const string FileSystemOptionsTypeName = "IntelligenceX.Tools.FileSystem.FileSystemToolOptions, IntelligenceX.Tools.FileSystem";
-    private const string SystemPackTypeName = "IntelligenceX.Tools.System.SystemToolPack, IntelligenceX.Tools.System";
-    private const string SystemOptionsTypeName = "IntelligenceX.Tools.System.SystemToolOptions, IntelligenceX.Tools.System";
-    private const string ActiveDirectoryPackTypeName = "IntelligenceX.Tools.ADPlayground.ActiveDirectoryToolPack, IntelligenceX.Tools.ADPlayground";
-    private const string ActiveDirectoryOptionsTypeName = "IntelligenceX.Tools.ADPlayground.ActiveDirectoryToolOptions, IntelligenceX.Tools.ADPlayground";
-    private const string PowerShellPackTypeName = "IntelligenceX.Tools.PowerShell.PowerShellToolPack, IntelligenceX.Tools.PowerShell";
-    private const string PowerShellOptionsTypeName = "IntelligenceX.Tools.PowerShell.PowerShellToolOptions, IntelligenceX.Tools.PowerShell";
-    private const string TestimoXPackTypeName = "IntelligenceX.Tools.TestimoX.TestimoXToolPack, IntelligenceX.Tools.TestimoX";
-    private const string TestimoXOptionsTypeName = "IntelligenceX.Tools.TestimoX.TestimoXToolOptions, IntelligenceX.Tools.TestimoX";
-    private const string OfficeImoPackTypeName = "IntelligenceX.Tools.OfficeIMO.OfficeImoToolPack, IntelligenceX.Tools.OfficeIMO";
-    private const string OfficeImoOptionsTypeName = "IntelligenceX.Tools.OfficeIMO.OfficeImoToolOptions, IntelligenceX.Tools.OfficeIMO";
-    private const string DnsClientXPackTypeName = "IntelligenceX.Tools.DnsClientX.DnsClientXToolPack, IntelligenceX.Tools.DnsClientX";
-    private const string DnsClientXOptionsTypeName = "IntelligenceX.Tools.DnsClientX.DnsClientXToolOptions, IntelligenceX.Tools.DnsClientX";
-    private const string DomainDetectivePackTypeName = "IntelligenceX.Tools.DomainDetective.DomainDetectiveToolPack, IntelligenceX.Tools.DomainDetective";
-    private const string DomainDetectiveOptionsTypeName = "IntelligenceX.Tools.DomainDetective.DomainDetectiveToolOptions, IntelligenceX.Tools.DomainDetective";
-    private const string EmailPackTypeName = "IntelligenceX.Tools.Email.EmailToolPack, IntelligenceX.Tools.Email";
-    private const string EmailOptionsTypeName = "IntelligenceX.Tools.Email.EmailToolOptions, IntelligenceX.Tools.Email";
     private const string DisabledByRuntimeConfigurationReason = "Disabled by runtime configuration.";
     private const string UnavailableReasonFallback = "Pack could not be loaded in this runtime.";
 
     internal const string PackSourceBuiltin = "builtin";
     internal const string PackSourceOpenSource = "open_source";
     internal const string PackSourceClosedSource = "closed_source";
-
-    private static readonly KnownPackDefinition FileSystemPackDefinition = new(
-        "fs",
-        "File System",
-        "Safe-by-default file system reads (restricted to AllowedRoots).",
-        ToolCapabilityTier.ReadOnly,
-        IsDangerous: false,
-        PackSourceBuiltin,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition EventLogPackDefinition = new(
-        "eventlog",
-        "Event Log",
-        "Windows Event Log query and analysis helpers.",
-        ToolCapabilityTier.ReadOnly,
-        IsDangerous: false,
-        PackSourceBuiltin,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition SystemPackDefinition = new(
-        "system",
-        "ComputerX",
-        "ComputerX host inventory and diagnostics (read-only).",
-        ToolCapabilityTier.ReadOnly,
-        IsDangerous: false,
-        PackSourceClosedSource,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition ActiveDirectoryPackDefinition = new(
-        "ad",
-        "ADPlayground",
-        "ADPlayground-backed Active Directory analysis tools (read-oriented).",
-        ToolCapabilityTier.SensitiveRead,
-        IsDangerous: false,
-        PackSourceClosedSource,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition PowerShellPackDefinition = new(
-        "powershell",
-        "PowerShell Runtime",
-        "Opt-in shell runtime execution (windows_powershell / pwsh / cmd).",
-        ToolCapabilityTier.DangerousWrite,
-        IsDangerous: true,
-        PackSourceBuiltin,
-        DefaultEnabled: false);
-
-    private static readonly KnownPackDefinition TestimoXPackDefinition = new(
-        "testimox",
-        "TestimoX",
-        "TestimoX rule discovery and targeted rule execution (read-oriented diagnostics).",
-        ToolCapabilityTier.SensitiveRead,
-        IsDangerous: false,
-        PackSourceClosedSource,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition OfficeImoPackDefinition = new(
-        "officeimo",
-        "Office Documents (OfficeIMO)",
-        "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader.",
-        ToolCapabilityTier.ReadOnly,
-        IsDangerous: false,
-        PackSourceOpenSource,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition DnsClientXPackDefinition = new(
-        "dnsclientx",
-        "DnsClientX",
-        "Open-source DNS query and record inspection tools.",
-        ToolCapabilityTier.ReadOnly,
-        IsDangerous: false,
-        PackSourceOpenSource,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition DomainDetectivePackDefinition = new(
-        "domaindetective",
-        "DomainDetective",
-        "Open-source domain/server diagnostics and posture analysis tools.",
-        ToolCapabilityTier.ReadOnly,
-        IsDangerous: false,
-        PackSourceOpenSource,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition ReviewerSetupPackDefinition = new(
-        "reviewersetup",
-        "Reviewer Setup",
-        "Path contract and execution guidance for IntelligenceX reviewer onboarding.",
-        ToolCapabilityTier.ReadOnly,
-        IsDangerous: false,
-        PackSourceBuiltin,
-        DefaultEnabled: true);
-
-    private static readonly KnownPackDefinition EmailPackDefinition = new(
-        "email",
-        "Email (Mailozaurr)",
-        "IMAP/SMTP workflows (search/get/send) via Mailozaurr.",
-        ToolCapabilityTier.SensitiveRead,
-        IsDangerous: false,
-        PackSourceBuiltin,
-        DefaultEnabled: true);
 
     /// <summary>
     /// Creates runtime bootstrap options from shared host/service settings and policy context.
@@ -419,15 +299,13 @@ public static partial class ToolPackBootstrap {
             throw new ArgumentNullException(nameof(options));
         }
 
-        var allowedRoots = options.AllowedRoots
-            .Where(static root => !string.IsNullOrWhiteSpace(root))
-            .ToArray();
         var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
         var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
+        var builtInPacks = DiscoverBuiltInPacks(options);
 
         var packs = new List<IToolPack>();
         var availabilityById = new Dictionary<string, ToolPackAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
-        var knownBootstrapStepTotal = 11 + (options.EnablePluginFolderLoading ? 1 : 0);
+        var knownBootstrapStepTotal = builtInPacks.Count + (options.EnablePluginFolderLoading ? 1 : 0);
         var knownBootstrapStepIndex = 0;
 
         void RunBootstrapStep(string stepId, Action action) {
@@ -456,228 +334,32 @@ public static partial class ToolPackBootstrap {
             }
         }
 
-        var evxOptions = new EventLogToolOptions();
-        foreach (var root in allowedRoots) {
-            evxOptions.AllowedRoots.Add(root);
-        }
+        for (var i = 0; i < builtInPacks.Count; i++) {
+            var builtInPack = builtInPacks[i];
+            RunBootstrapStep(builtInPack.PackId, () => {
+                if (!ResolveKnownPackEnabled(
+                        packId: builtInPack.PackId,
+                        enabledByDefault: builtInPack.DefaultEnabled,
+                        disabledPackIds: disabledPackIds,
+                        enabledPackIds: enabledPackIds)) {
+                    UpsertAvailability(
+                        availabilityById,
+                        CreateAvailabilityFromDescriptor(
+                            descriptor: builtInPack.Pack.Descriptor,
+                            enabled: false,
+                            disabledReason: DisabledByRuntimeConfigurationReason));
+                    return;
+                }
 
-        RunBootstrapStep(EventLogPackDefinition.Id, () => {
-            if (!ResolveKnownPackEnabled(
-                    packId: EventLogPackDefinition.Id,
-                    enabledByDefault: EventLogPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds)) {
-                UpsertAvailability(
-                    availabilityById,
-                    CreateAvailabilityFromDefinition(
-                        definition: EventLogPackDefinition,
-                        enabled: false,
-                        disabledReason: DisabledByRuntimeConfigurationReason));
-            } else {
-                var eventLogPack = RequireDeclaredSourceKind(new EventLogToolPack(evxOptions), "Event Log");
-                packs.Add(eventLogPack);
+                packs.Add(builtInPack.Pack);
                 UpsertAvailability(
                     availabilityById,
                     CreateAvailabilityFromDescriptor(
-                        descriptor: eventLogPack.Descriptor,
+                        descriptor: builtInPack.Pack.Descriptor,
                         enabled: true,
                         disabledReason: null));
-            }
-        });
-
-        RunBootstrapStep(FileSystemPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: FileSystemPackDefinition.Id,
-                    enabledByDefault: FileSystemPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: FileSystemPackDefinition,
-                packLabel: "IX.FileSystem",
-                packTypeName: FileSystemPackTypeName,
-                optionsTypeName: FileSystemOptionsTypeName,
-                configureOptions: fsOptions => {
-                    AddStringListValuesIfPresent(fsOptions, "AllowedRoots", allowedRoots);
-                },
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(SystemPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: SystemPackDefinition.Id,
-                    enabledByDefault: SystemPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: SystemPackDefinition,
-                packLabel: "IX.System",
-                packTypeName: SystemPackTypeName,
-                optionsTypeName: SystemOptionsTypeName,
-                configureOptions: null,
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(ActiveDirectoryPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: ActiveDirectoryPackDefinition.Id,
-                    enabledByDefault: ActiveDirectoryPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: ActiveDirectoryPackDefinition,
-                packLabel: "IX.ADPlayground",
-                packTypeName: ActiveDirectoryPackTypeName,
-                optionsTypeName: ActiveDirectoryOptionsTypeName,
-                configureOptions: adOptions => {
-                    SetPropertyIfPresent(adOptions, "DomainController", options.AdDomainController);
-                    SetPropertyIfPresent(adOptions, "DefaultSearchBaseDn", options.AdDefaultSearchBaseDn);
-                    SetPropertyIfPresent(adOptions, "MaxResults", options.AdMaxResults > 0 ? options.AdMaxResults : 1000);
-                },
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(PowerShellPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: PowerShellPackDefinition.Id,
-                    enabledByDefault: PowerShellPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: PowerShellPackDefinition,
-                packLabel: "IX.PowerShell",
-                packTypeName: PowerShellPackTypeName,
-                optionsTypeName: PowerShellOptionsTypeName,
-                configureOptions: psOptions => {
-                    SetPropertyIfPresent(psOptions, "Enabled", true);
-                    SetPropertyIfPresent(psOptions, "DefaultTimeoutMs", options.PowerShellDefaultTimeoutMs);
-                    SetPropertyIfPresent(psOptions, "MaxTimeoutMs", options.PowerShellMaxTimeoutMs);
-                    SetPropertyIfPresent(psOptions, "DefaultMaxOutputChars", options.PowerShellDefaultMaxOutputChars);
-                    SetPropertyIfPresent(psOptions, "MaxOutputChars", options.PowerShellMaxOutputChars);
-                    SetPropertyIfPresent(psOptions, "AllowWrite", options.PowerShellAllowWrite);
-                },
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(TestimoXPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: TestimoXPackDefinition.Id,
-                    enabledByDefault: TestimoXPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: TestimoXPackDefinition,
-                packLabel: "IX.TestimoX",
-                packTypeName: TestimoXPackTypeName,
-                optionsTypeName: TestimoXOptionsTypeName,
-                configureOptions: testimoOptions => {
-                    SetPropertyIfPresent(testimoOptions, "Enabled", true);
-                },
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(OfficeImoPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: OfficeImoPackDefinition.Id,
-                    enabledByDefault: OfficeImoPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: OfficeImoPackDefinition,
-                packLabel: "IX.OfficeIMO",
-                packTypeName: OfficeImoPackTypeName,
-                optionsTypeName: OfficeImoOptionsTypeName,
-                configureOptions: officeImoOptions => {
-                    AddStringListValuesIfPresent(officeImoOptions, "AllowedRoots", allowedRoots);
-                },
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(DnsClientXPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: DnsClientXPackDefinition.Id,
-                    enabledByDefault: DnsClientXPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: DnsClientXPackDefinition,
-                packLabel: "IX.DnsClientX",
-                packTypeName: DnsClientXPackTypeName,
-                optionsTypeName: DnsClientXOptionsTypeName,
-                configureOptions: null,
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(DomainDetectivePackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: DomainDetectivePackDefinition.Id,
-                    enabledByDefault: DomainDetectivePackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: DomainDetectivePackDefinition,
-                packLabel: "IX.DomainDetective",
-                packTypeName: DomainDetectivePackTypeName,
-                optionsTypeName: DomainDetectiveOptionsTypeName,
-                configureOptions: null,
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(ReviewerSetupPackDefinition.Id, () => {
-            AddOptionalBuiltInPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: ReviewerSetupPackDefinition.Id,
-                    enabledByDefault: ReviewerSetupPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: ReviewerSetupPackDefinition,
-                createPack: () => RequireDeclaredSourceKind(
-                    new ReviewerSetupToolPack(new ReviewerSetupToolOptions {
-                        IncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath
-                    }),
-                    packLabel: "Reviewer Setup"),
-                onWarning: options.OnBootstrapWarning);
-        });
-
-        RunBootstrapStep(EmailPackDefinition.Id, () => {
-            AddOptionalReflectionPack(
-                packs: packs,
-                availabilityById: availabilityById,
-                enabledByConfiguration: ResolveKnownPackEnabled(
-                    packId: EmailPackDefinition.Id,
-                    enabledByDefault: EmailPackDefinition.DefaultEnabled,
-                    disabledPackIds: disabledPackIds,
-                    enabledPackIds: enabledPackIds),
-                definition: EmailPackDefinition,
-                packLabel: "IX.Email",
-                packTypeName: EmailPackTypeName,
-                optionsTypeName: EmailOptionsTypeName,
-                configureOptions: emailOptions => {
-                    SetPropertyIfPresent(emailOptions, "AuthenticationProbeStore", options.AuthenticationProbeStore);
-                    SetPropertyIfPresent(emailOptions, "RequireSuccessfulSmtpProbeForSend", options.RequireSuccessfulSmtpProbeForSend);
-                    SetPropertyIfPresent(emailOptions, "SmtpProbeMaxAgeSeconds", options.SmtpProbeMaxAgeSeconds);
-                    SetPropertyIfPresent(emailOptions, "RunAsProfilePath", options.RunAsProfilePath);
-                    SetPropertyIfPresent(emailOptions, "AuthenticationProfilePath", options.AuthenticationProfilePath);
-                },
-                onWarning: options.OnBootstrapWarning);
-        });
+            });
+        }
 
         if (options.EnablePluginFolderLoading) {
             RunBootstrapStep("plugins", () => {

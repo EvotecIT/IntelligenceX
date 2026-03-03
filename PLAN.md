@@ -42,12 +42,12 @@ Build a contract-first architecture where:
 
 ## Audit Corrections (2026-03-03)
 
-- [ ] Re-opened: Chat bootstrap still carries a hardcoded known-pack table (`testimox`, `dnsclientx`, `domaindetective`, etc.) in `ToolPackBootstrap`; this is not yet fully plugin/manifest-driven.
-- [ ] Re-opened: `ChatServiceSession.PackCapabilityFallback.HostHints.cs` still exists and is reused by active host-hint logic; fallback helper deletion is incomplete (or needs rename/re-scope to match current intent).
+- [x] Closed: Chat bootstrap now discovers built-in packs generically from tool assemblies/descriptors in `ToolPackBootstrap` (no hardcoded per-pack bootstrap chain).
+- [x] Closed: host-hint helpers were re-scoped into `ChatServiceSession.HostHints.cs` (fallback-era file naming removed).
 - [x] Hotfix landed: stale structured-next-action carryover replay now suppresses self-loop replays (same tool + equivalent args) and rejects host-hint-conflicting carryover execution.
 - [x] Hotfix landed: deferred startup metadata flow no longer skips metadata sync purely because authentication is initially unknown (skip now applies only when interactive login is already in progress).
 - [x] Hotfix landed: startup bootstrap status publishing now stays visible while connected startup metadata sync is in progress.
-- [ ] Re-opened: service still rebuilds tooling in each `ChatServiceSession` constructor; repeated connect/disconnect cycles can re-trigger full pack bootstrap cost.
+- [x] Closed (mitigated): server-scoped tooling bootstrap cache now reuses prior bootstrap snapshots across reconnect/session churn, avoiding repeated full pack bootstrap on warm path.
 
 ## Hard Decisions (Locked)
 
@@ -99,7 +99,7 @@ Build a contract-first architecture where:
 ## Phase 3 - Remove Chat Fallback Engine
 
 1. [x] Delete cross-pack fallback builders from `ChatServiceSession.PackCapabilityFallback.cs`.
-2. [x] Delete fallback host-hint helpers tied to that flow from `ChatServiceSession.PackCapabilityFallback.HostHints.cs`.
+2. [x] Delete fallback host-hint helpers tied to that flow from `ChatServiceSession.HostHints.cs`.
 3. [x] Remove `_packCapabilityFallbackContractsByPackId` state from `ChatServiceSession.cs`.
 4. [x] Remove `RebuildPackCapabilityFallbackContracts(...)` call in `ChatServiceSession.ProfilesAndModels.cs`.
 5. [x] Remove fallback replay branch in `ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`.

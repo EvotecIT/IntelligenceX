@@ -14,9 +14,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: structured-next-action carryover replay now blocks stale self-loop replays and host-hint-conflicting replays.
 - [x] Stabilization hotfix: startup deferred metadata no longer skips metadata sync solely due to initial unauthenticated state.
 - [x] Stabilization hotfix: bootstrap progress status can publish while connected startup metadata sync is still active.
-- [ ] Re-opened migration gap: `ToolPackBootstrap` remains known-pack hardcoded rather than fully manifest/plugin-driven.
-- [ ] Re-opened migration gap: `ChatServiceSession.PackCapabilityFallback.HostHints.cs` still exists and should be either removed or renamed/re-scoped to avoid fallback-era ambiguity.
-- [ ] Re-opened startup perf gap: tooling bootstrap is still session-scoped (`new ChatServiceSession(...)` path), so reconnects may pay full bootstrap cost.
+- [x] Closed migration gap: `ToolPackBootstrap` now performs descriptor-driven built-in pack discovery (no hardcoded per-pack bootstrap chain).
+- [x] Closed migration gap: host-hint helpers moved to `ChatServiceSession.HostHints.cs` (fallback-era naming removed).
+- [x] Closed startup perf gap (warm path): server-scoped tooling bootstrap snapshot cache now avoids repeated full bootstrap during reconnect/session churn.
 
 ## Rules For This Migration
 
@@ -155,7 +155,7 @@ Dependency: PR 2
 Files:
 
 - `ChatServiceSession.PackCapabilityFallback.cs`
-- `ChatServiceSession.PackCapabilityFallback.HostHints.cs`
+- `ChatServiceSession.HostHints.cs`
 - `ChatServiceSession.ChatRouting.NoExtractedFinalize.cs`
 - `ChatServiceSession.cs`
 - `ChatServiceSession.ProfilesAndModels.cs`
@@ -232,10 +232,10 @@ Files (expected):
 
 Checklist:
 
-- [ ] Move tooling bootstrap out of per-connection session constructor into reusable runtime cache/lifecycle.
+- [x] Move tooling bootstrap out of per-connection session constructor into reusable runtime cache/lifecycle.
 - [ ] Keep startup status truthful: do not surface "ready" semantics until metadata/auth probes settle or explicitly fail-open with reason.
-- [ ] Replace hardcoded known-pack bootstrap chain with descriptor/manifest-driven registration.
-- [ ] Remove/rename fallback-era host-hint file so architecture guardrails match current source layout.
+- [x] Replace hardcoded known-pack bootstrap chain with descriptor/manifest-driven registration.
+- [x] Remove/rename fallback-era host-hint file so architecture guardrails match current source layout.
 - [ ] Add regression tests for reconnect warm path and multi-turn follow-up carryover against host scope changes.
 
 ## Parallelization Map
