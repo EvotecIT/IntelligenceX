@@ -443,11 +443,33 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactContinuation() {
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_RequiresCompactFollowUp() {
         var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
             continuationFollowUpTurn: true,
             compactFollowUpTurn: false,
             userRequest: "continue",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_AllowsCompactAcknowledgeWithoutExpandedContinuation() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "go ahead",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsCompactQuestions() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "why?",
             assistantDraft: "I can run the next action now.");
 
         Assert.False(result);

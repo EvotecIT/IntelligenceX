@@ -139,14 +139,26 @@ internal sealed partial class ChatServiceSession {
         bool compactFollowUpTurn,
         string userRequest,
         string assistantDraft) {
-        if (!continuationFollowUpTurn || !compactFollowUpTurn) {
+        if (!compactFollowUpTurn) {
+            return false;
+        }
+
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0 || ContainsQuestionSignal(request)) {
             return false;
         }
 
         // If this turn is already anchored to new contextual request content, avoid replaying stale carryover
         // actions from previous turns and let normal tool planning proceed.
-        if (LooksLikeContextualFollowUpForExecutionNudge(userRequest, assistantDraft)) {
+        if (LooksLikeContextualFollowUpForExecutionNudge(request, assistantDraft)) {
             return false;
+        }
+
+        // Non-expanded compact follow-ups (e.g. "go ahead") should still be allowed to replay carryover.
+        if (!continuationFollowUpTurn) {
+            if (LooksLikeActionSelectionPayload(request)) {
+                return false;
+            }
         }
 
         return true;
