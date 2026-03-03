@@ -19,6 +19,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Closed startup perf gap (warm path): server-scoped tooling bootstrap snapshot cache now avoids repeated full bootstrap during reconnect/session churn.
 - [x] Stabilization hotfix: carryover structured-next-action replay now accepts compact non-question follow-ups without requiring continuation-expansion text rewrites.
 - [x] Stabilization hotfix: duplicate final `chat_result` publishes are suppressed per request/thread/text at the service writer boundary.
+- [x] Stabilization hotfix: connected session status now stays in startup-pending mode until metadata/tool-pack readiness settles.
 
 ## Rules For This Migration
 
@@ -235,7 +236,7 @@ Files (expected):
 Checklist:
 
 - [x] Move tooling bootstrap out of per-connection session constructor into reusable runtime cache/lifecycle.
-- [ ] Keep startup status truthful: do not surface "ready" semantics until metadata/auth probes settle or explicitly fail-open with reason.
+- [x] Keep startup status truthful: do not surface "ready" semantics until metadata/auth probes settle or explicitly fail-open with reason.
 - [x] Replace hardcoded known-pack bootstrap chain with descriptor/manifest-driven registration.
 - [x] Remove/rename fallback-era host-hint file so architecture guardrails match current source layout.
 - [x] Add regression tests for reconnect warm path and multi-turn follow-up carryover against host scope changes.
