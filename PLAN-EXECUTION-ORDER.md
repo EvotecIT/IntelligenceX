@@ -46,6 +46,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: domain-intent payload parsing now safely handles invalid UTF-16 input (`ArgumentException` + `JsonException`) to avoid compact follow-up expansion crashes.
 - [x] Contract-alignment cleanup: updated routing/output lifecycle tests to match strict routing metadata requirements and one-meaningful-final-per-request output policy.
 - [x] Startup stability hotfix: deferred startup metadata sync now reruns when login success arrives during an in-flight metadata sync, preventing dropped post-login `hello/list_tools/auth_refresh` refreshes and stale tool visibility.
+- [x] Stabilization hotfix: continuation subset follow-ups now treat escaped Markdown tool ids as explicit tool references, preventing stale subset reuse when users switch to tools outside the remembered subset.
 
 ## Rules For This Migration
 
