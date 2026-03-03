@@ -157,6 +157,60 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
+    private static string FormatStartupConnectDurationLabel(TimeSpan duration) {
+        if (duration <= TimeSpan.Zero) {
+            return "0ms";
+        }
+
+        if (duration.TotalSeconds >= 1d) {
+            return duration.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s";
+        }
+
+        return Math.Max(1, Math.Round(duration.TotalMilliseconds))
+            .ToString(CultureInfo.InvariantCulture)
+               + "ms";
+    }
+
+    internal static string BuildStartupConnectAttemptStatusText(
+        string phaseLabel,
+        int attemptNumber,
+        int totalAttempts,
+        TimeSpan timeout) {
+        var phase = (phaseLabel ?? string.Empty).Trim();
+        if (phase.Length == 0) {
+            phase = "connecting";
+        }
+
+        var boundedAttempt = Math.Max(1, attemptNumber);
+        var boundedTotal = Math.Max(boundedAttempt, totalAttempts);
+        var timeoutLabel = FormatStartupConnectDurationLabel(timeout);
+        return "Starting runtime... ("
+               + phase
+               + ", attempt "
+               + boundedAttempt.ToString(CultureInfo.InvariantCulture)
+               + "/"
+               + boundedTotal.ToString(CultureInfo.InvariantCulture)
+               + ", timeout "
+               + timeoutLabel
+               + ")";
+    }
+
+    internal static string BuildStartupConnectRetryDelayStatusText(
+        int nextAttemptNumber,
+        int totalAttempts,
+        TimeSpan delay) {
+        var boundedAttempt = Math.Max(1, nextAttemptNumber);
+        var boundedTotal = Math.Max(boundedAttempt, totalAttempts);
+        var delayLabel = FormatStartupConnectDurationLabel(delay);
+        return "Starting runtime... (waiting "
+               + delayLabel
+               + " before retry "
+               + boundedAttempt.ToString(CultureInfo.InvariantCulture)
+               + "/"
+               + boundedTotal.ToString(CultureInfo.InvariantCulture)
+               + ")";
+    }
+
     internal static bool ShouldDeferStartupWebViewPostInitialization(bool captureStartupPhaseTelemetry) {
         return captureStartupPhaseTelemetry;
     }
@@ -387,6 +441,13 @@ public sealed partial class MainWindow : Window {
 
                 var initialHardTimeout = ResolveConnectAttemptHardTimeout(initialAttemptTimeout);
                 LogConnectAttemptStart("pipe_connect.initial", 1, initialPipeConnectTimeout, initialAttemptTimeout, initialHardTimeout);
+                await SetConnectProgressStatusAsync(
+                        BuildStartupConnectAttemptStatusText(
+                            phaseLabel: "connecting to service",
+                            attemptNumber: 1,
+                            totalAttempts: 1,
+                            timeout: initialAttemptTimeout))
+                    .ConfigureAwait(false);
                 initialAttemptStopwatch = Stopwatch.StartNew();
                 await ConnectClientWithTimeoutAsync(
                     client,
@@ -454,6 +515,13 @@ public sealed partial class MainWindow : Window {
                             try {
                                 var retryHardTimeout = ResolveConnectAttemptHardTimeout(retryTimeout);
                                 LogConnectAttemptStart("pipe_connect.retry", retryAttemptNumber, requestedRetryTimeout, retryTimeout, retryHardTimeout);
+                                await SetConnectProgressStatusAsync(
+                                        BuildStartupConnectAttemptStatusText(
+                                            phaseLabel: "retrying service connection",
+                                            attemptNumber: retryAttemptNumber,
+                                            totalAttempts: StartupConnectRetryTimeouts.Length,
+                                            timeout: retryTimeout))
+                                    .ConfigureAwait(false);
                                 retryAttemptStopwatch = Stopwatch.StartNew();
                                 await ConnectClientWithTimeoutAsync(client, pipeName, retryTimeout, retryHardTimeout).ConfigureAwait(false);
                                 var retryAttemptElapsed = retryAttemptStopwatch.Elapsed;
@@ -483,6 +551,12 @@ public sealed partial class MainWindow : Window {
                                         break;
                                     }
 
+                                    await SetConnectProgressStatusAsync(
+                                            BuildStartupConnectRetryDelayStatusText(
+                                                nextAttemptNumber: retryAttemptNumber + 1,
+                                                totalAttempts: StartupConnectRetryTimeouts.Length,
+                                                delay: retryDelay))
+                                        .ConfigureAwait(false);
                                     await Task.Delay(retryDelay).ConfigureAwait(false);
                                 }
                             }

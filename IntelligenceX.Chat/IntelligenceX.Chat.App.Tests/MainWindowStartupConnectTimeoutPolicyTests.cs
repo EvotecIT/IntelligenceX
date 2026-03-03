@@ -212,6 +212,46 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures connect attempt status text includes phase, attempt ordinal, and timeout labels.
+    /// </summary>
+    [Theory]
+    [InlineData("connecting to service", 1, 3, 900, "Starting runtime... (connecting to service, attempt 1/3, timeout 900ms)")]
+    [InlineData("retrying service connection", 2, 4, 2100, "Starting runtime... (retrying service connection, attempt 2/4, timeout 2.1s)")]
+    public void BuildStartupConnectAttemptStatusText_FormatsExpectedText(
+        string phaseLabel,
+        int attemptNumber,
+        int totalAttempts,
+        int timeoutMs,
+        string expected) {
+        var text = MainWindow.BuildStartupConnectAttemptStatusText(
+            phaseLabel,
+            attemptNumber,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(timeoutMs));
+
+        Assert.Equal(expected, text);
+    }
+
+    /// <summary>
+    /// Ensures retry-delay status text reports wait duration and next attempt ordinal.
+    /// </summary>
+    [Theory]
+    [InlineData(2, 4, 300, "Starting runtime... (waiting 300ms before retry 2/4)")]
+    [InlineData(5, 4, 1250, "Starting runtime... (waiting 1.3s before retry 5/5)")]
+    public void BuildStartupConnectRetryDelayStatusText_FormatsExpectedText(
+        int nextAttemptNumber,
+        int totalAttempts,
+        int delayMs,
+        string expected) {
+        var text = MainWindow.BuildStartupConnectRetryDelayStatusText(
+            nextAttemptNumber,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(delayMs));
+
+        Assert.Equal(expected, text);
+    }
+
+    /// <summary>
     /// Ensures dispatch cooldown applies only for non-priority paths without a tracked running sidecar.
     /// Priority login/queued-turn recovery should bypass cooldown and attempt reconnect immediately.
     /// </summary>
