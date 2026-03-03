@@ -162,18 +162,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
             ["ad_scope_discovery"] = false
         };
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue", mutabilityHints, null, null };
 
         var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var toolCall = Assert.IsType<ToolCall>(args[4]);
+        var toolCall = Assert.IsType<ToolCall>(args[5]);
         Assert.Equal("ad_scope_discovery", toolCall.Name);
         Assert.NotNull(toolCall.Arguments);
         Assert.False(toolCall.Arguments!.GetBoolean("include_trusts", defaultValue: true));
         Assert.Equal(250, toolCall.Arguments.GetInt64("max_domains"));
         Assert.Equal("contoso.com", toolCall.Arguments.GetString("domain_name"));
-        Assert.Equal("structured_next_action_readonly_autorun", Assert.IsType<string>(args[5]));
+        Assert.Equal("structured_next_action_readonly_autorun", Assert.IsType<string>(args[6]));
     }
 
     [Fact]
@@ -192,14 +192,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 Ok = true
             }
         };
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, null, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue", null, null, null };
 
         var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
 
         Assert.True(Assert.IsType<bool>(result));
-        var call = Assert.IsType<ToolCall>(args[4]);
+        var call = Assert.IsType<ToolCall>(args[5]);
         Assert.Equal("ad_scope_discovery", call.Name);
-        Assert.Equal("structured_next_action_readonly_autorun", Assert.IsType<string>(args[5]));
+        Assert.Equal("structured_next_action_readonly_autorun", Assert.IsType<string>(args[6]));
     }
 
     [Fact]
@@ -218,12 +218,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 Ok = true
             }
         };
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, null, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue", null, null, null };
 
         var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("next_action_mutating_not_autorun", Assert.IsType<string>(args[5]));
+        Assert.Equal("next_action_mutating_not_autorun", Assert.IsType<string>(args[6]));
     }
 
     [Fact]
@@ -242,12 +242,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 Ok = true
             }
         };
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, null, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue", null, null, null };
 
         var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("next_action_mutability_unknown", Assert.IsType<string>(args[5]));
+        Assert.Equal("next_action_mutability_unknown", Assert.IsType<string>(args[6]));
     }
 
     [Fact]
@@ -269,12 +269,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
             ["powershell_run"] = true
         };
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue", mutabilityHints, null, null };
 
         var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("next_action_mutating_not_autorun", Assert.IsType<string>(args[5]));
+        Assert.Equal("next_action_mutating_not_autorun", Assert.IsType<string>(args[6]));
     }
 
     [Fact]
@@ -305,12 +305,52 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
             ["eventlog_live_query"] = false
         };
-        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, mutabilityHints, null, null };
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, "continue", mutabilityHints, null, null };
 
         var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
 
         Assert.False(Assert.IsType<bool>(result));
-        Assert.Equal("next_action_self_loop", Assert.IsType<string>(args[5]));
+        Assert.Equal("next_action_self_loop", Assert.IsType<string>(args[6]));
+    }
+
+    [Fact]
+    public void TryBuildHostStructuredNextActionToolCall_DoesNotAutoRunWhenHostHintsConflict() {
+        var schema = ToolSchema.Object(
+                ("log_name", ToolSchema.String()),
+                ("machine_name", ToolSchema.String()))
+            .NoAdditionalProperties();
+        var toolDefinitions = new List<ToolDefinition> {
+            new("eventlog_top_events", "top", schema),
+            new("eventlog_live_query", "live", schema)
+        };
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call-host-hint-conflict",
+                Name = "eventlog_top_events",
+                ArgumentsJson = """{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}"""
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call-host-hint-conflict",
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"eventlog_live_query","mutating":false,"arguments":{"log_name":"System","machine_name":"AD0.ad.evotec.xyz"}}]}
+                         """,
+                Ok = true
+            }
+        };
+        var mutabilityHints = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_live_query"] = false
+        };
+        var hostHintInput = ChatServiceSession.BuildCarryoverHostHintInputForTesting(
+            "go ahead",
+            "Proceeding now for AD1.ad.evotec.xyz and AD2.ad.evotec.xyz.");
+        var args = new object?[] { toolDefinitions, toolCalls, toolOutputs, hostHintInput, mutabilityHints, null, null };
+
+        var result = TryBuildHostStructuredNextActionToolCallMethod.Invoke(null, args);
+
+        Assert.False(Assert.IsType<bool>(result));
+        Assert.Equal("next_action_host_hint_mismatch", Assert.IsType<string>(args[6]));
     }
 
     [Fact]

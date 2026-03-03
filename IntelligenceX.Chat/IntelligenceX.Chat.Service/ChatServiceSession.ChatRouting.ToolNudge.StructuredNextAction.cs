@@ -343,6 +343,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolDefinition> toolDefinitions,
         IReadOnlyList<ToolCallDto> toolCalls,
         IReadOnlyList<ToolOutputDto> toolOutputs,
+        string? userRequest,
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out ToolCall toolCall,
         out string reason) {
@@ -385,6 +386,11 @@ internal sealed partial class ChatServiceSession {
 
         if (!TryParseStructuredNextActionArguments(argumentsJson, toolDefinition, out var normalizedArguments, out var argumentReason)) {
             reason = argumentReason;
+            return false;
+        }
+
+        if (HasCarryoverHostHintMismatch(userRequest ?? string.Empty, normalizedArguments)) {
+            reason = "next_action_host_hint_mismatch";
             return false;
         }
 

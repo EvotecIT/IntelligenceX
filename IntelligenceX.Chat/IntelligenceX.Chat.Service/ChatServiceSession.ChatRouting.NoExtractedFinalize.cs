@@ -85,6 +85,7 @@ internal sealed partial class ChatServiceSession {
                     out _,
                     out _);
                 var allowHostStructuredReplay = ShouldAllowHostStructuredNextActionReplay(text);
+                var hostStructuredReplayHintInput = BuildCarryoverHostHintInput(userIntent, text);
                 if (!hostStructuredNextActionReplayUsed
                     && allowHostStructuredReplay
                     && toolCalls.Count > 0
@@ -93,12 +94,13 @@ internal sealed partial class ChatServiceSession {
                         toolDefinitions: structuredNextActionToolDefs,
                         toolCalls: toolCalls,
                         toolOutputs: toolOutputs,
+                        userRequest: hostStructuredReplayHintInput,
                         mutatingToolHintsByName: mutatingToolHints,
                         out var hostStructuredNextActionCall,
                         out var hostStructuredNextActionReason)) {
                     if (ShouldBlockSingleHostStructuredReplayForScopeShift(
                             threadId,
-                            routedUserRequest,
+                            userIntent,
                             hostStructuredNextActionCall.Arguments ?? new JsonObject())) {
                         hostStructuredNextActionReplayUsed = true;
                         Trace.WriteLine(
