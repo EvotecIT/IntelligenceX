@@ -36,6 +36,15 @@ public sealed partial class MainWindow : Window {
 
         MarkStartupInteractivePriorityRequested();
 
+        // If a sign-in-queued turn matches this manual resend, drop the queued copy so
+        // post-login auto-dispatch does not produce a duplicate assistant turn.
+        if (!skipUserBubble && !queuedAtUtc.HasValue) {
+            var targetConversationId = string.IsNullOrWhiteSpace(preferredConversationId)
+                ? _activeConversationId
+                : preferredConversationId;
+            _ = TryRemoveEquivalentQueuedPromptAfterLogin(text, targetConversationId, out _);
+        }
+
         if (IsTurnDispatchInProgress()) {
             var queueConversationId = string.IsNullOrWhiteSpace(preferredConversationId)
                 ? _activeConversationId
@@ -372,6 +381,19 @@ public sealed partial class MainWindow : Window {
                 return false;
             }
 
+            foreach (var pending in _queuedTurnsAfterLogin) {
+                if (!AreQueuedPromptsEquivalentForDispatch(
+                        pending.Text,
+                        pending.ConversationId,
+                        trimmedText,
+                        trimmedConversationId)) {
+                    continue;
+                }
+
+                queuedCount = _queuedTurnsAfterLogin.Count;
+                return true;
+            }
+
             _queuedTurnsAfterLogin.Enqueue(new QueuedTurn(trimmedText, trimmedConversationId, DateTime.UtcNow, skipUserBubbleOnDispatch));
             queuedCount = _queuedTurnsAfterLogin.Count;
             enqueued = true;
@@ -382,6 +404,95 @@ public sealed partial class MainWindow : Window {
         }
 
         return enqueued;
+    }
+
+    private bool TryRemoveEquivalentQueuedPromptAfterLogin(
+        string text,
+        string? conversationId,
+        out int remainingCount) {
+        var normalizedText = NormalizeQueuedPromptTextForDispatch(text);
+        var normalizedConversationId = NormalizeQueuedPromptConversationId(conversationId);
+        var removed = false;
+        lock (_queuedAfterLoginSync) {
+            if (_queuedTurnsAfterLogin.Count == 0
+                || normalizedText.Length == 0) {
+                remainingCount = _queuedTurnsAfterLogin.Count;
+                return false;
+            }
+
+            var originalCount = _queuedTurnsAfterLogin.Count;
+            for (var i = 0; i < originalCount; i++) {
+                var pending = _queuedTurnsAfterLogin.Dequeue();
+                if (!removed
+                    && AreQueuedPromptsEquivalentForDispatch(
+                        pending.Text,
+                        pending.ConversationId,
+                        normalizedText,
+                        normalizedConversationId)) {
+                    removed = true;
+                    continue;
+                }
+
+                _queuedTurnsAfterLogin.Enqueue(pending);
+            }
+
+            remainingCount = _queuedTurnsAfterLogin.Count;
+        }
+
+        if (removed) {
+            QueuePersistAppState();
+        }
+
+        return removed;
+    }
+
+    internal static bool AreQueuedPromptsEquivalentForDispatch(
+        string? leftText,
+        string? leftConversationId,
+        string? rightText,
+        string? rightConversationId) {
+        var normalizedLeftText = NormalizeQueuedPromptTextForDispatch(leftText);
+        var normalizedRightText = NormalizeQueuedPromptTextForDispatch(rightText);
+        if (normalizedLeftText.Length == 0 || normalizedRightText.Length == 0) {
+            return false;
+        }
+
+        if (!string.Equals(normalizedLeftText, normalizedRightText, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var normalizedLeftConversationId = NormalizeQueuedPromptConversationId(leftConversationId);
+        var normalizedRightConversationId = NormalizeQueuedPromptConversationId(rightConversationId);
+        return string.Equals(normalizedLeftConversationId, normalizedRightConversationId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeQueuedPromptTextForDispatch(string? text) {
+        var source = (text ?? string.Empty).Trim();
+        if (source.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new System.Text.StringBuilder(source.Length);
+        var inWhitespace = false;
+        for (var i = 0; i < source.Length; i++) {
+            var ch = source[i];
+            if (char.IsWhiteSpace(ch)) {
+                if (!inWhitespace) {
+                    sb.Append(' ');
+                    inWhitespace = true;
+                }
+                continue;
+            }
+
+            inWhitespace = false;
+            sb.Append(ch);
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    private static string NormalizeQueuedPromptConversationId(string? conversationId) {
+        return (conversationId ?? string.Empty).Trim();
     }
 
     private bool TryDequeuePromptAfterLogin(out QueuedTurn queuedTurn) {

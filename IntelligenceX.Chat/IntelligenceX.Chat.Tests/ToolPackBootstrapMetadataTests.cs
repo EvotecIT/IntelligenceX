@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -71,11 +72,15 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
-    public void EnumerateToolAssemblyNamesForDiscovery_StaysWithinReferencedToolAssemblyAllowlist() {
+    public void EnumerateToolAssemblyNamesForDiscovery_StaysWithinKnownBuiltInAssemblyAllowlist() {
         var method = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
+        var knownNamesField = typeof(ToolPackBootstrap).GetField(
+            "KnownBuiltInToolAssemblyNames",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(knownNamesField);
 
         var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, Array.Empty<object>()));
         var discoveredNames = discovered
@@ -84,17 +89,88 @@ public sealed class ToolPackBootstrapMetadataTests {
             .ToArray();
         Assert.NotEmpty(discoveredNames);
 
-        var referencedAllowlist = typeof(ToolPackBootstrap).Assembly
-            .GetReferencedAssemblies()
-            .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
-            .Where(static name =>
-                name.StartsWith("IntelligenceX.Tools.", StringComparison.OrdinalIgnoreCase)
-                && name.IndexOf(".Tests", StringComparison.OrdinalIgnoreCase) < 0
-                && name.IndexOf(".Benchmarks", StringComparison.OrdinalIgnoreCase) < 0)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        Assert.NotEmpty(referencedAllowlist);
+        var knownBuiltInAssemblyNames = Assert.IsAssignableFrom<string[]>(knownNamesField!.GetValue(null));
+        var allowlist = new HashSet<string>(
+            knownBuiltInAssemblyNames.Where(static name => !string.IsNullOrWhiteSpace(name)),
+            StringComparer.OrdinalIgnoreCase);
+        Assert.NotEmpty(allowlist);
 
-        Assert.All(discoveredNames, assemblyName => Assert.Contains(assemblyName, referencedAllowlist));
+        Assert.All(discoveredNames, assemblyName => Assert.Contains(assemblyName, allowlist));
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPath_ResolvesLoadablePath_ForDiscoveredToolAssembly() {
+        var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
+            "EnumerateToolAssemblyNamesForDiscovery",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(enumerateAssembliesMethod);
+        var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
+            "TryResolveTrustedToolAssemblyPath",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolvePathMethod);
+
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, Array.Empty<object>()));
+        var assemblyName = Assert.Single(discovered.Take(1));
+        var invocationArguments = new object?[] { assemblyName, null };
+        var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
+        var trustedAssemblyPath = Assert.IsType<string>(invocationArguments[1]);
+
+        Assert.True(resolved);
+        Assert.False(string.IsNullOrWhiteSpace(trustedAssemblyPath));
+        Assert.True(File.Exists(trustedAssemblyPath));
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPath_ReturnsFalse_WhenAssemblyNameIsMissing() {
+        var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
+            "TryResolveTrustedToolAssemblyPath",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolvePathMethod);
+        var invocationArguments = new object?[] { new AssemblyName(), null };
+        var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
+        var trustedAssemblyPath = invocationArguments[1] as string;
+
+        Assert.False(resolved);
+        Assert.Equal(string.Empty, trustedAssemblyPath);
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPath_ResolvesAllDiscoveredAssemblyNames() {
+        var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
+            "EnumerateToolAssemblyNamesForDiscovery",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(enumerateAssembliesMethod);
+        var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
+            "TryResolveTrustedToolAssemblyPath",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolvePathMethod);
+
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, Array.Empty<object>()));
+        var discoveredAssemblyNames = discovered.ToArray();
+        Assert.NotEmpty(discoveredAssemblyNames);
+
+        foreach (var assemblyName in discoveredAssemblyNames) {
+            var invocationArguments = new object?[] { assemblyName, null };
+            var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
+            var trustedAssemblyPath = invocationArguments[1] as string;
+            Assert.True(resolved, $"Failed to resolve trusted path for '{assemblyName.Name}'.");
+            Assert.False(string.IsNullOrWhiteSpace(trustedAssemblyPath));
+            Assert.True(File.Exists(trustedAssemblyPath), $"Resolved path '{trustedAssemblyPath}' for '{assemblyName.Name}' does not exist.");
+        }
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_LoadsBuiltInPacks_WithTrustedAssemblyResolution() {
+        var warnings = new List<string>();
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnableDefaultPluginPaths = false,
+            EnablePluginFolderLoading = false,
+            OnBootstrapWarning = warnings.Add
+        });
+
+        Assert.True(
+            packs.Count > 0,
+            "Expected at least one built-in pack. Bootstrap warnings: " + string.Join(" | ", warnings));
     }
 
     [Theory]

@@ -45,6 +45,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: carryover structured-next-action replay now evaluates compact follow-up eligibility from raw user text (instead of routed payload rewrite text), restoring queued `go ahead` follow-up execution.
 - [x] Stabilization hotfix: domain-intent payload parsing now safely handles invalid UTF-16 input (`ArgumentException` + `JsonException`) to avoid compact follow-up expansion crashes.
 - [x] Contract-alignment cleanup: updated routing/output lifecycle tests to match strict routing metadata requirements and one-meaningful-final-per-request output policy.
+- [x] Startup stability hotfix: deferred startup metadata sync now reruns when login success arrives during an in-flight metadata sync, preventing dropped post-login `hello/list_tools/auth_refresh` refreshes and stale tool visibility.
 
 ## Rules For This Migration
 

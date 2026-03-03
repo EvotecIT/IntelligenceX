@@ -96,6 +96,14 @@ internal sealed partial class ChatServiceSession {
                         mutatingToolHintsByName: mutatingToolHints,
                         out var hostStructuredNextActionCall,
                         out var hostStructuredNextActionReason)) {
+                    if (ShouldBlockSingleHostStructuredReplayForScopeShift(
+                            threadId,
+                            routedUserRequest,
+                            hostStructuredNextActionCall.Arguments ?? new JsonObject())) {
+                        hostStructuredNextActionReplayUsed = true;
+                        Trace.WriteLine(
+                            $"[host-structured-next-action] outcome=skip reason=scope_shift_requires_fresh_plan continuation={continuationFollowUpTurn} tool={hostStructuredNextActionCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    } else {
                     hostStructuredNextActionReplayUsed = true;
                     if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
                         toolDefs = fullToolDefs;
@@ -205,9 +213,10 @@ internal sealed partial class ChatServiceSession {
                             phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
                             phaseMessage: "Reviewing tool-recommended next action results...",
                             heartbeatLabel: "Reviewing next action",
-                            heartbeatSeconds: modelHeartbeatSeconds)
+                                heartbeatSeconds: modelHeartbeatSeconds)
                         .ConfigureAwait(false);
                     return ContinueRound();
+                    }
                 }
 
                 if (!structuredNextActionRetryUsed

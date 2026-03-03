@@ -293,15 +293,24 @@ public sealed partial class MainWindow : Window {
         });
     }
 
-    private void QueueDeferredStartupConnectMetadataSync() {
+    private void QueueDeferredStartupConnectMetadataSync(bool requestRerunIfBusy = false) {
         if (_shutdownRequested) {
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _startupConnectMetadataDeferredQueued, 1, 0) != 0) {
+        var metadataSyncAlreadyQueued = Interlocked.CompareExchange(ref _startupConnectMetadataDeferredQueued, 1, 0) != 0;
+        if (metadataSyncAlreadyQueued) {
+            if (ShouldRequestDeferredStartupMetadataSyncRerun(
+                    metadataSyncAlreadyQueued: metadataSyncAlreadyQueued,
+                    requestRerunIfBusy: requestRerunIfBusy)) {
+                Interlocked.Exchange(ref _startupConnectMetadataDeferredRerunRequested, 1);
+                StartupLog.Write("StartupConnect.metadata_sync rerun_requested_while_busy");
+            }
+
             return;
         }
 
+        Interlocked.Exchange(ref _startupConnectMetadataDeferredRerunRequested, 0);
         _ = Task.Run(async () => {
             var metadataSyncStopwatch = Stopwatch.StartNew();
             try {
@@ -654,6 +663,13 @@ public sealed partial class MainWindow : Window {
                     EndStartupMetadataSyncTracking();
                 }
                 Interlocked.Exchange(ref _startupConnectMetadataDeferredQueued, 0);
+                Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
+                if (Interlocked.Exchange(ref _startupConnectMetadataDeferredRerunRequested, 0) != 0
+                    && !_shutdownRequested
+                    && _isConnected) {
+                    StartupLog.Write("StartupConnect.metadata_sync rerun_dispatch");
+                    QueueDeferredStartupConnectMetadataSync();
+                }
             }
         });
     }

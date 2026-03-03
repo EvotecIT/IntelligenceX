@@ -28,6 +28,12 @@ public sealed partial class MainWindow : Window {
                && !loginSuccessMetadataSyncAlreadyQueued;
     }
 
+    internal static bool ShouldRequestDeferredStartupMetadataSyncRerun(
+        bool metadataSyncAlreadyQueued,
+        bool requestRerunIfBusy) {
+        return metadataSyncAlreadyQueued && requestRerunIfBusy;
+    }
+
     private static string NormalizeStartupMetadataSyncPhase(string? phase) {
         var normalized = (phase ?? string.Empty).Trim();
         return normalized.Length == 0 ? "syncing startup metadata" : normalized;

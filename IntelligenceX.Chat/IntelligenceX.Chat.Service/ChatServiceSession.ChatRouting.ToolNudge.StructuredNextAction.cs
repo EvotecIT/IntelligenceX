@@ -185,10 +185,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // Require at least three meaningful tokens before treating the compact turn as a
-        // contextual scope shift instead of a passive acknowledgement.
+        // Require at least two meaningful tokens before treating the compact turn as a
+        // contextual scope shift instead of a passive acknowledgement. This preserves
+        // one-token acknowledgements (for example "continue") while catching short
+        // scope shifts (for example "other dcs").
         var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 12);
-        return requestTokens.Count >= 3;
+        return requestTokens.Count >= 2;
     }
 
     private static bool ShouldTriggerNoResultPhaseLoopWatchdog(
