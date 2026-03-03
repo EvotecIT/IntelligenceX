@@ -388,18 +388,57 @@ public sealed partial class MainWindow : Window {
                 var enabledPackCount = 0;
                 var totalPackCount = 0;
                 var listedToolCount = 0;
+                const int metadataPhaseMaxAttempts = 2;
 
                 var helloStopwatch = Stopwatch.StartNew();
                 try {
-                    StartupLog.Write("StartupConnect.hello begin");
-                    var hello = await AwaitWithMetadataHeartbeatAsync(
-                            operationFactory: () => client.RequestAsync<HelloMessage>(
-                                new HelloRequest { RequestId = NextId() },
-                                CancellationToken.None),
-                            initialMessage: "Runtime connected. Syncing session policy...",
-                            heartbeatMessagePrefix: "Runtime connected. Session policy sync in progress",
-                            phase: "syncing session policy")
-                        .ConfigureAwait(false);
+                    HelloMessage? hello = null;
+                    var helloAttemptCount = 0;
+                    for (var attempt = 1; attempt <= metadataPhaseMaxAttempts; attempt++) {
+                        helloAttemptCount = attempt;
+                        if (attempt == 1) {
+                            StartupLog.Write("StartupConnect.hello begin");
+                        } else {
+                            StartupLog.Write(
+                                "StartupConnect.hello retry attempt="
+                                + attempt.ToString(CultureInfo.InvariantCulture)
+                                + "/"
+                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture));
+                        }
+
+                        try {
+                            hello = await AwaitWithMetadataHeartbeatAsync(
+                                    operationFactory: () => client.RequestAsync<HelloMessage>(
+                                        new HelloRequest { RequestId = NextId() },
+                                        CancellationToken.None),
+                                    initialMessage: "Runtime connected. Syncing session policy...",
+                                    heartbeatMessagePrefix: "Runtime connected. Session policy sync in progress",
+                                    phase: "syncing session policy")
+                                .ConfigureAwait(false);
+                            break;
+                        } catch (Exception ex) when (attempt < metadataPhaseMaxAttempts && IsDisconnectedError(ex)) {
+                            StartupLog.Write(
+                                "StartupConnect.hello transient_retry attempt="
+                                + attempt.ToString(CultureInfo.InvariantCulture)
+                                + "/"
+                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture)
+                                + " after "
+                                + FormatPhaseDuration(helloStopwatch.Elapsed)
+                                + ": "
+                                + DescribeStartupExceptionForLog(ex));
+                            await SetMetadataSyncStatusAsync(
+                                    "Runtime connected. Session policy sync interrupted; retrying...",
+                                    phase: "syncing session policy")
+                                .ConfigureAwait(false);
+                            await Task.Delay(250).ConfigureAwait(false);
+                            continue;
+                        }
+                    }
+
+                    if (hello is null) {
+                        throw new InvalidOperationException("Session policy sync did not complete.");
+                    }
+
                     helloStopwatch.Stop();
                     helloDuration = helloStopwatch.Elapsed;
                     _sessionPolicy = hello.Policy;
@@ -421,6 +460,9 @@ public sealed partial class MainWindow : Window {
                     if (!string.IsNullOrWhiteSpace(startupBootstrapDetail)) {
                         sessionPolicyStatus += ", " + startupBootstrapDetail;
                     }
+                    if (helloAttemptCount > 1) {
+                        sessionPolicyStatus += ", retries " + (helloAttemptCount - 1).ToString(CultureInfo.InvariantCulture);
+                    }
                     sessionPolicyStatus += ").";
                     await SetMetadataSyncStatusAsync(
                             sessionPolicyStatus,
@@ -440,22 +482,65 @@ public sealed partial class MainWindow : Window {
 
                 var listToolsStopwatch = Stopwatch.StartNew();
                 try {
-                    StartupLog.Write("StartupConnect.list_tools begin");
-                    var toolList = await AwaitWithMetadataHeartbeatAsync(
-                            operationFactory: () => client.RequestAsync<ToolListMessage>(
-                                new ListToolsRequest { RequestId = NextId() },
-                                CancellationToken.None),
-                            initialMessage: "Runtime connected. Loading tool catalog...",
-                            heartbeatMessagePrefix: "Runtime connected. Tool catalog load in progress",
-                            phase: "loading tool catalog")
-                        .ConfigureAwait(false);
+                    ToolListMessage? toolList = null;
+                    var listToolsAttemptCount = 0;
+                    for (var attempt = 1; attempt <= metadataPhaseMaxAttempts; attempt++) {
+                        listToolsAttemptCount = attempt;
+                        if (attempt == 1) {
+                            StartupLog.Write("StartupConnect.list_tools begin");
+                        } else {
+                            StartupLog.Write(
+                                "StartupConnect.list_tools retry attempt="
+                                + attempt.ToString(CultureInfo.InvariantCulture)
+                                + "/"
+                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture));
+                        }
+
+                        try {
+                            toolList = await AwaitWithMetadataHeartbeatAsync(
+                                    operationFactory: () => client.RequestAsync<ToolListMessage>(
+                                        new ListToolsRequest { RequestId = NextId() },
+                                        CancellationToken.None),
+                                    initialMessage: "Runtime connected. Loading tool catalog...",
+                                    heartbeatMessagePrefix: "Runtime connected. Tool catalog load in progress",
+                                    phase: "loading tool catalog")
+                                .ConfigureAwait(false);
+                            break;
+                        } catch (Exception ex) when (attempt < metadataPhaseMaxAttempts && IsDisconnectedError(ex)) {
+                            StartupLog.Write(
+                                "StartupConnect.list_tools transient_retry attempt="
+                                + attempt.ToString(CultureInfo.InvariantCulture)
+                                + "/"
+                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture)
+                                + " after "
+                                + FormatPhaseDuration(listToolsStopwatch.Elapsed)
+                                + ": "
+                                + DescribeStartupExceptionForLog(ex));
+                            await SetMetadataSyncStatusAsync(
+                                    "Runtime connected. Tool catalog sync interrupted; retrying...",
+                                    phase: "loading tool catalog")
+                                .ConfigureAwait(false);
+                            await Task.Delay(250).ConfigureAwait(false);
+                            continue;
+                        }
+                    }
+
+                    if (toolList is null) {
+                        throw new InvalidOperationException("Tool catalog sync did not complete.");
+                    }
+
                     listToolsStopwatch.Stop();
                     toolCatalogDuration = listToolsStopwatch.Elapsed;
                     UpdateToolCatalog(toolList.Tools);
                     listedToolCount = toolList.Tools?.Length ?? 0;
                     StartupLog.Write("StartupConnect.list_tools done");
+                    var toolCatalogStatus = $"Runtime connected. Tool catalog loaded ({listedToolCount} tools, {FormatPhaseDuration(listToolsStopwatch.Elapsed)}";
+                    if (listToolsAttemptCount > 1) {
+                        toolCatalogStatus += ", retries " + (listToolsAttemptCount - 1).ToString(CultureInfo.InvariantCulture);
+                    }
+                    toolCatalogStatus += ").";
                     await SetMetadataSyncStatusAsync(
-                            $"Runtime connected. Tool catalog loaded ({listedToolCount} tools, {FormatPhaseDuration(listToolsStopwatch.Elapsed)}).",
+                            toolCatalogStatus,
                             phase: "tool catalog loaded")
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
@@ -471,18 +556,56 @@ public sealed partial class MainWindow : Window {
 
                 var authRefreshStopwatch = Stopwatch.StartNew();
                 try {
-                    StartupLog.Write("StartupConnect.auth_refresh begin");
-                    _ = await AwaitWithMetadataHeartbeatAsync(
-                            operationFactory: () => RefreshAuthenticationStateAsync(updateStatus: true),
-                            initialMessage: "Runtime connected. Refreshing authentication state...",
-                            heartbeatMessagePrefix: "Runtime connected. Authentication refresh in progress",
-                            phase: "refreshing authentication")
-                        .ConfigureAwait(false);
+                    var authRefreshAttemptCount = 0;
+                    for (var attempt = 1; attempt <= metadataPhaseMaxAttempts; attempt++) {
+                        authRefreshAttemptCount = attempt;
+                        if (attempt == 1) {
+                            StartupLog.Write("StartupConnect.auth_refresh begin");
+                        } else {
+                            StartupLog.Write(
+                                "StartupConnect.auth_refresh retry attempt="
+                                + attempt.ToString(CultureInfo.InvariantCulture)
+                                + "/"
+                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture));
+                        }
+
+                        try {
+                            _ = await AwaitWithMetadataHeartbeatAsync(
+                                    operationFactory: () => RefreshAuthenticationStateAsync(updateStatus: true),
+                                    initialMessage: "Runtime connected. Refreshing authentication state...",
+                                    heartbeatMessagePrefix: "Runtime connected. Authentication refresh in progress",
+                                    phase: "refreshing authentication")
+                                .ConfigureAwait(false);
+                            break;
+                        } catch (Exception ex) when (attempt < metadataPhaseMaxAttempts && IsDisconnectedError(ex)) {
+                            StartupLog.Write(
+                                "StartupConnect.auth_refresh transient_retry attempt="
+                                + attempt.ToString(CultureInfo.InvariantCulture)
+                                + "/"
+                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture)
+                                + " after "
+                                + FormatPhaseDuration(authRefreshStopwatch.Elapsed)
+                                + ": "
+                                + DescribeStartupExceptionForLog(ex));
+                            await SetMetadataSyncStatusAsync(
+                                    "Runtime connected. Authentication refresh interrupted; retrying...",
+                                    phase: "refreshing authentication")
+                                .ConfigureAwait(false);
+                            await Task.Delay(250).ConfigureAwait(false);
+                            continue;
+                        }
+                    }
+
                     authRefreshStopwatch.Stop();
                     authRefreshDuration = authRefreshStopwatch.Elapsed;
                     StartupLog.Write("StartupConnect.auth_refresh done");
+                    var authRefreshStatus = "Runtime connected. Authentication refreshed in " + FormatPhaseDuration(authRefreshStopwatch.Elapsed);
+                    if (authRefreshAttemptCount > 1) {
+                        authRefreshStatus += " (retries " + (authRefreshAttemptCount - 1).ToString(CultureInfo.InvariantCulture) + ")";
+                    }
+                    authRefreshStatus += ".";
                     await SetMetadataSyncStatusAsync(
-                            $"Runtime connected. Authentication refreshed in {FormatPhaseDuration(authRefreshStopwatch.Elapsed)}.",
+                            authRefreshStatus,
                             phase: "authentication refreshed")
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
