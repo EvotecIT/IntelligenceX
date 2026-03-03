@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using IntelligenceX.Tools;
@@ -113,9 +112,22 @@ public static partial class ToolPackBootstrap {
 
     private static IEnumerable<AssemblyName> EnumerateToolAssemblyNamesForDiscovery() {
         var discovered = new Dictionary<string, AssemblyName>(StringComparer.OrdinalIgnoreCase);
+        var bootstrapAssembly = typeof(ToolPackBootstrap).Assembly;
+        var referencedToolAssemblies = bootstrapAssembly
+            .GetReferencedAssemblies()
+            .Where(static reference => !string.IsNullOrWhiteSpace(reference.Name) && IsBuiltInToolAssemblyName(reference.Name))
+            .ToArray();
+        var allowedAssemblyNames = new HashSet<string>(
+            referencedToolAssemblies
+                .Select(static reference => reference.Name ?? string.Empty)
+                .Where(static name => name.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
 
         void AddAssemblyName(AssemblyName? candidate) {
-            if (candidate is null || string.IsNullOrWhiteSpace(candidate.Name) || !IsBuiltInToolAssemblyName(candidate.Name)) {
+            if (candidate is null
+                || string.IsNullOrWhiteSpace(candidate.Name)
+                || !IsBuiltInToolAssemblyName(candidate.Name)
+                || !allowedAssemblyNames.Contains(candidate.Name)) {
                 return;
             }
 
@@ -124,25 +136,12 @@ public static partial class ToolPackBootstrap {
             }
         }
 
-        var bootstrapAssembly = typeof(ToolPackBootstrap).Assembly;
-        foreach (var reference in bootstrapAssembly.GetReferencedAssemblies()) {
+        foreach (var reference in referencedToolAssemblies) {
             AddAssemblyName(reference);
         }
 
         foreach (var loadedAssembly in AppDomain.CurrentDomain.GetAssemblies()) {
             AddAssemblyName(loadedAssembly.GetName());
-        }
-
-        var baseDirectory = AppContext.BaseDirectory;
-        if (Directory.Exists(baseDirectory)) {
-            foreach (var candidatePath in Directory.EnumerateFiles(baseDirectory, "IntelligenceX.Tools*.dll", SearchOption.TopDirectoryOnly)) {
-                var fileName = Path.GetFileNameWithoutExtension(candidatePath);
-                if (string.IsNullOrWhiteSpace(fileName)) {
-                    continue;
-                }
-
-                AddAssemblyName(new AssemblyName(fileName));
-            }
         }
 
         return discovered.Values

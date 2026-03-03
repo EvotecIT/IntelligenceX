@@ -70,6 +70,33 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Throws<ArgumentException>(() => ToolPackBootstrap.NormalizeSourceKind(sourceKind: null, descriptorId: "system"));
     }
 
+    [Fact]
+    public void EnumerateToolAssemblyNamesForDiscovery_StaysWithinReferencedToolAssemblyAllowlist() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "EnumerateToolAssemblyNamesForDiscovery",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, Array.Empty<object>()));
+        var discoveredNames = discovered
+            .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
+            .Where(static name => name.Length > 0)
+            .ToArray();
+        Assert.NotEmpty(discoveredNames);
+
+        var referencedAllowlist = typeof(ToolPackBootstrap).Assembly
+            .GetReferencedAssemblies()
+            .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
+            .Where(static name =>
+                name.StartsWith("IntelligenceX.Tools.", StringComparison.OrdinalIgnoreCase)
+                && name.IndexOf(".Tests", StringComparison.OrdinalIgnoreCase) < 0
+                && name.IndexOf(".Benchmarks", StringComparison.OrdinalIgnoreCase) < 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.NotEmpty(referencedAllowlist);
+
+        Assert.All(discoveredNames, assemblyName => Assert.Contains(assemblyName, referencedAllowlist));
+    }
+
     [Theory]
     [InlineData("open_source", "open_source")]
     [InlineData("public", "open_source")]

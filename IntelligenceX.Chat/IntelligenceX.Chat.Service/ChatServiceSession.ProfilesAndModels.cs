@@ -608,7 +608,8 @@ internal sealed partial class ChatServiceSession {
         nameof(_toolOrchestrationCatalog))]
     private void RebuildToolingCore(bool clearRoutingCaches) {
         var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
-        var bootstrapCacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions);
+        var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+        var bootstrapCacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
         if (!clearRoutingCaches
             && _toolingBootstrapCache is not null
             && _toolingBootstrapCache.TryGetSnapshot(bootstrapCacheKey, out var cachedSnapshot)) {
@@ -849,7 +850,8 @@ internal sealed partial class ChatServiceSession {
 
     private static string BuildToolingBootstrapCacheKey(
         ServiceOptions options,
-        ToolRuntimePolicyOptions runtimePolicyOptions) {
+        ToolRuntimePolicyOptions runtimePolicyOptions,
+        ToolRuntimePolicyResolvedOptions resolvedRuntimePolicyOptions) {
         static string Normalize(string? value) {
             return (value ?? string.Empty).Trim();
         }
@@ -888,6 +890,8 @@ internal sealed partial class ChatServiceSession {
         builder.Append("auth_preset=").Append(runtimePolicyOptions.AuthenticationPreset.ToString()).Append(';');
         builder.Append("require_explicit_routing=").Append(runtimePolicyOptions.RequireExplicitRoutingMetadata ? '1' : '0').Append(';');
         builder.Append("require_auth_runtime=").Append(runtimePolicyOptions.RequireAuthenticationRuntime ? '1' : '0').Append(';');
+        builder.Append("require_smtp_probe=").Append(resolvedRuntimePolicyOptions.RequireSuccessfulSmtpProbeForSend ? '1' : '0').Append(';');
+        builder.Append("smtp_probe_max_age_seconds=").Append(resolvedRuntimePolicyOptions.SmtpProbeMaxAgeSeconds.ToString(CultureInfo.InvariantCulture)).Append(';');
         builder.Append("runas_profile_path=").Append(Normalize(runtimePolicyOptions.RunAsProfilePath)).Append(';');
         builder.Append("auth_profile_path=").Append(Normalize(runtimePolicyOptions.AuthenticationProfilePath)).Append(';');
         return builder.ToString();

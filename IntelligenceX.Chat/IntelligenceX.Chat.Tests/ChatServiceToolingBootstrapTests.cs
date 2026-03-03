@@ -75,6 +75,39 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public void BuildToolingBootstrapCacheKey_IncludesResolvedSmtpProbePolicyDimensions() {
+        var keyMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(keyMethod);
+
+        var options = new ServiceOptions();
+        var runtimePolicyOptions = new ToolRuntimePolicyOptions {
+            AuthenticationPreset = ToolAuthenticationRuntimePreset.Strict,
+            RequireAuthenticationRuntime = true
+        };
+
+        var strictResolved = new ToolRuntimePolicyResolvedOptions {
+            Options = runtimePolicyOptions,
+            RequireSuccessfulSmtpProbeForSend = true,
+            SmtpProbeMaxAgeSeconds = 600
+        };
+        var relaxedResolved = strictResolved with {
+            RequireSuccessfulSmtpProbeForSend = false,
+            SmtpProbeMaxAgeSeconds = 60
+        };
+
+        var strictKey = Assert.IsType<string>(keyMethod!.Invoke(null, new object?[] { options, runtimePolicyOptions, strictResolved }));
+        var relaxedKey = Assert.IsType<string>(keyMethod.Invoke(null, new object?[] { options, runtimePolicyOptions, relaxedResolved }));
+
+        Assert.Contains("require_smtp_probe=1;", strictKey, StringComparison.Ordinal);
+        Assert.Contains("smtp_probe_max_age_seconds=600;", strictKey, StringComparison.Ordinal);
+        Assert.Contains("require_smtp_probe=0;", relaxedKey, StringComparison.Ordinal);
+        Assert.Contains("smtp_probe_max_age_seconds=60;", relaxedKey, StringComparison.Ordinal);
+        Assert.NotEqual(strictKey, relaxedKey);
+    }
+
+    [Fact]
     public void SummarizeSlowPluginLoadWarnings_CompressesAndSortsTopEntries() {
         var method = typeof(ChatServiceSession).GetMethod(
             "SummarizeSlowPluginLoadWarnings",
