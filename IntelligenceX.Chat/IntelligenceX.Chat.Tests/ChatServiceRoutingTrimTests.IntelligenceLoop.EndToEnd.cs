@@ -697,6 +697,175 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_DoesNotReplaceCompactFollowUpToolQuestionWithCachedEvidenceFallback() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-cache-seed-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_dns_seed",
+                                    type = "function",
+                                    function = new {
+                                        name = "dnsclientx_query",
+                                        arguments = JsonSerializer.Serialize(new { query = "ad.evotec.xyz", type = "A" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-cache-seed-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "DNS evidence captured for ad.evotec.xyz."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-capability-question",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "In this runtime I do not have eventlog tools enabled for this session."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            4 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-capability-question-review",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "In this runtime I do not have eventlog tools enabled for this session."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-capability-question-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "In this runtime I do not have eventlog tools enabled for this session."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 3,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "dnsclientx_query",
+            static (_, _) => Task.FromResult("""
+                                             {"ok":true,"summary_markdown":"Resolved ad.evotec.xyz to 192.168.241.6."}
+                                             """)));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var turn1 = new ChatRequest {
+            RequestId = "req-cache-seed",
+            ThreadId = thread.Id,
+            Text = "Check DNS for ad.evotec.xyz and summarize quickly.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 3,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var captureTurn1 = new SynchronizedCaptureStream();
+        using var writerTurn1 = new StreamWriter(captureTurn1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        _ = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerTurn1,
+            turn1,
+            thread.Id,
+            CancellationToken.None);
+
+        var turn2 = new ChatRequest {
+            RequestId = "req-tool-capability-question",
+            ThreadId = thread.Id,
+            Text = "aale to chyba masz toole do event logow?",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 3,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                DisabledTools = new[] { "dnsclientx_query" },
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var captureTurn2 = new SynchronizedCaptureStream();
+        using var writerTurn2 = new StreamWriter(captureTurn2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResultTurn2 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerTurn2,
+            turn2,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.InRange(server.ChatCompletionRequestCount, 3, 6);
+        var resultMessageTurn2 = GetPropertyValue<ChatResultMessage>(runResultTurn2, "Result");
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", resultMessageTurn2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Resolved ad.evotec.xyz", resultMessageTurn2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not have eventlog tools enabled", resultMessageTurn2.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_AutoBootstrapsDomainEnvironmentAfterNoToolBlockerLoop() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => JsonSerializer.Serialize(new {

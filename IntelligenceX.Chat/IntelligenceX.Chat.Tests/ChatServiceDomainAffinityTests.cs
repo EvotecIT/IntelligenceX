@@ -510,7 +510,6 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Theory]
     [InlineData("AD", "ad_domain")]
-    [InlineData("ad", "ad_domain")]
     [InlineData("LDAP", "ad_domain")]
     [InlineData("DC", "ad_domain")]
     [InlineData("DNS", "public_domain")]
@@ -580,6 +579,20 @@ public sealed class ChatServiceDomainAffinityTests {
 
         Assert.True(resolved);
         Assert.Equal("public_domain", family);
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_DoesNotResolveLowercaseAdAloneAsDomainSignal() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-lowercase-ad-alone");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-lowercase-ad-alone",
+            "ad",
+            out var family);
+
+        Assert.False(resolved);
+        Assert.Equal(string.Empty, family);
     }
 
     [Fact]
