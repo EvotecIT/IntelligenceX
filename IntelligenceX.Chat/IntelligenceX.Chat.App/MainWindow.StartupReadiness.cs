@@ -33,10 +33,15 @@ public sealed partial class MainWindow : Window {
         return statusText + BuildStartupStatusCauseSuffix(cause);
     }
 
-    internal static string BuildStartupPendingStatusText(bool requiresInteractiveSignIn, bool isAuthenticated) {
+    internal static string BuildStartupPendingStatusText(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress = false) {
         if (requiresInteractiveSignIn && !isAuthenticated) {
             return AppendStartupStatusCause(
-                "Runtime connected. Sign in to finish loading tool packs...",
+                loginInProgress
+                    ? "Runtime connected. Finish sign-in in browser to continue loading tool packs..."
+                    : "Runtime connected. Sign in to finish loading tool packs...",
                 StartupStatusCauseAuthWait);
         }
 
@@ -146,11 +151,18 @@ public sealed partial class MainWindow : Window {
 
         var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
         var isAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
-        if (status.Kind == SessionStatusKind.SignInRequired) {
+        if (status.Kind is SessionStatusKind.SignInRequired
+            or SessionStatusKind.WaitingForSignIn
+            or SessionStatusKind.CompleteSignInInBrowser
+            or SessionStatusKind.OpeningSignIn) {
             isAuthenticated = false;
         }
+        var loginInProgress = status.Kind is SessionStatusKind.WaitingForSignIn
+            or SessionStatusKind.CompleteSignInInBrowser
+            or SessionStatusKind.OpeningSignIn
+            || _loginInProgress;
 
-        statusText = BuildStartupPendingStatusText(requiresInteractiveSignIn, isAuthenticated);
+        statusText = BuildStartupPendingStatusText(requiresInteractiveSignIn, isAuthenticated, loginInProgress);
         return true;
     }
 }

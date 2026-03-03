@@ -631,6 +631,20 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures startup pending status text uses explicit browser-completion copy while sign-in is in progress.
+    /// </summary>
+    [Fact]
+    public void BuildStartupPendingStatusText_UsesBrowserContinuationCopy_WhenLoginInProgress() {
+        var text = MainWindow.BuildStartupPendingStatusText(
+            requiresInteractiveSignIn: true,
+            isAuthenticated: false,
+            loginInProgress: true);
+        Assert.Equal(
+            "Runtime connected. Finish sign-in in browser to continue loading tool packs... (cause auth_wait)",
+            text);
+    }
+
+    /// <summary>
     /// Ensures deferred startup metadata sync waits for authenticated runtime state only when
     /// the active transport requires interactive sign-in.
     /// </summary>
