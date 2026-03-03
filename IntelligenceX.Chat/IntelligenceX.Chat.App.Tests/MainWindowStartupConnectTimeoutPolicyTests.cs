@@ -597,6 +597,23 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures post-login deferred metadata sync scheduling is queued once per login-success cycle.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public void ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess_ReturnsExpectedValue(
+        bool shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+        bool loginSuccessMetadataSyncAlreadyQueued,
+        bool expected) {
+        var shouldQueue = MainWindow.ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess(
+            shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+            loginSuccessMetadataSyncAlreadyQueued);
+        Assert.Equal(expected, shouldQueue);
+    }
+
+    /// <summary>
     /// Ensures startup dispatch prewarm system summary includes stable timing details.
     /// </summary>
     [Theory]

@@ -404,17 +404,25 @@ public sealed partial class MainWindow : Window {
                 isAuthenticated: _isAuthenticated,
                 hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot(),
                 loginInProgress: _loginInProgress);
+            var resetEnsureLoginProbeCache = ShouldResetEnsureLoginProbeCacheOnReconnectAuthReset(
+                requiresInteractiveSignIn: requiresInteractiveSignIn,
+                preserveInteractiveAuthState: preserveInteractiveAuthState);
             if (!requiresInteractiveSignIn) {
                 _isAuthenticated = false;
                 _authenticatedAccountId = null;
                 _loginInProgress = false;
                 ApplyNonNativeAuthenticationStateIfNeeded();
+                Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
             } else if (!preserveInteractiveAuthState) {
                 _isAuthenticated = false;
                 _authenticatedAccountId = null;
                 _loginInProgress = false;
+                Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
             } else if (!_isAuthenticated) {
                 _authenticatedAccountId = null;
+            }
+            if (resetEnsureLoginProbeCache) {
+                ResetEnsureLoginProbeCache();
             }
 
             var pipeName = _pipeName;

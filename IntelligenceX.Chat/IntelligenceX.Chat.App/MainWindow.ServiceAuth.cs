@@ -91,6 +91,12 @@ public sealed partial class MainWindow : Window {
         return isAuthenticated;
     }
 
+    internal static bool ShouldResetEnsureLoginProbeCacheOnReconnectAuthReset(
+        bool requiresInteractiveSignIn,
+        bool preserveInteractiveAuthState) {
+        return !requiresInteractiveSignIn || !preserveInteractiveAuthState;
+    }
+
     private void ResetEnsureLoginProbeCache() {
         _ensureLoginProbeCacheHasValue = false;
         _ensureLoginProbeCachedIsAuthenticated = false;

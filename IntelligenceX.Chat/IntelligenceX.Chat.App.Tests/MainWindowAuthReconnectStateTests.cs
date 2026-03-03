@@ -62,4 +62,22 @@ public sealed class MainWindowAuthReconnectStateTests {
 
         Assert.False(result);
     }
+
+    /// <summary>
+    /// Resets cached unauthenticated/authenticated probe state whenever reconnect logic clears auth state.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    public void ShouldResetEnsureLoginProbeCacheOnReconnectAuthReset_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool preserveInteractiveAuthState,
+        bool expected) {
+        var result = MainWindow.ShouldResetEnsureLoginProbeCacheOnReconnectAuthReset(
+            requiresInteractiveSignIn: requiresInteractiveSignIn,
+            preserveInteractiveAuthState: preserveInteractiveAuthState);
+
+        Assert.Equal(expected, result);
+    }
 }

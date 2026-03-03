@@ -21,6 +21,13 @@ public sealed partial class MainWindow : Window {
         return requiresInteractiveSignIn && !isAuthenticated;
     }
 
+    internal static bool ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess(
+        bool shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+        bool loginSuccessMetadataSyncAlreadyQueued) {
+        return !shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync
+               && !loginSuccessMetadataSyncAlreadyQueued;
+    }
+
     private static string NormalizeStartupMetadataSyncPhase(string? phase) {
         var normalized = (phase ?? string.Empty).Trim();
         return normalized.Length == 0 ? "syncing startup metadata" : normalized;
