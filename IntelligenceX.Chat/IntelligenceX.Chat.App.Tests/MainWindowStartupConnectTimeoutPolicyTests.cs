@@ -667,6 +667,24 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures login-completion metadata sync requests ask for a rerun when sync is currently busy.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, false)]
+    public void ShouldRequestDeferredStartupMetadataSyncRerun_ReturnsExpectedValue(
+        bool metadataSyncAlreadyQueued,
+        bool requestRerunIfBusy,
+        bool expected) {
+        var shouldRerun = MainWindow.ShouldRequestDeferredStartupMetadataSyncRerun(
+            metadataSyncAlreadyQueued,
+            requestRerunIfBusy);
+        Assert.Equal(expected, shouldRerun);
+    }
+
+    /// <summary>
     /// Ensures startup dispatch prewarm system summary includes stable timing details.
     /// </summary>
     [Theory]

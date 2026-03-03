@@ -173,7 +173,7 @@ public sealed partial class MainWindow : Window {
                                 shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync: shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
                                 loginSuccessMetadataSyncAlreadyQueued: Volatile.Read(ref _startupLoginSuccessMetadataSyncQueued) != 0)
                             && Interlocked.CompareExchange(ref _startupLoginSuccessMetadataSyncQueued, 1, 0) == 0) {
-                            QueueDeferredStartupConnectMetadataSync();
+                            QueueDeferredStartupConnectMetadataSync(requestRerunIfBusy: true);
                         }
                         QueuePostLoginCompletion();
                     }
