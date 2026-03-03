@@ -36,7 +36,7 @@ public sealed partial class MainWindow : Window {
     internal static string BuildStartupPendingStatusText(
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
-        bool loginInProgress = false) {
+        bool loginInProgress) {
         if (requiresInteractiveSignIn && !isAuthenticated) {
             return AppendStartupStatusCause(
                 loginInProgress

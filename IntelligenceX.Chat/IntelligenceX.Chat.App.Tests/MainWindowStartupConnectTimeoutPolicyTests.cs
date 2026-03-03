@@ -626,7 +626,10 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
         string expected) {
-        var text = MainWindow.BuildStartupPendingStatusText(requiresInteractiveSignIn, isAuthenticated);
+        var text = MainWindow.BuildStartupPendingStatusText(
+            requiresInteractiveSignIn,
+            isAuthenticated,
+            loginInProgress: false);
         Assert.Equal(expected, text);
     }
 

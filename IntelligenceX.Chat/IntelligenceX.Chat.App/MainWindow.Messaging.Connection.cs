@@ -668,7 +668,8 @@ public sealed partial class MainWindow : Window {
                 await SetStatusAsync(
                     BuildStartupPendingStatusText(
                         requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
-                        isAuthenticated: _isAuthenticated),
+                        isAuthenticated: _isAuthenticated,
+                        loginInProgress: _loginInProgress),
                     SessionStatusTone.Warn).ConfigureAwait(false);
                 LogStartupConnectPhase("hello", deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
                 LogStartupConnectPhase("list_tools", deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated ? "deferred_unauthenticated" : "deferred");
