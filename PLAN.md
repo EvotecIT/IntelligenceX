@@ -76,6 +76,7 @@ Build a contract-first architecture where:
 - [x] Stabilization hotfix: carryover structured-next-action replay eligibility now evaluates compact follow-up intent from raw user text (not routed payload rewrite text), restoring `go ahead` follow-up auto-execution after pending-action routing hints.
 - [x] Stabilization hotfix: domain-intent payload parsing now handles invalid UTF-16 input safely (catches `ArgumentException` in addition to `JsonException`) to keep compact follow-up expansion Unicode-safe.
 - [x] Contract-alignment cleanup: routing/output lifecycle tests now reflect strict routing-contract enforcement and single-meaningful-final result policy for the same request/thread pair.
+- [x] Startup stability hotfix: deferred startup metadata sync now supports rerun requests when login succeeds during an in-flight sync, preventing dropped post-login `hello/list_tools/auth_refresh` refreshes and stale tool-catalog visibility.
 
 ## Hard Decisions (Locked)
 
