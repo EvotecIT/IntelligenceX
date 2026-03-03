@@ -369,4 +369,20 @@ public sealed class ChatServiceToolEvidenceCacheTests {
 
         Assert.False(built);
     }
+
+    [Fact]
+    public void ToolEvidenceCache_ExtractExplicitRequestedToolNames_NormalizesEscapedAndHyphenatedForms() {
+        var extracted = ChatServiceSession.ExtractExplicitRequestedToolNamesForTesting(
+            "sprawdz `eventlog\\_evtx\\_query` and dnsclientx-query");
+
+        Assert.Contains("eventlogevtxquery", extracted);
+        Assert.Contains("dnsclientxquery", extracted);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_ExtractExplicitRequestedToolNames_HandlesLargeInputWithoutThrowing() {
+        var input = new string('a', 4096) + "_" + new string('b', 4096);
+        var extracted = ChatServiceSession.ExtractExplicitRequestedToolNamesForTesting(input);
+        Assert.NotNull(extracted);
+    }
 }

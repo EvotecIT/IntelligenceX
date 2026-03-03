@@ -10,6 +10,10 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const string CachedToolEvidenceMarker = "ix:cached-tool-evidence:v1";
+    private static readonly Regex ExplicitRequestedToolNameRegex = new(
+        @"\b[a-z][a-z0-9]*(?:(?:\\?[_-])[a-z0-9]+)+\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
 
     private readonly record struct ThreadToolEvidenceEntry(
         string ToolName,
@@ -324,10 +328,12 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<string>();
         }
 
-        var matches = Regex.Matches(
-            request,
-            @"\b[a-z][a-z0-9]*(?:(?:\\?[_-])[a-z0-9]+)+\b",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        MatchCollection matches;
+        try {
+            matches = ExplicitRequestedToolNameRegex.Matches(request);
+        } catch (RegexMatchTimeoutException) {
+            return Array.Empty<string>();
+        }
         if (matches.Count == 0) {
             return Array.Empty<string>();
         }
@@ -648,5 +654,9 @@ internal sealed partial class ChatServiceSession {
 
     internal string[] CollectThreadHostCandidatesByDomainIntentFamilyForTesting(string threadId, string family) {
         return CollectThreadHostCandidatesByDomainIntentFamily(threadId, family);
+    }
+
+    internal static string[] ExtractExplicitRequestedToolNamesForTesting(string userRequest) {
+        return ExtractExplicitRequestedToolNames(userRequest);
     }
 }
