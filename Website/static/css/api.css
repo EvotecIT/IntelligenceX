@@ -918,7 +918,7 @@ blockquote {
 /* ===== Footer ===== */
 .ix-footer { border-top: 1px solid var(--pf-border); padding: 3rem 0 2rem; margin-top: 0; background: var(--pf-bg-alt); }
 .ix-footer-inner { max-width: var(--pf-max-width); margin: 0 auto; padding: 0 1.5rem; }
-.ix-footer-grid { display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: 2rem; margin-bottom: 2rem; }
+.ix-footer-grid { display: grid; grid-template-columns: 2fr repeat(2, 1fr); gap: 2rem; margin-bottom: 2rem; }
 .ix-footer-logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--pf-ink-strong, #fff); }
 .ix-footer-tagline { font-size: 0.875rem; color: var(--pf-muted); margin: 0; line-height: 1.5; }
 .ix-footer-heading { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--pf-ink); margin: 0 0 0.75rem; font-weight: 600; }

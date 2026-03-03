@@ -52,10 +52,10 @@ p { margin: 0 0 1rem; color: var(--pf-muted); }
 /* ===== Footer ===== */
 .ix-footer { border-top: 1px solid var(--pf-border); padding: 3.25rem 0 2rem; margin-top: 4rem; }
 .ix-footer-inner { max-width: var(--pf-max-width); margin: 0 auto; padding: 0 1.5rem; }
-.ix-footer-grid { display: grid; grid-template-columns: minmax(260px, 1.05fr) minmax(0, 2fr); gap: 1.25rem 2rem; margin-bottom: 2rem; align-items: start; }
+.ix-footer-grid { display: grid; grid-template-columns: minmax(260px, 1.05fr) minmax(460px, 1.3fr); gap: 1.25rem 2rem; margin-bottom: 2rem; align-items: start; }
 .ix-footer-logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--pf-ink-strong, #fff); }
 .ix-footer-tagline { font-size: 0.875rem; color: var(--pf-muted); margin: 0; line-height: 1.5; }
-.ix-footer-catalog { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; }
+.ix-footer-catalog { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.9rem; width: 100%; max-width: 760px; justify-self: end; }
 .ix-footer-section {
   border: 1px solid var(--pf-border);
   border-radius: var(--pf-radius-sm);
@@ -557,6 +557,10 @@ blockquote p:last-child { margin-bottom: 0; }
   .ix-footer-brand {
     grid-column: 1 / -1;
     max-width: 640px;
+  }
+  .ix-footer-catalog {
+    justify-self: stretch;
+    max-width: none;
   }
 }
 
