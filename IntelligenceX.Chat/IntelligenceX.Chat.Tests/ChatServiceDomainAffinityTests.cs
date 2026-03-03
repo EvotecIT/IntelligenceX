@@ -494,6 +494,43 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_DoesNotAcceptDefaultActionIdWhenRoutingDeclaresCustomIds() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-custom-default");
+
+        var availableDefinitions = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info",
+                description: "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_ad_custom"
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_public_custom"
+                })
+        };
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-custom-default",
+            "/act act_domain_scope_public",
+            availableDefinitions,
+            out var family);
+
+        Assert.False(resolved);
+        Assert.Equal(string.Empty, family);
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-custom-default"));
+    }
+
+    [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesExplicitActSelectionCommand() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-explicit-act");
@@ -901,7 +938,12 @@ public sealed class ChatServiceDomainAffinityTests {
                 name: "custom_directory_probe",
                 description: "Custom AD probe",
                 parameters: null,
-                tags: new[] { "domain_family:ad_domain" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "custom_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }));
         var adHostTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "custom_host_timeline",
             new ToolDefinition(
@@ -909,14 +951,24 @@ public sealed class ChatServiceDomainAffinityTests {
                 description: "Custom host timeline",
                 parameters: null,
                 category: "custom",
-                tags: new[] { "domain_family:ad_domain", "scope:host" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "custom_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }));
         var dnsTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "custom_dns_probe",
             new ToolDefinition(
                 name: "custom_dns_probe",
                 description: "Custom DNS probe",
                 parameters: null,
-                tags: new[] { "domain_family:public_domain", "pack:dnsclientx" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "dnsclientx",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic
+                }));
         var eventLogCategory = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "eventlog_live_query",
             new ToolDefinition(
@@ -924,12 +976,28 @@ public sealed class ChatServiceDomainAffinityTests {
                 description: "Event log query",
                 parameters: null,
                 category: "eventlog",
-                tags: new[] { "domain_family:ad_domain" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "eventlog",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }));
 
         Assert.True(adTagged);
         Assert.True(adHostTagged);
         Assert.False(dnsTagged);
         Assert.True(eventLogCategory);
+    }
+
+    [Fact]
+    public void IsDomainIntentHostGuardrailCandidateToolForTesting_DoesNotInferFamilyFromToolNameWithoutRoutingContract() {
+        var inferredByName = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "ad_replication_health",
+            new ToolDefinition(
+                name: "ad_replication_health",
+                description: "Legacy-style AD tool name without routing contract"));
+
+        Assert.False(inferredByName);
     }
 
     [Fact]

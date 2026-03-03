@@ -49,6 +49,16 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void DomainIntentHostScopeGuardrail_ShouldNotInferFamilyFromToolNameFallback() {
+        var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ToolExecution.DomainScopeGuardrail.cs"));
+
+        Assert.DoesNotContain(
+            "ToolSelectionMetadata.TryResolveDomainIntentFamily(",
+            source,
+            StringComparison.Ordinal);
+    }
+
     private static string GetServiceSourceFilePath(string fileName) {
         var repoRoot = FindRepoRoot();
         return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Service", fileName);

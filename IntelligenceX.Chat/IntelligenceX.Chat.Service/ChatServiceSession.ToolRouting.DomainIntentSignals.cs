@@ -44,6 +44,10 @@ internal sealed partial class ChatServiceSession {
             if (actionCatalog.TryGetFamilyByActionId(explicitActionId, out family)) {
                 return true;
             }
+
+            // When users reply with an explicit /act action id, require a direct catalog match.
+            // Do not reinterpret unknown ids via lexical signal fallbacks.
+            return false;
         }
 
         if (TryParseDomainIntentFamilyFromActionSelectionPayload(normalized, availableDefinitions, out family)) {

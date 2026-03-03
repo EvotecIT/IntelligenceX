@@ -87,8 +87,6 @@ internal sealed partial class ChatServiceSession {
         }
     }
     private readonly record struct DomainIntentActionCatalog(
-        string AdActionId,
-        string PublicActionId,
         IReadOnlyDictionary<string, string>? FamilyActionIds = null) {
         internal bool TryGetActionId(string family, out string actionId) {
             actionId = string.Empty;
@@ -103,19 +101,7 @@ internal sealed partial class ChatServiceSession {
                     return true;
                 }
             }
-
-            if (string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal)) {
-                actionId = (AdActionId ?? string.Empty).Trim();
-                return actionId.Length > 0;
-            }
-
-            if (string.Equals(normalizedFamily, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
-                actionId = (PublicActionId ?? string.Empty).Trim();
-                return actionId.Length > 0;
-            }
-
-            actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(normalizedFamily);
-            return actionId.Length > 0;
+            return false;
         }
 
         internal bool TryGetFamilyByActionId(string actionId, out string family) {
@@ -132,16 +118,6 @@ internal sealed partial class ChatServiceSession {
                         return true;
                     }
                 }
-            }
-
-            if (string.Equals(normalizedActionId, AdActionId, StringComparison.OrdinalIgnoreCase)) {
-                family = DomainIntentFamilyAd;
-                return true;
-            }
-
-            if (string.Equals(normalizedActionId, PublicActionId, StringComparison.OrdinalIgnoreCase)) {
-                family = DomainIntentFamilyPublic;
-                return true;
             }
 
             return false;
@@ -554,67 +530,41 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static DomainIntentActionCatalog ResolveDomainIntentActionCatalog(IReadOnlyList<ToolDefinition>? definitions) {
-        var defaultAdActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd);
-        var defaultPublicActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic);
-        var familyActionIds = new Dictionary<string, string>(StringComparer.Ordinal);
-        familyActionIds[DomainIntentFamilyAd] = defaultAdActionId;
-        familyActionIds[DomainIntentFamilyPublic] = defaultPublicActionId;
         if (definitions is null || definitions.Count == 0) {
-            return new DomainIntentActionCatalog(
-                AdActionId: defaultAdActionId,
-                PublicActionId: defaultPublicActionId,
-                FamilyActionIds: familyActionIds);
+            return BuildDefaultDomainIntentActionCatalog();
         }
 
+        var familyActionIds = new Dictionary<string, string>(StringComparer.Ordinal);
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
             if (definition is null) {
                 continue;
             }
 
-            var family = ResolveDomainIntentFamily(definition);
-            if (family.Length == 0) {
+            var routingFamily = (definition.Routing?.DomainIntentFamily ?? string.Empty).Trim();
+            if (!TryNormalizeDomainIntentFamily(routingFamily, out var normalizedFamily)) {
                 continue;
             }
 
-            var normalizedActionId = (definition.Routing?.DomainIntentActionId ?? string.Empty).Trim();
-            if (normalizedActionId.Length == 0) {
-                normalizedActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
-            }
-            if (normalizedActionId.Length == 0) {
+            var actionId = (definition.Routing?.DomainIntentActionId ?? string.Empty).Trim();
+            if (actionId.Length == 0) {
                 continue;
             }
 
-            var existingActionId = familyActionIds.TryGetValue(family, out var existing)
-                ? (existing ?? string.Empty).Trim()
-                : string.Empty;
-            var defaultFamilyActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
-            if (existingActionId.Length == 0
-                || string.Equals(existingActionId, defaultFamilyActionId, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(existingActionId, normalizedActionId, StringComparison.OrdinalIgnoreCase)) {
-                familyActionIds[family] = normalizedActionId;
+            if (familyActionIds.TryGetValue(normalizedFamily, out var existingActionId)
+                && !string.Equals(existingActionId, actionId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
             }
+
+            familyActionIds[normalizedFamily] = actionId;
         }
 
-        var adActionId = familyActionIds.TryGetValue(DomainIntentFamilyAd, out var adMappedActionId)
-            && !string.IsNullOrWhiteSpace(adMappedActionId)
-            ? adMappedActionId.Trim()
-            : defaultAdActionId;
-        var publicActionId = familyActionIds.TryGetValue(DomainIntentFamilyPublic, out var publicMappedActionId)
-            && !string.IsNullOrWhiteSpace(publicMappedActionId)
-            ? publicMappedActionId.Trim()
-            : defaultPublicActionId;
-        return new DomainIntentActionCatalog(
-            AdActionId: adActionId,
-            PublicActionId: publicActionId,
-            FamilyActionIds: familyActionIds);
+        return new DomainIntentActionCatalog(familyActionIds);
     }
 
     private static DomainIntentActionCatalog BuildDefaultDomainIntentActionCatalog() {
         return new DomainIntentActionCatalog(
-            AdActionId: ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd),
-            PublicActionId: ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic),
-            FamilyActionIds: new Dictionary<string, string>(StringComparer.Ordinal) {
+            new Dictionary<string, string>(StringComparer.Ordinal) {
                 [DomainIntentFamilyAd] = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd),
                 [DomainIntentFamilyPublic] = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic)
             });
@@ -646,7 +596,7 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < orderedFamilies.Length; i++) {
             var family = orderedFamilies[i];
             if (!actionCatalog.TryGetActionId(family, out var actionId)) {
-                actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+                continue;
             }
 
             options.Add(new DomainIntentFamilyOption(

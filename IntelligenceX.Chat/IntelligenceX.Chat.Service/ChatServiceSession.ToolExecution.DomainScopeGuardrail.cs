@@ -13,7 +13,7 @@ internal sealed partial class ChatServiceSession {
         output = null!;
         ToolDefinition? toolDefinition = null;
         if (_registry.TryGetDefinition(call.Name, out var registeredDefinition) && registeredDefinition is not null) {
-            toolDefinition = ToolSelectionMetadata.Enrich(registeredDefinition, toolType: null);
+            toolDefinition = registeredDefinition;
         }
 
         if (!TryGetCurrentDomainIntentFamily(threadId, out var family)
@@ -69,19 +69,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (definition is not null) {
-            if (ToolSelectionMetadata.TryResolveDomainIntentFamily(definition, out var family)
-                && string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
-                return true;
-            }
+        if (definition is null) {
+            return false;
         }
 
-        return ToolSelectionMetadata.TryResolveDomainIntentFamily(
-                   normalizedToolName,
-                   definition?.Category,
-                   definition?.Tags,
-                   out var inferredFamily)
-               && string.Equals(inferredFamily, DomainIntentFamilyAd, StringComparison.Ordinal);
+        var routingFamily = (definition.Routing?.DomainIntentFamily ?? string.Empty).Trim();
+        return TryNormalizeDomainIntentFamily(routingFamily, out var normalizedFamily)
+               && string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal);
     }
 
     private static string[] ExtractHostScopedTargets(JsonObject? arguments) {
