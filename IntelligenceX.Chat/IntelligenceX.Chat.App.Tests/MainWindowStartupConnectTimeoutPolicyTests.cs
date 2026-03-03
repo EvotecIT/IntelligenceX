@@ -523,6 +523,21 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures startup pending status text is explicit about sign-in gating vs generic metadata sync.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, "Runtime connected. Sign in to finish loading tool packs...")]
+    [InlineData(true, true, "Runtime connected. Loading tool packs in background...")]
+    [InlineData(false, false, "Runtime connected. Loading tool packs in background...")]
+    public void BuildStartupPendingStatusText_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        string expected) {
+        var text = MainWindow.BuildStartupPendingStatusText(requiresInteractiveSignIn, isAuthenticated);
+        Assert.Equal(expected, text);
+    }
+
+    /// <summary>
     /// Ensures startup dispatch prewarm system summary includes stable timing details.
     /// </summary>
     [Theory]
