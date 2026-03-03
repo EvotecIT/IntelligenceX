@@ -148,6 +148,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ExtractExplicitRequestedToolNames(request).Length > 0) {
+            return false;
+        }
+
         // If this turn is already anchored to new contextual request content, avoid replaying stale carryover
         // actions from previous turns and let normal tool planning proceed.
         if (LooksLikeContextualFollowUpForExecutionNudge(request, assistantDraft)) {

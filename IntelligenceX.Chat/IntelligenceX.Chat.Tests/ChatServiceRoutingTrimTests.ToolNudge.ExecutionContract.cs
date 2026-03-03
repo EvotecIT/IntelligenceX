@@ -752,6 +752,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsWhenUserExplicitlyReferencesToolId() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "go with eventlog_evtx_query now",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ShouldAttemptToolProgressRecovery_TriggersForBlockerLikeDraftAfterToolActivity() {
         var draft = """
             I started, but I hit one blocker:

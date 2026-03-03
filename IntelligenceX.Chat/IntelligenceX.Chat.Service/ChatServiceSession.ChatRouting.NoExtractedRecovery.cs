@@ -72,9 +72,11 @@ internal sealed partial class ChatServiceSession {
                     lastNonEmptyAssistantDraft = text.Trim();
                 }
 
+                var explicitToolReferenceInUserRequest = ExtractExplicitRequestedToolNames(userRequest).Length > 0;
                 if (!autoPendingActionReplayUsed
                     && toolCalls.Count == 0
                     && toolOutputs.Count == 0
+                    && !explicitToolReferenceInUserRequest
                     && LooksLikeContinuationFollowUp(userRequest)
                     && TryBuildSinglePendingActionSelectionPayload(text, out var autoSelectionPayload, out var autoActionId)) {
                     autoPendingActionReplayUsed = true;
@@ -98,6 +100,7 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (!hostStructuredNextActionReplayUsed
+                    && !explicitToolReferenceInUserRequest
                     && ShouldAttemptCarryoverStructuredNextActionReplay(
                         continuationFollowUpTurn: continuationFollowUpTurn,
                         compactFollowUpTurn: compactFollowUpTurn,

@@ -326,7 +326,7 @@ internal sealed partial class ChatServiceSession {
 
         var matches = Regex.Matches(
             request,
-            @"\b[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+\b",
+            @"\b[a-z][a-z0-9]*(?:(?:\\?[_-])[a-z0-9]+)+\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (matches.Count == 0) {
             return Array.Empty<string>();
@@ -340,6 +340,9 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            value = value
+                .Replace("\\_", "_", StringComparison.Ordinal)
+                .Replace("\\-", "-", StringComparison.Ordinal);
             var normalized = NormalizeCompactToken(value.AsSpan());
             if (normalized.Length == 0 || !seen.Add(normalized)) {
                 continue;
