@@ -350,7 +350,9 @@ public sealed partial class MainWindow : Window {
         if (conversation.Messages.Count > 0) {
             var last = conversation.Messages[^1];
             if (string.Equals(last.Role, "Assistant", StringComparison.OrdinalIgnoreCase)
-                && string.Equals((last.Text ?? string.Empty).Trim(), normalized, StringComparison.OrdinalIgnoreCase)) {
+                && ShouldSuppressConsecutiveAssistantDuplicate(
+                    candidateAssistantText: normalized,
+                    previousAssistantText: last.Text)) {
                 return;
             }
         }

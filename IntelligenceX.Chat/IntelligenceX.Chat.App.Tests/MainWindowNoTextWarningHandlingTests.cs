@@ -88,6 +88,42 @@ public sealed class MainWindowNoTextWarningHandlingTests {
     }
 
     /// <summary>
+    /// Ensures consecutive assistant appends suppress duplicate formatting-only retries.
+    /// </summary>
+    [Fact]
+    public void ShouldSuppressConsecutiveAssistantDuplicate_SuppressesEquivalentFormattingDiffs() {
+        var suppress = MainWindow.ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: "  Hey Przemek 👋  Mr. IntelligenceX reporting in—online and ready.  ",
+            previousAssistantText: "Hey Przemek 👋\nMr. IntelligenceX reporting in—online and ready!");
+
+        Assert.True(suppress);
+    }
+
+    /// <summary>
+    /// Ensures short suffix-only restatements are treated as near-duplicate consecutive assistant rows.
+    /// </summary>
+    [Fact]
+    public void ShouldSuppressConsecutiveAssistantDuplicate_SuppressesShortSuffixNearDuplicates() {
+        var suppress = MainWindow.ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: "Checked AD0 now. Pulling reboot markers.",
+            previousAssistantText: "Checked AD0 now.");
+
+        Assert.True(suppress);
+    }
+
+    /// <summary>
+    /// Ensures materially different assistant turns are not suppressed.
+    /// </summary>
+    [Fact]
+    public void ShouldSuppressConsecutiveAssistantDuplicate_DoesNotSuppressDistinctMessages() {
+        var suppress = MainWindow.ShouldSuppressConsecutiveAssistantDuplicate(
+            candidateAssistantText: "AD replication is healthy.",
+            previousAssistantText: "LDAP probes on AD2 are healthy.");
+
+        Assert.False(suppress);
+    }
+
+    /// <summary>
     /// Ensures finalized text replaces streamed draft content instead of creating duplicate assistant bubbles.
     /// </summary>
     [Fact]
