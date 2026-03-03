@@ -21,8 +21,8 @@ public sealed class MainWindowAutoReconnectStatusTests {
     /// Ensures delayed reconnect retries render stable time labels in milliseconds/seconds.
     /// </summary>
     [Theory]
-    [InlineData(2, 250, "Runtime connection dropped. Reconnecting in 250ms (attempt 2).")]
-    [InlineData(3, 1500, "Runtime connection dropped. Reconnecting in 1.5s (attempt 3).")]
+    [InlineData(1, 250, "Runtime connection dropped. Reconnecting in 250ms (attempt 2).")]
+    [InlineData(2, 1500, "Runtime connection dropped. Reconnecting in 1.5s (attempt 3).")]
     public void BuildAutoReconnectStatusText_FormatsDelayedRetry(
         int attempt,
         int delayMs,

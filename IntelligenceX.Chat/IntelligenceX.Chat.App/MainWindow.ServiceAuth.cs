@@ -325,7 +325,7 @@ public sealed partial class MainWindow : Window {
             var delay = ResolveAutoReconnectDelay(baseDelay, prioritizeLatency, hasTrackedRunningServiceProcess, attempt);
             if (!_shutdownRequested && !_isSending && !_turnStartupInProgress) {
                 await SetStatusAsync(
-                        BuildAutoReconnectStatusText(attempt + 1, delay),
+                        BuildAutoReconnectStatusText(attempt, delay),
                         SessionStatusTone.Warn)
                     .ConfigureAwait(false);
             }
@@ -409,7 +409,7 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static string BuildAutoReconnectStatusText(int attempt, TimeSpan delay) {
-        var normalizedAttempt = Math.Max(1, attempt);
+        var normalizedAttempt = attempt < 0 ? 1 : attempt + 1;
         if (delay <= TimeSpan.Zero) {
             return $"Runtime connection dropped. Reconnecting now (attempt {normalizedAttempt.ToString(CultureInfo.InvariantCulture)}).";
         }
