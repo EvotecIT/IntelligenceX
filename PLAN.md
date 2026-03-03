@@ -52,6 +52,9 @@ Build a contract-first architecture where:
 - [x] Hotfix landed: Chat service now suppresses duplicate final `ChatResultMessage` publishes for the same request/thread/text to prevent repeated assistant finals.
 - [x] Hotfix landed: session header status now keeps startup-pending messaging while metadata/tool-pack readiness is still unresolved (no premature "Ready" flip).
 - [x] Regression coverage added: two-turn carryover scenario now proves `go ahead` follow-up replays queued structured next-action tool calls (host carryover call-id path).
+- [x] Hotfix landed: compact follow-up question turns no longer force execution-blocker/cached-evidence rewrite at finalize (tool-capability questions keep direct conversational handling).
+- [x] Hotfix landed: cached evidence fallback now requires explicit tool-name match when the user references a specific tool id, preventing unrelated stale evidence reuse.
+- [x] Hotfix landed: deferred startup metadata sync now waits for authenticated runtime state and is re-queued after successful login completion, avoiding premature metadata churn during sign-in.
 
 ## Hard Decisions (Locked)
 

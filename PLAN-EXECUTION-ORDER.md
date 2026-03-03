@@ -21,6 +21,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: duplicate final `chat_result` publishes are suppressed per request/thread/text at the service writer boundary.
 - [x] Stabilization hotfix: connected session status now stays in startup-pending mode until metadata/tool-pack readiness settles.
 - [x] Stabilization regression: added end-to-end two-turn `go ahead` carryover replay test to prevent follow-up execution stalls.
+- [x] Stabilization hotfix: compact follow-up question turns no longer force blocker/cached-evidence finalize rewrites, preserving direct tool-capability answers.
+- [x] Stabilization hotfix: cached evidence fallback now requires explicit tool-name match when request text references a concrete tool id.
+- [x] Stabilization hotfix: deferred startup metadata sync now waits for authenticated state and is re-queued after login completion.
 
 ## Rules For This Migration
 
