@@ -17,6 +17,12 @@ internal sealed partial class ChatServiceSession {
         string SummaryMarkdown,
         long SeenUtcTicks);
 
+    private readonly record struct ToolEvidenceCandidate(
+        ThreadToolEvidenceEntry Entry,
+        double Score,
+        int TokenHits,
+        int StrongTokenHits);
+
     private void RememberThreadToolEvidence(
         string threadId,
         IReadOnlyList<ToolCallDto> toolCalls,
@@ -114,6 +120,8 @@ internal sealed partial class ChatServiceSession {
         TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
 
         var requestTokens = TokenizeRoutingTokens(userRequest, maxTokens: 10);
+        var requestedFamily = ResolveRequestedToolEvidenceFamily(normalizedThreadId, userRequest);
+        var hasRequestedFamily = requestedFamily.Length > 0;
         ThreadToolEvidenceEntry[] selected;
         ThreadToolEvidenceEntry[]? updatedSnapshotEntries = null;
         var shouldClearSnapshot = false;
@@ -125,7 +133,7 @@ internal sealed partial class ChatServiceSession {
 
             var nowUtc = DateTime.UtcNow;
             var expiredKeys = new List<string>();
-            var candidates = new List<(ThreadToolEvidenceEntry Entry, double Score)>(bySignature.Count);
+            var candidates = new List<ToolEvidenceCandidate>(bySignature.Count);
             foreach (var pair in bySignature) {
                 var entry = pair.Value;
                 if (!TryGetUtcDateTimeFromTicks(entry.SeenUtcTicks, out var seenUtc) || nowUtc - seenUtc > ThreadToolEvidenceContextMaxAge) {
@@ -133,12 +141,16 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                var score = entry.SeenUtcTicks / (double)TimeSpan.TicksPerSecond;
-                if (requestTokens.Length > 0) {
-                    score += ComputeToolEvidenceTokenScore(requestTokens, entry);
+                var entryFamily = ResolveDomainIntentFamily(entry.ToolName);
+                if (hasRequestedFamily
+                    && !string.Equals(entryFamily, requestedFamily, StringComparison.Ordinal)) {
+                    continue;
                 }
 
-                candidates.Add((entry, score));
+                var (tokenHits, strongTokenHits) = CountToolEvidenceTokenHits(requestTokens, entry);
+                var score = entry.SeenUtcTicks / (double)TimeSpan.TicksPerSecond;
+                score += ComputeToolEvidenceTokenScore(tokenHits, strongTokenHits);
+                candidates.Add(new ToolEvidenceCandidate(entry, score, tokenHits, strongTokenHits));
             }
 
             for (var i = 0; i < expiredKeys.Count; i++) {
@@ -152,6 +164,32 @@ internal sealed partial class ChatServiceSession {
 
             if (candidates.Count == 0) {
                 hasCandidates = false;
+                selected = Array.Empty<ThreadToolEvidenceEntry>();
+            } else {
+                if (requestTokens.Length > 0) {
+                    var hasStrongTokenMatchedCandidate = false;
+                    var hasTokenMatchedCandidate = false;
+                    for (var i = 0; i < candidates.Count; i++) {
+                        if (candidates[i].StrongTokenHits > 0) {
+                            hasStrongTokenMatchedCandidate = true;
+                            break;
+                        }
+                        if (candidates[i].TokenHits > 0) {
+                            hasTokenMatchedCandidate = true;
+                        }
+                    }
+
+                    if (hasStrongTokenMatchedCandidate) {
+                        candidates.RemoveAll(static candidate => candidate.StrongTokenHits <= 0);
+                    } else if (hasTokenMatchedCandidate) {
+                        candidates.RemoveAll(static candidate => candidate.TokenHits <= 0);
+                    } else if (!hasRequestedFamily) {
+                        hasCandidates = false;
+                    }
+                }
+            }
+
+            if (!hasCandidates || candidates.Count == 0) {
                 selected = Array.Empty<ThreadToolEvidenceEntry>();
             } else {
                 candidates.Sort(static (a, b) => b.Score.CompareTo(a.Score));
@@ -196,6 +234,21 @@ internal sealed partial class ChatServiceSession {
         sb.Append("If you want a live refresh, ask me to rerun these checks now.");
         text = sb.ToString().Trim();
         return text.Length > 0;
+    }
+
+    private string ResolveRequestedToolEvidenceFamily(string threadId, string userRequest) {
+        if (ShouldTreatAsPassiveCompactFollowUp(threadId, userRequest)) {
+            return string.Empty;
+        }
+
+        var availableDefinitions = _registry.GetDefinitions();
+        if (TryResolveDomainIntentFamilyFromUserSignals(userRequest, availableDefinitions, out var inferredFamily)) {
+            return inferredFamily;
+        }
+
+        return TryGetCurrentDomainIntentFamily(threadId, out var rememberedFamily)
+            ? rememberedFamily
+            : string.Empty;
     }
 
     private static string BuildToolEvidenceSnippet(string text) {
@@ -254,17 +307,49 @@ internal sealed partial class ChatServiceSession {
         return normalizedToolName.ToLowerInvariant() + "|" + normalizedArgs;
     }
 
-    private static double ComputeToolEvidenceTokenScore(string[] requestTokens, ThreadToolEvidenceEntry entry) {
-        if (requestTokens.Length == 0) {
+    private static double ComputeToolEvidenceTokenScore(int tokenHits, int strongTokenHits) {
+        if (tokenHits <= 0 && strongTokenHits <= 0) {
             return 0d;
+        }
+
+        return (tokenHits * 9d) + (strongTokenHits * 14d);
+    }
+
+    private static bool IsStrongToolEvidenceToken(string token) {
+        var normalized = (token ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (normalized.IndexOf('_') >= 0 || normalized.IndexOf('-') >= 0) {
+            return true;
+        }
+
+        if (normalized.Length >= 7) {
+            return true;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            if (char.IsDigit(normalized[i])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static (int TokenHits, int StrongTokenHits) CountToolEvidenceTokenHits(string[] requestTokens, ThreadToolEvidenceEntry entry) {
+        if (requestTokens.Length == 0) {
+            return (0, 0);
         }
 
         var searchText = (entry.ToolName + " " + entry.SummaryMarkdown + " " + entry.Output).Trim();
         if (searchText.Length == 0) {
-            return 0d;
+            return (0, 0);
         }
 
         var tokenHits = 0;
+        var strongTokenHits = 0;
         for (var i = 0; i < requestTokens.Length; i++) {
             var token = requestTokens[i];
             if (token.Length == 0) {
@@ -273,10 +358,13 @@ internal sealed partial class ChatServiceSession {
 
             if (searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
                 tokenHits++;
+                if (IsStrongToolEvidenceToken(token)) {
+                    strongTokenHits++;
+                }
             }
         }
 
-        return tokenHits * 9d;
+        return (tokenHits, strongTokenHits);
     }
 
     private void TryHydrateThreadToolEvidenceFromSnapshot(string threadId) {

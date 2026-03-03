@@ -82,6 +82,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalizedFollowUp)) {
+            return false;
+        }
+
         if (ShouldSkipWorkingMemoryAugmentationForStructuredSelection(normalizedThreadId, normalizedFollowUp)) {
             return false;
         }

@@ -532,6 +532,8 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("dns_client_x resolver baseline", "public_domain")]
     [InlineData("Run SYSVOL replication health checks", "ad_domain")]
     [InlineData("Check forest trust posture for this domain", "ad_domain")]
+    [InlineData("Narysuj diagram cross-forest trusted paths", "ad_domain")]
+    [InlineData("sprawdz trusty cross-forest", "ad_domain")]
     [InlineData("Run DNSSEC and CAA checks", "public_domain")]
     [InlineData("Validate WHOIS and BIMI posture", "public_domain")]
     [InlineData("Check mta-sts and dkim records", "public_domain")]
@@ -649,6 +651,37 @@ public sealed class ChatServiceDomainAffinityTests {
 
         Assert.False(applied);
         Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-domain-signal-conflict"));
+    }
+
+    [Fact]
+    public void TryApplyDomainIntentSignalRoutingHint_ReexpandsFromFullCatalogWhenSubsetHasConflictingFamily() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var selectedSubset = new[] {
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" }),
+            new ToolDefinition("domaindetective_domain_summary", "Domain summary", tags: new[] { "domain_family:public_domain" })
+        };
+        var fullCandidates = new[] {
+            new ToolDefinition("ad_trust", "AD trust", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("eventlog_live_query", "Event log", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
+        };
+
+        var applied = session.TryApplyDomainIntentSignalRoutingHintForTesting(
+            "thread-domain-signal-reexpand",
+            "sprawdz trusty cross-forest i narysuj diagram",
+            selectedSubset,
+            fullCandidates,
+            out var filtered,
+            out var family,
+            out var removedCount);
+
+        Assert.True(applied);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal(1, removedCount);
+        Assert.Contains(filtered, tool => string.Equals(tool.Name, "ad_trust", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(filtered, tool => string.Equals(tool.Name, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(filtered, tool => string.Equals(tool.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-domain-signal-reexpand"));
     }
 
     [Theory]

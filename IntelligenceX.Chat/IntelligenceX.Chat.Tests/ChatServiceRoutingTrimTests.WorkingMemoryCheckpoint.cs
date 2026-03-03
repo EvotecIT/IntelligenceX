@@ -71,6 +71,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void WorkingMemoryCheckpoint_DoesNotAugmentPassiveCompactAckWithSymbolCue() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-working-memory-passive-ack",
+            intentAnchor: "Analyze DNS + AD context and compare anomalies.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: replication is healthy." });
+
+        var augmented = session.TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(
+            threadId: "thread-working-memory-passive-ack",
+            userRequest: "ok to dziala ;)",
+            routedUserRequest: "ok to dziala ;)",
+            out var routedFromCheckpoint);
+
+        Assert.False(augmented);
+        Assert.Equal("ok to dziala ;)", routedFromCheckpoint);
+    }
+
+    [Fact]
     public void WorkingMemoryCheckpoint_DoesNotAugmentStructuredActionSelectionPayload() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-working-memory-structured-action";

@@ -127,6 +127,26 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         return (timedOut, output);
     }
 
+    private static string InvokeBuildNoTextReplFallbackTextForTesting(
+        string assistantDraft,
+        IReadOnlyList<ToolCall> toolCalls,
+        IReadOnlyList<ToolOutput> toolOutputs,
+        string? model,
+        OpenAITransportKind transport,
+        string? baseUrl) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "BuildNoTextReplFallbackTextForTesting",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { assistantDraft, toolCalls, toolOutputs, model, transport, baseUrl });
+        return Assert.IsType<string>(value);
+    }
+
     private static (int[] canonical, int dedupedCount) InvokeBuildReadOnlyCallCanonicalIndices(
         IReadOnlyList<ToolCall> calls,
         ISet<int> nonReusableIndices) {

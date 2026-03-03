@@ -225,6 +225,32 @@ Check AD0 reboot
     }
 
     [Fact]
+    public void BuildScenarioTurnPrompt_WithAssertNotContains_AddsDoNotRepeatLiteralHint() {
+        const string json = """
+{
+  "name": "no-forbidden-literal-contract",
+  "turns": [
+    {
+      "user": "Continue all remaining DCs and avoid partial output.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*", "eventlog_*"],
+      "assert_not_contains": ["partial", "stopped after AD0"]
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "no-forbidden-literal-contract");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains(
+            "Final response must NOT include these literals (do not repeat them, even to negate them): partial, stopped after AD0.",
+            prompt,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildScenarioTurnPrompt_WithNoToolContract_EmbedsStructuredNoToolDirective() {
         const string json = """
 {
@@ -247,6 +273,32 @@ Check AD0 reboot
         Assert.Contains("requires_no_tool_execution: true", prompt, StringComparison.Ordinal);
         Assert.Contains("forbidden_tools: *", prompt, StringComparison.Ordinal);
         Assert.Contains("This scenario turn requires a response without tool execution.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_WithAssertNoQuestions_AddsQuestionPunctuationBan() {
+        const string json = """
+{
+  "name": "no-question-mark-contract",
+  "turns": [
+    {
+      "user": "Summarize DNS and AD findings.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query"],
+      "assert_no_questions": true
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "no-question-mark-contract");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains(
+            "Do not include question-mark punctuation (`?`, `？`, `¿`, `؟`) anywhere in the final response.",
+            prompt,
+            StringComparison.Ordinal);
     }
 
     [Fact]

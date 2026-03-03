@@ -148,13 +148,14 @@ internal static partial class Program {
             for (var round = 0; round < maxRounds; round++) {
                 var extracted = ToolCallParser.Extract(turn);
                 if (extracted.Count == 0) {
-                    var finalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+                    var rawFinalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+                    var finalText = rawFinalText;
 
                     var shouldRetryNoToolExecution = noToolExecutionRetryCount < MaxNoToolExecutionRetries
                                                      && protocolCalls.Count == 0
                                                      && protocolOutputs.Count == 0
                                                      && toolDefs.Count > 0
-                                                     && ShouldRetryNoToolExecution(text, finalText);
+                                                     && ShouldRetryNoToolExecution(text, rawFinalText);
                     var shouldRetryScenarioContractRepair = noToolExecutionRetryCount < MaxNoToolExecutionRetries
                                                             && protocolCalls.Count > 0
                                                             && toolDefs.Count > 0
@@ -175,14 +176,14 @@ internal static partial class Program {
                         var retryPrompt = useScenarioRepairPrompt
                             ? BuildScenarioContractRepairRetryPrompt(
                                 userRequest: text,
-                                assistantDraft: finalText,
+                                assistantDraft: rawFinalText,
                                 calls: protocolCalls,
                                 retryAttempt: noToolExecutionRetryCount,
                                 knownHostTargets: retryKnownHostTargets,
                                 forcedToolName: forcedToolName)
                             : BuildNoToolExecutionRetryPrompt(
                                 userRequest: text,
-                                assistantDraft: finalText,
+                                assistantDraft: rawFinalText,
                                 retryAttempt: noToolExecutionRetryCount,
                                 knownHostTargets: retryKnownHostTargets);
                         chatOptions.NewThread = false;
@@ -199,6 +200,16 @@ internal static partial class Program {
                             .ConfigureAwait(false);
                         chatOptions.ToolChoice = ToolChoice.Auto;
                         continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(finalText)) {
+                        finalText = BuildNoTextReplFallbackText(
+                            assistantDraft: rawFinalText,
+                            toolCalls: reportedCalls,
+                            toolOutputs: reportedOutputs,
+                            model: _options.Model,
+                            transport: _options.OpenAITransport,
+                            baseUrl: _options.OpenAIBaseUrl);
                     }
 
                     _previousResponseId = TryGetResponseId(turn) ?? _previousResponseId;

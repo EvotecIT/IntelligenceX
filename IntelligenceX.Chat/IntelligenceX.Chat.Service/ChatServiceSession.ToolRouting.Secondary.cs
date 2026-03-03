@@ -598,6 +598,86 @@ internal sealed partial class ChatServiceSession {
         return LooksLikeFollowUpShape(userRequest, ContinuationFollowUpQuestionCharLimit);
     }
 
+    private bool ShouldTreatAsPassiveCompactFollowUp(string threadId, string userRequest) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0 || !LooksLikeContinuationFollowUp(normalized)) {
+            return false;
+        }
+
+        if (ContainsQuestionSignal(normalized)) {
+            return false;
+        }
+
+        if (normalized.Length > FollowUpShapeShortCharLimit) {
+            return false;
+        }
+
+        if (!ContainsPassiveCompactSignalMarker(normalized)) {
+            return false;
+        }
+
+        if (LooksLikeActionSelectionPayload(normalized)
+            || TryParseExplicitActSelection(normalized, out _, out _)
+            || TryReadActionSelectionIntent(normalized, out _, out _)) {
+            return false;
+        }
+
+        if (TryParseDomainIntentMarkerSelection(normalized, DomainIntentMarker, out _)
+            || TryParseDomainIntentChoiceMarkerSelection(normalized, out _)
+            || TryNormalizeDomainIntentFamily(normalized, out _)
+            || TryParseDomainIntentFamilyFromDomainScopePayload(normalized, out _)) {
+            return false;
+        }
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length > 0 && HasFreshPendingActionsContext(normalizedThreadId)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 12);
+        if (tokenCount == 0 || tokenCount > 4) {
+            return false;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            if (char.IsDigit(normalized[i])) {
+                return false;
+            }
+        }
+
+        if (TryResolveDomainIntentFamilyFromUserSignals(normalized, _registry.GetDefinitions(), out _)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ContainsPassiveCompactSignalMarker(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch) || char.IsWhiteSpace(ch)) {
+                continue;
+            }
+
+            if (ch == '_' || ch == '-' || ch == '/' || ch == '\\' || ch == '.') {
+                continue;
+            }
+
+            if (Array.IndexOf(QuestionSignalPunctuation, ch) >= 0) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     private sealed class ToolRoutingStats {
         public int Invocations { get; set; }
         public int Successes { get; set; }

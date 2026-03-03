@@ -454,4 +454,39 @@ Continue that failure-signature collection across all remaining DCs in this turn
         Assert.Equal("""{"ok":true}""", result.output);
     }
 
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_SynthesizesSummaryFromExecutedToolOutputs() {
+        var calls = new[] {
+            BuildToolCall("call_1", "dnsclientx_query", """{"name":"fabrikam.com","type":"NS"}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"summary_markdown":"DNS NS records look consistent across resolvers."}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: string.Empty,
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("dnsclientx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DNS NS records look consistent", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_ReturnsWarningWhenNoToolOutputsExist() {
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: string.Empty,
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("No response text was produced", text, StringComparison.OrdinalIgnoreCase);
+    }
+
 }

@@ -49,6 +49,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_DoesNotInjectIntentForPassiveCompactAckWithSymbolCue() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        session.RememberUserIntentForTesting("thread-passive-ack", "Please run forest-wide replication and LDAP diagnostics.");
+        var expanded = session.ExpandContinuationUserRequestForTesting("thread-passive-ack", "ok to dziala ;)");
+
+        Assert.Equal("ok to dziala ;)", expanded);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequestForTesting_ThrowsWhenThreadIdIsNull() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 

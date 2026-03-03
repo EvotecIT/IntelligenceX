@@ -141,4 +141,164 @@ public sealed class ChatServiceToolEvidenceCacheTests {
             }
         }
     }
+
+    [Fact]
+    public void ToolEvidenceCache_DoesNotReuseUnrelatedEvidenceWhenRequestHasNoTokenMatches() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "dnsclientx_query",
+                ArgumentsJson = "{\"name\":\"ad.evotec.xyz\",\"type\":\"A\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"answers\":[\"192.168.0.10\"]}",
+                SummaryMarkdown = "Resolved ad.evotec.xyz."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-unrelated",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-unrelated",
+            "run eventlog_evtx_query on ad0",
+            out _);
+
+        Assert.False(built);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_PrefersTokenMatchedEvidenceOverRecentUnmatchedEntries() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "dnsclientx_query",
+                ArgumentsJson = "{\"name\":\"evotec.xyz\",\"type\":\"A\"}"
+            },
+            new ToolCallDto {
+                CallId = "call-2",
+                Name = "eventlog_evtx_query",
+                ArgumentsJson = "{\"evtx_path\":\"C:\\\\logs\\\\sys.evtx\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"answers\":[\"1.1.1.1\"]}",
+                SummaryMarkdown = "DNS answer for evotec.xyz."
+            },
+            new ToolOutputDto {
+                CallId = "call-2",
+                Ok = true,
+                Output = "{\"events\":42}",
+                SummaryMarkdown = "Parsed EVTX events for restart timeline."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-token-match",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-token-match",
+            "please rerun eventlog_evtx_query for this host",
+            out var text);
+
+        Assert.True(built);
+        Assert.Contains("eventlog_evtx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("dnsclientx_query", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_UsesPreferredDomainFamilyWhenRequestIsCompact() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "dnsclientx_query",
+                ArgumentsJson = "{\"name\":\"evotec.xyz\",\"type\":\"A\"}"
+            },
+            new ToolCallDto {
+                CallId = "call-2",
+                Name = "eventlog_live_query",
+                ArgumentsJson = "{\"machine_name\":\"AD0\",\"log_name\":\"System\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"answers\":[\"1.1.1.1\"]}",
+                SummaryMarkdown = "DNS evidence."
+            },
+            new ToolOutputDto {
+                CallId = "call-2",
+                Ok = true,
+                Output = "{\"events\":5}",
+                SummaryMarkdown = "System restart-related events."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-family-context",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.SetPreferredDomainIntentFamilyForTesting("thread-family-context", "ad_domain");
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-family-context",
+            "ok continue",
+            out var text);
+
+        Assert.True(built);
+        Assert.Contains("eventlog_live_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("dnsclientx_query", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_DoesNotReusePreferredFamilyForPassiveCompactAckWithSymbolCue() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "eventlog_live_query",
+                ArgumentsJson = "{\"machine_name\":\"AD0\",\"log_name\":\"System\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"events\":5}",
+                SummaryMarkdown = "System restart-related events."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-family-passive-ack",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.SetPreferredDomainIntentFamilyForTesting("thread-family-passive-ack", "ad_domain");
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-family-passive-ack",
+            "ok to dziala ;)",
+            out _);
+
+        Assert.False(built);
+    }
 }

@@ -41,6 +41,10 @@ internal sealed partial class ChatServiceSession {
             return raw;
         }
 
+        if (ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalized)) {
+            return raw;
+        }
+
         string? intent;
         long intentTicks;
         lock (_toolRoutingContextLock) {
@@ -557,7 +561,32 @@ internal sealed partial class ChatServiceSession {
         out IReadOnlyList<ToolDefinition> filteredTools,
         out string family,
         out int removedCount) {
-        return TryApplyDomainIntentSignalRoutingHint(threadId, userRequest, selectedTools, out filteredTools, out family, out removedCount);
+        return TryApplyDomainIntentSignalRoutingHint(
+            threadId,
+            userRequest,
+            selectedTools,
+            selectedTools,
+            out filteredTools,
+            out family,
+            out removedCount);
+    }
+
+    internal bool TryApplyDomainIntentSignalRoutingHintForTesting(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> selectedTools,
+        IReadOnlyList<ToolDefinition> fullCandidateTools,
+        out IReadOnlyList<ToolDefinition> filteredTools,
+        out string family,
+        out int removedCount) {
+        return TryApplyDomainIntentSignalRoutingHint(
+            threadId,
+            userRequest,
+            selectedTools,
+            fullCandidateTools,
+            out filteredTools,
+            out family,
+            out removedCount);
     }
 
     internal void RememberPreferredDomainIntentFamilyForTesting(

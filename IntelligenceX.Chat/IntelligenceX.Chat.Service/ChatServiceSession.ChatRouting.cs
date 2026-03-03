@@ -99,6 +99,9 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
         var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
+        if (compactFollowUpTurn && ShouldTreatAsPassiveCompactFollowUp(threadId, userRequest)) {
+            compactFollowUpTurn = false;
+        }
         var continuationFollowUpTurn = compactFollowUpTurn
                                        && !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
         var usedContinuationSubset = false;
@@ -232,6 +235,7 @@ internal sealed partial class ChatServiceSession {
                 threadId,
                 domainIntentSignalRequest,
                 toolDefs,
+                fullToolDefs,
                 out var signaledTools,
                 out var signaledFamily,
                 out var signaledRemovedCount)) {

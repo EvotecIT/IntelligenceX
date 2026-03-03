@@ -166,12 +166,16 @@ internal static partial class Program {
             sb.AppendLine("- Resolve ambiguity or provide the requested summary directly from current context.");
             if (turn.AssertNoQuestions) {
                 sb.AppendLine("- Do not ask any follow-up questions in the final response for this turn.");
+                sb.AppendLine("- Do not include question-mark punctuation (`?`, `？`, `¿`, `؟`) anywhere in the final response.");
             }
             if (turn.AssertContains.Count > 0) {
                 sb.AppendLine("- Final response must include these literals: " + string.Join(", ", turn.AssertContains) + ".");
             }
             if (turn.AssertContainsAny.Count > 0) {
                 sb.AppendLine("- Final response must include at least one of these literals: " + string.Join(", ", turn.AssertContainsAny) + ".");
+            }
+            if (turn.AssertNotContains.Count > 0) {
+                sb.AppendLine("- Final response must NOT include these literals (do not repeat them, even to negate them): " + string.Join(", ", turn.AssertNotContains) + ".");
             }
             sb.AppendLine();
             sb.AppendLine("User request:");
@@ -222,6 +226,7 @@ internal static partial class Program {
         sb.AppendLine("- For eventlog_named_events_query, use names from eventlog_named_events_catalog; if uncertain, prefer eventlog_live_query with explicit event_ids.");
         if (turn.AssertNoQuestions) {
             sb.AppendLine("- Do not ask any follow-up questions in the final response for this turn.");
+            sb.AppendLine("- Do not include question-mark punctuation (`?`, `？`, `¿`, `؟`) anywhere in the final response.");
         }
         if (requiresTimestampShape) {
             sb.AppendLine("- Hard requirement: final response must include at least one timestamp matching regex \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2} and include 'UTC'.");
@@ -241,6 +246,9 @@ internal static partial class Program {
         }
         if (turn.AssertContainsAny.Count > 0) {
             sb.AppendLine("- Final response must include at least one of these literals: " + string.Join(", ", turn.AssertContainsAny) + ".");
+        }
+        if (turn.AssertNotContains.Count > 0) {
+            sb.AppendLine("- Final response must NOT include these literals (do not repeat them, even to negate them): " + string.Join(", ", turn.AssertNotContains) + ".");
         }
         sb.AppendLine("If a best-effort tool call fails, include the exact blocker/error and minimal missing input once.");
         sb.AppendLine();

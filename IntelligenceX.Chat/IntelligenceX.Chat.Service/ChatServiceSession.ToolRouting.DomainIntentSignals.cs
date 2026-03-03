@@ -351,9 +351,67 @@ internal sealed partial class ChatServiceSession {
                 && string.Equals(NormalizeCompactToken(candidate.AsSpan()), compactToken, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
+
+            if (MatchesDomainSignalCandidateBySegments(candidate, normalizedToken, compactToken)) {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    private static bool MatchesDomainSignalCandidateBySegments(string candidate, string normalizedToken, string compactToken) {
+        var normalizedCandidate = (candidate ?? string.Empty).Trim();
+        if (normalizedCandidate.Length == 0) {
+            return false;
+        }
+
+        var segments = normalizedCandidate.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < segments.Length; i++) {
+            var segment = (segments[i] ?? string.Empty).Trim();
+            if (segment.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(segment, normalizedToken, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+
+            if (compactToken.Length > 0
+                && string.Equals(NormalizeCompactToken(segment.AsSpan()), compactToken, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+
+            if (IsDomainSignalSuffixVariant(segment, normalizedToken)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsDomainSignalSuffixVariant(string candidate, string token) {
+        var normalizedCandidate = (candidate ?? string.Empty).Trim();
+        var normalizedToken = (token ?? string.Empty).Trim();
+        if (normalizedCandidate.Length == 0 || normalizedToken.Length < 5) {
+            return false;
+        }
+
+        if (normalizedCandidate.Length <= normalizedToken.Length || normalizedCandidate.Length > normalizedToken.Length + 3) {
+            return false;
+        }
+
+        if (!normalizedCandidate.StartsWith(normalizedToken, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        for (var i = normalizedToken.Length; i < normalizedCandidate.Length; i++) {
+            if (!char.IsLetter(normalizedCandidate[i])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool ContainsDomainSignalAcronymToken(string text, string acronym) {
@@ -698,6 +756,7 @@ internal sealed partial class ChatServiceSession {
         string threadId,
         string userRequest,
         IReadOnlyList<ToolDefinition> selectedTools,
+        IReadOnlyList<ToolDefinition> fullCandidateTools,
         out IReadOnlyList<ToolDefinition> filteredTools,
         out string family,
         out int removedCount) {
@@ -705,7 +764,8 @@ internal sealed partial class ChatServiceSession {
         family = string.Empty;
         removedCount = 0;
 
-        if (selectedTools is null || selectedTools.Count == 0) {
+        if ((selectedTools is null || selectedTools.Count == 0)
+            && (fullCandidateTools is null || fullCandidateTools.Count == 0)) {
             return false;
         }
 
@@ -713,12 +773,25 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryFilterToolsByDomainIntentFamily(selectedTools, inferredFamily, out var filtered, out removedCount)) {
+        if (selectedTools is { Count: > 0 }
+            && TryFilterToolsByDomainIntentFamily(selectedTools, inferredFamily, out var selectedFiltered, out removedCount)) {
+            filteredTools = selectedFiltered;
+            family = inferredFamily;
+            RememberSelectedDomainIntentFamily(threadId, inferredFamily);
+            return true;
+        }
+
+        if (fullCandidateTools is not { Count: > 0 }) {
             return false;
         }
 
-        filteredTools = filtered;
+        if (!TryFilterToolsByDomainIntentFamily(fullCandidateTools, inferredFamily, out var fullFiltered, out var fullRemovedCount)) {
+            return false;
+        }
+
+        filteredTools = fullFiltered;
         family = inferredFamily;
+        removedCount = fullRemovedCount;
         RememberSelectedDomainIntentFamily(threadId, inferredFamily);
         return true;
     }
