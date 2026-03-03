@@ -188,7 +188,7 @@ public sealed partial class MainWindow : Window {
         var timeoutLabel = FormatStartupConnectDurationLabel(timeout);
         return "Starting runtime... ("
                + phase
-               + (cause.Length == 0 ? string.Empty : ", cause " + cause)
+               + BuildStartupStatusCauseSegment(cause)
                + ", attempt "
                + boundedAttempt.ToString(CultureInfo.InvariantCulture)
                + "/"
@@ -209,7 +209,7 @@ public sealed partial class MainWindow : Window {
         var delayLabel = FormatStartupConnectDurationLabel(delay);
         return "Starting runtime... (waiting "
                + delayLabel
-               + (cause.Length == 0 ? string.Empty : ", cause " + cause)
+               + BuildStartupStatusCauseSegment(cause)
                + " before retry "
                + boundedAttempt.ToString(CultureInfo.InvariantCulture)
                + "/"
@@ -414,7 +414,11 @@ public sealed partial class MainWindow : Window {
 
             _isConnected = false;
             await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(false);
-            await SetConnectProgressStatusAsync("Starting runtime... (connecting to service, cause pipe_retry)").ConfigureAwait(false);
+            await SetConnectProgressStatusAsync(
+                    AppendStartupStatusCause(
+                        "Starting runtime... (connecting to service)",
+                        StartupStatusCausePipeRetry))
+                .ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
             var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
             var preserveInteractiveAuthState = ShouldPreserveInteractiveAuthStateOnReconnect(
@@ -473,7 +477,7 @@ public sealed partial class MainWindow : Window {
                             attemptNumber: 1,
                             totalAttempts: 1,
                             timeout: initialAttemptTimeout,
-                            churnCause: "pipe_retry"))
+                            churnCause: StartupStatusCausePipeRetry))
                     .ConfigureAwait(false);
                 initialAttemptStopwatch = Stopwatch.StartNew();
                 await ConnectClientWithTimeoutAsync(
@@ -505,7 +509,11 @@ public sealed partial class MainWindow : Window {
                     LogStartupConnectPhase("ensure_sidecar", "skipped_budget");
                     sidecarConnectException = CreateBudgetExceededException();
                 } else {
-                    await SetConnectProgressStatusAsync("Starting runtime... (starting local service, cause runtime_start)").ConfigureAwait(false);
+                    await SetConnectProgressStatusAsync(
+                            AppendStartupStatusCause(
+                                "Starting runtime... (starting local service)",
+                                StartupStatusCauseRuntimeStart))
+                        .ConfigureAwait(false);
                     LogStartupConnectPhase("ensure_sidecar", "begin");
                     var ensureSidecarStopwatch = Stopwatch.StartNew();
                     var sidecarRunning = await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false);
@@ -519,7 +527,11 @@ public sealed partial class MainWindow : Window {
                     }
 
                     if (sidecarRunning) {
-                        await SetConnectProgressStatusAsync("Starting runtime... (retrying service connection, cause pipe_retry)").ConfigureAwait(false);
+                        await SetConnectProgressStatusAsync(
+                                AppendStartupStatusCause(
+                                    "Starting runtime... (retrying service connection)",
+                                    StartupStatusCausePipeRetry))
+                            .ConfigureAwait(false);
                         LogStartupConnectPhase("ensure_sidecar", "done");
                         LogStartupConnectPhase("pipe_connect.retry", "begin");
                         var startupRetryDisplayTotalAttempts = ResolveStartupConnectRetryDisplayTotalAttempts(StartupConnectRetryTimeouts.Length);
@@ -550,7 +562,7 @@ public sealed partial class MainWindow : Window {
                                             attemptNumber: retryDisplayAttemptNumber,
                                             totalAttempts: startupRetryDisplayTotalAttempts,
                                             timeout: retryTimeout,
-                                            churnCause: "pipe_retry"))
+                                            churnCause: StartupStatusCausePipeRetry))
                                     .ConfigureAwait(false);
                                 retryAttemptStopwatch = Stopwatch.StartNew();
                                 await ConnectClientWithTimeoutAsync(client, pipeName, retryTimeout, retryHardTimeout).ConfigureAwait(false);
@@ -586,7 +598,7 @@ public sealed partial class MainWindow : Window {
                                                 nextAttemptNumber: retryDisplayAttemptNumber + 1,
                                                 totalAttempts: startupRetryDisplayTotalAttempts,
                                                 delay: retryDelay,
-                                                churnCause: "pipe_retry"))
+                                                churnCause: StartupStatusCausePipeRetry))
                                         .ConfigureAwait(false);
                                     await Task.Delay(retryDelay).ConfigureAwait(false);
                                 }

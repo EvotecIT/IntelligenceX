@@ -7,12 +7,41 @@ using Microsoft.UI.Xaml;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    internal const string StartupStatusCausePipeRetry = "pipe_retry";
+    internal const string StartupStatusCauseRuntimeStart = "runtime_start";
+    internal const string StartupStatusCauseMetadataRetry = "metadata_retry";
+    internal const string StartupStatusCauseRuntimeDisconnect = "runtime_disconnect";
+    internal const string StartupStatusCauseAuthWait = "auth_wait";
+    internal const string StartupStatusCauseMetadataSync = "metadata_sync";
+
+    private static string NormalizeStartupStatusCause(string? cause) {
+        return (cause ?? string.Empty).Trim();
+    }
+
+    internal static string BuildStartupStatusCauseSuffix(string? cause) {
+        var normalizedCause = NormalizeStartupStatusCause(cause);
+        return normalizedCause.Length == 0 ? string.Empty : " (cause " + normalizedCause + ")";
+    }
+
+    internal static string BuildStartupStatusCauseSegment(string? cause) {
+        var normalizedCause = NormalizeStartupStatusCause(cause);
+        return normalizedCause.Length == 0 ? string.Empty : ", cause " + normalizedCause;
+    }
+
+    internal static string AppendStartupStatusCause(string statusText, string? cause) {
+        return (statusText ?? string.Empty) + BuildStartupStatusCauseSuffix(cause);
+    }
+
     internal static string BuildStartupPendingStatusText(bool requiresInteractiveSignIn, bool isAuthenticated) {
         if (requiresInteractiveSignIn && !isAuthenticated) {
-            return "Runtime connected. Sign in to finish loading tool packs... (cause auth_wait)";
+            return AppendStartupStatusCause(
+                "Runtime connected. Sign in to finish loading tool packs...",
+                StartupStatusCauseAuthWait);
         }
 
-        return "Runtime connected. Loading tool packs in background... (cause metadata_sync)";
+        return AppendStartupStatusCause(
+            "Runtime connected. Loading tool packs in background...",
+            StartupStatusCauseMetadataSync);
     }
 
     internal static bool ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(

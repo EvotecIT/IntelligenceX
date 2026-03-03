@@ -441,7 +441,9 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    "Runtime connected. Session policy sync interrupted; retrying... (cause metadata_retry)",
+                                    AppendStartupStatusCause(
+                                        "Runtime connected. Session policy sync interrupted; retrying...",
+                                        StartupStatusCauseMetadataRetry),
                                     phase: "syncing session policy")
                                 .ConfigureAwait(false);
                             await Task.Delay(250).ConfigureAwait(false);
@@ -531,7 +533,9 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    "Runtime connected. Tool catalog sync interrupted; retrying... (cause metadata_retry)",
+                                    AppendStartupStatusCause(
+                                        "Runtime connected. Tool catalog sync interrupted; retrying...",
+                                        StartupStatusCauseMetadataRetry),
                                     phase: "loading tool catalog")
                                 .ConfigureAwait(false);
                             await Task.Delay(250).ConfigureAwait(false);
@@ -602,7 +606,9 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    "Runtime connected. Authentication refresh interrupted; retrying... (cause metadata_retry)",
+                                    AppendStartupStatusCause(
+                                        "Runtime connected. Authentication refresh interrupted; retrying...",
+                                        StartupStatusCauseMetadataRetry),
                                     phase: "refreshing authentication")
                                 .ConfigureAwait(false);
                             await Task.Delay(250).ConfigureAwait(false);
