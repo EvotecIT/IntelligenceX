@@ -311,6 +311,7 @@ public sealed class ToolOrchestrationCatalog {
 
             var setupRequirementIds = new List<string>();
             var setupRequirementKinds = new List<string>();
+            var setupRequirementPairs = new List<string>();
             var setupHintKeys = new List<string>();
             if (setup?.SetupHintKeys is { Count: > 0 }) {
                 for (var hintIndex = 0; hintIndex < setup.SetupHintKeys.Count; hintIndex++) {
@@ -320,8 +321,11 @@ public sealed class ToolOrchestrationCatalog {
             if (setup?.Requirements is { Count: > 0 }) {
                 for (var requirementIndex = 0; requirementIndex < setup.Requirements.Count; requirementIndex++) {
                     var requirement = setup.Requirements[requirementIndex];
-                    setupRequirementIds.Add(requirement?.RequirementId ?? string.Empty);
-                    setupRequirementKinds.Add(requirement?.Kind ?? string.Empty);
+                    var requirementId = requirement?.RequirementId ?? string.Empty;
+                    var requirementKind = requirement?.Kind ?? string.Empty;
+                    setupRequirementIds.Add(requirementId);
+                    setupRequirementKinds.Add(requirementKind);
+                    setupRequirementPairs.Add(requirementId + "|" + requirementKind);
                     if (requirement?.HintKeys is not { Count: > 0 }) {
                         continue;
                     }
@@ -336,6 +340,7 @@ public sealed class ToolOrchestrationCatalog {
             var alternateEngineCount = alternateEngineIds.Length;
             var normalizedSetupRequirementIds = NormalizeDistinctTokens(setupRequirementIds);
             var normalizedSetupRequirementKinds = NormalizeDistinctTokens(setupRequirementKinds);
+            var normalizedSetupRequirementPairs = NormalizeDistinctTokens(setupRequirementPairs);
             var normalizedSetupHintKeys = NormalizeDistinctTokens(setupHintKeys);
             var normalizedHandoffEdges = handoffEdges
                 .OrderBy(static edge => edge.TargetPackId, StringComparer.OrdinalIgnoreCase)
@@ -356,7 +361,7 @@ public sealed class ToolOrchestrationCatalog {
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = actionId,
                 IsSetupAware = setup?.IsSetupAware == true,
-                SetupRequirementCount = normalizedSetupRequirementIds.Length,
+                SetupRequirementCount = normalizedSetupRequirementPairs.Length,
                 SetupToolName = NormalizeToken(setup?.SetupToolName),
                 SetupContractId = NormalizeToken(setup?.SetupContractId),
                 SetupRequirementIds = normalizedSetupRequirementIds,

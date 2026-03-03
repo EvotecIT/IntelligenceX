@@ -265,6 +265,43 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Empty(entry.HandoffEdges);
     }
 
+    [Fact]
+    public void Build_SetupRequirementCount_UsesDistinctIdKindPairs() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "custom_setup_pair_tool",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    Requirements = new[] {
+                        new ToolSetupRequirement {
+                            RequirementId = "auth.session",
+                            Kind = ToolSetupRequirementKinds.Authentication
+                        },
+                        new ToolSetupRequirement {
+                            RequirementId = "auth.session",
+                            Kind = ToolSetupRequirementKinds.Connectivity
+                        }
+                    }
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("custom_setup_pair_tool", out var entry));
+        Assert.Equal(2, entry.SetupRequirementCount);
+        Assert.Equal(new[] { "auth.session" }, entry.SetupRequirementIds);
+        Assert.Equal(
+            new[] {
+                ToolSetupRequirementKinds.Authentication,
+                ToolSetupRequirementKinds.Connectivity
+            },
+            entry.SetupRequirementKinds);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolRoutingContract? routing = null,
