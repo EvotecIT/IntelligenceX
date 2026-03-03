@@ -55,4 +55,30 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
 
         Assert.False(MainWindow.IsStartupBootstrapSignalWorthy(telemetry));
     }
+
+    /// <summary>
+    /// Produces concise header-status detail with total bootstrap and slowest phase timing.
+    /// </summary>
+    [Fact]
+    public void BuildStartupBootstrapStatusDetail_IncludesTotalAndSlowestPhase() {
+        var telemetry = new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 1800,
+            SlowestPhaseLabel = "pack register",
+            SlowestPhaseMs = 1200
+        };
+
+        var detail = MainWindow.BuildStartupBootstrapStatusDetail(telemetry);
+
+        Assert.Equal("tool bootstrap 1.8s (slowest: pack register 1.2s)", detail);
+    }
+
+    /// <summary>
+    /// Returns empty detail when startup bootstrap telemetry is not available.
+    /// </summary>
+    [Fact]
+    public void BuildStartupBootstrapStatusDetail_ReturnsEmptyWhenTelemetryMissing() {
+        var detail = MainWindow.BuildStartupBootstrapStatusDetail(null);
+
+        Assert.Equal(string.Empty, detail);
+    }
 }

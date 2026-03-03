@@ -415,8 +415,15 @@ public sealed partial class MainWindow : Window {
                             }
                         }
                     }
+                    var startupBootstrapDetail = BuildStartupBootstrapStatusDetail(hello.Policy?.StartupBootstrap);
+                    var sessionPolicyStatus = $"Runtime connected. Session policy synced in {FormatPhaseDuration(helloStopwatch.Elapsed)} "
+                                              + $"({enabledPackCount}/{Math.Max(totalPackCount, 0)} packs enabled";
+                    if (!string.IsNullOrWhiteSpace(startupBootstrapDetail)) {
+                        sessionPolicyStatus += ", " + startupBootstrapDetail;
+                    }
+                    sessionPolicyStatus += ").";
                     await SetMetadataSyncStatusAsync(
-                            $"Runtime connected. Session policy synced in {FormatPhaseDuration(helloStopwatch.Elapsed)} ({enabledPackCount}/{Math.Max(totalPackCount, 0)} packs enabled).",
+                            sessionPolicyStatus,
                             phase: "session policy synced")
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
