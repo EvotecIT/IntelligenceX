@@ -55,6 +55,40 @@ public sealed class MainWindowActivityTimelineMappingTests {
         Assert.Equal("round start", timelineLabel);
     }
 
+    /// <summary>
+    /// Ensures routing metadata labels include strategy and selected/total counts for live diagnostics.
+    /// </summary>
+    [Fact]
+    public void BuildActivityTimelineLabel_UsesRoutingMetaStrategyAndCountsWhenPayloadIsStructured() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var message = CreateStatus(
+            status: ChatStatusCodes.RoutingMeta,
+            message: "{\"strategy\":\"weighted_subset\",\"selectedToolCount\":3,\"totalToolCount\":17}");
+
+        var activityText = InvokeFormatActivityText(window, message);
+        var timelineLabel = InvokeBuildActivityTimelineLabel(window, message, activityText);
+
+        Assert.Equal("Routing strategy weighted subset (3/17 tools)", activityText);
+        Assert.Equal("route weighted subset (3/17)", timelineLabel);
+    }
+
+    /// <summary>
+    /// Ensures malformed routing metadata falls back to a stable generic timeline label.
+    /// </summary>
+    [Fact]
+    public void BuildActivityTimelineLabel_UsesRoutingMetaFallbackWhenPayloadIsMalformed() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var message = CreateStatus(
+            status: ChatStatusCodes.RoutingMeta,
+            message: "not-json");
+
+        var activityText = InvokeFormatActivityText(window, message);
+        var timelineLabel = InvokeBuildActivityTimelineLabel(window, message, activityText);
+
+        Assert.Equal("Routing strategy updated...", activityText);
+        Assert.Equal("route strategy", timelineLabel);
+    }
+
     private static ChatStatusMessage CreateStatus(string status, string? message = null) {
         return new ChatStatusMessage {
             Kind = ChatServiceMessageKind.Event,

@@ -367,7 +367,7 @@ public sealed partial class MainWindow : Window {
         var label = normalizedStatus switch {
             ChatStatusCodes.Thinking => "thinking",
             ChatStatusCodes.RoutingTool when toolLabel.Length > 0 => "route " + toolLabel,
-            ChatStatusCodes.RoutingMeta => "route strategy",
+            ChatStatusCodes.RoutingMeta => BuildRoutingMetaTimelineLabel(status.Message),
             ChatStatusCodes.ToolCall when toolLabel.Length > 0 => "prepare " + toolLabel,
             ChatStatusCodes.ToolRunning when toolLabel.Length > 0 => "run " + toolLabel,
             ChatStatusCodes.ToolHeartbeat when toolLabel.Length > 0 => "run " + toolLabel,
@@ -406,5 +406,20 @@ public sealed partial class MainWindow : Window {
         }
 
         return label;
+    }
+
+    private static string BuildRoutingMetaTimelineLabel(string? payload) {
+        if (!TryParseRoutingMetaPayload(payload, out var strategy, out var selectedToolCount, out var totalToolCount)) {
+            return "route strategy";
+        }
+
+        var normalizedStrategy = (strategy ?? string.Empty).Trim();
+        if (normalizedStrategy.Length == 0) {
+            normalizedStrategy = "strategy";
+        }
+
+        var boundedSelectedToolCount = Math.Max(0, selectedToolCount);
+        var boundedTotalToolCount = Math.Max(boundedSelectedToolCount, totalToolCount);
+        return "route " + normalizedStrategy + " (" + boundedSelectedToolCount + "/" + boundedTotalToolCount + ")";
     }
 }
