@@ -108,7 +108,7 @@ public sealed class EventLogEvtxStatsTool : EventLogToolBase, ITool {
         }
 
         var response = ToolResultV2.OkAutoTableResponse(
-            arguments: context.Arguments,
+            arguments: SanitizeProjectionArguments(context.Arguments, result.TopEventIds),
             model: result,
             sourceRows: result.TopEventIds,
             viewRowsPath: "top_event_ids_view",

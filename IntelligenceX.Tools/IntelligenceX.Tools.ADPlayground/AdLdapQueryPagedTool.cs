@@ -159,7 +159,7 @@ public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
             result.Results
         };
 
-        if (!AdDynamicTableView.TryBuildResponseFromOutputRows(
+        if (AdDynamicTableView.TryBuildResponseFromOutputRows(
                 arguments: context.Arguments,
                 model: root,
                 rows: result.Results,
@@ -167,10 +167,13 @@ public sealed class AdLdapQueryPagedTool : ActiveDirectoryToolBase, ITool {
                 rowsPath: "results_view",
                 baseTruncated: result.IsTruncated,
                 response: out var response)) {
-            return Task.FromResult(ToolResultV2.Error("query_failed", "Failed to build paged LDAP query table view response."));
+            return Task.FromResult(response);
         }
 
-        return Task.FromResult(response);
+        var fallbackMeta = new JsonObject(StringComparer.Ordinal)
+            .Add("table_view_fallback", true)
+            .Add("table_view_fallback_reason", "dynamic_table_view_build_failed");
+        return Task.FromResult(ToolResultV2.OkModel(root, meta: fallbackMeta));
     }
 
 }

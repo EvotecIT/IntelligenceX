@@ -278,7 +278,7 @@ public sealed class EventLogEvtxSecuritySummaryTool : EventLogToolBase, ITool {
         bool truncated,
         JsonObject entityHandoff) {
         return ToolResultV2.OkAutoTableResponse(
-            arguments: arguments,
+            arguments: SanitizeProjectionArguments(arguments, topRows),
             model: model,
             sourceRows: topRows,
             viewRowsPath: "top_rows_view",

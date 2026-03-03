@@ -190,7 +190,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
             computerSelector: static row => row.Computer);
 
         return ToolResultV2.OkAutoTableResponse(
-            arguments: context.Arguments,
+            arguments: SanitizeProjectionArguments(context.Arguments, result.Timeline),
             model: result,
             sourceRows: result.Timeline,
             viewRowsPath: "timeline_view",
