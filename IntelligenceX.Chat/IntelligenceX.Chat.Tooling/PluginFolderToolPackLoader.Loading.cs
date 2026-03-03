@@ -55,6 +55,22 @@ internal static partial class PluginFolderToolPackLoader {
                 return;
             }
 
+            if (TryShortCircuitDuplicatePluginFromLoadedAssemblies(
+                    entryAssemblyPaths: entryAssemblyPaths,
+                    manifest: manifest,
+                    pluginId: pluginId,
+                    isExplicitRoot: isExplicitRoot,
+                    options: options,
+                    existingPackIds: existingPackIds,
+                    onWarning: onWarning,
+                    onPackAvailability: onPackAvailability,
+                    duplicatePackCount: ref duplicatePackCount,
+                    failedPackCount: ref failedPackCount,
+                    candidateTypeCount: out var fastPathCandidateTypeCount)) {
+                candidateTypeCount = fastPathCandidateTypeCount;
+                return;
+            }
+
             PreloadPluginDependencies(pluginDirectory, entryAssemblyPaths, pluginId, onWarning);
 
             IReadOnlyList<Type> candidateTypes = Array.Empty<Type>();
@@ -159,6 +175,88 @@ internal static partial class PluginFolderToolPackLoader {
                     $"failed='{failedPackCount}'");
             }
         }
+    }
+
+    private static bool TryShortCircuitDuplicatePluginFromLoadedAssemblies(
+        IReadOnlyList<string> entryAssemblyPaths,
+        PluginManifest? manifest,
+        string pluginId,
+        bool isExplicitRoot,
+        ToolPackBootstrapOptions options,
+        HashSet<string> existingPackIds,
+        Action<string>? onWarning,
+        Action<ToolPackAvailabilityInfo>? onPackAvailability,
+        ref int duplicatePackCount,
+        ref int failedPackCount,
+        out int candidateTypeCount) {
+        candidateTypeCount = 0;
+        if (entryAssemblyPaths.Count == 0 || existingPackIds.Count == 0) {
+            return false;
+        }
+
+        var candidatePacksById = new Dictionary<string, IToolPack>(StringComparer.OrdinalIgnoreCase);
+        var anyCandidateTypesResolved = false;
+
+        for (var i = 0; i < entryAssemblyPaths.Count; i++) {
+            var assemblyPath = entryAssemblyPaths[i];
+            var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
+            if (string.IsNullOrWhiteSpace(assemblyName)) {
+                continue;
+            }
+
+            var loadedAssembly = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .FirstOrDefault(candidate => string.Equals(candidate.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
+            if (loadedAssembly is null) {
+                continue;
+            }
+
+            var candidateTypes = ResolveCandidatePackTypes(loadedAssembly, manifest, pluginId, onWarning: null);
+            if (candidateTypes.Count == 0) {
+                continue;
+            }
+
+            anyCandidateTypesResolved = true;
+            candidateTypeCount += candidateTypes.Count;
+            for (var typeIndex = 0; typeIndex < candidateTypes.Count; typeIndex++) {
+                var candidateType = candidateTypes[typeIndex];
+                if (!TryCreatePack(candidateType, options, out var pack, out _)) {
+                    failedPackCount++;
+                    return false;
+                }
+
+                var descriptorId = pack.Descriptor.Id?.Trim();
+                var normalizedDescriptorId = ToolPackBootstrap.NormalizePackId(descriptorId);
+                if (normalizedDescriptorId.Length == 0 || !existingPackIds.Contains(normalizedDescriptorId)) {
+                    return false;
+                }
+
+                candidatePacksById[normalizedDescriptorId] = pack;
+            }
+        }
+
+        if (!anyCandidateTypesResolved || candidatePacksById.Count == 0) {
+            return false;
+        }
+
+        foreach (var pair in candidatePacksById.OrderBy(static item => item.Key, StringComparer.OrdinalIgnoreCase)) {
+            var normalizedDescriptorId = pair.Key;
+            var pack = pair.Value;
+            if (isExplicitRoot) {
+                onWarning?.Invoke(
+                    $"[plugin] duplicate_pack plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped' mode='fastpath'");
+            }
+
+            duplicatePackCount++;
+            onPackAvailability?.Invoke(CreatePluginPackAvailability(
+                pack: pack,
+                normalizedDescriptorId: normalizedDescriptorId,
+                manifest: manifest,
+                enabled: false,
+                disabledReason: DisabledByDuplicatePackReason));
+        }
+
+        return true;
     }
 
     private static PluginManifest? TryReadManifest(string manifestPath, Action<string>? onWarning) {
