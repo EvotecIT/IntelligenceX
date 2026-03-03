@@ -252,6 +252,59 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures startup retry attempt ordinals include the initial cold-connect attempt.
+    /// </summary>
+    [Theory]
+    [InlineData(-10, 2)]
+    [InlineData(0, 2)]
+    [InlineData(1, 3)]
+    [InlineData(4, 6)]
+    public void ResolveStartupConnectRetryDisplayAttemptNumber_ReturnsExpectedValue(
+        int retryAttemptIndex,
+        int expectedDisplayAttemptNumber) {
+        var displayAttemptNumber = MainWindow.ResolveStartupConnectRetryDisplayAttemptNumber(retryAttemptIndex);
+        Assert.Equal(expectedDisplayAttemptNumber, displayAttemptNumber);
+    }
+
+    /// <summary>
+    /// Ensures startup retry total attempts include the initial cold-connect attempt.
+    /// </summary>
+    [Theory]
+    [InlineData(-1, 1)]
+    [InlineData(0, 1)]
+    [InlineData(3, 4)]
+    public void ResolveStartupConnectRetryDisplayTotalAttempts_ReturnsExpectedValue(
+        int retryAttemptSlots,
+        int expectedDisplayTotalAttempts) {
+        var displayTotalAttempts = MainWindow.ResolveStartupConnectRetryDisplayTotalAttempts(retryAttemptSlots);
+        Assert.Equal(expectedDisplayTotalAttempts, displayTotalAttempts);
+    }
+
+    /// <summary>
+    /// Ensures startup retry progress and delay statuses stay aligned across loop iterations.
+    /// </summary>
+    [Fact]
+    public void StartupRetryStatusText_UsesAttemptOrdinalsIncludingInitialConnect() {
+        var totalAttempts = MainWindow.ResolveStartupConnectRetryDisplayTotalAttempts(3);
+        var firstRetryAttempt = MainWindow.ResolveStartupConnectRetryDisplayAttemptNumber(0);
+        var secondRetryAttempt = MainWindow.ResolveStartupConnectRetryDisplayAttemptNumber(1);
+
+        var retryProgressText = MainWindow.BuildStartupConnectAttemptStatusText(
+            "retrying service connection",
+            firstRetryAttempt,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(900));
+        var retryDelayText = MainWindow.BuildStartupConnectRetryDelayStatusText(
+            nextAttemptNumber: firstRetryAttempt + 1,
+            totalAttempts,
+            TimeSpan.FromMilliseconds(300));
+
+        Assert.Equal(3, secondRetryAttempt);
+        Assert.Equal("Starting runtime... (retrying service connection, attempt 2/4, timeout 900ms)", retryProgressText);
+        Assert.Equal("Starting runtime... (waiting 300ms before retry 3/4)", retryDelayText);
+    }
+
+    /// <summary>
     /// Ensures dispatch cooldown applies only for non-priority paths without a tracked running sidecar.
     /// Priority login/queued-turn recovery should bypass cooldown and attempt reconnect immediately.
     /// </summary>

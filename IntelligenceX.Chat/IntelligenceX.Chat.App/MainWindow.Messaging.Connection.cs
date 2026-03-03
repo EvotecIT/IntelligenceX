@@ -211,6 +211,18 @@ public sealed partial class MainWindow : Window {
                + ")";
     }
 
+    internal static int ResolveStartupConnectRetryDisplayAttemptNumber(int retryAttemptIndex) {
+        var boundedRetryIndex = Math.Max(0, retryAttemptIndex);
+        // Display attempt numbering includes the initial cold connect attempt.
+        return boundedRetryIndex + 2;
+    }
+
+    internal static int ResolveStartupConnectRetryDisplayTotalAttempts(int retryAttemptSlots) {
+        var boundedRetrySlots = Math.Max(0, retryAttemptSlots);
+        // Total displayed attempts include the initial cold connect attempt.
+        return boundedRetrySlots + 1;
+    }
+
     internal static bool ShouldDeferStartupWebViewPostInitialization(bool captureStartupPhaseTelemetry) {
         return captureStartupPhaseTelemetry;
     }
@@ -503,6 +515,7 @@ public sealed partial class MainWindow : Window {
                         await SetConnectProgressStatusAsync("Starting runtime... (retrying service connection)").ConfigureAwait(false);
                         LogStartupConnectPhase("ensure_sidecar", "done");
                         LogStartupConnectPhase("pipe_connect.retry", "begin");
+                        var startupRetryDisplayTotalAttempts = ResolveStartupConnectRetryDisplayTotalAttempts(StartupConnectRetryTimeouts.Length);
                         for (var attempt = 0; attempt < StartupConnectRetryTimeouts.Length; attempt++) {
                             if (_serviceProcess is { HasExited: true }) {
                                 sidecarConnectException = new InvalidOperationException("Service process exited before pipe connect retry could begin.");
@@ -520,14 +533,15 @@ public sealed partial class MainWindow : Window {
 
                             Stopwatch? retryAttemptStopwatch = null;
                             var retryAttemptNumber = attempt + 1;
+                            var retryDisplayAttemptNumber = ResolveStartupConnectRetryDisplayAttemptNumber(attempt);
                             try {
                                 var retryHardTimeout = ResolveConnectAttemptHardTimeout(retryTimeout);
                                 LogConnectAttemptStart("pipe_connect.retry", retryAttemptNumber, requestedRetryTimeout, retryTimeout, retryHardTimeout);
                                 await SetConnectProgressStatusAsync(
                                         BuildStartupConnectAttemptStatusText(
                                             phaseLabel: "retrying service connection",
-                                            attemptNumber: retryAttemptNumber,
-                                            totalAttempts: StartupConnectRetryTimeouts.Length,
+                                            attemptNumber: retryDisplayAttemptNumber,
+                                            totalAttempts: startupRetryDisplayTotalAttempts,
                                             timeout: retryTimeout))
                                     .ConfigureAwait(false);
                                 retryAttemptStopwatch = Stopwatch.StartNew();
@@ -561,8 +575,8 @@ public sealed partial class MainWindow : Window {
 
                                     await SetConnectProgressStatusAsync(
                                             BuildStartupConnectRetryDelayStatusText(
-                                                nextAttemptNumber: retryAttemptNumber + 1,
-                                                totalAttempts: StartupConnectRetryTimeouts.Length,
+                                                nextAttemptNumber: retryDisplayAttemptNumber + 1,
+                                                totalAttempts: startupRetryDisplayTotalAttempts,
                                                 delay: retryDelay))
                                         .ConfigureAwait(false);
                                     await Task.Delay(retryDelay).ConfigureAwait(false);
