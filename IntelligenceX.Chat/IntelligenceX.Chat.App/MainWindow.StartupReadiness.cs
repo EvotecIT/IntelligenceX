@@ -29,7 +29,8 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static string AppendStartupStatusCause(string statusText, string? cause) {
-        return (statusText ?? string.Empty) + BuildStartupStatusCauseSuffix(cause);
+        ArgumentNullException.ThrowIfNull(statusText);
+        return statusText + BuildStartupStatusCauseSuffix(cause);
     }
 
     internal static string BuildStartupPendingStatusText(bool requiresInteractiveSignIn, bool isAuthenticated) {
