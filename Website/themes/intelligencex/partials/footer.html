@@ -1,13 +1,10 @@
 <footer class="ix-footer">
   <div class="ix-footer-inner">
-    {{ footer_docs = null }}
     {{ footer_resources = null }}
     {{ footer_company = null }}
     {{ if navigation.menus }}
       {{ for menu in navigation.menus }}
-        {{ if menu.name == "footer-docs" }}
-          {{ footer_docs = menu }}
-        {{ else if menu.name == "footer-resources" }}
+        {{ if menu.name == "footer-resources" }}
           {{ footer_resources = menu }}
         {{ else if menu.name == "footer-company" }}
           {{ footer_company = menu }}
@@ -26,16 +23,6 @@
         <p class="ix-footer-tagline">AI-powered code review using your own ChatGPT or Copilot account. Zero trust, full control.</p>
       </div>
       <div class="ix-footer-catalog">
-      {{ if footer_docs && footer_docs.items && footer_docs.items.size > 0 }}
-      <section class="ix-footer-section ix-footer-section--docs">
-        <p class="ix-footer-heading">Documentation</p>
-        <ul class="ix-footer-links{{ if footer_docs.items.size > 8 }} is-dense{{ end }}{{ if footer_docs.items.size > 14 }} is-mega{{ end }}{{ if footer_docs.items.size > 20 }} is-scroll{{ end }}">
-          {{ for link in footer_docs.items }}
-          <li><a href="{{ link.url }}"{{ if link.external }} target="_blank" rel="noopener"{{ end }}>{{ link.title }}</a></li>
-          {{ end }}
-        </ul>
-      </section>
-      {{ end }}
       {{ if footer_resources && footer_resources.items && footer_resources.items.size > 0 }}
       <section class="ix-footer-section ix-footer-section--resources">
         <p class="ix-footer-heading">Resources</p>
