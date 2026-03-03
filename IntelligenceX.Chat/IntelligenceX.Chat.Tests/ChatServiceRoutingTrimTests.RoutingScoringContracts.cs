@@ -39,19 +39,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void SelectDeterministicToolSubset_DoesNotGroupUnassignedToolsByNamePrefix() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
-        var registry = new ToolRegistry();
-        registry.Register(new PreflightStubTool(
-            "alpha_one",
-            CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)));
-        registry.Register(new PreflightStubTool(
-            "alpha_two",
-            CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)));
-        registry.Register(new PreflightStubTool(
-            "beta_one",
-            CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)));
-        SetSessionRegistry(session, registry);
+        var definitions = new List<ToolDefinition> {
+            new(
+                name: "alpha_one",
+                description: "alpha",
+                routing: CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)),
+            new(
+                name: "alpha_two",
+                description: "alpha",
+                routing: CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational)),
+            new(
+                name: "beta_one",
+                description: "beta",
+                routing: CreateRoutingContract(packId: string.Empty, role: ToolRoutingTaxonomy.RoleOperational))
+        };
 
-        var result = SelectDeterministicToolSubsetMethod.Invoke(session, new object?[] { registry.GetDefinitions(), 2 });
+        var result = SelectDeterministicToolSubsetMethod.Invoke(session, new object?[] { definitions, 2 });
         var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
 
         Assert.Equal(2, selected.Count);

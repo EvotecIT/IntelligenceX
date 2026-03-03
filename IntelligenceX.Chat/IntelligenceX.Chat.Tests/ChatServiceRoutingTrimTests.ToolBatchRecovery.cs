@@ -411,7 +411,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 
         public StubTool(string name, Func<JsonObject?, CancellationToken, Task<string>> invoke) {
-            Definition = new ToolDefinition(name, description: "stub");
+            Definition = new ToolDefinition(
+                name,
+                description: "stub",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "test_pack",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                });
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 

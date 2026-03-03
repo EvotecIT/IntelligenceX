@@ -104,11 +104,11 @@ internal sealed partial class ChatServiceSession {
                     && ShouldAttemptCarryoverStructuredNextActionReplay(
                         continuationFollowUpTurn: continuationFollowUpTurn,
                         compactFollowUpTurn: compactFollowUpTurn,
-                        userRequest: routedUserRequest,
+                        userRequest: userRequest,
                         assistantDraft: text)
                     && toolCalls.Count == 0
                     && toolOutputs.Count == 0) {
-                    var carryoverHostHintInput = BuildCarryoverHostHintInput(routedUserRequest, text);
+                    var carryoverHostHintInput = BuildCarryoverHostHintInput(userRequest, text);
                     if (TryBuildCarryoverStructuredNextActionToolCall(
                         threadId: threadId,
                         userRequest: carryoverHostHintInput,

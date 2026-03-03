@@ -161,7 +161,7 @@ public class ToolDefinitionContractTests {
     [InlineData("event-logs", "eventlog")]
     [InlineData("testimoxpack", "testimox")]
     [InlineData("reviewer setup", "reviewer_setup")]
-    [InlineData("my-pack", "mypack")]
+    [InlineData("my-pack", "my_pack")]
     public void NormalizePackId_ShouldCanonicalizeKnownAliases_AndCompactUnknownIds(string input, string expected) {
         var normalized = ToolSelectionMetadata.NormalizePackId(input);
         Assert.Equal(expected, normalized);
@@ -221,12 +221,13 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
-    public void Enrich_ShouldInferRoutingPackAndFamily_WhenRoutingSourceIsInferred() {
+    public void Enrich_ShouldInferRoutingPackAndFamilyFromTags_WhenRoutingSourceIsInferred() {
         var definition = new ToolDefinition(
             name: "ad_custom_probe",
             description: "Probe",
             parameters: ToolSchema.Object().NoAdditionalProperties(),
-            category: "active_directory");
+            category: "active_directory",
+            tags: new[] { "pack:active_directory", "domain_family:ad_domain" });
 
         var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
         var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);

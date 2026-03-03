@@ -37,7 +37,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public async Task WriteAsync_DoesNotDeduplicateWhenFinalTextChanges() {
+    public async Task WriteAsync_SuppressesSecondMeaningfulFinalForSameRequestEvenWhenTextChanges() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         using var stream = new MemoryStream();
         using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true);
@@ -54,6 +54,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
             RequestId = "req-nondup",
             ThreadId = "thread-1",
             Text = "Second"
+        });
+
+        var lines = ReadJsonLines(stream);
+        Assert.Single(lines);
+    }
+
+    [Fact]
+    public async Task WriteAsync_AllowsNonEmptyRecoveryAfterEmptyFinalForSameRequest() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        using var stream = new MemoryStream();
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true);
+
+        await InvokeWriteAsync(session, writer, new ChatResultMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "req-recovery",
+            ThreadId = "thread-1",
+            Text = string.Empty
+        });
+
+        await InvokeWriteAsync(session, writer, new ChatResultMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "req-recovery",
+            ThreadId = "thread-1",
+            Text = "Recovered final."
         });
 
         var lines = ReadJsonLines(stream);

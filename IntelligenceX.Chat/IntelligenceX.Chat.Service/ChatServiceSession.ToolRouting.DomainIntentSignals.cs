@@ -155,6 +155,8 @@ internal sealed partial class ChatServiceSession {
             }
         } catch (JsonException) {
             return false;
+        } catch (ArgumentException) {
+            return false;
         }
 
         return false;

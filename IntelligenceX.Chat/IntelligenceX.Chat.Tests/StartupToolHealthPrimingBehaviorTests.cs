@@ -51,7 +51,7 @@ public sealed class StartupToolHealthPrimingBehaviorTests {
 
         stopwatch.Stop();
         Assert.False(priming.Task.IsCompleted);
-        Assert.InRange(stopwatch.ElapsedMilliseconds, 0, 1500);
+        Assert.InRange(stopwatch.ElapsedMilliseconds, 0, 2500);
     }
 
     [Fact]

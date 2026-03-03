@@ -675,11 +675,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
             turn2,
             thread.Id,
             CancellationToken.None);
+        var turn2Statuses = ParseStatuses(captureTurn2.Snapshot());
 
         Assert.InRange(server.ChatCompletionRequestCount, 4, 6);
 
         var resultMessageTurn2 = GetPropertyValue<ChatResultMessage>(runResultTurn2, "Result");
-        Assert.NotNull(resultMessageTurn2.Tools);
+        Assert.True(
+            resultMessageTurn2.Tools is not null,
+            "Expected carryover replay tool output, but no tools were attached. statuses=" + string.Join(",", turn2Statuses));
         Assert.Single(resultMessageTurn2.Tools!.Calls);
         Assert.Single(resultMessageTurn2.Tools.Outputs);
         Assert.Equal("mock_followup_tool", resultMessageTurn2.Tools.Calls[0].Name);

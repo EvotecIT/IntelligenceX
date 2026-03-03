@@ -73,6 +73,9 @@ Build a contract-first architecture where:
 - [x] Stabilization hotfix: explicit tool-id follow-ups now suppress pending-action/carryover auto-replay rewrites, and escaped Markdown tool ids (for example `eventlog\_evtx\_query`) are recognized by cached-evidence gating.
 - [x] Startup resilience hotfix: deferred startup metadata phases (`hello`, `list_tools`, `auth_refresh`) now retry once on transient disconnect errors to reduce "connected but packs/catalog missing" startup failures.
 - [x] Startup/turn UX hotfix: assistant final-message replacement now reuses the most-recent assistant bubble when only `System/Tools` rows followed (no intervening user), preventing duplicate assistant finals during retry/reconnect churn.
+- [x] Stabilization hotfix: carryover structured-next-action replay eligibility now evaluates compact follow-up intent from raw user text (not routed payload rewrite text), restoring `go ahead` follow-up auto-execution after pending-action routing hints.
+- [x] Stabilization hotfix: domain-intent payload parsing now handles invalid UTF-16 input safely (catches `ArgumentException` in addition to `JsonException`) to keep compact follow-up expansion Unicode-safe.
+- [x] Contract-alignment cleanup: routing/output lifecycle tests now reflect strict routing-contract enforcement and single-meaningful-final result policy for the same request/thread pair.
 
 ## Hard Decisions (Locked)
 

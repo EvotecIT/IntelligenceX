@@ -42,6 +42,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: explicit tool-id follow-ups now bypass pending-action/carryover auto-replay rewrites, and escaped Markdown tool ids (for example `eventlog\_evtx\_query`) are honored by cached-evidence gating.
 - [x] Startup resilience hotfix: deferred metadata sync phases now retry once on transient disconnects (`hello/list_tools/auth_refresh`), reducing cold-start states where runtime is connected but catalog/policy sync is missing.
 - [x] Startup/turn UX hotfix: final assistant replacement now targets the latest assistant row when only `System/Tools` rows followed (no newer user turn), reducing duplicate assistant finals across reconnect/retry churn.
+- [x] Stabilization hotfix: carryover structured-next-action replay now evaluates compact follow-up eligibility from raw user text (instead of routed payload rewrite text), restoring queued `go ahead` follow-up execution.
+- [x] Stabilization hotfix: domain-intent payload parsing now safely handles invalid UTF-16 input (`ArgumentException` + `JsonException`) to avoid compact follow-up expansion crashes.
+- [x] Contract-alignment cleanup: updated routing/output lifecycle tests to match strict routing metadata requirements and one-meaningful-final-per-request output policy.
 
 ## Rules For This Migration
 
