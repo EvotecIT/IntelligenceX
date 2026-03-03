@@ -49,6 +49,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: continuation subset follow-ups now treat escaped Markdown tool ids as explicit tool references, preventing stale subset reuse when users switch to tools outside the remembered subset.
 - [x] Stabilization regression coverage: startup metadata rerun scheduling now includes dedicated dispatch-gating tests for shutdown/connectivity safety.
 - [x] Stabilization hotfix: quoted/multiline tool-descriptor references now keep explicit tool-capability routing (no finalize-time cached-evidence rewrite), and explicit tool-id extraction now strips invisible Unicode format chars to keep descriptor parsing robust.
+- [x] Startup/dispatch stabilization hotfix: app turn dispatch startup/send transitions now claim lifecycle state atomically under lock, preventing sign-in/manual-send double-dispatch races and duplicate assistant finals.
+- [x] Stabilization hotfix: contextual compact follow-up questions now block stale single-host carryover replay when thread evidence is multi-host, while short acknowledgement questions stay replay-eligible.
 
 ## Rules For This Migration
 
