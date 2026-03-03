@@ -255,7 +255,7 @@ public sealed partial class MainWindow : Window {
                     appendWarnings: false).ConfigureAwait(false);
                 StartupLog.Write("StartupConnect.model_profile_sync done");
             } catch (Exception ex) {
-                StartupLog.Write("StartupConnect.model_profile_sync failed");
+                StartupLog.Write("StartupConnect.model_profile_sync failed: " + DescribeStartupExceptionForLog(ex));
                 if (VerboseServiceLogs || _debugMode) {
                     AppendSystem("Model/profile sync failed: " + ex.Message);
                 }
@@ -303,6 +303,7 @@ public sealed partial class MainWindow : Window {
         }
 
         _ = Task.Run(async () => {
+            var metadataSyncStopwatch = Stopwatch.StartNew();
             try {
                 await Task.Delay(StartupDeferredConnectMetadataDelay).ConfigureAwait(false);
                 if (_shutdownRequested) {
@@ -318,6 +319,7 @@ public sealed partial class MainWindow : Window {
                     return;
                 }
 
+                metadataSyncStopwatch.Restart();
                 var requiresInteractiveSignIn = RequiresInteractiveSignInForCurrentTransport();
                 var isAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
                 if (ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
@@ -354,9 +356,7 @@ public sealed partial class MainWindow : Window {
                 }
 
                 static string FormatPhaseDuration(TimeSpan elapsed) {
-                    return elapsed.TotalSeconds >= 1
-                        ? $"{elapsed.TotalSeconds:0.0}s"
-                        : $"{Math.Max(1, elapsed.TotalMilliseconds):0}ms";
+                    return FormatStartupPhaseDuration(elapsed);
                 }
 
                 async Task<T> AwaitWithMetadataHeartbeatAsync<T>(
@@ -389,8 +389,8 @@ public sealed partial class MainWindow : Window {
                 var totalPackCount = 0;
                 var listedToolCount = 0;
 
+                var helloStopwatch = Stopwatch.StartNew();
                 try {
-                    var helloStopwatch = Stopwatch.StartNew();
                     StartupLog.Write("StartupConnect.hello begin");
                     var hello = await AwaitWithMetadataHeartbeatAsync(
                             operationFactory: () => client.RequestAsync<HelloMessage>(
@@ -428,14 +428,18 @@ public sealed partial class MainWindow : Window {
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
                     _sessionPolicy = null;
-                    StartupLog.Write("StartupConnect.hello failed");
+                    StartupLog.Write(
+                        "StartupConnect.hello failed after "
+                        + FormatPhaseDuration(helloStopwatch.Elapsed)
+                        + ": "
+                        + DescribeStartupExceptionForLog(ex));
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(SystemNotice.HelloFailed(ex.Message));
                     }
                 }
 
+                var listToolsStopwatch = Stopwatch.StartNew();
                 try {
-                    var listToolsStopwatch = Stopwatch.StartNew();
                     StartupLog.Write("StartupConnect.list_tools begin");
                     var toolList = await AwaitWithMetadataHeartbeatAsync(
                             operationFactory: () => client.RequestAsync<ToolListMessage>(
@@ -455,14 +459,18 @@ public sealed partial class MainWindow : Window {
                             phase: "tool catalog loaded")
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
-                    StartupLog.Write("StartupConnect.list_tools failed");
+                    StartupLog.Write(
+                        "StartupConnect.list_tools failed after "
+                        + FormatPhaseDuration(listToolsStopwatch.Elapsed)
+                        + ": "
+                        + DescribeStartupExceptionForLog(ex));
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
                     }
                 }
 
+                var authRefreshStopwatch = Stopwatch.StartNew();
                 try {
-                    var authRefreshStopwatch = Stopwatch.StartNew();
                     StartupLog.Write("StartupConnect.auth_refresh begin");
                     _ = await AwaitWithMetadataHeartbeatAsync(
                             operationFactory: () => RefreshAuthenticationStateAsync(updateStatus: true),
@@ -478,7 +486,11 @@ public sealed partial class MainWindow : Window {
                             phase: "authentication refreshed")
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
-                    StartupLog.Write("StartupConnect.auth_refresh failed");
+                    StartupLog.Write(
+                        "StartupConnect.auth_refresh failed after "
+                        + FormatPhaseDuration(authRefreshStopwatch.Elapsed)
+                        + ": "
+                        + DescribeStartupExceptionForLog(ex));
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(SystemNotice.EnsureLoginFailed(ex.Message));
                     }
@@ -509,7 +521,11 @@ public sealed partial class MainWindow : Window {
                 }
             } catch (Exception ex) {
                 EndStartupMetadataSyncTracking();
-                StartupLog.Write("StartupConnect.metadata_sync failed: " + ex.Message);
+                StartupLog.Write(
+                    "StartupConnect.metadata_sync failed after "
+                    + FormatStartupPhaseDuration(metadataSyncStopwatch.Elapsed)
+                    + ": "
+                    + DescribeStartupExceptionForLog(ex));
             } finally {
                 if (!_isConnected) {
                     EndStartupMetadataSyncTracking();
@@ -688,6 +704,42 @@ public sealed partial class MainWindow : Window {
 
         _autoSignInAttempted = true;
         await StartLoginFlowIfNeededAsync().ConfigureAwait(false);
+    }
+
+    private static string FormatStartupPhaseDuration(TimeSpan elapsed) {
+        return elapsed.TotalSeconds >= 1
+            ? $"{elapsed.TotalSeconds:0.0}s"
+            : $"{Math.Max(1, elapsed.TotalMilliseconds):0}ms";
+    }
+
+    private static string DescribeStartupExceptionForLog(Exception ex) {
+        var primaryMessage = NormalizeExceptionMessageForStartupLog(ex.Message);
+        var description = ex.GetType().Name + ": " + primaryMessage;
+
+        var root = ex.GetBaseException();
+        if (!ReferenceEquals(root, ex)) {
+            description += " | root=" + root.GetType().Name + ": " + NormalizeExceptionMessageForStartupLog(root.Message);
+        }
+
+        if (ex.HResult != 0) {
+            description += " | hresult=0x" + ex.HResult.ToString("X8", CultureInfo.InvariantCulture);
+        }
+
+        return description;
+    }
+
+    private static string NormalizeExceptionMessageForStartupLog(string? message) {
+        if (string.IsNullOrWhiteSpace(message)) {
+            return "(no message)";
+        }
+
+        var normalized = Regex.Replace(message, "\\s+", " ").Trim();
+        const int maxLength = 240;
+        if (normalized.Length <= maxLength) {
+            return normalized;
+        }
+
+        return normalized[..maxLength] + "...";
     }
 
     private async Task EnsureAppStateLoadedAsync() {
