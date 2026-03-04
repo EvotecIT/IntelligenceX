@@ -119,6 +119,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Typed-surface adapter increment (2026-03-04): migrated `DomainDetectiveChecksCatalogTool`, `ReviewerSetupPackInfoTool`, and `ReviewerSetupContractVerifyTool` to typed binder/adapter pipelines using `ToolResultV2` envelopes; added source guardrails to keep these wrappers free of raw `arguments?.Get*` parsing.
 - [x] Typed-surface backfill increment (2026-03-04): migrated `SystemBitlockerStatusTool`, `SystemInstalledApplicationsTool`, `SystemNetworkAdaptersTool`, `SystemPatchComplianceTool`, `EventLogChannelListTool`, and `EventLogProviderListTool` to typed pipeline binders; source guardrails now enforce typed binder usage across migrated non-AD pack folders.
 - [x] Documentation cleanup increment (2026-03-04): updated ADR wording (`adr-0001-chat-tools-contract-boundary.md`) so Chat cross-pack fallback references are historical/current-state accurate after fallback-engine removal.
+- [x] Fallback-marker cleanup checkpoint (2026-03-04): verified Chat runtime service source contains no legacy cross-pack fallback markers/constants; active projection-fallback diagnostics (`projection_fallback_*`) remain intentionally for view-repair transparency.
 
 ## Rules For This Migration
 
@@ -315,7 +316,7 @@ Files:
 
 Checklist:
 
-- [ ] Remove obsolete telemetry markers/constants tied to deleted fallback engine.
+- [x] Remove obsolete telemetry markers/constants tied to deleted fallback engine.
 - [ ] Close migration tracker entries.
 - [ ] Validate final DoD from `PLAN.md`.
 

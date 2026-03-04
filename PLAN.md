@@ -158,6 +158,7 @@ Build a contract-first architecture where:
 - [x] Typed adapter migration increment (2026-03-04): migrated `domaindetective_checks_catalog`, `reviewer_setup_pack_info`, and `reviewer_setup_contract_verify` to typed binder/adapter pipelines and standardized their envelopes on `ToolResultV2`; added guardrail coverage to keep these wrappers off raw `arguments?.Get*` parsing.
 - [x] Typed binder backfill increment (2026-03-04): migrated `system_bitlocker_status`, `system_installed_applications`, `system_network_adapters`, `system_patch_compliance`, `eventlog_channels_list`, and `eventlog_providers_list` to typed pipeline binders; added folder-wide source guardrail requiring typed binder usage across migrated non-AD packs.
 - [x] Documentation cleanup increment (2026-03-04): refreshed ADR wording in `InternalDocs/architecture/adr-0001-chat-tools-contract-boundary.md` so cross-pack fallback references are historical/current-state accurate (no stale present-tense behavior claims).
+- [x] Fallback-marker cleanup checkpoint (2026-03-04): verified runtime Chat service no longer contains legacy cross-pack fallback telemetry/constants/symbols; only active projection-fallback metadata markers remain (`projection_fallback_*`) for view-argument recovery diagnostics.
 
 ## Hard Decisions (Locked)
 
@@ -252,7 +253,7 @@ Build a contract-first architecture where:
 
 ## Phase 8 - Cutover And Cleanup
 
-1. [ ] Remove dead constants/helpers tied to old fallback reason telemetry markers.
+1. [x] Remove dead constants/helpers tied to old fallback reason telemetry markers.
 2. [x] Remove stale docs referencing Chat cross-pack fallback behavior.
 3. [x] Publish new "How to add a tool/pack without touching Chat" guide in `InternalDocs/agent-playbooks/`.
 4. [x] Publish contract schema examples for plugin authors.
