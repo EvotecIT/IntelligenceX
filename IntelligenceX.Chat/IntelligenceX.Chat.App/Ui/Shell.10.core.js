@@ -850,9 +850,20 @@
     var statusEl = byId("status");
     var rawValue = String(text || "").trim();
     var value = rawValue;
+    var lowerRawValue = rawValue.toLowerCase();
     var normalizedTone = "";
     if (typeof tone === "string") {
       normalizedTone = tone.trim().toLowerCase();
+    }
+    if (normalizeBool(state.connected)
+      && !normalizeBool(state.authenticated)
+      && normalizeBool(state.options && state.options.toolsLoading)
+      && lowerRawValue.indexOf("sign in to continue") === 0
+      && lowerRawValue.indexOf("loading tool packs") < 0) {
+      value = "Sign in to continue loading tool packs";
+      if (!normalizedTone) {
+        normalizedTone = "warn";
+      }
     }
     if (!shouldRenderHeaderStatusChip(value)) {
       var fallbackStatus = resolveHeaderStatusChipFallbackStatus();

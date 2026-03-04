@@ -85,7 +85,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Transcript replay guardrail scenario added and validated: `ad-other-dcs-transcript-replay-guardrail-10-turn` passes `10/10`, proving cross-DC continuation execution and explicit non-AD0 follow-up behavior under transcript wording.
 - [x] Transcript fanout guardrail scenario added and validated: `ad-c400-transcript-cross-dc-fanout-10-turn` passes `10/10`, proving explicit non-AD0 4-host fanout after continuation wording that previously regressed into AD0-only replay loops.
 - [x] Startup visibility hardening: startup/connect/reconnect status text now emits structured context tokens (`phase startup_*`, `cause ...`) and connected bootstrap rewrites legacy cause-only suffixes into phase+cause form, so "runtime connected" no longer hides in-flight startup work.
-- [x] Stabilization hotfix: no-text tool-output turns now run one direct no-tools synthesis retry before fallback (service + host), reducing stalled follow-through when tool rounds return empty assistant text.
+- [x] Stabilization hotfix: no-text tool-output synthesis retry now runs only for review-loop, non-redacted turns with at least one successful tool output; deterministic fallback handles redacted/tool-failure paths without an extra model round.
 - [x] Follow-through quality hardening: no-text synthesis prompts now include compact executed tool-argument context (generic key/value summaries) to keep target/scope details available during retry synthesis.
 - [x] Startup UX hardening: header status chip fallback now consumes structured startup phase/cause context to render compact in-progress labels (`Loading tool packs`, `Sign in to continue loading tool packs`, `Starting runtime (retrying connection)`).
 - [x] Live strict rerun checkpoint after this batch: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass.
@@ -102,6 +102,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict rerun validation: transcript follow-up guardrail scenarios stay green after compound-token heuristic removal (`ad-eventlog-tool-capability-followthrough-10-turn` `10/10`, `ad-other-dcs-transcript-replay-guardrail-10-turn` `10/10`).
 - [x] Stabilization hardening: compact continuation recovery now treats linked structured deferred-execution drafts as execution-nudge eligible (language-neutral shape checks), preventing `go ahead` turns from ending on evidence-only summaries with zero in-turn tool activity.
 - [x] Live strict rerun validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after compact-follow-up structured-draft recovery hardening.
+- [x] Regression fix (2026-03-04): no-text finalize path no longer triggers an extra synthesis model request for redacted/tool-failure turns; end-to-end regressions restored (`RunChatOnCurrentThreadAsync_DoesNotAutoSwitchPacksAfterToolFailure`, `RunChatOnCurrentThreadAsync_RedactsToolOutputRecoveryFallbackWhenRedactionEnabled`).
+- [x] Live strict rerun validation (2026-03-04): `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) pass after the no-text recovery gating fix.
+- [x] Startup UX wording hardening (2026-03-04): Shell header status now rewrites generic connected unauthenticated `Sign in to continue` into `Sign in to continue loading tool packs` while startup tools-loading is pending.
 
 ## Rules For This Migration
 
