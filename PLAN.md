@@ -144,6 +144,8 @@ Build a contract-first architecture where:
 - [x] Regression fix (2026-03-04): finalize no-text recovery no longer issues an extra synthesis model round for redacted/tool-failure turns (`RunChatOnCurrentThreadAsync_DoesNotAutoSwitchPacksAfterToolFailure` and `RunChatOnCurrentThreadAsync_RedactsToolOutputRecoveryFallbackWhenRedactionEnabled` restored).
 - [x] Live strict rerun validation (2026-03-04): `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) pass after the no-text recovery gating fix.
 - [x] Startup UX wording hardening (2026-03-04): header status chip now upgrades generic connected unauthenticated `Sign in to continue` text to `Sign in to continue loading tool packs` while startup tools-loading is pending, improving startup cause clarity during auth wait.
+- [x] Language-neutral strict scenario increment (2026-03-04): added transcript-derived Polish scenario `ad-pl-eventlog-capability-followthrough-10-turn` to lock AD->EventLog capability follow-through without cached-evidence/no-tool fallback phrasing regressions.
+- [x] Live strict validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) with paired EventLog tool execution and no duplicate call/output ids.
 
 ## Hard Decisions (Locked)
 

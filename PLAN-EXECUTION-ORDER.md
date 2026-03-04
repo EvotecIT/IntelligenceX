@@ -105,6 +105,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Regression fix (2026-03-04): no-text finalize path no longer triggers an extra synthesis model request for redacted/tool-failure turns; end-to-end regressions restored (`RunChatOnCurrentThreadAsync_DoesNotAutoSwitchPacksAfterToolFailure`, `RunChatOnCurrentThreadAsync_RedactsToolOutputRecoveryFallbackWhenRedactionEnabled`).
 - [x] Live strict rerun validation (2026-03-04): `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) pass after the no-text recovery gating fix.
 - [x] Startup UX wording hardening (2026-03-04): Shell header status now rewrites generic connected unauthenticated `Sign in to continue` into `Sign in to continue loading tool packs` while startup tools-loading is pending.
+- [x] Language-neutral strict scenario increment (2026-03-04): added transcript-derived Polish scenario `ad-pl-eventlog-capability-followthrough-10-turn` to lock AD-to-EventLog capability follow-through without cached-evidence/no-tool fallback regressions.
+- [x] Live strict validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) with strict tool call/output pairing and no duplicate call/output ids.
 
 ## Rules For This Migration
 

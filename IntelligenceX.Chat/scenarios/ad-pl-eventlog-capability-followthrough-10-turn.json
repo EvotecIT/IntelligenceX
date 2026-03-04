@@ -1,0 +1,82 @@
+{
+  "name": "ad-pl-eventlog-capability-followthrough-10-turn",
+  "tags": ["ad", "eventlog", "tool-capability", "continuation", "strict", "live", "multilingual", "polish"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "PL replication baseline",
+      "user": "Co tam slychac w AD replikacji forestu? Podsumuj w UTC.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL topology follow-up",
+      "user": "Pokaz to na wykresie topologii replikacji.",
+      "assert_contains": ["```mermaid"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL LDAP check AD2",
+      "user": "A mozesz sprawdzic czy AD2 odpowiada LDAP i czy wszystko tam sie ladnie uklada?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_ldap_*", "ad_monitoring_probe_*", "ad_scope_discovery"],
+      "assert_contains_any": ["AD2", "ad2"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL eventlog availability clarification",
+      "user": "aale to chyba masz toole do event logow?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*"],
+      "assert_contains_any": ["eventlog", "event log"],
+      "assert_not_contains": ["[Cached evidence fallback]", "nie mam dostepnych narzedzi", "nie mam dostępnych narzędzi"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL explicit eventlog capability question",
+      "user": "dobra a co to `eventlog_evtx_query` i kiedy tego uzywac?",
+      "assert_contains": ["eventlog_evtx_query"],
+      "assert_not_contains": ["[Cached evidence fallback]", "nie mam dostepnych narzedzi", "nie mam dostępnych narzędzi"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL contrast with live query",
+      "user": "Porownaj krotko `eventlog_evtx_query` vs `eventlog_live_query` i podaj 1 praktyczna roznice.",
+      "assert_contains": ["eventlog_evtx_query", "eventlog_live_query"],
+      "assert_not_contains": ["[Cached evidence fallback]"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL compact JSON examples",
+      "user": "Daj po 1 krotkim przykladzie JSON dla obu narzedzi.",
+      "assert_contains": ["{", "log_name", "eventlog_live_query", "eventlog_evtx_query"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL blockers list",
+      "user": "Podaj glownie ograniczenia/blokery dla kazdego narzedzia w jednej krotkiej liscie.",
+      "assert_contains_any": ["evtx", "live"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL practical sequence",
+      "user": "Daj 5 krokow praktycznej sekwencji triage z uzyciem obu narzedzi.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "PL compact final summary",
+      "user": "Podsumuj finalne wskazowki w 6 punktach z wzmianka UTC i bez pytania na koniec.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}
