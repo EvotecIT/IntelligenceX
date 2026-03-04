@@ -70,31 +70,31 @@ internal static partial class Program {
             Console.WriteLine($"Auth store: {authPath}");
         }
 
-        var startupPackWarnings = new List<string>();
-        var startupRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
-            BuildRuntimePolicyOptions(options),
-            warning => CollectPackWarning(startupPackWarnings, warning));
-        var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
-        var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
-        var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
-            packs,
-            requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
-        WritePolicyBanner(
-            options,
-            packs,
-            startupRuntimePolicyContext,
-            startupRuntimePolicyDiagnostics,
-            startupRoutingCatalogDiagnostics,
-            startupPackWarnings);
-        Console.WriteLine();
-
-        using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) => {
-            e.Cancel = true;
-            cts.Cancel();
-        };
-
         try {
+            var startupPackWarnings = new List<string>();
+            var startupRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+                BuildRuntimePolicyOptions(options),
+                warning => CollectPackWarning(startupPackWarnings, warning));
+            var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
+            var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
+            var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
+                packs,
+                requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
+            WritePolicyBanner(
+                options,
+                packs,
+                startupRuntimePolicyContext,
+                startupRuntimePolicyDiagnostics,
+                startupRoutingCatalogDiagnostics,
+                startupPackWarnings);
+            Console.WriteLine();
+
+            using var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) => {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
             return await RunAsync(options, packs, cts.Token).ConfigureAwait(false);
         } catch (ToolPackBootstrapConfigurationException ex) {
             Console.Error.WriteLine(ex.Message);
@@ -313,7 +313,6 @@ internal static partial class Program {
                                     options.ApplyProfile(profile);
                                     options.ProfileName = arg;
 
-                                    Console.WriteLine($"Switched profile: {arg}");
                                     var profilePackWarnings = new List<string>();
                                     var profileRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
                                         BuildRuntimePolicyOptions(options),
@@ -334,6 +333,7 @@ internal static partial class Program {
 
                                     await BuildRuntimeAsync().ConfigureAwait(false);
                                     session!.ResetThread();
+                                    Console.WriteLine($"Switched profile: {arg}");
                                 } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
                                     options.CopyFrom(previousOptions);
                                     throw;

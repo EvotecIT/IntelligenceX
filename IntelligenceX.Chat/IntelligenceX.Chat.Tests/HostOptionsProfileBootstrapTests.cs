@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
@@ -221,6 +222,19 @@ public sealed class HostOptionsProfileBootstrapTests {
         Assert.Contains(
             warnings,
             static warning => warning.Contains("no_tool_packs_loaded", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Main_ReturnsExitCode2_WhenPluginOnlyModeLoadsNoPacks() {
+        var hostProgramType = ResolveHostProgramType();
+        var mainMethod = hostProgramType.GetMethod("Main", BindingFlags.Public | BindingFlags.Static);
+        Assert.NotNull(mainMethod);
+
+        var invocation = mainMethod!.Invoke(null, new object?[] { new[] { "--no-built-in-packs", "--no-default-plugin-paths" } });
+        var task = Assert.IsAssignableFrom<Task<int>>(invocation);
+        var exitCode = await task;
+
+        Assert.Equal(2, exitCode);
     }
 
     [Fact]
