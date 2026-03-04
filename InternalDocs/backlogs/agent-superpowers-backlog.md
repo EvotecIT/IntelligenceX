@@ -18,7 +18,7 @@ Conventions:
 
 ## Engine + Chat Orchestration
 - [ ] (P0) Add "tool receipt" enforcement: if no tool outputs exist in the turn, prohibit language like "I ran/checked/executed".
-- [ ] (P0) Add a capability handshake step at session start (enabled packs/tools, allowed roots, remote reachability mode).
+- [x] (P0) Add a capability handshake step at session start (enabled packs/tools, allowed roots, remote reachability mode).
 - [ ] (P0) Add a "scope label" block to tool-derived answers (domain/forest, DCs contacted, time window, caveats).
 - [ ] (P0) Make pending-action confirmation language-agnostic by preferring `ix_action_selection` payloads and ordinals.
 - [ ] (P0) If the agent asks for a required input (DC FQDN, EVTX path), auto-generate actions that populate that input.
