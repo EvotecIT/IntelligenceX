@@ -152,6 +152,7 @@ Build a contract-first architecture where:
 - [x] Live strict validation rerun (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` remains green (`10/10`) with direct capability handling for the multiline descriptor follow-up and no cached-evidence fallback response.
 - [x] Documentation increment (2026-03-04): published contract-first onboarding guide for adding tool packs without Chat edits, including plugin contract schema examples (`InternalDocs/agent-playbooks/chat-pack-contract-first-onboarding.md`).
 - [x] Language-neutral routing validation checkpoint (2026-03-04): `ChatServiceRoutingTrimTests` suite passes (`709/709`), including Unicode ordinal parsing and compact follow-up routing safeguards.
+- [x] Routing-heuristic cleanup checkpoint (2026-03-04): Chat service no longer uses raw tool-name `TryResolveDomainIntentFamily(toolName, ...)` paths for domain-family routing decisions; remaining resolution is contract-first with definition metadata fallback only.
 
 ## Hard Decisions (Locked)
 
@@ -216,7 +217,7 @@ Build a contract-first architecture where:
 2. [x] Replace deterministic family key heuristics in `ChatServiceSession.ChatRouting.RoutingScoring.cs` with contract pack/role fields.
 3. [x] Ensure domain-intent signals in `ChatServiceSession.ToolRouting.DomainIntentSignals.cs` come from registered contract signals only.
 4. [x] Keep Unicode-safe ordinal parsing in `ChatServiceSession.PendingActions.IntentParsing.cs` (this is generic and should remain).
-5. [ ] Remove remaining routing paths that depend on tool name prefix assumptions when contract fields exist.
+5. [x] Remove remaining routing paths that depend on tool name prefix assumptions when contract fields exist.
 
 ## Phase 5 - Tool Pack Migration (Domain Separation + Easy Additions)
 

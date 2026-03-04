@@ -113,6 +113,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict rerun validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) after descriptor-snippet hardening, with no cached-evidence fallback output on the explicit capability turn.
 - [x] Documentation increment (2026-03-04): published `InternalDocs/agent-playbooks/chat-pack-contract-first-onboarding.md` with zero-Chat-edits onboarding flow and plugin contract schema examples.
 - [x] Language-neutral regression checkpoint (2026-03-04): `ChatServiceRoutingTrimTests` suite passes (`709/709`), covering Unicode ordinal parsing and compact follow-up routing behaviors.
+- [x] Routing heuristic-removal checkpoint (2026-03-04): no Chat service domain-routing paths call raw tool-name family inference (`TryResolveDomainIntentFamily(toolName, ...)`); domain routing now remains contract-first with definition metadata fallback only.
 
 ## Rules For This Migration
 
