@@ -67,6 +67,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotActivateStructuredContractForIncidentalMarkerMention() {
+        var input = """
+            Please document what ix:continuation:v1 means in our prompt schema.
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: run now
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.NotEqual("run now", text);
+        Assert.Contains("Please document what ix:continuation:v1 means", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_IncludesLastIntent() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 

@@ -262,22 +262,17 @@ internal sealed partial class ChatServiceSession {
     private static bool TryReadContinuationContractFromRequestText(string? requestText, out string intentAnchor, out string followUp) {
         intentAnchor = string.Empty;
         followUp = string.Empty;
-        var text = (requestText ?? string.Empty).Trim();
+        var text = requestText ?? string.Empty;
         if (text.Length == 0) {
             return false;
         }
 
-        var markerIndex = text.IndexOf(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase);
-        if (markerIndex < 0) {
-            return false;
-        }
-
-        var scanLength = Math.Min(MaxContinuationContractScanChars, text.Length - markerIndex);
+        var scanLength = Math.Min(MaxContinuationContractScanChars, text.Length);
         if (scanLength <= 0) {
             return false;
         }
 
-        var scan = text.AsSpan(markerIndex, scanLength);
+        var scan = text.AsSpan(0, scanLength);
         var markerSeen = false;
         var enabled = false;
         var enabledSeen = false;
@@ -303,10 +298,14 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (!markerSeen) {
-                if (trimmed.IndexOf(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
+                // Only treat the payload as a continuation contract when the marker is
+                // the first non-empty line; this avoids incidental substring matches.
+                if (trimmed.Equals(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase)) {
                     markerSeen = true;
+                    continue;
                 }
-                continue;
+
+                return false;
             }
 
             if (trimmed.StartsWith("ix:", StringComparison.OrdinalIgnoreCase)
