@@ -110,6 +110,24 @@ public sealed class ToolOrchestrationCatalogTests {
     }
 
     [Fact]
+    public void Build_GetByPackAndRole_IsCaseInsensitive_ForPackAndRoleArguments() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "custom_pack_info",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "CustomX",
+                    Role = ToolRoutingTaxonomy.RolePackInfo
+                })
+        });
+
+        var byPackAndRole = catalog.GetByPackAndRole("CUSTOMX", "PACK_INFO");
+        Assert.Single(byPackAndRole);
+        Assert.Equal("custom_pack_info", byPackAndRole[0].ToolName);
+    }
+
+    [Fact]
     public void Build_ProjectsReadOnlyCollections_ForEntryAndIndexes() {
         var catalog = ToolOrchestrationCatalog.Build(new[] {
             CreateDefinition(

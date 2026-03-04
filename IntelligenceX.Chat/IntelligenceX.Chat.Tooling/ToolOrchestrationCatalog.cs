@@ -604,7 +604,7 @@ public sealed class ToolOrchestrationCatalog {
 
         var copy = new Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in source) {
-            var key = NormalizeToken(pair.Key);
+            var key = (pair.Key ?? string.Empty).Trim();
             if (key.Length == 0 || copy.ContainsKey(key)) {
                 continue;
             }
