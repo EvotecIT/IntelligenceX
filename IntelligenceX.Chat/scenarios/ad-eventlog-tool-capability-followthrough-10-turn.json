@@ -36,7 +36,7 @@
     {
       "name": "Tool availability clarification",
       "user": "Do you have event log tools available in this session?",
-      "assert_contains": ["eventlog"],
+      "assert_contains_any": ["eventlog", "event log"],
       "assert_no_questions": true
     },
     {

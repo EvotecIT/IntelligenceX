@@ -134,6 +134,9 @@ Build a contract-first architecture where:
 - [x] Typed-envelope standardization increment: AD shared base helpers now use `ToolResultV2` (instead of direct `ToolResponse`) for required-argument errors, convention-mapped collection failures, and common AD success/error wrapper helpers; guardrail asserts `ActiveDirectoryToolBase*` files stay `ToolResponse`-free.
 - [x] Startup visibility increment: service now emits runtime-provider connect progress telemetry (`[startup] provider_connect_progress ...` with phase/status/elapsed), and app startup status parsing consumes it with send-safe publish override so first-turn provider connect latency is visible instead of silent.
 - [x] Decoupling guardrail increment: Chat architecture tests now fail if `IntelligenceX.Chat.App` or `IntelligenceX.Chat.Service` source reintroduces hardcoded tool-pack ids (`testimox`, `active_directory`, `adplayground`, `domaindetective`, `dnsclientx`, `reviewer_setup`).
+- [x] Contract-first routing increment: Chat routing scoring pack-hint resolution now uses explicit routing contract pack ids only (no `ToolSelectionMetadata.TryResolvePackId(...)` fallback), and architecture guardrail coverage locks this.
+- [x] Scenario-contract reliability increment: transcript strict scenario `ad-eventlog-tool-capability-followthrough-10-turn` now uses semantic contains-any assertion for eventlog tool availability (`eventlog` or `event log`) to avoid wording-only false failures.
+- [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after contract-only routing-hint cleanup and scenario assertion hardening.
 
 ## Hard Decisions (Locked)
 

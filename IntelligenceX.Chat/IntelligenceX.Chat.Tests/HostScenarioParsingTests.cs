@@ -197,8 +197,8 @@ Check AD0 reboot
 
         var prompt = InvokeBuildScenarioTurnPrompt(turn);
 
-        Assert.Contains("forbidden_tool_inputs: machine_name!=AD0|localhost", prompt, StringComparison.Ordinal);
-        Assert.Contains("Forbidden tool input values: machine_name!=AD0|localhost.", prompt, StringComparison.Ordinal);
+        Assert.Contains("forbidden_tool_inputs: machine_name not-in [AD0|localhost]", prompt, StringComparison.Ordinal);
+        Assert.Contains("Forbidden tool input values: machine_name not-in [AD0|localhost].", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

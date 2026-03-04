@@ -474,13 +474,6 @@ internal sealed partial class ChatServiceSession {
             return routingPackId;
         }
 
-        if (ToolSelectionMetadata.TryResolvePackId(definition, out var resolvedPackId)) {
-            var normalizedResolvedPackId = NormalizePackId(resolvedPackId);
-            if (normalizedResolvedPackId.Length > 0) {
-                return normalizedResolvedPackId;
-            }
-        }
-
         return string.Empty;
     }
 

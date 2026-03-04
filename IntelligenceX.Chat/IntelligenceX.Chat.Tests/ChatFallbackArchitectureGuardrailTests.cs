@@ -60,6 +60,16 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
+    public void RoutingScoring_ShouldNotFallbackToSelectionMetadataPackInferenceForPackHints() {
+        var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ChatRouting.RoutingScoring.cs"));
+
+        Assert.DoesNotContain(
+            "ToolSelectionMetadata.TryResolvePackId(definition, out var resolvedPackId)",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ChatHost_ShouldNotContainHardcodedToolSpecificRetryRewrites() {
         var source = File.ReadAllText(GetHostSourceFilePath("Program.Session.ToolExecution.cs"));
         var legacySymbols = new[] {

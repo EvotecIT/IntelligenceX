@@ -95,6 +95,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Typed-envelope base hardening: `ActiveDirectoryToolBase*` shared helpers now emit `ToolResultV2` envelopes and are protected by guardrail coverage preventing direct `ToolResponse` regressions.
 - [x] Startup runtime-connect visibility increment: service emits `[startup] provider_connect_progress` phase/status/elapsed telemetry for runtime-provider connect attempts, and app status parsing publishes those lines (including send-time override) so first-turn connect stalls are diagnosable.
 - [x] Decoupling guardrail increment: Chat architecture tests now block hardcoded tool-pack ids from reappearing in runtime app/service source (`testimox`, `active_directory`, `adplayground`, `domaindetective`, `dnsclientx`, `reviewer_setup`).
+- [x] Contract-first routing increment: routing-scoring pack hints now derive from explicit routing contract pack ids only (removed `ToolSelectionMetadata.TryResolvePackId(...)` fallback), and architecture guardrails lock this behavior.
+- [x] Scenario-contract reliability increment: `ad-eventlog-tool-capability-followthrough-10-turn` availability assertion now accepts semantic wording variants (`eventlog` or `event log`) to avoid non-behavioral phrase drift failures.
+- [x] Live strict rerun validation: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after contract-only routing-hint cleanup and scenario assertion hardening.
 
 ## Rules For This Migration
 
