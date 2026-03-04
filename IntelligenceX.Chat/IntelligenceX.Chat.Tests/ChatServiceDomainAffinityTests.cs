@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Json;
@@ -531,11 +532,8 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
-    public void TryResolvePendingDomainIntentClarificationSelection_KeepsFirstCustomActionIdWhenFamilyMappingsConflict() {
-        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
-        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict");
-
-        var availableDefinitions = new List<ToolDefinition> {
+    public void TryResolvePendingDomainIntentClarificationSelection_AcceptsAllDeclaredFamilyActionIds_RegardlessOfDefinitionOrder() {
+        var availableDefinitionsPrimaryOrder = new List<ToolDefinition> {
             new(
                 name: "ad_pack_info_primary",
                 description: "AD pack primary mapping",
@@ -564,26 +562,82 @@ public sealed class ChatServiceDomainAffinityTests {
                     DomainIntentActionId = "act_domain_scope_public_custom"
                 })
         };
+        var availableDefinitionsReversedOrder = availableDefinitionsPrimaryOrder.AsEnumerable().Reverse().ToList();
 
-        var conflictingActionResolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
-            "thread-clarify-action-conflict",
+        var sessionPrimaryOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionPrimaryOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict-a");
+        var secondaryActionPrimaryOrderResolved = sessionPrimaryOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict-a",
             "/act act_domain_scope_ad_secondary",
-            availableDefinitions,
-            out var conflictingFamily);
+            availableDefinitionsPrimaryOrder,
+            out var secondaryFamilyPrimaryOrder);
+        Assert.True(secondaryActionPrimaryOrderResolved);
+        Assert.Equal("ad_domain", secondaryFamilyPrimaryOrder);
 
-        Assert.False(conflictingActionResolved);
-        Assert.Equal(string.Empty, conflictingFamily);
-        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-conflict"));
+        var sessionReversedOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionReversedOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict-b");
+        var secondaryActionReversedOrderResolved = sessionReversedOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict-b",
+            "/act act_domain_scope_ad_secondary",
+            availableDefinitionsReversedOrder,
+            out var secondaryFamilyReversedOrder);
+        Assert.True(secondaryActionReversedOrderResolved);
+        Assert.Equal("ad_domain", secondaryFamilyReversedOrder);
 
-        var primaryActionResolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
-            "thread-clarify-action-conflict",
+        sessionReversedOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict-b");
+        var primaryActionResolved = sessionReversedOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict-b",
             "/act act_domain_scope_ad_primary",
-            availableDefinitions,
+            availableDefinitionsReversedOrder,
             out var primaryFamily);
 
         Assert.True(primaryActionResolved);
         Assert.Equal("ad_domain", primaryFamily);
-        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-conflict"));
+        Assert.Equal("ad_domain", sessionReversedOrder.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-conflict-b"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ResolvesAmbiguousCrossFamilyActionIdDeterministicallyAcrossDefinitionOrder() {
+        var availableDefinitionsPrimaryOrder = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info",
+                description: "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_shared"
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_shared"
+                })
+        };
+        var availableDefinitionsReversedOrder = availableDefinitionsPrimaryOrder.AsEnumerable().Reverse().ToList();
+
+        var sessionPrimaryOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionPrimaryOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-ambiguous-a");
+        var resolvedPrimaryOrder = sessionPrimaryOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-ambiguous-a",
+            "/act act_domain_scope_shared",
+            availableDefinitionsPrimaryOrder,
+            out var familyPrimaryOrder);
+
+        var sessionReversedOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionReversedOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-ambiguous-b");
+        var resolvedReversedOrder = sessionReversedOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-ambiguous-b",
+            "/act act_domain_scope_shared",
+            availableDefinitionsReversedOrder,
+            out var familyReversedOrder);
+
+        Assert.Equal(resolvedPrimaryOrder, resolvedReversedOrder);
+        Assert.Equal(familyPrimaryOrder, familyReversedOrder);
     }
 
     [Fact]
