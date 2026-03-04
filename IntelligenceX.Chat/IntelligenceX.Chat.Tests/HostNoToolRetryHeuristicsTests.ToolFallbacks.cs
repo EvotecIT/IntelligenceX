@@ -599,6 +599,26 @@ Continue that failure-signature collection across all remaining non-AD0 DCs in t
     }
 
     [Fact]
+    public void BuildNoTextToolOutputRetryPromptForTesting_IncludesCompactCallArgumentsInEvidence() {
+        var calls = new[] {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System","max_events":200,"event_ids":[41,6008]}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"summary_markdown":"No reboot markers found in selected UTC window."}""")
+        };
+
+        var prompt = InvokeBuildNoTextToolOutputRetryPromptForTesting(
+            userRequest: "Compare non-AD0 DC reboot evidence.",
+            toolCalls: calls,
+            toolOutputs: outputs);
+
+        Assert.Contains("eventlog_live_query", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("args: machine_name=AD1.ad.evotec.xyz", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_events=200", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No reboot markers found", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildNoTextReplFallbackTextForTesting_ReturnsWarningWhenNoToolOutputsExist() {
         var text = InvokeBuildNoTextReplFallbackTextForTesting(
             assistantDraft: string.Empty,

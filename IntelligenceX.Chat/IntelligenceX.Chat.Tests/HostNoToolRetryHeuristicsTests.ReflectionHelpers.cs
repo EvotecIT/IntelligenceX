@@ -147,6 +147,23 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         return Assert.IsType<string>(value);
     }
 
+    private static string InvokeBuildNoTextToolOutputRetryPromptForTesting(
+        string userRequest,
+        IReadOnlyList<ToolCall> toolCalls,
+        IReadOnlyList<ToolOutput> toolOutputs) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "BuildNoTextToolOutputRetryPromptForTesting",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { userRequest, toolCalls, toolOutputs });
+        return Assert.IsType<string>(value);
+    }
+
     private static (int[] canonical, int dedupedCount) InvokeBuildReadOnlyCallCanonicalIndices(
         IReadOnlyList<ToolCall> calls,
         ISet<int> nonReusableIndices) {

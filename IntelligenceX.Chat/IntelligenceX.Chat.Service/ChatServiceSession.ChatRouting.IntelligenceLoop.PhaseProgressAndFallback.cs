@@ -44,6 +44,8 @@ internal sealed partial class ChatServiceSession {
     private const int RenderHintPriorityMin = -100000;
     private const int RenderHintPriorityMax = 100000;
     private const int NoTextToolOutputRetryPromptMaxEvidenceItems = 6;
+    private const int NoTextToolOutputRetryPromptMaxArgumentPairs = 4;
+    private const int NoTextToolOutputRetryPromptMaxArgumentValueChars = 64;
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -151,7 +153,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolOutputDto?> toolOutputs) {
         var requestText = TrimForPrompt(userRequest, 520);
         var evidenceBuilder = new StringBuilder();
-        var toolNamesByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var toolMetadataByCallId = new Dictionary<string, (string ToolName, string ArgumentSummary)>(StringComparer.OrdinalIgnoreCase);
         if (toolCalls is { Count: > 0 }) {
             for (var i = 0; i < toolCalls.Count; i++) {
                 var call = toolCalls[i];
@@ -165,7 +167,9 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                toolNamesByCallId[callId] = toolName;
+                toolMetadataByCallId[callId] = (
+                    ToolName: toolName,
+                    ArgumentSummary: BuildToolCallArgumentSummary(call.ArgumentsJson));
             }
         }
 
@@ -186,13 +190,23 @@ internal sealed partial class ChatServiceSession {
             }
 
             var callId = (output.CallId ?? string.Empty).Trim();
-            var toolName = toolNamesByCallId.TryGetValue(callId, out var knownToolName)
-                ? knownToolName
-                : "tool";
+            var toolName = "tool";
+            var argumentSummary = string.Empty;
+            if (toolMetadataByCallId.TryGetValue(callId, out var metadata)) {
+                toolName = metadata.ToolName;
+                argumentSummary = metadata.ArgumentSummary;
+            }
+
             var status = output.Ok is false ? "error" : "ok";
             evidenceBuilder.Append("- ")
-                .Append(toolName)
-                .Append(" (")
+                .Append(toolName);
+            if (argumentSummary.Length > 0) {
+                evidenceBuilder.Append(" [")
+                    .Append(argumentSummary)
+                    .Append("]");
+            }
+
+            evidenceBuilder.Append(" (")
                 .Append(status)
                 .Append("): ")
                 .Append(summary)
@@ -222,6 +236,70 @@ internal sealed partial class ChatServiceSession {
             - Do not emit internal markers or control payload text.
             Return only the final assistant response text.
             """;
+    }
+
+    private static string BuildToolCallArgumentSummary(string? argumentsJson) {
+        var normalized = (argumentsJson ?? string.Empty).Trim();
+        if (normalized.Length == 0 || !LooksLikeJsonPayload(normalized)) {
+            return string.Empty;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(normalized);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return string.Empty;
+            }
+
+            var pairs = new List<string>(NoTextToolOutputRetryPromptMaxArgumentPairs);
+            foreach (var property in doc.RootElement.EnumerateObject()) {
+                if (pairs.Count >= NoTextToolOutputRetryPromptMaxArgumentPairs) {
+                    break;
+                }
+
+                var key = CollapseWhitespace((property.Name ?? string.Empty).Trim());
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                if (!TryFormatCompactArgumentValue(property.Value, out var compactValue)) {
+                    continue;
+                }
+
+                pairs.Add(key + "=" + compactValue);
+            }
+
+            if (pairs.Count == 0) {
+                return string.Empty;
+            }
+
+            return "args: " + string.Join(", ", pairs);
+        } catch (JsonException) {
+            return string.Empty;
+        }
+    }
+
+    private static bool TryFormatCompactArgumentValue(JsonElement value, out string compactValue) {
+        compactValue = string.Empty;
+        string raw;
+        switch (value.ValueKind) {
+            case JsonValueKind.String:
+                raw = (value.GetString() ?? string.Empty).Trim();
+                break;
+            case JsonValueKind.Number:
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                raw = value.ToString();
+                break;
+            default:
+                return false;
+        }
+
+        if (raw.Length == 0) {
+            return false;
+        }
+
+        compactValue = TruncateToolOutputSummary(raw, NoTextToolOutputRetryPromptMaxArgumentValueChars);
+        return compactValue.Length > 0;
     }
 
     private static string BuildToolOutputFallbackSummary(ToolOutputDto output) {
