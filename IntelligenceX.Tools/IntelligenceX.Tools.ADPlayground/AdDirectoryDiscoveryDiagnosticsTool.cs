@@ -40,6 +40,17 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         DirectoryDiscoveryDiagnosticsSnapshot Snapshot,
         IReadOnlyList<DirectoryDiscoveryIssue> Issues);
 
+    private sealed record DirectoryDiscoveryDiagnosticsRequest(
+        string? ForestName,
+        IReadOnlyList<string> Domains,
+        int MaxIssues,
+        int DnsResolveTimeoutMs,
+        int LdapTimeoutMs,
+        bool IncludeDnsSrvComparison,
+        bool IncludeHostResolution,
+        bool IncludeDirectoryTopology,
+        bool AsIssue);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="AdDirectoryDiscoveryDiagnosticsTool"/> class.
     /// </summary>
@@ -50,31 +61,42 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<DirectoryDiscoveryDiagnosticsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<DirectoryDiscoveryDiagnosticsRequest>.Success(new DirectoryDiscoveryDiagnosticsRequest(
+                ForestName: reader.OptionalString("forest_name"),
+                Domains: reader.DistinctStringArray("domains"),
+                MaxIssues: reader.CappedInt32("max_issues", 5000, 1, 100_000),
+                DnsResolveTimeoutMs: reader.CappedInt32("dns_resolve_timeout_ms", 1500, 200, 120_000),
+                LdapTimeoutMs: reader.CappedInt32("ldap_timeout_ms", 3000, 200, 120_000),
+                IncludeDnsSrvComparison: reader.Boolean("include_dns_srv_comparison", defaultValue: true),
+                IncludeHostResolution: reader.Boolean("include_host_resolution", defaultValue: true),
+                IncludeDirectoryTopology: reader.Boolean("include_directory_topology", defaultValue: true),
+                AsIssue: reader.Boolean("as_issue"))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DirectoryDiscoveryDiagnosticsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
-        var domains = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("domains"));
-        var asIssue = ToolArgs.GetBoolean(arguments, "as_issue", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
-
-        var maxIssues = ToolArgs.GetCappedInt32(arguments, "max_issues", 5000, 1, 100_000);
-        var dnsResolveTimeoutMs = ToolArgs.GetCappedInt32(arguments, "dns_resolve_timeout_ms", 1500, 200, 120_000);
-        var ldapTimeoutMs = ToolArgs.GetCappedInt32(arguments, "ldap_timeout_ms", 3000, 200, 120_000);
-        var includeDnsSrvComparison = ToolArgs.GetBoolean(arguments, "include_dns_srv_comparison", defaultValue: true);
-        var includeHostResolution = ToolArgs.GetBoolean(arguments, "include_host_resolution", defaultValue: true);
-        var includeDirectoryTopology = ToolArgs.GetBoolean(arguments, "include_directory_topology", defaultValue: true);
-
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments);
         if (!TryExecute(
                 action: () => DirectoryDiscoveryDiagnosticsService.GetSnapshot(
                 new DirectoryDiscoveryDiagnosticsOptions {
-                    ForestName = forestName,
-                    Domains = domains.Count == 0 ? null : domains,
-                    IncludeDnsSrvComparison = includeDnsSrvComparison,
-                    IncludeHostResolution = includeHostResolution,
-                    IncludeDirectoryTopology = includeDirectoryTopology,
-                    DnsResolveTimeoutMs = dnsResolveTimeoutMs,
-                    LdapTimeoutMs = ldapTimeoutMs,
-                    MaxIssues = maxIssues
+                    ForestName = request.ForestName,
+                    Domains = request.Domains.Count == 0 ? null : request.Domains,
+                    IncludeDnsSrvComparison = request.IncludeDnsSrvComparison,
+                    IncludeHostResolution = request.IncludeHostResolution,
+                    IncludeDirectoryTopology = request.IncludeDirectoryTopology,
+                    DnsResolveTimeoutMs = request.DnsResolveTimeoutMs,
+                    LdapTimeoutMs = request.LdapTimeoutMs,
+                    MaxIssues = request.MaxIssues
                 },
                 cancellationToken),
                 result: out DirectoryDiscoveryDiagnosticsSnapshot snapshot,
@@ -91,35 +113,34 @@ public sealed class AdDirectoryDiscoveryDiagnosticsTool : ActiveDirectoryToolBas
         var truncated = scanned > rows.Count;
 
         var model = new AdDirectoryDiscoveryDiagnosticsResult(
-            AsIssue: asIssue,
+            AsIssue: request.AsIssue,
             Scanned: scanned,
             Truncated: truncated,
             Snapshot: snapshot,
             Issues: rows);
 
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: model,
             sourceRows: rows,
-            viewRowsPath: asIssue ? "issues_view" : "snapshot_issues_view",
+            viewRowsPath: request.AsIssue ? "issues_view" : "snapshot_issues_view",
             title: "Active Directory: Directory Discovery Diagnostics (preview)",
             maxTop: MaxViewTop,
             baseTruncated: truncated,
             scanned: scanned,
             metaMutate: meta => {
-                meta.Add("mode", asIssue ? "issues" : "snapshot");
+                meta.Add("mode", request.AsIssue ? "issues" : "snapshot");
                 AddMaxResultsMeta(meta, maxResults);
-                meta.Add("max_issues", maxIssues);
-                meta.Add("include_dns_srv_comparison", includeDnsSrvComparison);
-                meta.Add("include_host_resolution", includeHostResolution);
-                meta.Add("include_directory_topology", includeDirectoryTopology);
-                if (!string.IsNullOrWhiteSpace(forestName)) {
-                    meta.Add("forest_name", forestName);
+                meta.Add("max_issues", request.MaxIssues);
+                meta.Add("include_dns_srv_comparison", request.IncludeDnsSrvComparison);
+                meta.Add("include_host_resolution", request.IncludeHostResolution);
+                meta.Add("include_directory_topology", request.IncludeDirectoryTopology);
+                if (!string.IsNullOrWhiteSpace(request.ForestName)) {
+                    meta.Add("forest_name", request.ForestName);
                 }
-                if (domains.Count > 0) {
-                    meta.Add("domains", ToolJson.ToJsonArray(domains));
+                if (request.Domains.Count > 0) {
+                    meta.Add("domains", ToolJson.ToJsonArray(request.Domains));
                 }
             }));
     }
 }
-
