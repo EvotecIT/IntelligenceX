@@ -51,6 +51,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         AdDefaultSearchBaseDn = profile.AdDefaultSearchBaseDn;
         AdMaxResults = profile.AdMaxResults;
         PowerShellAllowWrite = profile.PowerShellAllowWrite;
+        EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading;
         EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
         PluginPaths.Clear();
         if (profile.PluginPaths != null && profile.PluginPaths.Count > 0) {
@@ -119,6 +120,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
             AdMaxResults = AdMaxResults,
             PowerShellAllowWrite = PowerShellAllowWrite,
+            EnableBuiltInPackLoading = EnableBuiltInPackLoading,
             EnableDefaultPluginPaths = EnableDefaultPluginPaths,
             PluginPaths = new List<string>(PluginPaths),
             DisabledPackIds = new List<string>(DisabledPackIds),

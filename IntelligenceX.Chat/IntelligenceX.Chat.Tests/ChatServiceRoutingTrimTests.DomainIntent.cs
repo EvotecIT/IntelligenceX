@@ -241,7 +241,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildDomainIntentClarificationTextForTesting_FallsBackToDefaultActionIdWhenFamilyMappingMissing() {
+    public void BuildDomainIntentClarificationTextForTesting_ReturnsEmptyWhenFamilyActionMappingIsIncomplete() {
         var familyActionIds = new Dictionary<string, string>(StringComparer.Ordinal) {
             [ToolSelectionMetadata.DomainIntentFamilyAd] = "act_domain_scope_ad_custom"
         };
@@ -249,9 +249,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             families: new[] { ToolSelectionMetadata.DomainIntentFamilyAd, ToolSelectionMetadata.DomainIntentFamilyPublic },
             familyActionIds: familyActionIds);
 
-        Assert.Contains("/act act_domain_scope_ad_custom", clarification, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("/act act_domain_scope_public", clarification, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(string.Empty, clarification);
     }
 
     [Fact]

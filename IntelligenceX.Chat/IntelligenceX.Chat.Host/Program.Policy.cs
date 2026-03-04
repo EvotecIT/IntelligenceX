@@ -23,7 +23,15 @@ internal static partial class Program {
         ReplOptions options,
         ToolRuntimePolicyContext runtimePolicy,
         Action<string>? onBootstrapWarning = null) {
-        return ToolPackBootstrap.CreateDefaultReadOnlyPacks(BuildBootstrapOptions(options, runtimePolicy, onBootstrapWarning));
+        var bootstrapOptions = BuildBootstrapOptions(options, runtimePolicy, onBootstrapWarning);
+        var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
+        if (ToolPackBootstrap.IsPluginOnlyModeNoPacks(bootstrapOptions, bootstrapResult.Packs.Count)) {
+            var pluginRoots = ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions);
+            onBootstrapWarning?.Invoke(ToolPackBootstrap.BuildPluginOnlyNoPacksWarning(pluginRoots.Count));
+            throw new ToolPackBootstrapConfigurationException(ToolPackBootstrap.PluginOnlyNoPacksMessage);
+        }
+
+        return bootstrapResult.Packs;
     }
 
     private static IReadOnlyList<string> GetPluginSearchPaths(ReplOptions options, ToolRuntimePolicyContext runtimePolicy) {

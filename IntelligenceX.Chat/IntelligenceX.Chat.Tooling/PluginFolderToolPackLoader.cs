@@ -165,6 +165,8 @@ internal static partial class PluginFolderToolPackLoader {
     private static IEnumerable<string> EnumeratePluginDirectories(string rootPath, ToolPackBootstrapOptions options, Action<string>? onWarning) {
         if (IsPluginFolder(rootPath)) {
             yield return rootPath;
+        } else if (LooksLikeManifestlessPluginFolder(rootPath)) {
+            onWarning?.Invoke($"[plugin] manifest_missing path='{rootPath}' action='skipped'");
         }
 
         foreach (var archiveDirectory in EnumeratePluginArchiveDirectories(rootPath, options, onWarning)) {
@@ -181,6 +183,8 @@ internal static partial class PluginFolderToolPackLoader {
         foreach (var directory in subDirectories.OrderBy(static d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)) {
             if (IsPluginFolder(directory)) {
                 yield return directory;
+            } else if (LooksLikeManifestlessPluginFolder(directory)) {
+                onWarning?.Invoke($"[plugin] manifest_missing path='{directory}' action='skipped'");
             }
         }
     }
@@ -213,8 +217,12 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var manifestPath = Path.Combine(path, ManifestFileName);
-        if (File.Exists(manifestPath)) {
-            return true;
+        return File.Exists(manifestPath);
+    }
+
+    private static bool LooksLikeManifestlessPluginFolder(string path) {
+        if (!Directory.Exists(path) || IsPluginFolder(path)) {
+            return false;
         }
 
         try {
@@ -243,10 +251,6 @@ internal static partial class PluginFolderToolPackLoader {
             }
 
             var pluginId = TryReadManifestString(json.RootElement, "pluginId");
-            if (pluginId.Length == 0) {
-                pluginId = TryReadManifestString(json.RootElement, "packageId");
-            }
-
             return pluginId.Length == 0 ? fallback : pluginId;
         } catch {
             return fallback;
@@ -293,6 +297,10 @@ internal static partial class PluginFolderToolPackLoader {
                 TouchCacheEntry(extractDir);
                 return extractDir;
             }
+            if (LooksLikeManifestlessPluginFolder(extractDir)) {
+                onWarning?.Invoke($"[plugin] manifest_missing archive='{normalizedArchive}' action='skipped'");
+                return null;
+            }
 
             tempDir = extractDir + ".tmp-" + Guid.NewGuid().ToString("N");
             if (Directory.Exists(tempDir)) {
@@ -301,6 +309,9 @@ internal static partial class PluginFolderToolPackLoader {
 
             TryExtractArchiveSafely(normalizedArchive, tempDir);
             if (!IsPluginFolder(tempDir)) {
+                if (LooksLikeManifestlessPluginFolder(tempDir)) {
+                    onWarning?.Invoke($"[plugin] manifest_missing archive='{normalizedArchive}' action='skipped'");
+                }
                 Directory.Delete(tempDir, recursive: true);
                 tempDir = null;
                 return null;
@@ -523,7 +534,6 @@ internal static partial class PluginFolderToolPackLoader {
         public int? SchemaVersion { get; set; }
         public string? PluginId { get; set; }
         public string? DisplayName { get; set; }
-        public string? PackageId { get; set; }
         public string? Version { get; set; }
         public bool? DefaultEnabled { get; set; }
         public bool? IsDangerous { get; set; }

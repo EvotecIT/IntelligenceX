@@ -40,6 +40,7 @@ internal sealed class ServiceProfile {
     public string? AdDefaultSearchBaseDn { get; set; }
     public int AdMaxResults { get; set; } = 1000;
     public bool PowerShellAllowWrite { get; set; }
+    public bool EnableBuiltInPackLoading { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; set; } = new();
     public List<string> DisabledPackIds { get; set; } = new();

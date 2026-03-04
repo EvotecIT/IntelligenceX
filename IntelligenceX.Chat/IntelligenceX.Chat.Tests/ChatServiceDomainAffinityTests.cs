@@ -641,7 +641,7 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
-    public void TryResolvePendingDomainIntentClarificationSelection_UsesFamilyDefaultActionWhenCatalogMappingIsMissing() {
+    public void TryResolvePendingDomainIntentClarificationSelection_DoesNotInventDefaultActionWhenCatalogMappingIsMissing() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-default-fallback");
 
@@ -675,9 +675,9 @@ public sealed class ChatServiceDomainAffinityTests {
             availableDefinitions,
             out var family);
 
-        Assert.True(resolved);
-        Assert.Equal("ad_domain", family);
-        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-default-fallback"));
+        Assert.False(resolved);
+        Assert.Equal(string.Empty, family);
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-default-fallback"));
     }
 
     [Fact]

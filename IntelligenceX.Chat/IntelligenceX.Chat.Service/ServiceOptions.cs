@@ -52,6 +52,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public string? AdDefaultSearchBaseDn { get; set; }
     public int AdMaxResults { get; set; } = 1000;
     public bool PowerShellAllowWrite { get; set; }
+    public bool EnableBuiltInPackLoading { get; set; } = true;
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
     public List<string> DisabledPackIds { get; } = new();
@@ -409,6 +410,14 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.PowerShellAllowWrite = true;
                 continue;
             }
+            if (arg is "--no-built-in-packs") {
+                options.EnableBuiltInPackLoading = false;
+                continue;
+            }
+            if (arg is "--built-in-packs") {
+                options.EnableBuiltInPackLoading = true;
+                continue;
+            }
             if (arg is "--plugin-path") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -542,6 +551,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --disable-pack-id <ID>  Disable a tool pack by normalized pack id (repeatable).");
         Console.WriteLine("                          Pack ids come from runtime metadata (built-in + plugin packs).");
         Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
+        Console.WriteLine("  --no-built-in-packs    Disable built-in pack loading (plugin-only mode).");
+        Console.WriteLine("  --built-in-packs       Enable built-in pack loading (default: on).");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);

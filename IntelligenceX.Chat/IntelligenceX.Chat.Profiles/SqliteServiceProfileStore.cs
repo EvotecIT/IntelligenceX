@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   ad_default_search_base_dn TEXT NULL,
   ad_max_results INTEGER NOT NULL,
   powershell_allow_write INTEGER NOT NULL,
+  enable_built_in_pack_loading INTEGER NOT NULL DEFAULT 1,
   enable_default_plugin_paths INTEGER NOT NULL,
   write_governance_mode TEXT NOT NULL DEFAULT 'enforced',
   require_write_governance_runtime INTEGER NOT NULL DEFAULT 1,
@@ -145,6 +146,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_basic_username", "TEXT NULL");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "openai_basic_password", "BLOB NULL");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "allow_mutating_parallel_tool_calls", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "enable_built_in_pack_loading", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "authentication_runtime_preset", "TEXT NOT NULL DEFAULT 'default'");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "require_authentication_runtime", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "run_as_profile_path", "TEXT NULL");
@@ -379,7 +381,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
 
     private void MigrateProfileTableDroppingDeprecatedPackToggleColumns(IEnumerable<string>? knownColumns = null) {
         const string migratedTable = "ix_service_profiles_v2";
-        const string currentColumnList = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
+        const string currentColumnList = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_built_in_pack_loading, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
         var legacyToggleColumns = ResolveDeprecatedPackToggleColumns(knownColumns ?? TryGetTableColumns(ProfileTable));
 
         _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
@@ -416,6 +418,7 @@ CREATE TABLE {migratedTable} (
   ad_default_search_base_dn TEXT NULL,
   ad_max_results INTEGER NOT NULL,
   powershell_allow_write INTEGER NOT NULL,
+  enable_built_in_pack_loading INTEGER NOT NULL DEFAULT 1,
   enable_default_plugin_paths INTEGER NOT NULL,
   write_governance_mode TEXT NOT NULL DEFAULT 'enforced',
   require_write_governance_runtime INTEGER NOT NULL DEFAULT 1,
@@ -632,6 +635,7 @@ LIMIT 1;",
             AdDefaultSearchBaseDn = ReadString(r, "ad_default_search_base_dn"),
             AdMaxResults = ReadInt(r, "ad_max_results", defaultValue: 1000),
             PowerShellAllowWrite = ReadBool(r, "powershell_allow_write", defaultValue: false),
+            EnableBuiltInPackLoading = ReadBool(r, "enable_built_in_pack_loading", defaultValue: true),
             EnableDefaultPluginPaths = ReadBool(r, "enable_default_plugin_paths", defaultValue: true),
             WriteGovernanceMode = NormalizeWriteGovernanceMode(ReadString(r, "write_governance_mode")),
             RequireWriteGovernanceRuntime = ReadBool(r, "require_write_governance_runtime", defaultValue: true),
@@ -695,6 +699,7 @@ INSERT INTO {ProfileTable} (
   instructions_file, max_table_rows, max_sample, redact,
   ad_domain_controller, ad_default_search_base_dn, ad_max_results,
   powershell_allow_write,
+  enable_built_in_pack_loading,
   enable_default_plugin_paths,
   write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata,
   write_audit_sink_mode, write_audit_sink_path,
@@ -710,6 +715,7 @@ VALUES (
   @instructions_file, @max_table_rows, @max_sample, @redact,
   @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
   @powershell_allow_write,
+  @enable_built_in_pack_loading,
   @enable_default_plugin_paths,
   @write_governance_mode, @require_write_governance_runtime, @require_write_audit_sink, @require_explicit_routing_metadata,
   @write_audit_sink_mode, @write_audit_sink_path,
@@ -746,6 +752,7 @@ ON CONFLICT(name) DO UPDATE SET
   ad_default_search_base_dn = excluded.ad_default_search_base_dn,
   ad_max_results = excluded.ad_max_results,
   powershell_allow_write = excluded.powershell_allow_write,
+  enable_built_in_pack_loading = excluded.enable_built_in_pack_loading,
   enable_default_plugin_paths = excluded.enable_default_plugin_paths,
   write_governance_mode = excluded.write_governance_mode,
   require_write_governance_runtime = excluded.require_write_governance_runtime,
@@ -826,6 +833,7 @@ ON CONFLICT(name) DO UPDATE SET
             ["@ad_default_search_base_dn"] = string.IsNullOrWhiteSpace(profile.AdDefaultSearchBaseDn) ? null : profile.AdDefaultSearchBaseDn.Trim(),
             ["@ad_max_results"] = profile.AdMaxResults,
             ["@powershell_allow_write"] = profile.PowerShellAllowWrite ? 1 : 0,
+            ["@enable_built_in_pack_loading"] = profile.EnableBuiltInPackLoading ? 1 : 0,
             ["@enable_default_plugin_paths"] = profile.EnableDefaultPluginPaths ? 1 : 0,
             ["@write_governance_mode"] = NormalizeWriteGovernanceMode(profile.WriteGovernanceMode),
             ["@require_write_governance_runtime"] = profile.RequireWriteGovernanceRuntime ? 1 : 0,
@@ -853,7 +861,7 @@ ON CONFLICT(name) DO UPDATE SET
     }
 
     private List<string> ResolveRequiredInsertBackfillColumns() {
-        const string currentInsertColumnsCsv = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
+        const string currentInsertColumnsCsv = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_built_in_pack_loading, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
 
         var knownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var split = currentInsertColumnsCsv.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);

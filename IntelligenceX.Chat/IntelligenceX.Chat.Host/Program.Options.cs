@@ -66,6 +66,7 @@ internal static partial class Program {
         public string? AdDefaultSearchBaseDn { get; set; }
         public int AdMaxResults { get; set; } = 1000;
         public bool PowerShellAllowWrite { get; set; }
+        public bool EnableBuiltInPackLoading { get; set; } = true;
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
         public List<string> DisabledPackIds { get; } = new();
@@ -304,6 +305,12 @@ internal static partial class Program {
                     case "--powershell-allow-write":
                         options.PowerShellAllowWrite = true;
                         break;
+                    case "--no-built-in-packs":
+                        options.EnableBuiltInPackLoading = false;
+                        break;
+                    case "--built-in-packs":
+                        options.EnableBuiltInPackLoading = true;
+                        break;
                     case "--plugin-path":
                         if (!TryGetValue(args, ref i, out var pluginPath, out error)) {
                             return options;
@@ -510,6 +517,7 @@ internal static partial class Program {
             AdDefaultSearchBaseDn = profile.AdDefaultSearchBaseDn;
             AdMaxResults = profile.AdMaxResults;
             PowerShellAllowWrite = profile.PowerShellAllowWrite;
+            EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading;
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
             PluginPaths.Clear();
             if (profile.PluginPaths is { Count: > 0 }) {
@@ -589,6 +597,7 @@ internal static partial class Program {
                 AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,
                 AdMaxResults = AdMaxResults,
                 PowerShellAllowWrite = PowerShellAllowWrite,
+                EnableBuiltInPackLoading = EnableBuiltInPackLoading,
                 EnableDefaultPluginPaths = EnableDefaultPluginPaths,
                 WriteGovernanceMode = WriteGovernanceMode,
                 RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,
@@ -616,6 +625,81 @@ internal static partial class Program {
             }
 
             return clone;
+        }
+
+        internal void CopyFrom(ReplOptions source) {
+            if (source is null) {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            Model = source.Model;
+            OpenAITransport = source.OpenAITransport;
+            OpenAIBaseUrl = source.OpenAIBaseUrl;
+            OpenAIApiKey = source.OpenAIApiKey;
+            OpenAIStreaming = source.OpenAIStreaming;
+            OpenAIAllowInsecureHttp = source.OpenAIAllowInsecureHttp;
+            OpenAIAllowInsecureHttpNonLoopback = source.OpenAIAllowInsecureHttpNonLoopback;
+            ReasoningEffort = source.ReasoningEffort;
+            ReasoningSummary = source.ReasoningSummary;
+            TextVerbosity = source.TextVerbosity;
+            Temperature = source.Temperature;
+            ProfileName = source.ProfileName;
+            StateDbPath = source.StateDbPath;
+            ShowHelp = source.ShowHelp;
+            ForceLogin = source.ForceLogin;
+            ParallelToolCalls = source.ParallelToolCalls;
+            AllowMutatingParallelToolCalls = source.AllowMutatingParallelToolCalls;
+            MaxToolRounds = source.MaxToolRounds;
+            TurnTimeoutSeconds = source.TurnTimeoutSeconds;
+            ToolTimeoutSeconds = source.ToolTimeoutSeconds;
+            EchoToolOutputs = source.EchoToolOutputs;
+            MaxConsoleToolOutputChars = source.MaxConsoleToolOutputChars;
+            ShowToolIds = source.ShowToolIds;
+            LiveProgress = source.LiveProgress;
+            MaxTableRows = source.MaxTableRows;
+            MaxSample = source.MaxSample;
+            Redact = source.Redact;
+            AuthPath = source.AuthPath;
+            InstructionsFile = source.InstructionsFile;
+            ScenarioFile = source.ScenarioFile;
+            ScenarioOutputFile = source.ScenarioOutputFile;
+            ScenarioContinueOnError = source.ScenarioContinueOnError;
+            AdDomainController = source.AdDomainController;
+            AdDefaultSearchBaseDn = source.AdDefaultSearchBaseDn;
+            AdMaxResults = source.AdMaxResults;
+            PowerShellAllowWrite = source.PowerShellAllowWrite;
+            EnableBuiltInPackLoading = source.EnableBuiltInPackLoading;
+            EnableDefaultPluginPaths = source.EnableDefaultPluginPaths;
+            WriteGovernanceMode = source.WriteGovernanceMode;
+            RequireWriteGovernanceRuntime = source.RequireWriteGovernanceRuntime;
+            RequireWriteAuditSinkForWriteOperations = source.RequireWriteAuditSinkForWriteOperations;
+            WriteAuditSinkMode = source.WriteAuditSinkMode;
+            WriteAuditSinkPath = source.WriteAuditSinkPath;
+            AuthenticationRuntimePreset = source.AuthenticationRuntimePreset;
+            RequireExplicitRoutingMetadata = source.RequireExplicitRoutingMetadata;
+            RequireAuthenticationRuntime = source.RequireAuthenticationRuntime;
+            RunAsProfilePath = source.RunAsProfilePath;
+            AuthenticationProfilePath = source.AuthenticationProfilePath;
+
+            AllowedRoots.Clear();
+            if (source.AllowedRoots.Count > 0) {
+                AllowedRoots.AddRange(source.AllowedRoots);
+            }
+
+            PluginPaths.Clear();
+            if (source.PluginPaths.Count > 0) {
+                PluginPaths.AddRange(source.PluginPaths);
+            }
+
+            DisabledPackIds.Clear();
+            if (source.DisabledPackIds.Count > 0) {
+                DisabledPackIds.AddRange(source.DisabledPackIds);
+            }
+
+            EnabledPackIds.Clear();
+            if (source.EnabledPackIds.Count > 0) {
+                EnabledPackIds.AddRange(source.EnabledPackIds);
+            }
         }
 
         private static bool TryApplyPackEnablement(

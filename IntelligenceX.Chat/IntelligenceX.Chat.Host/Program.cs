@@ -70,32 +70,35 @@ internal static partial class Program {
             Console.WriteLine($"Auth store: {authPath}");
         }
 
-        var startupPackWarnings = new List<string>();
-        var startupRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
-            BuildRuntimePolicyOptions(options),
-            warning => CollectPackWarning(startupPackWarnings, warning));
-        var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
-        var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
-        var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
-            packs,
-            requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
-        WritePolicyBanner(
-            options,
-            packs,
-            startupRuntimePolicyContext,
-            startupRuntimePolicyDiagnostics,
-            startupRoutingCatalogDiagnostics,
-            startupPackWarnings);
-        Console.WriteLine();
-
-        using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) => {
-            e.Cancel = true;
-            cts.Cancel();
-        };
-
         try {
+            var startupPackWarnings = new List<string>();
+            var startupRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+                BuildRuntimePolicyOptions(options),
+                warning => CollectPackWarning(startupPackWarnings, warning));
+            var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
+            var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
+            var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
+                packs,
+                requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
+            WritePolicyBanner(
+                options,
+                packs,
+                startupRuntimePolicyContext,
+                startupRuntimePolicyDiagnostics,
+                startupRoutingCatalogDiagnostics,
+                startupPackWarnings);
+            Console.WriteLine();
+
+            using var cts = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) => {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
             return await RunAsync(options, packs, cts.Token).ConfigureAwait(false);
+        } catch (ToolPackBootstrapConfigurationException ex) {
+            Console.Error.WriteLine(ex.Message);
+            return 2;
         } catch (OpenAIUserCanceledLoginException) {
             Console.WriteLine();
             Console.WriteLine("Login canceled.");
@@ -305,30 +308,39 @@ internal static partial class Program {
                                     continue;
                                 }
 
-                                options.ApplyProfile(profile);
-                                options.ProfileName = arg;
+                                var previousOptions = options.Clone();
+                                try {
+                                    options.ApplyProfile(profile);
+                                    options.ProfileName = arg;
 
-                                Console.WriteLine($"Switched profile: {arg}");
-                                var profilePackWarnings = new List<string>();
-                                var profileRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
-                                    BuildRuntimePolicyOptions(options),
-                                    warning => CollectPackWarning(profilePackWarnings, warning));
-                                var profileRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(profileRuntimePolicyContext);
-                                var profilePacks = BuildPacks(options, profileRuntimePolicyContext, warning => CollectPackWarning(profilePackWarnings, warning));
-                                var profileRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
-                                    profilePacks,
-                                    requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
-                                WritePolicyBanner(
-                                    options,
-                                    profilePacks,
-                                    profileRuntimePolicyContext,
-                                    profileRuntimePolicyDiagnostics,
-                                    profileRoutingCatalogDiagnostics,
-                                    profilePackWarnings);
-                                Console.WriteLine();
+                                    var profilePackWarnings = new List<string>();
+                                    var profileRuntimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
+                                        BuildRuntimePolicyOptions(options),
+                                        warning => CollectPackWarning(profilePackWarnings, warning));
+                                    var profileRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(profileRuntimePolicyContext);
+                                    var profilePacks = BuildPacks(options, profileRuntimePolicyContext, warning => CollectPackWarning(profilePackWarnings, warning));
+                                    var profileRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
+                                        profilePacks,
+                                        requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
+                                    WritePolicyBanner(
+                                        options,
+                                        profilePacks,
+                                        profileRuntimePolicyContext,
+                                        profileRuntimePolicyDiagnostics,
+                                        profileRoutingCatalogDiagnostics,
+                                        profilePackWarnings);
+                                    Console.WriteLine();
 
-                                await BuildRuntimeAsync().ConfigureAwait(false);
-                                session!.ResetThread();
+                                    await BuildRuntimeAsync().ConfigureAwait(false);
+                                    session!.ResetThread();
+                                    Console.WriteLine($"Switched profile: {arg}");
+                                } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                                    options.CopyFrom(previousOptions);
+                                    throw;
+                                } catch (Exception ex) {
+                                    options.CopyFrom(previousOptions);
+                                    Console.WriteLine($"Profile switch failed: {ex.Message}");
+                                }
                                 continue;
                             }
                         case "/models": {
@@ -551,6 +563,8 @@ internal static partial class Program {
         Console.WriteLine("  --disable-pack-id <ID>  Disable a tool pack by normalized pack id (repeatable).");
         Console.WriteLine("                          Pack ids come from runtime metadata (built-in + plugin packs).");
         Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
+        Console.WriteLine("  --no-built-in-packs    Disable built-in pack loading (plugin-only mode).");
+        Console.WriteLine("  --built-in-packs       Enable built-in pack loading (default: on).");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);
