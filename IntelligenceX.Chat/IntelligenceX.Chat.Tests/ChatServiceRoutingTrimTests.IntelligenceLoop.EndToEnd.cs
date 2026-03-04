@@ -205,6 +205,92 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("Continuation request accepted.", resultMessage.Text);
     }
 
+    [Theory]
+    [InlineData("continue")]
+    [InlineData("keep going")]
+    [InlineData("继续")]
+    public async Task RunChatOnCurrentThreadAsync_UsesSameStructuredIntentForCommonContinuationPrompts(string followUpPrompt) {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => JsonSerializer.Serialize(new {
+            id = "chatcmpl-continuation-contract-regression",
+            @object = "chat.completion",
+            choices = new[] {
+                new {
+                    index = 0,
+                    message = new {
+                        role = "assistant",
+                        content = "Continuation regression prompt accepted."
+                    },
+                    finish_reason = "stop"
+                }
+            }
+        }));
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 3,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult("""{"ok":true}""")));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+        session.RememberUserIntentForTesting(thread.Id, "Run forest-wide replication and LDAP diagnostics.");
+
+        var request = new ChatRequest {
+            RequestId = "req-continuation-contract-regression",
+            ThreadId = thread.Id,
+            Text = followUpPrompt,
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 3,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            request.ThreadId,
+            CancellationToken.None);
+
+        Assert.Equal(1, server.ChatCompletionRequestCount);
+        var userMessage = GetLatestUserMessageContent(server.GetChatRequestBody(0));
+        Assert.Contains("ix:continuation:v1", userMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled: true", userMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("intent_anchor: Run forest-wide replication and LDAP diagnostics.", userMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"follow_up: {followUpPrompt}", userMessage, StringComparison.Ordinal);
+        Assert.Contains($"Follow-up: {followUpPrompt}", userMessage, StringComparison.Ordinal);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Continuation regression prompt accepted.", resultMessage.Text);
+    }
+
     [Fact]
     public async Task RunChatOnCurrentThreadAsync_EmitsPhaseHeartbeatDuringLongToolExecution() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
