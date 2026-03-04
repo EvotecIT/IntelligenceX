@@ -137,6 +137,8 @@ Build a contract-first architecture where:
 - [x] Contract-first routing increment: Chat routing scoring pack-hint resolution now uses explicit routing contract pack ids only (no `ToolSelectionMetadata.TryResolvePackId(...)` fallback), and architecture guardrail coverage locks this.
 - [x] Scenario-contract reliability increment: transcript strict scenario `ad-eventlog-tool-capability-followthrough-10-turn` now uses semantic contains-any assertion for eventlog tool availability (`eventlog` or `event log`) to avoid wording-only false failures.
 - [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after contract-only routing-hint cleanup and scenario assertion hardening.
+- [x] Contract-first routing decoupling increment: Chat tokenization no longer uses hardcoded compound-pack compact heuristics (`ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact`); routing relies on natural-language tokens + explicit pack metadata aliases only.
+- [x] Live strict validation rerun: transcript-derived cross-pack/follow-up guardrail scenarios remain green after compound-token heuristic removal (`ad-eventlog-tool-capability-followthrough-10-turn` `10/10`, `ad-other-dcs-transcript-replay-guardrail-10-turn` `10/10`).
 
 ## Hard Decisions (Locked)
 

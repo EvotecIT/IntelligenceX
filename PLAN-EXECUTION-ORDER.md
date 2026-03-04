@@ -98,6 +98,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Contract-first routing increment: routing-scoring pack hints now derive from explicit routing contract pack ids only (removed `ToolSelectionMetadata.TryResolvePackId(...)` fallback), and architecture guardrails lock this behavior.
 - [x] Scenario-contract reliability increment: `ad-eventlog-tool-capability-followthrough-10-turn` availability assertion now accepts semantic wording variants (`eventlog` or `event log`) to avoid non-behavioral phrase drift failures.
 - [x] Live strict rerun validation: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after contract-only routing-hint cleanup and scenario assertion hardening.
+- [x] Contract-first routing decoupling increment: removed Chat-side hardcoded compound-pack token heuristic (`ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact`) from routing tokenization and added architecture guardrail coverage.
+- [x] Live strict rerun validation: transcript follow-up guardrail scenarios stay green after compound-token heuristic removal (`ad-eventlog-tool-capability-followthrough-10-turn` `10/10`, `ad-other-dcs-transcript-replay-guardrail-10-turn` `10/10`).
 
 ## Rules For This Migration
 
