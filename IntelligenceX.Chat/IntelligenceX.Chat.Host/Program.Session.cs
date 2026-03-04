@@ -122,6 +122,7 @@ internal static partial class Program {
             var turnReadOnlyOutputBySignature = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var toolRounds = 0;
             var noToolExecutionRetryCount = 0;
+            var noTextToolOutputDirectRetryUsed = false;
 
             var input = ChatInput.FromText(text);
             var toolDefs = _registry.GetDefinitions();
@@ -203,6 +204,29 @@ internal static partial class Program {
                     }
 
                     if (string.IsNullOrWhiteSpace(finalText)) {
+                        var shouldRetryNoTextToolOutputNarrative = !noTextToolOutputDirectRetryUsed && reportedOutputs.Count > 0;
+                        if (shouldRetryNoTextToolOutputNarrative) {
+                            noTextToolOutputDirectRetryUsed = true;
+                            var noTextToolOutputRetryPrompt = BuildNoTextToolOutputRetryPrompt(
+                                userRequest: text,
+                                toolCalls: reportedCalls,
+                                toolOutputs: reportedOutputs);
+                            chatOptions.NewThread = false;
+                            chatOptions.PreviousResponseId = TryGetResponseId(turn);
+                            chatOptions.Tools = null;
+                            chatOptions.ToolChoice = null;
+                            chatOptions.ParallelToolCalls = false;
+                            if (_options.LiveProgress) {
+                                _status?.Invoke("synthesizing executed tool findings...");
+                            }
+                            turn = await ChatWithToolSchemaRecoveryAsync(ChatInput.FromText(noTextToolOutputRetryPrompt), chatOptions, turnToken)
+                                .ConfigureAwait(false);
+                            chatOptions.Tools = toolDefs;
+                            chatOptions.ToolChoice = ToolChoice.Auto;
+                            chatOptions.ParallelToolCalls = _options.ParallelToolCalls;
+                            continue;
+                        }
+
                         finalText = BuildNoTextReplFallbackText(
                             assistantDraft: rawFinalText,
                             toolCalls: reportedCalls,

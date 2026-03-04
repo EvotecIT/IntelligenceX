@@ -170,7 +170,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                         index = 0,
                         message = new {
                             role = "assistant",
-                            content = "Unexpected extra chat request."
+                            content = "   "
                         },
                         finish_reason = "stop"
                     }
@@ -184,7 +184,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIAllowInsecureHttp = true,
             OpenAIStreaming = false,
             Model = "mock-local-model",
-            MaxToolRounds = 3,
+            MaxToolRounds = 6,
             DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
@@ -216,7 +216,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Text = "Check AD2 against other DCs and summarize similarities.",
             Options = new ChatRequestOptions {
                 WeightedToolRouting = false,
-                MaxToolRounds = 3,
+                MaxToolRounds = 6,
                 ParallelTools = false,
                 PlanExecuteReviewLoop = true,
                 MaxReviewPasses = 0,
@@ -239,11 +239,135 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("AD2 has Event 41 signal", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("No response text was produced", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
 
-        var autonomyCounters = GetPropertyValue<List<TurnCounterMetricDto>>(runResult, "AutonomyCounters");
+        var autonomyCounters = GetPropertyValueAssignable<IEnumerable<TurnCounterMetricDto>>(runResult, "AutonomyCounters");
         Assert.Contains(
             autonomyCounters,
             counter => string.Equals(counter.Name, "no_text_tool_output_recovery_hits", StringComparison.Ordinal)
                        && counter.Count >= 1);
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RetriesNoTextToolOutputNarrativeBeforeFallback() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-call-retry-1",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_no_text_retry_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "cross_dc" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-empty-retry",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "   "
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-retry-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Cross-DC comparison completed. AD1 is healthy and AD2 shows Event 41 signal."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 8,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult("{" +
+                                              "\"ok\":true," +
+                                              "\"summary_markdown\":\"Cross-DC matrix: AD1 healthy, AD2 has Event 41 signal.\"" +
+                                              "}")));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-no-text-tool-retry",
+            ThreadId = thread.Id,
+            Text = "Compare AD1 and AD2 reboot evidence and summarize.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 8,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.True(server.ChatCompletionRequestCount >= 4);
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Contains("Cross-DC comparison completed", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Recovered findings from executed tools", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No response text was produced", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        var autonomyCounters = GetPropertyValueAssignable<IEnumerable<TurnCounterMetricDto>>(runResult, "AutonomyCounters");
+        Assert.DoesNotContain(
+            autonomyCounters,
+            counter => string.Equals(counter.Name, "no_text_tool_output_recovery_hits", StringComparison.Ordinal)
+                       && counter.Count > 0);
     }
 
     [Fact]

@@ -42,6 +42,7 @@ internal sealed partial class ChatServiceSession {
             bool autoPendingActionReplayUsed,
             bool proactiveFollowUpUsed,
             bool localNoTextDirectRetryUsed,
+            bool noTextToolOutputDirectRetryUsed,
             bool structuredNextActionRetryUsed,
             bool toolProgressRecoveryUsed,
             bool hostStructuredNextActionReplayUsed,
@@ -75,6 +76,7 @@ internal sealed partial class ChatServiceSession {
             AutoPendingActionReplayUsed = autoPendingActionReplayUsed;
             ProactiveFollowUpUsed = proactiveFollowUpUsed;
             LocalNoTextDirectRetryUsed = localNoTextDirectRetryUsed;
+            NoTextToolOutputDirectRetryUsed = noTextToolOutputDirectRetryUsed;
             StructuredNextActionRetryUsed = structuredNextActionRetryUsed;
             ToolProgressRecoveryUsed = toolProgressRecoveryUsed;
             HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;
@@ -130,6 +132,8 @@ internal sealed partial class ChatServiceSession {
 
         public bool LocalNoTextDirectRetryUsed { get; set; }
 
+        public bool NoTextToolOutputDirectRetryUsed { get; set; }
+
         public bool StructuredNextActionRetryUsed { get; set; }
 
         public bool ToolProgressRecoveryUsed { get; set; }
@@ -177,6 +181,7 @@ internal sealed partial class ChatServiceSession {
         ref bool autoPendingActionReplayUsed,
         ref bool proactiveFollowUpUsed,
         ref bool localNoTextDirectRetryUsed,
+        ref bool noTextToolOutputDirectRetryUsed,
         ref bool structuredNextActionRetryUsed,
         ref bool toolProgressRecoveryUsed,
         ref bool hostStructuredNextActionReplayUsed,
@@ -208,6 +213,7 @@ internal sealed partial class ChatServiceSession {
         autoPendingActionReplayUsed = state.AutoPendingActionReplayUsed;
         proactiveFollowUpUsed = state.ProactiveFollowUpUsed;
         localNoTextDirectRetryUsed = state.LocalNoTextDirectRetryUsed;
+        noTextToolOutputDirectRetryUsed = state.NoTextToolOutputDirectRetryUsed;
         structuredNextActionRetryUsed = state.StructuredNextActionRetryUsed;
         toolProgressRecoveryUsed = state.ToolProgressRecoveryUsed;
         hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;

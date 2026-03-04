@@ -43,6 +43,7 @@ internal sealed partial class ChatServiceSession {
     private const int RenderHintVisualTypePriorityNetwork = 400;
     private const int RenderHintPriorityMin = -100000;
     private const int RenderHintPriorityMax = 100000;
+    private const int NoTextToolOutputRetryPromptMaxEvidenceItems = 6;
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -142,6 +143,85 @@ internal sealed partial class ChatServiceSession {
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    internal static string BuildNoTextToolOutputSynthesisPrompt(
+        string userRequest,
+        IReadOnlyList<ToolCallDto?> toolCalls,
+        IReadOnlyList<ToolOutputDto?> toolOutputs) {
+        var requestText = TrimForPrompt(userRequest, 520);
+        var evidenceBuilder = new StringBuilder();
+        var toolNamesByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (toolCalls is { Count: > 0 }) {
+            for (var i = 0; i < toolCalls.Count; i++) {
+                var call = toolCalls[i];
+                if (call is null) {
+                    continue;
+                }
+
+                var callId = (call.CallId ?? string.Empty).Trim();
+                var toolName = (call.Name ?? string.Empty).Trim();
+                if (callId.Length == 0 || toolName.Length == 0) {
+                    continue;
+                }
+
+                toolNamesByCallId[callId] = toolName;
+            }
+        }
+
+        var appendedCount = 0;
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            var output = toolOutputs[i];
+            if (output is null) {
+                continue;
+            }
+
+            if (appendedCount >= NoTextToolOutputRetryPromptMaxEvidenceItems) {
+                break;
+            }
+
+            var summary = BuildToolOutputFallbackSummary(output);
+            if (summary.Length == 0) {
+                continue;
+            }
+
+            var callId = (output.CallId ?? string.Empty).Trim();
+            var toolName = toolNamesByCallId.TryGetValue(callId, out var knownToolName)
+                ? knownToolName
+                : "tool";
+            var status = output.Ok is false ? "error" : "ok";
+            evidenceBuilder.Append("- ")
+                .Append(toolName)
+                .Append(" (")
+                .Append(status)
+                .Append("): ")
+                .Append(summary)
+                .AppendLine();
+            appendedCount++;
+        }
+
+        if (evidenceBuilder.Length == 0) {
+            evidenceBuilder.AppendLine("- Tool outputs were present but no concise summaries were available.");
+        }
+
+        return $$"""
+            [No-text tool-output recovery]
+            Tool execution completed but the assistant draft is empty. Produce the final user-facing answer from the executed tool evidence below.
+
+            User request:
+            {{requestText}}
+
+            Executed tool evidence:
+            {{evidenceBuilder.ToString().TrimEnd()}}
+
+            Requirements:
+            - Use only the executed tool evidence above.
+            - Keep the response concise and direct.
+            - Do not call tools again.
+            - If evidence is incomplete, state the exact missing evidence briefly.
+            - Do not emit internal markers or control payload text.
+            Return only the final assistant response text.
+            """;
     }
 
     private static string BuildToolOutputFallbackSummary(ToolOutputDto output) {
