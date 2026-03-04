@@ -122,6 +122,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo BuildToolReceiptCorrectionPromptMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolReceiptCorrectionPrompt", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolReceiptCorrectionPrompt not found.");
+    private static readonly MethodInfo AppendNoToolExecutionDisclosureIfNeededMethod =
+        typeof(ChatServiceSession).GetMethod("AppendNoToolExecutionDisclosureIfNeeded", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("AppendNoToolExecutionDisclosureIfNeeded not found.");
     private static readonly MethodInfo ResolveParallelToolConcurrencyMethod =
         typeof(ChatServiceSession).GetMethod("ResolveParallelToolConcurrency", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ResolveParallelToolConcurrency not found.");

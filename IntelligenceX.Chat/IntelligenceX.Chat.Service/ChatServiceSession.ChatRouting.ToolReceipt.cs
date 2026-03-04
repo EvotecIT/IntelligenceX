@@ -7,6 +7,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     private const string ToolReceiptCorrectionMarker = "ix:tool-receipt-correction:v1";
+    private const string ToolReceiptNoExecutionDisclosure = "Tool receipt: no tools were run in this turn.";
     private const int ToolReceiptCorrectionMaxUserRequestChars = 2000;
     private const int ToolReceiptCorrectionMaxDraftChars = 3200;
 
@@ -52,6 +53,35 @@ internal sealed partial class ChatServiceSession {
 
                 if (HasWordBoundaries(assistantDraft, idx, name.Length)
                     && LooksLikeToolResultContext(assistantDraft, idx, name.Length)) {
+                    return true;
+                }
+
+                startIndex = idx + 1;
+                if (startIndex >= assistantDraft.Length) {
+                    break;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool DraftMentionsKnownToolName(string assistantDraft, IReadOnlyList<ToolDefinition> tools) {
+        var limit = Math.Min(tools.Count, 64);
+        for (var i = 0; i < limit; i++) {
+            var name = (tools[i]?.Name ?? string.Empty).Trim();
+            if (name.Length < 3) {
+                continue;
+            }
+
+            var startIndex = 0;
+            while (true) {
+                var idx = assistantDraft.IndexOf(name, startIndex, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0) {
+                    break;
+                }
+
+                if (HasWordBoundaries(assistantDraft, idx, name.Length)) {
                     return true;
                 }
 
@@ -162,5 +192,26 @@ internal sealed partial class ChatServiceSession {
         }
 
         return span.Slice(0, maxChars).ToString() + "\n(truncated)";
+    }
+
+    private static string AppendNoToolExecutionDisclosureIfNeeded(
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition> tools,
+        int priorToolCalls,
+        int priorToolOutputs) {
+        var draft = (assistantDraft ?? string.Empty).TrimEnd();
+        if (draft.Length == 0 || priorToolCalls > 0 || priorToolOutputs > 0) {
+            return draft;
+        }
+
+        if (draft.Contains(ToolReceiptNoExecutionDisclosure, StringComparison.OrdinalIgnoreCase)) {
+            return draft;
+        }
+
+        if (tools is null || tools.Count == 0 || !DraftMentionsKnownToolName(draft, tools)) {
+            return draft;
+        }
+
+        return draft + Environment.NewLine + Environment.NewLine + ToolReceiptNoExecutionDisclosure;
     }
 }
