@@ -139,6 +139,8 @@ Build a contract-first architecture where:
 - [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after contract-only routing-hint cleanup and scenario assertion hardening.
 - [x] Contract-first routing decoupling increment: Chat tokenization no longer uses hardcoded compound-pack compact heuristics (`ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact`); routing relies on natural-language tokens + explicit pack metadata aliases only.
 - [x] Live strict validation rerun: transcript-derived cross-pack/follow-up guardrail scenarios remain green after compound-token heuristic removal (`ad-eventlog-tool-capability-followthrough-10-turn` `10/10`, `ad-other-dcs-transcript-replay-guardrail-10-turn` `10/10`).
+- [x] Follow-up recovery hardening: compact continuation turns now trigger execution replan when the assistant emits structured linked "deferred execution" drafts with zero in-turn tool activity, preventing `go ahead` turns from settling on evidence-only summaries.
+- [x] Live strict validation rerun: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after compact follow-up structured-draft recovery hardening.
 
 ## Hard Decisions (Locked)
 

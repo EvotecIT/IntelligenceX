@@ -216,6 +216,56 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptToolExecutionNudge_TriggersForCompactFollowUpWithStructuredExecutionDeferredDraft() {
+        var userRequest = "Verify LDAP connectivity across the forest and return a per-DC matrix.\nFollow-up: go ahead";
+        var assistantDraft = """
+            LDAP connectivity across the forest scope is confirmed.
+
+            Evidence:
+            - Forest: `ad.evotec.xyz`
+            - Domains discovered: 2
+            - DCs discovered: 5
+            - Discovery status: sufficient
+
+            LDAP connectivity status:
+            - Only discovery evidence is currently present.
+            - No per-DC port matrix has been produced yet.
+            - Planned checks include LDAP 389 and LDAPS 636.
+            - Planned checks include GC 3268 and 3269.
+            - Diagnostic probe results are not included in this draft.
+            """;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, true, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.True(value);
+        Assert.Equal("compact_follow_up_structured_execution_deferred_draft", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
+    public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForCompactFollowUpStructuredDraftWithoutLinkedContext() {
+        var userRequest = "go ahead";
+        var assistantDraft = """
+            Summary:
+            Region A healthy | Region B healthy | Region C healthy.
+            Latest rollup is complete.
+            No anomalies detected in this summary.
+            """;
+
+        var args = new object?[] { userRequest, assistantDraft, true, 0, 0, false, true, null };
+        var result = EvaluateToolExecutionNudgeDecisionMethod.Invoke(
+            null,
+            args);
+
+        var value = Assert.IsType<bool>(result);
+        Assert.False(value);
+        Assert.Equal("no_continuation_subset_and_no_cta_or_contextual_follow_up", Assert.IsType<string>(args[7]));
+    }
+
+    [Fact]
     public void ShouldAttemptToolExecutionNudge_DoesNotTriggerForMultilineBlockerDraftWithoutCompactFollowUpHint() {
         var userRequest = "please continue";
         var assistantDraft = """

@@ -100,6 +100,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict rerun validation: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after contract-only routing-hint cleanup and scenario assertion hardening.
 - [x] Contract-first routing decoupling increment: removed Chat-side hardcoded compound-pack token heuristic (`ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact`) from routing tokenization and added architecture guardrail coverage.
 - [x] Live strict rerun validation: transcript follow-up guardrail scenarios stay green after compound-token heuristic removal (`ad-eventlog-tool-capability-followthrough-10-turn` `10/10`, `ad-other-dcs-transcript-replay-guardrail-10-turn` `10/10`).
+- [x] Stabilization hardening: compact continuation recovery now treats linked structured deferred-execution drafts as execution-nudge eligible (language-neutral shape checks), preventing `go ahead` turns from ending on evidence-only summaries with zero in-turn tool activity.
+- [x] Live strict rerun validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after compact-follow-up structured-draft recovery hardening.
 
 ## Rules For This Migration
 

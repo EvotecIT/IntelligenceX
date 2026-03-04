@@ -459,6 +459,14 @@ internal sealed partial class ChatServiceSession {
                 return true;
             }
 
+            if (compactFollowUpHint
+                && !ContainsQuestionSignal(draft)
+                && draftReferencesFollowUp
+                && LooksLikeStructuredExecutionDeferredDraft(draft)) {
+                reason = "compact_follow_up_structured_execution_deferred_draft";
+                return true;
+            }
+
             reason = "no_continuation_subset_and_no_cta_or_contextual_follow_up";
             return false;
         }
@@ -545,6 +553,55 @@ internal sealed partial class ChatServiceSession {
 
         reason = "assistant_draft_not_linked_to_follow_up";
         return false;
+    }
+
+    private static bool LooksLikeStructuredExecutionDeferredDraft(string assistantDraft) {
+        var draft = (assistantDraft ?? string.Empty).Trim();
+        if (draft.Length < 120 || draft.Length > 3200) {
+            return false;
+        }
+
+        if (!draft.Contains('\n', StringComparison.Ordinal) && !draft.Contains('\r', StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (draft.Contains("ix:action:v1", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var lines = SplitLines(draft);
+        var nonEmptyCount = 0;
+        var bulletLikeCount = 0;
+        var headingLikeCount = 0;
+        var markdownFenceCount = 0;
+        for (var i = 0; i < lines.Count && nonEmptyCount < 40; i++) {
+            var trimmed = (lines[i] ?? string.Empty).Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+
+            nonEmptyCount++;
+            if (IsBulletLikeLine(trimmed)) {
+                bulletLikeCount++;
+            }
+
+            if (trimmed.StartsWith("#", StringComparison.Ordinal)
+                || (trimmed.EndsWith(":", StringComparison.Ordinal) && CountLetterDigitTokens(trimmed, maxTokens: 24) >= 2)) {
+                headingLikeCount++;
+            }
+
+            if (trimmed.StartsWith("```", StringComparison.Ordinal)) {
+                markdownFenceCount++;
+            }
+        }
+
+        if (markdownFenceCount >= 2) {
+            return false;
+        }
+
+        return nonEmptyCount >= 6
+               && bulletLikeCount >= 3
+               && headingLikeCount >= 1;
     }
 
     private static bool LooksLikeMultilineFollowUpBlockerDraft(string assistantDraft) {
