@@ -114,6 +114,8 @@ Build a contract-first architecture where:
 - [x] Stabilization hotfix: AD monitoring ADWS probe port normalization now treats non-positive `port` overrides as default `9389` (instead of clamping to `1`), preventing false ADWS-down endpoint probes (`net.tcp://<dc>:1/...`).
 - [x] Transcript-derived strict scenario seed added: `ad-ldap-go-ahead-followthrough-8-turn` to lock "scope confirmed -> `go ahead` executes LDAP diagnostics" continuation behavior and explicit tool-capability follow-through.
 - [x] Live strict validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after ADWS port normalization hardening.
+- [x] Startup/send dedupe hardening: queued-after-login duplicate suppression now also handles startup/login windows where both prompts have missing conversation ids but equivalent normalized text, reducing duplicate assistant greetings after switch-account recovery.
+- [x] Regression coverage expanded: queue dedupe tests now explicitly lock both-missing-conversation-id startup fallback behavior for manual resend suppression during in-flight queued-after-login dispatch.
 
 ## Hard Decisions (Locked)
 

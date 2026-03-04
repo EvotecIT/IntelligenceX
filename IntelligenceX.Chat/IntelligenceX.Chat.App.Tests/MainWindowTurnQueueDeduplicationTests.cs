@@ -98,6 +98,23 @@ public sealed class MainWindowTurnQueueDeduplicationTests {
     }
 
     /// <summary>
+    /// Startup/login-gated dedupe can opt in to treat both-missing conversation ids as equivalent when text matches.
+    /// </summary>
+    [Fact]
+    public void AreQueuedPromptsEquivalentForDispatch_ReturnsTrue_WhenBothConversationIdsMissing_AndStartupBothMissingFallbackEnabled() {
+        var equivalent = MainWindow.AreQueuedPromptsEquivalentForDispatch(
+            leftText: "Hello Mr",
+            leftConversationId: string.Empty,
+            rightText: " hello   mr ",
+            rightConversationId: string.Empty,
+            allowOneSidedMissingConversationId: true,
+            allowBothMissingConversationIdsInStartupScope: true,
+            startupScopeConversationId: string.Empty);
+
+        Assert.True(equivalent);
+    }
+
+    /// <summary>
     /// Empty prompt text should never be treated as a deduplication match.
     /// </summary>
     [Fact]

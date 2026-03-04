@@ -364,6 +364,7 @@ public sealed partial class MainWindow : Window {
             incomingText,
             incomingConversationId,
             allowOneSidedMissingConversationId: true,
+            allowBothMissingConversationIdsInStartupScope: true,
             startupScopeConversationId: startupScopeConversationId);
     }
 
@@ -452,6 +453,7 @@ public sealed partial class MainWindow : Window {
                         trimmedText,
                         trimmedConversationId,
                         allowOneSidedMissingConversationId: true,
+                        allowBothMissingConversationIdsInStartupScope: true,
                         startupScopeConversationId: startupScopeConversationId)) {
                     continue;
                 }
@@ -499,6 +501,7 @@ public sealed partial class MainWindow : Window {
                         normalizedText,
                         normalizedConversationId,
                         allowOneSidedMissingConversationId: true,
+                        allowBothMissingConversationIdsInStartupScope: true,
                         startupScopeConversationId: startupScopeConversationId)) {
                     removed = true;
                     continue;
@@ -523,6 +526,7 @@ public sealed partial class MainWindow : Window {
         string? rightText,
         string? rightConversationId,
         bool allowOneSidedMissingConversationId = false,
+        bool allowBothMissingConversationIdsInStartupScope = false,
         string? startupScopeConversationId = null) {
         var normalizedLeftText = NormalizeQueuedPromptTextForDispatch(leftText);
         var normalizedRightText = NormalizeQueuedPromptTextForDispatch(rightText);
@@ -537,7 +541,10 @@ public sealed partial class MainWindow : Window {
         var normalizedLeftConversationId = NormalizeQueuedPromptConversationId(leftConversationId);
         var normalizedRightConversationId = NormalizeQueuedPromptConversationId(rightConversationId);
         if (normalizedLeftConversationId.Length == 0 && normalizedRightConversationId.Length == 0) {
-            return false;
+            // Startup/login recovery can capture queued and manual prompt attempts before
+            // any stable conversation id is assigned. Allow callers in that bounded path
+            // to dedupe identical text-only replays.
+            return allowBothMissingConversationIdsInStartupScope;
         }
 
         if (string.Equals(normalizedLeftConversationId, normalizedRightConversationId, StringComparison.OrdinalIgnoreCase)) {

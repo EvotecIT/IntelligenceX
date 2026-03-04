@@ -80,5 +80,22 @@ public sealed class MainWindowQueuedPromptActiveDispatchDedupTests {
 
         Assert.True(suppress);
     }
-}
 
+    /// <summary>
+    /// Startup/login fallback should also suppress when both conversation ids are missing but prompt text is equivalent.
+    /// </summary>
+    [Fact]
+    public void ShouldSuppressEquivalentManualPromptDuringActiveQueuedDispatch_ReturnsTrue_ForBothMissingConversationIds() {
+        var suppress = MainWindow.ShouldSuppressEquivalentManualPromptDuringActiveQueuedDispatch(
+            incomingText: "Hello Mr",
+            incomingConversationId: string.Empty,
+            incomingIsQueuedDispatch: false,
+            incomingSkipUserBubble: false,
+            activeDispatchFromQueuedAfterLogin: true,
+            activeDispatchText: " hello   mr ",
+            activeDispatchConversationId: string.Empty,
+            startupScopeConversationId: string.Empty);
+
+        Assert.True(suppress);
+    }
+}

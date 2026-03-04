@@ -76,6 +76,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: `ad_monitoring_probe_run` ADWS port normalization now keeps default `9389` when non-positive `port` is supplied, preventing false endpoint probes on `:1`.
 - [x] Transcript-derived strict scenario added: `ad-ldap-go-ahead-followthrough-8-turn` to lock continuation execution from scope confirmation into explicit LDAP diagnostics after compact `go ahead`.
 - [x] Live strict validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) and asserts ADWS endpoint probes do not regress to `:1/ActiveDirectoryWebServices`.
+- [x] Startup/send dedupe hardening: queued-after-login suppression now treats both-missing-conversation-id startup prompts as equivalent when normalized text matches, reducing duplicate post-login greeting replies.
+- [x] Startup/send regression coverage expanded: queue dedupe tests now include explicit both-missing-conversation-id cases for in-flight queued-after-login manual-resend suppression.
 
 ## Rules For This Migration
 
