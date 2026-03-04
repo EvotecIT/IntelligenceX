@@ -334,7 +334,10 @@ internal static partial class Program {
 
                                     await BuildRuntimeAsync().ConfigureAwait(false);
                                     session!.ResetThread();
-                                } catch (ToolPackBootstrapConfigurationException ex) {
+                                } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                                    options.CopyFrom(previousOptions);
+                                    throw;
+                                } catch (Exception ex) {
                                     options.CopyFrom(previousOptions);
                                     Console.WriteLine($"Profile switch failed: {ex.Message}");
                                 }
