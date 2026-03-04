@@ -279,21 +279,52 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task RestoreHeaderStatusAfterTurnIfNeededAsync(string completedRequestId) {
-        if (string.IsNullOrWhiteSpace(completedRequestId) || !IsLatestTurnRequest(completedRequestId)) {
-            return;
-        }
-
-        var status = (_statusText ?? string.Empty).Trim();
-        if (status.Length == 0) {
-            return;
-        }
-
-        if (!string.Equals(status, "Sending request to runtime...", StringComparison.OrdinalIgnoreCase)
-            && !status.StartsWith("Last turn failed:", StringComparison.OrdinalIgnoreCase)) {
+        var isLatestTurnRequest = !string.IsNullOrWhiteSpace(completedRequestId) && IsLatestTurnRequest(completedRequestId);
+        var shouldRestore = ShouldRestoreConnectionStatusAfterTurn(
+            currentStatus: _statusText,
+            isLatestTurnRequest: isLatestTurnRequest,
+            startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0,
+            startupMetadataSyncInProgress: Volatile.Read(ref _startupMetadataSyncInProgress) != 0,
+            startupFlowState: Volatile.Read(ref _startupFlowState));
+        if (!shouldRestore) {
             return;
         }
 
         await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+    }
+
+    internal static bool ShouldRestoreConnectionStatusAfterTurn(
+        string? currentStatus,
+        bool isLatestTurnRequest,
+        bool startupMetadataSyncQueued,
+        bool startupMetadataSyncInProgress,
+        int startupFlowState) {
+        if (!isLatestTurnRequest) {
+            return false;
+        }
+
+        var status = (currentStatus ?? string.Empty).Trim();
+        if (status.Length == 0) {
+            return false;
+        }
+
+        if (string.Equals(status, "Sending request to runtime...", StringComparison.OrdinalIgnoreCase)
+            || status.StartsWith("Last turn failed:", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (startupMetadataSyncQueued
+            || startupMetadataSyncInProgress
+            || startupFlowState == StartupFlowStateRunning) {
+            return false;
+        }
+
+        if (status.StartsWith("Starting runtime...", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return status.IndexOf("(phase " + StartupStatusPhaseStartupConnect, StringComparison.OrdinalIgnoreCase) >= 0
+               || status.IndexOf("(phase " + StartupStatusPhaseStartupMetadataSync, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private async Task SendPromptToConversationAsync(

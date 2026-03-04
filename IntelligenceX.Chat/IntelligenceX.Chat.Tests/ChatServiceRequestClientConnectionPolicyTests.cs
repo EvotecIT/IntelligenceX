@@ -20,10 +20,30 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
         yield return new object[] { new ChatRequest { RequestId = "req_chat", Text = "hello" }, true };
     }
 
+    public static IEnumerable<object[]> RequestToolingBootstrapPolicyCases() {
+        yield return new object[] { new HelloRequest { RequestId = "req_hello" }, false };
+        yield return new object[] { new EnsureLoginRequest { RequestId = "req_login" }, false };
+        yield return new object[] { new ListProfilesRequest { RequestId = "req_profiles" }, false };
+        yield return new object[] { new ListToolsRequest { RequestId = "req_tools" }, true };
+        yield return new object[] { new CheckToolHealthRequest { RequestId = "req_health" }, true };
+        yield return new object[] { new InvokeToolRequest { RequestId = "req_invoke", ToolName = "system_info", ArgumentsJson = "{}" }, true };
+        yield return new object[] { new SetProfileRequest { RequestId = "req_profile_set", ProfileName = "local" }, true };
+        yield return new object[] { new ApplyRuntimeSettingsRequest { RequestId = "req_runtime_apply", OpenAITransport = "native" }, true };
+        yield return new object[] { new ChatRequest { RequestId = "req_chat", Text = "hello" }, true };
+    }
+
     [Theory]
     [MemberData(nameof(RequestConnectionPolicyCases))]
     public void RequestRequiresConnectedClient_ReturnsExpected(ChatServiceRequest request, bool expected) {
         var result = ChatServiceSession.RequestRequiresConnectedClient(request);
+
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [MemberData(nameof(RequestToolingBootstrapPolicyCases))]
+    public void RequestRequiresToolingBootstrap_ReturnsExpected(ChatServiceRequest request, bool expected) {
+        var result = ChatServiceSession.RequestRequiresToolingBootstrap(request);
 
         Assert.Equal(expected, result);
     }
@@ -55,5 +75,63 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
             new Exception(string.Empty));
 
         Assert.Contains("Runtime provider connection failed.", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildToolingBootstrapFailureMessage_ForListTools_IncludesContext() {
+        var message = ChatServiceSession.BuildToolingBootstrapFailureMessage(
+            new ListToolsRequest { RequestId = "req_tools" },
+            new InvalidOperationException("Plugin manifest invalid"));
+
+        Assert.Contains("tool catalog", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Plugin manifest invalid", message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true, true, true, true)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, true, true, false)]
+    public void ShouldBypassToolingBootstrapWaitForListTools_ReturnsExpectedValue(
+        bool isListToolsRequest,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool hasCachedToolCatalog,
+        bool expected) {
+        var shouldBypass = ChatServiceSession.ShouldBypassToolingBootstrapWaitForListTools(
+            isListToolsRequest: isListToolsRequest,
+            startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapCompletedSuccessfully,
+            hasCachedToolCatalog: hasCachedToolCatalog);
+
+        Assert.Equal(expected, shouldBypass);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ShouldUseCachedToolCatalogFallbackForListTools_ReturnsExpectedValue(
+        bool startupToolingBootstrapInProgress,
+        bool expected) {
+        var shouldUseCachedFallback = ChatServiceSession.ShouldUseCachedToolCatalogFallbackForListTools(
+            startupToolingBootstrapInProgress: startupToolingBootstrapInProgress);
+
+        Assert.Equal(expected, shouldUseCachedFallback);
+    }
+
+    [Theory]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    public void ShouldBypassToolingBootstrapWaitForRecoveryRequests_ReturnsExpectedValue(
+        bool isRecoveryRequest,
+        bool startupToolingBootstrapCompleted,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool expected) {
+        var shouldBypass = ChatServiceSession.ShouldBypassToolingBootstrapWaitForRecoveryRequests(
+            isRecoveryRequest: isRecoveryRequest,
+            startupToolingBootstrapCompleted: startupToolingBootstrapCompleted,
+            startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapCompletedSuccessfully);
+
+        Assert.Equal(expected, shouldBypass);
     }
 }

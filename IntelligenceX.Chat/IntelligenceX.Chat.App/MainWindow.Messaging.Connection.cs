@@ -42,6 +42,41 @@ public sealed partial class MainWindow : Window {
         return fromUserAction || hasTrackedRunningServiceProcess;
     }
 
+    internal static bool ShouldSkipStartupInitialPipeConnectProbe(
+        bool fromUserAction,
+        bool captureStartupPhaseTelemetry,
+        bool hasTrackedRunningServiceProcess) {
+        return captureStartupPhaseTelemetry
+               && !fromUserAction
+               && !hasTrackedRunningServiceProcess;
+    }
+
+    internal static bool ShouldAttemptStartupConnectRecoveryAfterRetryFailure(
+        bool fromUserAction,
+        bool captureStartupPhaseTelemetry,
+        Exception? connectException,
+        bool serviceProcessExited,
+        int recoveryAttemptsConsumed,
+        int recoveryAttemptLimit) {
+        if (fromUserAction
+            || !captureStartupPhaseTelemetry
+            || connectException is null
+            || recoveryAttemptLimit <= 0
+            || recoveryAttemptsConsumed >= recoveryAttemptLimit) {
+            return false;
+        }
+
+        if (serviceProcessExited) {
+            return true;
+        }
+
+        if (connectException is TimeoutException or OperationCanceledException) {
+            return true;
+        }
+
+        return IsDisconnectedError(connectException);
+    }
+
     internal static TimeSpan? ResolveStartupConnectBudget(bool fromUserAction, bool captureStartupPhaseTelemetry, TimeSpan? overrideBudget = null) {
         if (overrideBudget.HasValue) {
             return overrideBudget.Value > TimeSpan.Zero ? overrideBudget : null;
@@ -233,7 +268,7 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
-    internal static bool ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+    internal static bool ShouldDelayDeferredStartupMetadataSyncForInteractiveSignIn(
         bool deferStartupMetadataSync,
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
@@ -241,7 +276,7 @@ public sealed partial class MainWindow : Window {
         return deferStartupMetadataSync
                && requiresInteractiveSignIn
                && !isAuthenticated
-               && !loginInProgress;
+               && loginInProgress;
     }
 
     internal readonly record struct DeferredStartupMetadataPlan(
@@ -263,7 +298,7 @@ public sealed partial class MainWindow : Window {
         var deferStartupMetadataSync = deferPostConnectMetadataSync
                                        || deferStartupHelloProbe
                                        || deferStartupToolCatalogSync;
-        var skipDeferredMetadataUntilAuthenticated = ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+        var skipDeferredMetadataUntilAuthenticated = ShouldDelayDeferredStartupMetadataSyncForInteractiveSignIn(
             deferStartupMetadataSync: deferStartupMetadataSync,
             requiresInteractiveSignIn: requiresInteractiveSignIn,
             isAuthenticated: isAuthenticated,
@@ -460,49 +495,59 @@ public sealed partial class MainWindow : Window {
             var hasTrackedRunningServiceProcess = _serviceProcess is not null && !_serviceProcess.HasExited;
             var initialPipeConnectTimeout = ResolveStartupInitialPipeConnectTimeout(fromUserAction, hasTrackedRunningServiceProcess);
             var useInitialSettlementGrace = ShouldUseStartupInitialConnectSettlementGrace(fromUserAction, hasTrackedRunningServiceProcess);
+            var skipInitialPipeConnectProbe = ShouldSkipStartupInitialPipeConnectProbe(
+                fromUserAction: fromUserAction,
+                captureStartupPhaseTelemetry: captureStartupPhaseTelemetry,
+                hasTrackedRunningServiceProcess: hasTrackedRunningServiceProcess);
             var connected = false;
             var initialAttemptElapsed = TimeSpan.Zero;
             Stopwatch? initialAttemptStopwatch = null;
 
-            try {
-                LogStartupConnectPhase("pipe_connect.initial", "begin");
-                if (!TryResolveConnectTimeout(initialPipeConnectTimeout, out var initialAttemptTimeout)) {
-                    throw CreateBudgetExceededException();
-                }
+            if (skipInitialPipeConnectProbe) {
+                LogStartupConnectPhase("pipe_connect.initial", "skipped_cold_start");
+                LogStartupConnectDetail("pipe_connect.initial skipped reason=cold_start_no_tracked_service");
+            } else {
+                try {
+                    LogStartupConnectPhase("pipe_connect.initial", "begin");
+                    if (!TryResolveConnectTimeout(initialPipeConnectTimeout, out var initialAttemptTimeout)) {
+                        throw CreateBudgetExceededException();
+                    }
 
-                var initialHardTimeout = ResolveConnectAttemptHardTimeout(initialAttemptTimeout);
-                LogConnectAttemptStart("pipe_connect.initial", 1, initialPipeConnectTimeout, initialAttemptTimeout, initialHardTimeout);
-                await SetConnectProgressStatusAsync(
-                        BuildStartupConnectAttemptStatusText(
-                            phaseLabel: "connecting to service",
-                            attemptNumber: 1,
-                            totalAttempts: 1,
-                            timeout: initialAttemptTimeout,
-                            churnCause: StartupStatusCausePipeRetry))
-                    .ConfigureAwait(false);
-                initialAttemptStopwatch = Stopwatch.StartNew();
-                await ConnectClientWithTimeoutAsync(
-                    client,
-                    pipeName,
-                    initialAttemptTimeout,
-                    initialHardTimeout,
-                    allowSettlementGrace: useInitialSettlementGrace).ConfigureAwait(false);
-                initialAttemptElapsed = initialAttemptStopwatch.Elapsed;
-                LogConnectAttemptResult("pipe_connect.initial", 1, success: true, attemptElapsed: initialAttemptElapsed, exception: null);
-                LogStartupConnectPhase("pipe_connect.initial", "done");
-                connected = true;
-            } catch (Exception ex) {
-                if (initialAttemptStopwatch is not null) {
+                    var initialHardTimeout = ResolveConnectAttemptHardTimeout(initialAttemptTimeout);
+                    LogConnectAttemptStart("pipe_connect.initial", 1, initialPipeConnectTimeout, initialAttemptTimeout, initialHardTimeout);
+                    await SetConnectProgressStatusAsync(
+                            BuildStartupConnectAttemptStatusText(
+                                phaseLabel: "connecting to service",
+                                attemptNumber: 1,
+                                totalAttempts: 1,
+                                timeout: initialAttemptTimeout,
+                                churnCause: StartupStatusCausePipeRetry))
+                        .ConfigureAwait(false);
+                    initialAttemptStopwatch = Stopwatch.StartNew();
+                    await ConnectClientWithTimeoutAsync(
+                        client,
+                        pipeName,
+                        initialAttemptTimeout,
+                        initialHardTimeout,
+                        allowSettlementGrace: useInitialSettlementGrace).ConfigureAwait(false);
                     initialAttemptElapsed = initialAttemptStopwatch.Elapsed;
-                }
+                    LogConnectAttemptResult("pipe_connect.initial", 1, success: true, attemptElapsed: initialAttemptElapsed, exception: null);
+                    LogStartupConnectPhase("pipe_connect.initial", "done");
+                    connected = true;
+                } catch (Exception ex) {
+                    if (initialAttemptStopwatch is not null) {
+                        initialAttemptElapsed = initialAttemptStopwatch.Elapsed;
+                    }
 
-                LogConnectAttemptResult("pipe_connect.initial", 1, success: false, attemptElapsed: initialAttemptElapsed, exception: ex);
-                LogStartupConnectPhase("pipe_connect.initial", "failed");
-                initialConnectException = ex;
+                    LogConnectAttemptResult("pipe_connect.initial", 1, success: false, attemptElapsed: initialAttemptElapsed, exception: ex);
+                    LogStartupConnectPhase("pipe_connect.initial", "failed");
+                    initialConnectException = ex;
+                }
             }
 
             if (!connected) {
                 Exception? sidecarConnectException = null;
+                var recoveryAttemptsConsumed = 0;
                 if (startupConnectBudget.HasValue
                     && startupConnectStopwatch is not null
                     && startupConnectStopwatch.Elapsed >= startupConnectBudget.Value) {
@@ -609,6 +654,84 @@ public sealed partial class MainWindow : Window {
                         }
 
                         if (sidecarConnectException is not null) {
+                            var serviceProcessExited = _serviceProcess is { HasExited: true };
+                            var shouldAttemptRecovery = ShouldAttemptStartupConnectRecoveryAfterRetryFailure(
+                                fromUserAction: fromUserAction,
+                                captureStartupPhaseTelemetry: captureStartupPhaseTelemetry,
+                                connectException: sidecarConnectException,
+                                serviceProcessExited: serviceProcessExited,
+                                recoveryAttemptsConsumed: recoveryAttemptsConsumed,
+                                recoveryAttemptLimit: StartupConnectRecoveryAttemptLimit);
+                            if (shouldAttemptRecovery) {
+                                recoveryAttemptsConsumed++;
+                                if (serviceProcessExited) {
+                                    await SetConnectProgressStatusAsync(
+                                            AppendStartupStatusContext(
+                                                "Starting runtime... (recovering local service startup)",
+                                                StartupStatusPhaseStartupConnect,
+                                                StartupStatusCauseRuntimeStart))
+                                        .ConfigureAwait(false);
+                                    LogStartupConnectPhase("ensure_sidecar.recovery", "begin");
+                                    var ensureRecoveryStopwatch = Stopwatch.StartNew();
+                                    var recoveredSidecarRunning = await EnsureServiceRunningAsync(pipeName).ConfigureAwait(false);
+                                    LogStartupConnectDetail("ensure_sidecar.recovery elapsed_ms=" + RoundMs(ensureRecoveryStopwatch.Elapsed).ToString(CultureInfo.InvariantCulture));
+                                    if (ensureRecoveryStopwatch.Elapsed >= StartupConnectAttemptOutlierThreshold) {
+                                        LogStartupConnectDetail(
+                                            "ensure_sidecar.recovery outlier elapsed_ms="
+                                            + RoundMs(ensureRecoveryStopwatch.Elapsed).ToString(CultureInfo.InvariantCulture)
+                                            + " threshold_ms="
+                                            + RoundMs(StartupConnectAttemptOutlierThreshold).ToString(CultureInfo.InvariantCulture));
+                                    }
+
+                                    if (!recoveredSidecarRunning) {
+                                        sidecarConnectException = new InvalidOperationException("Service recovery launch did not produce a running process.");
+                                        LogStartupConnectPhase("ensure_sidecar.recovery", "failed");
+                                    } else {
+                                        LogStartupConnectPhase("ensure_sidecar.recovery", "done");
+                                        serviceProcessExited = false;
+                                    }
+                                }
+
+                                if (!serviceProcessExited && sidecarConnectException is not null) {
+                                    var requestedRecoveryTimeout = fromUserAction
+                                        ? StartupInitialPipeConnectTimeout
+                                        : StartupConnectRetryAttemptCapNonInteractive;
+                                    if (TryResolveConnectTimeout(requestedRecoveryTimeout, out var recoveryTimeout)) {
+                                        var recoveryHardTimeout = ResolveConnectAttemptHardTimeout(recoveryTimeout);
+                                        LogStartupConnectPhase("pipe_connect.recovery", "begin");
+                                        LogConnectAttemptStart("pipe_connect.recovery", recoveryAttemptsConsumed, requestedRecoveryTimeout, recoveryTimeout, recoveryHardTimeout);
+                                        await SetConnectProgressStatusAsync(
+                                                BuildStartupConnectAttemptStatusText(
+                                                    phaseLabel: "recovering service connection",
+                                                    attemptNumber: recoveryAttemptsConsumed,
+                                                    totalAttempts: StartupConnectRecoveryAttemptLimit,
+                                                    timeout: recoveryTimeout,
+                                                    churnCause: StartupStatusCausePipeRetry))
+                                            .ConfigureAwait(false);
+                                        Stopwatch? recoveryAttemptStopwatch = null;
+                                        try {
+                                            recoveryAttemptStopwatch = Stopwatch.StartNew();
+                                            await ConnectClientWithTimeoutAsync(client, pipeName, recoveryTimeout, recoveryHardTimeout).ConfigureAwait(false);
+                                            var recoveryAttemptElapsed = recoveryAttemptStopwatch.Elapsed;
+                                            LogConnectAttemptResult("pipe_connect.recovery", recoveryAttemptsConsumed, success: true, attemptElapsed: recoveryAttemptElapsed, exception: null);
+                                            LogStartupConnectPhase("pipe_connect.recovery", "done");
+                                            sidecarConnectException = null;
+                                            connected = true;
+                                        } catch (Exception recoveryEx) {
+                                            var recoveryAttemptElapsed = recoveryAttemptStopwatch?.Elapsed ?? TimeSpan.Zero;
+                                            LogConnectAttemptResult("pipe_connect.recovery", recoveryAttemptsConsumed, success: false, attemptElapsed: recoveryAttemptElapsed, exception: recoveryEx);
+                                            LogStartupConnectPhase("pipe_connect.recovery", "failed");
+                                            sidecarConnectException = recoveryEx;
+                                        }
+                                    } else {
+                                        sidecarConnectException = CreateBudgetExceededException();
+                                        LogStartupConnectPhase("pipe_connect.recovery", "skipped_budget");
+                                    }
+                                }
+                            }
+                        }
+
+                        if (sidecarConnectException is not null) {
                             LogStartupConnectPhase("pipe_connect.retry", "failed");
                         } else {
                             LogStartupConnectPhase("pipe_connect.retry", "done");
@@ -648,10 +771,13 @@ public sealed partial class MainWindow : Window {
 
             _client = client;
             _isConnected = true;
+            ResetStartupMetadataFailureRecoveryDiagnostics();
             BeginStartupMetadataSyncTracking("preparing runtime metadata sync");
             ClearDispatchConnectFailure();
             StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
+            var inlineHelloPhaseSucceeded = false;
+            var inlineToolCatalogPhaseSucceeded = false;
 
             var deferredMetadataPlan = ResolveDeferredStartupMetadataPlan(
                 deferPostConnectMetadataSync: deferPostConnectMetadataSync,
@@ -664,12 +790,13 @@ public sealed partial class MainWindow : Window {
                 deferStartupModelProfileSync: ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry));
             if (deferredMetadataPlan.DeferStartupMetadataSync) {
                 _sessionPolicy = null;
+                RecordStartupBootstrapCacheMode(_sessionPolicy);
                 UpdateStartupMetadataSyncPhase(
                     deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated
                         ? "waiting for sign-in to finish startup sync"
                         : "startup metadata sync queued");
                 await SetStatusAsync(
-                    BuildStartupPendingStatusText(
+                    BuildStartupPendingOrAuthVerificationStatusText(
                         requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
                         isAuthenticated: _isAuthenticated,
                         loginInProgress: _loginInProgress),
@@ -680,15 +807,21 @@ public sealed partial class MainWindow : Window {
                     QueueDeferredStartupConnectMetadataSync();
                 }
             } else {
+                var helloStopwatch = Stopwatch.StartNew();
                 try {
                     UpdateStartupMetadataSyncPhase("syncing session policy");
                     LogStartupConnectPhase("hello", "begin");
                     var hello = await _client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     _sessionPolicy = hello.Policy;
+                    RecordStartupBootstrapCacheMode(_sessionPolicy);
+                    RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: true);
+                    inlineHelloPhaseSucceeded = true;
                     LogStartupConnectPhase("hello", "done");
                 } catch (Exception ex) {
                     LogStartupConnectPhase("hello", "failed");
                     _sessionPolicy = null;
+                    RecordStartupBootstrapCacheMode(_sessionPolicy);
+                    RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: false);
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(SystemNotice.HelloFailed(ex.Message));
                     }
@@ -696,14 +829,18 @@ public sealed partial class MainWindow : Window {
             }
 
             if (!deferredMetadataPlan.DeferStartupMetadataSync) {
+                var listToolsStopwatch = Stopwatch.StartNew();
                 try {
                     UpdateStartupMetadataSyncPhase("loading tool catalog");
                     LogStartupConnectPhase("list_tools", "begin");
                     var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     UpdateToolCatalog(toolList.Tools);
+                    RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: true);
+                    inlineToolCatalogPhaseSucceeded = true;
                     LogStartupConnectPhase("list_tools", "done");
                 } catch (Exception ex) {
                     LogStartupConnectPhase("list_tools", "failed");
+                    RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: false);
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
                     }
@@ -719,12 +856,18 @@ public sealed partial class MainWindow : Window {
             } else if (deferredMetadataPlan.DeferAuthRefresh) {
                 LogStartupConnectPhase("auth_refresh", "deferred");
             } else {
+                var authRefreshStopwatch = Stopwatch.StartNew();
                 LogStartupConnectPhase("auth_refresh", "begin");
                 try {
                     UpdateStartupMetadataSyncPhase("refreshing authentication");
-                    _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+                    _ = await RefreshAuthenticationStateAsync(
+                            updateStatus: true,
+                            probeTimeout: EnsureLoginFastPathProbeTimeout)
+                        .ConfigureAwait(false);
+                    RecordStartupAuthRefreshPhaseDiagnostics(authRefreshStopwatch.Elapsed, attempts: 1, success: true);
                     LogStartupConnectPhase("auth_refresh", "done");
                 } catch {
+                    RecordStartupAuthRefreshPhaseDiagnostics(authRefreshStopwatch.Elapsed, attempts: 1, success: false);
                     LogStartupConnectPhase("auth_refresh", "failed");
                     throw;
                 }
@@ -752,9 +895,58 @@ public sealed partial class MainWindow : Window {
             }
 
             if (!deferredMetadataPlan.DeferStartupMetadataSync) {
+                var inlineMetadataSyncSucceeded = inlineHelloPhaseSucceeded && inlineToolCatalogPhaseSucceeded;
+                var startupBootstrapCacheMode = Volatile.Read(ref _startupBootstrapCacheMode);
+                var shouldQueuePersistedPreviewRefreshRerun = ShouldRequestDeferredStartupMetadataPersistedPreviewRefreshRerun(
+                    metadataSyncSucceeded: inlineMetadataSyncSucceeded,
+                    startupBootstrapCacheMode: startupBootstrapCacheMode,
+                    isConnected: _isConnected,
+                    shutdownRequested: _shutdownRequested,
+                    retriesConsumed: Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount),
+                    retryLimit: StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+                var persistedPreviewRefreshRerunQueued = shouldQueuePersistedPreviewRefreshRerun
+                    && TryConsumeDeferredStartupMetadataFailureRecoveryRetry(
+                        ref _startupConnectMetadataPersistedPreviewRefreshRetryCount,
+                        StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+                if (persistedPreviewRefreshRerunQueued) {
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 1);
+                    QueueDeferredStartupConnectMetadataSync(
+                        requestRerunIfBusy: true,
+                        preferPersistedPreviewRefreshDelay: true);
+                    var previewRetryCount = Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount);
+                    StartupLog.Write(
+                        "StartupConnect.inline_metadata_sync persisted_preview_refresh_queued retry="
+                        + previewRetryCount.ToString(CultureInfo.InvariantCulture)
+                        + "/"
+                        + StartupDeferredMetadataPersistedPreviewRefreshRetryLimit.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (startupBootstrapCacheMode != StartupBootstrapCacheModePersistedPreview) {
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount, 0);
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 0);
+                }
+                var persistedPreviewRefreshRetryLimitReached = HasReachedDeferredStartupMetadataPersistedPreviewRefreshRetryLimit(
+                    metadataSyncSucceeded: inlineMetadataSyncSucceeded,
+                    startupBootstrapCacheMode: startupBootstrapCacheMode,
+                    retriesConsumed: Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount),
+                    retryLimit: StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+
                 EndStartupMetadataSyncTracking();
-                await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
-                LogStartupConnectPhase("ready", "inline_metadata_sync_done");
+                if (persistedPreviewRefreshRerunQueued || persistedPreviewRefreshRetryLimitReached) {
+                    await SetStatusAsync(
+                            BuildStartupMetadataSyncPersistedPreviewStatusText(persistedPreviewRefreshRerunQueued),
+                            SessionStatusTone.Warn)
+                        .ConfigureAwait(false);
+                    LogStartupConnectPhase(
+                        "ready",
+                        persistedPreviewRefreshRerunQueued
+                            ? "inline_metadata_sync_preview_refresh_pending"
+                            : "inline_metadata_sync_preview_refresh_retry_limit_reached");
+                } else {
+                    await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                    LogStartupConnectPhase("ready", "inline_metadata_sync_done");
+                }
+                await PublishOptionsStateSafeAsync().ConfigureAwait(false);
             }
         } catch {
             EndStartupMetadataSyncTracking();

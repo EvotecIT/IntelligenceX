@@ -296,6 +296,7 @@ internal static partial class ToolRunMarkdownFormatter {
 
         foreach (var rowNode in rowsNode.EnumerateArray()) {
             var row = new string[columns.Count];
+            Array.Fill(row, string.Empty);
             switch (rowNode.ValueKind) {
                 case JsonValueKind.Object:
                     var propertyMap = columns.Count >= CaseInsensitiveLookupMapColumnThreshold

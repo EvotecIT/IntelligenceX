@@ -645,6 +645,28 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         return Path.Combine(root, "IntelligenceX.Chat", "state.db");
     }
 
+    internal static string GetDefaultToolingBootstrapCachePath(string? stateDbPath = null) {
+        var normalizedStateDbPath = (stateDbPath ?? string.Empty).Trim();
+        if (normalizedStateDbPath.Length > 0) {
+            try {
+                var stateDbFullPath = Path.GetFullPath(normalizedStateDbPath);
+                var stateDbDirectory = Path.GetDirectoryName(stateDbFullPath);
+                if (!string.IsNullOrWhiteSpace(stateDbDirectory)) {
+                    return Path.Combine(stateDbDirectory, "tooling-bootstrap-cache-v1.json");
+                }
+            } catch {
+                // Fall through to LocalAppData fallback.
+            }
+        }
+
+        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(root)) {
+            root = ".";
+        }
+
+        return Path.Combine(root, "IntelligenceX.Chat", "tooling-bootstrap-cache-v1.json");
+    }
+
     internal static bool TryApplyPackEnablement(
         ServiceOptions options,
         string? rawPackId,

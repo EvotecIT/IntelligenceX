@@ -500,6 +500,81 @@ body.options-open .options-panel {
   gap: 8px;
 }
 
+.options-startup-phase-list {
+  margin-top: 6px;
+  gap: 6px;
+}
+
+.options-startup-phase {
+  border: 1px solid rgba(58, 96, 144, 0.55);
+  border-radius: 8px;
+  background: rgba(9, 33, 60, 0.58);
+  padding: 7px 8px;
+}
+
+.options-startup-phase-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.options-startup-phase-label {
+  font-size: 11.6px;
+  font-weight: 600;
+  color: var(--ix-text-primary);
+}
+
+.options-startup-phase-state {
+  font-size: 10px;
+  border-radius: 999px;
+  padding: 2px 7px;
+  border: 1px solid rgba(88, 128, 173, 0.55);
+  background: rgba(17, 52, 93, 0.36);
+  color: var(--ix-text-secondary);
+  white-space: nowrap;
+}
+
+.options-startup-phase-detail {
+  margin-top: 3px;
+  font-size: 10.8px;
+  line-height: 1.35;
+  color: var(--ix-text-muted);
+}
+
+.options-startup-phase-active {
+  border-color: rgba(76, 195, 255, 0.62);
+  background: rgba(76, 195, 255, 0.14);
+}
+
+.options-startup-phase-active .options-startup-phase-state {
+  border-color: rgba(76, 195, 255, 0.62);
+  background: rgba(76, 195, 255, 0.22);
+  color: #d9f3ff;
+}
+
+.options-startup-phase-done {
+  border-color: rgba(100, 240, 205, 0.52);
+  background: rgba(100, 240, 205, 0.14);
+}
+
+.options-startup-phase-done .options-startup-phase-state {
+  border-color: rgba(100, 240, 205, 0.58);
+  background: rgba(100, 240, 205, 0.2);
+  color: #d8fff2;
+}
+
+.options-startup-phase-skipped {
+  border-color: rgba(255, 206, 107, 0.44);
+  background: rgba(122, 84, 20, 0.24);
+}
+
+.options-startup-phase-skipped .options-startup-phase-state {
+  border-color: rgba(255, 206, 107, 0.52);
+  background: rgba(255, 206, 107, 0.16);
+  color: #fff2cd;
+}
+
 .options-runtime-capabilities {
   margin-top: 4px;
   gap: 6px;

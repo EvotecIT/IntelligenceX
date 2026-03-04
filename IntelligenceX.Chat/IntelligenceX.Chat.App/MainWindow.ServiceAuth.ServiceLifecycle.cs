@@ -251,13 +251,21 @@ public sealed partial class MainWindow {
 
         _ = _dispatcher.TryEnqueue(() => {
             var startupMetadataSyncInProgress = Volatile.Read(ref _startupMetadataSyncInProgress) != 0;
+            var startupMetadataSyncQueued = Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0;
+            var startupFlowState = Volatile.Read(ref _startupFlowState);
+            var effectiveAllowDuringSend = ResolveAllowDuringSendForBootstrapStatus(
+                isConnected: _isConnected,
+                startupMetadataSyncInProgress: startupMetadataSyncInProgress,
+                startupMetadataSyncQueued: startupMetadataSyncQueued,
+                startupFlowState: startupFlowState,
+                allowDuringSend: allowDuringSend);
             if (!ShouldPublishServiceBootstrapStatus(
                     shutdownRequested: _shutdownRequested,
                     isConnected: _isConnected,
                     isSending: _isSending,
                     turnStartupInProgress: _turnStartupInProgress,
                     startupMetadataSyncInProgress: startupMetadataSyncInProgress,
-                    allowDuringSend: allowDuringSend)) {
+                    allowDuringSend: effectiveAllowDuringSend)) {
                 return;
             }
 
@@ -266,6 +274,25 @@ public sealed partial class MainWindow {
                 : statusText;
             _ = SetStatusAsync(effectiveStatusText, SessionStatusTone.Warn);
         });
+    }
+
+    internal static bool ResolveAllowDuringSendForBootstrapStatus(
+        bool isConnected,
+        bool startupMetadataSyncInProgress,
+        bool startupMetadataSyncQueued,
+        int startupFlowState,
+        bool allowDuringSend) {
+        if (!allowDuringSend) {
+            return false;
+        }
+
+        if (!isConnected || startupMetadataSyncInProgress) {
+            return true;
+        }
+
+        // Once startup flow has completed and no deferred startup metadata sync is queued,
+        // late service bootstrap log lines should not revive startup-loading statuses.
+        return startupMetadataSyncQueued || startupFlowState == StartupFlowStateRunning;
     }
 
     internal static bool ShouldPublishServiceBootstrapStatus(
@@ -336,6 +363,10 @@ public sealed partial class MainWindow {
             }
         }
 
+        if (!ShouldAnnotateConnectedBootstrapStatusAsStartup(normalizedStatus)) {
+            return normalizedStatus;
+        }
+
         var hasPhaseContext = StartupStatusPhaseContextRegex.IsMatch(normalizedStatus);
         var hasCauseContext = StartupStatusCauseContextRegex.IsMatch(normalizedStatus);
         if (!hasPhaseContext && hasCauseContext) {
@@ -362,6 +393,35 @@ public sealed partial class MainWindow {
         }
 
         return normalizedStatus;
+    }
+
+    private static bool ShouldAnnotateConnectedBootstrapStatusAsStartup(string normalizedStatus) {
+        if (normalizedStatus.Length == 0) {
+            return false;
+        }
+
+        if (StartupStatusPhaseContextRegex.IsMatch(normalizedStatus)
+            || StartupStatusCauseContextRegex.IsMatch(normalizedStatus)) {
+            return true;
+        }
+
+        var lower = normalizedStatus.ToLowerInvariant();
+        if (lower.Contains("loading tool packs", StringComparison.Ordinal)
+            || lower.Contains("tool catalog", StringComparison.Ordinal)
+            || lower.Contains("session policy", StringComparison.Ordinal)
+            || lower.Contains("authenticat", StringComparison.Ordinal)
+            || lower.Contains("plugin folder scan", StringComparison.Ordinal)
+            || lower.Contains("registering tool pack", StringComparison.Ordinal)
+            || lower.Contains("registered tool pack", StringComparison.Ordinal)
+            || lower.Contains("initializing tool packs", StringComparison.Ordinal)
+            || lower.Contains("initialized tool packs", StringComparison.Ordinal)
+            || lower.Contains("runtime provider", StringComparison.Ordinal)) {
+            return true;
+        }
+
+        // Final "bootstrap finished / finalizing connection" lines should not pin startup metadata
+        // context once runtime is already connected.
+        return false;
     }
 
     internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText) {
@@ -569,6 +629,10 @@ public sealed partial class MainWindow {
         return Math.Max(1, elapsedMs);
     }
 
+    internal static bool ShouldStopOwnedServiceOnWindowClose(bool detachedServiceMode) {
+        return !detachedServiceMode;
+    }
+
     private void StopServiceIfOwned() {
         var p = _serviceProcess;
         _serviceProcess = null;
@@ -579,12 +643,21 @@ public sealed partial class MainWindow {
             return;
         }
 
+        if (!ShouldStopOwnedServiceOnWindowClose(DetachedServiceMode)) {
+            StartupLog.Write("ServiceLifecycle.stop skipped_owned_process_termination (detached mode)");
+            p.Dispose();
+            _stagedServiceDir = null;
+            return;
+        }
+
         try {
             if (!p.HasExited) {
                 p.Kill(entireProcessTree: true);
             }
         } catch {
             // Ignore.
+        } finally {
+            p.Dispose();
         }
 
         _stagedServiceDir = null;

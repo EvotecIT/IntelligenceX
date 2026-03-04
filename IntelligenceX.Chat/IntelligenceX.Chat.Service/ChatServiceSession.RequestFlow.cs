@@ -27,50 +27,100 @@ internal sealed partial class ChatServiceSession {
 
     private async Task HandleListToolsAsync(StreamWriter writer, string requestId, CancellationToken cancellationToken) {
         var defs = _registry.GetDefinitions();
-        var tools = new ToolDefinitionDto[defs.Count];
-        for (var i = 0; i < defs.Count; i++) {
-            var parametersJson = defs[i].Parameters is null ? "{}" : JsonLite.Serialize(defs[i].Parameters);
-            var required = ExtractRequiredArguments(parametersJson);
-            var parameters = ExtractToolParameters(parametersJson, required);
-            var packId = string.Empty;
-            if (_toolOrchestrationCatalog.TryGetPackId(defs[i].Name, out var catalogPackId)) {
-                packId = catalogPackId;
-            }
-
-            string? packName = null;
-            string? packDescription = null;
-            ToolPackSourceKind? packSourceKind = null;
-            if (packId.Length > 0 && _packDisplayNamesById.TryGetValue(packId, out var resolvedPackName)) {
-                packName = resolvedPackName;
-            }
-            if (packId.Length > 0 && _packDescriptionsById.TryGetValue(packId, out var resolvedPackDescription)) {
-                packDescription = resolvedPackDescription;
-            }
-            if (packId.Length > 0 && _packSourceKindsById.TryGetValue(packId, out var resolvedPackSourceKind)) {
-                packSourceKind = resolvedPackSourceKind;
-            }
-
-            tools[i] = new ToolDefinitionDto {
-                Name = defs[i].Name,
-                Description = defs[i].Description ?? string.Empty,
-                DisplayName = ResolveToolDisplayName(defs[i]),
-                Category = ResolveToolListCategory(ResolveToolCategory(defs[i])),
-                Tags = defs[i].Tags.Count == 0 ? null : defs[i].Tags.ToArray(),
-                PackId = packId.Length == 0 ? null : packId,
-                PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
-                PackDescription = string.IsNullOrWhiteSpace(packDescription) ? null : packDescription,
-                PackSourceKind = packSourceKind,
-                IsWriteCapable = defs[i].WriteGovernance?.IsWriteCapable == true,
-                ParametersJson = parametersJson,
-                RequiredArguments = required,
-                Parameters = parameters
-            };
+        var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        var startupToolingBootstrapInProgress = startupToolingBootstrapTask is { IsCompleted: false };
+        ToolDefinitionDto[] tools;
+        if (defs.Count > 0) {
+            tools = BuildToolDefinitionDtosFromRegistryDefinitions(defs);
+            Volatile.Write(ref _cachedToolDefinitions, tools);
+        } else if (!ShouldUseCachedToolCatalogFallbackForListTools(startupToolingBootstrapInProgress)
+                   || !TryGetCachedToolCatalogForListTools(out tools)) {
+            tools = Array.Empty<ToolDefinitionDto>();
         }
+
         await WriteAsync(writer, new ToolListMessage {
             Kind = ChatServiceMessageKind.Response,
             RequestId = requestId,
             Tools = tools
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static bool ShouldUseCachedToolCatalogFallbackForListTools(bool startupToolingBootstrapInProgress) {
+        return !startupToolingBootstrapInProgress;
+    }
+
+    private bool TryGetCachedToolCatalogForListTools(out ToolDefinitionDto[] tools) {
+        var inMemory = Volatile.Read(ref _cachedToolDefinitions);
+        if (inMemory.Length > 0) {
+            tools = inMemory;
+            return true;
+        }
+
+        var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
+        var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+        var cacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
+        if (_toolingBootstrapCache is not null
+            && _toolingBootstrapCache.TryGetPersistedSnapshot(cacheKey, out var persisted)
+            && persisted.ToolDefinitions.Length > 0) {
+            tools = persisted.ToolDefinitions;
+            Volatile.Write(ref _cachedToolDefinitions, tools);
+            return true;
+        }
+
+        tools = Array.Empty<ToolDefinitionDto>();
+        return false;
+    }
+
+    private ToolDefinitionDto[] BuildToolDefinitionDtosFromRegistryDefinitions(IReadOnlyList<ToolDefinition> definitions) {
+        if (definitions is null || definitions.Count == 0) {
+            return Array.Empty<ToolDefinitionDto>();
+        }
+
+        var tools = new ToolDefinitionDto[definitions.Count];
+        for (var i = 0; i < definitions.Count; i++) {
+            tools[i] = BuildToolDefinitionDto(definitions[i]);
+        }
+
+        return tools;
+    }
+
+    private ToolDefinitionDto BuildToolDefinitionDto(ToolDefinition definition) {
+        var parametersJson = definition.Parameters is null ? "{}" : JsonLite.Serialize(definition.Parameters);
+        var required = ExtractRequiredArguments(parametersJson);
+        var parameters = ExtractToolParameters(parametersJson, required);
+        var packId = string.Empty;
+        if (_toolOrchestrationCatalog.TryGetPackId(definition.Name, out var catalogPackId)) {
+            packId = catalogPackId;
+        }
+
+        string? packName = null;
+        string? packDescription = null;
+        ToolPackSourceKind? packSourceKind = null;
+        if (packId.Length > 0 && _packDisplayNamesById.TryGetValue(packId, out var resolvedPackName)) {
+            packName = resolvedPackName;
+        }
+        if (packId.Length > 0 && _packDescriptionsById.TryGetValue(packId, out var resolvedPackDescription)) {
+            packDescription = resolvedPackDescription;
+        }
+        if (packId.Length > 0 && _packSourceKindsById.TryGetValue(packId, out var resolvedPackSourceKind)) {
+            packSourceKind = resolvedPackSourceKind;
+        }
+
+        return new ToolDefinitionDto {
+            Name = definition.Name,
+            Description = definition.Description ?? string.Empty,
+            DisplayName = ResolveToolDisplayName(definition),
+            Category = ResolveToolListCategory(ResolveToolCategory(definition)),
+            Tags = definition.Tags.Count == 0 ? null : definition.Tags.ToArray(),
+            PackId = packId.Length == 0 ? null : packId,
+            PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
+            PackDescription = string.IsNullOrWhiteSpace(packDescription) ? null : packDescription,
+            PackSourceKind = packSourceKind,
+            IsWriteCapable = definition.WriteGovernance?.IsWriteCapable == true,
+            ParametersJson = parametersJson,
+            RequiredArguments = required,
+            Parameters = parameters
+        };
     }
 
     private async Task HandleInvokeToolAsync(StreamWriter writer, InvokeToolRequest request, CancellationToken cancellationToken) {

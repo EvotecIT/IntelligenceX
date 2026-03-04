@@ -275,6 +275,7 @@
     state.options.autonomy = nextOptions.autonomy || state.options.autonomy;
     state.options.memory = nextOptions.memory || state.options.memory;
     state.options.memoryDebug = nextOptions.memoryDebug || null;
+    state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;
     var previousDebug = state.options.debug && typeof state.options.debug === "object"
       ? state.options.debug
       : { showTurnTrace: false, showDraftBubbles: false };

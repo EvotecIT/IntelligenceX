@@ -272,6 +272,7 @@ internal sealed partial class ChatServiceSession {
                 Message = $"Active profile set to '{name}'."
             }, cancellationToken).ConfigureAwait(false);
 
+            MarkStartupToolingBootstrapRecoveredAfterRuntimeMutation();
             return new SetProfileResult(ReconnectClient: decision.ReconnectClient, ModelChanged: decision.ModelChanged);
         } catch (Exception ex) {
             // Restore previous effective options (best-effort).
@@ -571,6 +572,7 @@ internal sealed partial class ChatServiceSession {
                     : "Runtime settings applied."
             }, cancellationToken).ConfigureAwait(false);
 
+            MarkStartupToolingBootstrapRecoveredAfterRuntimeMutation();
             return new SetProfileResult(ReconnectClient: decision.ReconnectClient, ModelChanged: decision.ModelChanged);
         } catch (Exception ex) {
             try {
@@ -618,6 +620,11 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        if (!clearRoutingCaches) {
+            // Best-effort preview for first-paint readiness while full bootstrap still runs.
+            TryApplyPersistedToolingBootstrapPreview();
+        }
+
         var startupWarnings = new List<string>();
         var totalStopwatch = Stopwatch.StartNew();
         static string FormatElapsed(TimeSpan elapsed) {
@@ -658,6 +665,8 @@ internal sealed partial class ChatServiceSession {
 
         var registryFinalizeStopwatch = Stopwatch.StartNew();
         var definitions = registry.GetDefinitions();
+        var toolDefinitions = BuildToolDefinitionDtosFromRegistryDefinitions(definitions);
+        Volatile.Write(ref _cachedToolDefinitions, toolDefinitions);
         _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
         _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
         _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
@@ -776,6 +785,7 @@ internal sealed partial class ChatServiceSession {
             bootstrapCacheKey,
             new ChatServiceToolingBootstrapSnapshot {
                 Registry = registry,
+                ToolDefinitions = toolDefinitions,
                 Packs = packs,
                 PackAvailability = packAvailability,
                 StartupWarnings = warnings,
@@ -807,6 +817,7 @@ internal sealed partial class ChatServiceSession {
         bool clearRoutingCaches,
         TimeSpan cacheHitElapsed) {
         _registry = snapshot.Registry;
+        Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packs = snapshot.Packs;
         _packAvailability = snapshot.PackAvailability.ToArray();
         _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
@@ -846,6 +857,37 @@ internal sealed partial class ChatServiceSession {
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();
         }
+    }
+
+    private bool TryApplyPersistedToolingBootstrapPreview() {
+        if (_toolingBootstrapCache is null) {
+            return false;
+        }
+
+        var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
+        var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+        var bootstrapCacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
+        if (!_toolingBootstrapCache.TryGetPersistedSnapshot(bootstrapCacheKey, out var persistedSnapshot)) {
+            return false;
+        }
+
+        ApplyToolingBootstrapPersistedSnapshot(persistedSnapshot);
+        return true;
+    }
+
+    private void ApplyToolingBootstrapPersistedSnapshot(ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
+        Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
+        _packAvailability = snapshot.PackAvailability.ToArray();
+        _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
+        _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
+        _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;
+        _startupBootstrap = snapshot.StartupBootstrap;
+
+        var warnings = new List<string>(snapshot.StartupWarnings.Length + 1);
+        warnings.AddRange(snapshot.StartupWarnings);
+        warnings.Add(
+            "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues.");
+        _startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 64);
     }
 
     private static string BuildToolingBootstrapCacheKey(

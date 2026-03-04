@@ -42,6 +42,20 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function parseStartupStatusContext(value)", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStatusChipFromStructuredStartupContext()", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStatusChipFallbackStatus()", script, StringComparison.Ordinal);
+        Assert.Contains("Ready (tool metadata degraded)", script, StringComparison.Ordinal);
+        Assert.Contains("Ready (retrying tool metadata sync)", script, StringComparison.Ordinal);
+        Assert.Contains("var STARTUP_HEADER_STAGE_TOTAL = 4;", script, StringComparison.Ordinal);
+        Assert.Contains("var STARTUP_HEADER_TIMEOUT_AFTER_MS = 45000;", script, StringComparison.Ordinal);
+        Assert.Contains("function resolveHeaderStartupProgressStatus(rawStatus)", script, StringComparison.Ordinal);
+        Assert.Contains("function shouldSuppressStartupMetadataContextFromDiagnostics(context)", script, StringComparison.Ordinal);
+        Assert.Contains("function isStartupDiagnosticsPhaseResultKnown(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function isStartupSignInWaitStillRelevant(rawStatus, connected, requiresInteractiveSignIn, authenticated, loginInProgress, authGateActive)", script, StringComparison.Ordinal);
+        Assert.Contains("function isStartupAuthVerificationStillRelevant(rawStatus, connected, requiresInteractiveSignIn, authenticated, loginInProgress, authGateActive)", script, StringComparison.Ordinal);
+        Assert.Contains("metadataResult === \"failed\" || metadataResult === \"success\"", script, StringComparison.Ordinal);
+        Assert.Contains("function isStaleStartupStatusContextCandidate(rawStatus, context, connected, toolsLoading, loginInProgress)", script, StringComparison.Ordinal);
+        Assert.Contains("Ready (tool packs syncing in background)", script, StringComparison.Ordinal);
+        Assert.Contains("function buildStartupProgressSnapshot(rows, activeKey, rawStatus, elapsedMs, loginInProgress)", script, StringComparison.Ordinal);
+        Assert.Contains("function applyStatusChipStartupProgress(statusEl, startupHeaderStatus)", script, StringComparison.Ordinal);
         Assert.Contains("lower.indexOf(\"usage limit\") >= 0", script, StringComparison.Ordinal);
         Assert.Contains("lower.indexOf(\"queue \") >= 0", script, StringComparison.Ordinal);
         Assert.Contains("if (!shouldRenderHeaderStatusChip(value)) {", script, StringComparison.Ordinal);
@@ -56,16 +70,42 @@ public sealed class UiShellAssetsTests {
     public void Load_IncludesRuntimeLifecycleStatusTimelineDiagnostics() {
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
         var coreScript = File.ReadAllText(coreScriptPath);
+        var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
+        var baseCss = File.ReadAllText(baseCssPath);
         var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
         var toolsScript = File.ReadAllText(toolsScriptPath);
         var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
         var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("statusTimeline: []", coreScript, StringComparison.Ordinal);
+        Assert.Contains("startupDiagnostics: null", coreScript, StringComparison.Ordinal);
         Assert.Contains("function appendStatusTimelineEntry(value)", coreScript, StringComparison.Ordinal);
-        Assert.Contains("statusEl.title = buildStatusChipTitle(displayValue, rawValue);", coreScript, StringComparison.Ordinal);
+        Assert.Contains("function buildStartupPhaseTimelineModel()", coreScript, StringComparison.Ordinal);
+        Assert.Contains("statusEl.title = buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus);", coreScript, StringComparison.Ordinal);
         Assert.Contains("Runtime lifecycle: \" + state.statusTimeline.join(\" > \")", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("var startupPhaseTimeline = byId(\"optStartupPhaseTimeline\");", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("var startupDiagnosticsState = byId(\"optStartupDiagnosticsState\");", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("appendStartupDiagKv(\"bootstrap cache\", cacheText);", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("appendStartupDiagKv(\"metadata recovery\", metadataRecoveryParts.join(\" | \"));", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("Metadata recovery rerun is queued.", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("Waiting for sign-in before loading tools...", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("Syncing tool packs in background...", toolsScript, StringComparison.Ordinal);
         Assert.Contains("if (Array.isArray(nextState.statusTimeline)) {", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains(".status-chip.status-chip-progress {", baseCss, StringComparison.Ordinal);
+        Assert.Contains("--ix-startup-progress", baseCss, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the debug tab exposes a dedicated startup diagnostics section for runtime bootstrap latency troubleshooting.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesStartupDiagnosticsDebugSection() {
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("id=\"optStartupDiagnosticsState\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optStartupDiagnosticsKv\"", html, StringComparison.Ordinal);
+        Assert.Contains(">Startup Diagnostics<", html, StringComparison.Ordinal);
     }
 
     /// <summary>

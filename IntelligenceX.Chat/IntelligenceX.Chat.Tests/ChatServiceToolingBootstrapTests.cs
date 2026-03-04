@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -35,10 +38,13 @@ public sealed class ChatServiceToolingBootstrapTests {
 
     [Fact]
     public void RebuildToolingFromOptions_CapturesStartupBootstrapPhases() {
+        var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
         var startupBootstrapField = typeof(ChatServiceSession).GetField("_startupBootstrap", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildMethod);
         Assert.NotNull(startupBootstrapField);
 
         var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        rebuildMethod!.Invoke(session, Array.Empty<object>());
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(session));
 
         Assert.Equal(5, startupBootstrap.Phases.Length);
@@ -53,25 +59,108 @@ public sealed class ChatServiceToolingBootstrapTests {
 
     [Fact]
     public void Constructor_UsesSharedToolingBootstrapCache_WhenProvided() {
+        var rebuildCoreMethod = typeof(ChatServiceSession).GetMethod(
+            "RebuildToolingCore",
+            BindingFlags.NonPublic | BindingFlags.Instance);
         var startupBootstrapField = typeof(ChatServiceSession).GetField("_startupBootstrap", BindingFlags.NonPublic | BindingFlags.Instance);
         var startupWarningsField = typeof(ChatServiceSession).GetField("_startupWarnings", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildCoreMethod);
         Assert.NotNull(startupBootstrapField);
         Assert.NotNull(startupWarningsField);
 
-        var cache = new ChatServiceToolingBootstrapCache();
+        var cachePath = Path.Combine(
+            Path.GetTempPath(),
+            "IntelligenceX.Chat.Tests",
+            "tooling-cache-" + Guid.NewGuid().ToString("N") + ".json");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
 
-        var firstSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
-        var firstBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(firstSession));
-        Assert.NotEmpty(firstBootstrap.Phases);
-        Assert.NotEqual("cache_hit", firstBootstrap.Phases[0].Id);
+        try {
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
 
-        var secondSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
-        var secondBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField.GetValue(secondSession));
-        Assert.Single(secondBootstrap.Phases);
-        Assert.Equal("cache_hit", secondBootstrap.Phases[0].Id);
+            var firstSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
+            rebuildCoreMethod!.Invoke(firstSession, new object?[] { false });
+            var firstBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(firstSession));
+            Assert.NotEmpty(firstBootstrap.Phases);
+            Assert.NotEqual("cache_hit", firstBootstrap.Phases[0].Id);
 
-        var secondWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(secondSession));
-        Assert.Contains(secondWarnings, static warning => warning.Contains("tooling bootstrap cache hit", StringComparison.OrdinalIgnoreCase));
+            var secondSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
+            var secondPreviewWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(secondSession));
+            Assert.Contains(
+                secondPreviewWarnings,
+                static warning => warning.Contains("persisted cache", StringComparison.OrdinalIgnoreCase));
+
+            rebuildCoreMethod.Invoke(secondSession, new object?[] { false });
+            var secondBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField.GetValue(secondSession));
+            Assert.Single(secondBootstrap.Phases);
+            Assert.Equal("cache_hit", secondBootstrap.Phases[0].Id);
+
+            var secondWarnings = Assert.IsType<string[]>(startupWarningsField.GetValue(secondSession));
+            Assert.Contains(secondWarnings, static warning => warning.Contains("tooling bootstrap cache hit", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void ToolingBootstrapCache_PersistsSnapshotToDisk_AndRestoresToolDefinitions() {
+        var cachePath = Path.Combine(
+            Path.GetTempPath(),
+            "IntelligenceX.Chat.Tests",
+            "tooling-cache-roundtrip-" + Guid.NewGuid().ToString("N") + ".json");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            const string cacheKey = "unit-test-cache-key";
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                cacheKey,
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "unit_test_tool",
+                            Description = "unit test tool definition"
+                        }
+                    },
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
+                    StartupWarnings = new[] { "[startup] unit-test warning" },
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                });
+
+            var reloaded = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.True(reloaded.TryGetPersistedSnapshot(cacheKey, out var persistedSnapshot));
+            var toolDefinition = Assert.Single(persistedSnapshot.ToolDefinitions);
+            Assert.Equal("unit_test_tool", toolDefinition.Name);
+            Assert.Equal("unit test tool definition", toolDefinition.Description);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
     }
 
     [Fact]

@@ -455,6 +455,10 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        // Keep options-state toolsLoading derived from live watchdog-cleared startup
+        // metadata flags so stale queued state cannot pin loading UI forever.
+        _ = ApplyStartupMetadataSyncWatchdog();
+
         var packs = _sessionPolicy?.Packs is { Length: > 0 }
             ? BuildPackState(_sessionPolicy.Packs)
             : Array.Empty<object>();
@@ -469,6 +473,7 @@ public sealed partial class MainWindow : Window {
         var accountUsageState = BuildAccountUsageState();
         var activeAccountUsageState = BuildActiveAccountUsageState();
         var runtimeCapabilitiesState = BuildLocalRuntimeCapabilitiesState();
+        var startupDiagnosticsState = BuildStartupDiagnosticsState();
         var json = JsonSerializer.Serialize(new {
             timestampMode = _timestampMode,
             timestampFormat = _timestampFormat,
@@ -495,6 +500,7 @@ public sealed partial class MainWindow : Window {
             },
             memory = BuildMemoryState(),
             memoryDebug = BuildMemoryDebugState(),
+            startupDiagnostics = startupDiagnosticsState,
             debug = new {
                 showTurnTrace = _showAssistantTurnTrace,
                 showDraftBubbles = _showAssistantDraftBubbles

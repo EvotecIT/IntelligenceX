@@ -131,6 +131,27 @@ public sealed partial class MainWindow : Window {
         return false;
     }
 
+    internal static bool ShouldApplyServiceProfile(
+        string[] serviceProfileNames,
+        string appProfileName,
+        string? activeServiceProfileName,
+        bool newThread) {
+        if (!ContainsProfileName(serviceProfileNames, appProfileName)) {
+            return false;
+        }
+
+        if (newThread) {
+            return true;
+        }
+
+        var normalizedActiveProfile = NormalizeProfileName(activeServiceProfileName);
+        return !string.Equals(normalizedActiveProfile, appProfileName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeProfileName(string? value) {
+        return (value ?? string.Empty).Trim();
+    }
+
     private static bool ContainsModel(ModelInfoDto[] models, string modelName) {
         if (models is null || models.Length == 0 || string.IsNullOrWhiteSpace(modelName)) {
             return false;

@@ -165,11 +165,15 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.LoginFailed(done.Error));
                     }
                     if (done.Ok) {
-                        var shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync = ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
-                                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
-                                isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport());
-                        if (ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess(
-                                shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync: shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
+                        var shouldQueueMetadataSync = ShouldQueueDeferredStartupMetadataSyncAfterAuthenticationReady(
+                            isConnected: _isConnected,
+                            requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                            isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport(),
+                            loginInProgress: _loginInProgress,
+                            hasSessionPolicy: _sessionPolicy is not null);
+                        if (shouldQueueMetadataSync
+                            && ShouldQueueDeferredStartupMetadataSyncAfterLoginSuccess(
+                                shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync: false,
                                 loginSuccessMetadataSyncAlreadyQueued: Volatile.Read(ref _startupLoginSuccessMetadataSyncQueued) != 0)
                             && Interlocked.CompareExchange(ref _startupLoginSuccessMetadataSyncQueued, 1, 0) == 0) {
                             QueueDeferredStartupConnectMetadataSync(requestRerunIfBusy: true);
@@ -670,6 +674,7 @@ public sealed partial class MainWindow : Window {
             } else if (!_isAuthenticated) {
                 _authenticatedAccountId = null;
             }
+            ResetStartupMetadataFailureRecoveryDiagnostics();
             if (resetEnsureLoginProbeCache) {
                 ResetEnsureLoginProbeCache();
             }

@@ -147,6 +147,7 @@ body {
   white-space: nowrap;
   min-width: 116px;
   margin-right: 2px;
+  overflow: hidden;
 }
 
 .status-chip-routing {
@@ -205,6 +206,32 @@ body {
 
 .status-chip.bad::before {
   background: var(--ix-status-bad);
+}
+
+.status-chip.status-chip-progress {
+  --ix-startup-progress: 0%;
+  --ix-startup-progress-fill: rgba(76, 195, 255, 0.24);
+  background-image: linear-gradient(
+    90deg,
+    var(--ix-startup-progress-fill) 0,
+    var(--ix-startup-progress-fill) var(--ix-startup-progress),
+    transparent var(--ix-startup-progress),
+    transparent 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.status-chip.warn.status-chip-progress {
+  --ix-startup-progress-fill: rgba(255, 206, 107, 0.26);
+}
+
+.status-chip.ok.status-chip-progress {
+  --ix-startup-progress-fill: rgba(100, 240, 205, 0.24);
+}
+
+.status-chip.bad.status-chip-progress {
+  --ix-startup-progress-fill: rgba(255, 142, 162, 0.26);
 }
 
 @media (max-width: 980px) {

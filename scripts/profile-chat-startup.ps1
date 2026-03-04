@@ -20,7 +20,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not $IsWindows) {
+$runningOnWindows = if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+    [bool]$IsWindows
+} else {
+    [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)
+}
+
+if (-not $runningOnWindows) {
     throw "This profiler targets the WinUI chat app and currently requires Windows."
 }
 
@@ -165,12 +171,12 @@ function Parse-StartupConnectAttemptDiagnostics([string[]] $lines) {
             continue
         }
 
-        if ($line -match 'StartupConnect\.ensure_sidecar elapsed_ms=(?<elapsed>\d+)') {
+        if ($line -match 'StartupConnect\.ensure_sidecar(?:\.recovery)? elapsed_ms=(?<elapsed>\d+)') {
             $ensureSidecarElapsedMs = [int]$Matches['elapsed']
             continue
         }
 
-        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry)|ensure_sidecar)\s+(?:attempt=(?<attempt>\d+)\s+)?outlier elapsed_ms=(?<elapsed>\d+)\s+threshold_ms=(?<threshold>\d+)') {
+        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry|recovery)|ensure_sidecar(?:\.recovery)?)\s+(?:attempt=(?<attempt>\d+)\s+)?outlier elapsed_ms=(?<elapsed>\d+)\s+threshold_ms=(?<threshold>\d+)') {
             $totalOutlierCount++
             $phase = $Matches['phase']
             if ($phase.StartsWith('pipe_connect.', [StringComparison]::Ordinal)) {
@@ -194,7 +200,7 @@ function Parse-StartupConnectAttemptDiagnostics([string[]] $lines) {
             continue
         }
 
-        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry)) attempt=(?<attempt>\d+) start requested_timeout_ms=(?<requested>\d+) timeout_ms=(?<timeout>\d+) hard_timeout_ms=(?<hard>\d+) budget_remaining_ms=(?<budget>[a-zA-Z0-9_\-]+)') {
+        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry|recovery)) attempt=(?<attempt>\d+) start requested_timeout_ms=(?<requested>\d+) timeout_ms=(?<timeout>\d+) hard_timeout_ms=(?<hard>\d+) budget_remaining_ms=(?<budget>[a-zA-Z0-9_\-]+)') {
             $phase = $Matches['phase']
             $attempt = [int]$Matches['attempt']
             $attemptRecord = Get-OrCreate-ConnectAttemptRecord $attemptMap $attemptOrder $phase $attempt
@@ -205,7 +211,7 @@ function Parse-StartupConnectAttemptDiagnostics([string[]] $lines) {
             continue
         }
 
-        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry)) attempt=(?<attempt>\d+) (?<status>success|failed) elapsed_ms=(?<elapsed>\d+)(?: error_type=(?<errorType>\S+))?(?: error=(?<error>.*))?') {
+        if ($line -match 'StartupConnect\.(?<phase>pipe_connect\.(?:initial|retry|recovery)) attempt=(?<attempt>\d+) (?<status>success|failed) elapsed_ms=(?<elapsed>\d+)(?: error_type=(?<errorType>\S+))?(?: error=(?<error>.*))?') {
             $phase = $Matches['phase']
             $attempt = [int]$Matches['attempt']
             $attemptRecord = Get-OrCreate-ConnectAttemptRecord $attemptMap $attemptOrder $phase $attempt

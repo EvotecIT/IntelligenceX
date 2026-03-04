@@ -118,8 +118,12 @@ public sealed partial class MainWindow : Window {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             var profiles = await client.ListProfilesAsync(cts.Token).ConfigureAwait(false);
             _serviceProfileNames = NormalizeProfileNames(profiles.Profiles);
+            _serviceActiveProfileName = string.IsNullOrWhiteSpace(profiles.ActiveProfile)
+                ? null
+                : profiles.ActiveProfile.Trim();
         } catch (Exception ex) {
             _serviceProfileNames = Array.Empty<string>();
+            _serviceActiveProfileName = null;
             if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
                 AppendSystem("Couldn't load service profiles: " + ex.Message);
             }
@@ -131,13 +135,14 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> TryApplyServiceProfileAsync(ChatServiceClient client, bool newThread, bool appendWarnings) {
-        if (!ContainsProfileName(_serviceProfileNames, _appProfileName)) {
+        if (!ShouldApplyServiceProfile(_serviceProfileNames, _appProfileName, _serviceActiveProfileName, newThread)) {
             return false;
         }
 
         try {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             _ = await client.SetProfileAsync(_appProfileName, newThread, cts.Token).ConfigureAwait(false);
+            _serviceActiveProfileName = _appProfileName;
             return true;
         } catch (Exception ex) {
             if (appendWarnings && (VerboseServiceLogs || _debugMode)) {

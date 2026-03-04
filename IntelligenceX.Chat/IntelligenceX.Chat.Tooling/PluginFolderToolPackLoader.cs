@@ -87,7 +87,7 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var roots = ResolvePluginSearchRoots(options);
-        var pendingPluginDirectories = new List<(string PluginDirectory, bool IsExplicitRoot)>();
+        var pendingPluginDirectories = new List<(string PluginDirectory, bool IsExplicitRoot, string PluginIdentity)>();
         foreach (var root in roots) {
             if (!Directory.Exists(root.Path)) {
                 if (root.IsExplicit) {
@@ -97,15 +97,26 @@ internal static partial class PluginFolderToolPackLoader {
             }
 
             foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, options, onWarning)) {
-                pendingPluginDirectories.Add((pluginDirectory, root.IsExplicit));
+                var pluginIdentity = ResolvePluginIdentity(pluginDirectory);
+                pendingPluginDirectories.Add((pluginDirectory, root.IsExplicit, pluginIdentity));
             }
         }
 
+        var loadedPluginIdentities = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var total = pendingPluginDirectories.Count;
         for (var i = 0; i < pendingPluginDirectories.Count; i++) {
             var pending = pendingPluginDirectories[i];
+            if (pending.PluginIdentity.Length > 0
+                && loadedPluginIdentities.TryGetValue(pending.PluginIdentity, out var existingDirectory)) {
+                if (pending.IsExplicitRoot) {
+                    onWarning?.Invoke(
+                        $"[plugin] duplicate_plugin_identity plugin='{pending.PluginIdentity}' path='{pending.PluginDirectory}' existing='{existingDirectory}' action='skipped'");
+                }
+                continue;
+            }
+
             var loadedPacksByAssemblyName = BuildLoadedPacksByAssemblyName(packs);
-            TryLoadPluginDirectory(
+            var loadedAnyPack = TryLoadPluginDirectory(
                 pluginDirectory: pending.PluginDirectory,
                 isExplicitRoot: pending.IsExplicitRoot,
                 options: options,
@@ -116,6 +127,9 @@ internal static partial class PluginFolderToolPackLoader {
                 onPackAvailability: onPackAvailability,
                 loadIndex: i + 1,
                 loadTotal: total);
+            if (loadedAnyPack && pending.PluginIdentity.Length > 0) {
+                loadedPluginIdentities[pending.PluginIdentity] = pending.PluginDirectory;
+            }
         }
     }
 
@@ -208,6 +222,44 @@ internal static partial class PluginFolderToolPackLoader {
         } catch {
             return false;
         }
+    }
+
+    private static string ResolvePluginIdentity(string pluginDirectory) {
+        var fallback = (Path.GetFileName(pluginDirectory) ?? string.Empty).Trim();
+        if (fallback.Length == 0) {
+            return string.Empty;
+        }
+
+        var manifestPath = Path.Combine(pluginDirectory, ManifestFileName);
+        if (!File.Exists(manifestPath)) {
+            return fallback;
+        }
+
+        try {
+            using var stream = File.OpenRead(manifestPath);
+            using var json = JsonDocument.Parse(stream);
+            if (json.RootElement.ValueKind != JsonValueKind.Object) {
+                return fallback;
+            }
+
+            var pluginId = TryReadManifestString(json.RootElement, "pluginId");
+            if (pluginId.Length == 0) {
+                pluginId = TryReadManifestString(json.RootElement, "packageId");
+            }
+
+            return pluginId.Length == 0 ? fallback : pluginId;
+        } catch {
+            return fallback;
+        }
+    }
+
+    private static string TryReadManifestString(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String) {
+            return string.Empty;
+        }
+
+        var value = property.GetString();
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
     }
 
     private static string? TryMaterializePluginArchive(string archivePath, ToolPackBootstrapOptions options, Action<string>? onWarning) {

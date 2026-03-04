@@ -58,6 +58,7 @@ internal sealed partial class ChatServiceSession {
     private string[] _startupWarnings;
     private SessionStartupBootstrapTelemetryDto? _startupBootstrap;
     private string[] _pluginSearchPaths;
+    private ToolDefinitionDto[] _cachedToolDefinitions;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
@@ -99,6 +100,7 @@ internal sealed partial class ChatServiceSession {
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private string? _instructions;
+    private Task? _startupToolingBootstrapTask;
 
     private readonly object _loginLock = new();
     private LoginFlow? _login;
@@ -111,7 +113,21 @@ internal sealed partial class ChatServiceSession {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _toolingBootstrapCache = toolingBootstrapCache;
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        RebuildToolingCore(clearRoutingCaches: false);
+
+        _runtimePolicyDiagnostics = BuildDefaultRuntimePolicyDiagnostics(_options);
+        _registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = _runtimePolicyDiagnostics.RequireExplicitRoutingMetadata
+        };
+        _packs = Array.Empty<IToolPack>();
+        _packAvailability = Array.Empty<ToolPackAvailabilityInfo>();
+        _startupWarnings = Array.Empty<string>();
+        _startupBootstrap = null;
+        _pluginSearchPaths = Array.Empty<string>();
+        _cachedToolDefinitions = Array.Empty<ToolDefinitionDto>();
+        _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+        _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>());
+        UpdatePackMetadataIndexes(Array.Empty<ToolPackDescriptor>());
+        TryApplyPersistedToolingBootstrapPreview();
 
         _json = new JsonSerializerOptions {
             TypeInfoResolver = ChatServiceJsonContext.Default
@@ -154,6 +170,61 @@ internal sealed partial class ChatServiceSession {
                or ChatRequest;
     }
 
+    internal static bool RequestRequiresToolingBootstrap(ChatServiceRequest request) {
+        return request is ListToolsRequest
+               or CheckToolHealthRequest
+               or InvokeToolRequest
+               or ChatRequest
+               or SetProfileRequest
+               or ApplyRuntimeSettingsRequest;
+    }
+
+    internal static string BuildToolingBootstrapFailureMessage(ChatServiceRequest request, Exception exception) {
+        var detail = (exception?.GetBaseException().Message ?? exception?.Message ?? string.Empty).Trim();
+        if (detail.Length == 0) {
+            detail = "Tool bootstrap failed.";
+        }
+
+        return request switch {
+            ListToolsRequest => "Couldn't load tool catalog because tool bootstrap failed: " + detail,
+            CheckToolHealthRequest => "Couldn't run tool health probes because tool bootstrap failed: " + detail,
+            InvokeToolRequest => "Couldn't invoke tool because tool bootstrap failed: " + detail,
+            ChatRequest => "Couldn't start chat because tool bootstrap failed: " + detail,
+            SetProfileRequest => "Couldn't apply runtime profile because tool bootstrap failed: " + detail,
+            ApplyRuntimeSettingsRequest => "Couldn't apply runtime settings because tool bootstrap failed: " + detail,
+            _ => "Couldn't continue because tool bootstrap failed: " + detail
+        };
+    }
+
+    private static ToolRuntimePolicyDiagnostics BuildDefaultRuntimePolicyDiagnostics(ServiceOptions options) {
+        var policyOptions = BuildRuntimePolicyOptions(options);
+        var context = ToolRuntimePolicyBootstrap.CreateContext(policyOptions);
+        return ToolRuntimePolicyBootstrap.BuildDiagnostics(context);
+    }
+
+    private string[] BuildHelloStartupWarnings(Task startupToolingBootstrapTask) {
+        if (startupToolingBootstrapTask.IsCompletedSuccessfully) {
+            return _startupWarnings;
+        }
+
+        var warnings = new List<string>(_startupWarnings.Length + 1);
+        warnings.AddRange(_startupWarnings);
+        if (!startupToolingBootstrapTask.IsCompleted) {
+            warnings.Add("[startup] Tool bootstrap in progress. Tool metadata may be incomplete.");
+        } else if (startupToolingBootstrapTask.IsFaulted) {
+            var detail = (startupToolingBootstrapTask.Exception?.GetBaseException().Message ?? "Tool bootstrap failed.").Trim();
+            if (detail.Length == 0) {
+                detail = "Tool bootstrap failed.";
+            }
+
+            warnings.Add("[startup] Tool bootstrap failed: " + detail);
+        } else if (startupToolingBootstrapTask.IsCanceled) {
+            warnings.Add("[startup] Tool bootstrap canceled before completion.");
+        }
+
+        return NormalizeDistinctStrings(warnings, maxItems: 64);
+    }
+
     internal static string BuildClientConnectFailureMessage(ChatServiceRequest request, Exception exception) {
         var detail = (exception?.Message ?? string.Empty).Trim();
         if (detail.Length == 0) {
@@ -170,7 +241,21 @@ internal sealed partial class ChatServiceSession {
     public async Task RunAsync(CancellationToken cancellationToken) {
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
-        var startupToolHealthPrimeTask = RunStartupToolHealthPrimingAsync(cancellationToken);
+        var startupToolingBootstrapTask = Task.Run(() => RebuildToolingCore(clearRoutingCaches: false), CancellationToken.None);
+        _startupToolingBootstrapTask = startupToolingBootstrapTask;
+        _ = startupToolingBootstrapTask.ContinueWith(
+            faultedBootstrapTask => {
+                var detail = (faultedBootstrapTask.Exception?.GetBaseException().Message ?? "Tool bootstrap failed.").Trim();
+                if (detail.Length == 0) {
+                    detail = "Tool bootstrap failed.";
+                }
+
+                RecordStartupWarning("[startup] Tool bootstrap failed: " + detail);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        _ = RunStartupToolHealthPrimingAfterToolingBootstrapAsync(startupToolingBootstrapTask, cancellationToken);
 
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
@@ -229,6 +314,26 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                var activeStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask) ?? startupToolingBootstrapTask;
+                if (RequestRequiresToolingBootstrap(request)) {
+                    var shouldBypassToolingBootstrapWait = ShouldBypassToolingBootstrapWait(request, activeStartupToolingBootstrapTask);
+                    try {
+                        if (!shouldBypassToolingBootstrapWait) {
+                            await activeStartupToolingBootstrapTask.ConfigureAwait(false);
+                        }
+                    } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                        break;
+                    } catch (Exception ex) {
+                        await WriteAsync(writer, new ErrorMessage {
+                            Kind = ChatServiceMessageKind.Response,
+                            RequestId = request.RequestId,
+                            Error = BuildToolingBootstrapFailureMessage(request, ex),
+                            Code = "tooling_bootstrap_failed"
+                        }, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+                }
+
                 IntelligenceXClient? connectedClient = null;
                 if (RequestRequiresConnectedClient(request)) {
                     try {
@@ -246,7 +351,8 @@ internal sealed partial class ChatServiceSession {
 
                 switch (request) {
                     case HelloRequest:
-                        await AwaitStartupToolHealthPrimingForHelloAsync(startupToolHealthPrimeTask, cancellationToken).ConfigureAwait(false);
+                        var helloStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask) ?? startupToolingBootstrapTask;
+                        var helloStartupWarnings = BuildHelloStartupWarnings(helloStartupToolingBootstrapTask);
                         await WriteAsync(writer, new HelloMessage {
                             Kind = ChatServiceMessageKind.Response,
                             RequestId = request.RequestId,
@@ -256,7 +362,7 @@ internal sealed partial class ChatServiceSession {
                             Policy = BuildSessionPolicy(
                                 _options,
                                 _packAvailability,
-                                _startupWarnings,
+                                helloStartupWarnings,
                                 _startupBootstrap,
                                 _pluginSearchPaths,
                                 _runtimePolicyDiagnostics,
@@ -391,10 +497,54 @@ internal sealed partial class ChatServiceSession {
                 }
             }
         } finally {
+            _startupToolingBootstrapTask = null;
             await CancelActiveChatIfAnyAsync().ConfigureAwait(false);
             CancelLoginIfActive();
             await DisposeClientAsync(client).ConfigureAwait(false);
         }
+    }
+
+    internal static bool ShouldBypassToolingBootstrapWaitForListTools(
+        bool isListToolsRequest,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool hasCachedToolCatalog) {
+        if (!isListToolsRequest || !startupToolingBootstrapCompletedSuccessfully) {
+            return false;
+        }
+
+        return hasCachedToolCatalog;
+    }
+
+    internal static bool ShouldBypassToolingBootstrapWaitForRecoveryRequests(
+        bool isRecoveryRequest,
+        bool startupToolingBootstrapCompleted,
+        bool startupToolingBootstrapCompletedSuccessfully) {
+        return isRecoveryRequest
+               && startupToolingBootstrapCompleted
+               && !startupToolingBootstrapCompletedSuccessfully;
+    }
+
+    private bool ShouldBypassToolingBootstrapWait(ChatServiceRequest request, Task startupToolingBootstrapTask) {
+        if (ShouldBypassToolingBootstrapWaitForRecoveryRequests(
+                isRecoveryRequest: request is SetProfileRequest or ApplyRuntimeSettingsRequest,
+                startupToolingBootstrapCompleted: startupToolingBootstrapTask.IsCompleted,
+                startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully)) {
+            return true;
+        }
+
+        return ShouldBypassToolingBootstrapWaitForListTools(
+            isListToolsRequest: request is ListToolsRequest,
+            startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully,
+            hasCachedToolCatalog: TryGetCachedToolCatalogForListTools(out _));
+    }
+
+    private void MarkStartupToolingBootstrapRecoveredAfterRuntimeMutation() {
+        var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        if (startupToolingBootstrapTask is null || startupToolingBootstrapTask.IsCompletedSuccessfully) {
+            return;
+        }
+
+        Volatile.Write(ref _startupToolingBootstrapTask, Task.CompletedTask);
     }
 
 }
