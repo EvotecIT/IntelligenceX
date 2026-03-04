@@ -489,6 +489,30 @@ public sealed class HostScenarioAssertionTests {
     }
 
     [Fact]
+    public void BuildScenarioTurnPrompt_UsesNotInForbiddenInputSyntax() {
+        const string json = """
+{
+  "name": "forbidden-input-contract-shape",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on non-AD0 DCs only.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*"],
+      "forbid_tool_input_values": { "machine_name": ["AD0"] }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("forbidden_tool_inputs: machine_name not-in [AD0]", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Forbidden tool input values: machine_name not-in [AD0].", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void EvaluateScenarioAssertions_PassesWhenDistinctToolInputCoverageIsSatisfied() {
         const string json = """
 {

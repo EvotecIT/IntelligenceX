@@ -428,18 +428,11 @@ internal static partial class Program {
 
             var segments = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             foreach (var segment in segments) {
-                var pair = segment.Split("!=", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (pair.Length != 2) {
+                if (!TrySplitScenarioForbiddenInputRequirement(segment, out var normalizedKey, out var valuesExpression)) {
                     continue;
                 }
 
-                var key = (pair[0] ?? string.Empty).Trim();
-                if (key.Length == 0) {
-                    continue;
-                }
-
-                var normalizedKey = key;
-                var rawValues = (pair[1] ?? string.Empty)
+                var rawValues = valuesExpression
                     .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 if (rawValues.Length == 0) {
                     continue;
@@ -459,6 +452,47 @@ internal static partial class Program {
                     }
                 }
             }
+        }
+
+        private static bool TrySplitScenarioForbiddenInputRequirement(
+            string? segment,
+            out string key,
+            out string valuesExpression) {
+            key = string.Empty;
+            valuesExpression = string.Empty;
+
+            var rawSegment = (segment ?? string.Empty).Trim();
+            if (rawSegment.Length == 0) {
+                return false;
+            }
+
+            var notEqualsIndex = rawSegment.IndexOf("!=", StringComparison.Ordinal);
+            if (notEqualsIndex > 0) {
+                key = rawSegment[..notEqualsIndex].Trim();
+                valuesExpression = rawSegment[(notEqualsIndex + 2)..].Trim();
+            } else {
+                var match = Regex.Match(
+                    rawSegment,
+                    "^(?<key>[^\\s]+)\\s+not(?:\\s*-\\s*|\\s+)in\\s*(?<values>.+)$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!match.Success) {
+                    return false;
+                }
+
+                key = (match.Groups["key"].Value ?? string.Empty).Trim();
+                valuesExpression = (match.Groups["values"].Value ?? string.Empty).Trim();
+            }
+
+            if (key.Length == 0 || valuesExpression.Length == 0) {
+                return false;
+            }
+
+            if ((valuesExpression.StartsWith("[", StringComparison.Ordinal) && valuesExpression.EndsWith("]", StringComparison.Ordinal))
+                || (valuesExpression.StartsWith("{", StringComparison.Ordinal) && valuesExpression.EndsWith("}", StringComparison.Ordinal))) {
+                valuesExpression = valuesExpression.Substring(1, valuesExpression.Length - 2).Trim();
+            }
+
+            return key.Length > 0 && valuesExpression.Length > 0;
         }
 
         private static string NormalizeScenarioContractInputValue(string inputKey, string value) {
@@ -834,7 +868,7 @@ internal static partial class Program {
                             continue;
                         }
 
-                        forbiddenDirectives.Add(requirement.Key + "!=" + string.Join("|", forbiddenValues));
+                        forbiddenDirectives.Add(requirement.Key + " not-in [" + string.Join("|", forbiddenValues) + "]");
                     }
 
                     if (forbiddenDirectives.Count > 0) {

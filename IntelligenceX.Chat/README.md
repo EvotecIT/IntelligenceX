@@ -119,6 +119,7 @@ Included AD scenario seeds:
 - `IntelligenceX.Chat/scenarios/ad-domainwide-reboot-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-eventlog-tool-capability-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-other-dcs-go-ahead-followthrough-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-other-dcs-transcript-replay-guardrail-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-ldap-adws-health-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-ldap-go-ahead-followthrough-8-turn.json`

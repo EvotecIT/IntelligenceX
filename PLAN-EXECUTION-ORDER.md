@@ -81,6 +81,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: weighted/planner subset routing now retains explicitly requested tool ids (including escaped markdown ids) in candidate selection, preventing false "tool inactive" responses for registered tools during follow-up turns.
 - [x] Regression coverage expanded: planner/routing tests now lock explicit escaped tool-id retention in weighted subset selection and ensure planner minimum-selection backfill replaces non-explicit tools at limit when needed.
 - [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after explicit tool-id subset retention hardening.
+- [x] Scenario-contract clarity hardening: host scenario execution contracts/retry prompts now emit forbidden input directives as `not-in [..]` (parser remains backward-compatible with legacy `!=` syntax) to avoid non-AD0 constraint inversion during repair.
+- [x] Transcript replay guardrail scenario added and validated: `ad-other-dcs-transcript-replay-guardrail-10-turn` passes `10/10`, proving cross-DC continuation execution and explicit non-AD0 follow-up behavior under transcript wording.
 
 ## Rules For This Migration
 

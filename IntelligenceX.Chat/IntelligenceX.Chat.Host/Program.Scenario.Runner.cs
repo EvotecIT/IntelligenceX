@@ -218,10 +218,20 @@ internal static partial class Program {
         if (turn.ForbidToolInputValues.Count > 0) {
             var requirements = turn.ForbidToolInputValues
                 .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(static pair => pair.Key + "!=" + string.Join("|", pair.Value
-                    .Where(static value => !string.IsNullOrWhiteSpace(value))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)))
-                .Where(static requirement => !requirement.EndsWith("!=", StringComparison.Ordinal))
+                .Select(static pair => {
+                    var values = pair.Value
+                        .Where(static value => !string.IsNullOrWhiteSpace(value))
+                        .Select(static value => value.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                    if (values.Length == 0) {
+                        return string.Empty;
+                    }
+
+                    return pair.Key + " not-in [" + string.Join("|", values) + "]";
+                })
+                .Where(static requirement => requirement.Length > 0)
                 .ToArray();
             if (requirements.Length > 0) {
                 sb.AppendLine("- Forbidden tool input values: " + string.Join(", ", requirements) + ".");
@@ -309,7 +319,7 @@ internal static partial class Program {
                     .ToArray();
                 return values.Length == 0
                     ? string.Empty
-                    : pair.Key + "!=" + string.Join("|", values);
+                    : pair.Key + " not-in [" + string.Join("|", values) + "]";
             })
             .Where(static value => value.Length > 0)
             .ToArray();
