@@ -173,6 +173,51 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
     }
 
+    [Fact]
+    public void TryGetContinuationToolSubset_DoesNotReuseStaleCapabilitySnapshot() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-capability-subset-stale-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        const string threadId = "thread-continuation-capability-snapshot-stale";
+        var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
+        var staleSeenUtcTicks = DateTime.UtcNow.Subtract(TimeSpan.FromDays(2)).Ticks;
+
+        try {
+            var session1 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            session1.RememberWorkingMemoryCheckpointForTesting(
+                threadId: threadId,
+                intentAnchor: "continue dns diagnostics",
+                domainIntentFamily: "public_domain",
+                recentToolNames: Array.Empty<string>(),
+                recentEvidenceSnippets: Array.Empty<string>(),
+                enabledPackIds: new[] { "dnsclientx" },
+                routingFamilies: new[] { "public_domain" },
+                healthyToolNames: new[] { "dnsclientx_query", "dnsclientx_ping" },
+                seenUtcTicks: staleSeenUtcTicks);
+
+            var session2 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+
+            var args = new object?[] { threadId, "continue", allDefinitions, null };
+            var result = TryGetContinuationToolSubsetMethod.Invoke(session2, args);
+
+            Assert.False(Assert.IsType<bool>(result));
+            var subset = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(args[3]);
+            Assert.Empty(subset);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
+    }
+
     private static List<ToolDefinition> BuildContinuationSubsetTestToolDefinitions() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         return new List<ToolDefinition> {

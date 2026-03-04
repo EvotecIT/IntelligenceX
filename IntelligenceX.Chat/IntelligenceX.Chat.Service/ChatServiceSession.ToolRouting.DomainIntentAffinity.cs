@@ -479,7 +479,12 @@ internal sealed partial class ChatServiceSession {
         if (previousNames is null || previousNames.Length == 0) {
             if (!TryLoadWeightedToolSubsetSnapshot(normalizedThreadId, out seenUtcTicks, out var persistedNames)
                 || persistedNames.Length == 0) {
-                if (!TryGetContinuationToolSubsetFromCapabilitySnapshot(normalizedThreadId, allDefinitions, out var capabilitySubset, out var capabilityToolNames)
+                if (!TryGetContinuationToolSubsetFromCapabilitySnapshot(
+                        normalizedThreadId,
+                        allDefinitions,
+                        out var capabilitySubset,
+                        out var capabilityToolNames,
+                        out var capabilitySeenUtcTicks)
                     || capabilitySubset.Count < 2
                     || capabilityToolNames.Length < 2) {
                     return false;
@@ -487,7 +492,7 @@ internal sealed partial class ChatServiceSession {
 
                 selected = new List<ToolDefinition>(capabilitySubset);
                 previousNames = capabilityToolNames;
-                seenUtcTicks = DateTime.UtcNow.Ticks;
+                seenUtcTicks = capabilitySeenUtcTicks;
             } else {
                 previousNames = persistedNames;
                 lock (_toolRoutingContextLock) {
@@ -522,7 +527,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (selected.Count < 2) {
-            if (!TryGetContinuationToolSubsetFromCapabilitySnapshot(normalizedThreadId, allDefinitions, out var capabilitySubset, out var capabilityToolNames)
+            if (!TryGetContinuationToolSubsetFromCapabilitySnapshot(
+                    normalizedThreadId,
+                    allDefinitions,
+                    out var capabilitySubset,
+                    out var capabilityToolNames,
+                    out var capabilitySeenUtcTicks)
                 || capabilitySubset.Count < 2
                 || capabilityToolNames.Length < 2) {
                 return false;
@@ -530,6 +540,7 @@ internal sealed partial class ChatServiceSession {
 
             selected = new List<ToolDefinition>(capabilitySubset);
             previousNames = capabilityToolNames;
+            seenUtcTicks = capabilitySeenUtcTicks;
         }
 
         if (ShouldBypassContinuationSubsetForFollowUpQuestion(userRequest)) {
@@ -556,14 +567,22 @@ internal sealed partial class ChatServiceSession {
         string threadId,
         IReadOnlyList<ToolDefinition> allDefinitions,
         out IReadOnlyList<ToolDefinition> subset,
-        out string[] selectedToolNames) {
+        out string[] selectedToolNames,
+        out long seenUtcTicks) {
         subset = Array.Empty<ToolDefinition>();
         selectedToolNames = Array.Empty<string>();
+        seenUtcTicks = 0;
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0
-            || allDefinitions is null
             || allDefinitions.Count == 0
             || !TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint)) {
+            return false;
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        if (!TryGetUtcDateTimeFromTicks(checkpoint.SeenUtcTicks, out var checkpointSeenUtc)
+            || checkpointSeenUtc > nowUtc
+            || nowUtc - checkpointSeenUtc > UserIntentContextMaxAge) {
             return false;
         }
 
@@ -620,6 +639,7 @@ internal sealed partial class ChatServiceSession {
 
         subset = selected;
         selectedToolNames = selectedNames.ToArray();
+        seenUtcTicks = checkpoint.SeenUtcTicks;
         return true;
     }
 
