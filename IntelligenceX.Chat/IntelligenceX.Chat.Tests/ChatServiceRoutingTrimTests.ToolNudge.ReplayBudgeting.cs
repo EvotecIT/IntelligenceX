@@ -618,10 +618,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldSkipWeightedRouting_TrueForCompactFollowUp() {
+    public void ShouldSkipWeightedRouting_FalseForCompactFollowUpWithoutStructuredContract() {
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "run now" });
 
-        Assert.True(Assert.IsType<bool>(result));
+        Assert.False(Assert.IsType<bool>(result));
     }
 
     [Fact]
