@@ -1,0 +1,97 @@
+{
+  "name": "ad-c400-transcript-cross-dc-fanout-10-turn",
+  "tags": ["ad", "eventlog", "continuation", "cross-dc", "strict", "live", "transcript"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Replication baseline",
+      "user": "Can you check ad replication?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD0 reboot baseline",
+      "user": "Can you check AD0 when it was last rebooted? and what was the reason?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_top_events"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Go ahead AD0 marker pull",
+      "user": "go ahead",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_top_events"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Other DCs request",
+      "user": "could you check across the whole domain controllers for other eveidence?",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit non-AD0 follow-up",
+      "user": "i mean other dcs",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_not_contains": ["I still can’t execute", "blocked by one minimal input", "still AD0-only"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit 4-host fanout",
+      "user": "Use these exact non-AD0 DCs and run reboot evidence sweep now: AD1.ad.evotec.xyz, AD2.ad.evotec.xyz, DC1.ad.evotec.pl, ADRODC.ad.evotec.pl.",
+      "min_tool_calls": 4,
+      "min_distinct_tool_input_values": { "machine_name": 4 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_not_contains": ["minimal missing input", "host keeps replaying AD0-only", "still AD0-only evidence"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Transcript phrase go-ahead",
+      "user": "well you got them right? those are correct dcs, go ahead",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_not_contains": ["blocked by execution scope", "still AD0-only", "I still can’t execute"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Follow-up go-ahead",
+      "user": "go ahead",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_not_contains": ["blocked by execution scope", "still AD0-only", "minimal missing input"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Per-DC matrix",
+      "user": "Return a compact per-DC matrix with last reboot UTC, planned vs unexpected, and confidence.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final summary",
+      "user": "Summarize final guidance in 6 bullets with UTC mention and no follow-up question.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}

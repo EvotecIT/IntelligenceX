@@ -122,6 +122,7 @@ Build a contract-first architecture where:
 - [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) with explicit `eventlog_evtx_query` capability turns executing EventLog tools in-session.
 - [x] Scenario-contract clarity hardening: forbidden tool-input directives now render as `key not-in [v1|v2]` in execution contracts/retry prompts (while parser stays backward-compatible with legacy `key!=v1|v2`), reducing model misreads that inverted non-AD0 constraints.
 - [x] Transcript-derived strict replay guardrail added: `ad-other-dcs-transcript-replay-guardrail-10-turn` now passes end-to-end (`10/10`) and locks "other DCs" follow-through with cross-DC execution, explicit non-AD0 follow-up turns, and direct `eventlog_evtx_query` capability handling.
+- [x] Transcript-derived strict fanout guardrail added: `ad-c400-transcript-cross-dc-fanout-10-turn` now passes end-to-end (`10/10`) and locks explicit 4-host non-AD0 fanout (`AD1/AD2/DC1/ADRODC`) after continuation phrasing that previously replayed AD0-only calls.
 
 ## Hard Decisions (Locked)
 
