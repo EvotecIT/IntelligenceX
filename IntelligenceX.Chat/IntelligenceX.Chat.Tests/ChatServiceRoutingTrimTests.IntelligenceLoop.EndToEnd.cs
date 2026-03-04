@@ -123,6 +123,128 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_EmitsPhaseHeartbeatDuringLongToolExecution() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-long-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_long_tool_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "long" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-long-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Final answer after long execution."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static async (_, cancellationToken) => {
+                await Task.Delay(TimeSpan.FromMilliseconds(1300), cancellationToken).ConfigureAwait(false);
+                return JsonSerializer.Serialize(new { ok = true, step = "long" });
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-e2e-long-execute-heartbeat",
+            ThreadId = thread.Id,
+            Text = "Run one long diagnostic step and summarize the result.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 1
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        AssertStatusSubsequence(
+            statuses,
+            "phase_plan",
+            "tool_round_started",
+            "phase_execute",
+            "phase_heartbeat",
+            "tool_round_completed",
+            "phase_review");
+
+        var phaseExecuteIndex = statuses.IndexOf("phase_execute");
+        var phaseHeartbeatIndex = statuses.IndexOf("phase_heartbeat");
+        var roundCompletedIndex = statuses.IndexOf("tool_round_completed");
+        Assert.True(phaseExecuteIndex >= 0);
+        Assert.True(phaseHeartbeatIndex > phaseExecuteIndex);
+        Assert.True(roundCompletedIndex > phaseHeartbeatIndex);
+
+        Assert.InRange(server.ChatCompletionRequestCount, 2, 3);
+        Assert.Equal(1, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(1, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Final answer after long execution.", resultMessage.Text);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_RecoversToolOutputSummaryWhenModelReturnsNoTextAfterToolExecution() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => JsonSerializer.Serialize(new {

@@ -17,7 +17,7 @@ Reference snapshot: `openclaw` commit `e6f0203ef395850fc459ce835f1a73c637ff03ca`
 ## IntelligenceX.Chat Gap-to-Action Items
 - [x] Add per-session execution lane + optional global lane throttling in Chat service turn orchestration.
 - [x] Persist a compact session capability snapshot (enabled packs, routing families, tool health) and reuse it for continuation turns.
-- [ ] Add explicit long-turn heartbeat/status events during model/tool orchestration phases.
+- [x] Add explicit long-turn heartbeat/status events during model/tool orchestration phases.
 - [ ] Add structured continuation contract markers for "continue work" turns to reduce unnecessary clarification loops.
 - [ ] Replace any remaining lexical fallback routing gates with structure-first contracts where still present.
 - [ ] Add end-to-end regression suite for continuation behavior: "continue", "keep going", and non-English continuation prompts with identical structured intent.
