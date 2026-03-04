@@ -474,24 +474,6 @@ internal sealed partial class ChatServiceSession {
         return normalized.Split('.').Length;
     }
 
-    private static bool IsAdDomainIntentToolName(string toolName) {
-        return ToolSelectionMetadata.TryResolveDomainIntentFamily(
-                   toolName,
-                   category: null,
-                   tags: null,
-                   out var family)
-               && string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal);
-    }
-
-    private static bool IsPublicDomainIntentToolName(string toolName) {
-        return ToolSelectionMetadata.TryResolveDomainIntentFamily(
-                   toolName,
-                   category: null,
-                   tags: null,
-                   out var family)
-               && string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal);
-    }
-
     private static string ResolveDomainIntentFamily(ToolDefinition definition) {
         if (definition is null) {
             return string.Empty;
@@ -526,15 +508,6 @@ internal sealed partial class ChatServiceSession {
         if (_toolOrchestrationCatalog.TryGetEntry(normalizedToolName, out var catalogEntry)
             && TryNormalizeDomainIntentFamily(catalogEntry.DomainIntentFamily, out var normalizedCatalogFamily)) {
             return normalizedCatalogFamily;
-        }
-
-        if (ToolSelectionMetadata.TryResolveDomainIntentFamily(
-                normalizedToolName,
-                category: null,
-                tags: null,
-                out var inferredFamily)
-            && TryNormalizeDomainIntentFamily(inferredFamily, out var normalizedFamily)) {
-            return normalizedFamily;
         }
 
         return string.Empty;

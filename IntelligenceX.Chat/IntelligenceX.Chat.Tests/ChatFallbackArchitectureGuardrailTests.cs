@@ -60,6 +60,25 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
+    public void ToolRouting_ShouldNotInferDomainIntentFamilyFromSelectionMetadataFallback() {
+        var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ToolRouting.cs"));
+        const string methodStart = "private string ResolveDomainIntentFamily(string toolName)";
+        const string methodEnd = "private static DomainIntentActionCatalog ResolveDomainIntentActionCatalog";
+        var start = source.IndexOf(methodStart, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"{methodStart} not found in ChatServiceSession.ToolRouting.cs");
+
+        var end = source.IndexOf(methodEnd, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"{methodEnd} not found after {methodStart} in ChatServiceSession.ToolRouting.cs");
+
+        var methodSource = source.Substring(start, end - start);
+
+        Assert.DoesNotContain(
+            "ToolSelectionMetadata.TryResolveDomainIntentFamily(",
+            methodSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RoutingScoring_ShouldNotFallbackToSelectionMetadataPackInferenceForPackHints() {
         var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ChatRouting.RoutingScoring.cs"));
 

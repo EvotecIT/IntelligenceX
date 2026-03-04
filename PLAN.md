@@ -147,6 +147,7 @@ Build a contract-first architecture where:
 - [x] Language-neutral strict scenario increment (2026-03-04): added transcript-derived Polish scenario `ad-pl-eventlog-capability-followthrough-10-turn` to lock AD->EventLog capability follow-through without cached-evidence/no-tool fallback phrasing regressions.
 - [x] Live strict validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) with paired EventLog tool execution and no duplicate call/output ids.
 - [x] Startup visibility hardening (2026-03-04): send-safe bootstrap phases now publish even during startup turn/send waits (`pack_register/load`, `plugin_load`, scan/finalize), and connected sessions can still surface send-safe startup statuses when metadata-sync flags lag briefly.
+- [x] Contract-first domain-intent hardening (2026-03-04): Chat tool-routing no longer infers domain family from raw tool-name fallback in `ResolveDomainIntentFamily(string toolName)`; family resolution now stays registry/catalog contract-based, with architecture guardrail coverage locking this.
 
 ## Hard Decisions (Locked)
 
