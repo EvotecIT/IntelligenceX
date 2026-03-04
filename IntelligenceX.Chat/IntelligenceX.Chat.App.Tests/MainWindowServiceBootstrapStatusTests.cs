@@ -60,6 +60,36 @@ public sealed class MainWindowServiceBootstrapStatusTests {
     }
 
     /// <summary>
+    /// Parses runtime provider connect begin diagnostics and marks status updates as send-safe.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_ParsesProviderConnectProgressBegin() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[startup] provider_connect_progress phase='begin' operation='connect_client' transport='native'",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... connecting runtime provider (native)", statusText);
+        Assert.True(allowDuringSend);
+    }
+
+    /// <summary>
+    /// Parses runtime provider connect end diagnostics and marks status updates as send-safe.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_ParsesProviderConnectProgressEnd() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[startup] provider_connect_progress phase='end' operation='connect_client' transport='native' status='ok' elapsed_ms='3120'",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... connected runtime provider (native, 3120ms)", statusText);
+        Assert.True(allowDuringSend);
+    }
+
+    /// <summary>
     /// Parses plugin folder begin-progress diagnostics into a user-facing startup status.
     /// </summary>
     [Fact]
@@ -149,6 +179,22 @@ public sealed class MainWindowServiceBootstrapStatusTests {
             startupMetadataSyncInProgress);
 
         Assert.Equal(expected, shouldPublish);
+    }
+
+    /// <summary>
+    /// Allows provider-connect progress updates during active send when send-override is requested.
+    /// </summary>
+    [Fact]
+    public void ShouldPublishServiceBootstrapStatus_AllowsSendOverrideForProviderConnectProgress() {
+        var shouldPublish = MainWindow.ShouldPublishServiceBootstrapStatus(
+            shutdownRequested: false,
+            isConnected: true,
+            isSending: true,
+            turnStartupInProgress: false,
+            startupMetadataSyncInProgress: false,
+            allowDuringSend: true);
+
+        Assert.True(shouldPublish);
     }
 
     /// <summary>

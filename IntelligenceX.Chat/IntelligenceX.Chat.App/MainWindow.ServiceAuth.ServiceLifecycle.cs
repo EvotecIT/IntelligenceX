@@ -24,6 +24,9 @@ public sealed partial class MainWindow {
     private static readonly Regex ServiceBootstrapPackRegistrationProgressRegex = new(
         @"^\[startup\]\s+pack_register_progress\s+pack='(?<pack>[^']*)'\s+phase='(?<phase>[^']*)'\s+index='(?<index>\d+)'\s+total='(?<total>\d+)'",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ServiceBootstrapProviderConnectProgressRegex = new(
+        @"^\[startup\]\s+provider_connect_progress\s+phase='(?<phase>[^']*)'\s+operation='(?<operation>[^']*)'(?:\s+transport='(?<transport>[^']*)')?(?:\s+status='(?<status>[^']*)')?",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ServiceBootstrapProgressSummaryRegex = new(
         @"^\[startup\]\s+plugin load progress:\s+processed\s+(?<processed>\d+)\/(?<total>\d+)\s+plugin folders",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -242,7 +245,7 @@ public sealed partial class MainWindow {
     }
 
     private void PublishServiceBootstrapStatusFromLogLine(string rawServiceLine) {
-        if (!TryBuildServiceBootstrapStatus(rawServiceLine, out var statusText)) {
+        if (!TryBuildServiceBootstrapStatus(rawServiceLine, out var statusText, out var allowDuringSend)) {
             return;
         }
 
@@ -253,7 +256,8 @@ public sealed partial class MainWindow {
                     isConnected: _isConnected,
                     isSending: _isSending,
                     turnStartupInProgress: _turnStartupInProgress,
-                    startupMetadataSyncInProgress: startupMetadataSyncInProgress)) {
+                    startupMetadataSyncInProgress: startupMetadataSyncInProgress,
+                    allowDuringSend: allowDuringSend)) {
                 return;
             }
 
@@ -270,8 +274,28 @@ public sealed partial class MainWindow {
         bool isSending,
         bool turnStartupInProgress,
         bool startupMetadataSyncInProgress) {
-        if (shutdownRequested || isSending || turnStartupInProgress) {
+        return ShouldPublishServiceBootstrapStatus(
+            shutdownRequested,
+            isConnected,
+            isSending,
+            turnStartupInProgress,
+            startupMetadataSyncInProgress,
+            allowDuringSend: false);
+    }
+
+    internal static bool ShouldPublishServiceBootstrapStatus(
+        bool shutdownRequested,
+        bool isConnected,
+        bool isSending,
+        bool turnStartupInProgress,
+        bool startupMetadataSyncInProgress,
+        bool allowDuringSend) {
+        if (shutdownRequested || turnStartupInProgress) {
             return false;
+        }
+
+        if (isSending) {
+            return allowDuringSend;
         }
 
         if (!isConnected) {
@@ -333,7 +357,12 @@ public sealed partial class MainWindow {
     }
 
     internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText) {
+        return TryBuildServiceBootstrapStatus(rawServiceLine, out statusText, out _);
+    }
+
+    internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText, out bool allowDuringSend) {
         statusText = string.Empty;
+        allowDuringSend = false;
         var normalized = (rawServiceLine ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
@@ -342,6 +371,39 @@ public sealed partial class MainWindow {
         const string packWarningPrefix = "[pack warning]";
         if (normalized.StartsWith(packWarningPrefix, StringComparison.OrdinalIgnoreCase)) {
             normalized = normalized.Substring(packWarningPrefix.Length).Trim();
+        }
+
+        var providerConnectProgressMatch = ServiceBootstrapProviderConnectProgressRegex.Match(normalized);
+        if (providerConnectProgressMatch.Success) {
+            var phase = providerConnectProgressMatch.Groups["phase"].Value.Trim();
+            var status = providerConnectProgressMatch.Groups["status"].Value.Trim();
+            var transport = providerConnectProgressMatch.Groups["transport"].Value.Trim();
+            var transportLabel = string.IsNullOrWhiteSpace(transport) ? "provider" : transport;
+            if (transportLabel.Length > 42) {
+                transportLabel = transportLabel.Substring(0, 39) + "...";
+            }
+
+            if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+                statusText = $"Starting runtime... connecting runtime provider ({transportLabel})";
+                allowDuringSend = true;
+                return true;
+            }
+
+            if (string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)) {
+                var elapsedMs = TryReadBootstrapElapsedMs(normalized);
+                var elapsedLabel = elapsedMs.HasValue
+                    ? $"{Math.Max(1, elapsedMs.Value)}ms"
+                    : "done";
+                if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase)) {
+                    statusText = $"Starting runtime... runtime provider connection failed ({transportLabel}, {elapsedLabel})";
+                } else {
+                    statusText = $"Starting runtime... connected runtime provider ({transportLabel}, {elapsedLabel})";
+                }
+                allowDuringSend = true;
+                return true;
+            }
+
+            return false;
         }
 
         var packRegistrationProgressMatch = ServiceBootstrapPackRegistrationProgressRegex.Match(normalized);

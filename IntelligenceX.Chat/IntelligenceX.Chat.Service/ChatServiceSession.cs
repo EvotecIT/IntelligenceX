@@ -182,8 +182,24 @@ internal sealed partial class ChatServiceSession {
                 return client;
             }
 
-            client = await ConnectClientAsync(cancellationToken).ConfigureAwait(false);
-            return client;
+            var transport = ResolveMetricsTransport();
+            var connectStopwatch = Stopwatch.StartNew();
+            Console.WriteLine(
+                $"[startup] provider_connect_progress phase='begin' operation='connect_client' transport='{transport}'");
+            try {
+                client = await ConnectClientAsync(cancellationToken).ConfigureAwait(false);
+                connectStopwatch.Stop();
+                var elapsedMs = Math.Max(1L, connectStopwatch.ElapsedMilliseconds);
+                Console.WriteLine(
+                    $"[startup] provider_connect_progress phase='end' operation='connect_client' transport='{transport}' status='ok' elapsed_ms='{elapsedMs}'");
+                return client;
+            } catch {
+                connectStopwatch.Stop();
+                var elapsedMs = Math.Max(1L, connectStopwatch.ElapsedMilliseconds);
+                Console.WriteLine(
+                    $"[startup] provider_connect_progress phase='end' operation='connect_client' transport='{transport}' status='failed' elapsed_ms='{elapsedMs}'");
+                throw;
+            }
         }
 
         try {

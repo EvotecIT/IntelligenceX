@@ -132,6 +132,7 @@ Build a contract-first architecture where:
 - [x] Typed-surface guardrail hardening: added pack-wide source guardrail asserting typed-pipeline tools (`RunPipelineAsync` + `ToolRequestBindingResult`) do not regress to ad-hoc `arguments?.Get...`/`arguments.Get...` parsing across AD/DomainDetective/DnsClientX/System/EventLog/TestimoX/FileSystem/Email/PowerShell/OfficeIMO.
 - [x] Typed-envelope migration increment: `ad_scope_discovery` now emits `ToolResultV2` envelopes (`Error` + `OkFlatWithRenderValue`) and is covered by typed-wrapper guardrail assertions.
 - [x] Typed-envelope standardization increment: AD shared base helpers now use `ToolResultV2` (instead of direct `ToolResponse`) for required-argument errors, convention-mapped collection failures, and common AD success/error wrapper helpers; guardrail asserts `ActiveDirectoryToolBase*` files stay `ToolResponse`-free.
+- [x] Startup visibility increment: service now emits runtime-provider connect progress telemetry (`[startup] provider_connect_progress ...` with phase/status/elapsed), and app startup status parsing consumes it with send-safe publish override so first-turn provider connect latency is visible instead of silent.
 
 ## Hard Decisions (Locked)
 

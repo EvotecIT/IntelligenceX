@@ -93,6 +93,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Typed-surface guardrail expansion: `SourceGuardrailTests` now scans typed-pipeline tool wrappers pack-wide and fails if refactored tools reintroduce ad-hoc `arguments?.Get...`/`arguments.Get...` parsing.
 - [x] Typed-envelope increment: `ad_scope_discovery` migrated to `ToolResultV2` success/error envelope path and included in typed-wrapper guardrail enforcement list.
 - [x] Typed-envelope base hardening: `ActiveDirectoryToolBase*` shared helpers now emit `ToolResultV2` envelopes and are protected by guardrail coverage preventing direct `ToolResponse` regressions.
+- [x] Startup runtime-connect visibility increment: service emits `[startup] provider_connect_progress` phase/status/elapsed telemetry for runtime-provider connect attempts, and app status parsing publishes those lines (including send-time override) so first-turn connect stalls are diagnosable.
 
 ## Rules For This Migration
 
