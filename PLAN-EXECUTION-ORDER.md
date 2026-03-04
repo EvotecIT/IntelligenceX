@@ -59,6 +59,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Startup UX hotfix: login-completed status now queues deferred startup metadata sync before publishing connected status, avoiding transient ready-state flicker while startup sync is still pending.
 - [x] Stabilization regression coverage: finalize host scope-shift user-request resolution now has explicit tests proving raw user intent takes precedence over routed rewrite text.
 - [x] Live strict scenario validation: `ad-ad0-then-all-dcs-followthrough-10-turn` passes end-to-end with cross-DC fanout and strict call/output pairing.
+- [x] Live strict scenario validation: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end and explicitly blocks cached-evidence fallback responses for direct `eventlog_evtx_query` capability questions.
 
 ## Rules For This Migration
 

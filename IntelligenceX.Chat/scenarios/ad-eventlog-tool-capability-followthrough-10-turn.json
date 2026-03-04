@@ -1,0 +1,80 @@
+{
+  "name": "ad-eventlog-tool-capability-followthrough-10-turn",
+  "tags": ["ad", "eventlog", "tool-capability", "continuation", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Replication baseline",
+      "user": "Can you quickly check AD replication health and summarize in UTC?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD0 reboot evidence",
+      "user": "Can you check AD0 when it last rebooted and what was the reason?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_top_events"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Continue non-AD0 DCs",
+      "user": "Now check the other discovered DCs too in this same turn, do not stop after AD0.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Tool availability clarification",
+      "user": "Do you have event log tools available in this session?",
+      "assert_contains": ["eventlog"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit tool capability question",
+      "user": "What is `eventlog_evtx_query` and when should I use it?",
+      "assert_contains": ["eventlog_evtx_query"],
+      "assert_not_contains": ["[Cached evidence fallback]", "dnsclientx_pack_info"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Contrast with live query",
+      "user": "Compare `eventlog_evtx_query` versus `eventlog_live_query` in short, with one practical difference.",
+      "assert_contains": ["eventlog_evtx_query", "eventlog_live_query"],
+      "assert_not_contains": ["[Cached evidence fallback]"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Example arguments",
+      "user": "Give one compact JSON example for each tool.",
+      "assert_contains": ["{", "event_ids", "log_name"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Boundary conditions",
+      "user": "State the main limitations or blockers for each tool in one short list.",
+      "assert_contains": ["evtx", "live"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Operational guidance",
+      "user": "Give a 5-step practical sequence for using both tools during incident triage.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Compact final summary",
+      "user": "Summarize final guidance in 6 bullets with UTC mention and no follow-up question.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}
