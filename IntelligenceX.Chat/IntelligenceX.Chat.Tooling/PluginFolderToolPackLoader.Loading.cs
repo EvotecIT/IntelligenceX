@@ -18,7 +18,7 @@ internal static partial class PluginFolderToolPackLoader {
     private const string DisabledByDuplicatePackReason = "Duplicate pack id already loaded.";
     private static readonly TimeSpan SlowPluginLoadWarningThreshold = TimeSpan.FromMilliseconds(500);
 
-    private static void TryLoadPluginDirectory(
+    private static bool TryLoadPluginDirectory(
         string pluginDirectory,
         bool isExplicitRoot,
         ToolPackBootstrapOptions options,
@@ -53,7 +53,7 @@ internal static partial class PluginFolderToolPackLoader {
             var entryAssemblyPaths = ResolveEntryAssemblyPaths(pluginDirectory, manifest, pluginId, onWarning);
             entryAssemblyCount = entryAssemblyPaths.Count;
             if (entryAssemblyPaths.Count == 0) {
-                return;
+                return false;
             }
 
             if (TryShortCircuitDuplicatePluginFromLoadedPackAssemblyMap(
@@ -68,7 +68,7 @@ internal static partial class PluginFolderToolPackLoader {
                     duplicatePackCount: ref duplicatePackCount,
                     out var assemblyMapCandidateTypeCount)) {
                 candidateTypeCount = assemblyMapCandidateTypeCount;
-                return;
+                return false;
             }
 
             if (TryShortCircuitDuplicatePluginFromLoadedAssemblies(
@@ -84,7 +84,7 @@ internal static partial class PluginFolderToolPackLoader {
                     failedPackCount: ref failedPackCount,
                     candidateTypeCount: out var fastPathCandidateTypeCount)) {
                 candidateTypeCount = fastPathCandidateTypeCount;
-                return;
+                return false;
             }
 
             PreloadPluginDependencies(pluginDirectory, entryAssemblyPaths, pluginId, onWarning);
@@ -108,7 +108,7 @@ internal static partial class PluginFolderToolPackLoader {
                 if (string.IsNullOrWhiteSpace(manifest?.EntryType)) {
                     onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' error='no IToolPack implementations found in plugin folder'");
                 }
-                return;
+                return false;
             }
             candidateTypeCount = candidateTypes.Count;
 
@@ -191,6 +191,8 @@ internal static partial class PluginFolderToolPackLoader {
                     $"failed='{failedPackCount}'");
             }
         }
+
+        return loadedPackCount > 0;
     }
 
     private static bool TryShortCircuitDuplicatePluginFromLoadedPackAssemblyMap(

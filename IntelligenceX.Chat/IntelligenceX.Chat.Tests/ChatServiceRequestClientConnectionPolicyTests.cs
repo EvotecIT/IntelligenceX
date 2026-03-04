@@ -116,4 +116,22 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
 
         Assert.Equal(expected, shouldUseCachedFallback);
     }
+
+    [Theory]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(false, true, false, false)]
+    public void ShouldBypassToolingBootstrapWaitForRecoveryRequests_ReturnsExpectedValue(
+        bool isRecoveryRequest,
+        bool startupToolingBootstrapCompleted,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool expected) {
+        var shouldBypass = ChatServiceSession.ShouldBypassToolingBootstrapWaitForRecoveryRequests(
+            isRecoveryRequest: isRecoveryRequest,
+            startupToolingBootstrapCompleted: startupToolingBootstrapCompleted,
+            startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapCompletedSuccessfully);
+
+        Assert.Equal(expected, shouldBypass);
+    }
 }

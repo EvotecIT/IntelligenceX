@@ -272,6 +272,7 @@ internal sealed partial class ChatServiceSession {
                 Message = $"Active profile set to '{name}'."
             }, cancellationToken).ConfigureAwait(false);
 
+            MarkStartupToolingBootstrapRecoveredAfterRuntimeMutation();
             return new SetProfileResult(ReconnectClient: decision.ReconnectClient, ModelChanged: decision.ModelChanged);
         } catch (Exception ex) {
             // Restore previous effective options (best-effort).
@@ -571,6 +572,7 @@ internal sealed partial class ChatServiceSession {
                     : "Runtime settings applied."
             }, cancellationToken).ConfigureAwait(false);
 
+            MarkStartupToolingBootstrapRecoveredAfterRuntimeMutation();
             return new SetProfileResult(ReconnectClient: decision.ReconnectClient, ModelChanged: decision.ModelChanged);
         } catch (Exception ex) {
             try {

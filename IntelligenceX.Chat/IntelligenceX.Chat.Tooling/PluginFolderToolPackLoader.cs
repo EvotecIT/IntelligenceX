@@ -87,8 +87,7 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var roots = ResolvePluginSearchRoots(options);
-        var pendingPluginDirectories = new List<(string PluginDirectory, bool IsExplicitRoot)>();
-        var seenPluginIdentities = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var pendingPluginDirectories = new List<(string PluginDirectory, bool IsExplicitRoot, string PluginIdentity)>();
         foreach (var root in roots) {
             if (!Directory.Exists(root.Path)) {
                 if (root.IsExplicit) {
@@ -99,27 +98,25 @@ internal static partial class PluginFolderToolPackLoader {
 
             foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, options, onWarning)) {
                 var pluginIdentity = ResolvePluginIdentity(pluginDirectory);
-                if (pluginIdentity.Length > 0
-                    && seenPluginIdentities.TryGetValue(pluginIdentity, out var existingDirectory)) {
-                    if (root.IsExplicit) {
-                        onWarning?.Invoke(
-                            $"[plugin] duplicate_plugin_identity plugin='{pluginIdentity}' path='{pluginDirectory}' existing='{existingDirectory}' action='skipped'");
-                    }
-                    continue;
-                }
-
-                if (pluginIdentity.Length > 0) {
-                    seenPluginIdentities[pluginIdentity] = pluginDirectory;
-                }
-                pendingPluginDirectories.Add((pluginDirectory, root.IsExplicit));
+                pendingPluginDirectories.Add((pluginDirectory, root.IsExplicit, pluginIdentity));
             }
         }
 
+        var loadedPluginIdentities = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var total = pendingPluginDirectories.Count;
         for (var i = 0; i < pendingPluginDirectories.Count; i++) {
             var pending = pendingPluginDirectories[i];
+            if (pending.PluginIdentity.Length > 0
+                && loadedPluginIdentities.TryGetValue(pending.PluginIdentity, out var existingDirectory)) {
+                if (pending.IsExplicitRoot) {
+                    onWarning?.Invoke(
+                        $"[plugin] duplicate_plugin_identity plugin='{pending.PluginIdentity}' path='{pending.PluginDirectory}' existing='{existingDirectory}' action='skipped'");
+                }
+                continue;
+            }
+
             var loadedPacksByAssemblyName = BuildLoadedPacksByAssemblyName(packs);
-            TryLoadPluginDirectory(
+            var loadedAnyPack = TryLoadPluginDirectory(
                 pluginDirectory: pending.PluginDirectory,
                 isExplicitRoot: pending.IsExplicitRoot,
                 options: options,
@@ -130,6 +127,9 @@ internal static partial class PluginFolderToolPackLoader {
                 onPackAvailability: onPackAvailability,
                 loadIndex: i + 1,
                 loadTotal: total);
+            if (loadedAnyPack && pending.PluginIdentity.Length > 0) {
+                loadedPluginIdentities[pending.PluginIdentity] = pending.PluginDirectory;
+            }
         }
     }
 

@@ -314,11 +314,12 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                var activeStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask) ?? startupToolingBootstrapTask;
                 if (RequestRequiresToolingBootstrap(request)) {
-                    var shouldBypassToolingBootstrapWait = ShouldBypassToolingBootstrapWait(request, startupToolingBootstrapTask);
+                    var shouldBypassToolingBootstrapWait = ShouldBypassToolingBootstrapWait(request, activeStartupToolingBootstrapTask);
                     try {
                         if (!shouldBypassToolingBootstrapWait) {
-                            await startupToolingBootstrapTask.ConfigureAwait(false);
+                            await activeStartupToolingBootstrapTask.ConfigureAwait(false);
                         }
                     } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
                         break;
@@ -350,7 +351,8 @@ internal sealed partial class ChatServiceSession {
 
                 switch (request) {
                     case HelloRequest:
-                        var helloStartupWarnings = BuildHelloStartupWarnings(startupToolingBootstrapTask);
+                        var helloStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask) ?? startupToolingBootstrapTask;
+                        var helloStartupWarnings = BuildHelloStartupWarnings(helloStartupToolingBootstrapTask);
                         await WriteAsync(writer, new HelloMessage {
                             Kind = ChatServiceMessageKind.Response,
                             RequestId = request.RequestId,
@@ -513,11 +515,36 @@ internal sealed partial class ChatServiceSession {
         return hasCachedToolCatalog;
     }
 
+    internal static bool ShouldBypassToolingBootstrapWaitForRecoveryRequests(
+        bool isRecoveryRequest,
+        bool startupToolingBootstrapCompleted,
+        bool startupToolingBootstrapCompletedSuccessfully) {
+        return isRecoveryRequest
+               && startupToolingBootstrapCompleted
+               && !startupToolingBootstrapCompletedSuccessfully;
+    }
+
     private bool ShouldBypassToolingBootstrapWait(ChatServiceRequest request, Task startupToolingBootstrapTask) {
+        if (ShouldBypassToolingBootstrapWaitForRecoveryRequests(
+                isRecoveryRequest: request is SetProfileRequest or ApplyRuntimeSettingsRequest,
+                startupToolingBootstrapCompleted: startupToolingBootstrapTask.IsCompleted,
+                startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully)) {
+            return true;
+        }
+
         return ShouldBypassToolingBootstrapWaitForListTools(
             isListToolsRequest: request is ListToolsRequest,
             startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully,
             hasCachedToolCatalog: TryGetCachedToolCatalogForListTools(out _));
+    }
+
+    private void MarkStartupToolingBootstrapRecoveredAfterRuntimeMutation() {
+        var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        if (startupToolingBootstrapTask is null || startupToolingBootstrapTask.IsCompletedSuccessfully) {
+            return;
+        }
+
+        Volatile.Write(ref _startupToolingBootstrapTask, Task.CompletedTask);
     }
 
 }
