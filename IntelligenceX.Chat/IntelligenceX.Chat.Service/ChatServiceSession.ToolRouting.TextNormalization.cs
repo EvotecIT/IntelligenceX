@@ -63,7 +63,7 @@ internal sealed partial class ChatServiceSession {
 
         if (TryReadContinuationContractFromRequestText(text, out var continuationIntentAnchor, out _)
             && continuationIntentAnchor.Length > 0) {
-            return continuationIntentAnchor;
+            return NormalizeIntentUserText(continuationIntentAnchor);
         }
 
         var match = UserRequestSectionRegex.Match(text);
@@ -74,17 +74,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        // Keep intent relatively faithful while still removing markdown delimiters.
-        var withoutInlineDelimiters = StripInlineCode(text);
-        var strippedFences = StripCodeFences(withoutInlineDelimiters);
-        var collapsed = CollapseWhitespace(strippedFences);
-        if (collapsed.Length > 0) {
-            return collapsed;
-        }
-
-        // If stripping fences wiped out everything (e.g., an all-code message), keep a compact version of the
-        // original content but remove fence markers so follow-ups can still anchor on *some* context.
-        return CollapseWhitespace(withoutInlineDelimiters.Replace("```", " ", StringComparison.Ordinal));
+        return NormalizeIntentUserText(text);
     }
 
     private static string NormalizeRoutingUserText(string text) {
@@ -99,6 +89,25 @@ internal sealed partial class ChatServiceSession {
         normalized = CollapseWhitespace(normalized);
         // Never fall back to the original text here: it may contain the very content we intentionally stripped.
         return normalized;
+    }
+
+    private static string NormalizeIntentUserText(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        // Keep intent relatively faithful while still removing markdown delimiters.
+        var withoutInlineDelimiters = StripInlineCode(normalized);
+        var strippedFences = StripCodeFences(withoutInlineDelimiters);
+        var collapsed = CollapseWhitespace(strippedFences);
+        if (collapsed.Length > 0) {
+            return collapsed;
+        }
+
+        // If stripping fences wiped out everything (e.g., an all-code message), keep a compact version of the
+        // original content but remove fence markers so follow-ups can still anchor on *some* context.
+        return CollapseWhitespace(withoutInlineDelimiters.Replace("```", " ", StringComparison.Ordinal));
     }
 
     private static string StripCodeFences(string text) {

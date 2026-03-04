@@ -67,6 +67,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractIntentUserText_NormalizesStructuredIntentAnchorLikePlainIntent() {
+        const string anchor = "Please run ```replication``` diagnostics and `LDAP` checks.";
+        var structuredInput = """
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: "Please run ```replication``` diagnostics and `LDAP` checks."
+            follow_up: run now
+            """;
+
+        var structuredResult = ExtractIntentUserTextMethod.Invoke(null, new object?[] { structuredInput });
+        var plainResult = ExtractIntentUserTextMethod.Invoke(null, new object?[] { anchor });
+        var structuredText = Assert.IsType<string>(structuredResult);
+        var plainText = Assert.IsType<string>(plainResult);
+
+        Assert.Equal(plainText, structuredText);
+        Assert.DoesNotContain("```", structuredText, StringComparison.Ordinal);
+        Assert.DoesNotContain("`", structuredText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ExtractPrimaryUserRequest_DoesNotActivateStructuredContractForIncidentalMarkerMention() {
         var input = """
             Please document what ix:continuation:v1 means in our prompt schema.
