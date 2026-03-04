@@ -467,4 +467,57 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(result);
         Assert.Null(invokeArgs[1]);
     }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_RejectsSelectorArraysExceedingEntryLimit() {
+        var entries = new string[ChatRequestOptionLimits.MaxToolSelectors + 1];
+        for (var i = 0; i < entries.Length; i++) {
+            entries[i] = "dnsclientx_query";
+        }
+
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                EnabledTools = entries
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(
+            $"enabledTools must include at most {ChatRequestOptionLimits.MaxToolSelectors} entries.",
+            Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_RejectsSelectorEntriesExceedingLengthLimit() {
+        var longEntry = new string('x', ChatRequestOptionLimits.MaxToolSelectorLength + 1);
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                DisabledPackIds = new[] { longEntry }
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(
+            $"disabledPackIds entries must be at most {ChatRequestOptionLimits.MaxToolSelectorLength} characters.",
+            Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Fact]
+    public void TryValidateChatRequestOptions_AcceptsSelectorWhitespaceEntriesForExplicitEmptySemantics() {
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                EnabledTools = new[] { "  ", "\t" },
+                EnabledPackIds = new[] { "" }
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.True(result);
+        Assert.Null(invokeArgs[1]);
+    }
 }

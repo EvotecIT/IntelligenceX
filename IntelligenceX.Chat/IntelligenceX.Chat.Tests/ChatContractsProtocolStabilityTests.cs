@@ -70,6 +70,8 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal(24, ChatRequestOptionLimits.DefaultToolRounds);
         Assert.Equal(0, ChatRequestOptionLimits.MinCandidateTools);
         Assert.Equal(256, ChatRequestOptionLimits.MaxCandidateTools);
+        Assert.Equal(512, ChatRequestOptionLimits.MaxToolSelectors);
+        Assert.Equal(128, ChatRequestOptionLimits.MaxToolSelectorLength);
         Assert.Equal(0, ChatRequestOptionLimits.MinTimeoutSeconds);
         Assert.Equal(3600, ChatRequestOptionLimits.MaxTimeoutSeconds);
         Assert.Equal(1, ChatRequestOptionLimits.MinPositiveTimeoutSeconds);

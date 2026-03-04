@@ -667,6 +667,22 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        if (!TryValidateSelectorOptionValues(options.EnabledTools, "enabledTools", out error)) {
+            return false;
+        }
+
+        if (!TryValidateSelectorOptionValues(options.DisabledTools, "disabledTools", out error)) {
+            return false;
+        }
+
+        if (!TryValidateSelectorOptionValues(options.EnabledPackIds, "enabledPackIds", out error)) {
+            return false;
+        }
+
+        if (!TryValidateSelectorOptionValues(options.DisabledPackIds, "disabledPackIds", out error)) {
+            return false;
+        }
+
         if (options.TurnTimeoutSeconds.HasValue) {
             var turnTimeout = options.TurnTimeoutSeconds.Value;
             if (turnTimeout < ChatRequestOptionLimits.MinTimeoutSeconds || turnTimeout > ChatRequestOptionLimits.MaxTimeoutSeconds) {
@@ -687,6 +703,32 @@ internal sealed partial class ChatServiceSession {
             var temperature = options.Temperature.Value;
             if (double.IsNaN(temperature) || double.IsInfinity(temperature) || temperature < 0d || temperature > 2d) {
                 error = "temperature must be between 0 and 2.";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateSelectorOptionValues(string[]? values, string optionName, out string? error) {
+        error = null;
+        if (values is null) {
+            return true;
+        }
+
+        if (values.Length > ChatRequestOptionLimits.MaxToolSelectors) {
+            error = $"{optionName} must include at most {ChatRequestOptionLimits.MaxToolSelectors} entries.";
+            return false;
+        }
+
+        for (var i = 0; i < values.Length; i++) {
+            var value = (values[i] ?? string.Empty).Trim();
+            if (value.Length == 0) {
+                continue;
+            }
+
+            if (value.Length > ChatRequestOptionLimits.MaxToolSelectorLength) {
+                error = $"{optionName} entries must be at most {ChatRequestOptionLimits.MaxToolSelectorLength} characters.";
                 return false;
             }
         }
