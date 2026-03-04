@@ -54,22 +54,22 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        if (TryParseDomainIntentMarkerSelection(normalized, DomainIntentMarker, out family)) {
+        if (TryParseDomainIntentMarkerSelection(normalized, DomainIntentMarker, availableDefinitions, out family)) {
             return true;
         }
 
-        if (TryParseDomainIntentChoiceMarkerSelection(normalized, out family)) {
+        if (TryParseDomainIntentChoiceMarkerSelection(normalized, availableDefinitions, out family)) {
             return true;
         }
 
         var compact = NormalizeCompactText(normalized);
         if (TryNormalizeDomainIntentFamily(compact, out var compactFamily)) {
-            var availability = availableDefinitions is { Count: > 0 }
-                ? ResolveDomainIntentFamilyAvailability(availableDefinitions)
-                : new DomainIntentFamilyAvailability(
+            var availability = availableDefinitions is null
+                ? new DomainIntentFamilyAvailability(
                     HasAd: true,
                     HasPublic: true,
-                    Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic });
+                    Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic })
+                : ResolveDomainIntentFamilyAvailability(availableDefinitions);
             if (IsDomainIntentFamilyAvailable(availability, compactFamily)) {
                 family = compactFamily;
                 return true;
@@ -141,12 +141,12 @@ internal sealed partial class ChatServiceSession {
             if (TryGetObjectPropertyCaseInsensitive(scope, out var choiceNode, "choice", "selection")
                 && choiceNode.ValueKind == JsonValueKind.Number
                 && choiceNode.TryGetInt32(out var choiceNumber)) {
-                var availability = availableDefinitions is { Count: > 0 }
-                    ? ResolveDomainIntentFamilyAvailability(availableDefinitions)
-                    : new DomainIntentFamilyAvailability(
+                var availability = availableDefinitions is null
+                    ? new DomainIntentFamilyAvailability(
                         HasAd: true,
                         HasPublic: true,
-                        Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic });
+                        Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic })
+                    : ResolveDomainIntentFamilyAvailability(availableDefinitions);
                 var actionCatalog = ResolveDomainIntentActionCatalog(availableDefinitions);
                 var options = BuildDomainIntentFamilyOptions(availability, actionCatalog);
                 for (var i = 0; i < options.Count; i++) {
@@ -502,10 +502,25 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool TryParseDomainIntentChoiceMarkerSelection(string text, out string family) {
-        return TryParseDomainIntentMarkerSelection(text, DomainIntentChoiceMarker, out family);
+        return TryParseDomainIntentChoiceMarkerSelection(text, availableDefinitions: null, out family);
+    }
+
+    private static bool TryParseDomainIntentChoiceMarkerSelection(
+        string text,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
+        return TryParseDomainIntentMarkerSelection(text, DomainIntentChoiceMarker, availableDefinitions, out family);
     }
 
     private static bool TryParseDomainIntentMarkerSelection(string text, string marker, out string family) {
+        return TryParseDomainIntentMarkerSelection(text, marker, availableDefinitions: null, out family);
+    }
+
+    private static bool TryParseDomainIntentMarkerSelection(
+        string text,
+        string marker,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
+        out string family) {
         family = string.Empty;
         var normalized = (text ?? string.Empty).Trim();
         if (normalized.Length == 0) {
@@ -578,6 +593,10 @@ internal sealed partial class ChatServiceSession {
         if (mappedFamiliesByOrdinal.TryGetValue(selectedOrdinal, out var mappedFamily)
             && TryNormalizeDomainIntentFamily(mappedFamily, out family)) {
             return true;
+        }
+
+        if (availableDefinitions is not null) {
+            return false;
         }
 
         if (selectedOrdinal == 1) {

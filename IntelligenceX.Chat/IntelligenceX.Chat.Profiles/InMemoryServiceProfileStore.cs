@@ -60,6 +60,7 @@ internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
             AdDefaultSearchBaseDn = profile.AdDefaultSearchBaseDn,
             AdMaxResults = profile.AdMaxResults,
             PowerShellAllowWrite = profile.PowerShellAllowWrite,
+            EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading,
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths,
             PluginPaths = new List<string>(profile.PluginPaths ?? new List<string>()),
             DisabledPackIds = new List<string>(profile.DisabledPackIds ?? new List<string>()),

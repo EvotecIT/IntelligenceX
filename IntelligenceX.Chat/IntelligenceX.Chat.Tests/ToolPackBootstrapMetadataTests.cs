@@ -43,6 +43,7 @@ public sealed class ToolPackBootstrapMetadataTests {
                 AdDefaultSearchBaseDn = "DC=contoso,DC=local",
                 AdMaxResults = 2222,
                 PowerShellAllowWrite = true,
+                EnableBuiltInPackLoading = false,
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" },
                 DisabledPackIds = new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" },
@@ -55,6 +56,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("DC=contoso,DC=local", options.AdDefaultSearchBaseDn);
         Assert.Equal(2222, options.AdMaxResults);
         Assert.True(options.PowerShellAllowWrite);
+        Assert.False(options.EnableBuiltInPackLoading);
         Assert.False(options.EnableDefaultPluginPaths);
         Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
         Assert.Equal(new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" }, options.DisabledPackIds);
@@ -171,6 +173,17 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.True(
             packs.Count > 0,
             "Expected at least one built-in pack. Bootstrap warnings: " + string.Join(" | ", warnings));
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_DisablesBuiltInPacks_WhenConfigured() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnableBuiltInPackLoading = false,
+            EnablePluginFolderLoading = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        Assert.Empty(packs);
     }
 
     [Theory]
@@ -430,6 +443,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         public string? AdDefaultSearchBaseDn { get; init; }
         public int AdMaxResults { get; init; } = 1000;
         public bool PowerShellAllowWrite { get; init; }
+        public bool EnableBuiltInPackLoading { get; init; } = true;
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DisabledPackIds { get; init; } = Array.Empty<string>();

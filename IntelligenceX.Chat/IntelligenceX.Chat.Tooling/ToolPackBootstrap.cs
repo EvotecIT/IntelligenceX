@@ -62,6 +62,11 @@ public sealed record ToolPackBootstrapOptions {
     public bool PowerShellAllowWrite { get; init; }
 
     /// <summary>
+    /// Enables loading built-in packs discovered from trusted IntelligenceX.Tools assemblies.
+    /// </summary>
+    public bool EnableBuiltInPackLoading { get; init; } = true;
+
+    /// <summary>
     /// Shared authentication probe store used by probe-aware packs.
     /// </summary>
     public IToolAuthenticationProbeStore? AuthenticationProbeStore { get; init; }
@@ -155,6 +160,11 @@ public interface IToolPackRuntimeSettings {
     bool PowerShellAllowWrite { get; }
 
     /// <summary>
+    /// Enables loading built-in packs discovered from trusted IntelligenceX.Tools assemblies.
+    /// </summary>
+    bool EnableBuiltInPackLoading { get; }
+
+    /// <summary>
     /// Enables default plugin search roots.
     /// </summary>
     bool EnableDefaultPluginPaths { get; }
@@ -233,10 +243,39 @@ public sealed record ToolPackBootstrapResult {
 public static partial class ToolPackBootstrap {
     private const string DisabledByRuntimeConfigurationReason = "Disabled by runtime configuration.";
     private const string UnavailableReasonFallback = "Pack could not be loaded in this runtime.";
+    /// <summary>
+    /// Canonical failure message used when plugin-only mode resolves to an empty pack set.
+    /// </summary>
+    public const string PluginOnlyNoPacksMessage =
+        "Built-in packs are disabled and no plugin packs were loaded. Configure --plugin-path or re-enable built-in packs.";
 
     internal const string PackSourceBuiltin = "builtin";
     internal const string PackSourceOpenSource = "open_source";
     internal const string PackSourceClosedSource = "closed_source";
+
+    /// <summary>
+    /// Returns <c>true</c> when runtime configuration selects plugin-only mode and no packs were loaded.
+    /// </summary>
+    /// <param name="options">Resolved pack bootstrap options.</param>
+    /// <param name="loadedPackCount">Number of loaded packs.</param>
+    /// <returns><c>true</c> when plugin-only runtime has no loaded packs; otherwise <c>false</c>.</returns>
+    public static bool IsPluginOnlyModeNoPacks(ToolPackBootstrapOptions options, int loadedPackCount) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        return !options.EnableBuiltInPackLoading && loadedPackCount <= 0;
+    }
+
+    /// <summary>
+    /// Builds a normalized startup warning payload for plugin-only no-pack startup failures.
+    /// </summary>
+    /// <param name="pluginRootCount">Number of resolved plugin roots considered during bootstrap.</param>
+    /// <returns>Structured warning string suitable for startup warning sinks.</returns>
+    public static string BuildPluginOnlyNoPacksWarning(int pluginRootCount) {
+        return $"[startup] no_tool_packs_loaded mode='plugin_only' built_in_packs='0' plugin_roots='{Math.Max(0, pluginRootCount)}' " +
+               $"hint='{PluginOnlyNoPacksMessage}'";
+    }
 
     /// <summary>
     /// Creates runtime bootstrap options from shared host/service settings and policy context.
@@ -267,6 +306,7 @@ public static partial class ToolPackBootstrap {
             AdDefaultSearchBaseDn = settings.AdDefaultSearchBaseDn,
             AdMaxResults = settings.AdMaxResults,
             PowerShellAllowWrite = settings.PowerShellAllowWrite,
+            EnableBuiltInPackLoading = settings.EnableBuiltInPackLoading,
             EnableDefaultPluginPaths = settings.EnableDefaultPluginPaths,
             PluginPaths = pluginPaths,
             DisabledPackIds = disabledPackIds,
@@ -301,7 +341,9 @@ public static partial class ToolPackBootstrap {
 
         var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
         var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
-        var builtInPacks = DiscoverBuiltInPacks(options);
+        var builtInPacks = options.EnableBuiltInPackLoading
+            ? DiscoverBuiltInPacks(options)
+            : Array.Empty<BuiltInPackRegistrationCandidate>();
 
         var packs = new List<IToolPack>();
         var availabilityById = new Dictionary<string, ToolPackAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);

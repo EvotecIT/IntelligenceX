@@ -5,6 +5,8 @@ using System.Reflection;
 using System.Threading;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
+using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -184,6 +186,44 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_CliBuiltInPackFlags_DisableThenEnable_LastFlagWins() {
+        var options = ParseHostOptions(new[] { "--no-built-in-packs", "--built-in-packs" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.True(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
+    }
+
+    [Fact]
+    public void Parse_CliNoBuiltInPacks_DisablesBuiltInPackLoading() {
+        var options = ParseHostOptions(new[] { "--no-built-in-packs" }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.False(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
+    }
+
+    [Fact]
+    public void BuildPacks_Throws_WhenPluginOnlyModeLoadsNoPacks() {
+        var options = ParseHostOptions(
+            new[] { "--no-built-in-packs", "--no-default-plugin-paths" },
+            out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+
+        var warnings = new List<string>();
+        var exception = Assert.Throws<TargetInvocationException>(() =>
+            InvokeHostBuildPacks(options!, warning => warnings.Add(warning)));
+        var inner = Assert.IsType<ToolPackBootstrapConfigurationException>(exception.InnerException);
+
+        Assert.Contains("no plugin packs were loaded", inner.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            warnings,
+            static warning => warning.Contains("no_tool_packs_loaded", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Parse_CliRequireExplicitRoutingMetadata_SetsFlag() {
         var options = ParseHostOptions(new[] { "--require-explicit-routing-metadata" }, out var error);
 
@@ -320,6 +360,21 @@ public sealed class HostOptionsProfileBootstrapTests {
         var value = buildHelpLine!.Invoke(null, null);
         Assert.IsType<string>(value);
         return (string)value!;
+    }
+
+    private static IReadOnlyList<IToolPack> InvokeHostBuildPacks(object options, Action<string>? onBootstrapWarning = null) {
+        var hostProgramType = ResolveHostProgramType();
+
+        var buildRuntimePolicyOptions = hostProgramType.GetMethod("BuildRuntimePolicyOptions", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildRuntimePolicyOptions);
+        var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(buildRuntimePolicyOptions!.Invoke(null, new[] { options }));
+        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(runtimePolicyOptions);
+
+        var buildPacks = hostProgramType.GetMethod("BuildPacks", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildPacks);
+        var packs = buildPacks!.Invoke(null, new object?[] { options, runtimePolicyContext, onBootstrapWarning });
+        Assert.IsAssignableFrom<IReadOnlyList<IToolPack>>(packs);
+        return (IReadOnlyList<IToolPack>)packs!;
     }
 
     private static Type ResolveHostProgramType() {

@@ -37,6 +37,42 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public void RebuildToolingFromOptions_Throws_WhenPluginOnlyModeLoadsNoPacks() {
+        var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildMethod);
+
+        var options = new ServiceOptions {
+            EnableBuiltInPackLoading = false,
+            EnableDefaultPluginPaths = false
+        };
+        var session = new ChatServiceSession(options, Stream.Null);
+        var exception = Assert.Throws<TargetInvocationException>(() => rebuildMethod!.Invoke(session, Array.Empty<object>()));
+        var inner = Assert.IsType<ToolPackBootstrapConfigurationException>(exception.InnerException);
+        Assert.Contains("no plugin packs were loaded", inner.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("re-enable built-in packs", inner.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RebuildToolingFromOptions_DoesNotEmitNoToolPacksWarning_WhenBuiltInPacksAreEnabled() {
+        var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        var startupWarningsField = typeof(ChatServiceSession).GetField("_startupWarnings", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildMethod);
+        Assert.NotNull(startupWarningsField);
+
+        var options = new ServiceOptions {
+            EnableBuiltInPackLoading = true,
+            EnableDefaultPluginPaths = false
+        };
+        var session = new ChatServiceSession(options, Stream.Null);
+        rebuildMethod!.Invoke(session, Array.Empty<object>());
+
+        var warnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(session));
+        Assert.DoesNotContain(
+            warnings,
+            static warning => warning.Contains("no_tool_packs_loaded", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void RebuildToolingFromOptions_CapturesStartupBootstrapPhases() {
         var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
         var startupBootstrapField = typeof(ChatServiceSession).GetField("_startupBootstrap", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -194,6 +230,35 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.Contains("require_smtp_probe=0;", relaxedKey, StringComparison.Ordinal);
         Assert.Contains("smtp_probe_max_age_seconds=60;", relaxedKey, StringComparison.Ordinal);
         Assert.NotEqual(strictKey, relaxedKey);
+    }
+
+    [Fact]
+    public void BuildToolingBootstrapCacheKey_IncludesBuiltInPackLoadingDimension() {
+        var keyMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(keyMethod);
+
+        var runtimePolicyOptions = new ToolRuntimePolicyOptions();
+        var resolved = new ToolRuntimePolicyResolvedOptions {
+            Options = runtimePolicyOptions,
+            RequireSuccessfulSmtpProbeForSend = false,
+            SmtpProbeMaxAgeSeconds = 900
+        };
+
+        var builtInEnabledOptions = new ServiceOptions {
+            EnableBuiltInPackLoading = true
+        };
+        var builtInDisabledOptions = new ServiceOptions {
+            EnableBuiltInPackLoading = false
+        };
+
+        var enabledKey = Assert.IsType<string>(keyMethod!.Invoke(null, new object?[] { builtInEnabledOptions, runtimePolicyOptions, resolved }));
+        var disabledKey = Assert.IsType<string>(keyMethod.Invoke(null, new object?[] { builtInDisabledOptions, runtimePolicyOptions, resolved }));
+
+        Assert.Contains("built_in_packs=1;", enabledKey, StringComparison.Ordinal);
+        Assert.Contains("built_in_packs=0;", disabledKey, StringComparison.Ordinal);
+        Assert.NotEqual(enabledKey, disabledKey);
     }
 
     [Fact]

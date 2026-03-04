@@ -514,8 +514,11 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static DomainIntentActionCatalog ResolveDomainIntentActionCatalog(IReadOnlyList<ToolDefinition>? definitions) {
-        if (definitions is null || definitions.Count == 0) {
+        if (definitions is null) {
             return BuildDefaultDomainIntentActionCatalog();
+        }
+        if (definitions.Count == 0) {
+            return default;
         }
 
         var familyActionCandidates = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -532,26 +535,10 @@ internal sealed partial class ChatServiceSession {
 
             var actionId = (definition.Routing?.DomainIntentActionId ?? string.Empty).Trim();
             if (actionId.Length == 0) {
-                actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(normalizedFamily);
+                continue;
             }
 
             AddDomainIntentActionCandidate(familyActionCandidates, normalizedFamily, actionId);
-        }
-
-        if (!familyActionCandidates.ContainsKey(DomainIntentFamilyAd)
-            && DefinitionsContainDomainIntentFamily(definitions, DomainIntentFamilyAd)) {
-            AddDomainIntentActionCandidate(
-                familyActionCandidates,
-                DomainIntentFamilyAd,
-                ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd));
-        }
-
-        if (!familyActionCandidates.ContainsKey(DomainIntentFamilyPublic)
-            && DefinitionsContainDomainIntentFamily(definitions, DomainIntentFamilyPublic)) {
-            AddDomainIntentActionCandidate(
-                familyActionCandidates,
-                DomainIntentFamilyPublic,
-                ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic));
         }
 
         var familyActionIds = BuildCanonicalDomainIntentActionIds(familyActionCandidates);
@@ -660,20 +647,6 @@ internal sealed partial class ChatServiceSession {
         return actionIdFamilies;
     }
 
-    private static bool DefinitionsContainDomainIntentFamily(IReadOnlyList<ToolDefinition> definitions, string family) {
-        if (definitions is null || definitions.Count == 0 || !TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
-            return false;
-        }
-
-        for (var i = 0; i < definitions.Count; i++) {
-            if (string.Equals(ResolveDomainIntentFamily(definitions[i]), normalizedFamily, StringComparison.Ordinal)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static DomainIntentActionCatalog BuildDefaultDomainIntentActionCatalog() {
         var adActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyAd);
         var publicActionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(DomainIntentFamilyPublic);
@@ -720,10 +693,6 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < orderedFamilies.Length; i++) {
             var family = orderedFamilies[i];
             if (!actionCatalog.TryGetActionId(family, out var actionId)) {
-                actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
-            }
-
-            if (string.IsNullOrWhiteSpace(actionId)) {
                 continue;
             }
 
@@ -894,9 +863,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildDomainIntentSelectionRoutingHint(string family) {
-        var normalizedFamily = TryNormalizeDomainIntentFamily(family, out var parsedFamily)
-            ? parsedFamily
-            : DomainIntentFamilyAd;
+        if (!TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
+            return string.Empty;
+        }
+
         return $$"""
                  ix:domain-intent:v1
                  family: {{normalizedFamily}}
@@ -924,13 +894,13 @@ internal sealed partial class ChatServiceSession {
     }
 
     private bool TryResolvePendingDomainIntentClarificationSelection(string threadId, string userRequest, out string family) {
-        return TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, _registry.GetDefinitions(), out family);
+        return TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, availableDefinitions: null, out family);
     }
 
     private bool TryResolvePendingDomainIntentClarificationSelection(
         string threadId,
         string userRequest,
-        IReadOnlyList<ToolDefinition> availableDefinitions,
+        IReadOnlyList<ToolDefinition>? availableDefinitions,
         out string family) {
         family = string.Empty;
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -969,7 +939,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var availability = ResolveDomainIntentFamilyAvailability(availableDefinitions);
+        var availability = availableDefinitions is null
+            ? new DomainIntentFamilyAvailability(
+                HasAd: true,
+                HasPublic: true,
+                Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic })
+            : ResolveDomainIntentFamilyAvailability(availableDefinitions);
         if (!TryParsePendingDomainIntentClarificationSelection(normalizedRequest, availability, availableDefinitions, out var selectedFamily)) {
             return false;
         }
@@ -1015,12 +990,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var availability = availableDefinitions is { Count: > 0 }
-            ? ResolveDomainIntentFamilyAvailability(availableDefinitions)
-            : new DomainIntentFamilyAvailability(
+        var availability = availableDefinitions is null
+            ? new DomainIntentFamilyAvailability(
                 HasAd: true,
                 HasPublic: true,
-                Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic });
+                Families: new[] { DomainIntentFamilyAd, DomainIntentFamilyPublic })
+            : ResolveDomainIntentFamilyAvailability(availableDefinitions);
         var actionCatalog = ResolveDomainIntentActionCatalog(availableDefinitions);
         var options = BuildDomainIntentFamilyOptions(availability, actionCatalog);
         if (TryParseOrdinalSelection(normalized, out var ordinal)) {

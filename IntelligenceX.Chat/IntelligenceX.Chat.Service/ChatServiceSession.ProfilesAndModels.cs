@@ -650,6 +650,12 @@ internal sealed partial class ChatServiceSession {
         var bootstrapResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(bootstrapOptions);
         packBootstrapStopwatch.Stop();
         var pluginSearchPaths = NormalizeDistinctStrings(ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions), maxItems: 32);
+        if (ToolPackBootstrap.IsPluginOnlyModeNoPacks(bootstrapOptions, bootstrapResult.Packs.Count)) {
+            RecordBootstrapWarning(
+                startupWarnings,
+                ToolPackBootstrap.BuildPluginOnlyNoPacksWarning(pluginSearchPaths.Length));
+            throw new ToolPackBootstrapConfigurationException(ToolPackBootstrap.PluginOnlyNoPacksMessage);
+        }
 
         var registryBuildStopwatch = Stopwatch.StartNew();
         var registry = new ToolRegistry {
@@ -919,6 +925,7 @@ internal sealed partial class ChatServiceSession {
         builder.Append("ad_base=").Append(Normalize(options.AdDefaultSearchBaseDn)).Append(';');
         builder.Append("ad_max=").Append(options.AdMaxResults.ToString(CultureInfo.InvariantCulture)).Append(';');
         builder.Append("ps_allow_write=").Append(options.PowerShellAllowWrite ? '1' : '0').Append(';');
+        builder.Append("built_in_packs=").Append(options.EnableBuiltInPackLoading ? '1' : '0').Append(';');
         builder.Append("default_plugin_paths=").Append(options.EnableDefaultPluginPaths ? '1' : '0').Append(';');
         AppendStringList(builder, "allowed_roots", options.AllowedRoots);
         AppendStringList(builder, "plugin_paths", options.PluginPaths);

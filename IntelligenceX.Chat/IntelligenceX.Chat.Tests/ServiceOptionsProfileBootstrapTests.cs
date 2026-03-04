@@ -198,6 +198,17 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_Allows_Toggling_BuiltInPackLoading() {
+        var disabled = ServiceOptions.Parse(new[] { "--no-built-in-packs" }, out var disabledError);
+        Assert.True(string.IsNullOrWhiteSpace(disabledError));
+        Assert.False(disabled.EnableBuiltInPackLoading);
+
+        var enabled = ServiceOptions.Parse(new[] { "--no-built-in-packs", "--built-in-packs" }, out var enabledError);
+        Assert.True(string.IsNullOrWhiteSpace(enabledError));
+        Assert.True(enabled.EnableBuiltInPackLoading);
+    }
+
+    [Fact]
     public void Parse_AcceptsMaxToolRoundsUpperBoundary() {
         var options = ServiceOptions.Parse(
             new[] { "--max-tool-rounds", ChatRequestOptionLimits.MaxToolRounds.ToString() },

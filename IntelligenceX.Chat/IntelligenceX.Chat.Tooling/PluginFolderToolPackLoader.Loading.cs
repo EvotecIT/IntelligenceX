@@ -50,6 +50,11 @@ internal static partial class PluginFolderToolPackLoader {
         var failedPackCount = 0;
 
         try {
+            if (manifest is null) {
+                failedPackCount++;
+                return false;
+            }
+
             var entryAssemblyPaths = ResolveEntryAssemblyPaths(pluginDirectory, manifest, pluginId, onWarning);
             entryAssemblyCount = entryAssemblyPaths.Count;
             if (entryAssemblyPaths.Count == 0) {
@@ -105,9 +110,6 @@ internal static partial class PluginFolderToolPackLoader {
             }
 
             if (candidateTypes.Count == 0) {
-                if (string.IsNullOrWhiteSpace(manifest?.EntryType)) {
-                    onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' error='no IToolPack implementations found in plugin folder'");
-                }
                 return false;
             }
             candidateTypeCount = candidateTypes.Count;
@@ -198,7 +200,7 @@ internal static partial class PluginFolderToolPackLoader {
     private static bool TryShortCircuitDuplicatePluginFromLoadedPackAssemblyMap(
         IReadOnlyList<string> entryAssemblyPaths,
         IReadOnlyDictionary<string, IReadOnlyList<IToolPack>> loadedPacksByAssemblyName,
-        PluginManifest? manifest,
+        PluginManifest manifest,
         string pluginId,
         bool isExplicitRoot,
         HashSet<string> existingPackIds,
@@ -268,7 +270,7 @@ internal static partial class PluginFolderToolPackLoader {
 
     private static bool TryShortCircuitDuplicatePluginFromLoadedAssemblies(
         IReadOnlyList<string> entryAssemblyPaths,
-        PluginManifest? manifest,
+        PluginManifest manifest,
         string pluginId,
         bool isExplicitRoot,
         ToolPackBootstrapOptions options,
@@ -359,9 +361,9 @@ internal static partial class PluginFolderToolPackLoader {
                 return null;
             }
 
-            if (manifest.SchemaVersion.HasValue && manifest.SchemaVersion.Value != SupportedSchemaVersion) {
-                onWarning?.Invoke(
-                    $"[plugin] manifest_version_mismatch path='{manifestPath}' schema='{manifest.SchemaVersion.Value}' supported='{SupportedSchemaVersion}'");
+            if (!TryValidateManifest(manifest, out var validationError)) {
+                onWarning?.Invoke($"[plugin] manifest_invalid path='{manifestPath}' error='{validationError}'");
+                return null;
             }
 
             return manifest;
@@ -371,79 +373,87 @@ internal static partial class PluginFolderToolPackLoader {
         }
     }
 
+    private static bool TryValidateManifest(PluginManifest manifest, out string error) {
+        if (manifest.SchemaVersion is null) {
+            error = $"missing required schemaVersion (supported={SupportedSchemaVersion}).";
+            return false;
+        }
+
+        if (manifest.SchemaVersion.Value != SupportedSchemaVersion) {
+            error = $"unsupported schemaVersion '{manifest.SchemaVersion.Value}' (supported={SupportedSchemaVersion}).";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.PluginId)) {
+            error = "missing required pluginId.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.EntryAssembly)) {
+            error = "missing required entryAssembly.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.EntryType)) {
+            error = "missing required entryType.";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
+
     private static string DeterminePluginId(string pluginDirectory, PluginManifest? manifest) {
         if (!string.IsNullOrWhiteSpace(manifest?.PluginId)) {
             return manifest!.PluginId!.Trim();
-        }
-        if (!string.IsNullOrWhiteSpace(manifest?.PackageId)) {
-            return manifest!.PackageId!.Trim();
         }
         return Path.GetFileName(pluginDirectory);
     }
 
     private static IReadOnlyList<string> ResolveEntryAssemblyPaths(
         string pluginDirectory,
-        PluginManifest? manifest,
+        PluginManifest manifest,
         string pluginId,
         Action<string>? onWarning) {
-        if (!string.IsNullOrWhiteSpace(manifest?.EntryAssembly)) {
-            var configured = manifest!.EntryAssembly!.Trim();
-            var candidate = Path.IsPathRooted(configured)
-                ? configured
-                : Path.Combine(pluginDirectory, configured);
+        var configured = (manifest.EntryAssembly ?? string.Empty).Trim();
+        if (configured.Length == 0) {
+            onWarning?.Invoke($"[plugin] manifest_invalid plugin='{pluginId}' error='missing required entryAssembly'");
+            return Array.Empty<string>();
+        }
 
-            if (File.Exists(candidate)) {
-                var normalized = NormalizePath(candidate);
-                if (!string.IsNullOrWhiteSpace(normalized)) {
-                    return new[] { normalized };
-                }
-                return Array.Empty<string>();
-            }
+        if (Path.IsPathRooted(configured)) {
+            onWarning?.Invoke($"[plugin] manifest_invalid plugin='{pluginId}' error='entryAssembly must be relative to plugin root'");
+            return Array.Empty<string>();
+        }
 
+        var pluginRootPath = NormalizePath(pluginDirectory);
+        if (string.IsNullOrWhiteSpace(pluginRootPath)) {
+            onWarning?.Invoke($"[plugin] dependency_missing plugin='{pluginId}' error='plugin root path is invalid'");
+            return Array.Empty<string>();
+        }
+
+        if (!pluginRootPath.EndsWith(Path.DirectorySeparatorChar)) {
+            pluginRootPath += Path.DirectorySeparatorChar;
+        }
+
+        var candidate = NormalizePath(Path.Combine(pluginDirectory, configured));
+        if (string.IsNullOrWhiteSpace(candidate)) {
             onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' entryAssembly='{configured}'");
             return Array.Empty<string>();
         }
 
-        string[] dlls;
-        try {
-            dlls = Directory
-                .EnumerateFiles(pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly)
-                .OrderBy(static file => Path.GetFileName(file), StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-        } catch (Exception ex) {
-            onWarning?.Invoke($"[plugin] dependency_missing plugin='{pluginId}' error='{ex.GetType().Name}: {ex.Message}'");
+        var isUnderPluginRoot = candidate.StartsWith(pluginRootPath, StringComparison.OrdinalIgnoreCase);
+        if (!isUnderPluginRoot) {
+            onWarning?.Invoke($"[plugin] manifest_invalid plugin='{pluginId}' error='entryAssembly escapes plugin root'");
             return Array.Empty<string>();
         }
 
-        if (dlls.Length == 0) {
-            onWarning?.Invoke($"[plugin] dependency_missing plugin='{pluginId}' error='no .dll files found'");
+        if (!File.Exists(candidate)) {
+            onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' entryAssembly='{configured}'");
             return Array.Empty<string>();
         }
 
-        var pluginFolderName = Path.GetFileName(pluginDirectory);
-        var ordered = dlls
-            .Select(static path => NormalizePath(path))
-            .Where(static path => !string.IsNullOrWhiteSpace(path))
-            .Cast<string>()
-            .OrderBy(path => ResolveEntryAssemblyPriority(path, pluginId, pluginFolderName))
-            .ThenBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return ordered;
-    }
-
-    private static int ResolveEntryAssemblyPriority(string assemblyPath, string pluginId, string? pluginFolderName) {
-        var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
-        if (string.Equals(assemblyName, pluginId, StringComparison.OrdinalIgnoreCase)) {
-            return 0;
-        }
-
-        if (!string.IsNullOrWhiteSpace(pluginFolderName)
-            && string.Equals(assemblyName, pluginFolderName, StringComparison.OrdinalIgnoreCase)) {
-            return 1;
-        }
-
-        return 2;
+        return new[] { candidate };
     }
 
     private static void PreloadPluginDependencies(
@@ -500,45 +510,27 @@ internal static partial class PluginFolderToolPackLoader {
 
     private static IReadOnlyList<Type> ResolveCandidatePackTypes(
         Assembly entryAssembly,
-        PluginManifest? manifest,
+        PluginManifest manifest,
         string pluginId,
         Action<string>? onWarning) {
-        if (!string.IsNullOrWhiteSpace(manifest?.EntryType)) {
-            var configuredType = entryAssembly.GetType(manifest!.EntryType!.Trim(), throwOnError: false, ignoreCase: false);
-            if (configuredType is null) {
-                onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' entryType='{manifest.EntryType}'");
-                return Array.Empty<Type>();
-            }
-
-            if (!typeof(IToolPack).IsAssignableFrom(configuredType)) {
-                onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' entryType='{manifest.EntryType}' error='type does not implement IToolPack'");
-                return Array.Empty<Type>();
-            }
-
-            return new[] { configuredType };
+        var configuredTypeName = (manifest.EntryType ?? string.Empty).Trim();
+        if (configuredTypeName.Length == 0) {
+            onWarning?.Invoke($"[plugin] manifest_invalid plugin='{pluginId}' error='missing required entryType'");
+            return Array.Empty<Type>();
         }
 
-        try {
-            return entryAssembly
-                .GetTypes()
-                .Where(static type => type.IsClass && !type.IsAbstract && typeof(IToolPack).IsAssignableFrom(type))
-                .OrderBy(static type => type.FullName, StringComparer.Ordinal)
-                .ToArray();
-        } catch (ReflectionTypeLoadException ex) {
-            var candidates = ex.Types
-                .Where(static type => type is not null)
-                .Where(static type => type!.IsClass && !type.IsAbstract && typeof(IToolPack).IsAssignableFrom(type))
-                .Cast<Type>()
-                .OrderBy(static type => type.FullName, StringComparer.Ordinal)
-                .ToArray();
-
-            if (candidates.Length == 0) {
-                var firstLoaderError = ex.LoaderExceptions?.FirstOrDefault();
-                onWarning?.Invoke(
-                    $"[plugin] entry_not_found plugin='{pluginId}' error='{firstLoaderError?.GetType().Name}: {firstLoaderError?.Message}'");
-            }
-            return candidates;
+        var configuredType = entryAssembly.GetType(configuredTypeName, throwOnError: false, ignoreCase: false);
+        if (configuredType is null) {
+            onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' entryType='{manifest.EntryType}'");
+            return Array.Empty<Type>();
         }
+
+        if (!typeof(IToolPack).IsAssignableFrom(configuredType)) {
+            onWarning?.Invoke($"[plugin] entry_not_found plugin='{pluginId}' entryType='{manifest.EntryType}' error='type does not implement IToolPack'");
+            return Array.Empty<Type>();
+        }
+
+        return new[] { configuredType };
     }
 
     private static bool TryCreatePack(Type packType, ToolPackBootstrapOptions bootstrapOptions, out IToolPack pack, out string error) {

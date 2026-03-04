@@ -483,7 +483,7 @@ public sealed class PluginFolderLoaderTests {
     }
 
     [Fact]
-    public void CreateDefaultReadOnlyPacks_LoadsPackFromManifestlessFolderWithMultipleDlls() {
+    public void CreateDefaultReadOnlyPacks_SkipsManifestlessFolderWithMultipleDlls() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
@@ -510,9 +510,149 @@ public sealed class PluginFolderLoaderTests {
                 OnBootstrapWarning = warning => warnings.Add(warning)
             });
 
-            var pluginPack = Assert.Single(packs, static p => string.Equals(p.Descriptor.Id, "plugin-loader-test", StringComparison.OrdinalIgnoreCase));
-            Assert.Equal("open_source", pluginPack.Descriptor.SourceKind);
-            Assert.DoesNotContain(warnings, static w => w.Contains("no IToolPack implementations found", StringComparison.OrdinalIgnoreCase));
+            Assert.Empty(packs);
+            Assert.Contains(
+                warnings,
+                static warning => warning.Contains("manifest_missing", StringComparison.OrdinalIgnoreCase)
+                                  && warning.Contains("action='skipped'", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_SkipsPlugin_WhenManifestMissingRequiredPluginId() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderTestPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var warnings = new List<string>();
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                DisabledPackIds = DefaultEnabledKnownPackIds,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
+                OnBootstrapWarning = warning => warnings.Add(warning)
+            });
+
+            Assert.Empty(packs);
+            Assert.Contains(
+                warnings,
+                static warning => warning.Contains("manifest_invalid", StringComparison.OrdinalIgnoreCase)
+                                  && warning.Contains("missing required pluginId", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_SkipsPlugin_WhenManifestMissingRequiredEntryType() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-test",
+              "entryAssembly": "{{entryAssemblyName}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var warnings = new List<string>();
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                DisabledPackIds = DefaultEnabledKnownPackIds,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
+                OnBootstrapWarning = warning => warnings.Add(warning)
+            });
+
+            Assert.Empty(packs);
+            Assert.Contains(
+                warnings,
+                static warning => warning.Contains("manifest_invalid", StringComparison.OrdinalIgnoreCase)
+                                  && warning.Contains("missing required entryType", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_SkipsPlugin_WhenManifestEntryAssemblyIsAbsolutePath() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            var copiedAssemblyPath = Path.Combine(pluginFolder, entryAssemblyName);
+            File.Copy(sourceAssemblyPath, copiedAssemblyPath, overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderTestPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+            var escapedAbsolutePath = copiedAssemblyPath.Replace("\\", "\\\\", StringComparison.Ordinal);
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-test",
+              "entryAssembly": "{{escapedAbsolutePath}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var warnings = new List<string>();
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                DisabledPackIds = DefaultEnabledKnownPackIds,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
+                OnBootstrapWarning = warning => warnings.Add(warning)
+            });
+
+            Assert.Empty(packs);
+            Assert.Contains(
+                warnings,
+                static warning => warning.Contains("manifest_invalid", StringComparison.OrdinalIgnoreCase)
+                                  && warning.Contains("entryAssembly must be relative to plugin root", StringComparison.OrdinalIgnoreCase));
         } finally {
             if (Directory.Exists(tempRoot)) {
                 Directory.Delete(tempRoot, recursive: true);
