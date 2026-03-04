@@ -335,6 +335,78 @@ public sealed partial class MainWindow : Window {
         return normalized;
     }
 
+    internal static (string[] DisabledTools, string[] DisabledPackIds) BuildToolExposureOverridesForRequest(
+        IReadOnlyDictionary<string, bool> toolStates,
+        IReadOnlyDictionary<string, string> toolPackIds) {
+        if (toolStates is null || toolStates.Count == 0) {
+            return (Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        var disabledTools = new List<string>(toolStates.Count);
+        var toolPackByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var packTotals = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var packDisabled = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in toolStates) {
+            var toolName = (pair.Key ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                continue;
+            }
+
+            var isEnabled = pair.Value;
+            if (!isEnabled) {
+                disabledTools.Add(toolName);
+            }
+
+            if (!toolPackIds.TryGetValue(toolName, out var rawPackId)) {
+                continue;
+            }
+
+            var packId = (rawPackId ?? string.Empty).Trim();
+            if (packId.Length == 0) {
+                continue;
+            }
+
+            toolPackByName[toolName] = packId;
+            packTotals[packId] = packTotals.TryGetValue(packId, out var totalCount) ? totalCount + 1 : 1;
+            if (!isEnabled) {
+                packDisabled[packId] = packDisabled.TryGetValue(packId, out var disabledCount) ? disabledCount + 1 : 1;
+            }
+        }
+
+        var disabledPackIds = new List<string>(packTotals.Count);
+        foreach (var pair in packTotals) {
+            var packId = pair.Key;
+            var totalCount = pair.Value;
+            if (totalCount <= 0) {
+                continue;
+            }
+
+            if (packDisabled.TryGetValue(packId, out var disabledCount) && disabledCount >= totalCount) {
+                disabledPackIds.Add(packId);
+            }
+        }
+
+        if (disabledPackIds.Count > 1) {
+            disabledPackIds.Sort(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (disabledPackIds.Count > 0 && disabledTools.Count > 0) {
+            var fullyDisabledPacks = new HashSet<string>(disabledPackIds, StringComparer.OrdinalIgnoreCase);
+            disabledTools.RemoveAll(toolName =>
+                toolPackByName.TryGetValue(toolName, out var packId)
+                && fullyDisabledPacks.Contains(packId));
+        }
+
+        if (disabledTools.Count > 1) {
+            disabledTools.Sort(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return (
+            disabledTools.Count == 0 ? Array.Empty<string>() : disabledTools.ToArray(),
+            disabledPackIds.Count == 0 ? Array.Empty<string>() : disabledPackIds.ToArray());
+    }
+
     private async Task SetTimeModeAsync(string value) {
         if (string.IsNullOrWhiteSpace(value)) {
             return;
@@ -365,17 +437,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private ChatRequestOptions? BuildChatRequestOptions(ConversationRuntime? conversation = null) {
-        var disabled = new List<string>();
-        if (_toolStates.Count > 0) {
-            foreach (var pair in _toolStates) {
-                if (!pair.Value) {
-                    disabled.Add(pair.Key);
-                }
-            }
-        }
-        if (disabled.Count > 0) {
-            disabled.Sort(StringComparer.OrdinalIgnoreCase);
-        }
+        var (disabledTools, disabledPackIds) = BuildToolExposureOverridesForRequest(_toolStates, _toolPackIds);
 
         var normalizedTransport = NormalizeLocalProviderTransport(_localProviderTransport);
         var localPreset = DetectCompatibleProviderPreset(_localProviderBaseUrl);
@@ -423,7 +485,8 @@ public sealed partial class MainWindow : Window {
             ReasoningSummary = _localProviderReasoningSummary,
             TextVerbosity = _localProviderTextVerbosity,
             Temperature = _localProviderTemperature,
-            DisabledTools = disabled.Count == 0 ? null : disabled.ToArray(),
+            DisabledTools = disabledTools.Length == 0 ? null : disabledTools,
+            DisabledPackIds = disabledPackIds.Length == 0 ? null : disabledPackIds,
             MaxToolRounds = effectiveMaxToolRounds,
             ParallelTools = effectiveParallelTools,
             ParallelToolMode = parallelToolMode,
