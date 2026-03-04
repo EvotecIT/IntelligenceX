@@ -326,10 +326,14 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<ToolDefinition>();
         }
 
+        var enabledSpecified = enabledTools is not null;
         var enabled = NormalizeToolNameSet(enabledTools);
         var disabled = NormalizeToolNameSet(disabledTools);
-        if ((enabled is null || enabled.Count == 0) && (disabled is null || disabled.Count == 0)) {
+        if (!enabledSpecified && (disabled is null || disabled.Count == 0)) {
             return definitions;
+        }
+        if (enabledSpecified && (enabled is null || enabled.Count == 0)) {
+            return Array.Empty<ToolDefinition>();
         }
 
         var filtered = new List<ToolDefinition>(definitions.Count);
@@ -344,7 +348,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (enabled is { Count: > 0 } && !enabled.Contains(normalizedName)) {
+            if (enabledSpecified && !enabled!.Contains(normalizedName)) {
                 continue;
             }
 
@@ -359,7 +363,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static HashSet<string>? NormalizeToolNameSet(string[]? toolNames) {
-        if (toolNames is null || toolNames.Length == 0) {
+        if (toolNames is null) {
             return null;
         }
 
@@ -371,7 +375,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        return normalized.Count == 0 ? null : normalized;
+        return normalized;
     }
 
     private async Task<(IReadOnlyList<ToolDefinition> Definitions, List<ToolRoutingInsight> Insights)> SelectWeightedToolSubsetAsync(
