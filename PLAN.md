@@ -111,6 +111,9 @@ Build a contract-first architecture where:
 - [x] Stabilization hotfix: domain host-scope guardrail now blocks stale single-host AD-scope replay for compact scope-shift follow-ups when thread evidence is already multi-host, unless the user explicitly pins a single host.
 - [x] Stabilization regression coverage: domain host-scope guardrail now has explicit compact scope-shift replay tests (block stale single-host replay, allow explicit host pin, allow short acknowledgement questions).
 - [x] Live strict validation rerun: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn`, `ad-domainwide-reboot-followthrough-10-turn`, and `ad-ad0-then-all-dcs-followthrough-10-turn` all pass end-to-end (`10/10`) after host-scope replay hardening.
+- [x] Stabilization hotfix: AD monitoring ADWS probe port normalization now treats non-positive `port` overrides as default `9389` (instead of clamping to `1`), preventing false ADWS-down endpoint probes (`net.tcp://<dc>:1/...`).
+- [x] Transcript-derived strict scenario seed added: `ad-ldap-go-ahead-followthrough-8-turn` to lock "scope confirmed -> `go ahead` executes LDAP diagnostics" continuation behavior and explicit tool-capability follow-through.
+- [x] Live strict validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after ADWS port normalization hardening.
 
 ## Hard Decisions (Locked)
 

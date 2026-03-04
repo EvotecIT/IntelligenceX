@@ -368,7 +368,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 Timeout = timeout,
                 Retries = retries,
                 RetryDelay = retryDelay,
-                Port = ToolArgs.GetCappedInt32(arguments, "port", 9389, 1, 65535),
+                Port = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "port", defaultValue: 9389, maxInclusive: 65535),
                 Path = ToolArgs.GetTrimmedOrDefault(arguments, "path", "ActiveDirectoryWebServices/Windows/Enumeration"),
                 RequestTimeout = ReadOptionalTimeSpanFromMilliseconds(arguments, "request_timeout_ms") ?? timeout,
                 FailureHandling = ToolEnumBinders.ParseOrDefault(

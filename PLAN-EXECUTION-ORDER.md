@@ -73,6 +73,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Stabilization hotfix: domain host-scope guardrail now blocks stale single-host AD-scope replay on compact scope-shift follow-ups when thread evidence is multi-host, unless a single host is explicitly pinned by the user.
 - [x] Stabilization regression coverage: domain host-scope guardrail now has explicit compact scope-shift replay tests (block stale replay, allow explicit host pin, allow short acknowledgement question).
 - [x] Live strict validation rerun: transcript-derived follow-through scenarios (`ad-other-dcs-go-ahead-followthrough-10-turn`, `ad-domainwide-reboot-followthrough-10-turn`, `ad-ad0-then-all-dcs-followthrough-10-turn`) pass end-to-end (`10/10`) after this hardening.
+- [x] Stabilization hotfix: `ad_monitoring_probe_run` ADWS port normalization now keeps default `9389` when non-positive `port` is supplied, preventing false endpoint probes on `:1`.
+- [x] Transcript-derived strict scenario added: `ad-ldap-go-ahead-followthrough-8-turn` to lock continuation execution from scope confirmation into explicit LDAP diagnostics after compact `go ahead`.
+- [x] Live strict validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) and asserts ADWS endpoint probes do not regress to `:1/ActiveDirectoryWebServices`.
 
 ## Rules For This Migration
 
