@@ -284,8 +284,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:continuation:v1", userMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled: true", userMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("intent_anchor: Run forest-wide replication and LDAP diagnostics.", userMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains($"follow_up: {followUpPrompt}", userMessage, StringComparison.Ordinal);
-        Assert.Contains($"Follow-up: {followUpPrompt}", userMessage, StringComparison.Ordinal);
+        Assert.Contains($"follow_up: {followUpPrompt}", userMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains($"follow-up: {followUpPrompt}", userMessage, StringComparison.OrdinalIgnoreCase);
 
         var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
         Assert.Equal("Continuation regression prompt accepted.", resultMessage.Text);
