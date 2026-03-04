@@ -351,9 +351,19 @@ public sealed record ChatRequestOptions {
     /// </summary>
     public string[]? EnabledTools { get; init; }
     /// <summary>
+    /// Optional allow-list of plugin pack ids to expose for this request.
+    /// When provided, only tools from listed packs remain available before <see cref="DisabledPackIds"/> filtering applies.
+    /// An explicit empty/whitespace-only list disables tool exposure for the turn.
+    /// </summary>
+    public string[]? EnabledPackIds { get; init; }
+    /// <summary>
     /// Optional tool names to disable for this request.
     /// </summary>
     public string[]? DisabledTools { get; init; }
+    /// <summary>
+    /// Optional plugin pack ids to disable for this request.
+    /// </summary>
+    public string[]? DisabledPackIds { get; init; }
     /// <summary>
     /// Optional override for weighted tool routing (null means service default).
     /// </summary>

@@ -321,18 +321,30 @@ internal sealed partial class ChatServiceSession {
     private static IReadOnlyList<ToolDefinition> ApplyToolExposureOverrides(
         IReadOnlyList<ToolDefinition> definitions,
         string[]? enabledTools,
-        string[]? disabledTools) {
+        string[]? disabledTools,
+        string[]? enabledPackIds,
+        string[]? disabledPackIds,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog) {
         if (definitions.Count == 0) {
             return Array.Empty<ToolDefinition>();
         }
 
         var enabledSpecified = enabledTools is not null;
+        var enabledPacksSpecified = enabledPackIds is not null;
         var enabled = NormalizeToolNameSet(enabledTools);
         var disabled = NormalizeToolNameSet(disabledTools);
-        if (!enabledSpecified && (disabled is null || disabled.Count == 0)) {
+        var enabledPacks = NormalizePackIdSet(enabledPackIds);
+        var disabledPacks = NormalizePackIdSet(disabledPackIds);
+        if (!enabledSpecified
+            && !enabledPacksSpecified
+            && (disabled is null || disabled.Count == 0)
+            && (disabledPacks is null || disabledPacks.Count == 0)) {
             return definitions;
         }
         if (enabledSpecified && (enabled is null || enabled.Count == 0)) {
+            return Array.Empty<ToolDefinition>();
+        }
+        if (enabledPacksSpecified && (enabledPacks is null || enabledPacks.Count == 0)) {
             return Array.Empty<ToolDefinition>();
         }
 
@@ -356,6 +368,17 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (enabledPacksSpecified || disabledPacks is { Count: > 0 }) {
+                var packId = ResolveToolPackId(definition, toolOrchestrationCatalog);
+                if (enabledPacksSpecified && (packId.Length == 0 || !enabledPacks!.Contains(packId))) {
+                    continue;
+                }
+
+                if (disabledPacks is { Count: > 0 } && packId.Length > 0 && disabledPacks.Contains(packId)) {
+                    continue;
+                }
+            }
+
             filtered.Add(definition);
         }
 
@@ -376,6 +399,32 @@ internal sealed partial class ChatServiceSession {
         }
 
         return normalized;
+    }
+
+    private static HashSet<string>? NormalizePackIdSet(string[]? packIds) {
+        if (packIds is null) {
+            return null;
+        }
+
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < packIds.Length; i++) {
+            var packId = ToolPackBootstrap.NormalizePackId(packIds[i]);
+            if (packId.Length > 0) {
+                normalized.Add(packId);
+            }
+        }
+
+        return normalized;
+    }
+
+    private static string ResolveToolPackId(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetPackId(definition.Name, out var catalogPackId)
+            && catalogPackId.Length > 0) {
+            return catalogPackId;
+        }
+
+        return ToolPackBootstrap.NormalizePackId(definition.Routing?.PackId);
     }
 
     private async Task<(IReadOnlyList<ToolDefinition> Definitions, List<ToolRoutingInsight> Insights)> SelectWeightedToolSubsetAsync(
