@@ -100,6 +100,7 @@ Build a contract-first architecture where:
 - [x] Regression coverage now asserts cross-pack isolation in orchestration catalog: no ADPlayground -> DomainDetective handoff is inferred without explicit `ToolHandoffContract` edges.
 - [x] Live strict scenario validation: `ad-ad0-then-all-dcs-followthrough-10-turn` passes end-to-end in host runtime with cross-DC fanout (`machine_name>=2`) and no duplicate tool-call/output ids.
 - [x] Live strict scenario validation: `ad-eventlog-tool-capability-followthrough-10-turn` now guards explicit `eventlog_evtx_query` capability follow-ups against cached-evidence fallback regressions and passes end-to-end (`10/10` turns) in host runtime.
+- [x] Live strict scenario validation: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn` now passes end-to-end (`10/10` turns), guarding continuation-style `go ahead` follow-through with cross-DC tool execution (`machine_name>=2`) and direct `eventlog_evtx_query` capability responses.
 
 ## Hard Decisions (Locked)
 

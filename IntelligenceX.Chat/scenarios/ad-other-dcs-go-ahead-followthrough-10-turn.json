@@ -1,0 +1,80 @@
+{
+  "name": "ad-other-dcs-go-ahead-followthrough-10-turn",
+  "tags": ["ad", "eventlog", "continuation", "go-ahead", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover DC scope",
+      "user": "Discover all domain controllers in scope for this run and keep the host list for follow-up checks.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD0 reboot baseline",
+      "user": "Start with AD0 if present and find reboot evidence with exact UTC markers.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Plan non-AD0 continuation",
+      "user": "Next I want other DCs, not AD0. Prepare to run that on the remaining discovered controllers.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Go-ahead executes non-AD0 sweep",
+      "user": "go ahead and run the same reboot-marker query now for all non-AD0 discovered DCs in one turn.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Repeat go-ahead stays cross-DC",
+      "user": "go ahead once more and re-check across multiple discovered DCs so we can confirm consistency.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Blocker handling",
+      "user": "If any host query fails, continue with remaining hosts and include exact blocker text per failed DC.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Eventlog availability",
+      "user": "Confirm event log tools are available in this session.",
+      "assert_contains": ["event log"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit tool capability question",
+      "user": "What is `eventlog_evtx_query` and when should I use it?",
+      "assert_contains": ["eventlog_evtx_query"],
+      "assert_not_contains": ["[Cached evidence fallback]", "dnsclientx_pack_info"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-DC matrix",
+      "user": "Return a compact per-DC matrix with evidence present or missing, latest UTC marker, and confidence.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Compact summary",
+      "user": "Summarize final guidance in 6 bullets with UTC mention and no follow-up question.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}
