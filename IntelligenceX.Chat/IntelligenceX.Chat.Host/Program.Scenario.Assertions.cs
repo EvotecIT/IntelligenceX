@@ -142,15 +142,14 @@ internal static partial class Program {
                 }
 
                 var normalizedForbiddenValues = forbiddenValues
-                    .Select(value => NormalizeScenarioAssertionInputValue(inputKey, value))
-                    .Where(static value => value.Length > 0)
+                    .SelectMany(value => GetScenarioAssertionComparableInputValues(inputKey, value))
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 if (normalizedForbiddenValues.Count == 0) {
                     continue;
                 }
 
                 var matchedForbiddenValues = observedValues
-                    .Select(value => NormalizeScenarioAssertionInputValue(inputKey, value))
+                    .SelectMany(value => GetScenarioAssertionComparableInputValues(inputKey, value))
                     .Where(value => value.Length > 0 && normalizedForbiddenValues.Contains(value))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
@@ -448,6 +447,30 @@ internal static partial class Program {
         }
 
         return normalizedValue;
+    }
+
+    private static IReadOnlyList<string> GetScenarioAssertionComparableInputValues(string inputKey, string value) {
+        var normalized = NormalizeScenarioAssertionInputValue(inputKey, value);
+        if (normalized.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var aliases = GetScenarioInputKeyAliases(inputKey);
+        if (!aliases.Any(IsHostTargetAliasForAssertion)) {
+            return new[] { normalized };
+        }
+
+        var dotIndex = normalized.IndexOf('.');
+        if (dotIndex <= 0) {
+            return new[] { normalized };
+        }
+
+        var shortLabel = normalized[..dotIndex].Trim();
+        if (shortLabel.Length < 2 || shortLabel.Length > 128) {
+            return new[] { normalized };
+        }
+
+        return new[] { normalized, shortLabel };
     }
 
     private static bool IsHostTargetAliasForAssertion(string key) {

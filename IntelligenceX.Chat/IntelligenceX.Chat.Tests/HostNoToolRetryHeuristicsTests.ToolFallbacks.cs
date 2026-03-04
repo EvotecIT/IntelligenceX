@@ -463,6 +463,47 @@ Continue that failure-signature collection across all remaining non-AD0 DCs in t
     }
 
     [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_TreatsShortForbiddenHostAsMatchingFqdnCandidates() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD0
+User request:
+Continue that failure-signature collection across all remaining non-AD0 DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_query", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz", "AD2.ad.evotec.xyz" });
+
+        Assert.Equal(2, repaired.Count);
+        var hosts = repaired
+            .Select(call => call.Arguments?.GetString("machine_name") ?? string.Empty)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        Assert.DoesNotContain(hosts, host => host.StartsWith("AD0.", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hosts, host => string.Equals(host, "AD2.ad.evotec.xyz", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ReplSession_HostTargetRetentionCapacity_IsSizedForLongContinuationRuns() {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);

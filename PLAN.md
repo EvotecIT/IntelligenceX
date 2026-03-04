@@ -104,6 +104,8 @@ Build a contract-first architecture where:
 - [x] Scenario-contract hardening: host runtime now supports explicit forbidden tool-input values (`forbid_tool_input_values` / `forbidden_tool_inputs`) and applies them in retry eligibility, assertion checks, and distinct-host fallback repair paths.
 - [x] Transcript guardrail hardening: `ad-other-dcs-go-ahead-followthrough-10-turn` continuation turns now explicitly forbid `machine_name=AD0`, and strict catalog tests lock this requirement.
 - [x] Added transcript-derived strict scenario seed `ad-domainwide-reboot-followthrough-10-turn` to guard AD0-baseline -> domain-wide non-AD0 continuation flow, explicit `eventlog_evtx_query` capability follow-up behavior, and DNS cross-pack routing in one 10-turn sequence.
+- [x] Forbidden host-input hardening: scenario contract enforcement now treats short-host and FQDN equivalents consistently (for example `AD0` == `AD0.ad.evotec.xyz`) in retry gating, fallback target selection, and assertion checks.
+- [x] Live host validation rerun: `ad-domainwide-reboot-followthrough-10-turn` passes end-to-end (`10/10` turns) with non-AD0 continuation turns staying off AD0/FQDN equivalents during distinct-host repair.
 
 ## Hard Decisions (Locked)
 

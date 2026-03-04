@@ -110,9 +110,11 @@ internal static partial class Program {
 
             var normalizedForbidden = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var forbiddenValue in forbiddenValues) {
-                var normalized = NormalizeScenarioContractInputValue(inputKey, forbiddenValue);
-                if (normalized.Length > 0) {
-                    normalizedForbidden.Add(normalized);
+                var comparableValues = GetScenarioContractComparableInputValues(inputKey, forbiddenValue);
+                for (var i = 0; i < comparableValues.Count; i++) {
+                    if (comparableValues[i].Length > 0) {
+                        normalizedForbidden.Add(comparableValues[i]);
+                    }
                 }
             }
 
@@ -122,12 +124,21 @@ internal static partial class Program {
 
             var observedValues = CollectDistinctToolInputValuesByKey(calls, inputKey);
             foreach (var observedValue in observedValues) {
-                var normalizedObserved = NormalizeScenarioContractInputValue(inputKey, observedValue);
-                if (normalizedObserved.Length == 0 || !normalizedForbidden.Contains(normalizedObserved)) {
-                    continue;
+                var comparableObservedValues = GetScenarioContractComparableInputValues(inputKey, observedValue);
+                var matched = false;
+                for (var i = 0; i < comparableObservedValues.Count; i++) {
+                    if (!normalizedForbidden.Contains(comparableObservedValues[i])) {
+                        continue;
+                    }
+
+                    matches.Add(comparableObservedValues[i]);
+                    matched = true;
+                    break;
                 }
 
-                matches.Add(normalizedObserved);
+                if (!matched) {
+                    continue;
+                }
             }
 
             return matches;
@@ -440,9 +451,11 @@ internal static partial class Program {
                 }
 
                 foreach (var rawValue in rawValues) {
-                    var normalizedValue = NormalizeScenarioContractInputValue(normalizedKey, rawValue);
-                    if (normalizedValue.Length > 0) {
-                        forbiddenValues.Add(normalizedValue);
+                    var comparableValues = GetScenarioContractComparableInputValues(normalizedKey, rawValue);
+                    for (var valueIndex = 0; valueIndex < comparableValues.Count; valueIndex++) {
+                        if (comparableValues[valueIndex].Length > 0) {
+                            forbiddenValues.Add(comparableValues[valueIndex]);
+                        }
                     }
                 }
             }
@@ -461,6 +474,51 @@ internal static partial class Program {
             }
 
             return normalizedValue;
+        }
+
+        private static IReadOnlyList<string> GetScenarioContractComparableInputValues(string inputKey, string value) {
+            var normalizedKey = (inputKey ?? string.Empty).Trim();
+            var normalizedValue = NormalizeScenarioContractInputValue(normalizedKey, value);
+            if (normalizedValue.Length == 0) {
+                return Array.Empty<string>();
+            }
+
+            var aliases = GetScenarioInputKeyAliases(normalizedKey);
+            if (!aliases.Any(IsHostTargetAlias)) {
+                return new[] { normalizedValue };
+            }
+
+            if (!TryGetHostTargetShortLabel(normalizedValue, out var shortLabel)) {
+                return new[] { normalizedValue };
+            }
+
+            if (string.Equals(normalizedValue, shortLabel, StringComparison.OrdinalIgnoreCase)) {
+                return new[] { normalizedValue };
+            }
+
+            return new[] { normalizedValue, shortLabel };
+        }
+
+        private static bool TryGetHostTargetShortLabel(string value, out string shortLabel) {
+            shortLabel = string.Empty;
+            var normalized = NormalizeHostTargetCandidate(value);
+            if (normalized.Length == 0) {
+                return false;
+            }
+
+            var dotIndex = normalized.IndexOf('.');
+            if (dotIndex <= 0) {
+                shortLabel = normalized;
+                return true;
+            }
+
+            var candidate = normalized[..dotIndex].Trim();
+            if (candidate.Length < 2 || candidate.Length > 128) {
+                return false;
+            }
+
+            shortLabel = candidate;
+            return true;
         }
 
         private static IReadOnlyList<string> ParseScenarioContractToolPatterns(string request, string pattern) {

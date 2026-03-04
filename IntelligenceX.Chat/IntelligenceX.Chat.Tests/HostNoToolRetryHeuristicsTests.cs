@@ -259,6 +259,32 @@ Continue recurring-error analysis across all remaining non-AD0 DCs in this turn.
     }
 
     [Fact]
+    public void ShouldRetryScenarioContractRepair_TriggersWhenForbiddenShortHostMatchesFqdnInput() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD0
+User request:
+Continue recurring-error analysis across all remaining non-AD0 DCs in this turn.
+""";
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD0.ad.evotec.xyz\"}"),
+            BuildToolCall("call_2", "eventlog_live_query", "{\"machine_name\":\"AD1.ad.evotec.xyz\"}")
+        };
+
+        var result = InvokeShouldRetryScenarioContractRepair(request, calls);
+
+        Assert.True(result);
+    }
+
+    [Fact]
     public void ShouldRetryScenarioContractRepair_TriggersWhenRequiredAnyToolPatternIsMissing() {
         const string request = """
 [Scenario execution contract]

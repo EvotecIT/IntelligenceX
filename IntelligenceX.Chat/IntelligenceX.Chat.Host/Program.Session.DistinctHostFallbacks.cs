@@ -42,9 +42,9 @@ internal static partial class Program {
             var forbiddenHostTargets = GetForbiddenHostTargets(requirements);
             var observedDistinctTargets = CollectDistinctToolInputValuesByKey(calls, "machine_name");
             var observedDistinctAllowedTargets = observedDistinctTargets
-                .Where(target => !forbiddenHostTargets.Contains(target))
+                .Where(target => !IsForbiddenHostTarget(target, forbiddenHostTargets))
                 .ToArray();
-            var hasForbiddenObservedTargets = observedDistinctTargets.Any(forbiddenHostTargets.Contains);
+            var hasForbiddenObservedTargets = observedDistinctTargets.Any(target => IsForbiddenHostTarget(target, forbiddenHostTargets));
             var hasMissingDistinctCoverage = requiredDistinctHostCoverage > 1
                                              && observedDistinctAllowedTargets.Length < requiredDistinctHostCoverage;
             if (!hasForbiddenObservedTargets && !hasMissingDistinctCoverage) {
@@ -92,7 +92,7 @@ internal static partial class Program {
 
                     var needsDistinctCoverage = requiredDistinctHostCoverage > 1
                                                 && GetDistinctAllowedHostCoverage(hostUsageByTarget, forbiddenHostTargets) < requiredDistinctHostCoverage;
-                    var currentIsForbidden = forbiddenHostTargets.Contains(currentHostTarget);
+                    var currentIsForbidden = IsForbiddenHostTarget(currentHostTarget, forbiddenHostTargets);
                     if (!currentIsForbidden && !needsDistinctCoverage) {
                         continue;
                     }
@@ -195,7 +195,7 @@ internal static partial class Program {
 
             var count = 0;
             foreach (var pair in hostUsageByTarget) {
-                if (pair.Value <= 0 || forbiddenHostTargets.Contains(pair.Key)) {
+                if (pair.Value <= 0 || IsForbiddenHostTarget(pair.Key, forbiddenHostTargets)) {
                     continue;
                 }
 
@@ -212,10 +212,12 @@ internal static partial class Program {
                 return false;
             }
 
-            foreach (var forbiddenHostTarget in forbiddenHostTargets) {
-                if (hostUsageByTarget.TryGetValue(forbiddenHostTarget, out var usage) && usage > 0) {
-                    return true;
+            foreach (var pair in hostUsageByTarget) {
+                if (pair.Value <= 0 || !IsForbiddenHostTarget(pair.Key, forbiddenHostTargets)) {
+                    continue;
                 }
+
+                return true;
             }
 
             return false;
@@ -279,7 +281,7 @@ internal static partial class Program {
             for (var i = 0; i < knownHostTargets.Count; i++) {
                 var normalized = NormalizeHostTargetCandidate(knownHostTargets[i]);
                 if (normalized.Length == 0
-                    || forbiddenHostTargets.Contains(normalized)
+                    || IsForbiddenHostTarget(normalized, forbiddenHostTargets)
                     || !seenAllowedTargets.Add(normalized)) {
                     continue;
                 }
@@ -304,14 +306,31 @@ internal static partial class Program {
 
                 var forbiddenValues = requirement.Value ?? Array.Empty<string>();
                 foreach (var forbiddenValue in forbiddenValues) {
-                    var normalized = NormalizeScenarioContractInputValue(requirement.Key, forbiddenValue);
-                    if (normalized.Length > 0) {
-                        forbiddenTargets.Add(normalized);
+                    var comparableValues = GetScenarioContractComparableInputValues(requirement.Key, forbiddenValue);
+                    for (var valueIndex = 0; valueIndex < comparableValues.Count; valueIndex++) {
+                        if (comparableValues[valueIndex].Length > 0) {
+                            forbiddenTargets.Add(comparableValues[valueIndex]);
+                        }
                     }
                 }
             }
 
             return forbiddenTargets;
+        }
+
+        private static bool IsForbiddenHostTarget(string hostTarget, ISet<string> forbiddenHostTargets) {
+            if (forbiddenHostTargets is null || forbiddenHostTargets.Count == 0) {
+                return false;
+            }
+
+            var comparableValues = GetScenarioContractComparableInputValues("machine_name", hostTarget);
+            for (var i = 0; i < comparableValues.Count; i++) {
+                if (forbiddenHostTargets.Contains(comparableValues[i])) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static ToolDefinition? FindToolDefinitionByName(

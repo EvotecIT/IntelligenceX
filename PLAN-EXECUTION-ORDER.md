@@ -66,6 +66,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Scenario-contract hardening: host scenario contracts now support forbidden tool-input values (`forbid_tool_input_values` / `forbidden_tool_inputs`) and enforce them during retry repair, fallback host patching, and assertion evaluation.
 - [x] Transcript guardrail hardening: `ad-other-dcs-go-ahead-followthrough-10-turn` continuation turns now include explicit non-AD0 host exclusions, and catalog strictness tests lock those exclusions.
 - [x] Transcript-derived strict scenario seed added: `ad-domainwide-reboot-followthrough-10-turn` (AD0 reboot baseline -> non-AD0 domain-wide continuation + explicit `eventlog_evtx_query` capability question + DNS cross-pack turn).
+- [x] Forbidden-input equivalence hardening: scenario contract enforcement now treats short-host and FQDN forms as equivalent when applying forbidden host targets (for example `AD0` blocks `AD0.ad.evotec.xyz`) across repair/fallback/assertion paths.
+- [x] Live strict rerun passed: `ad-domainwide-reboot-followthrough-10-turn` now completes `10/10` turns with non-AD0 continuation turns preserving host exclusions after input-repair fallback.
 
 ## Rules For This Migration
 
