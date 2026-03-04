@@ -28,5 +28,5 @@ Reference snapshot: `openclaw` commit `e6f0203ef395850fc459ce835f1a73c637ff03ca`
 - [x] Manifestless plugin folders and archives are skipped with explicit warnings.
 - [x] Plugin manifests are validated as strict contracts (`schemaVersion`, `pluginId`, `entryAssembly`, `entryType` required).
 - [x] Absolute/escaping `entryAssembly` paths are rejected.
-- [x] Service and Host now fail fast in plugin-only mode when zero packs are loaded.
+- [x] Service and Host now allow plugin-only toolless startup when zero packs are loaded (warning emitted, no hard startup failure).
 - [x] Host profile switch now rolls back on plugin bootstrap configuration failures instead of leaving partially applied state.

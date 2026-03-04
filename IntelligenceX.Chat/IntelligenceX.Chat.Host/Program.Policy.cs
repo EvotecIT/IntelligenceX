@@ -28,7 +28,6 @@ internal static partial class Program {
         if (ToolPackBootstrap.IsPluginOnlyModeNoPacks(bootstrapOptions, bootstrapResult.Packs.Count)) {
             var pluginRoots = ToolPackBootstrap.GetPluginSearchPaths(bootstrapOptions);
             onBootstrapWarning?.Invoke(ToolPackBootstrap.BuildPluginOnlyNoPacksWarning(pluginRoots.Count));
-            throw new ToolPackBootstrapConfigurationException(ToolPackBootstrap.PluginOnlyNoPacksMessage);
         }
 
         return bootstrapResult.Packs;

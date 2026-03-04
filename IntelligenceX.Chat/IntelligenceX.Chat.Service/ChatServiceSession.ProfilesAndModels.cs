@@ -667,7 +667,6 @@ internal sealed partial class ChatServiceSession {
             RecordBootstrapWarning(
                 startupWarnings,
                 ToolPackBootstrap.BuildPluginOnlyNoPacksWarning(pluginSearchPaths.Length));
-            throw new ToolPackBootstrapConfigurationException(ToolPackBootstrap.PluginOnlyNoPacksMessage);
         }
 
         var registryBuildStopwatch = Stopwatch.StartNew();

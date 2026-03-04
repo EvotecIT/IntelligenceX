@@ -244,10 +244,10 @@ public static partial class ToolPackBootstrap {
     private const string DisabledByRuntimeConfigurationReason = "Disabled by runtime configuration.";
     private const string UnavailableReasonFallback = "Pack could not be loaded in this runtime.";
     /// <summary>
-    /// Canonical failure message used when plugin-only mode resolves to an empty pack set.
+    /// Canonical hint message used when plugin-only mode resolves to an empty pack set.
     /// </summary>
     public const string PluginOnlyNoPacksMessage =
-        "Built-in packs are disabled and no plugin packs were loaded. Configure --plugin-path or re-enable built-in packs.";
+        "Built-in packs are disabled and no plugin packs were loaded. Chat will run without tools until packs are enabled.";
 
     internal const string PackSourceBuiltin = "builtin";
     internal const string PackSourceOpenSource = "open_source";
@@ -268,7 +268,7 @@ public static partial class ToolPackBootstrap {
     }
 
     /// <summary>
-    /// Builds a normalized startup warning payload for plugin-only no-pack startup failures.
+    /// Builds a normalized startup warning payload for plugin-only no-pack startup states.
     /// </summary>
     /// <param name="pluginRootCount">Number of resolved plugin roots considered during bootstrap.</param>
     /// <returns>Structured warning string suitable for startup warning sinks.</returns>

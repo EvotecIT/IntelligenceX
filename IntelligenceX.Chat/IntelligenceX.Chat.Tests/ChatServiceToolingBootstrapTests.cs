@@ -37,19 +37,28 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
-    public void RebuildToolingFromOptions_Throws_WhenPluginOnlyModeLoadsNoPacks() {
+    public void RebuildToolingFromOptions_AllowsToollessMode_WhenPluginOnlyModeLoadsNoPacks() {
         var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        var startupWarningsField = typeof(ChatServiceSession).GetField("_startupWarnings", BindingFlags.NonPublic | BindingFlags.Instance);
+        var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField("_cachedToolDefinitions", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(rebuildMethod);
+        Assert.NotNull(startupWarningsField);
+        Assert.NotNull(cachedToolDefinitionsField);
 
         var options = new ServiceOptions {
             EnableBuiltInPackLoading = false,
             EnableDefaultPluginPaths = false
         };
         var session = new ChatServiceSession(options, Stream.Null);
-        var exception = Assert.Throws<TargetInvocationException>(() => rebuildMethod!.Invoke(session, Array.Empty<object>()));
-        var inner = Assert.IsType<ToolPackBootstrapConfigurationException>(exception.InnerException);
-        Assert.Contains("no plugin packs were loaded", inner.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("re-enable built-in packs", inner.Message, StringComparison.OrdinalIgnoreCase);
+        rebuildMethod!.Invoke(session, Array.Empty<object>());
+
+        var warnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(session));
+        Assert.Contains(
+            warnings,
+            static warning => warning.Contains("no_tool_packs_loaded", StringComparison.OrdinalIgnoreCase));
+
+        var toolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
+        Assert.Empty(toolDefinitions);
     }
 
     [Fact]
