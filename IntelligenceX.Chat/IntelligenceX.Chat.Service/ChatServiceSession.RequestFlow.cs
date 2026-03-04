@@ -782,6 +782,7 @@ internal sealed partial class ChatServiceSession {
         Task? pumpTask;
         lock (_chatRunLock) {
             runs = _chatRunsByRequestId.Values.ToArray();
+            _chatRunsByRequestId.Clear();
             _queuedChats.Clear();
             _activeChat = null;
             pumpTask = _chatRunPumpTask;
@@ -812,7 +813,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         lock (_chatRunLock) {
-            _chatRunsByRequestId.Clear();
             _chatRunPumpTask = null;
         }
 
