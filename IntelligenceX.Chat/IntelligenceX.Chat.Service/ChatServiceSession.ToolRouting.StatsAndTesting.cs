@@ -496,6 +496,26 @@ internal sealed partial class ChatServiceSession {
         UpdateToolRoutingStats(calls, outputs);
     }
 
+    internal void SetCapabilitySnapshotContextForTesting(
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
+        ToolRoutingCatalogDiagnostics routingCatalogDiagnostics) {
+        ArgumentNullException.ThrowIfNull(packAvailability);
+        ArgumentNullException.ThrowIfNull(routingCatalogDiagnostics);
+
+        _packAvailability = packAvailability.ToArray();
+        _routingCatalogDiagnostics = routingCatalogDiagnostics;
+    }
+
+    internal string? BuildTurnInstructionsWithRuntimeIdentityForTesting(string resolvedModel, string? baseInstructions = null) {
+        var previousInstructions = _instructions;
+        _instructions = baseInstructions;
+        try {
+            return BuildTurnInstructionsWithRuntimeIdentity(resolvedModel);
+        } finally {
+            _instructions = previousInstructions;
+        }
+    }
+
     internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest, bool forceContinuationFollowUp = false) {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(userRequest);

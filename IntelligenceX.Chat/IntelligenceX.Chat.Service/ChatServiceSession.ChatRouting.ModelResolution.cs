@@ -201,6 +201,7 @@ internal sealed partial class ChatServiceSession {
         if (_options.OpenAITransport == OpenAITransportKind.CompatibleHttp && !string.IsNullOrWhiteSpace(_options.OpenAIBaseUrl)) {
             runtimeIdentity.AppendLine("endpoint: " + _options.OpenAIBaseUrl!.Trim());
         }
+        AppendRuntimeCapabilityHandshake(runtimeIdentity);
         runtimeIdentity.AppendLine("When asked about the current model or runtime, use the exact active model value above. Do not guess.");
 
         var runtimeIdentityText = runtimeIdentity.ToString().Trim();
@@ -209,6 +210,35 @@ internal sealed partial class ChatServiceSession {
         }
 
         return baseInstructions + "\n\n" + runtimeIdentityText;
+    }
+
+    private void AppendRuntimeCapabilityHandshake(StringBuilder runtimeIdentity) {
+        var enabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(Array.Empty<string>());
+        var routingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(Array.Empty<string>());
+        var healthyToolNames = ResolveWorkingMemoryCapabilityHealthyToolNames(
+            Array.Empty<string>(),
+            Array.Empty<string>());
+        var registeredToolCount = Math.Max(0, _routingCatalogDiagnostics.TotalTools);
+        var enabledPackCount = enabledPackIds.Length;
+
+        runtimeIdentity.AppendLine();
+        runtimeIdentity.AppendLine("[Capability snapshot]");
+        runtimeIdentity.AppendLine(CapabilitySnapshotMarker);
+        runtimeIdentity.AppendLine("registered_tools: " + registeredToolCount);
+        runtimeIdentity.AppendLine("enabled_pack_count: " + enabledPackCount);
+        if (enabledPackIds.Length > 0) {
+            runtimeIdentity.AppendLine("enabled_packs: " + string.Join(", ", enabledPackIds));
+        }
+
+        if (routingFamilies.Length > 0) {
+            runtimeIdentity.AppendLine("routing_families: " + string.Join(", ", routingFamilies));
+        }
+
+        if (healthyToolNames.Length > 0) {
+            runtimeIdentity.AppendLine("healthy_tools: " + string.Join(", ", healthyToolNames));
+        }
+
+        runtimeIdentity.AppendLine("Treat this capability snapshot as the authoritative runtime tool context for this turn.");
     }
 
     private static string BuildCompatibleRuntimeNoTextDirectRetryPrompt(string userRequest) {
