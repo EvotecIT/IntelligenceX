@@ -175,4 +175,22 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal(canonical, fromJsonCanonicalFirst.ArgumentsJson);
         Assert.Equal(canonical, fromJsonInputFirst.ArgumentsJson);
     }
+
+    [Fact]
+    public void ChatRequestOptions_JsonContract_UsesEnabledAndDisabledToolsTokens() {
+        var options = new ChatRequestOptions {
+            EnabledTools = new[] { "dnsclientx_query", "ad_search" },
+            DisabledTools = new[] { "filesystem_read" }
+        };
+
+        var json = JsonSerializer.Serialize(options, ChatServiceJsonContext.Default.ChatRequestOptions);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        var enabled = root.GetProperty("enabledTools").EnumerateArray().Select(static value => value.GetString()).ToArray();
+        var disabled = root.GetProperty("disabledTools").EnumerateArray().Select(static value => value.GetString()).ToArray();
+
+        Assert.Equal(new[] { "dnsclientx_query", "ad_search" }, enabled);
+        Assert.Equal(new[] { "filesystem_read" }, disabled);
+    }
 }
