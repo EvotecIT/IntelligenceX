@@ -115,7 +115,7 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
         var key = string.IsNullOrWhiteSpace(argumentName) ? "domain_name" : argumentName.Trim();
         domainName = ToolArgs.GetOptionalTrimmed(arguments, key) ?? string.Empty;
         if (string.IsNullOrWhiteSpace(domainName)) {
-            errorResponse = ToolResponse.Error("invalid_argument", $"{key} is required.");
+            errorResponse = ToolResultV2.Error("invalid_argument", $"{key} is required.");
             return false;
         }
 
@@ -208,7 +208,7 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
     /// <param name="obj">Result object.</param>
     /// <returns>JSON string.</returns>
     protected static string Ok(JsonObject obj) {
-        return ToolResponse.Ok(root: obj);
+        return ToolResultV2.OkModel(obj);
     }
 
     /// <summary>
@@ -220,7 +220,7 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
     /// <param name="render">Optional render hint object.</param>
     /// <returns>JSON string.</returns>
     protected static string Ok(JsonObject root, JsonObject? meta, string? summaryMarkdown, JsonObject? render) {
-        return ToolResponse.Ok(root, meta, summaryMarkdown, render);
+        return ToolResultV2.OkModel(root, meta, summaryMarkdown, render);
     }
 
     /// <summary>
@@ -230,14 +230,14 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
     /// <returns>JSON string.</returns>
     protected static string Error(string? message) {
         var msg = string.IsNullOrWhiteSpace(message) ? "Unknown error" : message!;
-        return ToolResponse.Error("error", msg);
+        return ToolResultV2.Error("error", msg);
     }
 
     /// <summary>
     /// Serializes a JSON error result with a stable error code.
     /// </summary>
     protected static string Error(string errorCode, string error, IEnumerable<string>? hints = null, bool isTransient = false) {
-        return ToolResponse.Error(errorCode, error, hints, isTransient);
+        return ToolResultV2.Error(errorCode, error, hints is null ? null : hints.ToArray(), isTransient);
     }
 
     /// <summary>
@@ -256,7 +256,7 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
         var message = string.IsNullOrWhiteSpace(collectionError)
             ? defaultErrorMessage
             : collectionError!;
-        errorResponse = ToolResponse.Error("query_failed", message);
+        errorResponse = ToolResultV2.Error("query_failed", message);
         return false;
     }
 
@@ -350,7 +350,7 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
         string defaultErrorMessage,
         out string? errorResponse) {
         if (!TryReadCollectionViewState(view, out var collectionSucceeded, out var collectionError)) {
-            errorResponse = ToolResponse.Error("query_failed", "Collection view contract is invalid.");
+            errorResponse = ToolResultV2.Error("query_failed", "Collection view contract is invalid.");
             return false;
         }
 

@@ -92,6 +92,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Host fallback decoupling cleanup: removed host runtime hardcoded tool-specific retry transforms (`ApplyAdDiscoveryRootDseFallback`, `ApplyAdReplicationProbeFallback`, `ApplyDomainDetectiveSummaryTimeoutFallback`) and added architecture guardrail coverage to block reintroduction.
 - [x] Typed-surface guardrail expansion: `SourceGuardrailTests` now scans typed-pipeline tool wrappers pack-wide and fails if refactored tools reintroduce ad-hoc `arguments?.Get...`/`arguments.Get...` parsing.
 - [x] Typed-envelope increment: `ad_scope_discovery` migrated to `ToolResultV2` success/error envelope path and included in typed-wrapper guardrail enforcement list.
+- [x] Typed-envelope base hardening: `ActiveDirectoryToolBase*` shared helpers now emit `ToolResultV2` envelopes and are protected by guardrail coverage preventing direct `ToolResponse` regressions.
 
 ## Rules For This Migration
 
@@ -275,7 +276,7 @@ Checklist:
 
 - [ ] Prefer typed binders for all migrated/refactored tools.
 - [x] Add guardrail to flag ad-hoc direct argument parsing in target packs.
-- [ ] Standardize on `ToolResultV2` for migrated paths.
+- [x] Standardize on `ToolResultV2` for migrated paths.
 - [x] Wave-2 typed migration batch completed for: pack/discovery tools, `SystemDevicesSummary`, `SystemHardwareIdentity`, `SystemHardwareSummary`, `SystemInfo`, `SystemBiosSummary`, `SystemSecurityOptions`, `SystemBootConfiguration`, `SystemRdpPosture`, `SystemSmbPosture`, `SystemFeaturesList`, `SystemUpdatesInstalled`, `SystemPatchDetails`, `SystemDisksList`, `SystemLogicalDisksList`, `SystemPortsList`, `SystemProcessList`, `SystemFirewallProfiles`, `SystemFirewallRules`, `SystemServiceList`, `SystemScheduledTasksList`, `SystemTimeSync`, `SystemWhoAmI`, `WslStatus`, `FsList/FsRead/FsSearch`, `EventLogNamedEventsCatalog`, `EventLogNamedEventsQuery`, `EventLogLiveQuery`, `EventLogTopEvents`, `EventLogLiveStats`, `EventLogEvtxFind`, `EventLogEvtxQuery`, `EventLogEvtxStats`, `EventLogEvtxSecuritySummary`, `TestimoXRulesList`, `TestimoXRulesRun`, `PowerShellRun`, `EmailImapSearch`, `EmailImapGet`, `OfficeImoRead`, plus Wave-1/AD carryover typed migrations: `DomainDetectivePackInfo`, `DomainDetectiveNetworkProbe`, `DomainDetectiveDomainSummary`, `DnsClientXPackInfo`, `DnsClientXQuery`, `DnsClientXPing`, `AdPackInfo`, `AdMonitoringProbeCatalog`, `AdRecycleBinLifetime`, `AdGroupMembers`, `AdGroupMembersResolved`, `AdGroupsList`, `AdAdminCountReport`, `AdGpoChanges`, `AdGpoList`, `AdGpoInventoryHealth`, `AdGpoHealth`, `AdGpoPermissionReport`, `AdGpoPermissionConsistency`, `AdLdapQuery`, `AdLdapQueryPaged`, `AdObjectGet`, `AdObjectResolve`, `AdSearch`, `AdSpnSearch`, `AdDomainAdminsSummary`, `AdPrivilegedGroupsSummary`, `AdStaleAccounts`, `AdUsersExpired`, `AdWhoAmI`, `AdDomainInfo`, `AdLdapDiagnostics`, `AdSearchFacets`, `AdReplicationSummary`, and `AdReplicationConnections`.
 
 Dependency: PR 7, PR 9

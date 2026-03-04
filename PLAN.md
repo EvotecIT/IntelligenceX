@@ -131,6 +131,7 @@ Build a contract-first architecture where:
 - [x] Host decoupling cleanup: removed host-side tool-name-specific retry rewrite path (`AD discovery`, `AD replication probe`, `DomainDetective summary`) so runtime no longer mutates calls via hardcoded tool IDs; added architecture guardrail test to prevent reintroduction.
 - [x] Typed-surface guardrail hardening: added pack-wide source guardrail asserting typed-pipeline tools (`RunPipelineAsync` + `ToolRequestBindingResult`) do not regress to ad-hoc `arguments?.Get...`/`arguments.Get...` parsing across AD/DomainDetective/DnsClientX/System/EventLog/TestimoX/FileSystem/Email/PowerShell/OfficeIMO.
 - [x] Typed-envelope migration increment: `ad_scope_discovery` now emits `ToolResultV2` envelopes (`Error` + `OkFlatWithRenderValue`) and is covered by typed-wrapper guardrail assertions.
+- [x] Typed-envelope standardization increment: AD shared base helpers now use `ToolResultV2` (instead of direct `ToolResponse`) for required-argument errors, convention-mapped collection failures, and common AD success/error wrapper helpers; guardrail asserts `ActiveDirectoryToolBase*` files stay `ToolResponse`-free.
 
 ## Hard Decisions (Locked)
 
@@ -211,7 +212,7 @@ Build a contract-first architecture where:
 1. [ ] Add optional typed tool interface/adapter pattern in `IntelligenceX.Tools.Common` (request/response model typed; envelope serialization centralized).
 2. [ ] Keep `ITool` compatibility adapter for transport, but mark direct raw argument parsing patterns as deprecated.
 3. [ ] Enforce typed binders (`ToolRequestBinder`) for all new tools; backfill existing tools incrementally.
-4. [ ] Standardize success/error envelope shaping through `ToolResultV2` only.
+4. [x] Standardize success/error envelope shaping through `ToolResultV2` only.
 5. [x] Add analyzer rule in `IntelligenceX.Tools.Tests` or shared analyzer package to flag ad-hoc `arguments?.Get...` in refactored packs.
 
 ## Phase 7 - Test Migration And Coverage

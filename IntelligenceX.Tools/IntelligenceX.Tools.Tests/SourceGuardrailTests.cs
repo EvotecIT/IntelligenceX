@@ -252,6 +252,32 @@ public class SourceGuardrailTests {
     }
 
     [Fact]
+    public void ActiveDirectoryToolBaseHelpers_ShouldUseToolResultV2InsteadOfToolResponse() {
+        var repoRoot = FindRepoRoot();
+        var folder = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground");
+        var files = Directory.EnumerateFiles(folder, "ActiveDirectoryToolBase*.cs", SearchOption.TopDirectoryOnly);
+
+        foreach (var file in files) {
+            var source = File.ReadAllText(file);
+            Assert.DoesNotContain("ToolResponse.", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void AdGpoInventoryHealthTool_ShouldUseSharedTypedRowsViewHelperPath() {
+        var repoRoot = FindRepoRoot();
+        var filePath = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGpoInventoryHealthTool.cs");
+        var source = File.ReadAllText(filePath);
+
+        Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+        Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+        Assert.Contains("ExecuteDomainRowsViewTool(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToolResponse.", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ActiveDirectoryTools_ShouldNotLeakRawExceptionMessagesInToolErrors() {
         var repoRoot = FindRepoRoot();
         var folder = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground");
