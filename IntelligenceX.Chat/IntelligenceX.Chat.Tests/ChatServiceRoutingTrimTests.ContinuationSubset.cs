@@ -218,6 +218,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
     }
 
+    [Fact]
+    public void TryGetContinuationToolSubset_UsesCapabilitySnapshotWhenWeightedSubsetIsStale() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-weighted-stale-capability-fresh";
+        var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
+        var staleSeenUtcTicks = DateTime.UtcNow.Subtract(TimeSpan.FromDays(2)).Ticks;
+
+        session.SetWeightedRoutingContextsForTesting(
+            new Dictionary<string, string[]>(StringComparer.Ordinal) {
+                [threadId] = new[] { "dnsclientx_query", "dnsclientx_ping" }
+            },
+            new Dictionary<string, long>(StringComparer.Ordinal) {
+                [threadId] = staleSeenUtcTicks
+            });
+
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "continue dns diagnostics",
+            domainIntentFamily: "public_domain",
+            recentToolNames: Array.Empty<string>(),
+            recentEvidenceSnippets: Array.Empty<string>(),
+            enabledPackIds: new[] { "dnsclientx" },
+            routingFamilies: new[] { "public_domain" },
+            healthyToolNames: new[] { "dnsclientx_query", "dnsclientx_ping" },
+            seenUtcTicks: DateTime.UtcNow.Ticks);
+
+        var args = new object?[] { threadId, "continue", allDefinitions, null };
+        var result = TryGetContinuationToolSubsetMethod.Invoke(session, args);
+
+        Assert.True(Assert.IsType<bool>(result));
+        var subset = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(args[3]);
+        Assert.Equal(2, subset.Count);
+        Assert.Equal("dnsclientx_query", subset[0].Name);
+        Assert.Equal("dnsclientx_ping", subset[1].Name);
+    }
+
     private static List<ToolDefinition> BuildContinuationSubsetTestToolDefinitions() {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         return new List<ToolDefinition> {

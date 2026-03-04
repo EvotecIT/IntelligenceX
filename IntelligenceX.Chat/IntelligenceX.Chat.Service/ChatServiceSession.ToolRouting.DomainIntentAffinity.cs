@@ -512,7 +512,21 @@ internal sealed partial class ChatServiceSession {
                 TrimWeightedRoutingContextsNoLock();
             }
             RemoveWeightedToolSubsetSnapshot(normalizedThreadId);
-            return false;
+
+            if (!TryGetContinuationToolSubsetFromCapabilitySnapshot(
+                    normalizedThreadId,
+                    allDefinitions,
+                    out var capabilitySubset,
+                    out var capabilityToolNames,
+                    out var capabilitySeenUtcTicks)
+                || capabilitySubset.Count < 2
+                || capabilityToolNames.Length < 2) {
+                return false;
+            }
+
+            selected = new List<ToolDefinition>(capabilitySubset);
+            previousNames = capabilityToolNames;
+            seenUtcTicks = capabilitySeenUtcTicks;
         }
 
         if (selected is null) {
