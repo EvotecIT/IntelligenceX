@@ -30,6 +30,16 @@ public static class ChatRequestOptionLimits {
     public const int MaxCandidateTools = 256;
 
     /// <summary>
+    /// Maximum selector items allowed for per-turn tool/pack exposure arrays.
+    /// </summary>
+    public const int MaxToolSelectors = 512;
+
+    /// <summary>
+    /// Maximum non-empty selector token length for per-turn tool/pack exposure arrays.
+    /// </summary>
+    public const int MaxToolSelectorLength = 128;
+
+    /// <summary>
     /// Minimum allowed timeout value (seconds).
     /// </summary>
     public const int MinTimeoutSeconds = 0;
