@@ -117,6 +117,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Decision checkpoint (2026-03-04): strict pack-boundary isolation is considered complete and locked by cross-pack orchestration catalog tests (no inferred ADPlayground↔DomainDetective handoff without explicit contracts).
 - [x] Typed-surface adapter increment (2026-03-04): introduced `ToolRequestAdapter<TRequest>` and `ToolBase` adapter overload in `IntelligenceX.Tools.Common`, then migrated `DnsClientXPackInfoTool` and `DomainDetectivePackInfoTool` to use the adapter path with dedicated unit coverage.
 - [x] Typed-surface adapter increment (2026-03-04): migrated `DomainDetectiveChecksCatalogTool`, `ReviewerSetupPackInfoTool`, and `ReviewerSetupContractVerifyTool` to typed binder/adapter pipelines using `ToolResultV2` envelopes; added source guardrails to keep these wrappers free of raw `arguments?.Get*` parsing.
+- [x] Documentation cleanup increment (2026-03-04): updated ADR wording (`adr-0001-chat-tools-contract-boundary.md`) so Chat cross-pack fallback references are historical/current-state accurate after fallback-engine removal.
 
 ## Rules For This Migration
 

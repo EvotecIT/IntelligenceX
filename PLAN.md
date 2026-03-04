@@ -156,6 +156,7 @@ Build a contract-first architecture where:
 - [x] Decision checkpoint (2026-03-04): strict pack-boundary isolation (`DomainDetective` vs `ADPlayground`) is now enforced by contract/cross-pack isolation tests; no implicit handoff is inferred without explicit `ToolHandoffContract`.
 - [x] Typed adapter increment (2026-03-04): added reusable `ToolRequestAdapter<TRequest>` abstraction in `IntelligenceX.Tools.Common` plus `ToolBase.RunPipelineAsync(..., adapter)` overload, and migrated `dnsclientx_pack_info` + `domaindetective_pack_info` to this adapter path.
 - [x] Typed adapter migration increment (2026-03-04): migrated `domaindetective_checks_catalog`, `reviewer_setup_pack_info`, and `reviewer_setup_contract_verify` to typed binder/adapter pipelines and standardized their envelopes on `ToolResultV2`; added guardrail coverage to keep these wrappers off raw `arguments?.Get*` parsing.
+- [x] Documentation cleanup increment (2026-03-04): refreshed ADR wording in `InternalDocs/architecture/adr-0001-chat-tools-contract-boundary.md` so cross-pack fallback references are historical/current-state accurate (no stale present-tense behavior claims).
 
 ## Hard Decisions (Locked)
 
@@ -251,7 +252,7 @@ Build a contract-first architecture where:
 ## Phase 8 - Cutover And Cleanup
 
 1. [ ] Remove dead constants/helpers tied to old fallback reason telemetry markers.
-2. [ ] Remove stale docs referencing Chat cross-pack fallback behavior.
+2. [x] Remove stale docs referencing Chat cross-pack fallback behavior.
 3. [x] Publish new "How to add a tool/pack without touching Chat" guide in `InternalDocs/agent-playbooks/`.
 4. [x] Publish contract schema examples for plugin authors.
 5. [ ] Run full solution build/test gates and close migration tracker items.
