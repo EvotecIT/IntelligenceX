@@ -478,7 +478,18 @@ internal sealed partial class ChatServiceSession {
                     noTextRecoveryHitCount++;
                 }
 
+                var hasSuccessfulToolOutput = false;
+                for (var outputIndex = 0; outputIndex < toolOutputs.Count; outputIndex++) {
+                    if (toolOutputs[outputIndex]?.Ok is true) {
+                        hasSuccessfulToolOutput = true;
+                        break;
+                    }
+                }
+
                 var shouldAttemptNoTextToolOutputDirectRetry = !noTextToolOutputDirectRetryUsed
+                                                                && planExecuteReviewLoop
+                                                                && !_options.Redact
+                                                                && hasSuccessfulToolOutput
                                                                 && toolOutputs.Count > 0
                                                                 && string.IsNullOrWhiteSpace(text);
                 if (shouldAttemptNoTextToolOutputDirectRetry) {
