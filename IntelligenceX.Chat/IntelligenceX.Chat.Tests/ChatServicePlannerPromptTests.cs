@@ -30,6 +30,9 @@ public sealed class ChatServicePlannerPromptTests {
     private static readonly MethodInfo SelectWeightedToolSubsetMethod =
         typeof(ChatServiceSession).GetMethod("SelectWeightedToolSubset", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("SelectWeightedToolSubset not found.");
+    private static readonly MethodInfo EnsureMinimumToolSelectionMethod =
+        typeof(ChatServiceSession).GetMethod("EnsureMinimumToolSelection", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("EnsureMinimumToolSelection not found.");
 
     private static readonly MethodInfo ResolveMaxCandidateToolsSettingMethod =
         typeof(ChatServiceSession).GetMethod("ResolveMaxCandidateToolsSetting", BindingFlags.NonPublic | BindingFlags.Static)
@@ -474,6 +477,68 @@ public sealed class ChatServicePlannerPromptTests {
         }
 
         Assert.True(hasAmbiguityMarker);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_IncludesExplicitEscapedToolReferenceWhenScoresAreOtherwiseFlat() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"eventlog_evtx_probe_{i:D2}",
+                "EventLog EVTX probe helper.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "eventlog_evtx_probe",
+            "Canonical EVTX probe tool.",
+            ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+
+        var args = new object?[] {
+            definitions,
+            "Please explain exactly what `eventlog\\_evtx\\_probe` does in this pack and whether I should use it for forensic timeline baselining across this environment.",
+            4,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.InRange(selected.Count, 4, 8);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_evtx_probe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EnsureMinimumToolSelection_ReplacesNonExplicitToolWhenExplicitToolIsRequestedAtLimit() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var allDefinitions = new List<ToolDefinition>();
+        for (var i = 0; i < 12; i++) {
+            allDefinitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        allDefinitions.Add(new ToolDefinition(
+            "eventlog_evtx_query",
+            "Read events from EVTX.",
+            ToolSchema.Object(("path", ToolSchema.String("Path to EVTX."))).NoAdditionalProperties()));
+
+        var initialSelected = new List<ToolDefinition>();
+        for (var i = 0; i < 8; i++) {
+            initialSelected.Add(allDefinitions[i]);
+        }
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(EnsureMinimumToolSelectionMethod.Invoke(
+            session,
+            new object?[] {
+                "dobra a co to `eventlog\\_evtx\\_query · Event Log (EventViewerX)` i kiedy to uzywac?",
+                allDefinitions,
+                initialSelected,
+                8
+            }));
+
+        Assert.Equal(8, selected.Count);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

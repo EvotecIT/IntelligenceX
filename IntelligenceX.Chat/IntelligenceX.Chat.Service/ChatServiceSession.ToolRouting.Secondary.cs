@@ -218,6 +218,7 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<ToolDefinition>();
         }
 
+        var explicitRequestedToolNames = BuildExplicitRequestedToolNameSet(userRequest);
         var selected = new List<ToolDefinition>(Math.Min(limit, allDefinitions.Count));
         var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < initialSelected.Count && selected.Count < limit; i++) {
@@ -229,6 +230,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var minSelection = Math.Min(allDefinitions.Count, Math.Max(8, Math.Min(limit, 12)));
+        EnsureExplicitRequestedToolsSelected(explicitRequestedToolNames, allDefinitions, selected, selectedNames, limit);
         if (selected.Count >= minSelection) {
             return selected;
         }
@@ -241,6 +243,9 @@ internal sealed partial class ChatServiceSession {
             }
 
             var score = 0d;
+            if (IsExplicitRequestedToolMatch(definition.Name, explicitRequestedToolNames)) {
+                score += 9d;
+            }
             if (!string.IsNullOrWhiteSpace(userRequest)
                 && userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0) {
                 score += 6d;
@@ -265,7 +270,119 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        EnsureExplicitRequestedToolsSelected(explicitRequestedToolNames, allDefinitions, selected, selectedNames, limit);
         return selected.Count == 0 ? allDefinitions : selected;
+    }
+
+    private static HashSet<string>? BuildExplicitRequestedToolNameSet(string userRequest) {
+        var requestedToolNames = ExtractExplicitRequestedToolNames(userRequest);
+        if (requestedToolNames.Length == 0) {
+            return null;
+        }
+
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < requestedToolNames.Length; i++) {
+            var normalized = (requestedToolNames[i] ?? string.Empty).Trim();
+            if (normalized.Length == 0) {
+                continue;
+            }
+
+            set.Add(normalized);
+        }
+
+        return set.Count == 0 ? null : set;
+    }
+
+    private static bool IsExplicitRequestedToolMatch(string toolName, HashSet<string>? explicitRequestedToolNames) {
+        if (explicitRequestedToolNames is null || explicitRequestedToolNames.Count == 0) {
+            return false;
+        }
+
+        var normalizedToolName = NormalizeCompactToken((toolName ?? string.Empty).AsSpan());
+        if (normalizedToolName.Length == 0) {
+            return false;
+        }
+
+        return explicitRequestedToolNames.Contains(normalizedToolName);
+    }
+
+    private static void EnsureExplicitRequestedToolsSelected(
+        HashSet<string>? explicitRequestedToolNames,
+        IReadOnlyList<ToolDefinition> allDefinitions,
+        IList<ToolDefinition> selected,
+        ISet<string> selectedNames,
+        int limit) {
+        if (explicitRequestedToolNames is null
+            || explicitRequestedToolNames.Count == 0
+            || allDefinitions.Count == 0
+            || limit <= 0) {
+            return;
+        }
+
+        var explicitCandidates = new List<ToolDefinition>(Math.Min(allDefinitions.Count, 8));
+        var candidateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < allDefinitions.Count; i++) {
+            var definition = allDefinitions[i];
+            if (definition is null || string.IsNullOrWhiteSpace(definition.Name)) {
+                continue;
+            }
+
+            var definitionName = definition.Name.Trim();
+            if (!IsExplicitRequestedToolMatch(definitionName, explicitRequestedToolNames)
+                || !candidateNames.Add(definitionName)) {
+                continue;
+            }
+
+            explicitCandidates.Add(definition);
+            if (explicitCandidates.Count >= 8) {
+                break;
+            }
+        }
+
+        if (explicitCandidates.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < explicitCandidates.Count; i++) {
+            var candidate = explicitCandidates[i];
+            var candidateName = (candidate.Name ?? string.Empty).Trim();
+            if (candidateName.Length == 0 || selectedNames.Contains(candidateName)) {
+                continue;
+            }
+
+            if (selected.Count < limit) {
+                selected.Add(candidate);
+                selectedNames.Add(candidateName);
+                continue;
+            }
+
+            var replaceIndex = FindExplicitToolReplacementIndex(selected, explicitRequestedToolNames);
+            if (replaceIndex < 0 || replaceIndex >= selected.Count) {
+                continue;
+            }
+
+            var replacedName = (selected[replaceIndex].Name ?? string.Empty).Trim();
+            selected[replaceIndex] = candidate;
+            if (replacedName.Length > 0) {
+                selectedNames.Remove(replacedName);
+            }
+            selectedNames.Add(candidateName);
+        }
+    }
+
+    private static int FindExplicitToolReplacementIndex(IList<ToolDefinition> selected, HashSet<string> explicitRequestedToolNames) {
+        for (var i = selected.Count - 1; i >= 0; i--) {
+            var selectedName = (selected[i].Name ?? string.Empty).Trim();
+            if (selectedName.Length == 0) {
+                return i;
+            }
+
+            if (!IsExplicitRequestedToolMatch(selectedName, explicitRequestedToolNames)) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private static List<ToolRoutingInsight> BuildModelRoutingInsights(IReadOnlyList<ToolDefinition> selectedDefs, int plannedCount) {
@@ -690,6 +807,7 @@ internal sealed partial class ChatServiceSession {
         ToolDefinition Definition,
         double Score,
         bool DirectNameMatch,
+        bool ExplicitToolMatch,
         int TokenHits,
         double Adjustment);
 

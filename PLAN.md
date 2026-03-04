@@ -117,6 +117,9 @@ Build a contract-first architecture where:
 - [x] Startup/send dedupe hardening: queued-after-login duplicate suppression now also handles startup/login windows where both prompts have missing conversation ids but equivalent normalized text, reducing duplicate assistant greetings after switch-account recovery.
 - [x] Regression coverage expanded: queue dedupe tests now explicitly lock both-missing-conversation-id startup fallback behavior for manual resend suppression during in-flight queued-after-login dispatch.
 - [x] Catalog contract validation checkpoint: `analyze validate-catalog --workspace .` passes with `0 error(s), 0 warning(s)` after startup/login and ADWS hardening batches.
+- [x] Stabilization hotfix: weighted/planner routing subsets now preserve explicitly requested tool ids (including escaped markdown forms such as ``eventlog\_evtx\_query``), preventing false "tool not active" follow-up responses when the tool is registered.
+- [x] Regression coverage expanded: routing tests now assert explicit escaped tool-id inclusion in weighted subset selection and limit-bound planner backfill (`EnsureMinimumToolSelection`) replacement behavior.
+- [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) with explicit `eventlog_evtx_query` capability turns executing EventLog tools in-session.
 
 ## Hard Decisions (Locked)
 

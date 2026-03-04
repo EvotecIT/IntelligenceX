@@ -78,6 +78,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) and asserts ADWS endpoint probes do not regress to `:1/ActiveDirectoryWebServices`.
 - [x] Startup/send dedupe hardening: queued-after-login suppression now treats both-missing-conversation-id startup prompts as equivalent when normalized text matches, reducing duplicate post-login greeting replies.
 - [x] Startup/send regression coverage expanded: queue dedupe tests now include explicit both-missing-conversation-id cases for in-flight queued-after-login manual-resend suppression.
+- [x] Stabilization hotfix: weighted/planner subset routing now retains explicitly requested tool ids (including escaped markdown ids) in candidate selection, preventing false "tool inactive" responses for registered tools during follow-up turns.
+- [x] Regression coverage expanded: planner/routing tests now lock explicit escaped tool-id retention in weighted subset selection and ensure planner minimum-selection backfill replaces non-explicit tools at limit when needed.
+- [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after explicit tool-id subset retention hardening.
 
 ## Rules For This Migration
 

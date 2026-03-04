@@ -167,6 +167,9 @@ internal sealed partial class ChatServiceSession {
             var confidenceValue = Math.Clamp(toolScore.Score / maxScore, 0d, 1d);
             var confidence = confidenceValue >= 0.72d ? "high" : confidenceValue >= 0.45d ? "medium" : "low";
             var reasons = new List<string>();
+            if (toolScore.ExplicitToolMatch) {
+                reasons.Add("explicit tool-id match");
+            }
             if (toolScore.DirectNameMatch) {
                 reasons.Add("direct name match");
             }
