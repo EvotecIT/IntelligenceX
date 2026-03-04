@@ -154,6 +154,7 @@ Build a contract-first architecture where:
 - [x] Language-neutral routing validation checkpoint (2026-03-04): `ChatServiceRoutingTrimTests` suite passes (`709/709`), including Unicode ordinal parsing and compact follow-up routing safeguards.
 - [x] Routing-heuristic cleanup checkpoint (2026-03-04): Chat service no longer uses raw tool-name `TryResolveDomainIntentFamily(toolName, ...)` paths for domain-family routing decisions; remaining resolution is contract-first with definition metadata fallback only.
 - [x] Decision checkpoint (2026-03-04): strict pack-boundary isolation (`DomainDetective` vs `ADPlayground`) is now enforced by contract/cross-pack isolation tests; no implicit handoff is inferred without explicit `ToolHandoffContract`.
+- [x] Typed adapter increment (2026-03-04): added reusable `ToolRequestAdapter<TRequest>` abstraction in `IntelligenceX.Tools.Common` plus `ToolBase.RunPipelineAsync(..., adapter)` overload, and migrated `dnsclientx_pack_info` + `domaindetective_pack_info` to this adapter path.
 
 ## Hard Decisions (Locked)
 
@@ -231,7 +232,7 @@ Build a contract-first architecture where:
 
 ## Phase 6 - Typed Tool Surface (Less Stringly, More Models)
 
-1. [ ] Add optional typed tool interface/adapter pattern in `IntelligenceX.Tools.Common` (request/response model typed; envelope serialization centralized).
+1. [x] Add optional typed tool interface/adapter pattern in `IntelligenceX.Tools.Common` (request/response model typed; envelope serialization centralized).
 2. [ ] Keep `ITool` compatibility adapter for transport, but mark direct raw argument parsing patterns as deprecated.
 3. [ ] Enforce typed binders (`ToolRequestBinder`) for all new tools; backfill existing tools incrementally.
 4. [x] Standardize success/error envelope shaping through `ToolResultV2` only.

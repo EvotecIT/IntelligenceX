@@ -11,6 +11,7 @@ namespace IntelligenceX.Tools.DnsClientX;
 /// </summary>
 public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
     private sealed record PackInfoRequest;
+    private readonly PackInfoAdapter _adapter;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "dnsclientx_pack_info",
@@ -47,7 +48,9 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
     /// <summary>
     /// Initializes a new instance of the <see cref="DnsClientXPackInfoTool"/> class.
     /// </summary>
-    public DnsClientXPackInfoTool(DnsClientXToolOptions options) : base(options) { }
+    public DnsClientXPackInfoTool(DnsClientXToolOptions options) : base(options) {
+        _adapter = new PackInfoAdapter(this);
+    }
 
     /// <inheritdoc />
     public override ToolDefinition Definition => DefinitionValue;
@@ -57,16 +60,10 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
         return RunPipelineAsync(
             arguments: arguments,
             cancellationToken: cancellationToken,
-            binder: BindRequest,
-            execute: ExecuteAsync);
+            adapter: _adapter);
     }
 
-    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
-        _ = arguments;
-        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
-    }
-
-    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+    private Task<string> BuildPackInfoResponseAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -127,5 +124,24 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
             "Use `domaindetective_domain_summary` when you need broader domain posture checks.");
 
         return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
+    }
+
+    private sealed class PackInfoAdapter : ToolRequestAdapter<PackInfoRequest> {
+        private readonly DnsClientXPackInfoTool _tool;
+
+        public PackInfoAdapter(DnsClientXPackInfoTool tool) {
+            _tool = tool;
+        }
+
+        public override ToolRequestBindingResult<PackInfoRequest> Bind(JsonObject? arguments) {
+            _ = arguments;
+            return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+        }
+
+        public override Task<string> ExecuteAsync(
+            ToolPipelineContext<PackInfoRequest> context,
+            CancellationToken cancellationToken) {
+            return _tool.BuildPackInfoResponseAsync(context, cancellationToken);
+        }
     }
 }
