@@ -232,9 +232,12 @@ internal sealed partial class ChatServiceSession {
     }
 
     private sealed class ChatRun {
-        public ChatRun(string chatRequestId, CancellationTokenSource cts) {
+        public ChatRun(string chatRequestId, CancellationTokenSource cts, IntelligenceXClient client, StreamWriter writer, ChatRequest request) {
             ChatRequestId = chatRequestId;
             Cts = cts;
+            Client = client;
+            Writer = writer;
+            Request = request;
         }
 
         public string ChatRequestId { get; }
@@ -242,6 +245,12 @@ internal sealed partial class ChatServiceSession {
         public CancellationTokenSource Cts { get; }
         public Task? Task { get; set; }
         public bool IsCompleted { get; private set; }
+        public bool Started { get; private set; }
+        public long EnqueuedUtcTicks { get; init; } = DateTime.UtcNow.Ticks;
+        public int QueuePositionAtEnqueue { get; set; } = 1;
+        public IntelligenceXClient Client { get; }
+        public StreamWriter Writer { get; }
+        public ChatRequest Request { get; }
 
         public void Cancel() {
             try {
@@ -258,6 +267,10 @@ internal sealed partial class ChatServiceSession {
             } catch {
                 // Ignore.
             }
+        }
+
+        public void MarkStarted() {
+            Started = true;
         }
     }
 

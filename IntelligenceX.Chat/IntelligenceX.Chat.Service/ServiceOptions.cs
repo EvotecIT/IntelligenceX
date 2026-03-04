@@ -14,6 +14,8 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
     private const int MaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
+    private const int MaxSessionExecutionQueueLimit = 4096;
+    private const int MaxGlobalExecutionLaneConcurrency = 512;
 
     public bool ShowHelp { get; set; }
     public string PipeName { get; set; } = "intelligencex.chat";
@@ -46,6 +48,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public bool AllowMutatingParallelToolCalls { get; set; }
     public int TurnTimeoutSeconds { get; set; }
     public int ToolTimeoutSeconds { get; set; }
+    public int SessionExecutionQueueLimit { get; set; } = 32;
+    public int GlobalExecutionLaneConcurrency { get; set; }
     public List<string> AllowedRoots { get; } = new();
 
     public string? AdDomainController { get; set; }
@@ -370,6 +374,28 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.ToolTimeoutSeconds = n;
                 continue;
             }
+            if (arg is "--session-execution-queue-limit") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var n) || n < 0 || n > MaxSessionExecutionQueueLimit) {
+                    error = $"--session-execution-queue-limit must be between 0 and {MaxSessionExecutionQueueLimit}.";
+                    return options;
+                }
+                options.SessionExecutionQueueLimit = n;
+                continue;
+            }
+            if (arg is "--global-execution-lane-concurrency") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var n) || n < 0 || n > MaxGlobalExecutionLaneConcurrency) {
+                    error = $"--global-execution-lane-concurrency must be between 0 and {MaxGlobalExecutionLaneConcurrency}.";
+                    return options;
+                }
+                options.GlobalExecutionLaneConcurrency = n;
+                continue;
+            }
             if (arg is "--ad-domain-controller") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -544,6 +570,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --disallow-mutating-parallel-tools  Disable mutating parallel override.");
         Console.WriteLine("  --turn-timeout-seconds <N>  Per-turn timeout in seconds (0 = no timeout; default: 0).");
         Console.WriteLine("  --tool-timeout-seconds <N>  Per-tool timeout in seconds (0 = no timeout; default: 0).");
+        Console.WriteLine("  --session-execution-queue-limit <N>  Max queued chat turns per session (0 = unlimited; default: 32).");
+        Console.WriteLine("  --global-execution-lane-concurrency <N>  Global chat turn concurrency across sessions (0 = disabled; default: 0).");
         Console.WriteLine("  --ad-domain-controller  Active Directory domain controller host/FQDN (optional).");
         Console.WriteLine("  --ad-search-base        Active Directory base DN (optional; defaultNamingContext used otherwise).");
         Console.WriteLine("  --ad-max-results <N>    Max results returned by AD tools (default: 1000).");

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using DBAClientX;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
@@ -28,6 +30,68 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         Assert.Equal(0, options.MaxSample);
         Assert.False(options.AllowMutatingParallelToolCalls);
         Assert.True(options.RequireExplicitRoutingMetadata);
+    }
+
+    [Fact]
+    public void Parse_AppliesExecutionLaneOverrides() {
+        var options = ServiceOptions.Parse(new[] {
+            "--session-execution-queue-limit", "128",
+            "--global-execution-lane-concurrency", "4"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(128, options.SessionExecutionQueueLimit);
+        Assert.Equal(4, options.GlobalExecutionLaneConcurrency);
+    }
+
+    [Fact]
+    public void ApplyProfile_ClampsExecutionLaneValuesToParserBounds() {
+        var options = new ServiceOptions();
+        var profile = new ServiceProfile {
+            SessionExecutionQueueLimit = 99_999,
+            GlobalExecutionLaneConcurrency = 99_999
+        };
+
+        var method = typeof(ServiceOptions).GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method!.Invoke(options, new object[] { profile });
+
+        Assert.Equal(4096, options.SessionExecutionQueueLimit);
+        Assert.Equal(512, options.GlobalExecutionLaneConcurrency);
+    }
+
+    [Fact]
+    public void ToProfile_ClampsExecutionLaneValuesToParserBounds() {
+        var options = new ServiceOptions {
+            SessionExecutionQueueLimit = 99_999,
+            GlobalExecutionLaneConcurrency = 99_999
+        };
+
+        var method = typeof(ServiceOptions).GetMethod("ToProfile", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        var profile = Assert.IsType<ServiceProfile>(method!.Invoke(options, null));
+
+        Assert.Equal(4096, profile.SessionExecutionQueueLimit);
+        Assert.Equal(512, profile.GlobalExecutionLaneConcurrency);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidSessionExecutionQueueLimit() {
+        _ = ServiceOptions.Parse(new[] {
+            "--session-execution-queue-limit", "-1"
+        }, out var error);
+
+        Assert.Equal("--session-execution-queue-limit must be between 0 and 4096.", error);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidGlobalExecutionLaneConcurrency() {
+        _ = ServiceOptions.Parse(new[] {
+            "--global-execution-lane-concurrency", "513"
+        }, out var error);
+
+        Assert.Equal("--global-execution-lane-concurrency must be between 0 and 512.", error);
     }
 
     [Fact]

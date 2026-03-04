@@ -222,6 +222,9 @@ public sealed partial class MainWindow : Window {
 
         return status.Status switch {
             ChatStatusCodes.Thinking => "Thinking...",
+            ChatStatusCodes.TurnQueued => "Queued in session execution lane...",
+            ChatStatusCodes.ExecutionLaneWaiting => "Waiting for global execution lane...",
+            ChatStatusCodes.ExecutionLaneAcquired => "Global execution lane acquired...",
             "tool_call" when toolLabel.Length > 0 => "Preparing " + toolLabel + "...",
             ChatStatusCodes.ToolRunning when toolLabel.Length > 0 => "Running " + toolLabel + "...",
             ChatStatusCodes.ToolHeartbeat when toolLabel.Length > 0 =>
@@ -366,6 +369,9 @@ public sealed partial class MainWindow : Window {
         var normalizedStatus = (status.Status ?? string.Empty).Trim().ToLowerInvariant();
         var label = normalizedStatus switch {
             ChatStatusCodes.Thinking => "thinking",
+            ChatStatusCodes.TurnQueued => "queue session",
+            ChatStatusCodes.ExecutionLaneWaiting => "queue global",
+            ChatStatusCodes.ExecutionLaneAcquired => "queue acquired",
             ChatStatusCodes.RoutingTool when toolLabel.Length > 0 => "route " + toolLabel,
             ChatStatusCodes.RoutingMeta => BuildRoutingMetaTimelineLabel(status.Message),
             ChatStatusCodes.ToolCall when toolLabel.Length > 0 => "prepare " + toolLabel,

@@ -34,6 +34,8 @@ internal sealed class ServiceProfile {
     public bool AllowMutatingParallelToolCalls { get; set; }
     public int TurnTimeoutSeconds { get; set; }
     public int ToolTimeoutSeconds { get; set; }
+    public int SessionExecutionQueueLimit { get; set; } = 32;
+    public int GlobalExecutionLaneConcurrency { get; set; }
     public List<string> AllowedRoots { get; set; } = new();
 
     public string? AdDomainController { get; set; }

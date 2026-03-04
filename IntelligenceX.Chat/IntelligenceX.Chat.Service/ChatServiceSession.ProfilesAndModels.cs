@@ -119,9 +119,22 @@ internal sealed partial class ChatServiceSession {
         }
 
         lock (_chatRunLock) {
-            if (_activeChat is not null && !_activeChat.IsCompleted) {
+            if (_chatRunsByRequestId.Count > 0) {
+                if (_activeChat is not null && !_activeChat.IsCompleted) {
+                    errorCode = "chat_in_progress";
+                    error = $"A chat request is already running (requestId={_activeChat.ChatRequestId}).";
+                    return true;
+                }
+
+                var queuedCount = _queuedChats.Count;
+                if (queuedCount > 0) {
+                    errorCode = "chat_in_progress";
+                    error = $"Chat execution queue is not empty ({queuedCount} queued turn(s)).";
+                    return true;
+                }
+
                 errorCode = "chat_in_progress";
-                error = $"A chat request is already running (requestId={_activeChat.ChatRequestId}).";
+                error = "A chat request is already running.";
                 return true;
             }
         }

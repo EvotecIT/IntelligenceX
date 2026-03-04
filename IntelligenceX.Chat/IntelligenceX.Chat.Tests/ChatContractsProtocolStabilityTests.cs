@@ -15,6 +15,9 @@ public sealed class ChatContractsProtocolStabilityTests {
     [Fact]
     public void ChatStatusCodes_ExposeStableWireTokens() {
         Assert.Equal("thinking", ChatStatusCodes.Thinking);
+        Assert.Equal("turn_queued", ChatStatusCodes.TurnQueued);
+        Assert.Equal("execution_lane_waiting", ChatStatusCodes.ExecutionLaneWaiting);
+        Assert.Equal("execution_lane_acquired", ChatStatusCodes.ExecutionLaneAcquired);
         Assert.Equal("model_selected", ChatStatusCodes.ModelSelected);
         Assert.Equal("routing", ChatStatusCodes.Routing);
         Assert.Equal("routing_meta", ChatStatusCodes.RoutingMeta);
@@ -56,7 +59,7 @@ public sealed class ChatContractsProtocolStabilityTests {
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Assert.Equal(32, values.Length);
+        Assert.Equal(35, values.Length);
         Assert.Equal(values.Length, values.Distinct(StringComparer.Ordinal).Count());
     }
 

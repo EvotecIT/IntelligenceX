@@ -106,6 +106,10 @@ internal sealed partial class ChatServiceSession {
     private LoginFlow? _login;
     private readonly object _chatRunLock = new();
     private ChatRun? _activeChat;
+    private readonly Queue<ChatRun> _queuedChats = new();
+    private readonly Dictionary<string, ChatRun> _chatRunsByRequestId = new(StringComparer.Ordinal);
+    private Task? _chatRunPumpTask;
+    private string? _activeThreadId;
     private static readonly Regex UserRequestSectionRegex =
         new(@"\bUser request:\s*(?<value>[\s\S]+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
@@ -259,7 +263,6 @@ internal sealed partial class ChatServiceSession {
 
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        string? activeThreadId = null;
         IntelligenceXClient? client = null;
 
         async Task<IntelligenceXClient> GetOrConnectClientAsync() {
@@ -435,14 +438,14 @@ internal sealed partial class ChatServiceSession {
                             if (setResult.ReconnectClient) {
                                 await DisposeClientAsync(client).ConfigureAwait(false);
                                 client = null;
-                                activeThreadId = null;
+                                ClearActiveThreadId();
                             } else if (setResult.ModelChanged && client is not null) {
                                 // Keep the internal thread model selection consistent with the active profile.
                                 client.ConfigureDefaults(model: _options.Model);
                             }
 
                             if (setProfile.NewThread) {
-                                activeThreadId = null;
+                                ClearActiveThreadId();
                             }
 
                             break;
@@ -453,7 +456,7 @@ internal sealed partial class ChatServiceSession {
                             if (applyResult.ReconnectClient) {
                                 await DisposeClientAsync(client).ConfigureAwait(false);
                                 client = null;
-                                activeThreadId = null;
+                                ClearActiveThreadId();
                             } else if (applyResult.ModelChanged && client is not null) {
                                 // Keep the internal thread model selection consistent with runtime settings.
                                 client.ConfigureDefaults(model: _options.Model);
@@ -483,7 +486,7 @@ internal sealed partial class ChatServiceSession {
                         break;
 
                     case ChatRequest chat:
-                        activeThreadId = await HandleChatRequestAsync(connectedClient!, writer, chat, activeThreadId, cancellationToken).ConfigureAwait(false);
+                        await HandleChatRequestAsync(connectedClient!, writer, chat, cancellationToken).ConfigureAwait(false);
                         break;
 
                     default:
