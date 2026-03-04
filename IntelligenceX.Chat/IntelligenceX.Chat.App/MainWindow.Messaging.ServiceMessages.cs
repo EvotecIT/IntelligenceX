@@ -680,8 +680,9 @@ public sealed partial class MainWindow : Window {
             // This avoids unnecessary process churn while the client auto-reconnect loop runs.
             if (preserveInteractiveAuthState && _loginInProgress) {
                 await SetStatusAsync(
-                        AppendStartupStatusCause(
+                        AppendStartupStatusContext(
                             "Runtime connection dropped during sign-in. Reconnecting...",
+                            StartupStatusPhaseStartupAuthWait,
                             StartupStatusCauseRuntimeDisconnect),
                         SessionStatusTone.Warn)
                     .ConfigureAwait(false);
@@ -689,8 +690,9 @@ public sealed partial class MainWindow : Window {
                        || Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0
                        || Volatile.Read(ref _startupMetadataSyncInProgress) != 0) {
                 await SetStatusAsync(
-                        AppendStartupStatusCause(
+                        AppendStartupStatusContext(
                             "Runtime connection dropped. Reconnecting startup sync...",
+                            StartupStatusPhaseStartupMetadataSync,
                             StartupStatusCauseRuntimeDisconnect),
                         SessionStatusTone.Warn)
                     .ConfigureAwait(false);

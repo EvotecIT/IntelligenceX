@@ -161,7 +161,7 @@ public sealed class MainWindowServiceBootstrapStatusTests {
             MainWindow.StartupStatusCauseMetadataSync);
 
         Assert.Equal(
-            "Runtime connected. Loading tool packs 3/12 (dnsclientx) (cause metadata_sync)",
+            "Runtime connected. Loading tool packs 3/12 (dnsclientx) (phase startup_metadata_sync, cause metadata_sync)",
             statusText);
     }
 
@@ -175,7 +175,21 @@ public sealed class MainWindowServiceBootstrapStatusTests {
             MainWindow.StartupStatusCauseMetadataSync);
 
         Assert.Equal(
-            "Runtime connected. Loading tool packs in background... (cause metadata_sync)",
+            "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)",
+            statusText);
+    }
+
+    /// <summary>
+    /// Keeps existing structured startup phase/cause context stable to avoid duplicate context markers.
+    /// </summary>
+    [Fact]
+    public void BuildConnectedBootstrapStatusText_DoesNotDuplicatePhaseAndCauseContext() {
+        var statusText = MainWindow.BuildConnectedBootstrapStatusText(
+            "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)",
+            MainWindow.StartupStatusCauseMetadataSync);
+
+        Assert.Equal(
+            "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)",
             statusText);
     }
 }

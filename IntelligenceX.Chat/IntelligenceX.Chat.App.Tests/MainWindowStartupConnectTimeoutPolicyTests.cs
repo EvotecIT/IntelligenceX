@@ -215,8 +215,8 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     /// Ensures connect attempt status text includes phase, attempt ordinal, and timeout labels.
     /// </summary>
     [Theory]
-    [InlineData("connecting to service", 1, 3, 900, "Starting runtime... (connecting to service, attempt 1/3, timeout 900ms)")]
-    [InlineData("retrying service connection", 2, 4, 2100, "Starting runtime... (retrying service connection, attempt 2/4, timeout 2.1s)")]
+    [InlineData("connecting to service", 1, 3, 900, "Starting runtime... (connecting to service, phase startup_connect, attempt 1/3, timeout 900ms)")]
+    [InlineData("retrying service connection", 2, 4, 2100, "Starting runtime... (retrying service connection, phase startup_connect, attempt 2/4, timeout 2.1s)")]
     public void BuildStartupConnectAttemptStatusText_FormatsExpectedText(
         string phaseLabel,
         int attemptNumber,
@@ -236,8 +236,8 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     /// Ensures retry-delay status text reports wait duration and next attempt ordinal.
     /// </summary>
     [Theory]
-    [InlineData(2, 4, 300, "Starting runtime... (waiting 300ms before retry 2/4)")]
-    [InlineData(5, 4, 1250, "Starting runtime... (waiting 1.3s before retry 5/5)")]
+    [InlineData(2, 4, 300, "Starting runtime... (waiting 300ms, phase startup_connect before retry 2/4)")]
+    [InlineData(5, 4, 1250, "Starting runtime... (waiting 1.3s, phase startup_connect before retry 5/5)")]
     public void BuildStartupConnectRetryDelayStatusText_FormatsExpectedText(
         int nextAttemptNumber,
         int totalAttempts,
@@ -300,8 +300,8 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             TimeSpan.FromMilliseconds(300));
 
         Assert.Equal(3, secondRetryAttempt);
-        Assert.Equal("Starting runtime... (retrying service connection, attempt 2/4, timeout 900ms)", retryProgressText);
-        Assert.Equal("Starting runtime... (waiting 300ms before retry 3/4)", retryDelayText);
+        Assert.Equal("Starting runtime... (retrying service connection, phase startup_connect, attempt 2/4, timeout 900ms)", retryProgressText);
+        Assert.Equal("Starting runtime... (waiting 300ms, phase startup_connect before retry 3/4)", retryDelayText);
     }
 
     /// <summary>
@@ -619,9 +619,9 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     /// Ensures startup pending status text is explicit about sign-in gating vs generic metadata sync.
     /// </summary>
     [Theory]
-    [InlineData(true, false, "Runtime connected. Sign in to finish loading tool packs... (cause auth_wait)")]
-    [InlineData(true, true, "Runtime connected. Loading tool packs in background... (cause metadata_sync)")]
-    [InlineData(false, false, "Runtime connected. Loading tool packs in background... (cause metadata_sync)")]
+    [InlineData(true, false, "Runtime connected. Sign in to finish loading tool packs... (phase startup_auth_wait, cause auth_wait)")]
+    [InlineData(true, true, "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)")]
+    [InlineData(false, false, "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)")]
     public void BuildStartupPendingStatusText_ReturnsExpectedValue(
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
@@ -643,7 +643,7 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             isAuthenticated: false,
             loginInProgress: true);
         Assert.Equal(
-            "Runtime connected. Finish sign-in in browser to continue loading tool packs... (cause auth_wait)",
+            "Runtime connected. Finish sign-in in browser to continue loading tool packs... (phase startup_auth_wait, cause auth_wait)",
             text);
     }
 

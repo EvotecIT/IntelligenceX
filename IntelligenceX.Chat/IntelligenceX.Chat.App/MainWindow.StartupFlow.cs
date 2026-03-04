@@ -443,8 +443,9 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    AppendStartupStatusCause(
+                                    AppendStartupStatusContext(
                                         "Runtime connected. Session policy sync interrupted; retrying...",
+                                        StartupStatusPhaseStartupMetadataSync,
                                         StartupStatusCauseMetadataRetry),
                                     phase: "syncing session policy")
                                 .ConfigureAwait(false);
@@ -535,8 +536,9 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    AppendStartupStatusCause(
+                                    AppendStartupStatusContext(
                                         "Runtime connected. Tool catalog sync interrupted; retrying...",
+                                        StartupStatusPhaseStartupMetadataSync,
                                         StartupStatusCauseMetadataRetry),
                                     phase: "loading tool catalog")
                                 .ConfigureAwait(false);
@@ -608,8 +610,9 @@ public sealed partial class MainWindow : Window {
                                 + ": "
                                 + DescribeStartupExceptionForLog(ex));
                             await SetMetadataSyncStatusAsync(
-                                    AppendStartupStatusCause(
+                                    AppendStartupStatusContext(
                                         "Runtime connected. Authentication refresh interrupted; retrying...",
+                                        StartupStatusPhaseStartupMetadataSync,
                                         StartupStatusCauseMetadataRetry),
                                     phase: "refreshing authentication")
                                 .ConfigureAwait(false);

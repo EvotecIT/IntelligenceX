@@ -7,6 +7,10 @@ using Microsoft.UI.Xaml;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    internal const string StartupStatusPhaseStartupConnect = "startup_connect";
+    internal const string StartupStatusPhaseStartupMetadataSync = "startup_metadata_sync";
+    internal const string StartupStatusPhaseStartupAuthWait = "startup_auth_wait";
+
     internal const string StartupStatusCausePipeRetry = "pipe_retry";
     internal const string StartupStatusCauseRuntimeStart = "runtime_start";
     internal const string StartupStatusCauseMetadataRetry = "metadata_retry";
@@ -14,23 +18,65 @@ public sealed partial class MainWindow : Window {
     internal const string StartupStatusCauseAuthWait = "auth_wait";
     internal const string StartupStatusCauseMetadataSync = "metadata_sync";
 
+    private static string NormalizeStartupStatusPhase(string? phase) {
+        return (phase ?? string.Empty).Trim();
+    }
+
     private static string NormalizeStartupStatusCause(string? cause) {
         return (cause ?? string.Empty).Trim();
     }
 
-    internal static string BuildStartupStatusCauseSuffix(string? cause) {
+    internal static string BuildStartupStatusContextSuffix(string? phase, string? cause) {
+        var normalizedPhase = NormalizeStartupStatusPhase(phase);
         var normalizedCause = NormalizeStartupStatusCause(cause);
-        return normalizedCause.Length == 0 ? string.Empty : " (cause " + normalizedCause + ")";
+        if (normalizedPhase.Length == 0 && normalizedCause.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalizedPhase.Length == 0) {
+            return " (cause " + normalizedCause + ")";
+        }
+
+        if (normalizedCause.Length == 0) {
+            return " (phase " + normalizedPhase + ")";
+        }
+
+        return " (phase " + normalizedPhase + ", cause " + normalizedCause + ")";
+    }
+
+    internal static string BuildStartupStatusContextSegment(string? phase, string? cause) {
+        var normalizedPhase = NormalizeStartupStatusPhase(phase);
+        var normalizedCause = NormalizeStartupStatusCause(cause);
+        if (normalizedPhase.Length == 0 && normalizedCause.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalizedPhase.Length == 0) {
+            return ", cause " + normalizedCause;
+        }
+
+        if (normalizedCause.Length == 0) {
+            return ", phase " + normalizedPhase;
+        }
+
+        return ", phase " + normalizedPhase + ", cause " + normalizedCause;
+    }
+
+    internal static string AppendStartupStatusContext(string statusText, string? phase, string? cause) {
+        ArgumentNullException.ThrowIfNull(statusText);
+        return statusText + BuildStartupStatusContextSuffix(phase, cause);
+    }
+
+    internal static string BuildStartupStatusCauseSuffix(string? cause) {
+        return BuildStartupStatusContextSuffix(phase: null, cause);
     }
 
     internal static string BuildStartupStatusCauseSegment(string? cause) {
-        var normalizedCause = NormalizeStartupStatusCause(cause);
-        return normalizedCause.Length == 0 ? string.Empty : ", cause " + normalizedCause;
+        return BuildStartupStatusContextSegment(phase: null, cause);
     }
 
     internal static string AppendStartupStatusCause(string statusText, string? cause) {
-        ArgumentNullException.ThrowIfNull(statusText);
-        return statusText + BuildStartupStatusCauseSuffix(cause);
+        return AppendStartupStatusContext(statusText, phase: null, cause);
     }
 
     internal static string BuildStartupPendingStatusText(
@@ -38,15 +84,17 @@ public sealed partial class MainWindow : Window {
         bool isAuthenticated,
         bool loginInProgress) {
         if (requiresInteractiveSignIn && !isAuthenticated) {
-            return AppendStartupStatusCause(
+            return AppendStartupStatusContext(
                 loginInProgress
                     ? "Runtime connected. Finish sign-in in browser to continue loading tool packs..."
                     : "Runtime connected. Sign in to finish loading tool packs...",
+                StartupStatusPhaseStartupAuthWait,
                 StartupStatusCauseAuthWait);
         }
 
-        return AppendStartupStatusCause(
+        return AppendStartupStatusContext(
             "Runtime connected. Loading tool packs in background...",
+            StartupStatusPhaseStartupMetadataSync,
             StartupStatusCauseMetadataSync);
     }
 
@@ -135,7 +183,10 @@ public sealed partial class MainWindow : Window {
         var elapsedLabel = elapsed.TotalSeconds >= 1
             ? elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s"
             : Math.Max(1, (long)elapsed.TotalMilliseconds).ToString(CultureInfo.InvariantCulture) + "ms";
-        statusText = $"Runtime connected. Startup sync in progress ({phase}, {elapsedLabel}).";
+        statusText = AppendStartupStatusContext(
+            $"Runtime connected. Startup sync in progress ({phase}, {elapsedLabel}).",
+            StartupStatusPhaseStartupMetadataSync,
+            StartupStatusCauseMetadataSync);
         return true;
     }
 

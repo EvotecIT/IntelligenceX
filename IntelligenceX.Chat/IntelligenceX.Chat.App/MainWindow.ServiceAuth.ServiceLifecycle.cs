@@ -33,6 +33,15 @@ public sealed partial class MainWindow {
     private static readonly Regex ServiceBootstrapElapsedMsRegex = new(
         @"(?:^|\s)elapsed_ms='(?<elapsed>\d+)'",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StartupStatusCauseSuffixRegex = new(
+        @"\(cause\s+(?<cause>[^)]+)\)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StartupStatusPhaseContextRegex = new(
+        @"\(\s*phase\s+[^)]*\)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StartupStatusCauseContextRegex = new(
+        @"\(\s*(?:phase\s+[^)]*\bcause\s+|cause\s+)[^)]*\)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private const string StartingRuntimePrefix = "Starting runtime...";
     private const string RuntimeConnectedPrefix = "Runtime connected.";
 
@@ -274,9 +283,11 @@ public sealed partial class MainWindow {
 
     internal static string BuildConnectedBootstrapStatusText(string statusText, string? cause) {
         var normalizedStatus = (statusText ?? string.Empty).Trim();
+        var phase = StartupStatusPhaseStartupMetadataSync;
         if (normalizedStatus.Length == 0) {
-            return AppendStartupStatusCause(
+            return AppendStartupStatusContext(
                 "Runtime connected. Loading tool packs in background...",
+                phase,
                 cause);
         }
 
@@ -293,9 +304,29 @@ public sealed partial class MainWindow {
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(cause)
-            && normalizedStatus.IndexOf("(cause ", StringComparison.OrdinalIgnoreCase) < 0) {
-            normalizedStatus = AppendStartupStatusCause(normalizedStatus, cause);
+        var hasPhaseContext = StartupStatusPhaseContextRegex.IsMatch(normalizedStatus);
+        var hasCauseContext = StartupStatusCauseContextRegex.IsMatch(normalizedStatus);
+        if (!hasPhaseContext && hasCauseContext) {
+            normalizedStatus = StartupStatusCauseSuffixRegex.Replace(
+                normalizedStatus,
+                match => {
+                    var existingCause = match.Groups["cause"].Value.Trim();
+                    if (existingCause.Length == 0) {
+                        existingCause = (cause ?? string.Empty).Trim();
+                    }
+
+                    return BuildStartupStatusContextSuffix(phase, existingCause).TrimStart();
+                },
+                1);
+            hasPhaseContext = StartupStatusPhaseContextRegex.IsMatch(normalizedStatus);
+            hasCauseContext = StartupStatusCauseContextRegex.IsMatch(normalizedStatus);
+        }
+
+        if (!hasPhaseContext || (!hasCauseContext && !string.IsNullOrWhiteSpace(cause))) {
+            normalizedStatus = AppendStartupStatusContext(
+                normalizedStatus,
+                hasPhaseContext ? null : phase,
+                hasCauseContext ? null : cause);
         }
 
         return normalizedStatus;
