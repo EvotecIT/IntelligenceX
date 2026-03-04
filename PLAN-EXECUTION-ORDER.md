@@ -63,6 +63,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict scenario validation: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end and explicitly blocks cached-evidence fallback responses for direct `eventlog_evtx_query` capability questions.
 - [x] Stabilization hotfix: domain-intent action catalog now preserves all declared same-family action ids as valid `/act` aliases independent of definition order; canonical family action ids are deterministic and ambiguous cross-family ids do not use first-wins suppression.
 - [x] Live strict scenario validation: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn` passes end-to-end, covering continuation-style `go ahead` execution across multiple DC hosts and explicit `eventlog_evtx_query` capability follow-ups.
+- [x] Scenario-contract hardening: host scenario contracts now support forbidden tool-input values (`forbid_tool_input_values` / `forbidden_tool_inputs`) and enforce them during retry repair, fallback host patching, and assertion evaluation.
+- [x] Transcript guardrail hardening: `ad-other-dcs-go-ahead-followthrough-10-turn` continuation turns now include explicit non-AD0 host exclusions, and catalog strictness tests lock those exclusions.
 
 ## Rules For This Migration
 

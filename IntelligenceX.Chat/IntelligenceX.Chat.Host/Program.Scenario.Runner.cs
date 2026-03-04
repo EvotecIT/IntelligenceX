@@ -139,7 +139,8 @@ internal static partial class Program {
                                     || minToolRounds > 0
                                     || turn.RequireTools.Count > 0
                                     || turn.RequireAnyTools.Count > 0
-                                    || turn.MinDistinctToolInputValues.Count > 0;
+                                    || turn.MinDistinctToolInputValues.Count > 0
+                                    || turn.ForbidToolInputValues.Count > 0;
         var requiresNoToolExecution = forbidsAllTools && !requiresToolExecution;
         var requiresTimestampShape = turn.AssertContains.Any(static value => value.Contains("UTC", StringComparison.OrdinalIgnoreCase))
                                      || turn.AssertMatchesRegex.Any(static value => value.Contains(@"\d{4}-\d{2}-\d{2}", StringComparison.Ordinal));
@@ -160,6 +161,7 @@ internal static partial class Program {
         sb.AppendLine($"required_tools_any: {FormatScenarioContractCsv(turn.RequireAnyTools)}");
         sb.AppendLine($"forbidden_tools: {FormatScenarioContractCsv(turn.ForbidTools)}");
         sb.AppendLine($"distinct_tool_inputs: {FormatScenarioContractDistinctInputRequirements(turn.MinDistinctToolInputValues)}");
+        sb.AppendLine($"forbidden_tool_inputs: {FormatScenarioContractForbiddenInputRequirements(turn.ForbidToolInputValues)}");
         if (requiresNoToolExecution) {
             sb.AppendLine("This scenario turn requires a response without tool execution.");
             sb.AppendLine("- Do not execute any tools in this turn.");
@@ -211,6 +213,19 @@ internal static partial class Program {
                 .Select(static pair => pair.Key + ">=" + Math.Max(0, pair.Value))
                 .ToArray();
             sb.AppendLine("- Distinct tool input value requirements: " + string.Join(", ", requirements) + ".");
+        }
+
+        if (turn.ForbidToolInputValues.Count > 0) {
+            var requirements = turn.ForbidToolInputValues
+                .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(static pair => pair.Key + "!=" + string.Join("|", pair.Value
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)))
+                .Where(static requirement => !requirement.EndsWith("!=", StringComparison.Ordinal))
+                .ToArray();
+            if (requirements.Length > 0) {
+                sb.AppendLine("- Forbidden tool input values: " + string.Join(", ", requirements) + ".");
+            }
         }
 
         sb.AppendLine("- Do not ask for permission/confirmation before the first required tool call.");
@@ -278,6 +293,33 @@ internal static partial class Program {
         return string.Join(", ", normalized);
     }
 
+    private static string FormatScenarioContractForbiddenInputRequirements(IReadOnlyDictionary<string, IReadOnlyList<string>> requirements) {
+        if (requirements is null || requirements.Count == 0) {
+            return "none";
+        }
+
+        var normalized = requirements
+            .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(static pair => {
+                var values = pair.Value
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .Select(static value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                return values.Length == 0
+                    ? string.Empty
+                    : pair.Key + "!=" + string.Join("|", values);
+            })
+            .Where(static value => value.Length > 0)
+            .ToArray();
+        if (normalized.Length == 0) {
+            return "none";
+        }
+
+        return string.Join(", ", normalized);
+    }
+
     private static string FormatScenarioContractDistinctInputRequirements(IReadOnlyDictionary<string, int> requirements) {
         if (requirements is null || requirements.Count == 0) {
             return "none";
@@ -329,6 +371,7 @@ internal static partial class Program {
         IReadOnlyList<string> requireTools,
         IReadOnlyList<string> requireAnyTools,
         IReadOnlyDictionary<string, int> minDistinctToolInputValues,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> forbidToolInputValues,
         IReadOnlyList<string> assertToolOutputContains,
         IReadOnlyList<string> assertToolOutputNotContains,
         bool assertNoToolErrors,
@@ -338,6 +381,7 @@ internal static partial class Program {
                || requireTools.Count > 0
                || requireAnyTools.Count > 0
                || minDistinctToolInputValues.Count > 0
+               || forbidToolInputValues.Count > 0
                || assertToolOutputContains.Count > 0
                || assertToolOutputNotContains.Count > 0
                || assertNoToolErrors

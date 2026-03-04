@@ -144,6 +144,40 @@ public sealed class HostScenarioCatalogStrictnessTests {
     }
 
     [Fact]
+    public void AdOtherDcsGoAheadScenario_ContinuationTurnsForbidAd0HostInputs() {
+        var scenarioDir = ResolveScenarioDirectory();
+        var file = Path.Combine(scenarioDir, "ad-other-dcs-go-ahead-followthrough-10-turn.json");
+
+        Assert.True(File.Exists(file), $"Expected scenario file '{file}' to exist.");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(file));
+        var root = document.RootElement;
+        var turns = RequireProperty(root, "turns");
+        Assert.Equal(JsonValueKind.Array, turns.ValueKind);
+
+        var matched = 0;
+        foreach (var turn in turns.EnumerateArray()) {
+            if (turn.ValueKind != JsonValueKind.Object
+                || !turn.TryGetProperty("name", out var nameElement)
+                || nameElement.ValueKind != JsonValueKind.String) {
+                continue;
+            }
+
+            var name = nameElement.GetString() ?? string.Empty;
+            if (!name.Contains("go-ahead", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            matched++;
+            var forbiddenInputValues = ReadStringListMap(turn, "forbid_tool_input_values");
+            Assert.True(forbiddenInputValues.TryGetValue("machine_name", out var machineNameForbidden));
+            Assert.Contains(machineNameForbidden, value => string.Equals(value, "AD0", StringComparison.OrdinalIgnoreCase));
+        }
+
+        Assert.True(matched >= 2, "Expected at least two go-ahead continuation turns.");
+    }
+
+    [Fact]
     public void MixedDomainAmbiguityScenarios_RequireClarifyBeforeSplitToolPaths() {
         var scenarioDir = ResolveScenarioDirectory();
         var files = Directory.GetFiles(scenarioDir, "mixed-domain-ambiguity-*-10-turn.json", SearchOption.TopDirectoryOnly)
@@ -300,6 +334,51 @@ public sealed class HostScenarioCatalogStrictnessTests {
             }
 
             result[key] = parsed;
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadStringListMap(JsonElement root, string propertyName) {
+        if (!root.TryGetProperty(propertyName, out var values) || values.ValueKind == JsonValueKind.Null) {
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (values.ValueKind != JsonValueKind.Object) {
+            throw new InvalidDataException($"Property '{propertyName}' must be an object.");
+        }
+
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in values.EnumerateObject()) {
+            var key = (property.Name ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            var parsedValues = new List<string>();
+            if (property.Value.ValueKind == JsonValueKind.String) {
+                var single = (property.Value.GetString() ?? string.Empty).Trim();
+                if (single.Length > 0) {
+                    parsedValues.Add(single);
+                }
+            } else if (property.Value.ValueKind == JsonValueKind.Array) {
+                foreach (var item in property.Value.EnumerateArray()) {
+                    if (item.ValueKind != JsonValueKind.String) {
+                        throw new InvalidDataException($"Property '{propertyName}.{key}' array must contain only strings.");
+                    }
+
+                    var candidate = (item.GetString() ?? string.Empty).Trim();
+                    if (candidate.Length > 0) {
+                        parsedValues.Add(candidate);
+                    }
+                }
+            } else {
+                throw new InvalidDataException($"Property '{propertyName}.{key}' must be a string or array of strings.");
+            }
+
+            result[key] = parsedValues
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         return result;

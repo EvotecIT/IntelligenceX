@@ -46,6 +46,21 @@ function Get-JsonPropertyValue([object] $instance, [string] $propertyName, [obje
     return $property.Value
 }
 
+function Has-NonEmptyStringListMap([object] $rawMap) {
+    if ($null -eq $rawMap) {
+        return $false
+    }
+
+    foreach ($entry in $rawMap.PSObject.Properties) {
+        $values = @(Get-NormalizedStringList -rawValue $entry.Value)
+        if ($values.Count -gt 0) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Has-ToolContract([object] $turn) {
     $minToolCalls = 0
     $minToolRounds = 0
@@ -64,6 +79,7 @@ function Has-ToolContract([object] $turn) {
 
     $requireTools = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_tools'))
     $requireAnyTools = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'require_any_tools'))
+    $forbidToolInputValues = Get-JsonPropertyValue -instance $turn -propertyName 'forbid_tool_input_values'
     $assertToolOutputContains = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'assert_tool_output_contains'))
     $assertToolOutputNotContains = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'assert_tool_output_not_contains'))
     $forbidToolErrorCodes = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $turn -propertyName 'forbid_tool_error_codes'))
@@ -71,6 +87,7 @@ function Has-ToolContract([object] $turn) {
 
     return $requireTools.Count -gt 0 `
         -or $requireAnyTools.Count -gt 0 `
+        -or (Has-NonEmptyStringListMap -rawMap $forbidToolInputValues) `
         -or $assertToolOutputContains.Count -gt 0 `
         -or $assertToolOutputNotContains.Count -gt 0 `
         -or $forbidToolErrorCodes.Count -gt 0 `

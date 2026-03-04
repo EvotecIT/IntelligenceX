@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -379,6 +380,86 @@ Continue that failure-signature collection across all remaining DCs in this turn
             knownHostTargets: new[] { "AD0", "localhost" });
 
         Assert.Same(calls, repaired);
+    }
+
+    [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_ReplacesForbiddenHostTarget() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD0
+User request:
+Continue that failure-signature collection across all remaining non-AD0 DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_query", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD0","log_name":"System"}"""),
+            BuildToolCall("call_2", "eventlog_live_query", """{"machine_name":"AD1","log_name":"System"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "AD1", "AD2" });
+
+        Assert.Equal(2, repaired.Count);
+        var hosts = repaired
+            .Select(call => call.Arguments?.GetString("machine_name") ?? string.Empty)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        Assert.DoesNotContain(hosts, host => string.Equals(host, "AD0", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hosts, host => string.Equals(host, "AD2", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_DoesNotUseForbiddenFallbackTargetForDerivedCalls() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD0
+User request:
+Continue that failure-signature collection across all remaining non-AD0 DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_query", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD1","log_name":"System"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "AD1", "AD2" });
+
+        Assert.Equal(2, repaired.Count);
+        var derivedHost = repaired[1].Arguments?.GetString("machine_name");
+        Assert.Equal("AD2", derivedHost);
+        Assert.False(string.Equals("AD0", derivedHost, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

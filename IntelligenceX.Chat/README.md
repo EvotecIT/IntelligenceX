@@ -95,6 +95,7 @@ Scenario file formats:
   - `require_tools` (string or array; all listed tool names must be called; supports `*` and `?` wildcards)
   - `require_any_tools` (string or array; at least one listed tool name must be called; supports `*` and `?` wildcards)
   - `forbid_tools` (string or array; listed tool names must not be called; supports `*` and `?` wildcards)
+  - `forbid_tool_input_values` (object; disallowed tool input values by key, for example `"machine_name": ["AD0"]`; each value can be a string or string array)
   - `assert_tool_output_contains` (string or array; expected evidence in tool output payloads)
   - `assert_tool_output_not_contains` (string or array; disallowed content in tool output payloads)
   - `assert_no_tool_errors` (boolean; when true, fails turn if any tool output envelope has `ok=false`)

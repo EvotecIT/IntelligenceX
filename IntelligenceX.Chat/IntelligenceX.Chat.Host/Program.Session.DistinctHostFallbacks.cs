@@ -39,33 +39,23 @@ internal static partial class Program {
             }
 
             var requiredDistinctHostCoverage = GetRequiredDistinctHostCoverage(requirements);
-            if (requiredDistinctHostCoverage <= 1) {
-                return calls;
-            }
-
+            var forbiddenHostTargets = GetForbiddenHostTargets(requirements);
             var observedDistinctTargets = CollectDistinctToolInputValuesByKey(calls, "machine_name");
-            if (observedDistinctTargets.Count >= requiredDistinctHostCoverage) {
+            var observedDistinctAllowedTargets = observedDistinctTargets
+                .Where(target => !forbiddenHostTargets.Contains(target))
+                .ToArray();
+            var hasForbiddenObservedTargets = observedDistinctTargets.Any(forbiddenHostTargets.Contains);
+            var hasMissingDistinctCoverage = requiredDistinctHostCoverage > 1
+                                             && observedDistinctAllowedTargets.Length < requiredDistinctHostCoverage;
+            if (!hasForbiddenObservedTargets && !hasMissingDistinctCoverage) {
                 return calls;
             }
 
-            var fallbackTargets = new List<string>();
-            var seenFallbackTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < knownHostTargets.Count; i++) {
-                var normalized = NormalizeHostTargetCandidate(knownHostTargets[i]);
-                if (normalized.Length == 0
-                    || observedDistinctTargets.Contains(normalized)
-                    || !seenFallbackTargets.Add(normalized)) {
-                    continue;
-                }
-
-                fallbackTargets.Add(normalized);
-            }
-
-            if (fallbackTargets.Count == 0) {
+            var orderedAllowedKnownTargets = CollectAllowedKnownHostTargets(knownHostTargets, forbiddenHostTargets);
+            if (orderedAllowedKnownTargets.Count == 0) {
                 return calls;
             }
 
-            fallbackTargets = OrderHostTargetCandidatesBySpecificity(fallbackTargets);
             var patchedCalls = calls.ToList();
             var patchedAny = false;
             var callIds = new HashSet<string>(StringComparer.Ordinal);
@@ -89,42 +79,86 @@ internal static partial class Program {
                 hostUsageByTarget[primaryHostTarget] = count + 1;
             }
 
-            for (var i = 0; i < patchedCalls.Count
-                            && observedDistinctTargets.Count < requiredDistinctHostCoverage
-                            && fallbackTargets.Count > 0; i++) {
-                if (!primaryHostByCallIndex.TryGetValue(i, out var currentHostTarget)
-                    || !hostUsageByTarget.TryGetValue(currentHostTarget, out var currentHostUsage)
-                    || currentHostUsage <= 1) {
-                    continue;
+            var hasRemainingForbiddenTargets = HasForbiddenHostUsage(hostUsageByTarget, forbiddenHostTargets);
+            while ((hasRemainingForbiddenTargets
+                    || GetDistinctAllowedHostCoverage(hostUsageByTarget, forbiddenHostTargets) < requiredDistinctHostCoverage)
+                   && orderedAllowedKnownTargets.Count > 0) {
+                var patchedThisPass = false;
+                for (var i = 0; i < patchedCalls.Count; i++) {
+                    if (!primaryHostByCallIndex.TryGetValue(i, out var currentHostTarget)
+                        || !hostUsageByTarget.TryGetValue(currentHostTarget, out var currentHostUsage)) {
+                        continue;
+                    }
+
+                    var needsDistinctCoverage = requiredDistinctHostCoverage > 1
+                                                && GetDistinctAllowedHostCoverage(hostUsageByTarget, forbiddenHostTargets) < requiredDistinctHostCoverage;
+                    var currentIsForbidden = forbiddenHostTargets.Contains(currentHostTarget);
+                    if (!currentIsForbidden && !needsDistinctCoverage) {
+                        continue;
+                    }
+
+                    if (!currentIsForbidden && currentHostUsage <= 1) {
+                        continue;
+                    }
+
+                    var fallbackTarget = SelectPreferredFallbackTarget(
+                        currentHostTarget,
+                        orderedAllowedKnownTargets,
+                        hostUsageByTarget,
+                        requireNewDistinct: needsDistinctCoverage);
+                    if (fallbackTarget.Length == 0) {
+                        continue;
+                    }
+
+                    var originalCall = patchedCalls[i];
+                    var definition = FindToolDefinitionByName(toolDefinitions, originalCall.Name);
+                    var patchedCall = ApplyHostTargetOverride(originalCall, definition, fallbackTarget);
+                    if (ReferenceEquals(patchedCall, originalCall)) {
+                        continue;
+                    }
+
+                    patchedCalls[i] = patchedCall;
+                    primaryHostByCallIndex[i] = fallbackTarget;
+                    patchedAny = true;
+                    patchedThisPass = true;
+
+                    var updatedCurrentHostUsage = currentHostUsage - 1;
+                    if (updatedCurrentHostUsage <= 0) {
+                        hostUsageByTarget.Remove(currentHostTarget);
+                    } else {
+                        hostUsageByTarget[currentHostTarget] = updatedCurrentHostUsage;
+                    }
+
+                    if (!hostUsageByTarget.TryGetValue(fallbackTarget, out var fallbackUsage)) {
+                        hostUsageByTarget[fallbackTarget] = 1;
+                    } else {
+                        hostUsageByTarget[fallbackTarget] = fallbackUsage + 1;
+                    }
+
+                    hasRemainingForbiddenTargets = HasForbiddenHostUsage(hostUsageByTarget, forbiddenHostTargets);
                 }
 
-                var originalCall = patchedCalls[i];
-                var definition = FindToolDefinitionByName(toolDefinitions, originalCall.Name);
-                var fallbackTarget = fallbackTargets[0];
-                var patchedCall = ApplyHostTargetOverride(originalCall, definition, fallbackTarget);
-                if (ReferenceEquals(patchedCall, originalCall)) {
-                    continue;
+                if (!patchedThisPass) {
+                    break;
                 }
-
-                patchedCalls[i] = patchedCall;
-                patchedAny = true;
-                hostUsageByTarget[currentHostTarget] = currentHostUsage - 1;
-                if (!hostUsageByTarget.TryGetValue(fallbackTarget, out var fallbackUsage)) {
-                    hostUsageByTarget[fallbackTarget] = 1;
-                } else {
-                    hostUsageByTarget[fallbackTarget] = fallbackUsage + 1;
-                }
-                observedDistinctTargets.Add(fallbackTarget);
-                fallbackTargets.RemoveAt(0);
             }
 
             var derivedCallIndex = 0;
-            while (observedDistinctTargets.Count < requiredDistinctHostCoverage && fallbackTargets.Count > 0) {
+            while (requiredDistinctHostCoverage > 1
+                   && GetDistinctAllowedHostCoverage(hostUsageByTarget, forbiddenHostTargets) < requiredDistinctHostCoverage) {
+                var fallbackTarget = SelectPreferredFallbackTarget(
+                    currentHostTarget: string.Empty,
+                    orderedAllowedKnownTargets,
+                    hostUsageByTarget,
+                    requireNewDistinct: true);
+                if (fallbackTarget.Length == 0) {
+                    break;
+                }
+
                 var appended = false;
                 for (var i = 0; i < patchedCalls.Count; i++) {
                     var templateCall = patchedCalls[i];
                     var definition = FindToolDefinitionByName(toolDefinitions, templateCall.Name);
-                    var fallbackTarget = fallbackTargets[0];
                     var derivedCall = TryCreateDerivedHostOverrideCall(
                         templateCall,
                         definition,
@@ -136,8 +170,9 @@ internal static partial class Program {
                     }
 
                     patchedCalls.Add(derivedCall);
-                    observedDistinctTargets.Add(fallbackTarget);
-                    fallbackTargets.RemoveAt(0);
+                    hostUsageByTarget[fallbackTarget] = hostUsageByTarget.TryGetValue(fallbackTarget, out var current)
+                        ? current + 1
+                        : 1;
                     patchedAny = true;
                     appended = true;
                     break;
@@ -149,6 +184,134 @@ internal static partial class Program {
             }
 
             return patchedAny ? patchedCalls.ToArray() : calls;
+        }
+
+        private static int GetDistinctAllowedHostCoverage(
+            IReadOnlyDictionary<string, int> hostUsageByTarget,
+            ISet<string> forbiddenHostTargets) {
+            if (hostUsageByTarget.Count == 0) {
+                return 0;
+            }
+
+            var count = 0;
+            foreach (var pair in hostUsageByTarget) {
+                if (pair.Value <= 0 || forbiddenHostTargets.Contains(pair.Key)) {
+                    continue;
+                }
+
+                count++;
+            }
+
+            return count;
+        }
+
+        private static bool HasForbiddenHostUsage(
+            IReadOnlyDictionary<string, int> hostUsageByTarget,
+            ISet<string> forbiddenHostTargets) {
+            if (forbiddenHostTargets.Count == 0 || hostUsageByTarget.Count == 0) {
+                return false;
+            }
+
+            foreach (var forbiddenHostTarget in forbiddenHostTargets) {
+                if (hostUsageByTarget.TryGetValue(forbiddenHostTarget, out var usage) && usage > 0) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string SelectPreferredFallbackTarget(
+            string currentHostTarget,
+            IReadOnlyList<string> orderedAllowedKnownTargets,
+            IReadOnlyDictionary<string, int> hostUsageByTarget,
+            bool requireNewDistinct) {
+            var normalizedCurrentHostTarget = NormalizeHostTargetCandidate(currentHostTarget);
+            if (orderedAllowedKnownTargets.Count == 0) {
+                return string.Empty;
+            }
+
+            for (var i = 0; i < orderedAllowedKnownTargets.Count; i++) {
+                var candidate = orderedAllowedKnownTargets[i];
+                if (candidate.Length == 0) {
+                    continue;
+                }
+
+                if (normalizedCurrentHostTarget.Length > 0
+                    && string.Equals(candidate, normalizedCurrentHostTarget, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                var inUse = hostUsageByTarget.TryGetValue(candidate, out var usage) && usage > 0;
+                if (requireNewDistinct && inUse) {
+                    continue;
+                }
+
+                return candidate;
+            }
+
+            if (requireNewDistinct) {
+                return string.Empty;
+            }
+
+            for (var i = 0; i < orderedAllowedKnownTargets.Count; i++) {
+                var candidate = orderedAllowedKnownTargets[i];
+                if (candidate.Length == 0) {
+                    continue;
+                }
+
+                if (normalizedCurrentHostTarget.Length > 0
+                    && string.Equals(candidate, normalizedCurrentHostTarget, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                return candidate;
+            }
+
+            return string.Empty;
+        }
+
+        private static List<string> CollectAllowedKnownHostTargets(
+            IReadOnlyList<string> knownHostTargets,
+            ISet<string> forbiddenHostTargets) {
+            var allowedTargets = new List<string>();
+            var seenAllowedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < knownHostTargets.Count; i++) {
+                var normalized = NormalizeHostTargetCandidate(knownHostTargets[i]);
+                if (normalized.Length == 0
+                    || forbiddenHostTargets.Contains(normalized)
+                    || !seenAllowedTargets.Add(normalized)) {
+                    continue;
+                }
+
+                allowedTargets.Add(normalized);
+            }
+
+            return OrderHostTargetCandidatesBySpecificity(allowedTargets);
+        }
+
+        private static HashSet<string> GetForbiddenHostTargets(ScenarioExecutionContractRequirements requirements) {
+            var forbiddenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (requirements is null || requirements.ForbiddenToolInputValues.Count == 0) {
+                return forbiddenTargets;
+            }
+
+            foreach (var requirement in requirements.ForbiddenToolInputValues) {
+                var aliases = GetScenarioInputKeyAliases(requirement.Key);
+                if (!aliases.Any(IsHostTargetAlias)) {
+                    continue;
+                }
+
+                var forbiddenValues = requirement.Value ?? Array.Empty<string>();
+                foreach (var forbiddenValue in forbiddenValues) {
+                    var normalized = NormalizeScenarioContractInputValue(requirement.Key, forbiddenValue);
+                    if (normalized.Length > 0) {
+                        forbiddenTargets.Add(normalized);
+                    }
+                }
+            }
+
+            return forbiddenTargets;
         }
 
         private static ToolDefinition? FindToolDefinitionByName(

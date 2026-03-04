@@ -101,6 +101,8 @@ Build a contract-first architecture where:
 - [x] Live strict scenario validation: `ad-ad0-then-all-dcs-followthrough-10-turn` passes end-to-end in host runtime with cross-DC fanout (`machine_name>=2`) and no duplicate tool-call/output ids.
 - [x] Live strict scenario validation: `ad-eventlog-tool-capability-followthrough-10-turn` now guards explicit `eventlog_evtx_query` capability follow-ups against cached-evidence fallback regressions and passes end-to-end (`10/10` turns) in host runtime.
 - [x] Live strict scenario validation: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn` now passes end-to-end (`10/10` turns), guarding continuation-style `go ahead` follow-through with cross-DC tool execution (`machine_name>=2`) and direct `eventlog_evtx_query` capability responses.
+- [x] Scenario-contract hardening: host runtime now supports explicit forbidden tool-input values (`forbid_tool_input_values` / `forbidden_tool_inputs`) and applies them in retry eligibility, assertion checks, and distinct-host fallback repair paths.
+- [x] Transcript guardrail hardening: `ad-other-dcs-go-ahead-followthrough-10-turn` continuation turns now explicitly forbid `machine_name=AD0`, and strict catalog tests lock this requirement.
 
 ## Hard Decisions (Locked)
 

@@ -324,12 +324,41 @@ public sealed class HostScenarioCompactionSoakTests {
 
         return ReadStringList(turn, "require_tools").Count > 0
                || ReadStringList(turn, "require_any_tools").Count > 0
+               || HasNonEmptyStringListMap(turn, "forbid_tool_input_values")
                || ReadStringList(turn, "assert_tool_output_contains").Count > 0
                || ReadStringList(turn, "assert_tool_output_not_contains").Count > 0
                || ReadStringList(turn, "forbid_tool_error_codes").Count > 0
                || (turn.TryGetProperty("assert_no_tool_errors", out var noErrors)
                    && noErrors.ValueKind is JsonValueKind.True or JsonValueKind.False
                    && noErrors.GetBoolean());
+    }
+
+    private static bool HasNonEmptyStringListMap(JsonElement root, string propertyName) {
+        if (!root.TryGetProperty(propertyName, out var values) || values.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        foreach (var property in values.EnumerateObject()) {
+            if (property.Value.ValueKind == JsonValueKind.String) {
+                var single = (property.Value.GetString() ?? string.Empty).Trim();
+                if (single.Length > 0) {
+                    return true;
+                }
+            } else if (property.Value.ValueKind == JsonValueKind.Array) {
+                foreach (var item in property.Value.EnumerateArray()) {
+                    if (item.ValueKind != JsonValueKind.String) {
+                        continue;
+                    }
+
+                    var candidate = (item.GetString() ?? string.Empty).Trim();
+                    if (candidate.Length > 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     private static bool ContainsDomainIntentSelectionSignal(string userText) {

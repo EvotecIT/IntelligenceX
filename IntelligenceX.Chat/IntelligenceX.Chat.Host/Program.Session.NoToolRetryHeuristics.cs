@@ -173,7 +173,8 @@ internal static partial class Program {
                    && (requirements.MinToolCalls > 0
                        || requirements.MinDistinctToolInputValues.Count > 0
                        || requirements.RequiredTools.Count > 0
-                       || requirements.RequiredAnyTools.Count > 0);
+                       || requirements.RequiredAnyTools.Count > 0
+                       || requirements.ForbiddenToolInputValues.Count > 0);
         }
 
         private static bool IsScenarioNoToolExecutionContract(string userRequest) {

@@ -365,18 +365,22 @@ internal static partial class Program {
                 int minToolCalls,
                 IReadOnlyDictionary<string, int> minDistinctToolInputValues,
                 IReadOnlyList<string> requiredTools,
-                IReadOnlyList<string> requiredAnyTools) {
+                IReadOnlyList<string> requiredAnyTools,
+                IReadOnlyDictionary<string, IReadOnlyCollection<string>> forbiddenToolInputValues) {
                 MinToolCalls = Math.Max(0, minToolCalls);
                 MinDistinctToolInputValues = minDistinctToolInputValues
                                              ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 RequiredTools = requiredTools ?? Array.Empty<string>();
                 RequiredAnyTools = requiredAnyTools ?? Array.Empty<string>();
+                ForbiddenToolInputValues = forbiddenToolInputValues
+                                           ?? new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
             }
 
             public int MinToolCalls { get; }
             public IReadOnlyDictionary<string, int> MinDistinctToolInputValues { get; }
             public IReadOnlyList<string> RequiredTools { get; }
             public IReadOnlyList<string> RequiredAnyTools { get; }
+            public IReadOnlyDictionary<string, IReadOnlyCollection<string>> ForbiddenToolInputValues { get; }
         }
     }
 

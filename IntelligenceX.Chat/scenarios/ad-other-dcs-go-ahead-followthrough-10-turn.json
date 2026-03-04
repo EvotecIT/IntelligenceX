@@ -35,6 +35,7 @@
       "user": "go ahead and run the same reboot-marker query now for all non-AD0 discovered DCs in one turn.",
       "min_tool_calls": 2,
       "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
       "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
       "assert_no_questions": true
     },
@@ -43,6 +44,7 @@
       "user": "go ahead once more and re-check across multiple discovered DCs so we can confirm consistency.",
       "min_tool_calls": 2,
       "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
       "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
       "assert_no_questions": true
     },
