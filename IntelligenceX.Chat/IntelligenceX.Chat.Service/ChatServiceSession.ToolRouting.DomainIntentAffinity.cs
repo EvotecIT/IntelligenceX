@@ -470,6 +470,7 @@ internal sealed partial class ChatServiceSession {
 
         string[]? previousNames;
         long seenUtcTicks;
+        List<ToolDefinition>? selected = null;
         lock (_toolRoutingContextLock) {
             _lastWeightedToolNamesByThreadId.TryGetValue(normalizedThreadId, out previousNames);
             seenUtcTicks = _lastWeightedToolSubsetSeenUtcTicks.TryGetValue(normalizedThreadId, out var ticks) ? ticks : 0;
@@ -478,14 +479,22 @@ internal sealed partial class ChatServiceSession {
         if (previousNames is null || previousNames.Length == 0) {
             if (!TryLoadWeightedToolSubsetSnapshot(normalizedThreadId, out seenUtcTicks, out var persistedNames)
                 || persistedNames.Length == 0) {
-                return false;
-            }
+                if (!TryGetContinuationToolSubsetFromCapabilitySnapshot(normalizedThreadId, allDefinitions, out var capabilitySubset, out var capabilityToolNames)
+                    || capabilitySubset.Count < 2
+                    || capabilityToolNames.Length < 2) {
+                    return false;
+                }
 
-            previousNames = persistedNames;
-            lock (_toolRoutingContextLock) {
-                _lastWeightedToolNamesByThreadId[normalizedThreadId] = previousNames;
-                _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = seenUtcTicks;
-                TrimWeightedRoutingContextsNoLock();
+                selected = new List<ToolDefinition>(capabilitySubset);
+                previousNames = capabilityToolNames;
+                seenUtcTicks = DateTime.UtcNow.Ticks;
+            } else {
+                previousNames = persistedNames;
+                lock (_toolRoutingContextLock) {
+                    _lastWeightedToolNamesByThreadId[normalizedThreadId] = previousNames;
+                    _lastWeightedToolSubsetSeenUtcTicks[normalizedThreadId] = seenUtcTicks;
+                    TrimWeightedRoutingContextsNoLock();
+                }
             }
         }
 
@@ -501,23 +510,33 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
-        var selected = new List<ToolDefinition>();
-        for (var i = 0; i < allDefinitions.Count; i++) {
-            var definition = allDefinitions[i];
-            if (preferred.Contains(definition.Name)) {
-                selected.Add(definition);
+        if (selected is null) {
+            var preferredNamesSet = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
+            selected = new List<ToolDefinition>();
+            for (var i = 0; i < allDefinitions.Count; i++) {
+                var definition = allDefinitions[i];
+                if (preferredNamesSet.Contains(definition.Name)) {
+                    selected.Add(definition);
+                }
             }
         }
 
         if (selected.Count < 2) {
-            return false;
+            if (!TryGetContinuationToolSubsetFromCapabilitySnapshot(normalizedThreadId, allDefinitions, out var capabilitySubset, out var capabilityToolNames)
+                || capabilitySubset.Count < 2
+                || capabilityToolNames.Length < 2) {
+                return false;
+            }
+
+            selected = new List<ToolDefinition>(capabilitySubset);
+            previousNames = capabilityToolNames;
         }
 
         if (ShouldBypassContinuationSubsetForFollowUpQuestion(userRequest)) {
             return false;
         }
 
+        var preferred = new HashSet<string>(previousNames!, StringComparer.OrdinalIgnoreCase);
         if (ReferencesToolOutsideContinuationSubset(userRequest, allDefinitions, preferred)) {
             return false;
         }
@@ -531,6 +550,99 @@ internal sealed partial class ChatServiceSession {
 
         subset = selected;
         return true;
+    }
+
+    private bool TryGetContinuationToolSubsetFromCapabilitySnapshot(
+        string threadId,
+        IReadOnlyList<ToolDefinition> allDefinitions,
+        out IReadOnlyList<ToolDefinition> subset,
+        out string[] selectedToolNames) {
+        subset = Array.Empty<ToolDefinition>();
+        selectedToolNames = Array.Empty<string>();
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0
+            || allDefinitions is null
+            || allDefinitions.Count == 0
+            || !TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint)) {
+            return false;
+        }
+
+        var preferredNames = checkpoint.CapabilityHealthyToolNames.Length > 0
+            ? checkpoint.CapabilityHealthyToolNames
+            : checkpoint.RecentToolNames;
+        if (preferredNames.Length == 0) {
+            return false;
+        }
+
+        var preferredSet = new HashSet<string>(preferredNames, StringComparer.OrdinalIgnoreCase);
+        var enabledPackIds = new HashSet<string>(
+            checkpoint.CapabilityEnabledPackIds
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        var routingFamilies = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < checkpoint.CapabilityRoutingFamilies.Length; i++) {
+            if (TryNormalizeDomainIntentFamily(checkpoint.CapabilityRoutingFamilies[i], out var normalizedFamily)) {
+                routingFamilies.Add(normalizedFamily);
+            }
+        }
+        var selected = new List<ToolDefinition>(Math.Min(8, preferredSet.Count));
+        var selectedNames = new List<string>(Math.Min(8, preferredSet.Count));
+
+        for (var i = 0; i < allDefinitions.Count; i++) {
+            var definition = allDefinitions[i];
+            var toolName = (definition.Name ?? string.Empty).Trim();
+            if (toolName.Length == 0 || !preferredSet.Contains(toolName)) {
+                continue;
+            }
+
+            if (routingFamilies.Count > 0) {
+                var family = ResolveDomainIntentFamily(definition);
+                if (family.Length > 0 && !routingFamilies.Contains(family)) {
+                    continue;
+                }
+            }
+
+            if (enabledPackIds.Count > 0) {
+                var packId = ResolveToolPackIdForContinuationCapability(definition);
+                if (packId.Length > 0 && !enabledPackIds.Contains(packId)) {
+                    continue;
+                }
+            }
+
+            selected.Add(definition);
+            selectedNames.Add(toolName);
+        }
+
+        if (selected.Count < 2) {
+            return false;
+        }
+
+        subset = selected;
+        selectedToolNames = selectedNames.ToArray();
+        return true;
+    }
+
+    private string ResolveToolPackIdForContinuationCapability(ToolDefinition definition) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        var routingPackId = NormalizePackId(definition.Routing?.PackId);
+        if (routingPackId.Length > 0) {
+            return routingPackId;
+        }
+
+        var toolName = (definition.Name ?? string.Empty).Trim();
+        if (toolName.Length == 0) {
+            return string.Empty;
+        }
+
+        if (_toolOrchestrationCatalog.TryGetEntry(toolName, out var catalogEntry)) {
+            return NormalizePackId(catalogEntry.PackId);
+        }
+
+        return string.Empty;
     }
 
     private static bool ReferencesToolOutsideContinuationSubset(
