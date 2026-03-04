@@ -206,29 +206,6 @@ internal sealed partial class ChatServiceSession {
         return ToolRuntimePolicyBootstrap.BuildDiagnostics(context);
     }
 
-    private string[] BuildHelloStartupWarnings(Task startupToolingBootstrapTask) {
-        if (startupToolingBootstrapTask.IsCompletedSuccessfully) {
-            return _startupWarnings;
-        }
-
-        var warnings = new List<string>(_startupWarnings.Length + 1);
-        warnings.AddRange(_startupWarnings);
-        if (!startupToolingBootstrapTask.IsCompleted) {
-            warnings.Add("[startup] Tool bootstrap in progress. Tool metadata may be incomplete.");
-        } else if (startupToolingBootstrapTask.IsFaulted) {
-            var detail = (startupToolingBootstrapTask.Exception?.GetBaseException().Message ?? "Tool bootstrap failed.").Trim();
-            if (detail.Length == 0) {
-                detail = "Tool bootstrap failed.";
-            }
-
-            warnings.Add("[startup] Tool bootstrap failed: " + detail);
-        } else if (startupToolingBootstrapTask.IsCanceled) {
-            warnings.Add("[startup] Tool bootstrap canceled before completion.");
-        }
-
-        return NormalizeDistinctStrings(warnings, maxItems: 64);
-    }
-
     internal static string BuildClientConnectFailureMessage(ChatServiceRequest request, Exception exception) {
         var detail = (exception?.Message ?? string.Empty).Trim();
         if (detail.Length == 0) {

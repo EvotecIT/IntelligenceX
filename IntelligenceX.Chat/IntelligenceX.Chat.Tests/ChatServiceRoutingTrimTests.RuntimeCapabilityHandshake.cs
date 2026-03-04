@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using Xunit;
@@ -139,6 +140,73 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(8, CountCsvItemsFromInstructionLine(enabledPackLine!, "enabled_packs:"));
         Assert.Equal(12, CountCsvItemsFromInstructionLine(healthyToolsLine!, "healthy_tools:"));
         Assert.Equal(6, CountCsvItemsFromInstructionLine(routingFamiliesLine!, "routing_families:"));
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_HelloWarningsIncludeCapabilitySnapshot() {
+        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+        options.AllowedRoots.Add(@"C:\logs");
+        options.AllowedRoots.Add(@"D:\exports");
+        var session = new ChatServiceSession(options, System.IO.Stream.Null);
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "AD Playground",
+                    Name = "AD Playground",
+                    SourceKind = "builtin",
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 9,
+                RoutingAwareTools = 9,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 2,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "scope_hosts",
+                        ToolCount = 2
+                    },
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "public_domain",
+                        ActionId = "query_whois",
+                        ToolCount = 1
+                    }
+                }
+            });
+
+        var warnings = session.BuildHelloStartupWarningsForTesting(Task.CompletedTask);
+        var handshake = Assert.Single(
+            warnings,
+            static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains("marker='ix:capability-snapshot:v1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_pack_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("registered_tools='9'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allowed_roots='2'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("remote_reachability_mode='", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("routing_families='ad_domain,public_domain'", handshake, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_HelloWarningsIncludeBootstrapProgressAndCapabilitySnapshot() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var pendingBootstrap = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var warnings = session.BuildHelloStartupWarningsForTesting(pendingBootstrap.Task);
+
+        Assert.Contains(
+            warnings,
+            static warning => warning.Contains("Tool bootstrap in progress", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            warnings,
+            static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? TryReadInstructionLine(string input, string prefix) {
