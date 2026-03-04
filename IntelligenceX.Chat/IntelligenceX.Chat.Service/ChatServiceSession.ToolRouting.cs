@@ -747,6 +747,10 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < orderedFamilies.Length; i++) {
             var family = orderedFamilies[i];
             if (!actionCatalog.TryGetActionId(family, out var actionId)) {
+                actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+            }
+
+            if (string.IsNullOrWhiteSpace(actionId)) {
                 continue;
             }
 
