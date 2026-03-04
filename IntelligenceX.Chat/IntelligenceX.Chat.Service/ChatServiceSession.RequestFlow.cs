@@ -253,13 +253,14 @@ internal sealed partial class ChatServiceSession {
         var queueRejected = false;
         var duplicateRequestId = false;
         lock (_chatRunLock) {
-            var pendingCount = GetPendingChatRunCountNoLock();
-            if (queueLimit > 0 && pendingCount >= queueLimit) {
+            var queuedCount = GetQueuedChatRunCountNoLock();
+            if (queueLimit > 0 && queuedCount >= queueLimit) {
                 queueRejected = true;
             } else if (!_chatRunsByRequestId.TryAdd(run.ChatRequestId, run)) {
                 duplicateRequestId = true;
             } else {
-                queuePosition = pendingCount + 1;
+                var turnsAhead = (_activeChat is { IsCompleted: false } ? 1 : 0) + queuedCount;
+                queuePosition = turnsAhead + 1;
                 run.QueuePositionAtEnqueue = queuePosition;
                 _queuedChats.Enqueue(run);
                 if (_chatRunPumpTask is null || _chatRunPumpTask.IsCompleted) {
@@ -275,6 +276,7 @@ internal sealed partial class ChatServiceSession {
                 Error = $"A chat request with requestId '{requestId}' is already queued or running.",
                 Code = "chat_request_id_conflict"
             }, cancellationToken).ConfigureAwait(false);
+            run.MarkCompleted();
             return;
         }
 
@@ -350,7 +352,9 @@ internal sealed partial class ChatServiceSession {
     }
 
     private async Task ExecuteQueuedChatRunAsync(ChatRun run, CancellationToken sessionCancellationToken) {
-        var request = run.Request;
+        var request = run.Request with {
+            RequestId = run.ChatRequestId
+        };
         var writer = run.Writer;
         var client = run.Client;
 
@@ -365,30 +369,31 @@ internal sealed partial class ChatServiceSession {
 
         var globalLane = ResolveGlobalExecutionLane(ResolveGlobalExecutionLaneConcurrency(_options.GlobalExecutionLaneConcurrency));
         var enteredGlobalLane = false;
-        if (globalLane is not null) {
-            if (globalLane.Wait(0)) {
-                enteredGlobalLane = true;
-            } else {
-                await TryWriteStatusAsync(
-                        writer,
-                        request.RequestId,
-                        preflightThreadId,
-                        status: ChatStatusCodes.ExecutionLaneWaiting,
-                        message: "Waiting for global execution lane...")
-                    .ConfigureAwait(false);
-                await globalLane.WaitAsync(run.Cts.Token).ConfigureAwait(false);
-                enteredGlobalLane = true;
-                await TryWriteStatusAsync(
-                        writer,
-                        request.RequestId,
-                        preflightThreadId,
-                        status: ChatStatusCodes.ExecutionLaneAcquired,
-                        message: "Global execution lane acquired.")
-                    .ConfigureAwait(false);
-            }
-        }
 
         try {
+            if (globalLane is not null) {
+                if (globalLane.Wait(0)) {
+                    enteredGlobalLane = true;
+                } else {
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            preflightThreadId,
+                            status: ChatStatusCodes.ExecutionLaneWaiting,
+                            message: "Waiting for global execution lane...")
+                        .ConfigureAwait(false);
+                    await globalLane.WaitAsync(run.Cts.Token).ConfigureAwait(false);
+                    enteredGlobalLane = true;
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            preflightThreadId,
+                            status: ChatStatusCodes.ExecutionLaneAcquired,
+                            message: "Global execution lane acquired.")
+                        .ConfigureAwait(false);
+                }
+            }
+
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
@@ -611,9 +616,8 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private int GetPendingChatRunCountNoLock() {
-        var active = _activeChat is { IsCompleted: false } ? 1 : 0;
-        return active + _queuedChats.Count;
+    private int GetQueuedChatRunCountNoLock() {
+        return _queuedChats.Count;
     }
 
     private string? GetActiveThreadIdSnapshot() {
@@ -743,7 +747,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private async Task HandleCancelChatAsync(StreamWriter writer, CancelChatRequest request, CancellationToken cancellationToken) {
-        if (string.IsNullOrWhiteSpace(request.ChatRequestId)) {
+        var chatRequestId = (request.ChatRequestId ?? string.Empty).Trim();
+        if (chatRequestId.Length == 0) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
@@ -754,27 +759,54 @@ internal sealed partial class ChatServiceSession {
         }
 
         ChatRun? active;
+        var removedQueuedRun = false;
         lock (_chatRunLock) {
-            _chatRunsByRequestId.TryGetValue(request.ChatRequestId, out active);
+            _chatRunsByRequestId.TryGetValue(chatRequestId, out active);
+            if (active is not null && !active.Started && !active.IsCompleted) {
+                RemoveQueuedRunFromQueueNoLock(active);
+                _chatRunsByRequestId.Remove(chatRequestId);
+                removedQueuedRun = true;
+            }
         }
 
         if (active is null || active.IsCompleted) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
-                Error = $"Chat request '{request.ChatRequestId}' not found.",
+                Error = $"Chat request '{chatRequestId}' not found.",
                 Code = "chat_not_found"
             }, cancellationToken).ConfigureAwait(false);
             return;
         }
 
         active.Cancel();
+        if (removedQueuedRun) {
+            active.MarkCompleted();
+        }
         await WriteAsync(writer, new AckMessage {
             Kind = ChatServiceMessageKind.Response,
             RequestId = request.RequestId,
             Ok = true,
             Message = "Cancel requested."
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private void RemoveQueuedRunFromQueueNoLock(ChatRun target) {
+        if (_queuedChats.Count == 0) {
+            return;
+        }
+
+        var retained = new Queue<ChatRun>(_queuedChats.Count);
+        while (_queuedChats.Count > 0) {
+            var current = _queuedChats.Dequeue();
+            if (!ReferenceEquals(current, target)) {
+                retained.Enqueue(current);
+            }
+        }
+
+        while (retained.Count > 0) {
+            _queuedChats.Enqueue(retained.Dequeue());
+        }
     }
 
     private async Task CancelActiveChatIfAnyAsync() {
