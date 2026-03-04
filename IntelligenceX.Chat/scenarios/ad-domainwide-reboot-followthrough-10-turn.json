@@ -44,7 +44,7 @@
     },
     {
       "name": "Go-ahead continuation stays cross-DC",
-      "user": "go ahead and continue on the remaining non-AD0 discovered controllers in this same turn.",
+      "user": "those are correct DCs, go ahead and continue on the remaining non-AD0 discovered controllers in this same turn.",
       "min_tool_calls": 2,
       "min_distinct_tool_input_values": { "machine_name": 2 },
       "forbid_tool_input_values": { "machine_name": ["AD0"] },

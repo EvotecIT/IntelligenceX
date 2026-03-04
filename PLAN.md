@@ -106,6 +106,8 @@ Build a contract-first architecture where:
 - [x] Added transcript-derived strict scenario seed `ad-domainwide-reboot-followthrough-10-turn` to guard AD0-baseline -> domain-wide non-AD0 continuation flow, explicit `eventlog_evtx_query` capability follow-up behavior, and DNS cross-pack routing in one 10-turn sequence.
 - [x] Forbidden host-input hardening: scenario contract enforcement now treats short-host and FQDN equivalents consistently (for example `AD0` == `AD0.ad.evotec.xyz`) in retry gating, fallback target selection, and assertion checks.
 - [x] Live host validation rerun: `ad-domainwide-reboot-followthrough-10-turn` passes end-to-end (`10/10` turns) with non-AD0 continuation turns staying off AD0/FQDN equivalents during distinct-host repair.
+- [x] Startup/send race hardening: manual resend now suppresses an equivalent prompt when the same queued-after-login turn is already in-flight, preventing duplicate assistant replies after usage-limit switch-account recovery.
+- [x] Transcript wording coverage refresh: strict cross-DC continuation scenarios now include explicit "`those are correct DCs, go ahead`" phrasing to lock replay suppression and non-AD0 fanout behavior.
 
 ## Hard Decisions (Locked)
 

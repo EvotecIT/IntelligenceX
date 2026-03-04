@@ -361,6 +361,9 @@ public sealed partial class MainWindow : Window {
     private string? _activeKickoffRequestId;
     private string? _cancelRequestedTurnRequestId;
     private CancellationTokenSource? _activeTurnRequestCts;
+    private bool _activeTurnFromQueuedAfterLogin;
+    private string _activeTurnNormalizedPromptText = string.Empty;
+    private string _activeTurnPromptConversationId = string.Empty;
     // Serializes active-turn request id/CTS handoff, cancel, and teardown.
     private readonly object _activeTurnLifecycleSync = new();
     private readonly object _turnDiagnosticsSync = new();

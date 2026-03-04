@@ -41,7 +41,7 @@
     },
     {
       "name": "Repeat go-ahead stays cross-DC",
-      "user": "go ahead once more and re-check across multiple discovered DCs so we can confirm consistency.",
+      "user": "those are the correct DCs, go ahead once more and re-check across multiple discovered DCs so we can confirm consistency.",
       "min_tool_calls": 2,
       "min_distinct_tool_input_values": { "machine_name": 2 },
       "forbid_tool_input_values": { "machine_name": ["AD0"] },

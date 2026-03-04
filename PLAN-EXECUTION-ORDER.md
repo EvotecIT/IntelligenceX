@@ -68,6 +68,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Transcript-derived strict scenario seed added: `ad-domainwide-reboot-followthrough-10-turn` (AD0 reboot baseline -> non-AD0 domain-wide continuation + explicit `eventlog_evtx_query` capability question + DNS cross-pack turn).
 - [x] Forbidden-input equivalence hardening: scenario contract enforcement now treats short-host and FQDN forms as equivalent when applying forbidden host targets (for example `AD0` blocks `AD0.ad.evotec.xyz`) across repair/fallback/assertion paths.
 - [x] Live strict rerun passed: `ad-domainwide-reboot-followthrough-10-turn` now completes `10/10` turns with non-AD0 continuation turns preserving host exclusions after input-repair fallback.
+- [x] Startup/send race hardening: manual resend now skips enqueue when an equivalent queued-after-login prompt is already in-flight, reducing duplicate assistant replies after switch-account recovery.
+- [x] Transcript phrase lock-in: strict cross-DC follow-through scenarios now include "`those are correct DCs, go ahead`" continuation wording to exercise replay suppression under real-world follow-up phrasing.
 
 ## Rules For This Migration
 
