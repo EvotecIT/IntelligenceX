@@ -88,6 +88,7 @@ internal static partial class PluginFolderToolPackLoader {
 
         var roots = ResolvePluginSearchRoots(options);
         var pendingPluginDirectories = new List<(string PluginDirectory, bool IsExplicitRoot)>();
+        var seenPluginIdentities = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var root in roots) {
             if (!Directory.Exists(root.Path)) {
                 if (root.IsExplicit) {
@@ -97,6 +98,19 @@ internal static partial class PluginFolderToolPackLoader {
             }
 
             foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, options, onWarning)) {
+                var pluginIdentity = ResolvePluginIdentity(pluginDirectory);
+                if (pluginIdentity.Length > 0
+                    && seenPluginIdentities.TryGetValue(pluginIdentity, out var existingDirectory)) {
+                    if (root.IsExplicit) {
+                        onWarning?.Invoke(
+                            $"[plugin] duplicate_plugin_identity plugin='{pluginIdentity}' path='{pluginDirectory}' existing='{existingDirectory}' action='skipped'");
+                    }
+                    continue;
+                }
+
+                if (pluginIdentity.Length > 0) {
+                    seenPluginIdentities[pluginIdentity] = pluginDirectory;
+                }
                 pendingPluginDirectories.Add((pluginDirectory, root.IsExplicit));
             }
         }
@@ -208,6 +222,44 @@ internal static partial class PluginFolderToolPackLoader {
         } catch {
             return false;
         }
+    }
+
+    private static string ResolvePluginIdentity(string pluginDirectory) {
+        var fallback = (Path.GetFileName(pluginDirectory) ?? string.Empty).Trim();
+        if (fallback.Length == 0) {
+            return string.Empty;
+        }
+
+        var manifestPath = Path.Combine(pluginDirectory, ManifestFileName);
+        if (!File.Exists(manifestPath)) {
+            return fallback;
+        }
+
+        try {
+            using var stream = File.OpenRead(manifestPath);
+            using var json = JsonDocument.Parse(stream);
+            if (json.RootElement.ValueKind != JsonValueKind.Object) {
+                return fallback;
+            }
+
+            var pluginId = TryReadManifestString(json.RootElement, "pluginId");
+            if (pluginId.Length == 0) {
+                pluginId = TryReadManifestString(json.RootElement, "packageId");
+            }
+
+            return pluginId.Length == 0 ? fallback : pluginId;
+        } catch {
+            return fallback;
+        }
+    }
+
+    private static string TryReadManifestString(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String) {
+            return string.Empty;
+        }
+
+        var value = property.GetString();
+        return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
     }
 
     private static string? TryMaterializePluginArchive(string archivePath, ToolPackBootstrapOptions options, Action<string>? onWarning) {

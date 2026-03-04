@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +12,9 @@ public sealed partial class MainWindow : Window {
     internal static bool ShouldRunStartupDispatchAuthPrewarm(
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
-        bool loginInProgress) {
+        bool loginInProgress,
+        bool startupMetadataSyncQueued = false,
+        bool startupMetadataSyncInProgress = false) {
         if (!requiresInteractiveSignIn) {
             return false;
         }
@@ -21,6 +24,10 @@ public sealed partial class MainWindow : Window {
         }
 
         if (loginInProgress) {
+            return false;
+        }
+
+        if (startupMetadataSyncQueued || startupMetadataSyncInProgress) {
             return false;
         }
 
@@ -105,7 +112,9 @@ public sealed partial class MainWindow : Window {
                 var shouldProbeAuth = ShouldRunStartupDispatchAuthPrewarm(
                     requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
                     isAuthenticated: _isAuthenticated,
-                    loginInProgress: _loginInProgress);
+                    loginInProgress: _loginInProgress,
+                    startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0,
+                    startupMetadataSyncInProgress: Volatile.Read(ref _startupMetadataSyncInProgress) != 0);
                 if (!shouldProbeAuth) {
                     await AppendSystemBestEffortAsync(
                         BuildStartupDispatchPrewarmSummary(
@@ -123,6 +132,17 @@ public sealed partial class MainWindow : Window {
                 StartupLog.Write(
                     "StartupPhase.DispatchPrewarm auth_probe="
                     + authOutcome.ToString().ToLowerInvariant());
+                if (authOutcome == DispatchAuthenticationProbeOutcome.Authenticated
+                    && ShouldQueueDeferredStartupMetadataSyncAfterAuthenticationReady(
+                        isConnected: _isConnected,
+                        requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                        isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport(),
+                        loginInProgress: _loginInProgress,
+                        hasSessionPolicy: _sessionPolicy is not null)) {
+                    StartupLog.Write("StartupPhase.DispatchPrewarm metadata_sync queue_after_auth_probe");
+                    QueueDeferredStartupConnectMetadataSync(requestRerunIfBusy: true);
+                }
+
                 await AppendSystemBestEffortAsync(
                     BuildStartupDispatchPrewarmSummary(
                         connectMs: connectMs,
@@ -157,7 +177,13 @@ public sealed partial class MainWindow : Window {
         }
 
         StartupLog.Write(phasePrefix + " deferred_for_active_turn");
+        var waited = Stopwatch.StartNew();
         while (!_shutdownRequested && IsTurnDispatchInProgress()) {
+            if (waited.Elapsed >= StartupDeferredInteractiveBackgroundTurnWaitTimeout) {
+                StartupLog.Write(phasePrefix + " resumed_after_turn_wait_timeout");
+                return true;
+            }
+
             await Task.Delay(StartupDeferredInteractiveBackgroundPollInterval).ConfigureAwait(false);
         }
 
@@ -168,5 +194,34 @@ public sealed partial class MainWindow : Window {
 
         StartupLog.Write(phasePrefix + " resumed_after_turn");
         return true;
+    }
+
+    private async Task<bool> WaitForStartupDeferredMetadataSyncIdleAsync(string phasePrefix) {
+        var startupMetadataSyncQueued = Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0;
+        var startupMetadataSyncInProgress = Volatile.Read(ref _startupMetadataSyncInProgress) != 0;
+        if (!ShouldDelayStartupModelProfileSyncUntilMetadataReady(startupMetadataSyncQueued, startupMetadataSyncInProgress)) {
+            return true;
+        }
+
+        StartupLog.Write(phasePrefix + " waiting_for_metadata_sync");
+        var waited = Stopwatch.StartNew();
+        while (!_shutdownRequested) {
+            startupMetadataSyncQueued = Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0;
+            startupMetadataSyncInProgress = Volatile.Read(ref _startupMetadataSyncInProgress) != 0;
+            if (!ShouldDelayStartupModelProfileSyncUntilMetadataReady(startupMetadataSyncQueued, startupMetadataSyncInProgress)) {
+                StartupLog.Write(phasePrefix + " resumed_after_metadata_sync");
+                return true;
+            }
+
+            if (waited.Elapsed >= StartupDeferredMetadataPhaseTimeout) {
+                StartupLog.Write(phasePrefix + " metadata_sync_wait_timeout");
+                return false;
+            }
+
+            await Task.Delay(StartupDeferredInteractiveBackgroundPollInterval).ConfigureAwait(false);
+        }
+
+        StartupLog.Write(phasePrefix + " canceled_shutdown");
+        return false;
     }
 }

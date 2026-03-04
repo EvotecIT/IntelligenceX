@@ -7,10 +7,12 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed class ChatServiceServer {
     private readonly ServiceOptions _options;
-    private readonly ChatServiceToolingBootstrapCache _toolingBootstrapCache = new();
+    private readonly ChatServiceToolingBootstrapCache _toolingBootstrapCache;
 
     public ChatServiceServer(ServiceOptions options) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _toolingBootstrapCache = new ChatServiceToolingBootstrapCache(
+            ServiceOptions.GetDefaultToolingBootstrapCachePath(_options.StateDbPath));
     }
 
     public async Task RunAsync(CancellationToken cancellationToken) {

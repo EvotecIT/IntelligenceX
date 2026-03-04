@@ -1,3 +1,4 @@
+using System;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App;
 using Xunit;
@@ -8,6 +9,21 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Verifies startup bootstrap summary rendering helpers.
 /// </summary>
 public sealed class MainWindowStartupBootstrapSummaryTests {
+    private static SessionPolicyDto CreatePolicy(
+        SessionStartupBootstrapTelemetryDto? startupBootstrap = null,
+        string[]? startupWarnings = null) {
+        return new SessionPolicyDto {
+            ReadOnly = true,
+            DangerousToolsEnabled = false,
+            MaxToolRounds = 8,
+            ParallelTools = true,
+            AllowMutatingParallelToolCalls = false,
+            Packs = Array.Empty<ToolPackInfoDto>(),
+            StartupWarnings = startupWarnings ?? Array.Empty<string>(),
+            StartupBootstrap = startupBootstrap
+        };
+    }
+
     /// <summary>
     /// Includes phase timeline and slowest-phase details in startup summary output.
     /// </summary>
@@ -80,5 +96,63 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
         var detail = MainWindow.BuildStartupBootstrapStatusDetail(null);
 
         Assert.Equal(string.Empty, detail);
+    }
+
+    /// <summary>
+    /// Classifies startup bootstrap cache mode as hit when telemetry phase includes cache-hit.
+    /// </summary>
+    [Fact]
+    public void ResolveStartupBootstrapCacheModeTokenFromPolicy_ReturnsHitForCacheHitPhase() {
+        var policy = CreatePolicy(new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 42,
+            Phases = new[] {
+                new SessionStartupBootstrapPhaseTelemetryDto {
+                    Id = "cache_hit",
+                    Label = "cache hit",
+                    DurationMs = 42,
+                    Order = 1
+                }
+            }
+        });
+
+        var mode = MainWindow.ResolveStartupBootstrapCacheModeTokenFromPolicy(policy);
+
+        Assert.Equal("hit", mode);
+    }
+
+    /// <summary>
+    /// Classifies startup bootstrap cache mode as persisted-preview when warnings report preview restore.
+    /// </summary>
+    [Fact]
+    public void ResolveStartupBootstrapCacheModeTokenFromPolicy_ReturnsPersistedPreviewForPreviewWarning() {
+        var policy = CreatePolicy(
+            startupBootstrap: null,
+            startupWarnings: new[] { "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues." });
+
+        var mode = MainWindow.ResolveStartupBootstrapCacheModeTokenFromPolicy(policy);
+
+        Assert.Equal("persisted_preview", mode);
+    }
+
+    /// <summary>
+    /// Classifies startup bootstrap cache mode as miss when bootstrap telemetry exists without cache-hit markers.
+    /// </summary>
+    [Fact]
+    public void ResolveStartupBootstrapCacheModeTokenFromPolicy_ReturnsMissWhenBootstrapWithoutCacheHit() {
+        var policy = CreatePolicy(new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 880,
+            Phases = new[] {
+                new SessionStartupBootstrapPhaseTelemetryDto {
+                    Id = "pack_load",
+                    Label = "pack load",
+                    DurationMs = 700,
+                    Order = 1
+                }
+            }
+        });
+
+        var mode = MainWindow.ResolveStartupBootstrapCacheModeTokenFromPolicy(policy);
+
+        Assert.Equal("miss", mode);
     }
 }

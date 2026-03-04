@@ -248,6 +248,50 @@ public sealed class MainWindowServiceBootstrapStatusTests {
     }
 
     /// <summary>
+    /// Late send-safe bootstrap lines should not keep forcing startup-loading status once startup scope is finished.
+    /// </summary>
+    [Fact]
+    public void ResolveAllowDuringSendForBootstrapStatus_SuppressesLateConnectedBootstrapUpdatesAfterStartup() {
+        var effectiveAllow = MainWindow.ResolveAllowDuringSendForBootstrapStatus(
+            isConnected: true,
+            startupMetadataSyncInProgress: false,
+            startupMetadataSyncQueued: false,
+            startupFlowState: 0,
+            allowDuringSend: true);
+
+        Assert.False(effectiveAllow);
+    }
+
+    /// <summary>
+    /// Send-safe bootstrap lines remain visible while startup flow is still actively running.
+    /// </summary>
+    [Fact]
+    public void ResolveAllowDuringSendForBootstrapStatus_KeepsConnectedBootstrapUpdatesWhileStartupFlowRunning() {
+        var effectiveAllow = MainWindow.ResolveAllowDuringSendForBootstrapStatus(
+            isConnected: true,
+            startupMetadataSyncInProgress: false,
+            startupMetadataSyncQueued: false,
+            startupFlowState: 1,
+            allowDuringSend: true);
+
+        Assert.True(effectiveAllow);
+    }
+
+    /// <summary>
+    /// Detached mode keeps the owned sidecar alive across window close so the next launch can reuse warm runtime state.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ShouldStopOwnedServiceOnWindowClose_UsesDetachedModePolicy(
+        bool detachedServiceMode,
+        bool expected) {
+        var shouldStop = MainWindow.ShouldStopOwnedServiceOnWindowClose(detachedServiceMode);
+
+        Assert.Equal(expected, shouldStop);
+    }
+
+    /// <summary>
     /// When runtime is already connected, rewrites startup-prefixed bootstrap text into connected wording and tags metadata-sync cause.
     /// </summary>
     [Fact]
@@ -286,6 +330,20 @@ public sealed class MainWindowServiceBootstrapStatusTests {
 
         Assert.Equal(
             "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)",
+            statusText);
+    }
+
+    /// <summary>
+    /// Final bootstrap-summary lines should not keep startup phase context active once runtime is already connected.
+    /// </summary>
+    [Fact]
+    public void BuildConnectedBootstrapStatusText_DoesNotAnnotateFinalizingBootstrapSummaryAsStartupPhase() {
+        var statusText = MainWindow.BuildConnectedBootstrapStatusText(
+            "Starting runtime... tool bootstrap finished (1.8s), finalizing runtime connection",
+            MainWindow.StartupStatusCauseMetadataSync);
+
+        Assert.Equal(
+            "Runtime connected. Tool bootstrap finished (1.8s), finalizing runtime connection",
             statusText);
     }
 }

@@ -324,8 +324,33 @@
 
     var order = Object.keys(groups);
     if (order.length === 0) {
-      if (!filter && state.options.toolsLoading === true) {
-        toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>Loading tool packs...</div><div class='options-item-sub'>Runtime is still publishing pack metadata.</div></div>";
+      var startupContext = typeof parseStartupStatusContext === "function"
+        ? parseStartupStatusContext(String(state.status || ""))
+        : null;
+      var startupDiagnostics = state.options && state.options.startupDiagnostics;
+      var metadataSyncDiagnostics = startupDiagnostics && startupDiagnostics.metadataSync && typeof startupDiagnostics.metadataSync === "object"
+        ? startupDiagnostics.metadataSync
+        : null;
+      var metadataSyncActiveByDiagnostics = metadataSyncDiagnostics
+        && (metadataSyncDiagnostics.inProgress === true || metadataSyncDiagnostics.queued === true);
+      var startupStillSyncingTools = !filter && (
+        state.options.toolsLoading === true
+        || metadataSyncActiveByDiagnostics
+        || (startupContext && (startupContext.phase === "startup_metadata_sync" || startupContext.phase === "startup_auth_wait"))
+      );
+      if (startupStillSyncingTools) {
+        var waitingForSignIn = startupContext && startupContext.phase === "startup_auth_wait";
+        var title = waitingForSignIn
+          ? "Waiting for sign-in before loading tools..."
+          : "Syncing tool packs in background...";
+        var detail = waitingForSignIn
+          ? "Runtime is connected. Finish sign-in and tool metadata will appear automatically."
+          : "Runtime is usable; tool metadata is still arriving.";
+        toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>"
+          + escapeHtml(title)
+          + "</div><div class='options-item-sub'>"
+          + escapeHtml(detail)
+          + "</div></div>";
         return;
       }
 
@@ -2884,6 +2909,239 @@
       }
 
       stateLabel.textContent = parts.join(" ");
+    }
+
+    var startupPhaseState = byId("optStartupPhaseState");
+    var startupPhaseTimeline = byId("optStartupPhaseTimeline");
+    if (startupPhaseState || startupPhaseTimeline) {
+      var startupModel = buildStartupPhaseTimelineModel();
+      if (startupPhaseState) {
+        startupPhaseState.textContent = startupModel.summary;
+      }
+      if (startupPhaseTimeline) {
+        startupPhaseTimeline.textContent = "";
+        var startupRows = Array.isArray(startupModel.rows) ? startupModel.rows : [];
+        for (var sr = 0; sr < startupRows.length; sr++) {
+          var startupRow = startupRows[sr] || {};
+          var rowState = String(startupRow.state || "pending").trim().toLowerCase();
+          if (rowState !== "active" && rowState !== "done" && rowState !== "skipped") {
+            rowState = "pending";
+          }
+
+          var row = document.createElement("div");
+          row.className = "options-startup-phase options-startup-phase-" + rowState;
+
+          var rowHead = document.createElement("div");
+          rowHead.className = "options-startup-phase-head";
+
+          var rowLabel = document.createElement("div");
+          rowLabel.className = "options-startup-phase-label";
+          rowLabel.textContent = startupRow.label || "Phase";
+          rowHead.appendChild(rowLabel);
+
+          var rowStatePill = document.createElement("div");
+          rowStatePill.className = "options-startup-phase-state";
+          rowStatePill.textContent = startupPhaseStateLabel(rowState);
+          rowHead.appendChild(rowStatePill);
+
+          row.appendChild(rowHead);
+
+          var rowDetail = document.createElement("div");
+          rowDetail.className = "options-startup-phase-detail";
+          rowDetail.textContent = startupRow.detail || "";
+          row.appendChild(rowDetail);
+
+          startupPhaseTimeline.appendChild(row);
+        }
+      }
+    }
+
+    var startupDiagnosticsState = byId("optStartupDiagnosticsState");
+    var startupDiagnosticsKv = byId("optStartupDiagnosticsKv");
+    if (startupDiagnosticsKv) {
+      startupDiagnosticsKv.textContent = "";
+    }
+    if (startupDiagnosticsState) {
+      startupDiagnosticsState.textContent = "No startup diagnostics yet.";
+    }
+
+    var startupDiagnostics = state.options.startupDiagnostics;
+    if (startupDiagnostics && typeof startupDiagnostics === "object") {
+      var cacheDiag = startupDiagnostics.cache && typeof startupDiagnostics.cache === "object"
+        ? startupDiagnostics.cache
+        : {};
+      var helloDiag = startupDiagnostics.hello && typeof startupDiagnostics.hello === "object"
+        ? startupDiagnostics.hello
+        : {};
+      var listToolsDiag = startupDiagnostics.listTools && typeof startupDiagnostics.listTools === "object"
+        ? startupDiagnostics.listTools
+        : {};
+      var authRefreshDiag = startupDiagnostics.authRefresh && typeof startupDiagnostics.authRefresh === "object"
+        ? startupDiagnostics.authRefresh
+        : {};
+      var metadataDiag = startupDiagnostics.metadataSync && typeof startupDiagnostics.metadataSync === "object"
+        ? startupDiagnostics.metadataSync
+        : {};
+      var metadataFailureRecoveryDiag = metadataDiag.failureRecovery && typeof metadataDiag.failureRecovery === "object"
+        ? metadataDiag.failureRecovery
+        : {};
+      var authGateDiag = startupDiagnostics.authGate && typeof startupDiagnostics.authGate === "object"
+        ? startupDiagnostics.authGate
+        : {};
+      var watchdogDiag = startupDiagnostics.watchdog && typeof startupDiagnostics.watchdog === "object"
+        ? startupDiagnostics.watchdog
+        : {};
+
+      function formatStartupDiagMs(value) {
+        var ms = Number(value);
+        if (!Number.isFinite(ms) || ms < 0) {
+          return "n/a";
+        }
+        if (ms >= 1000) {
+          return (ms / 1000).toFixed(2) + "s";
+        }
+        return Math.floor(ms) + "ms";
+      }
+
+      function formatStartupDiagPhase(phase) {
+        if (!phase || typeof phase !== "object") {
+          return "n/a";
+        }
+        var result = String(phase.result || "unknown").trim().toLowerCase();
+        if (!result) {
+          result = "unknown";
+        }
+        var parts = [result + " in " + formatStartupDiagMs(phase.durationMs)];
+        var attempts = Number(phase.attempts);
+        if (Number.isFinite(attempts) && attempts > 1) {
+          parts.push("attempts " + Math.floor(attempts));
+        }
+        var updatedLocal = String(phase.updatedLocal || "").trim();
+        if (updatedLocal) {
+          parts.push(updatedLocal);
+        }
+        return parts.join(" | ");
+      }
+
+      function appendStartupDiagKv(label, value) {
+        if (!startupDiagnosticsKv) {
+          return;
+        }
+        var k = document.createElement("div");
+        k.className = "options-k";
+        k.textContent = label;
+        var v = document.createElement("div");
+        v.className = "options-v";
+        v.textContent = value;
+        startupDiagnosticsKv.appendChild(k);
+        startupDiagnosticsKv.appendChild(v);
+      }
+
+      var cacheLabel = String(cacheDiag.label || "Unknown").trim() || "Unknown";
+      var cacheMode = String(cacheDiag.mode || "unknown").trim().toLowerCase();
+      var cacheUpdated = String(cacheDiag.updatedLocal || "").trim();
+      var cacheText = cacheLabel + " (" + (cacheMode || "unknown") + ")";
+      if (cacheUpdated) {
+        cacheText += " | " + cacheUpdated;
+      }
+      appendStartupDiagKv("bootstrap cache", cacheText);
+      appendStartupDiagKv("hello", formatStartupDiagPhase(helloDiag));
+      appendStartupDiagKv("list tools", formatStartupDiagPhase(listToolsDiag));
+      appendStartupDiagKv("auth refresh", formatStartupDiagPhase(authRefreshDiag));
+
+      var metadataParts = [
+        String(metadataDiag.result || "unknown").trim().toLowerCase() + " in " + formatStartupDiagMs(metadataDiag.durationMs)
+      ];
+      if (metadataDiag.inProgress === true) {
+        metadataParts.push("in progress");
+      }
+      if (metadataDiag.queued === true) {
+        metadataParts.push("queued");
+      }
+      var metadataUpdated = String(metadataDiag.updatedLocal || "").trim();
+      if (metadataUpdated) {
+        metadataParts.push(metadataUpdated);
+      }
+      appendStartupDiagKv("metadata sync", metadataParts.join(" | "));
+
+      var metadataRecoveryParts = [];
+      var metadataRecoveryRetriesConsumed = Number(metadataFailureRecoveryDiag.retriesConsumed);
+      var metadataRecoveryRetryLimit = Number(metadataFailureRecoveryDiag.retryLimit);
+      var normalizedRetriesConsumed = Number.isFinite(metadataRecoveryRetriesConsumed)
+        ? Math.max(0, Math.floor(metadataRecoveryRetriesConsumed))
+        : 0;
+      var normalizedRetryLimit = Number.isFinite(metadataRecoveryRetryLimit)
+        ? Math.max(0, Math.floor(metadataRecoveryRetryLimit))
+        : 0;
+      metadataRecoveryParts.push("retry " + normalizedRetriesConsumed + "/" + normalizedRetryLimit);
+      if (metadataFailureRecoveryDiag.rerunRequested === true) {
+        metadataRecoveryParts.push("rerun requested");
+      }
+      var metadataRecoveryQueuedCount = Number(metadataFailureRecoveryDiag.queuedCount);
+      if (Number.isFinite(metadataRecoveryQueuedCount) && metadataRecoveryQueuedCount > 0) {
+        metadataRecoveryParts.push("queued " + Math.floor(metadataRecoveryQueuedCount));
+      }
+      var metadataRecoveryLimitReachedCount = Number(metadataFailureRecoveryDiag.limitReachedCount);
+      if (Number.isFinite(metadataRecoveryLimitReachedCount) && metadataRecoveryLimitReachedCount > 0) {
+        metadataRecoveryParts.push("limit reached " + Math.floor(metadataRecoveryLimitReachedCount));
+      }
+      var metadataLastFailureKind = String(metadataFailureRecoveryDiag.lastFailureKind || "").trim();
+      if (metadataLastFailureKind && metadataLastFailureKind !== "none") {
+        metadataRecoveryParts.push("last " + metadataLastFailureKind);
+      }
+      var metadataLastFailureLocal = String(metadataFailureRecoveryDiag.lastFailureLocal || "").trim();
+      if (metadataLastFailureLocal) {
+        metadataRecoveryParts.push(metadataLastFailureLocal);
+      }
+      appendStartupDiagKv("metadata recovery", metadataRecoveryParts.join(" | "));
+
+      var authGateParts = [];
+      authGateParts.push(authGateDiag.active === true ? "active" : "idle");
+      authGateParts.push("current " + formatStartupDiagMs(authGateDiag.currentWaitMs));
+      authGateParts.push("last " + formatStartupDiagMs(authGateDiag.lastWaitMs));
+      var waitCount = Number(authGateDiag.waitCount);
+      if (Number.isFinite(waitCount) && waitCount >= 0) {
+        authGateParts.push("count " + Math.floor(waitCount));
+      }
+      var waitingSince = String(authGateDiag.waitingSinceLocal || "").trim();
+      if (waitingSince) {
+        authGateParts.push("since " + waitingSince);
+      }
+      appendStartupDiagKv("auth gate", authGateParts.join(" | "));
+
+      var watchdogParts = [];
+      var activeClears = Number(watchdogDiag.activeClears);
+      var queuedClears = Number(watchdogDiag.queuedClears);
+      watchdogParts.push("active " + (Number.isFinite(activeClears) ? Math.floor(Math.max(0, activeClears)) : 0));
+      watchdogParts.push("queued " + (Number.isFinite(queuedClears) ? Math.floor(Math.max(0, queuedClears)) : 0));
+      var lastKind = String(watchdogDiag.lastKind || "none").trim();
+      if (lastKind) {
+        watchdogParts.push("last " + lastKind);
+      }
+      var lastCleared = String(watchdogDiag.lastClearedLocal || "").trim();
+      if (lastCleared) {
+        watchdogParts.push(lastCleared);
+      }
+      appendStartupDiagKv("watchdog clears", watchdogParts.join(" | "));
+
+      if (startupDiagnosticsState) {
+        var startupSummaryParts = [];
+        startupSummaryParts.push("Cache " + cacheLabel + ".");
+        if (authGateDiag.active === true) {
+          startupSummaryParts.push("Authentication gate is active.");
+        } else if (metadataFailureRecoveryDiag.rerunRequested === true) {
+          startupSummaryParts.push("Metadata recovery rerun is queued.");
+        } else if (metadataDiag.inProgress === true) {
+          startupSummaryParts.push("Metadata sync is in progress.");
+        } else if (metadataDiag.queued === true) {
+          startupSummaryParts.push("Metadata sync is queued.");
+        } else if (Number(metadataFailureRecoveryDiag.limitReachedCount) > 0) {
+          startupSummaryParts.push("Metadata recovery retry limit reached.");
+        } else {
+          startupSummaryParts.push("Runtime startup diagnostics are healthy.");
+        }
+        startupDiagnosticsState.textContent = startupSummaryParts.join(" ");
+      }
     }
 
     var toggleEngine = byId("btnDebugToggleEngine");

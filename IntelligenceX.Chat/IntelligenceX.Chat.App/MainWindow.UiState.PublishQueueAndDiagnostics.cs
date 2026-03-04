@@ -615,6 +615,13 @@ public sealed partial class MainWindow : Window {
         names.Sort(StringComparer.OrdinalIgnoreCase);
         var list = new List<object>(names.Count);
         foreach (var name in names) {
+            // Persisted disabled-tool entries can exist before the runtime publishes the
+            // current tool catalog. Keep those states internally, but hide them from the
+            // Options -> Tools UI until we have live catalog metadata for that tool.
+            if (!_toolDisplayNames.ContainsKey(name)) {
+                continue;
+            }
+
             _toolDescriptions.TryGetValue(name, out var description);
             _toolDisplayNames.TryGetValue(name, out var displayName);
             _toolCategories.TryGetValue(name, out var category);

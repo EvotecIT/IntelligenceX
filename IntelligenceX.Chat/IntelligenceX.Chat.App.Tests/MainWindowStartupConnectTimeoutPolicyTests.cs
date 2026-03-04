@@ -45,6 +45,67 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures cold-start startup flow skips the guaranteed-failing short initial pipe probe
+    /// and proceeds directly to service launch + retry connect.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, false, false, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(false, true, false, true)]
+    public void ShouldSkipStartupInitialPipeConnectProbe_ReturnsExpectedValue(
+        bool fromUserAction,
+        bool captureStartupPhaseTelemetry,
+        bool hasTrackedRunningServiceProcess,
+        bool expected) {
+        var shouldSkip = MainWindow.ShouldSkipStartupInitialPipeConnectProbe(
+            fromUserAction: fromUserAction,
+            captureStartupPhaseTelemetry: captureStartupPhaseTelemetry,
+            hasTrackedRunningServiceProcess: hasTrackedRunningServiceProcess);
+        Assert.Equal(expected, shouldSkip);
+    }
+
+    /// <summary>
+    /// Ensures startup-only sidecar recovery attempt runs for transient/disconnect failures
+    /// and is disabled for user-action connects or when recovery budget is exhausted.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true, "timeout", false, 0, 1, true)]
+    [InlineData(false, true, "cancel", false, 0, 1, true)]
+    [InlineData(false, true, "disconnect", false, 0, 1, true)]
+    [InlineData(false, true, "other", true, 0, 1, true)]
+    [InlineData(false, true, "other", false, 0, 1, false)]
+    [InlineData(true, true, "timeout", true, 0, 1, false)]
+    [InlineData(false, false, "timeout", true, 0, 1, false)]
+    [InlineData(false, true, "timeout", true, 1, 1, false)]
+    [InlineData(false, true, "timeout", true, 0, 0, false)]
+    public void ShouldAttemptStartupConnectRecoveryAfterRetryFailure_ReturnsExpectedValue(
+        bool fromUserAction,
+        bool captureStartupPhaseTelemetry,
+        string exceptionKind,
+        bool serviceProcessExited,
+        int recoveryAttemptsConsumed,
+        int recoveryAttemptLimit,
+        bool expected) {
+        Exception? exception = exceptionKind switch {
+            "timeout" => new TimeoutException("timed out"),
+            "cancel" => new OperationCanceledException("canceled"),
+            "disconnect" => new IOException("Disconnected from service."),
+            "other" => new InvalidOperationException("some other failure"),
+            _ => null
+        };
+
+        var shouldAttempt = MainWindow.ShouldAttemptStartupConnectRecoveryAfterRetryFailure(
+            fromUserAction: fromUserAction,
+            captureStartupPhaseTelemetry: captureStartupPhaseTelemetry,
+            connectException: exception,
+            serviceProcessExited: serviceProcessExited,
+            recoveryAttemptsConsumed: recoveryAttemptsConsumed,
+            recoveryAttemptLimit: recoveryAttemptLimit);
+        Assert.Equal(expected, shouldAttempt);
+    }
+
+    /// <summary>
     /// Ensures startup-only connect budget is enabled exclusively for non-user startup flow connects.
     /// </summary>
     [Theory]
@@ -475,22 +536,29 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
 
     /// <summary>
     /// Ensures startup dispatch prewarm auth probe only runs for native transport
-    /// when no authentication state is known and interactive login is not in progress.
+    /// when no authentication state is known, interactive login is not in progress,
+    /// and startup metadata sync is not already queued/active.
     /// </summary>
     [Theory]
-    [InlineData(false, false, false, false)]
-    [InlineData(true, true, false, false)]
-    [InlineData(true, false, true, false)]
-    [InlineData(true, false, false, true)]
+    [InlineData(false, false, false, false, false, false)]
+    [InlineData(true, true, false, false, false, false)]
+    [InlineData(true, false, true, false, false, false)]
+    [InlineData(true, false, false, true, false, false)]
+    [InlineData(true, false, false, false, true, false)]
+    [InlineData(true, false, false, false, false, true)]
     public void ShouldRunStartupDispatchAuthPrewarm_ReturnsExpectedValue(
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
         bool loginInProgress,
+        bool startupMetadataSyncQueued,
+        bool startupMetadataSyncInProgress,
         bool expected) {
         var shouldRun = MainWindow.ShouldRunStartupDispatchAuthPrewarm(
             requiresInteractiveSignIn,
             isAuthenticated,
-            loginInProgress);
+            loginInProgress,
+            startupMetadataSyncQueued,
+            startupMetadataSyncInProgress);
         Assert.Equal(expected, shouldRun);
     }
 
@@ -523,8 +591,8 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     [InlineData(false, true, false, false, false)]
     [InlineData(true, false, false, false, false)]
     [InlineData(true, true, true, false, false)]
-    [InlineData(true, true, false, true, false)]
-    [InlineData(true, true, false, false, true)]
+    [InlineData(true, true, false, true, true)]
+    [InlineData(true, true, false, false, false)]
     public void ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative_ReturnsExpectedValue(
         bool deferStartupMetadataSync,
         bool requiresInteractiveSignIn,
@@ -540,11 +608,30 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures deferred startup metadata sync skips inline auth-refresh when the dedicated
+    /// deferred startup auth phase is already queued, avoiding duplicated startup auth probes.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, true, false)]
+    public void ShouldRunDeferredStartupMetadataInlineAuthRefresh_ReturnsExpectedValue(
+        bool startupAuthDeferredQueued,
+        bool shutdownRequested,
+        bool expected) {
+        var shouldRun = MainWindow.ShouldRunDeferredStartupMetadataInlineAuthRefresh(
+            startupAuthDeferredQueued: startupAuthDeferredQueued,
+            shutdownRequested: shutdownRequested);
+        Assert.Equal(expected, shouldRun);
+    }
+
+    /// <summary>
     /// Ensures deferred startup metadata plan always queues metadata sync when deferred,
     /// and only skips deferred metadata while interactive sign-in is pending.
     /// </summary>
     [Theory]
-    [InlineData(true, false, false, true, false, false, false, false, true, true, true, false, false)]
+    [InlineData(true, false, false, true, false, false, false, false, true, true, false, true, true)]
     [InlineData(false, true, false, false, false, true, true, true, true, true, false, true, true)]
     [InlineData(false, false, false, false, false, false, false, false, false, false, false, false, false)]
     public void ResolveDeferredStartupMetadataPlan_ReturnsExpectedValue(
@@ -648,21 +735,39 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
-    /// Ensures deferred startup metadata sync waits for authenticated runtime state only when
-    /// the active transport requires interactive sign-in.
+    /// Ensures metadata-sync recovery copy keeps runtime readiness clear and avoids pinning startup phase context.
     /// </summary>
     [Theory]
-    [InlineData(true, false, true)]
-    [InlineData(true, true, false)]
-    [InlineData(false, false, false)]
-    [InlineData(false, true, false)]
+    [InlineData(true, "Runtime is ready. Retrying tool metadata sync in background...")]
+    [InlineData(false, "Runtime is ready. Tool metadata sync is degraded; some tools may be unavailable.")]
+    public void BuildStartupMetadataSyncRecoveryStatusText_ReturnsExpectedValue(
+        bool retryQueued,
+        string expected) {
+        var text = MainWindow.BuildStartupMetadataSyncRecoveryStatusText(retryQueued);
+
+        Assert.Equal(expected, text);
+    }
+
+    /// <summary>
+    /// Ensures deferred startup metadata sync waits for authenticated runtime state only when
+    /// the active transport requires interactive sign-in and browser login is currently in progress.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, false, true, false)]
+    [InlineData(false, true, false, false)]
     public void ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync_ReturnsExpectedValue(
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
+        bool loginInProgress,
         bool expected) {
         var shouldWait = MainWindow.ShouldWaitForAuthenticationBeforeDeferredStartupMetadataSync(
             requiresInteractiveSignIn,
-            isAuthenticated);
+            isAuthenticated,
+            loginInProgress);
         Assert.Equal(expected, shouldWait);
     }
 
@@ -681,6 +786,142 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             shouldWaitForAuthenticationBeforeDeferredStartupMetadataSync,
             loginSuccessMetadataSyncAlreadyQueued);
         Assert.Equal(expected, shouldQueue);
+    }
+
+    /// <summary>
+    /// Ensures post-authentication startup metadata sync only queues when runtime is connected,
+    /// sign-in is settled, and startup metadata is still missing.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true, true, false, false, false)]
+    [InlineData(true, true, true, true, false, false)]
+    [InlineData(true, true, true, false, true, false)]
+    [InlineData(true, true, false, false, false, false)]
+    [InlineData(true, false, false, false, false, true)]
+    [InlineData(true, true, true, false, false, true)]
+    public void ShouldQueueDeferredStartupMetadataSyncAfterAuthenticationReady_ReturnsExpectedValue(
+        bool isConnected,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool hasSessionPolicy,
+        bool expected) {
+        var shouldQueue = MainWindow.ShouldQueueDeferredStartupMetadataSyncAfterAuthenticationReady(
+            isConnected,
+            requiresInteractiveSignIn,
+            isAuthenticated,
+            loginInProgress,
+            hasSessionPolicy);
+        Assert.Equal(expected, shouldQueue);
+    }
+
+    /// <summary>
+    /// Ensures deferred startup model/profile sync waits while startup metadata sync is queued or active.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void ShouldDelayStartupModelProfileSyncUntilMetadataReady_ReturnsExpectedValue(
+        bool startupMetadataSyncQueued,
+        bool startupMetadataSyncInProgress,
+        bool expected) {
+        var shouldDelay = MainWindow.ShouldDelayStartupModelProfileSyncUntilMetadataReady(
+            startupMetadataSyncQueued,
+            startupMetadataSyncInProgress);
+        Assert.Equal(expected, shouldDelay);
+    }
+
+    /// <summary>
+    /// Ensures stale active startup metadata sync state is cleared only after watchdog threshold.
+    /// </summary>
+    [Theory]
+    [InlineData(10, 35, false)]
+    [InlineData(35, 35, true)]
+    [InlineData(46, 35, true)]
+    public void ShouldClearStaleActiveStartupMetadataSync_ReturnsExpectedValue(
+        int elapsedSeconds,
+        int staleThresholdSeconds,
+        bool expected) {
+        var shouldClear = MainWindow.ShouldClearStaleActiveStartupMetadataSync(
+            TimeSpan.FromSeconds(elapsedSeconds),
+            TimeSpan.FromSeconds(staleThresholdSeconds));
+        Assert.Equal(expected, shouldClear);
+    }
+
+    /// <summary>
+    /// Ensures stale queued startup metadata state only clears when still queued, not actively syncing, and over threshold.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, 46, 35, false)]
+    [InlineData(true, true, 46, 35, false)]
+    [InlineData(true, false, 10, 35, false)]
+    [InlineData(true, false, 35, 35, true)]
+    public void ShouldClearStaleQueuedStartupMetadataSync_ReturnsExpectedValue(
+        bool startupMetadataSyncQueued,
+        bool startupMetadataSyncInProgress,
+        int queuedElapsedSeconds,
+        int staleThresholdSeconds,
+        bool expected) {
+        var shouldClear = MainWindow.ShouldClearStaleQueuedStartupMetadataSync(
+            startupMetadataSyncQueued,
+            startupMetadataSyncInProgress,
+            TimeSpan.FromSeconds(queuedElapsedSeconds),
+            TimeSpan.FromSeconds(staleThresholdSeconds));
+        Assert.Equal(expected, shouldClear);
+    }
+
+    /// <summary>
+    /// Ensures startup profile apply skips redundant set-profile calls when runtime already uses the same profile.
+    /// </summary>
+    [Theory]
+    [InlineData("default", "default", false, false)]
+    [InlineData("default", "default", true, true)]
+    [InlineData("default", "ops", false, true)]
+    [InlineData("default", null, false, true)]
+    [InlineData("ops", "ops", false, false)]
+    [InlineData("ops", "default", false, true)]
+    [InlineData("lab", "default", false, false)]
+    public void ShouldApplyServiceProfile_ReturnsExpectedValue(
+        string appProfileName,
+        string? activeServiceProfileName,
+        bool newThread,
+        bool expected) {
+        var availableProfiles = new[] { "default", "ops" };
+        var shouldApply = MainWindow.ShouldApplyServiceProfile(
+            availableProfiles,
+            appProfileName,
+            activeServiceProfileName,
+            newThread);
+        Assert.Equal(expected, shouldApply);
+    }
+
+    /// <summary>
+    /// Ensures startup pending status prefers "verifying sign-in state" copy only while authentication
+    /// is still unknown for connected native-runtime sessions.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true, false, false, false, false)]
+    [InlineData(true, false, false, false, false, false)]
+    [InlineData(true, true, true, false, false, false)]
+    [InlineData(true, true, false, true, false, false)]
+    [InlineData(true, true, false, false, true, false)]
+    [InlineData(true, true, false, false, false, true)]
+    public void ShouldShowStartupAuthVerificationPending_ReturnsExpectedValue(
+        bool isConnectedStatus,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool hasExplicitUnauthenticatedProbeSnapshot,
+        bool expected) {
+        var shouldShow = MainWindow.ShouldShowStartupAuthVerificationPending(
+            isConnectedStatus,
+            requiresInteractiveSignIn,
+            isAuthenticated,
+            loginInProgress,
+            hasExplicitUnauthenticatedProbeSnapshot);
+        Assert.Equal(expected, shouldShow);
     }
 
     /// <summary>

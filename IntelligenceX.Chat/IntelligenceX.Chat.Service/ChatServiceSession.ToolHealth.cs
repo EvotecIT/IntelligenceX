@@ -498,6 +498,25 @@ internal sealed partial class ChatServiceSession {
             cancellationToken);
     }
 
+    private async Task RunStartupToolHealthPrimingAfterToolingBootstrapAsync(
+        Task startupToolingBootstrapTask,
+        CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(startupToolingBootstrapTask);
+
+        try {
+            await startupToolingBootstrapTask.ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            return;
+        } catch (Exception ex) {
+            RecordStartupWarning(
+                "[tool health] Startup probe priming skipped because tool bootstrap failed: "
+                + CompactStartupToolHealthException(ex));
+            return;
+        }
+
+        await RunStartupToolHealthPrimingAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static Task AwaitStartupToolHealthPrimingForHelloAsync(Task startupToolHealthPrimeTask, CancellationToken cancellationToken) {
         return AwaitStartupToolHealthPrimingForHelloAsync(startupToolHealthPrimeTask, StartupToolHealthHelloWaitBudget, cancellationToken);
     }

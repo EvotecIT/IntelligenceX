@@ -128,6 +128,61 @@ public sealed class PluginFolderLoaderTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacks_DeduplicatesSamePluginIdentityAcrossSearchRoots() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRootA = Path.Combine(tempRoot, "plugins-a");
+        var pluginRootB = Path.Combine(tempRoot, "plugins-b");
+        var pluginFolderA = Path.Combine(pluginRootA, "plugin-loader-test-a");
+        var pluginFolderB = Path.Combine(pluginRootB, "plugin-loader-test-b");
+        Directory.CreateDirectory(pluginFolderA);
+        Directory.CreateDirectory(pluginFolderB);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            Assert.False(string.IsNullOrWhiteSpace(entryAssemblyName));
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolderA, entryAssemblyName), overwrite: true);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolderB, entryAssemblyName), overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderTestPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-test",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolderA, "ix-plugin.json"), manifest);
+            File.WriteAllText(Path.Combine(pluginFolderB, "ix-plugin.json"), manifest);
+
+            var warnings = new List<string>();
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRootA, pluginRootB },
+                DisabledPackIds = DefaultEnabledKnownPackIds,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
+                OnBootstrapWarning = warning => warnings.Add(warning)
+            });
+
+            _ = Assert.Single(packs, static p => string.Equals(p.Descriptor.Id, "plugin-loader-test", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(
+                warnings,
+                static warning => warning.Contains("[plugin] duplicate_plugin_identity plugin='plugin-loader-test'", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(
+                1,
+                warnings.Count(static warning =>
+                    warning.Contains("[plugin] load_progress plugin='plugin-loader-test' phase='begin'", StringComparison.OrdinalIgnoreCase)));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ReportsManifestDefaultDisabledPluginPack() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
         var pluginRoot = Path.Combine(tempRoot, "plugins");
