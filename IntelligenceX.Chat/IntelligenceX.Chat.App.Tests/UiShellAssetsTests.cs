@@ -39,10 +39,13 @@ public sealed class UiShellAssetsTests {
         var script = File.ReadAllText(scriptPath);
 
         Assert.Contains("function shouldRenderHeaderStatusChip(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function parseStartupStatusContext(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function resolveHeaderStatusChipFromStructuredStartupContext()", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStatusChipFallbackStatus()", script, StringComparison.Ordinal);
         Assert.Contains("lower.indexOf(\"usage limit\") >= 0", script, StringComparison.Ordinal);
         Assert.Contains("lower.indexOf(\"queue \") >= 0", script, StringComparison.Ordinal);
         Assert.Contains("if (!shouldRenderHeaderStatusChip(value)) {", script, StringComparison.Ordinal);
+        Assert.Contains("var structuredStartupStatus = resolveHeaderStatusChipFromStructuredStartupContext();", script, StringComparison.Ordinal);
         Assert.Contains("var fallbackStatus = resolveHeaderStatusChipFallbackStatus();", script, StringComparison.Ordinal);
     }
 

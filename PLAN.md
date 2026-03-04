@@ -124,6 +124,10 @@ Build a contract-first architecture where:
 - [x] Transcript-derived strict replay guardrail added: `ad-other-dcs-transcript-replay-guardrail-10-turn` now passes end-to-end (`10/10`) and locks "other DCs" follow-through with cross-DC execution, explicit non-AD0 follow-up turns, and direct `eventlog_evtx_query` capability handling.
 - [x] Transcript-derived strict fanout guardrail added: `ad-c400-transcript-cross-dc-fanout-10-turn` now passes end-to-end (`10/10`) and locks explicit 4-host non-AD0 fanout (`AD1/AD2/DC1/ADRODC`) after continuation phrasing that previously replayed AD0-only calls.
 - [x] Startup visibility hardening: startup/connect/reconnect status text now emits structured context tokens (`phase startup_*`, `cause ...`), and connected bootstrap status rewrites legacy cause-only suffixes to phase+cause so runtime-ready ambiguity is diagnosable from the header chip alone.
+- [x] Stabilization hotfix: no-text tool-output turns now perform one direct no-tools synthesis retry (service + host) before fallback text, preventing stalled follow-through when model tool rounds return empty assistant text.
+- [x] Follow-through quality hardening: no-text synthesis prompts now include compact tool-argument context from executed calls (for example host/log/window selectors), reducing false "missing target context" narratives on sparse summaries.
+- [x] Startup UX hardening: shell header status chip now derives compact labels from structured startup phase/cause markers (`startup_connect`, `startup_auth_wait`, `startup_metadata_sync`) before generic fallback labels, improving visibility during connect/auth/bootstrap wait phases.
+- [x] Live strict rerun checkpoint after no-text/startup UX hardening: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass on this branch.
 
 ## Hard Decisions (Locked)
 

@@ -85,6 +85,10 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Transcript replay guardrail scenario added and validated: `ad-other-dcs-transcript-replay-guardrail-10-turn` passes `10/10`, proving cross-DC continuation execution and explicit non-AD0 follow-up behavior under transcript wording.
 - [x] Transcript fanout guardrail scenario added and validated: `ad-c400-transcript-cross-dc-fanout-10-turn` passes `10/10`, proving explicit non-AD0 4-host fanout after continuation wording that previously regressed into AD0-only replay loops.
 - [x] Startup visibility hardening: startup/connect/reconnect status text now emits structured context tokens (`phase startup_*`, `cause ...`) and connected bootstrap rewrites legacy cause-only suffixes into phase+cause form, so "runtime connected" no longer hides in-flight startup work.
+- [x] Stabilization hotfix: no-text tool-output turns now run one direct no-tools synthesis retry before fallback (service + host), reducing stalled follow-through when tool rounds return empty assistant text.
+- [x] Follow-through quality hardening: no-text synthesis prompts now include compact executed tool-argument context (generic key/value summaries) to keep target/scope details available during retry synthesis.
+- [x] Startup UX hardening: header status chip fallback now consumes structured startup phase/cause context to render compact in-progress labels (`Loading tool packs`, `Sign in to continue loading tool packs`, `Starting runtime (retrying connection)`).
+- [x] Live strict rerun checkpoint after this batch: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass.
 
 ## Rules For This Migration
 
