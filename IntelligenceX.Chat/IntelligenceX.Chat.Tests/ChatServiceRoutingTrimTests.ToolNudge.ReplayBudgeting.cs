@@ -597,6 +597,27 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldSkipWeightedRouting_TrueForExplicitActSelectionCommand() {
+        var request = "/act act_001";
+        var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { request });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldSkipWeightedRouting_TrueForStructuredContinuationContract() {
+        var request = """
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: run now
+            """;
+        var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { request });
+
+        Assert.True(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
     public void ShouldSkipWeightedRouting_TrueForCompactFollowUp() {
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "run now" });
 
@@ -606,6 +627,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ShouldSkipWeightedRouting_FalseForRegularRequestText() {
         var result = ShouldSkipWeightedRoutingMethod.Invoke(null, new object?[] { "Show failed logons across all domain controllers for the last 24 hours with source IP breakdown." });
+
+        Assert.False(Assert.IsType<bool>(result));
+    }
+
+    [Fact]
+    public void ShouldSkipWeightedRouting_FalseForIncidentalContinuationMarkerMention() {
+        var result = ShouldSkipWeightedRoutingMethod.Invoke(
+            null,
+            new object?[] { "Please document what ix:continuation:v1 means in our contract schema." });
 
         Assert.False(Assert.IsType<bool>(result));
     }

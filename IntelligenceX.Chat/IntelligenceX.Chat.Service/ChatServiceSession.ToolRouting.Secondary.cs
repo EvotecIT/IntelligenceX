@@ -697,11 +697,19 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        // For explicit action selections, keep all tools available so execution can proceed immediately.
-        if (LooksLikeActionSelectionPayload(normalized)) {
+        // Prefer structured action-selection contracts when present.
+        if (TryParseExplicitActSelection(normalized, out _, out _)
+            || TryReadActionSelectionIntent(normalized, out _, out _)
+            || LooksLikeActionSelectionPayload(normalized)) {
             return true;
         }
 
+        // Prefer structured continuation contracts when present.
+        if (TryReadContinuationContractFromRequestText(normalized, out _, out _)) {
+            return true;
+        }
+
+        // For explicit action selections, keep all tools available so execution can proceed immediately.
         // Keep follow-up turns unconstrained: short continuation prompts (for example "1" or other compact follow-up text)
         // should have immediate access to the full toolset.
         if (LooksLikeContinuationFollowUp(normalized)) {
