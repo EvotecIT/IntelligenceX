@@ -144,6 +144,79 @@ public sealed class HostScenarioCatalogStrictnessTests {
     }
 
     [Fact]
+    public void AdScopeShiftCrossDcFanoutScenario_EnforcesScopeShiftAndToolCapabilityContracts() {
+        var scenarioDir = ResolveScenarioDirectory();
+        var file = Path.Combine(scenarioDir, "ad-scope-shift-cross-dc-fanout-10-turn.json");
+
+        Assert.True(File.Exists(file), $"Expected scenario file '{file}' to exist.");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(file));
+        var root = document.RootElement;
+
+        var tags = ReadTagSet(root);
+        Assert.Contains("ad", tags);
+        Assert.Contains("cross-dc", tags);
+        Assert.Contains("scope-shift", tags);
+        Assert.Contains("strict", tags);
+        Assert.Contains("live", tags);
+
+        var turns = RequireProperty(root, "turns");
+        Assert.Equal(JsonValueKind.Array, turns.ValueKind);
+        Assert.Equal(10, turns.GetArrayLength());
+
+        var turnList = turns.EnumerateArray().ToArray();
+        var scopeShiftTurn = turnList.FirstOrDefault(static turn =>
+            turn.ValueKind == JsonValueKind.Object
+            && turn.TryGetProperty("name", out var nameElement)
+            && nameElement.ValueKind == JsonValueKind.String
+            && string.Equals(nameElement.GetString(), "Scope shift to other DCs", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, scopeShiftTurn.ValueKind);
+        Assert.True(ReadRequiredInt32(scopeShiftTurn, "min_tool_calls") >= 2);
+        var scopeShiftDistinctInputValues = ReadNonNegativeIntMap(scopeShiftTurn, "min_distinct_tool_input_values");
+        Assert.True(scopeShiftDistinctInputValues.TryGetValue("machine_name", out var scopeShiftMinMachineNameValues));
+        Assert.True(scopeShiftMinMachineNameValues >= 2);
+        var scopeShiftDisallowedLiterals = ReadStringList(scopeShiftTurn, "assert_not_contains");
+        Assert.Contains(scopeShiftDisallowedLiterals, static value => value.IndexOf("AD0-only", StringComparison.OrdinalIgnoreCase) >= 0);
+        Assert.Contains(scopeShiftDisallowedLiterals, static value => value.IndexOf("minimal input", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        var confirmedFanoutTurn = turnList.FirstOrDefault(static turn =>
+            turn.ValueKind == JsonValueKind.Object
+            && turn.TryGetProperty("name", out var nameElement)
+            && nameElement.ValueKind == JsonValueKind.String
+            && string.Equals(nameElement.GetString(), "Confirmed fanout execution", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, confirmedFanoutTurn.ValueKind);
+        Assert.True(ReadRequiredInt32(confirmedFanoutTurn, "min_tool_calls") >= 2);
+        var confirmedFanoutDistinctInputValues = ReadNonNegativeIntMap(confirmedFanoutTurn, "min_distinct_tool_input_values");
+        Assert.True(confirmedFanoutDistinctInputValues.TryGetValue("machine_name", out var confirmedFanoutMinMachineNameValues));
+        Assert.True(confirmedFanoutMinMachineNameValues >= 2);
+        var confirmedFanoutDisallowedToolOutputLiterals = ReadStringList(confirmedFanoutTurn, "assert_tool_output_not_contains");
+        Assert.Contains(confirmedFanoutDisallowedToolOutputLiterals, static value => value.IndexOf("\"machine_name\":\"AD0.ad.evotec.xyz\"", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        var toolCapabilityClarificationTurn = turnList.FirstOrDefault(static turn =>
+            turn.ValueKind == JsonValueKind.Object
+            && turn.TryGetProperty("name", out var nameElement)
+            && nameElement.ValueKind == JsonValueKind.String
+            && string.Equals(nameElement.GetString(), "Tool capability clarification stays no-tool", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, toolCapabilityClarificationTurn.ValueKind);
+        var clarificationForbidTools = ReadStringList(toolCapabilityClarificationTurn, "forbid_tools");
+        Assert.Contains(clarificationForbidTools, static value => string.Equals(value, "*", StringComparison.Ordinal));
+        var clarificationDisallowedLiterals = ReadStringList(toolCapabilityClarificationTurn, "assert_not_contains");
+        Assert.Contains(clarificationDisallowedLiterals, static value => value.IndexOf("cached-tool-evidence", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        var continueNonAd0Turn = turnList.FirstOrDefault(static turn =>
+            turn.ValueKind == JsonValueKind.Object
+            && turn.TryGetProperty("name", out var nameElement)
+            && nameElement.ValueKind == JsonValueKind.String
+            && string.Equals(nameElement.GetString(), "Continue live remote checks after clarification", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, continueNonAd0Turn.ValueKind);
+        var continueNonAd0DistinctInputValues = ReadNonNegativeIntMap(continueNonAd0Turn, "min_distinct_tool_input_values");
+        Assert.True(continueNonAd0DistinctInputValues.TryGetValue("machine_name", out var continueNonAd0MinMachineNameValues));
+        Assert.True(continueNonAd0MinMachineNameValues >= 2);
+        var continueNonAd0DisallowedToolOutputLiterals = ReadStringList(continueNonAd0Turn, "assert_tool_output_not_contains");
+        Assert.Contains(continueNonAd0DisallowedToolOutputLiterals, static value => value.IndexOf("\"machine_name\":\"AD0.ad.evotec.xyz\"", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    [Fact]
     public void AdOtherDcsGoAheadScenario_ContinuationTurnsForbidAd0HostInputs() {
         var scenarioDir = ResolveScenarioDirectory();
         var file = Path.Combine(scenarioDir, "ad-other-dcs-go-ahead-followthrough-10-turn.json");

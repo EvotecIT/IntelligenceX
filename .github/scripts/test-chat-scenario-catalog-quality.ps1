@@ -222,6 +222,52 @@ foreach ($file in $files) {
                 }
             }
         }
+
+        if ($file.Name.Equals("ad-scope-shift-cross-dc-fanout-10-turn.json", [StringComparison]::OrdinalIgnoreCase)) {
+            $confirmedFanoutTurn = $null
+            $continueNonAd0Turn = $null
+            foreach ($turn in $turns) {
+                $turnName = "$(Get-JsonPropertyValue -instance $turn -propertyName 'name')".Trim()
+                if ($turnName.Equals("Confirmed fanout execution", [StringComparison]::OrdinalIgnoreCase)) {
+                    $confirmedFanoutTurn = $turn
+                    continue
+                }
+
+                if ($turnName.Equals("Continue live remote checks after clarification", [StringComparison]::OrdinalIgnoreCase)) {
+                    $continueNonAd0Turn = $turn
+                }
+            }
+
+            if ($null -eq $confirmedFanoutTurn) {
+                $failures.Add("$($file.Name): expected 'Confirmed fanout execution' turn.") | Out-Null
+            } else {
+                $confirmedFanoutMinimumDistinct = Get-JsonPropertyValue -instance $confirmedFanoutTurn -propertyName 'min_distinct_tool_input_values'
+                $confirmedFanoutMachineName = [int](Get-JsonPropertyValue -instance $confirmedFanoutMinimumDistinct -propertyName 'machine_name' -defaultValue 0)
+                if ($confirmedFanoutMachineName -lt 2) {
+                    $failures.Add("$($file.Name): 'Confirmed fanout execution' must enforce min_distinct_tool_input_values.machine_name >= 2.") | Out-Null
+                }
+
+                $confirmedFanoutDisallowedToolOutputLiterals = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $confirmedFanoutTurn -propertyName 'assert_tool_output_not_contains'))
+                if (-not ($confirmedFanoutDisallowedToolOutputLiterals | Where-Object { $_.IndexOf('"machine_name":"AD0.ad.evotec.xyz"', [StringComparison]::OrdinalIgnoreCase) -ge 0 })) {
+                    $failures.Add("$($file.Name): 'Confirmed fanout execution' must block AD0 tool output reuse (`assert_tool_output_not_contains` for machine_name AD0).") | Out-Null
+                }
+            }
+
+            if ($null -eq $continueNonAd0Turn) {
+                $failures.Add("$($file.Name): expected 'Continue live remote checks after clarification' turn.") | Out-Null
+            } else {
+                $continueNonAd0MinimumDistinct = Get-JsonPropertyValue -instance $continueNonAd0Turn -propertyName 'min_distinct_tool_input_values'
+                $continueNonAd0MachineName = [int](Get-JsonPropertyValue -instance $continueNonAd0MinimumDistinct -propertyName 'machine_name' -defaultValue 0)
+                if ($continueNonAd0MachineName -lt 2) {
+                    $failures.Add("$($file.Name): 'Continue live remote checks after clarification' must enforce min_distinct_tool_input_values.machine_name >= 2.") | Out-Null
+                }
+
+                $continueNonAd0DisallowedToolOutputLiterals = @(Get-NormalizedStringList -rawValue (Get-JsonPropertyValue -instance $continueNonAd0Turn -propertyName 'assert_tool_output_not_contains'))
+                if (-not ($continueNonAd0DisallowedToolOutputLiterals | Where-Object { $_.IndexOf('"machine_name":"AD0.ad.evotec.xyz"', [StringComparison]::OrdinalIgnoreCase) -ge 0 })) {
+                    $failures.Add("$($file.Name): 'Continue live remote checks after clarification' must block AD0 tool output reuse (`assert_tool_output_not_contains` for machine_name AD0).") | Out-Null
+                }
+            }
+        }
     }
 
     if ($file.Name.StartsWith("dns-", [StringComparison]::OrdinalIgnoreCase)) {

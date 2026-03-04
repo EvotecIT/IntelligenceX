@@ -1,0 +1,83 @@
+{
+  "name": "ad-scope-shift-cross-dc-fanout-10-turn",
+  "tags": ["ad", "cross-dc", "scope-shift", "continuation", "eventlog", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover forest DC scope",
+      "user": "Discover domain controllers in current forest scope and list reachable hosts now.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"]
+    },
+    {
+      "name": "Baseline AD0 reboot evidence",
+      "user": "Start from AD0 if present and collect reboot markers with exact UTC timestamps.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_live_query", "eventlog_live_stats", "eventlog_*events*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Scope shift to other DCs",
+      "user": "i mean other dcs. run the same reboot marker query for remaining controllers now.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_live_query", "eventlog_live_stats", "eventlog_*events*"],
+      "assert_no_questions": true,
+      "assert_not_contains": ["still AD0-only evidence", "blocked on one minimal input", "I need the DC names"]
+    },
+    {
+      "name": "Confirmed fanout execution",
+      "user": "those are correct dcs, go ahead and run now.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_live_query", "eventlog_live_stats"],
+      "assert_tool_output_not_contains": ["\"machine_name\":\"AD0.ad.evotec.xyz\""],
+      "assert_no_questions": true,
+      "assert_not_contains": ["still AD0-only evidence", "blocked on one minimal input", "I need the DC names"]
+    },
+    {
+      "name": "Tool capability clarification stays no-tool",
+      "user": "what is `eventlog_evtx_query · Event Log (EventViewerX)` and when should it be used?",
+      "forbid_tools": ["*"],
+      "assert_not_contains": ["ix:cached-tool-evidence:v1", "[Cached evidence fallback]"]
+    },
+    {
+      "name": "Continue live remote checks after clarification",
+      "user": "understood, keep using live remote event log queries for the non-AD0 DCs and continue.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_live_query", "eventlog_live_stats"],
+      "assert_tool_output_not_contains": ["\"machine_name\":\"AD0.ad.evotec.xyz\""],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Per-DC reboot matrix",
+      "user": "Return a per-DC matrix with last reboot UTC, planned vs unexpected classification, and confidence.",
+      "assert_contains": ["UTC"]
+    },
+    {
+      "name": "Outlier and recurrence ranking",
+      "user": "Rank controller reboot risk as green/amber/red and mark outliers that need immediate follow-up."
+    },
+    {
+      "name": "Execute-now remediation checklist",
+      "user": "Provide a prioritized 30-minute execute-now checklist with no follow-up questions.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final compact summary",
+      "user": "Summarize in 6 bullets with UTC markers, participating DC count, and unresolved blockers.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true,
+      "assert_not_contains": ["Partial response shown above", "turn ended before completion"]
+    }
+  ]
+}
