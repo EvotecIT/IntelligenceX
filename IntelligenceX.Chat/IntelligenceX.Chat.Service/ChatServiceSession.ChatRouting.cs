@@ -672,15 +672,6 @@ internal sealed partial class ChatServiceSession {
                         parallelTools,
                         allowMutatingParallel)
                     .ConfigureAwait(false);
-                if (planExecuteReviewLoop) {
-                    await TryWriteStatusAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            status: ChatStatusCodes.PhaseExecute,
-                            message: $"Executing {callsToExecute.Count} planned tool call(s)...")
-                        .ConfigureAwait(false);
-                }
 
                 foreach (var call in callsToExecute) {
                     await TryWriteStatusAsync(
@@ -701,18 +692,32 @@ internal sealed partial class ChatServiceSession {
 
             IReadOnlyList<ToolOutputDto> executed;
             if (hasFreshCallsToExecute) {
-                executed = await ExecuteToolsAsync(
-                        writer,
-                        request.RequestId,
-                        threadId,
-                        callsToExecute,
-                        parallelTools,
-                        allowMutatingParallel,
-                        mutatingToolHints,
-                        toolTimeoutSeconds,
-                        routedUserRequest,
-                        turnToken)
-                    .ConfigureAwait(false);
+                var executeTask = ExecuteToolsAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    callsToExecute,
+                    parallelTools,
+                    allowMutatingParallel,
+                    mutatingToolHints,
+                    toolTimeoutSeconds,
+                    routedUserRequest,
+                    turnToken);
+                if (planExecuteReviewLoop) {
+                    await RunPhaseProgressLoopAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            phaseStatus: ChatStatusCodes.PhaseExecute,
+                            phaseMessage: $"Executing {callsToExecute.Count} planned tool call(s)...",
+                            heartbeatLabel: "Executing tool plan",
+                            heartbeatSeconds: modelHeartbeatSeconds,
+                            cancellationToken: turnToken,
+                            phaseTask: executeTask)
+                        .ConfigureAwait(false);
+                }
+
+                executed = await executeTask.ConfigureAwait(false);
             } else {
                 executed = Array.Empty<ToolOutputDto>();
             }
