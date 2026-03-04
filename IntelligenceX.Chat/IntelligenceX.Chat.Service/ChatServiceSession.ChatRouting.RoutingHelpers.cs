@@ -318,6 +318,62 @@ internal sealed partial class ChatServiceSession {
         return sanitized.Count == 0 ? Array.Empty<ToolDefinition>() : sanitized;
     }
 
+    private static IReadOnlyList<ToolDefinition> ApplyToolExposureOverrides(
+        IReadOnlyList<ToolDefinition> definitions,
+        string[]? enabledTools,
+        string[]? disabledTools) {
+        if (definitions.Count == 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        var enabled = NormalizeToolNameSet(enabledTools);
+        var disabled = NormalizeToolNameSet(disabledTools);
+        if ((enabled is null || enabled.Count == 0) && (disabled is null || disabled.Count == 0)) {
+            return definitions;
+        }
+
+        var filtered = new List<ToolDefinition>(definitions.Count);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var normalizedName = (definition.Name ?? string.Empty).Trim();
+            if (normalizedName.Length == 0) {
+                continue;
+            }
+
+            if (enabled is { Count: > 0 } && !enabled.Contains(normalizedName)) {
+                continue;
+            }
+
+            if (disabled is { Count: > 0 } && disabled.Contains(normalizedName)) {
+                continue;
+            }
+
+            filtered.Add(definition);
+        }
+
+        return filtered.Count == 0 ? Array.Empty<ToolDefinition>() : filtered;
+    }
+
+    private static HashSet<string>? NormalizeToolNameSet(string[]? toolNames) {
+        if (toolNames is null || toolNames.Length == 0) {
+            return null;
+        }
+
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < toolNames.Length; i++) {
+            var name = (toolNames[i] ?? string.Empty).Trim();
+            if (name.Length > 0) {
+                normalized.Add(name);
+            }
+        }
+
+        return normalized.Count == 0 ? null : normalized;
+    }
+
     private async Task<(IReadOnlyList<ToolDefinition> Definitions, List<ToolRoutingInsight> Insights)> SelectWeightedToolSubsetAsync(
         IntelligenceXClient client,
         string threadId,

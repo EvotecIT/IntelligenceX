@@ -345,6 +345,11 @@ public sealed record ChatRequestOptions {
     /// </summary>
     public int? ToolTimeoutSeconds { get; init; }
     /// <summary>
+    /// Optional allow-list of tool names to expose for this request.
+    /// When provided, only listed tools remain available before <see cref="DisabledTools"/> filtering applies.
+    /// </summary>
+    public string[]? EnabledTools { get; init; }
+    /// <summary>
     /// Optional tool names to disable for this request.
     /// </summary>
     public string[]? DisabledTools { get; init; }

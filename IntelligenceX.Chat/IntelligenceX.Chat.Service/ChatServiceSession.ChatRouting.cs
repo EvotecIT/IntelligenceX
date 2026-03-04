@@ -33,24 +33,7 @@ internal sealed partial class ChatServiceSession {
         var projectionFallbackCount = 0;
 
         IReadOnlyList<ToolDefinition> toolDefs = _registry.GetDefinitions();
-        if (request.Options?.DisabledTools is { Length: > 0 } disabledTools && toolDefs.Count > 0) {
-            var disabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < disabledTools.Length; i++) {
-                if (!string.IsNullOrWhiteSpace(disabledTools[i])) {
-                    disabled.Add(disabledTools[i].Trim());
-                }
-            }
-
-            if (disabled.Count > 0) {
-                var filtered = new List<ToolDefinition>(toolDefs.Count);
-                for (var i = 0; i < toolDefs.Count; i++) {
-                    if (!disabled.Contains(toolDefs[i].Name)) {
-                        filtered.Add(toolDefs[i]);
-                    }
-                }
-                toolDefs = filtered;
-            }
-        }
+        toolDefs = ApplyToolExposureOverrides(toolDefs, request.Options?.EnabledTools, request.Options?.DisabledTools);
         toolDefs = SanitizeToolDefinitions(toolDefs);
 
         var selectedModel = request.Options?.Model ?? _options.Model;
