@@ -59,9 +59,28 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ChatHost_ShouldNotContainHardcodedToolSpecificRetryRewrites() {
+        var source = File.ReadAllText(GetHostSourceFilePath("Program.Session.ToolExecution.cs"));
+        var legacySymbols = new[] {
+            "ApplyAdDiscoveryRootDseFallback(",
+            "ApplyAdReplicationProbeFallback(",
+            "ApplyDomainDetectiveSummaryTimeoutFallback("
+        };
+
+        for (var i = 0; i < legacySymbols.Length; i++) {
+            Assert.DoesNotContain(legacySymbols[i], source, StringComparison.Ordinal);
+        }
+    }
+
     private static string GetServiceSourceFilePath(string fileName) {
         var repoRoot = FindRepoRoot();
         return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Service", fileName);
+    }
+
+    private static string GetHostSourceFilePath(string fileName) {
+        var repoRoot = FindRepoRoot();
+        return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Host", fileName);
     }
 
     private static string FindRepoRoot() {

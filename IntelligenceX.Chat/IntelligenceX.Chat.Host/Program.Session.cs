@@ -36,9 +36,6 @@ internal static partial class Program {
         private const int HostTargetSpecificityShortNameBonus = 1;
         private const int HostTargetSpecificityIpLiteralPenalty = 2;
         private const int HostTargetSpecificityLocalhostPenalty = 3;
-        private const int MinReplicationProbeTimeoutMs = 10000;
-        private const int MinDomainDetectiveSummaryTimeoutMs = 30000;
-        private const string AdDiscoveryRootDseFailureErrorCode = "not_configured";
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
         private readonly IntelligenceXClient _client;

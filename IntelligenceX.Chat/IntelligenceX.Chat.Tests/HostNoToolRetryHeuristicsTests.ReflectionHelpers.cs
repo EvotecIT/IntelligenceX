@@ -231,51 +231,6 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         return Assert.IsType<ToolCall>(value);
     }
 
-    private static ToolCall InvokeApplyAdDiscoveryRootDseFallback(ToolCall call, string output) {
-        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
-        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
-        Assert.NotNull(replSessionType);
-
-        var method = replSessionType!.GetMethod(
-            "ApplyAdDiscoveryRootDseFallback",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        var value = method!.Invoke(null, new object?[] { call, output });
-        return Assert.IsType<ToolCall>(value);
-    }
-
-    private static ToolCall InvokeApplyAdReplicationProbeFallback(
-        ToolCall call,
-        string output,
-        IReadOnlyList<string>? knownHostTargets) {
-        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
-        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
-        Assert.NotNull(replSessionType);
-
-        var method = replSessionType!.GetMethod(
-            "ApplyAdReplicationProbeFallback",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        var value = method!.Invoke(null, new object?[] { call, output, knownHostTargets });
-        return Assert.IsType<ToolCall>(value);
-    }
-
-    private static ToolCall InvokeApplyDomainDetectiveSummaryTimeoutFallback(ToolCall call, string output) {
-        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
-        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
-        Assert.NotNull(replSessionType);
-
-        var method = replSessionType!.GetMethod(
-            "ApplyDomainDetectiveSummaryTimeoutFallback",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        var value = method!.Invoke(null, new object?[] { call, output });
-        return Assert.IsType<ToolCall>(value);
-    }
-
     private static IReadOnlyList<ToolCall> InvokeApplyScenarioDistinctHostCoverageFallbacks(
         string userRequest,
         IReadOnlyList<ToolCall> calls,

@@ -89,6 +89,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Follow-through quality hardening: no-text synthesis prompts now include compact executed tool-argument context (generic key/value summaries) to keep target/scope details available during retry synthesis.
 - [x] Startup UX hardening: header status chip fallback now consumes structured startup phase/cause context to render compact in-progress labels (`Loading tool packs`, `Sign in to continue loading tool packs`, `Starting runtime (retrying connection)`).
 - [x] Live strict rerun checkpoint after this batch: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass.
+- [x] Host fallback decoupling cleanup: removed host runtime hardcoded tool-specific retry transforms (`ApplyAdDiscoveryRootDseFallback`, `ApplyAdReplicationProbeFallback`, `ApplyDomainDetectiveSummaryTimeoutFallback`) and added architecture guardrail coverage to block reintroduction.
 
 ## Rules For This Migration
 

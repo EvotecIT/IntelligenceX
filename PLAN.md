@@ -128,6 +128,7 @@ Build a contract-first architecture where:
 - [x] Follow-through quality hardening: no-text synthesis prompts now include compact tool-argument context from executed calls (for example host/log/window selectors), reducing false "missing target context" narratives on sparse summaries.
 - [x] Startup UX hardening: shell header status chip now derives compact labels from structured startup phase/cause markers (`startup_connect`, `startup_auth_wait`, `startup_metadata_sync`) before generic fallback labels, improving visibility during connect/auth/bootstrap wait phases.
 - [x] Live strict rerun checkpoint after no-text/startup UX hardening: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass on this branch.
+- [x] Host decoupling cleanup: removed host-side tool-name-specific retry rewrite path (`AD discovery`, `AD replication probe`, `DomainDetective summary`) so runtime no longer mutates calls via hardcoded tool IDs; added architecture guardrail test to prevent reintroduction.
 
 ## Hard Decisions (Locked)
 
