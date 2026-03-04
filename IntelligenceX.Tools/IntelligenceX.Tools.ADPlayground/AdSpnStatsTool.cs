@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Helpers;
@@ -15,6 +14,19 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private const int DefaultMaxServiceClasses = 50;
+    private const int DefaultMaxHosts = 50;
+    private const int MaxServiceClassesCap = 200;
+    private const int MaxHostsCap = 500;
+
+    private sealed record SpnStatsRequest(
+        string? SpnContains,
+        string? SpnExact,
+        string? Kind,
+        bool EnabledOnly,
+        bool IncludeExamples,
+        int MaxServiceClasses,
+        int MaxHosts);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_spn_stats",
@@ -43,50 +55,66 @@ public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return await RunPipelineAsync(
+                arguments: arguments,
+                cancellationToken: cancellationToken,
+                binder: BindRequest,
+                execute: ExecuteAsync)
+            .ConfigureAwait(false);
+    }
+
+    private static ToolRequestBindingResult<SpnStatsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var spnContains = reader.OptionalString("spn_contains");
+            var spnExact = reader.OptionalString("spn_exact");
+            if (!string.IsNullOrWhiteSpace(spnContains) && !string.IsNullOrWhiteSpace(spnExact)) {
+                return ToolRequestBindingResult<SpnStatsRequest>.Failure("spn_contains and spn_exact are mutually exclusive.");
+            }
+
+            return ToolRequestBindingResult<SpnStatsRequest>.Success(new SpnStatsRequest(
+                SpnContains: spnContains,
+                SpnExact: spnExact,
+                Kind: reader.OptionalString("kind"),
+                EnabledOnly: reader.Boolean("enabled_only"),
+                IncludeExamples: reader.Boolean("include_examples"),
+                MaxServiceClasses: ResolvePositiveCappedOrDefault(
+                    reader.OptionalInt64("max_service_classes"),
+                    DefaultMaxServiceClasses,
+                    MaxServiceClassesCap),
+                MaxHosts: ResolvePositiveCappedOrDefault(
+                    reader.OptionalInt64("max_hosts"),
+                    DefaultMaxHosts,
+                    MaxHostsCap)));
+        });
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<SpnStatsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-        var spnContains = ToolArgs.GetOptionalTrimmed(arguments, "spn_contains");
-        var spnExact = ToolArgs.GetOptionalTrimmed(arguments, "spn_exact");
-        if (!string.IsNullOrWhiteSpace(spnContains) && !string.IsNullOrWhiteSpace(spnExact)) {
-            return Error("invalid_argument", "spn_contains and spn_exact are mutually exclusive.");
-        }
+        var request = context.Request;
+        var kind = LdapToolKinds.ParseSpnAccountKind(request.Kind);
 
-        var kind = LdapToolKinds.ParseSpnAccountKind(ToolArgs.GetOptionalTrimmed(arguments, "kind"));
-        var enabledOnly = ToolArgs.GetBoolean(arguments, "enabled_only");
-        var includeExamples = ToolArgs.GetBoolean(arguments, "include_examples");
-
-        var maxObjects = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var requestedServiceClasses = arguments?.GetInt64("max_service_classes");
-        var maxServiceClasses = requestedServiceClasses.HasValue && requestedServiceClasses.Value > 0
-            ? (int)Math.Min(requestedServiceClasses.Value, 200)
-            : 50;
-
-        var requestedHosts = arguments?.GetInt64("max_hosts");
-        var maxHosts = requestedHosts.HasValue && requestedHosts.Value > 0
-            ? (int)Math.Min(requestedHosts.Value, 500)
-            : 50;
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
+        var maxObjects = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
 
         var query = new SpnStatsService.SpnStatsQueryOptions {
             DomainController = dc,
             SearchBaseDn = baseDn,
-            SpnContains = spnContains,
-            SpnExact = spnExact,
+            SpnContains = request.SpnContains,
+            SpnExact = request.SpnExact,
             Kind = kind,
-            EnabledOnly = enabledOnly,
+            EnabledOnly = request.EnabledOnly,
             PageSize = 250,
             MaxObjects = maxObjects,
-            MaxServiceClasses = maxServiceClasses,
-            MaxHosts = maxHosts,
-            IncludeExamples = includeExamples,
+            MaxServiceClasses = request.MaxServiceClasses,
+            MaxHosts = request.MaxHosts,
+            IncludeExamples = request.IncludeExamples,
             MaxExamplesPerBucket = 3
         };
 
         var stats = await SpnStatsService.QueryAsync(query, cancellationToken).ConfigureAwait(false);
 
         return BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: stats,
             sourceRows: stats.ServiceClasses,
             viewRowsPath: "service_classes_view",
@@ -95,5 +123,12 @@ public sealed class AdSpnStatsTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: stats.Truncated,
             scanned: stats.ScannedObjects);
     }
-}
 
+    private static int ResolvePositiveCappedOrDefault(long? requestedValue, int defaultValue, int maxInclusive) {
+        if (requestedValue is not { } rawValue || rawValue <= 0) {
+            return defaultValue;
+        }
+
+        return (int)Math.Min(rawValue, maxInclusive);
+    }
+}
