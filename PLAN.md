@@ -151,6 +151,7 @@ Build a contract-first architecture where:
 - [x] Transcript-snippet guardrail hardening (2026-03-04): Polish strict scenario `ad-pl-eventlog-capability-followthrough-10-turn` now uses the original multiline catalog-descriptor phrasing (`eventlog_evtx_query · Event Log (EventViewerX) ...`) that previously triggered cached-evidence fallback loops.
 - [x] Live strict validation rerun (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` remains green (`10/10`) with direct capability handling for the multiline descriptor follow-up and no cached-evidence fallback response.
 - [x] Documentation increment (2026-03-04): published contract-first onboarding guide for adding tool packs without Chat edits, including plugin contract schema examples (`InternalDocs/agent-playbooks/chat-pack-contract-first-onboarding.md`).
+- [x] Language-neutral routing validation checkpoint (2026-03-04): `ChatServiceRoutingTrimTests` suite passes (`709/709`), including Unicode ordinal parsing and compact follow-up routing safeguards.
 
 ## Hard Decisions (Locked)
 
@@ -214,7 +215,7 @@ Build a contract-first architecture where:
 1. [x] Replace pack preflight suffix detection in `ChatServiceSession.PackPreflight.cs` with role-based contract selection.
 2. [x] Replace deterministic family key heuristics in `ChatServiceSession.ChatRouting.RoutingScoring.cs` with contract pack/role fields.
 3. [x] Ensure domain-intent signals in `ChatServiceSession.ToolRouting.DomainIntentSignals.cs` come from registered contract signals only.
-4. [ ] Keep Unicode-safe ordinal parsing in `ChatServiceSession.PendingActions.IntentParsing.cs` (this is generic and should remain).
+4. [x] Keep Unicode-safe ordinal parsing in `ChatServiceSession.PendingActions.IntentParsing.cs` (this is generic and should remain).
 5. [ ] Remove remaining routing paths that depend on tool name prefix assumptions when contract fields exist.
 
 ## Phase 5 - Tool Pack Migration (Domain Separation + Easy Additions)
@@ -241,7 +242,7 @@ Build a contract-first architecture where:
 3. [x] Add regression tests verifying Chat does not auto-switch packs after tool failure.
 4. [x] Add tests ensuring preflight uses role contracts, not suffixes.
 5. [x] Add tests ensuring DomainDetective and ADPlayground remain isolated unless handoff contract explicitly connects them.
-6. [ ] Keep existing language-neutral routing/ordinal tests green.
+6. [x] Keep existing language-neutral routing/ordinal tests green.
 
 ## Phase 8 - Cutover And Cleanup
 
