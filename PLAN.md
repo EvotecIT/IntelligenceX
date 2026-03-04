@@ -129,6 +129,7 @@ Build a contract-first architecture where:
 - [x] Startup UX hardening: shell header status chip now derives compact labels from structured startup phase/cause markers (`startup_connect`, `startup_auth_wait`, `startup_metadata_sync`) before generic fallback labels, improving visibility during connect/auth/bootstrap wait phases.
 - [x] Live strict rerun checkpoint after no-text/startup UX hardening: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass on this branch.
 - [x] Host decoupling cleanup: removed host-side tool-name-specific retry rewrite path (`AD discovery`, `AD replication probe`, `DomainDetective summary`) so runtime no longer mutates calls via hardcoded tool IDs; added architecture guardrail test to prevent reintroduction.
+- [x] Typed-surface guardrail hardening: added pack-wide source guardrail asserting typed-pipeline tools (`RunPipelineAsync` + `ToolRequestBindingResult`) do not regress to ad-hoc `arguments?.Get...`/`arguments.Get...` parsing across AD/DomainDetective/DnsClientX/System/EventLog/TestimoX/FileSystem/Email/PowerShell/OfficeIMO.
 
 ## Hard Decisions (Locked)
 
@@ -210,7 +211,7 @@ Build a contract-first architecture where:
 2. [ ] Keep `ITool` compatibility adapter for transport, but mark direct raw argument parsing patterns as deprecated.
 3. [ ] Enforce typed binders (`ToolRequestBinder`) for all new tools; backfill existing tools incrementally.
 4. [ ] Standardize success/error envelope shaping through `ToolResultV2` only.
-5. [ ] Add analyzer rule in `IntelligenceX.Tools.Tests` or shared analyzer package to flag ad-hoc `arguments?.Get...` in refactored packs.
+5. [x] Add analyzer rule in `IntelligenceX.Tools.Tests` or shared analyzer package to flag ad-hoc `arguments?.Get...` in refactored packs.
 
 ## Phase 7 - Test Migration And Coverage
 

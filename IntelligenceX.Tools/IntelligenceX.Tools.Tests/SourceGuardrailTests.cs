@@ -394,6 +394,37 @@ public class SourceGuardrailTests {
         }
     }
 
+    [Fact]
+    public void RefactoredTypedPipelineTools_ShouldNotUseRawArgumentGetPatterns() {
+        var repoRoot = FindRepoRoot();
+        string[] targetToolFolders = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.Email"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO")
+        };
+
+        foreach (var folder in targetToolFolders) {
+            var files = Directory.EnumerateFiles(folder, "*Tool.cs", SearchOption.TopDirectoryOnly);
+            foreach (var file in files) {
+                var source = File.ReadAllText(file);
+                if (!source.Contains("RunPipelineAsync(", StringComparison.Ordinal)
+                    || !source.Contains("ToolRequestBindingResult<", StringComparison.Ordinal)) {
+                    continue;
+                }
+
+                Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+            }
+        }
+    }
+
     private static string FindRepoRoot() {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null) {
