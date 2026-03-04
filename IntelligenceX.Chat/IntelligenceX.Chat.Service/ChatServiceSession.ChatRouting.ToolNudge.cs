@@ -21,8 +21,11 @@ internal sealed partial class ChatServiceSession {
     private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const string ExecutionContractEscapeMarker = "ix:execution-contract-escape:v1";
     private const string ContinuationSubsetEscapeMarker = "ix:continuation-subset-escape:v1";
+    private const string ContinuationContractMarker = "ix:continuation:v1";
     private const string StructuredNextActionRetryMarker = "ix:structured-next-action-retry:v1";
     private const string ToolProgressRecoveryMarker = "ix:tool-progress-recovery:v1";
+    private const int MaxContinuationContractScanChars = 4096;
+    private const int MaxContinuationContractFieldChars = 600;
     private const int MaxStructuredNextActionArgumentsChars = 32_768;
     private const int NoResultPhaseLoopThresholdWithToolActivity = 8;
     private const int NoResultPhaseLoopThresholdWithoutToolActivity = 6;

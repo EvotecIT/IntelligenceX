@@ -67,8 +67,9 @@ internal sealed partial class ChatServiceSession {
         var weightedToolRouting = request.Options?.WeightedToolRouting ?? true;
         var userRequest = ExtractPrimaryUserRequest(request.Text);
         var userIntent = ExtractIntentUserText(request.Text);
+        var continuationContractDetected = TryReadContinuationContractFromRequestText(request.Text, out _, out _);
         RememberUserIntent(threadId, userIntent);
-        var routedUserRequest = ExpandContinuationUserRequest(threadId, userRequest);
+        var routedUserRequest = ExpandContinuationUserRequestWithOptions(threadId, userRequest, forceContinuationFollowUp: continuationContractDetected);
         if (TryAugmentRoutedUserRequestFromWorkingMemoryCheckpoint(threadId, userRequest, routedUserRequest, out var checkpointAugmentedRequest)) {
             routedUserRequest = checkpointAugmentedRequest;
             await TryWriteStatusAsync(
@@ -98,7 +99,7 @@ internal sealed partial class ChatServiceSession {
                     message: $"Applied pending domain scope selection: family={DescribeDomainIntentFamily(selectedDomainIntentFamily)}.")
                 .ConfigureAwait(false);
         }
-        var compactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
+        var compactFollowUpTurn = continuationContractDetected || LooksLikeContinuationFollowUp(userRequest);
         var continuationFollowUpTurn = compactFollowUpTurn
                                        && !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
         var usedContinuationSubset = false;
@@ -454,12 +455,20 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
+        var firstTurnInputText = request.Text;
+        if (continuationFollowUpTurn) {
+            var continuationContractEnvelope = BuildContinuationContractEnvelope(routedUserRequest, userRequest);
+            if (continuationContractEnvelope.Length > 0) {
+                firstTurnInputText = continuationContractEnvelope;
+            }
+        }
+
         TurnInfo turn = await RunModelPhaseWithProgressAsync(
                 client,
                 writer,
                 request.RequestId,
                 threadId,
-                ChatInput.FromText(request.Text),
+                ChatInput.FromText(firstTurnInputText),
                 CopyChatOptions(options),
                 turnToken,
                 phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,

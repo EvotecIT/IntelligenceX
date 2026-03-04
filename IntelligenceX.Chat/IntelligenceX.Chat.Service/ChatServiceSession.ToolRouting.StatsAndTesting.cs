@@ -26,6 +26,10 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private string ExpandContinuationUserRequest(string threadId, string userRequest) {
+        return ExpandContinuationUserRequestWithOptions(threadId, userRequest, forceContinuationFollowUp: false);
+    }
+
+    private string ExpandContinuationUserRequestWithOptions(string threadId, string userRequest, bool forceContinuationFollowUp) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0) {
             return userRequest;
@@ -37,11 +41,11 @@ internal sealed partial class ChatServiceSession {
         }
 
         var normalized = raw.Trim();
-        if (normalized.Length == 0 || !LooksLikeContinuationFollowUp(normalized)) {
+        if (normalized.Length == 0 || (!forceContinuationFollowUp && !LooksLikeContinuationFollowUp(normalized))) {
             return raw;
         }
 
-        if (ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalized)) {
+        if (!forceContinuationFollowUp && ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalized)) {
             return raw;
         }
 
@@ -492,10 +496,10 @@ internal sealed partial class ChatServiceSession {
         UpdateToolRoutingStats(calls, outputs);
     }
 
-    internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest) {
+    internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest, bool forceContinuationFollowUp = false) {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(userRequest);
-        return ExpandContinuationUserRequest(threadId, userRequest);
+        return ExpandContinuationUserRequestWithOptions(threadId, userRequest, forceContinuationFollowUp);
     }
 
     internal void RememberUserIntentForTesting(string threadId, string userRequest) {

@@ -37,6 +37,36 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_UsesStructuredContinuationContractFollowUp() {
+        var input = """
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: Keep going with the same scope and include AD2.
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal("Keep going with the same scope and include AD2.", text);
+    }
+
+    [Fact]
+    public void ExtractIntentUserText_UsesStructuredContinuationContractIntentAnchor() {
+        var input = """
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: Keep going with the same scope and include AD2.
+            """;
+
+        var result = ExtractIntentUserTextMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal("Run forest-wide replication and LDAP diagnostics.", text);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_IncludesLastIntent() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
@@ -46,6 +76,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("run now", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ForceContinuationFollowUpBypassesShapeGate() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        session.RememberUserIntentForTesting("thread-force-follow-up", "Run forest-wide replication and LDAP diagnostics.");
+        var expanded = session.ExpandContinuationUserRequestForTesting(
+            "thread-force-follow-up",
+            "keep going with the same diagnostics scope across all domain controllers and include AD2 evidence",
+            forceContinuationFollowUp: true);
+
+        Assert.Contains("Run forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("include AD2 evidence", expanded, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
