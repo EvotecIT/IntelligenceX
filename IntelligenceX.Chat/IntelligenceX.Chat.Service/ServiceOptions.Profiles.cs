@@ -41,6 +41,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         AllowMutatingParallelToolCalls = profile.AllowMutatingParallelToolCalls;
         TurnTimeoutSeconds = profile.TurnTimeoutSeconds;
         ToolTimeoutSeconds = profile.ToolTimeoutSeconds;
+        SessionExecutionQueueLimit = Math.Max(0, profile.SessionExecutionQueueLimit);
+        GlobalExecutionLaneConcurrency = Math.Max(0, profile.GlobalExecutionLaneConcurrency);
 
         AllowedRoots.Clear();
         if (profile.AllowedRoots != null && profile.AllowedRoots.Count > 0) {
@@ -115,6 +117,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             AllowMutatingParallelToolCalls = AllowMutatingParallelToolCalls,
             TurnTimeoutSeconds = TurnTimeoutSeconds,
             ToolTimeoutSeconds = ToolTimeoutSeconds,
+            SessionExecutionQueueLimit = Math.Max(0, SessionExecutionQueueLimit),
+            GlobalExecutionLaneConcurrency = Math.Max(0, GlobalExecutionLaneConcurrency),
             AllowedRoots = new List<string>(AllowedRoots),
             AdDomainController = AdDomainController,
             AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,

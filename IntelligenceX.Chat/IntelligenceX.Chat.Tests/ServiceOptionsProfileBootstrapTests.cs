@@ -31,6 +31,37 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_AppliesExecutionLaneOverrides() {
+        var options = ServiceOptions.Parse(new[] {
+            "--session-execution-queue-limit", "128",
+            "--global-execution-lane-concurrency", "4"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(128, options.SessionExecutionQueueLimit);
+        Assert.Equal(4, options.GlobalExecutionLaneConcurrency);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidSessionExecutionQueueLimit() {
+        _ = ServiceOptions.Parse(new[] {
+            "--session-execution-queue-limit", "-1"
+        }, out var error);
+
+        Assert.Equal("--session-execution-queue-limit must be between 0 and 4096.", error);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidGlobalExecutionLaneConcurrency() {
+        _ = ServiceOptions.Parse(new[] {
+            "--global-execution-lane-concurrency", "513"
+        }, out var error);
+
+        Assert.Equal("--global-execution-lane-concurrency must be between 0 and 512.", error);
+    }
+
+    [Fact]
     public void Parse_AppliesExplicitResponseShapingOverrides() {
         var options = ServiceOptions.Parse(new[] {
             "--max-table-rows", "25",

@@ -15,7 +15,7 @@ Reference snapshot: `openclaw` commit `e6f0203ef395850fc459ce835f1a73c637ff03ca`
 - Agent loop uses explicit run lifecycle hooks and status progression.
 
 ## IntelligenceX.Chat Gap-to-Action Items
-- [ ] Add per-session execution lane + optional global lane throttling in Chat service turn orchestration.
+- [x] Add per-session execution lane + optional global lane throttling in Chat service turn orchestration.
 - [ ] Persist a compact session capability snapshot (enabled packs, routing families, tool health) and reuse it for continuation turns.
 - [ ] Add explicit long-turn heartbeat/status events during model/tool orchestration phases.
 - [ ] Add structured continuation contract markers for "continue work" turns to reduce unnecessary clarification loops.

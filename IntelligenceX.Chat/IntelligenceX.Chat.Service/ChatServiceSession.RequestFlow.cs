@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -24,6 +25,23 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> GlobalExecutionLanes = new();
+
+    internal static int ResolveSessionExecutionQueueLimit(int configuredLimit) {
+        return configuredLimit < 0 ? 0 : configuredLimit;
+    }
+
+    internal static int ResolveGlobalExecutionLaneConcurrency(int configuredConcurrency) {
+        return configuredConcurrency < 0 ? 0 : configuredConcurrency;
+    }
+
+    private static SemaphoreSlim? ResolveGlobalExecutionLane(int maxConcurrency) {
+        if (maxConcurrency <= 0) {
+            return null;
+        }
+
+        return GlobalExecutionLanes.GetOrAdd(maxConcurrency, static value => new SemaphoreSlim(value, value));
+    }
 
     private async Task HandleListToolsAsync(StreamWriter writer, string requestId, CancellationToken cancellationToken) {
         var defs = _registry.GetDefinitions();
@@ -193,116 +211,249 @@ internal sealed partial class ChatServiceSession {
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<string?> HandleChatRequestAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string? activeThreadId,
-        CancellationToken cancellationToken) {
+    private async Task HandleChatRequestAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, CancellationToken cancellationToken) {
+        var requestId = (request.RequestId ?? string.Empty).Trim();
+        if (requestId.Length == 0) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = null,
+                Error = "requestId is required.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(request.Text)) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
+                RequestId = requestId,
                 Error = "Text cannot be empty.",
                 Code = "invalid_argument"
             }, cancellationToken).ConfigureAwait(false);
-            return activeThreadId;
+            return;
         }
         if (!TryValidateChatRequestOptions(request.Options, out var optionsValidationError)) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
+                RequestId = requestId,
                 Error = optionsValidationError ?? "Invalid chat options.",
                 Code = "invalid_argument"
             }, cancellationToken).ConfigureAwait(false);
-            return activeThreadId;
+            return;
         }
 
-        ChatRun? existingRun;
+        var run = new ChatRun(
+            chatRequestId: requestId,
+            cts: CancellationTokenSource.CreateLinkedTokenSource(cancellationToken),
+            client: client,
+            writer: writer,
+            request: request);
+        var queueLimit = ResolveSessionExecutionQueueLimit(_options.SessionExecutionQueueLimit);
+        var queuePosition = 0;
+        var queueRejected = false;
+        var duplicateRequestId = false;
         lock (_chatRunLock) {
-            existingRun = _activeChat;
-            if (existingRun is not null && !existingRun.IsCompleted) {
-                existingRun = _activeChat;
+            var pendingCount = GetPendingChatRunCountNoLock();
+            if (queueLimit > 0 && pendingCount >= queueLimit) {
+                queueRejected = true;
+            } else if (!_chatRunsByRequestId.TryAdd(run.ChatRequestId, run)) {
+                duplicateRequestId = true;
             } else {
-                existingRun = null;
+                queuePosition = pendingCount + 1;
+                run.QueuePositionAtEnqueue = queuePosition;
+                _queuedChats.Enqueue(run);
+                if (_chatRunPumpTask is null || _chatRunPumpTask.IsCompleted) {
+                    _chatRunPumpTask = Task.Run(() => RunQueuedChatPumpAsync(cancellationToken), CancellationToken.None);
+                }
             }
         }
 
-        if (existingRun is not null) {
+        if (duplicateRequestId) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
-                Error = $"A chat request is already running (requestId={existingRun.ChatRequestId}).",
-                Code = "chat_in_progress"
+                RequestId = requestId,
+                Error = $"A chat request with requestId '{requestId}' is already queued or running.",
+                Code = "chat_request_id_conflict"
             }, cancellationToken).ConfigureAwait(false);
-            return activeThreadId;
+            return;
         }
 
+        if (queueRejected) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = requestId,
+                Error = $"Chat execution queue is full (limit={queueLimit}).",
+                Code = "chat_queue_full"
+            }, cancellationToken).ConfigureAwait(false);
+            run.Cancel();
+            run.MarkCompleted();
+            return;
+        }
+
+        if (queuePosition > 1) {
+            var threadHint = ResolveRecoveredThreadAlias(request.ThreadId);
+            if (string.IsNullOrWhiteSpace(threadHint)) {
+                threadHint = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot());
+            }
+
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadHint ?? string.Empty,
+                    status: ChatStatusCodes.TurnQueued,
+                    message: $"Queued turn request ({queuePosition} in session lane).")
+                .ConfigureAwait(false);
+        } else {
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    string.Empty,
+                    status: ChatStatusCodes.Thinking,
+                    message: "Request accepted. Entering execution lane...")
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task RunQueuedChatPumpAsync(CancellationToken cancellationToken) {
+        while (!cancellationToken.IsCancellationRequested) {
+            ChatRun? run;
+            lock (_chatRunLock) {
+                if (_queuedChats.Count == 0) {
+                    _chatRunPumpTask = null;
+                    return;
+                }
+
+                run = _queuedChats.Dequeue();
+                _activeChat = run;
+                run.MarkStarted();
+            }
+
+            run.Task = ExecuteQueuedChatRunAsync(run, cancellationToken);
+            try {
+                await run.Task.ConfigureAwait(false);
+            } catch {
+                // Request-scoped execution writes its own error responses; keep lane pump alive.
+            } finally {
+                run.MarkCompleted();
+                lock (_chatRunLock) {
+                    if (ReferenceEquals(_activeChat, run)) {
+                        _activeChat = null;
+                    }
+                    _chatRunsByRequestId.Remove(run.ChatRequestId);
+                }
+            }
+        }
+
+        lock (_chatRunLock) {
+            _chatRunPumpTask = null;
+        }
+    }
+
+    private async Task ExecuteQueuedChatRunAsync(ChatRun run, CancellationToken sessionCancellationToken) {
+        var request = run.Request;
+        var writer = run.Writer;
+        var client = run.Client;
+
         var requestThreadId = ResolveRecoveredThreadAlias(request.ThreadId);
-        var routedActiveThreadId = ResolveRecoveredThreadAlias(activeThreadId);
-        long? ensureThreadMs = null;
+        var routedActiveThreadId = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot());
         var preflightThreadId = !string.IsNullOrWhiteSpace(requestThreadId)
             ? requestThreadId
             : !string.IsNullOrWhiteSpace(routedActiveThreadId)
                 ? routedActiveThreadId
                 : string.Empty;
+        long? ensureThreadMs = null;
 
-        await TryWriteStatusAsync(
-                writer,
-                request.RequestId,
-                preflightThreadId,
-                status: ChatStatusCodes.Thinking,
-                message: "Request accepted. Preparing conversation context...")
-            .ConfigureAwait(false);
+        var globalLane = ResolveGlobalExecutionLane(ResolveGlobalExecutionLaneConcurrency(_options.GlobalExecutionLaneConcurrency));
+        var enteredGlobalLane = false;
+        if (globalLane is not null) {
+            if (globalLane.Wait(0)) {
+                enteredGlobalLane = true;
+            } else {
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        preflightThreadId,
+                        status: ChatStatusCodes.ExecutionLaneWaiting,
+                        message: "Waiting for global execution lane...")
+                    .ConfigureAwait(false);
+                await globalLane.WaitAsync(run.Cts.Token).ConfigureAwait(false);
+                enteredGlobalLane = true;
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        preflightThreadId,
+                        status: ChatStatusCodes.ExecutionLaneAcquired,
+                        message: "Global execution lane acquired.")
+                    .ConfigureAwait(false);
+            }
+        }
 
         try {
-            var ensureThreadStopwatch = Stopwatch.StartNew();
-            activeThreadId = await EnsureThreadAsync(client, requestThreadId, routedActiveThreadId, request.Options?.Model, cancellationToken)
-                .ConfigureAwait(false);
-            ensureThreadMs = Math.Max(0L, ensureThreadStopwatch.ElapsedMilliseconds);
-
-            var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
-            if (normalizedActiveThreadId.Length > 0) {
-                if (!string.IsNullOrWhiteSpace(requestThreadId)
-                    && !string.Equals(requestThreadId, normalizedActiveThreadId, StringComparison.Ordinal)) {
-                    RememberRecoveredThreadAlias(requestThreadId, normalizedActiveThreadId);
-                }
-
-                if (!string.IsNullOrWhiteSpace(routedActiveThreadId)
-                    && !string.Equals(routedActiveThreadId, normalizedActiveThreadId, StringComparison.Ordinal)) {
-                    RememberRecoveredThreadAlias(routedActiveThreadId, normalizedActiveThreadId);
-                }
-            }
-
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
-                    normalizedActiveThreadId,
+                    preflightThreadId,
                     status: ChatStatusCodes.Thinking,
-                    message: "Conversation context ready. Starting routing and planning...")
+                    message: "Request accepted. Preparing conversation context...")
                 .ConfigureAwait(false);
-        } catch (OpenAIAuthenticationRequiredException) {
-            await WriteAsync(writer, new ErrorMessage {
-                Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
-                Error = "Not authenticated. Run ChatGPT login in a client that can persist ~/.intelligencex/auth.json, then reconnect.",
-                Code = "not_authenticated"
-            }, cancellationToken).ConfigureAwait(false);
-            return activeThreadId;
-        } catch (Exception ex) {
-            await WriteAsync(writer, new ErrorMessage {
-                Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
-                Error = $"Chat failed: {ex.Message}",
-                Code = "chat_failed"
-            }, cancellationToken).ConfigureAwait(false);
-            return activeThreadId;
-        }
 
-        var run = new ChatRun(request.RequestId, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
-            ThreadId = activeThreadId
-        };
-        lock (_chatRunLock) {
-            _activeChat = run;
-        }
+            try {
+                var ensureThreadStopwatch = Stopwatch.StartNew();
+                var activeThreadId = await EnsureThreadAsync(client, requestThreadId, routedActiveThreadId, request.Options?.Model, run.Cts.Token)
+                    .ConfigureAwait(false);
+                ensureThreadMs = Math.Max(0L, ensureThreadStopwatch.ElapsedMilliseconds);
+                run.ThreadId = activeThreadId;
+                SetActiveThreadId(activeThreadId);
 
-        run.Task = Task.Run(async () => {
+                var normalizedActiveThreadId = (activeThreadId ?? string.Empty).Trim();
+                if (normalizedActiveThreadId.Length > 0) {
+                    if (!string.IsNullOrWhiteSpace(requestThreadId)
+                        && !string.Equals(requestThreadId, normalizedActiveThreadId, StringComparison.Ordinal)) {
+                        RememberRecoveredThreadAlias(requestThreadId, normalizedActiveThreadId);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(routedActiveThreadId)
+                        && !string.Equals(routedActiveThreadId, normalizedActiveThreadId, StringComparison.Ordinal)) {
+                        RememberRecoveredThreadAlias(routedActiveThreadId, normalizedActiveThreadId);
+                    }
+                }
+
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        normalizedActiveThreadId,
+                        status: ChatStatusCodes.Thinking,
+                        message: "Conversation context ready. Starting routing and planning...")
+                    .ConfigureAwait(false);
+            } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = "Chat canceled by client.",
+                    Code = "chat_canceled"
+                }, CancellationToken.None).ConfigureAwait(false);
+                return;
+            } catch (OperationCanceledException) when (sessionCancellationToken.IsCancellationRequested) {
+                // Session shutting down.
+                return;
+            } catch (OpenAIAuthenticationRequiredException) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = "Not authenticated. Run ChatGPT login in a client that can persist ~/.intelligencex/auth.json, then reconnect.",
+                    Code = "not_authenticated"
+                }, CancellationToken.None).ConfigureAwait(false);
+                return;
+            } catch (Exception ex) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"Chat failed: {ex.Message}",
+                    Code = "chat_failed"
+                }, CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
+
             IDisposable? deltaSubscription = null;
             var startedAtUtc = DateTime.UtcNow;
             long firstDeltaUtcTicks = 0;
@@ -347,7 +498,8 @@ internal sealed partial class ChatServiceSession {
                     _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta);
                 });
 
-                var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run.Cts.Token).ConfigureAwait(false);
+                var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run.Cts.Token)
+                    .ConfigureAwait(false);
                 usageDto = MapUsage(result.Usage);
                 toolCallsCount = result.ToolCallsCount;
                 toolRounds = result.ToolRounds;
@@ -372,7 +524,7 @@ internal sealed partial class ChatServiceSession {
                     Error = "Not authenticated. Run ChatGPT login in a client that can persist ~/.intelligencex/auth.json, then reconnect.",
                     Code = "not_authenticated"
                 }, CancellationToken.None).ConfigureAwait(false);
-            } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested) {
+            } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
                 outcome = "canceled";
                 outcomeCode = "chat_canceled";
                 await WriteAsync(writer, new ErrorMessage {
@@ -381,7 +533,7 @@ internal sealed partial class ChatServiceSession {
                     Error = "Chat canceled by client.",
                     Code = "chat_canceled"
                 }, CancellationToken.None).ConfigureAwait(false);
-            } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            } catch (OperationCanceledException) when (sessionCancellationToken.IsCancellationRequested) {
                 // Session shutting down.
                 outcome = "canceled";
                 outcomeCode = "session_canceled";
@@ -438,16 +590,49 @@ internal sealed partial class ChatServiceSession {
 
                 deltaSubscription?.Dispose();
                 EndTurnTimelineCapture(request.RequestId);
-                run.MarkCompleted();
-                lock (_chatRunLock) {
-                    if (ReferenceEquals(_activeChat, run)) {
-                        _activeChat = null;
-                    }
+            }
+        } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = "Chat canceled by client.",
+                Code = "chat_canceled"
+            }, CancellationToken.None).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (sessionCancellationToken.IsCancellationRequested) {
+            // Session shutting down.
+        } finally {
+            if (enteredGlobalLane) {
+                try {
+                    globalLane?.Release();
+                } catch {
+                    // Ignore release errors if lane ownership changed due cancellation races.
                 }
             }
-        }, CancellationToken.None);
+        }
+    }
 
-        return activeThreadId;
+    private int GetPendingChatRunCountNoLock() {
+        var active = _activeChat is { IsCompleted: false } ? 1 : 0;
+        return active + _queuedChats.Count;
+    }
+
+    private string? GetActiveThreadIdSnapshot() {
+        lock (_chatRunLock) {
+            return _activeThreadId;
+        }
+    }
+
+    private void SetActiveThreadId(string? activeThreadId) {
+        var normalized = (activeThreadId ?? string.Empty).Trim();
+        lock (_chatRunLock) {
+            _activeThreadId = normalized.Length == 0 ? null : normalized;
+        }
+    }
+
+    private void ClearActiveThreadId() {
+        lock (_chatRunLock) {
+            _activeThreadId = null;
+        }
     }
 
     private static bool TryValidateChatRequestOptions(ChatRequestOptions? options, out string? error) {
@@ -570,15 +755,14 @@ internal sealed partial class ChatServiceSession {
 
         ChatRun? active;
         lock (_chatRunLock) {
-            active = _activeChat;
+            _chatRunsByRequestId.TryGetValue(request.ChatRequestId, out active);
         }
 
-        if (active is null || active.IsCompleted
-            || !string.Equals(active.ChatRequestId, request.ChatRequestId, StringComparison.Ordinal)) {
+        if (active is null || active.IsCompleted) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
-                Error = $"Active chat request '{request.ChatRequestId}' not found.",
+                Error = $"Chat request '{request.ChatRequestId}' not found.",
                 Code = "chat_not_found"
             }, cancellationToken).ConfigureAwait(false);
             return;
@@ -594,24 +778,45 @@ internal sealed partial class ChatServiceSession {
     }
 
     private async Task CancelActiveChatIfAnyAsync() {
-        ChatRun? active;
+        ChatRun[] runs;
+        Task? pumpTask;
         lock (_chatRunLock) {
-            active = _activeChat;
+            runs = _chatRunsByRequestId.Values.ToArray();
+            _queuedChats.Clear();
             _activeChat = null;
+            pumpTask = _chatRunPumpTask;
         }
 
-        if (active is null) {
-            return;
+        for (var i = 0; i < runs.Length; i++) {
+            runs[i].Cancel();
         }
 
-        active.Cancel();
-        if (active.Task is not null) {
+        for (var i = 0; i < runs.Length; i++) {
+            if (runs[i].Task is null) {
+                continue;
+            }
+
             try {
-                await active.Task.ConfigureAwait(false);
+                await runs[i].Task!.ConfigureAwait(false);
             } catch {
                 // Ignore.
             }
         }
+
+        if (pumpTask is not null) {
+            try {
+                await pumpTask.ConfigureAwait(false);
+            } catch {
+                // Ignore.
+            }
+        }
+
+        lock (_chatRunLock) {
+            _chatRunsByRequestId.Clear();
+            _chatRunPumpTask = null;
+        }
+
+        ClearActiveThreadId();
     }
 
     private static string[] ExtractRequiredArguments(string parametersJson) {

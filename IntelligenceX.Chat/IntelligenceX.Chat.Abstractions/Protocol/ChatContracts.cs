@@ -75,6 +75,21 @@ public static class ChatStatusCodes {
     public const string Thinking = "thinking";
 
     /// <summary>
+    /// Indicates the chat turn is queued in the session execution lane.
+    /// </summary>
+    public const string TurnQueued = "turn_queued";
+
+    /// <summary>
+    /// Indicates the turn is waiting for a shared global execution lane.
+    /// </summary>
+    public const string ExecutionLaneWaiting = "execution_lane_waiting";
+
+    /// <summary>
+    /// Indicates the turn acquired a shared global execution lane.
+    /// </summary>
+    public const string ExecutionLaneAcquired = "execution_lane_acquired";
+
+    /// <summary>
     /// Indicates the serving model was selected.
     /// </summary>
     public const string ModelSelected = "model_selected";
