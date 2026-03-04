@@ -108,6 +108,9 @@ Build a contract-first architecture where:
 - [x] Live host validation rerun: `ad-domainwide-reboot-followthrough-10-turn` passes end-to-end (`10/10` turns) with non-AD0 continuation turns staying off AD0/FQDN equivalents during distinct-host repair.
 - [x] Startup/send race hardening: manual resend now suppresses an equivalent prompt when the same queued-after-login turn is already in-flight, preventing duplicate assistant replies after usage-limit switch-account recovery.
 - [x] Transcript wording coverage refresh: strict cross-DC continuation scenarios now include explicit "`those are correct DCs, go ahead`" phrasing to lock replay suppression and non-AD0 fanout behavior.
+- [x] Stabilization hotfix: domain host-scope guardrail now blocks stale single-host AD-scope replay for compact scope-shift follow-ups when thread evidence is already multi-host, unless the user explicitly pins a single host.
+- [x] Stabilization regression coverage: domain host-scope guardrail now has explicit compact scope-shift replay tests (block stale single-host replay, allow explicit host pin, allow short acknowledgement questions).
+- [x] Live strict validation rerun: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn`, `ad-domainwide-reboot-followthrough-10-turn`, and `ad-ad0-then-all-dcs-followthrough-10-turn` all pass end-to-end (`10/10`) after host-scope replay hardening.
 
 ## Hard Decisions (Locked)
 

@@ -70,6 +70,9 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict rerun passed: `ad-domainwide-reboot-followthrough-10-turn` now completes `10/10` turns with non-AD0 continuation turns preserving host exclusions after input-repair fallback.
 - [x] Startup/send race hardening: manual resend now skips enqueue when an equivalent queued-after-login prompt is already in-flight, reducing duplicate assistant replies after switch-account recovery.
 - [x] Transcript phrase lock-in: strict cross-DC follow-through scenarios now include "`those are correct DCs, go ahead`" continuation wording to exercise replay suppression under real-world follow-up phrasing.
+- [x] Stabilization hotfix: domain host-scope guardrail now blocks stale single-host AD-scope replay on compact scope-shift follow-ups when thread evidence is multi-host, unless a single host is explicitly pinned by the user.
+- [x] Stabilization regression coverage: domain host-scope guardrail now has explicit compact scope-shift replay tests (block stale replay, allow explicit host pin, allow short acknowledgement question).
+- [x] Live strict validation rerun: transcript-derived follow-through scenarios (`ad-other-dcs-go-ahead-followthrough-10-turn`, `ad-domainwide-reboot-followthrough-10-turn`, `ad-ad0-then-all-dcs-followthrough-10-turn`) pass end-to-end (`10/10`) after this hardening.
 
 ## Rules For This Migration
 

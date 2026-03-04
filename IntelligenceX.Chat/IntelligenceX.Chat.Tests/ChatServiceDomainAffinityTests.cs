@@ -1081,6 +1081,158 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void DomainIntentHostGuardrail_BlocksCompactScopeShiftSingleHostReplayWhenThreadHasMultiHostEvidence() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-scope-shift", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-scope-shift",
+            new[] {
+                new ToolCallDto {
+                    CallId = "ad-evx-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}"""
+                },
+                new ToolCallDto {
+                    CallId = "ad-evx-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD2.ad.evotec.xyz","log_name":"System"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "ad-evx-1",
+                    Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""",
+                    Ok = true
+                },
+                new ToolOutputDto {
+                    CallId = "ad-evx-2",
+                    Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-evx-replay",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""",
+            arguments: new JsonObject()
+                .Add("machine_name", "AD0.ad.evotec.xyz")
+                .Add("log_name", "System"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-scope-shift",
+            userRequest: "i mean other dcs",
+            call: call,
+            output: out var output);
+
+        Assert.True(blocked);
+        Assert.Equal("domain_scope_host_guardrail", output.ErrorCode);
+        Assert.Contains("multi-host coverage", output.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DomainIntentHostGuardrail_AllowsCompactScopeShiftSingleHostWhenHostIsPinnedExplicitly() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-scope-shift-explicit", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-scope-shift-explicit",
+            new[] {
+                new ToolCallDto {
+                    CallId = "ad-evx-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}"""
+                },
+                new ToolCallDto {
+                    CallId = "ad-evx-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD2.ad.evotec.xyz","log_name":"System"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "ad-evx-1",
+                    Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""",
+                    Ok = true
+                },
+                new ToolOutputDto {
+                    CallId = "ad-evx-2",
+                    Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-evx-replay-explicit",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""",
+            arguments: new JsonObject()
+                .Add("machine_name", "AD0.ad.evotec.xyz")
+                .Add("log_name", "System"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-scope-shift-explicit",
+            userRequest: "i mean other dcs, but AD0.ad.evotec.xyz first",
+            call: call,
+            output: out _);
+
+        Assert.False(blocked);
+    }
+
+    [Fact]
+    public void DomainIntentHostGuardrail_DoesNotBlockShortAcknowledgementQuestionSingleHostReplay() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-scope-shift-short-question", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-scope-shift-short-question",
+            new[] {
+                new ToolCallDto {
+                    CallId = "ad-evx-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}"""
+                },
+                new ToolCallDto {
+                    CallId = "ad-evx-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD2.ad.evotec.xyz","log_name":"System"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "ad-evx-1",
+                    Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""",
+                    Ok = true
+                },
+                new ToolOutputDto {
+                    CallId = "ad-evx-2",
+                    Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-evx-replay-short-question",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""",
+            arguments: new JsonObject()
+                .Add("machine_name", "AD0.ad.evotec.xyz")
+                .Add("log_name", "System"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-scope-shift-short-question",
+            userRequest: "go ahead?",
+            call: call,
+            output: out _);
+
+        Assert.False(blocked);
+    }
+
+    [Fact]
     public void IsDomainIntentHostGuardrailCandidateToolForTesting_UsesMetadataForCustomNames() {
         var adTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "custom_directory_probe",
