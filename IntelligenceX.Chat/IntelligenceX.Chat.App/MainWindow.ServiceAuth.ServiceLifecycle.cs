@@ -33,6 +33,8 @@ public sealed partial class MainWindow {
     private static readonly Regex ServiceBootstrapElapsedMsRegex = new(
         @"(?:^|\s)elapsed_ms='(?<elapsed>\d+)'",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private const string StartingRuntimePrefix = "Starting runtime...";
+    private const string RuntimeConnectedPrefix = "Runtime connected.";
 
     private async Task<bool> EnsureServiceRunningAsync(string pipeName) {
         if (_serviceProcess is not null && !_serviceProcess.HasExited) {
@@ -246,7 +248,10 @@ public sealed partial class MainWindow {
                 return;
             }
 
-            _ = SetStatusAsync(statusText, SessionStatusTone.Warn);
+            var effectiveStatusText = _isConnected
+                ? BuildConnectedBootstrapStatusText(statusText, StartupStatusCauseMetadataSync)
+                : statusText;
+            _ = SetStatusAsync(effectiveStatusText, SessionStatusTone.Warn);
         });
     }
 
@@ -265,6 +270,35 @@ public sealed partial class MainWindow {
         }
 
         return startupMetadataSyncInProgress;
+    }
+
+    internal static string BuildConnectedBootstrapStatusText(string statusText, string? cause) {
+        var normalizedStatus = (statusText ?? string.Empty).Trim();
+        if (normalizedStatus.Length == 0) {
+            return AppendStartupStatusCause(
+                "Runtime connected. Loading tool packs in background...",
+                cause);
+        }
+
+        if (normalizedStatus.StartsWith(StartingRuntimePrefix, StringComparison.OrdinalIgnoreCase)) {
+            var suffix = normalizedStatus.Substring(StartingRuntimePrefix.Length).Trim();
+            if (suffix.Length == 0) {
+                normalizedStatus = RuntimeConnectedPrefix;
+            } else {
+                var first = suffix[0];
+                var normalizedSuffix = char.IsLetter(first)
+                    ? char.ToUpperInvariant(first) + suffix.Substring(1)
+                    : suffix;
+                normalizedStatus = RuntimeConnectedPrefix + " " + normalizedSuffix;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(cause)
+            && normalizedStatus.IndexOf("(cause ", StringComparison.OrdinalIgnoreCase) < 0) {
+            normalizedStatus = AppendStartupStatusCause(normalizedStatus, cause);
+        }
+
+        return normalizedStatus;
     }
 
     internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText) {

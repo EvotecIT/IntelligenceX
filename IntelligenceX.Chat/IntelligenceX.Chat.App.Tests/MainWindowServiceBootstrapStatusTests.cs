@@ -150,4 +150,32 @@ public sealed class MainWindowServiceBootstrapStatusTests {
 
         Assert.Equal(expected, shouldPublish);
     }
+
+    /// <summary>
+    /// When runtime is already connected, rewrites startup-prefixed bootstrap text into connected wording and tags metadata-sync cause.
+    /// </summary>
+    [Fact]
+    public void BuildConnectedBootstrapStatusText_RewritesStartingRuntimePrefix_AndAppendsCause() {
+        var statusText = MainWindow.BuildConnectedBootstrapStatusText(
+            "Starting runtime... loading tool packs 3/12 (dnsclientx)",
+            MainWindow.StartupStatusCauseMetadataSync);
+
+        Assert.Equal(
+            "Runtime connected. Loading tool packs 3/12 (dnsclientx) (cause metadata_sync)",
+            statusText);
+    }
+
+    /// <summary>
+    /// Keeps existing cause suffix stable to avoid duplicate cause markers in status-chip text.
+    /// </summary>
+    [Fact]
+    public void BuildConnectedBootstrapStatusText_DoesNotDuplicateCauseSuffix() {
+        var statusText = MainWindow.BuildConnectedBootstrapStatusText(
+            "Runtime connected. Loading tool packs in background... (cause metadata_sync)",
+            MainWindow.StartupStatusCauseMetadataSync);
+
+        Assert.Equal(
+            "Runtime connected. Loading tool packs in background... (cause metadata_sync)",
+            statusText);
+    }
 }
