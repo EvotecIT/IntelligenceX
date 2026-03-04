@@ -593,13 +593,13 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     [InlineData(true, true, true, false, false)]
     [InlineData(true, true, false, true, true)]
     [InlineData(true, true, false, false, false)]
-    public void ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative_ReturnsExpectedValue(
+    public void ShouldDelayDeferredStartupMetadataSyncForInteractiveSignIn_ReturnsExpectedValue(
         bool deferStartupMetadataSync,
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
         bool loginInProgress,
         bool expected) {
-        var shouldSkip = MainWindow.ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+        var shouldSkip = MainWindow.ShouldDelayDeferredStartupMetadataSyncForInteractiveSignIn(
             deferStartupMetadataSync,
             requiresInteractiveSignIn,
             isAuthenticated,
@@ -769,6 +769,33 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             isAuthenticated,
             loginInProgress);
         Assert.Equal(expected, shouldWait);
+    }
+
+    /// <summary>
+    /// Ensures startup auth-gate waiting state is retained only for explicit auth-wait exits
+    /// and cleared for all non-auth-wait or settled-auth exit paths.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true, false, true, true)]
+    [InlineData(true, false, true, false, false, false)]
+    [InlineData(true, false, true, true, true, false)]
+    [InlineData(true, false, false, false, true, false)]
+    [InlineData(false, false, true, false, true, false)]
+    [InlineData(true, true, true, false, true, false)]
+    public void ShouldKeepStartupAuthGateWaitingOnDeferredMetadataSyncExit_ReturnsExpectedValue(
+        bool exitedForAuthWait,
+        bool shutdownRequested,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool expected) {
+        var shouldKeep = MainWindow.ShouldKeepStartupAuthGateWaitingOnDeferredMetadataSyncExit(
+            exitedForAuthWait: exitedForAuthWait,
+            shutdownRequested: shutdownRequested,
+            requiresInteractiveSignIn: requiresInteractiveSignIn,
+            isAuthenticated: isAuthenticated,
+            loginInProgress: loginInProgress);
+        Assert.Equal(expected, shouldKeep);
     }
 
     /// <summary>

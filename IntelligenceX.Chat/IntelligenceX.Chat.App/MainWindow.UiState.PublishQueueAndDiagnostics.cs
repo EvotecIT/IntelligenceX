@@ -614,11 +614,13 @@ public sealed partial class MainWindow : Window {
         var names = new List<string>(_toolStates.Keys);
         names.Sort(StringComparer.OrdinalIgnoreCase);
         var list = new List<object>(names.Count);
+        var hiddenWithoutCatalogCount = 0;
         foreach (var name in names) {
             // Persisted disabled-tool entries can exist before the runtime publishes the
             // current tool catalog. Keep those states internally, but hide them from the
             // Options -> Tools UI until we have live catalog metadata for that tool.
             if (!_toolDisplayNames.ContainsKey(name)) {
+                hiddenWithoutCatalogCount++;
                 continue;
             }
 
@@ -652,6 +654,13 @@ public sealed partial class MainWindow : Window {
                 routingScore = _toolRoutingScore.ContainsKey(name) ? Math.Round(routingScore, 3) : (double?)null,
                 enabled
             });
+        }
+
+        var previousHiddenCount = Interlocked.Exchange(ref _toolStateHiddenWithoutCatalogLastCount, hiddenWithoutCatalogCount);
+        if ((_debugMode || VerboseServiceLogs) && previousHiddenCount != hiddenWithoutCatalogCount) {
+            StartupLog.Write(
+                "BuildToolState hidden_without_catalog count="
+                + hiddenWithoutCatalogCount.ToString(CultureInfo.InvariantCulture));
         }
 
         return list.ToArray();

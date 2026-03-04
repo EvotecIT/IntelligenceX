@@ -352,6 +352,7 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
+    private int _toolStateHiddenWithoutCatalogLastCount = -1;
     private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupUnavailablePackSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupBootstrapSummarySignatures = new(StringComparer.OrdinalIgnoreCase);

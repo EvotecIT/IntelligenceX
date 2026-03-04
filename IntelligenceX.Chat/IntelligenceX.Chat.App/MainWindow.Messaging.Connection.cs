@@ -268,7 +268,7 @@ public sealed partial class MainWindow : Window {
         return captureStartupPhaseTelemetry;
     }
 
-    internal static bool ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+    internal static bool ShouldDelayDeferredStartupMetadataSyncForInteractiveSignIn(
         bool deferStartupMetadataSync,
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
@@ -298,7 +298,7 @@ public sealed partial class MainWindow : Window {
         var deferStartupMetadataSync = deferPostConnectMetadataSync
                                        || deferStartupHelloProbe
                                        || deferStartupToolCatalogSync;
-        var skipDeferredMetadataUntilAuthenticated = ShouldSkipDeferredStartupMetadataSyncForUnauthenticatedNative(
+        var skipDeferredMetadataUntilAuthenticated = ShouldDelayDeferredStartupMetadataSyncForInteractiveSignIn(
             deferStartupMetadataSync: deferStartupMetadataSync,
             requiresInteractiveSignIn: requiresInteractiveSignIn,
             isAuthenticated: isAuthenticated,

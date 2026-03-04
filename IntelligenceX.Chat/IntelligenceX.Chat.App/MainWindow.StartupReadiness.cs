@@ -168,6 +168,19 @@ public sealed partial class MainWindow : Window {
         return rerunRequested && !shutdownRequested && isConnected;
     }
 
+    internal static bool ShouldKeepStartupAuthGateWaitingOnDeferredMetadataSyncExit(
+        bool exitedForAuthWait,
+        bool shutdownRequested,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress) {
+        if (!exitedForAuthWait || shutdownRequested) {
+            return false;
+        }
+
+        return requiresInteractiveSignIn && !isAuthenticated && loginInProgress;
+    }
+
     internal static string ResolveDeferredStartupMetadataFailureKind(
         bool helloPhaseSucceeded,
         bool toolCatalogPhaseSucceeded) {

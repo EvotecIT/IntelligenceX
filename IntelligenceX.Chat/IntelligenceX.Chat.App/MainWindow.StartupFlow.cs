@@ -325,6 +325,7 @@ public sealed partial class MainWindow : Window {
             var helloPhaseSucceeded = false;
             var toolCatalogPhaseSucceeded = false;
             var preserveStartupMetadataFailureStatus = false;
+            var exitedForAuthWait = false;
             try {
                 await Task.Delay(StartupDeferredConnectMetadataDelay).ConfigureAwait(false);
                 if (_shutdownRequested) {
@@ -347,6 +348,7 @@ public sealed partial class MainWindow : Window {
                         requiresInteractiveSignIn: requiresInteractiveSignIn,
                         isAuthenticated: isAuthenticated,
                         loginInProgress: _loginInProgress)) {
+                    exitedForAuthWait = true;
                     MarkStartupAuthGateWaiting();
                     BeginStartupMetadataSyncTracking("waiting for sign-in to finish startup sync");
                     if (_isConnected && !_isSending && !_turnStartupInProgress) {
@@ -777,6 +779,16 @@ public sealed partial class MainWindow : Window {
                     + ": "
                     + DescribeStartupExceptionForLog(ex));
             } finally {
+                var keepAuthGateWaiting = ShouldKeepStartupAuthGateWaitingOnDeferredMetadataSyncExit(
+                    exitedForAuthWait: exitedForAuthWait,
+                    shutdownRequested: _shutdownRequested,
+                    requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                    isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport(),
+                    loginInProgress: _loginInProgress);
+                if (!keepAuthGateWaiting) {
+                    MarkStartupAuthGateResolved();
+                }
+
                 if (!_isConnected) {
                     EndStartupMetadataSyncTracking();
                 }
