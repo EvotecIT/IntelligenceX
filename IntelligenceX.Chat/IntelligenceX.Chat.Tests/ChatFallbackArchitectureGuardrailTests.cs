@@ -73,6 +73,33 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
         }
     }
 
+    [Fact]
+    public void ChatRuntimeSurface_ShouldNotHardcodePackIdsInAppOrService() {
+        var repoRoot = FindRepoRoot();
+        var roots = new[] {
+            Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.App"),
+            Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Service")
+        };
+        var disallowedPackTokens = new[] {
+            "testimox",
+            "active_directory",
+            "adplayground",
+            "domaindetective",
+            "dnsclientx",
+            "reviewer_setup"
+        };
+
+        for (var rootIndex = 0; rootIndex < roots.Length; rootIndex++) {
+            var root = roots[rootIndex];
+            foreach (var file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)) {
+                var source = File.ReadAllText(file);
+                for (var tokenIndex = 0; tokenIndex < disallowedPackTokens.Length; tokenIndex++) {
+                    Assert.DoesNotContain(disallowedPackTokens[tokenIndex], source, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+        }
+    }
+
     private static string GetServiceSourceFilePath(string fileName) {
         var repoRoot = FindRepoRoot();
         return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Service", fileName);

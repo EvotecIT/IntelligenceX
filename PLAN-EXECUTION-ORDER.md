@@ -94,6 +94,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Typed-envelope increment: `ad_scope_discovery` migrated to `ToolResultV2` success/error envelope path and included in typed-wrapper guardrail enforcement list.
 - [x] Typed-envelope base hardening: `ActiveDirectoryToolBase*` shared helpers now emit `ToolResultV2` envelopes and are protected by guardrail coverage preventing direct `ToolResponse` regressions.
 - [x] Startup runtime-connect visibility increment: service emits `[startup] provider_connect_progress` phase/status/elapsed telemetry for runtime-provider connect attempts, and app status parsing publishes those lines (including send-time override) so first-turn connect stalls are diagnosable.
+- [x] Decoupling guardrail increment: Chat architecture tests now block hardcoded tool-pack ids from reappearing in runtime app/service source (`testimox`, `active_directory`, `adplayground`, `domaindetective`, `dnsclientx`, `reviewer_setup`).
 
 ## Rules For This Migration
 
