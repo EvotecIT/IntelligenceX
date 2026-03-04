@@ -776,6 +776,8 @@ public sealed partial class MainWindow : Window {
             ClearDispatchConnectFailure();
             StopAutoReconnectLoop();
             await SetStatusAsync(SessionStatus.Connected()).ConfigureAwait(false);
+            var inlineHelloPhaseSucceeded = false;
+            var inlineToolCatalogPhaseSucceeded = false;
 
             var deferredMetadataPlan = ResolveDeferredStartupMetadataPlan(
                 deferPostConnectMetadataSync: deferPostConnectMetadataSync,
@@ -813,6 +815,7 @@ public sealed partial class MainWindow : Window {
                     _sessionPolicy = hello.Policy;
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: true);
+                    inlineHelloPhaseSucceeded = true;
                     LogStartupConnectPhase("hello", "done");
                 } catch (Exception ex) {
                     LogStartupConnectPhase("hello", "failed");
@@ -833,6 +836,7 @@ public sealed partial class MainWindow : Window {
                     var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     UpdateToolCatalog(toolList.Tools);
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: true);
+                    inlineToolCatalogPhaseSucceeded = true;
                     LogStartupConnectPhase("list_tools", "done");
                 } catch (Exception ex) {
                     LogStartupConnectPhase("list_tools", "failed");
@@ -891,10 +895,58 @@ public sealed partial class MainWindow : Window {
             }
 
             if (!deferredMetadataPlan.DeferStartupMetadataSync) {
+                var inlineMetadataSyncSucceeded = inlineHelloPhaseSucceeded && inlineToolCatalogPhaseSucceeded;
+                var startupBootstrapCacheMode = Volatile.Read(ref _startupBootstrapCacheMode);
+                var shouldQueuePersistedPreviewRefreshRerun = ShouldRequestDeferredStartupMetadataPersistedPreviewRefreshRerun(
+                    metadataSyncSucceeded: inlineMetadataSyncSucceeded,
+                    startupBootstrapCacheMode: startupBootstrapCacheMode,
+                    isConnected: _isConnected,
+                    shutdownRequested: _shutdownRequested,
+                    retriesConsumed: Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount),
+                    retryLimit: StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+                var persistedPreviewRefreshRerunQueued = shouldQueuePersistedPreviewRefreshRerun
+                    && TryConsumeDeferredStartupMetadataFailureRecoveryRetry(
+                        ref _startupConnectMetadataPersistedPreviewRefreshRetryCount,
+                        StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+                if (persistedPreviewRefreshRerunQueued) {
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 1);
+                    QueueDeferredStartupConnectMetadataSync(
+                        requestRerunIfBusy: true,
+                        preferPersistedPreviewRefreshDelay: true);
+                    var previewRetryCount = Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount);
+                    StartupLog.Write(
+                        "StartupConnect.inline_metadata_sync persisted_preview_refresh_queued retry="
+                        + previewRetryCount.ToString(CultureInfo.InvariantCulture)
+                        + "/"
+                        + StartupDeferredMetadataPersistedPreviewRefreshRetryLimit.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (startupBootstrapCacheMode != StartupBootstrapCacheModePersistedPreview) {
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount, 0);
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 0);
+                }
+                var persistedPreviewRefreshRetryLimitReached = HasReachedDeferredStartupMetadataPersistedPreviewRefreshRetryLimit(
+                    metadataSyncSucceeded: inlineMetadataSyncSucceeded,
+                    startupBootstrapCacheMode: startupBootstrapCacheMode,
+                    retriesConsumed: Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount),
+                    retryLimit: StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+
                 EndStartupMetadataSyncTracking();
-                await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                if (persistedPreviewRefreshRerunQueued || persistedPreviewRefreshRetryLimitReached) {
+                    await SetStatusAsync(
+                            BuildStartupMetadataSyncPersistedPreviewStatusText(persistedPreviewRefreshRerunQueued),
+                            SessionStatusTone.Warn)
+                        .ConfigureAwait(false);
+                    LogStartupConnectPhase(
+                        "ready",
+                        persistedPreviewRefreshRerunQueued
+                            ? "inline_metadata_sync_preview_refresh_pending"
+                            : "inline_metadata_sync_preview_refresh_retry_limit_reached");
+                } else {
+                    await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                    LogStartupConnectPhase("ready", "inline_metadata_sync_done");
+                }
                 await PublishOptionsStateSafeAsync().ConfigureAwait(false);
-                LogStartupConnectPhase("ready", "inline_metadata_sync_done");
             }
         } catch {
             EndStartupMetadataSyncTracking();

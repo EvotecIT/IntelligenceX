@@ -176,6 +176,8 @@ public sealed partial class MainWindow {
 
     private void ResetStartupMetadataFailureRecoveryDiagnostics() {
         Interlocked.Exchange(ref _startupConnectMetadataFailureAutoRetryCount, 0);
+        Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount, 0);
+        Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 0);
         Interlocked.Exchange(ref _startupConnectMetadataFailureRecoveryQueuedCount, 0);
         Interlocked.Exchange(ref _startupConnectMetadataFailureRecoveryLimitReachedCount, 0);
         ClearStartupMetadataFailureRecoveryFailureMarker();

@@ -78,6 +78,63 @@ public sealed class MainWindowStartupMetadataSyncRerunTests {
     }
 
     /// <summary>
+    /// Ensures persisted-preview replacement rerun is requested only when metadata sync succeeded,
+    /// startup cache mode indicates persisted preview, and retry budget remains.
+    /// </summary>
+    [Theory]
+    [InlineData(true, 3, true, false, 0, 8, true)]
+    [InlineData(true, 2, true, false, 0, 8, false)]
+    [InlineData(false, 3, true, false, 0, 8, false)]
+    [InlineData(true, 3, false, false, 0, 8, false)]
+    [InlineData(true, 3, true, true, 0, 8, false)]
+    [InlineData(true, 3, true, false, 8, 8, false)]
+    [InlineData(true, 3, true, false, 0, 0, false)]
+    public void ShouldRequestDeferredStartupMetadataPersistedPreviewRefreshRerun_ReturnsExpectedValue(
+        bool metadataSyncSucceeded,
+        int startupBootstrapCacheMode,
+        bool isConnected,
+        bool shutdownRequested,
+        int retriesConsumed,
+        int retryLimit,
+        bool expected) {
+        var shouldRequest = MainWindow.ShouldRequestDeferredStartupMetadataPersistedPreviewRefreshRerun(
+            metadataSyncSucceeded: metadataSyncSucceeded,
+            startupBootstrapCacheMode: startupBootstrapCacheMode,
+            isConnected: isConnected,
+            shutdownRequested: shutdownRequested,
+            retriesConsumed: retriesConsumed,
+            retryLimit: retryLimit);
+
+        Assert.Equal(expected, shouldRequest);
+    }
+
+    /// <summary>
+    /// Ensures persisted-preview refresh retry-limit detection is only active when startup
+    /// metadata sync succeeded and persisted-preview mode is still active.
+    /// </summary>
+    [Theory]
+    [InlineData(true, 3, 8, 8, true)]
+    [InlineData(true, 3, 9, 8, true)]
+    [InlineData(true, 3, 7, 8, false)]
+    [InlineData(true, 2, 8, 8, false)]
+    [InlineData(false, 3, 8, 8, false)]
+    [InlineData(true, 3, 8, 0, false)]
+    public void HasReachedDeferredStartupMetadataPersistedPreviewRefreshRetryLimit_ReturnsExpectedValue(
+        bool metadataSyncSucceeded,
+        int startupBootstrapCacheMode,
+        int retriesConsumed,
+        int retryLimit,
+        bool expected) {
+        var reached = MainWindow.HasReachedDeferredStartupMetadataPersistedPreviewRefreshRetryLimit(
+            metadataSyncSucceeded: metadataSyncSucceeded,
+            startupBootstrapCacheMode: startupBootstrapCacheMode,
+            retriesConsumed: retriesConsumed,
+            retryLimit: retryLimit);
+
+        Assert.Equal(expected, reached);
+    }
+
+    /// <summary>
     /// Ensures startup metadata failure kind labeling remains deterministic for diagnostics.
     /// </summary>
     [Theory]

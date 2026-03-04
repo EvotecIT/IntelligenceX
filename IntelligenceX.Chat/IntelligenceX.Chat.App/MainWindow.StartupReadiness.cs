@@ -106,6 +106,14 @@ public sealed partial class MainWindow : Window {
         return "Runtime is ready. Tool metadata sync is degraded; some tools may be unavailable.";
     }
 
+    internal static string BuildStartupMetadataSyncPersistedPreviewStatusText(bool refreshQueued) {
+        if (refreshQueued) {
+            return "Runtime connected. Finalizing tool catalog after startup preview...";
+        }
+
+        return "Runtime is ready. Tool catalog preview is still active; refresh tools to load final metadata.";
+    }
+
     private string BuildStartupPendingOrAuthVerificationStatusText(
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
@@ -207,6 +215,36 @@ public sealed partial class MainWindow : Window {
         }
 
         return !helloPhaseSucceeded || !toolCatalogPhaseSucceeded;
+    }
+
+    internal static bool ShouldRequestDeferredStartupMetadataPersistedPreviewRefreshRerun(
+        bool metadataSyncSucceeded,
+        int startupBootstrapCacheMode,
+        bool isConnected,
+        bool shutdownRequested,
+        int retriesConsumed,
+        int retryLimit) {
+        if (!metadataSyncSucceeded
+            || !isConnected
+            || shutdownRequested
+            || retryLimit <= 0
+            || retriesConsumed >= retryLimit) {
+            return false;
+        }
+
+        return startupBootstrapCacheMode == StartupBootstrapCacheModePersistedPreview;
+    }
+
+    internal static bool HasReachedDeferredStartupMetadataPersistedPreviewRefreshRetryLimit(
+        bool metadataSyncSucceeded,
+        int startupBootstrapCacheMode,
+        int retriesConsumed,
+        int retryLimit) {
+        if (!metadataSyncSucceeded || retryLimit <= 0 || retriesConsumed < retryLimit) {
+            return false;
+        }
+
+        return startupBootstrapCacheMode == StartupBootstrapCacheModePersistedPreview;
     }
 
     internal static bool ShouldRetryDeferredStartupMetadataPhaseAttempt(Exception ex) {

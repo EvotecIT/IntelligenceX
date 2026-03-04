@@ -301,9 +301,15 @@ public sealed partial class MainWindow : Window {
         });
     }
 
-    private void QueueDeferredStartupConnectMetadataSync(bool requestRerunIfBusy = false) {
+    private void QueueDeferredStartupConnectMetadataSync(
+        bool requestRerunIfBusy = false,
+        bool preferPersistedPreviewRefreshDelay = false) {
         if (_shutdownRequested) {
             return;
+        }
+
+        if (preferPersistedPreviewRefreshDelay) {
+            Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 1);
         }
 
         var metadataSyncAlreadyQueued = Interlocked.CompareExchange(ref _startupConnectMetadataDeferredQueued, 1, 0) != 0;
@@ -320,6 +326,9 @@ public sealed partial class MainWindow : Window {
 
         Interlocked.Exchange(ref _startupConnectMetadataDeferredQueuedUtcTicks, DateTime.UtcNow.Ticks);
         Interlocked.Exchange(ref _startupConnectMetadataDeferredRerunRequested, 0);
+        var metadataSyncDelay = Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 0) != 0
+            ? StartupDeferredMetadataPersistedPreviewRefreshDelay
+            : StartupDeferredConnectMetadataDelay;
         _ = Task.Run(async () => {
             var metadataSyncStopwatch = Stopwatch.StartNew();
             var helloPhaseSucceeded = false;
@@ -327,7 +336,7 @@ public sealed partial class MainWindow : Window {
             var preserveStartupMetadataFailureStatus = false;
             var exitedForAuthWait = false;
             try {
-                await Task.Delay(StartupDeferredConnectMetadataDelay).ConfigureAwait(false);
+                await Task.Delay(metadataSyncDelay).ConfigureAwait(false);
                 if (_shutdownRequested) {
                     return;
                 }
@@ -717,6 +726,7 @@ public sealed partial class MainWindow : Window {
                 var metadataFailureKind = ResolveDeferredStartupMetadataFailureKind(
                     helloPhaseSucceeded: helloPhaseSucceeded,
                     toolCatalogPhaseSucceeded: toolCatalogPhaseSucceeded);
+                var startupBootstrapCacheMode = Volatile.Read(ref _startupBootstrapCacheMode);
                 var shouldRequestFailureRecoveryRerun = ShouldRequestDeferredStartupMetadataFailureRecoveryRerun(
                     isConnected: _isConnected,
                     shutdownRequested: _shutdownRequested,
@@ -742,6 +752,38 @@ public sealed partial class MainWindow : Window {
                         + StartupDeferredMetadataFailureAutoRetryLimit.ToString(CultureInfo.InvariantCulture));
                 }
 
+                var shouldRequestPersistedPreviewRefreshRerun = ShouldRequestDeferredStartupMetadataPersistedPreviewRefreshRerun(
+                    metadataSyncSucceeded: metadataSyncSucceeded,
+                    startupBootstrapCacheMode: startupBootstrapCacheMode,
+                    isConnected: _isConnected,
+                    shutdownRequested: _shutdownRequested,
+                    retriesConsumed: Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount),
+                    retryLimit: StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+                var persistedPreviewRefreshRerunQueued = shouldRequestPersistedPreviewRefreshRerun
+                    && TryConsumeDeferredStartupMetadataFailureRecoveryRetry(
+                        ref _startupConnectMetadataPersistedPreviewRefreshRetryCount,
+                        StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+                if (persistedPreviewRefreshRerunQueued) {
+                    Interlocked.Exchange(ref _startupConnectMetadataDeferredRerunRequested, 1);
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 1);
+                    var previewRetryCount = Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount);
+                    StartupLog.Write(
+                        "StartupConnect.metadata_sync rerun_requested_after_persisted_preview retry="
+                        + previewRetryCount.ToString(CultureInfo.InvariantCulture)
+                        + "/"
+                        + StartupDeferredMetadataPersistedPreviewRefreshRetryLimit.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (startupBootstrapCacheMode != StartupBootstrapCacheModePersistedPreview) {
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount, 0);
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 0);
+                }
+                var persistedPreviewRefreshRetryLimitReached = HasReachedDeferredStartupMetadataPersistedPreviewRefreshRetryLimit(
+                    metadataSyncSucceeded: metadataSyncSucceeded,
+                    startupBootstrapCacheMode: startupBootstrapCacheMode,
+                    retriesConsumed: Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshRetryCount),
+                    retryLimit: StartupDeferredMetadataPersistedPreviewRefreshRetryLimit);
+
                 if (metadataSyncSucceeded) {
                     Interlocked.Exchange(ref _startupConnectMetadataFailureAutoRetryCount, 0);
                     ClearStartupMetadataFailureRecoveryFailureMarker();
@@ -760,8 +802,19 @@ public sealed partial class MainWindow : Window {
                 RecordStartupMetadataSyncDiagnostics(metadataSyncStopwatch.Elapsed, success: metadataSyncSucceeded);
                 if (_isConnected && !_isSending && !_turnStartupInProgress) {
                     if (metadataSyncSucceeded) {
-                        await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
-                        StartupLog.Write("StartupConnect.ready deferred_metadata_sync_done");
+                        if (persistedPreviewRefreshRerunQueued || persistedPreviewRefreshRetryLimitReached) {
+                            await SetStatusAsync(
+                                    BuildStartupMetadataSyncPersistedPreviewStatusText(persistedPreviewRefreshRerunQueued),
+                                    SessionStatusTone.Warn)
+                                .ConfigureAwait(false);
+                            StartupLog.Write(
+                                persistedPreviewRefreshRerunQueued
+                                    ? "StartupConnect.ready deferred_metadata_sync_preview_refresh_pending"
+                                    : "StartupConnect.ready deferred_metadata_sync_preview_refresh_retry_limit_reached");
+                        } else {
+                            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                            StartupLog.Write("StartupConnect.ready deferred_metadata_sync_done");
+                        }
                     } else {
                         await SetStatusAsync(
                                 BuildStartupMetadataSyncRecoveryStatusText(failureRecoveryRerunQueued),
@@ -800,9 +853,15 @@ public sealed partial class MainWindow : Window {
                     shutdownRequested: _shutdownRequested,
                     isConnected: _isConnected);
                 if (shouldDispatchRerun) {
+                    var preferPersistedPreviewRefreshDelay = Volatile.Read(ref _startupConnectMetadataPersistedPreviewRefreshPending) != 0;
                     StartupLog.Write("StartupConnect.metadata_sync rerun_dispatch");
-                    QueueDeferredStartupConnectMetadataSync();
-                } else if (_isConnected
+                    QueueDeferredStartupConnectMetadataSync(preferPersistedPreviewRefreshDelay: preferPersistedPreviewRefreshDelay);
+                } else {
+                    Interlocked.Exchange(ref _startupConnectMetadataPersistedPreviewRefreshPending, 0);
+                }
+
+                if (!shouldDispatchRerun
+                    && _isConnected
                            && !preserveStartupMetadataFailureStatus
                            && !_shutdownRequested
                            && !_isSending

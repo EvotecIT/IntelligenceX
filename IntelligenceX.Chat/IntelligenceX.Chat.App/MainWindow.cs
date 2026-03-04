@@ -102,11 +102,13 @@ public sealed partial class MainWindow : Window {
     private static readonly TimeSpan KickoffRecoverySettleDelay = TimeSpan.FromMilliseconds(60);
     private static readonly TimeSpan StartupWebViewBudget = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan StartupDeferredConnectMetadataDelay = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan StartupDeferredMetadataPersistedPreviewRefreshDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan StartupDeferredModelProfileSyncDelay = TimeSpan.FromMilliseconds(1250);
     private static readonly TimeSpan StartupDeferredMetadataPhaseTimeout = TimeSpan.FromSeconds(12);
     private static readonly TimeSpan StartupDeferredMetadataRequestTimeout = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan StartupDeferredMetadataStaleWatchdogTimeout = TimeSpan.FromSeconds(35);
     private const int StartupDeferredMetadataFailureAutoRetryLimit = 1;
+    private const int StartupDeferredMetadataPersistedPreviewRefreshRetryLimit = 8;
     private static readonly TimeSpan StartupDeferredDispatchPrewarmDelay = TimeSpan.FromMilliseconds(60);
     private static readonly TimeSpan StartupDeferredInteractiveBackgroundPollInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan StartupDeferredInteractiveBackgroundTurnWaitTimeout = TimeSpan.FromMilliseconds(900);
@@ -412,8 +414,10 @@ public sealed partial class MainWindow : Window {
     private int _startupOnboardingDeferredQueued;
     private int _startupConnectMetadataDeferredQueued;
     private int _startupConnectMetadataDeferredRerunRequested;
+    private int _startupConnectMetadataPersistedPreviewRefreshPending;
     private long _startupConnectMetadataDeferredQueuedUtcTicks;
     private int _startupConnectMetadataFailureAutoRetryCount;
+    private int _startupConnectMetadataPersistedPreviewRefreshRetryCount;
     private long _startupConnectMetadataFailureRecoveryQueuedCount;
     private long _startupConnectMetadataFailureRecoveryLimitReachedCount;
     private long _startupConnectMetadataFailureLastUtcTicks;
