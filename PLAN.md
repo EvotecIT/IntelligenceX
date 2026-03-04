@@ -153,6 +153,7 @@ Build a contract-first architecture where:
 - [x] Documentation increment (2026-03-04): published contract-first onboarding guide for adding tool packs without Chat edits, including plugin contract schema examples (`InternalDocs/agent-playbooks/chat-pack-contract-first-onboarding.md`).
 - [x] Language-neutral routing validation checkpoint (2026-03-04): `ChatServiceRoutingTrimTests` suite passes (`709/709`), including Unicode ordinal parsing and compact follow-up routing safeguards.
 - [x] Routing-heuristic cleanup checkpoint (2026-03-04): Chat service no longer uses raw tool-name `TryResolveDomainIntentFamily(toolName, ...)` paths for domain-family routing decisions; remaining resolution is contract-first with definition metadata fallback only.
+- [x] Decision checkpoint (2026-03-04): strict pack-boundary isolation (`DomainDetective` vs `ADPlayground`) is now enforced by contract/cross-pack isolation tests; no implicit handoff is inferred without explicit `ToolHandoffContract`.
 
 ## Hard Decisions (Locked)
 
@@ -160,7 +161,7 @@ Build a contract-first architecture where:
 - [x] `D2` Keep resilience only inside tools/engines (for example CIM -> WMI), not in Chat routing.
 - [x] `D3` Make routing metadata explicit and contract-validated for every tool.
 - [ ] `D4` Prefer typed request/response models in tools; keep JSON/text as transport envelope only.
-- [ ] `D5` Treat pack boundaries as strict: DomainDetective != ADPlayground unless contracts declare handoff.
+- [x] `D5` Treat pack boundaries as strict: DomainDetective != ADPlayground unless contracts declare handoff.
 
 ## Current Gaps To Eliminate
 

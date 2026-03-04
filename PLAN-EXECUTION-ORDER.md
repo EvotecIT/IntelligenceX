@@ -114,6 +114,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Documentation increment (2026-03-04): published `InternalDocs/agent-playbooks/chat-pack-contract-first-onboarding.md` with zero-Chat-edits onboarding flow and plugin contract schema examples.
 - [x] Language-neutral regression checkpoint (2026-03-04): `ChatServiceRoutingTrimTests` suite passes (`709/709`), covering Unicode ordinal parsing and compact follow-up routing behaviors.
 - [x] Routing heuristic-removal checkpoint (2026-03-04): no Chat service domain-routing paths call raw tool-name family inference (`TryResolveDomainIntentFamily(toolName, ...)`); domain routing now remains contract-first with definition metadata fallback only.
+- [x] Decision checkpoint (2026-03-04): strict pack-boundary isolation is considered complete and locked by cross-pack orchestration catalog tests (no inferred ADPlayground↔DomainDetective handoff without explicit contracts).
 
 ## Rules For This Migration
 
