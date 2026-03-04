@@ -290,19 +290,27 @@ public sealed partial class MainWindow {
         bool turnStartupInProgress,
         bool startupMetadataSyncInProgress,
         bool allowDuringSend) {
-        if (shutdownRequested || turnStartupInProgress) {
+        if (shutdownRequested) {
             return false;
         }
 
-        if (isSending) {
-            return allowDuringSend;
+        if (turnStartupInProgress && !allowDuringSend) {
+            return false;
+        }
+
+        if (isSending && !allowDuringSend) {
+            return false;
         }
 
         if (!isConnected) {
             return true;
         }
 
-        return startupMetadataSyncInProgress;
+        if (startupMetadataSyncInProgress) {
+            return true;
+        }
+
+        return allowDuringSend;
     }
 
     internal static string BuildConnectedBootstrapStatusText(string statusText, string? cause) {
@@ -426,6 +434,7 @@ public sealed partial class MainWindow {
 
             if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
                 statusText = $"Starting runtime... registering tool pack {index}/{total} ({packLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -435,6 +444,7 @@ public sealed partial class MainWindow {
                     ? $"{Math.Max(1, elapsedMs.Value)}ms"
                     : "done";
                 statusText = $"Starting runtime... registered tool pack {index}/{total} ({packLabel}, {elapsedLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -461,6 +471,7 @@ public sealed partial class MainWindow {
 
             if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
                 statusText = $"Starting runtime... initializing tool packs {index}/{total} ({packLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -470,6 +481,7 @@ public sealed partial class MainWindow {
                     ? $"{Math.Max(1, elapsedMs.Value)}ms"
                     : "done";
                 statusText = $"Starting runtime... initialized tool packs {index}/{total} ({packLabel}, {elapsedLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -496,6 +508,7 @@ public sealed partial class MainWindow {
 
             if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
                 statusText = $"Starting runtime... loading tool packs {index}/{total} ({pluginLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -505,6 +518,7 @@ public sealed partial class MainWindow {
                     ? $"{Math.Max(1, elapsedMs.Value)}ms"
                     : "done";
                 statusText = $"Starting runtime... loaded tool packs {index}/{total} ({pluginLabel}, {elapsedLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -523,6 +537,7 @@ public sealed partial class MainWindow {
             processed = Math.Max(0, processed);
             total = Math.Max(processed, total);
             statusText = $"Starting runtime... plugin folder scan {processed}/{total}";
+            allowDuringSend = true;
             return true;
         }
 
@@ -534,6 +549,7 @@ public sealed partial class MainWindow {
             }
 
             statusText = $"Starting runtime... tool bootstrap finished ({total}), finalizing runtime connection";
+            allowDuringSend = true;
             return true;
         }
 

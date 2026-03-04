@@ -107,6 +107,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Startup UX wording hardening (2026-03-04): Shell header status now rewrites generic connected unauthenticated `Sign in to continue` into `Sign in to continue loading tool packs` while startup tools-loading is pending.
 - [x] Language-neutral strict scenario increment (2026-03-04): added transcript-derived Polish scenario `ad-pl-eventlog-capability-followthrough-10-turn` to lock AD-to-EventLog capability follow-through without cached-evidence/no-tool fallback regressions.
 - [x] Live strict validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) with strict tool call/output pairing and no duplicate call/output ids.
+- [x] Startup visibility hardening (2026-03-04): send-safe bootstrap progress phases now publish during startup turn/send waits, and connected sessions continue surfacing send-safe startup statuses even when metadata-sync flags have transient lag.
 
 ## Rules For This Migration
 

@@ -47,6 +47,22 @@ public sealed class MainWindowServiceBootstrapStatusTests {
     }
 
     /// <summary>
+    /// Marks pack registration progress as send-safe so startup progress remains visible
+    /// during first-turn waits while metadata sync is still running.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_PackRegistrationProgress_IsSendSafe() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[pack warning] [startup] pack_register_progress pack='eventlog' phase='begin' index='2' total='11'",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... registering tool pack 2/11 (eventlog)", statusText);
+        Assert.True(allowDuringSend);
+    }
+
+    /// <summary>
     /// Parses pack registration end-progress diagnostics into a user-facing startup status.
     /// </summary>
     [Fact]
@@ -190,6 +206,40 @@ public sealed class MainWindowServiceBootstrapStatusTests {
             shutdownRequested: false,
             isConnected: true,
             isSending: true,
+            turnStartupInProgress: false,
+            startupMetadataSyncInProgress: false,
+            allowDuringSend: true);
+
+        Assert.True(shouldPublish);
+    }
+
+    /// <summary>
+    /// Keeps startup pack progress visible even while a turn-startup path is active,
+    /// as long as the status source is marked send-safe.
+    /// </summary>
+    [Fact]
+    public void ShouldPublishServiceBootstrapStatus_AllowsSendOverrideDuringTurnStartup() {
+        var shouldPublish = MainWindow.ShouldPublishServiceBootstrapStatus(
+            shutdownRequested: false,
+            isConnected: true,
+            isSending: true,
+            turnStartupInProgress: true,
+            startupMetadataSyncInProgress: true,
+            allowDuringSend: true);
+
+        Assert.True(shouldPublish);
+    }
+
+    /// <summary>
+    /// Allows send-safe startup statuses to publish while connected even if metadata-sync tracking
+    /// has not yet toggled on, preventing transient visibility gaps.
+    /// </summary>
+    [Fact]
+    public void ShouldPublishServiceBootstrapStatus_AllowsSendSafeConnectedStatusWithoutMetadataFlag() {
+        var shouldPublish = MainWindow.ShouldPublishServiceBootstrapStatus(
+            shutdownRequested: false,
+            isConnected: true,
+            isSending: false,
             turnStartupInProgress: false,
             startupMetadataSyncInProgress: false,
             allowDuringSend: true);
