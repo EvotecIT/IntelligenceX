@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Helpers;
@@ -13,8 +12,16 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Audits delegation-related settings for AD user/computer accounts (read-only).
 /// </summary>
 public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
+    private const int DefaultMaxValuesPerAttribute = 50;
     private const int MaxValuesPerAttributeCap = 200;
     private const int MaxViewTop = 5000;
+
+    private sealed record DelegationAuditRequest(
+        string Kind,
+        bool EnabledOnly,
+        bool IncludeSpns,
+        bool IncludeAllowedToDelegateTo,
+        int MaxValuesPerAttribute);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_delegation_audit",
@@ -41,30 +48,42 @@ public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<DelegationAuditRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var kind = reader.OptionalString("kind");
+            kind = string.IsNullOrWhiteSpace(kind) ? "any" : kind.Trim().ToLowerInvariant();
+
+            return ToolRequestBindingResult<DelegationAuditRequest>.Success(new DelegationAuditRequest(
+                Kind: kind,
+                EnabledOnly: reader.Boolean("enabled_only"),
+                IncludeSpns: reader.Boolean("include_spns"),
+                IncludeAllowedToDelegateTo: reader.Boolean("include_allowed_to_delegate_to"),
+                MaxValuesPerAttribute: ResolvePositiveCappedOrDefault(
+                    reader.OptionalInt64("max_values_per_attribute"),
+                    DefaultMaxValuesPerAttribute,
+                    MaxValuesPerAttributeCap)));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DelegationAuditRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var kindArg = ToolArgs.GetOptionalTrimmed(arguments, "kind");
-        var kind = string.IsNullOrWhiteSpace(kindArg) ? "any" : kindArg.Trim().ToLowerInvariant();
-        var enabledOnly = ToolArgs.GetBoolean(arguments, "enabled_only");
-        var includeSpns = ToolArgs.GetBoolean(arguments, "include_spns");
-        var includeAllowed = ToolArgs.GetBoolean(arguments, "include_allowed_to_delegate_to");
-
-        var requestedMaxValues = arguments?.GetInt64("max_values_per_attribute");
-        var maxValues = requestedMaxValues.HasValue && requestedMaxValues.Value > 0
-            ? (int)Math.Min(requestedMaxValues.Value, MaxValuesPerAttributeCap)
-            : 50;
-
-        var maxResults = ResolveMaxResults(arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
-
-        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(arguments, cancellationToken);
-
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments, nonPositiveBehavior: MaxResultsNonPositiveBehavior.DefaultToOptionCap);
+        var (dc, baseDn) = ResolveDomainControllerAndSearchBase(context.Arguments, cancellationToken);
         if (!LdapToolDelegationAuditService.TryExecute(
                 request: new LdapToolDelegationAuditQueryRequest {
-                    Kind = kind,
-                    EnabledOnly = enabledOnly,
-                    IncludeSpns = includeSpns,
-                    IncludeAllowedToDelegateTo = includeAllowed,
-                    MaxValuesPerAttribute = maxValues,
+                    Kind = request.Kind,
+                    EnabledOnly = request.EnabledOnly,
+                    IncludeSpns = request.IncludeSpns,
+                    IncludeAllowedToDelegateTo = request.IncludeAllowedToDelegateTo,
+                    MaxValuesPerAttribute = request.MaxValuesPerAttribute,
                     DomainController = dc,
                     SearchBaseDn = baseDn ?? string.Empty,
                     MaxResults = maxResults
@@ -77,7 +96,7 @@ public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
 
         var result = queryResult!;
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Results,
             viewRowsPath: "results_view",
@@ -86,5 +105,12 @@ public sealed class AdDelegationAuditTool : ActiveDirectoryToolBase, ITool {
             baseTruncated: result.IsTruncated,
             scanned: result.Results.Count));
     }
-}
 
+    private static int ResolvePositiveCappedOrDefault(long? requestedValue, int defaultValue, int maxInclusive) {
+        if (requestedValue is not { } rawValue || rawValue <= 0) {
+            return defaultValue;
+        }
+
+        return (int)Math.Min(rawValue, maxInclusive);
+    }
+}
