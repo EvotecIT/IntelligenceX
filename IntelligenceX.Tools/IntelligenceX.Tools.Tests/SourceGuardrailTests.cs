@@ -372,6 +372,7 @@ public class SourceGuardrailTests {
         var repoRoot = FindRepoRoot();
         string[] filePaths = {
             Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectivePackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveChecksCatalogTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveNetworkProbeTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveDomainSummaryTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX", "DnsClientXPackInfoTool.cs"),
@@ -422,6 +423,27 @@ public class SourceGuardrailTests {
     }
 
     [Fact]
+    public void ReviewerSetupWrappers_ShouldUseTypedPipelineAndResultV2() {
+        var repoRoot = FindRepoRoot();
+        string[] filePaths = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup", "ReviewerSetupPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup", "ReviewerSetupContractVerifyTool.cs")
+        };
+
+        foreach (var filePath in filePaths) {
+            var source = File.ReadAllText(filePath);
+            Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+            Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+            Assert.Contains("ToolResultV2.", source, StringComparison.Ordinal);
+
+            Assert.DoesNotContain("ToolResponse.Ok", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("ToolResponse.Error(", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void RefactoredTypedPipelineTools_ShouldNotUseRawArgumentGetPatterns() {
         var repoRoot = FindRepoRoot();
         string[] targetToolFolders = {
@@ -434,7 +456,8 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.Email"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell"),
-            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO")
+            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup")
         };
 
         foreach (var folder in targetToolFolders) {

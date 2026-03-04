@@ -59,4 +59,26 @@ public sealed class ToolResultV2Tests {
         Assert.Contains("\"entries_view\"", json, StringComparison.Ordinal);
         Assert.Contains("\"table\"", json, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void OkFlatWithRenderValue_WithMeta_ShouldCloneMetaAndRender() {
+        var root = new JsonObject().Add("status", "ok");
+        var meta = new JsonObject().Add("count", 1);
+        var render = JsonValue.From(new JsonArray().Add(new JsonObject().Add("kind", "table")));
+
+        var json = ToolResultV2.OkFlatWithRenderValue(
+            root: root,
+            meta: meta,
+            summaryMarkdown: "summary",
+            render: render);
+
+        meta.Add("count", 5);
+
+        using var document = JsonDocument.Parse(json);
+        var response = document.RootElement;
+        Assert.True(response.GetProperty("ok").GetBoolean());
+        Assert.Equal("ok", response.GetProperty("status").GetString());
+        Assert.Equal(1, response.GetProperty("meta").GetProperty("count").GetInt32());
+        Assert.Equal("table", response.GetProperty("render")[0].GetProperty("kind").GetString());
+    }
 }

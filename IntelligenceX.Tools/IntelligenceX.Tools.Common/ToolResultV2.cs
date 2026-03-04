@@ -128,8 +128,24 @@ public static class ToolResultV2 {
         JsonObject root,
         string? summaryMarkdown = null,
         JsonValue? render = null) {
+        return OkFlatWithRenderValue(
+            root: root,
+            meta: null,
+            summaryMarkdown: summaryMarkdown,
+            render: render);
+    }
+
+    /// <summary>
+    /// Creates a success envelope from a pre-shaped root object with optional metadata and render hints.
+    /// </summary>
+    public static string OkFlatWithRenderValue(
+        JsonObject root,
+        JsonObject? meta,
+        string? summaryMarkdown = null,
+        JsonValue? render = null) {
         return ToolOutputEnvelope.OkFlatWithRenderValue(
             root: CloneObject(root) ?? new JsonObject(StringComparer.Ordinal),
+            meta: CloneObject(meta),
             summaryMarkdown: summaryMarkdown,
             render: render is null ? null : CloneValue(render));
     }
