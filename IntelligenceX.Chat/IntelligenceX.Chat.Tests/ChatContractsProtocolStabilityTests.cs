@@ -177,10 +177,12 @@ public sealed class ChatContractsProtocolStabilityTests {
     }
 
     [Fact]
-    public void ChatRequestOptions_JsonContract_UsesEnabledAndDisabledToolsTokens() {
+    public void ChatRequestOptions_JsonContract_UsesToolAndPackExposureTokens() {
         var options = new ChatRequestOptions {
             EnabledTools = new[] { "dnsclientx_query", "ad_search" },
-            DisabledTools = new[] { "filesystem_read" }
+            DisabledTools = new[] { "filesystem_read" },
+            EnabledPackIds = new[] { "dnsclientx", "active_directory" },
+            DisabledPackIds = new[] { "filesystem" }
         };
 
         var json = JsonSerializer.Serialize(options, ChatServiceJsonContext.Default.ChatRequestOptions);
@@ -189,8 +191,12 @@ public sealed class ChatContractsProtocolStabilityTests {
 
         var enabled = root.GetProperty("enabledTools").EnumerateArray().Select(static value => value.GetString()).ToArray();
         var disabled = root.GetProperty("disabledTools").EnumerateArray().Select(static value => value.GetString()).ToArray();
+        var enabledPacks = root.GetProperty("enabledPackIds").EnumerateArray().Select(static value => value.GetString()).ToArray();
+        var disabledPacks = root.GetProperty("disabledPackIds").EnumerateArray().Select(static value => value.GetString()).ToArray();
 
         Assert.Equal(new[] { "dnsclientx_query", "ad_search" }, enabled);
         Assert.Equal(new[] { "filesystem_read" }, disabled);
+        Assert.Equal(new[] { "dnsclientx", "active_directory" }, enabledPacks);
+        Assert.Equal(new[] { "filesystem" }, disabledPacks);
     }
 }
