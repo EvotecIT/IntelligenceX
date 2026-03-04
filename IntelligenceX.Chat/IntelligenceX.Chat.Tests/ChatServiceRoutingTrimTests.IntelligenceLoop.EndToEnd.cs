@@ -206,6 +206,152 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_UsesSameStructuredIntentForCommonContinuationPrompts() {
+        var prompts = new[] { "continue", "keep going", "继续" };
+        string? baselineIntentAnchor = null;
+        string? baselineContractSignature = null;
+
+        foreach (var followUpPrompt in prompts) {
+            using var server = new DeterministicCompatibleHttpServer(responseIndex => JsonSerializer.Serialize(new {
+                id = "chatcmpl-continuation-contract-regression",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Continuation regression prompt accepted."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }));
+
+            var serviceOptions = new ServiceOptions {
+                OpenAITransport = OpenAITransportKind.CompatibleHttp,
+                OpenAIBaseUrl = server.BaseUrl,
+                OpenAIAllowInsecureHttp = true,
+                OpenAIStreaming = false,
+                Model = "mock-local-model",
+                MaxToolRounds = 3,
+                DisabledPackIds = { "testimox", "officeimo" }
+            };
+            var session = new ChatServiceSession(serviceOptions, Stream.Null);
+            var registry = new ToolRegistry();
+            registry.Register(new RoundTripStubTool(
+                "mock_round_tool",
+                static (_, _) => Task.FromResult("""{"ok":true}""")));
+            SetSessionRegistry(session, registry);
+
+            var clientOptions = new IntelligenceXClientOptions {
+                TransportKind = OpenAITransportKind.CompatibleHttp,
+                AutoInitialize = false,
+                DefaultModel = "mock-local-model"
+            };
+            clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+            clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+            clientOptions.CompatibleHttpOptions.Streaming = false;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+            using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+            var thread = await client.StartNewThreadAsync("mock-local-model");
+            session.RememberUserIntentForTesting(thread.Id, "Run forest-wide replication and LDAP diagnostics.");
+
+            var request = new ChatRequest {
+                RequestId = "req-continuation-contract-regression-" + followUpPrompt,
+                ThreadId = thread.Id,
+                Text = followUpPrompt,
+                Options = new ChatRequestOptions {
+                    WeightedToolRouting = false,
+                    MaxToolRounds = 3,
+                    ParallelTools = false,
+                    PlanExecuteReviewLoop = false,
+                    MaxReviewPasses = 0,
+                    ModelHeartbeatSeconds = 0
+                }
+            };
+
+            using var capture = new SynchronizedCaptureStream();
+            using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+            var runResult = await InvokeRunChatOnCurrentThreadAsync(
+                session,
+                client,
+                writer,
+                request,
+                request.ThreadId,
+                CancellationToken.None);
+
+            Assert.Equal(1, server.ChatCompletionRequestCount);
+            var userMessage = GetLatestUserMessageContent(server.GetChatRequestBody(0));
+            Assert.Contains("ix:continuation:v1", userMessage, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("enabled: true", userMessage, StringComparison.OrdinalIgnoreCase);
+
+            var intentAnchor = ReadStructuredLineValue(userMessage, "intent_anchor");
+            var followUp = ReadStructuredLineValue(userMessage, "follow_up");
+            var contractSignature = BuildContinuationContractSignature(userMessage);
+            Assert.Equal("Run forest-wide replication and LDAP diagnostics.", intentAnchor);
+            Assert.Equal(followUpPrompt, followUp);
+            if (baselineIntentAnchor is null) {
+                baselineIntentAnchor = intentAnchor;
+            } else {
+                Assert.Equal(baselineIntentAnchor, intentAnchor);
+            }
+            if (baselineContractSignature is null) {
+                baselineContractSignature = contractSignature;
+            } else {
+                Assert.Equal(baselineContractSignature, contractSignature);
+            }
+
+            var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+            Assert.Equal("Continuation regression prompt accepted.", resultMessage.Text);
+        }
+
+        static string ReadStructuredLineValue(string content, string key) {
+            var normalized = (content ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
+            var lines = normalized.Split('\n');
+            for (var i = 0; i < lines.Length; i++) {
+                var line = lines[i].Trim();
+                if (!line.StartsWith(key + ":", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                var value = line[(key.Length + 1)..].Trim();
+                return value.Trim('"', '\'');
+            }
+
+            throw new Xunit.Sdk.XunitException($"Missing structured field '{key}' in continuation envelope.");
+        }
+
+        static string BuildContinuationContractSignature(string content) {
+            var normalized = (content ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal);
+            var lines = normalized.Split('\n');
+            var builder = new StringBuilder();
+            for (var i = 0; i < lines.Length; i++) {
+                var line = lines[i].Trim();
+                if (line.Length == 0) {
+                    continue;
+                }
+
+                if (line.StartsWith("follow_up:", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                if (line.StartsWith("follow-up:", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                if (builder.Length > 0) {
+                    builder.Append('\n');
+                }
+
+                builder.Append(line);
+            }
+
+            return builder.ToString();
+        }
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_EmitsPhaseHeartbeatDuringLongToolExecution() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => JsonSerializer.Serialize(new {

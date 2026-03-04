@@ -20,7 +20,7 @@ Reference snapshot: `openclaw` commit `e6f0203ef395850fc459ce835f1a73c637ff03ca`
 - [x] Add explicit long-turn heartbeat/status events during model/tool orchestration phases.
 - [x] Add structured continuation contract markers for "continue work" turns to reduce unnecessary clarification loops.
 - [ ] Replace any remaining lexical fallback routing gates with structure-first contracts where still present.
-- [ ] Add end-to-end regression suite for continuation behavior: "continue", "keep going", and non-English continuation prompts with identical structured intent.
+- [x] Add end-to-end regression suite for continuation behavior: "continue", "keep going", and non-English continuation prompts with identical structured intent.
 - [ ] Add a plugin lifecycle contract test suite: manifest validation, load order, health probe contract, and failure-mode telemetry.
 
 ## Progress In This Branch
