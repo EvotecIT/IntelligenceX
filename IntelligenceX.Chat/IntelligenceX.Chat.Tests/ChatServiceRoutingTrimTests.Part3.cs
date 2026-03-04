@@ -141,6 +141,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveFollowUpTurnClassification_DoesNotMarkCompactForLexicalCompactContractWithoutExpansion() {
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
+            continuationContractDetected: true,
+            userRequest: "run now",
+            routedUserRequest: "run now");
+
+        Assert.False(continuationFollowUpTurn);
+        Assert.False(compactFollowUpTurn);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotInjectIntentForPassiveCompactAckWithSymbolCue() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 

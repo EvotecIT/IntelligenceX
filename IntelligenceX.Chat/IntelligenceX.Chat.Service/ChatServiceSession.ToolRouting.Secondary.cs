@@ -719,8 +719,13 @@ internal sealed partial class ChatServiceSession {
         bool continuationContractDetected,
         string userRequest,
         string routedUserRequest) {
+        if (continuationContractDetected) {
+            var contractExpandedFollowUpTurn = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
+            return (contractExpandedFollowUpTurn, contractExpandedFollowUpTurn);
+        }
+
         var lexicalCompactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
-        var continuationFollowUpTurn = (continuationContractDetected || lexicalCompactFollowUpTurn)
+        var continuationFollowUpTurn = lexicalCompactFollowUpTurn
                                        && !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
         var compactFollowUpTurn = continuationFollowUpTurn || lexicalCompactFollowUpTurn;
         return (continuationFollowUpTurn, compactFollowUpTurn);
