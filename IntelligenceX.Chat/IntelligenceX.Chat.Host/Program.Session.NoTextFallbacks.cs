@@ -11,6 +11,9 @@ internal static partial class Program {
     private sealed partial class ReplSession {
         private const int NoTextFallbackMaxBullets = 3;
         private const int NoTextFallbackSummaryMaxChars = 220;
+        private const int NoTextToolOutputRetryPromptMaxEvidenceItems = 6;
+        private const int NoTextToolOutputRetryPromptMaxArgumentPairs = 4;
+        private const int NoTextToolOutputRetryPromptMaxArgumentValueChars = 64;
 
         private static string BuildNoTextReplFallbackText(
             string assistantDraft,
@@ -39,6 +42,13 @@ internal static partial class Program {
             OpenAITransportKind transport,
             string? baseUrl) {
             return BuildNoTextReplFallbackText(assistantDraft, toolCalls, toolOutputs, model, transport, baseUrl);
+        }
+
+        internal static string BuildNoTextToolOutputRetryPromptForTesting(
+            string userRequest,
+            IReadOnlyList<ToolCall> toolCalls,
+            IReadOnlyList<ToolOutput> toolOutputs) {
+            return BuildNoTextToolOutputRetryPrompt(userRequest, toolCalls, toolOutputs);
         }
 
         private static bool TryBuildToolOutputNoTextFallback(
@@ -112,6 +122,156 @@ internal static partial class Program {
 
             text = builder.ToString().TrimEnd();
             return text.Length > 0;
+        }
+
+        private static string BuildNoTextToolOutputRetryPrompt(
+            string userRequest,
+            IReadOnlyList<ToolCall> toolCalls,
+            IReadOnlyList<ToolOutput> toolOutputs) {
+            var requestText = TruncateNoTextSummary((userRequest ?? string.Empty).Trim());
+            var toolMetadataByCallId = new Dictionary<string, (string ToolName, string ArgumentSummary)>(StringComparer.OrdinalIgnoreCase);
+            if (toolCalls is not null) {
+                for (var i = 0; i < toolCalls.Count; i++) {
+                    var call = toolCalls[i];
+                    if (call is null) {
+                        continue;
+                    }
+
+                    var callId = (call.CallId ?? string.Empty).Trim();
+                    var toolName = (call.Name ?? string.Empty).Trim();
+                    if (callId.Length == 0 || toolName.Length == 0) {
+                        continue;
+                    }
+
+                    toolMetadataByCallId[callId] = (
+                        ToolName: toolName,
+                        ArgumentSummary: BuildToolCallArgumentSummary(call.Input));
+                }
+            }
+
+            var evidence = new StringBuilder();
+            var appendedCount = 0;
+            for (var i = 0; i < toolOutputs.Count; i++) {
+                var output = toolOutputs[i];
+                if (output is null) {
+                    continue;
+                }
+
+                if (appendedCount >= NoTextToolOutputRetryPromptMaxEvidenceItems) {
+                    break;
+                }
+
+                var summary = BuildToolOutputNoTextSummary(output.Output);
+                if (summary.Length == 0) {
+                    continue;
+                }
+
+                var callId = (output.CallId ?? string.Empty).Trim();
+                var toolName = "tool";
+                var argumentSummary = string.Empty;
+                if (toolMetadataByCallId.TryGetValue(callId, out var metadata)) {
+                    toolName = metadata.ToolName;
+                    argumentSummary = metadata.ArgumentSummary;
+                }
+                evidence.Append("- ")
+                    .Append(toolName);
+                if (argumentSummary.Length > 0) {
+                    evidence.Append(" [")
+                        .Append(argumentSummary)
+                        .Append("]");
+                }
+
+                evidence.Append(": ")
+                    .Append(summary)
+                    .AppendLine();
+                appendedCount++;
+            }
+
+            if (evidence.Length == 0) {
+                evidence.AppendLine("- Tool outputs were present but no concise summaries were available.");
+            }
+
+            return $$"""
+                [No-text tool-output recovery]
+                Tool execution completed but the assistant draft is empty. Produce the final user-facing answer from the executed tool evidence below.
+
+                User request:
+                {{requestText}}
+
+                Executed tool evidence:
+                {{evidence.ToString().TrimEnd()}}
+
+                Requirements:
+                - Use only the executed tool evidence above.
+                - Keep the response concise and direct.
+                - Do not call tools again.
+                - If evidence is incomplete, state the exact missing evidence briefly.
+                Return only the final assistant response text.
+                """;
+        }
+
+        private static string BuildToolCallArgumentSummary(string? rawArgumentsJson) {
+            var normalized = (rawArgumentsJson ?? string.Empty).Trim();
+            if (normalized.Length == 0 || !LooksLikeJsonPayload(normalized)) {
+                return string.Empty;
+            }
+
+            try {
+                using var doc = JsonDocument.Parse(normalized);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                    return string.Empty;
+                }
+
+                var pairs = new List<string>(NoTextToolOutputRetryPromptMaxArgumentPairs);
+                foreach (var property in doc.RootElement.EnumerateObject()) {
+                    if (pairs.Count >= NoTextToolOutputRetryPromptMaxArgumentPairs) {
+                        break;
+                    }
+
+                    var key = CollapseWhitespace((property.Name ?? string.Empty).Trim());
+                    if (key.Length == 0) {
+                        continue;
+                    }
+
+                    if (!TryFormatCompactArgumentValue(property.Value, out var compactValue)) {
+                        continue;
+                    }
+
+                    pairs.Add(key + "=" + compactValue);
+                }
+
+                if (pairs.Count == 0) {
+                    return string.Empty;
+                }
+
+                return "args: " + string.Join(", ", pairs);
+            } catch (JsonException) {
+                return string.Empty;
+            }
+        }
+
+        private static bool TryFormatCompactArgumentValue(JsonElement value, out string compactValue) {
+            compactValue = string.Empty;
+            string raw;
+            switch (value.ValueKind) {
+                case JsonValueKind.String:
+                    raw = (value.GetString() ?? string.Empty).Trim();
+                    break;
+                case JsonValueKind.Number:
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    raw = value.ToString();
+                    break;
+                default:
+                    return false;
+            }
+
+            if (raw.Length == 0) {
+                return false;
+            }
+
+            compactValue = TruncateNoTextArgumentValue(raw);
+            return compactValue.Length > 0;
         }
 
         private static string BuildToolOutputNoTextSummary(string rawOutput) {
@@ -189,6 +349,15 @@ internal static partial class Program {
             }
 
             return normalized.Substring(0, NoTextFallbackSummaryMaxChars - 3).TrimEnd() + "...";
+        }
+
+        private static string TruncateNoTextArgumentValue(string text) {
+            var normalized = CollapseWhitespace((text ?? string.Empty).Trim());
+            if (normalized.Length <= NoTextToolOutputRetryPromptMaxArgumentValueChars) {
+                return normalized;
+            }
+
+            return normalized.Substring(0, NoTextToolOutputRetryPromptMaxArgumentValueChars - 3).TrimEnd() + "...";
         }
 
         private static string BuildNoTextModelWarning(string? model, OpenAITransportKind transport, string? baseUrl) {

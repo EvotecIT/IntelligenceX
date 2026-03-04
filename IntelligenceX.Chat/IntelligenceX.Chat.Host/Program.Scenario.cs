@@ -56,6 +56,7 @@ internal static partial class Program {
             IReadOnlyList<string> requireAnyTools,
             IReadOnlyList<string> forbidTools,
             IReadOnlyDictionary<string, int> minDistinctToolInputValues,
+            IReadOnlyDictionary<string, IReadOnlyList<string>> forbidToolInputValues,
             IReadOnlyList<string> assertToolOutputContains,
             IReadOnlyList<string> assertToolOutputNotContains,
             bool assertNoToolErrors,
@@ -79,6 +80,7 @@ internal static partial class Program {
             RequireAnyTools = requireAnyTools ?? Array.Empty<string>();
             ForbidTools = forbidTools ?? Array.Empty<string>();
             MinDistinctToolInputValues = minDistinctToolInputValues ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            ForbidToolInputValues = forbidToolInputValues ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
             AssertToolOutputContains = assertToolOutputContains ?? Array.Empty<string>();
             AssertToolOutputNotContains = assertToolOutputNotContains ?? Array.Empty<string>();
             AssertNoToolErrors = assertNoToolErrors;
@@ -104,6 +106,7 @@ internal static partial class Program {
         public IReadOnlyList<string> RequireAnyTools { get; }
         public IReadOnlyList<string> ForbidTools { get; }
         public IReadOnlyDictionary<string, int> MinDistinctToolInputValues { get; }
+        public IReadOnlyDictionary<string, IReadOnlyList<string>> ForbidToolInputValues { get; }
         public IReadOnlyList<string> AssertToolOutputContains { get; }
         public IReadOnlyList<string> AssertToolOutputNotContains { get; }
         public bool AssertNoToolErrors { get; }

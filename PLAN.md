@@ -90,17 +90,83 @@ Build a contract-first architecture where:
 - [x] Carryover stabilization hotfix: contextual compact follow-up questions now block stale single-host structured replay when thread evidence is multi-host, while short acknowledgement questions remain replay-eligible.
 - [x] Startup UX hotfix: login-completed status updates now queue deferred startup metadata sync before publishing connected status, avoiding transient "ready" flips while tool-pack startup is still pending.
 - [x] Startup UX hotfix: startup pending/status overlay now includes browser sign-in-in-progress states, and startup-time reconnect churn surfaces explicit reconnect-sync status (instead of generic disconnected text).
+- [x] Startup UX hotfix: connected-phase bootstrap progress now preserves `Runtime connected...` wording (with `cause metadata_sync`) instead of reverting to `Starting runtime...`, reducing status-chip connect/disconnect confusion while metadata sync is active.
 - [x] Startup/send hotfix: queued-after-login prompt deduplication now treats one-sided empty conversation ids as equivalent for normalized prompt text, preventing duplicate dispatch after startup/sign-in transitions.
 - [x] Contract guardrail expanded: bootstrap metadata tests now assert all canonical built-in tools register with explicit routing source + pack id + role under strict registration (not only `_pack_info` tools).
 - [x] Stabilization regression coverage: finalize host scope-shift guard now has explicit precedence tests proving raw user intent is used ahead of routed rewrite text when deciding stale single-host replay blocking.
+- [x] Catalog contract projection now includes setup requirements/hints, normalized handoff edges, and recovery-policy details (`retryable_error_codes`, alternate engines) in `ToolOrchestrationCatalog`.
+- [x] Contract-first domain intent alignment: runtime `/act` resolution now requires catalog-mapped action ids (no undeclared default-action fallback when custom routing action ids are registered), and domain host guardrail candidate detection no longer infers AD scope from tool-name patterns.
+- [x] Stabilization hotfix: `ResolveDomainIntentActionCatalog` now keeps all declared action ids per family as valid `/act` aliases (order-independent), while canonical clarification action ids are selected deterministically and ambiguous cross-family ids no longer rely on first-wins map order.
+- [x] Regression coverage now asserts cross-pack isolation in orchestration catalog: no ADPlayground -> DomainDetective handoff is inferred without explicit `ToolHandoffContract` edges.
+- [x] Live strict scenario validation: `ad-ad0-then-all-dcs-followthrough-10-turn` passes end-to-end in host runtime with cross-DC fanout (`machine_name>=2`) and no duplicate tool-call/output ids.
+- [x] Live strict scenario validation: `ad-eventlog-tool-capability-followthrough-10-turn` now guards explicit `eventlog_evtx_query` capability follow-ups against cached-evidence fallback regressions and passes end-to-end (`10/10` turns) in host runtime.
+- [x] Live strict scenario validation: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn` now passes end-to-end (`10/10` turns), guarding continuation-style `go ahead` follow-through with cross-DC tool execution (`machine_name>=2`) and direct `eventlog_evtx_query` capability responses.
+- [x] Scenario-contract hardening: host runtime now supports explicit forbidden tool-input values (`forbid_tool_input_values` / `forbidden_tool_inputs`) and applies them in retry eligibility, assertion checks, and distinct-host fallback repair paths.
+- [x] Transcript guardrail hardening: `ad-other-dcs-go-ahead-followthrough-10-turn` continuation turns now explicitly forbid `machine_name=AD0`, and strict catalog tests lock this requirement.
+- [x] Added transcript-derived strict scenario seed `ad-domainwide-reboot-followthrough-10-turn` to guard AD0-baseline -> domain-wide non-AD0 continuation flow, explicit `eventlog_evtx_query` capability follow-up behavior, and DNS cross-pack routing in one 10-turn sequence.
+- [x] Forbidden host-input hardening: scenario contract enforcement now treats short-host and FQDN equivalents consistently (for example `AD0` == `AD0.ad.evotec.xyz`) in retry gating, fallback target selection, and assertion checks.
+- [x] Live host validation rerun: `ad-domainwide-reboot-followthrough-10-turn` passes end-to-end (`10/10` turns) with non-AD0 continuation turns staying off AD0/FQDN equivalents during distinct-host repair.
+- [x] Startup/send race hardening: manual resend now suppresses an equivalent prompt when the same queued-after-login turn is already in-flight, preventing duplicate assistant replies after usage-limit switch-account recovery.
+- [x] Transcript wording coverage refresh: strict cross-DC continuation scenarios now include explicit "`those are correct DCs, go ahead`" phrasing to lock replay suppression and non-AD0 fanout behavior.
+- [x] Stabilization hotfix: domain host-scope guardrail now blocks stale single-host AD-scope replay for compact scope-shift follow-ups when thread evidence is already multi-host, unless the user explicitly pins a single host.
+- [x] Stabilization regression coverage: domain host-scope guardrail now has explicit compact scope-shift replay tests (block stale single-host replay, allow explicit host pin, allow short acknowledgement questions).
+- [x] Live strict validation rerun: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn`, `ad-domainwide-reboot-followthrough-10-turn`, and `ad-ad0-then-all-dcs-followthrough-10-turn` all pass end-to-end (`10/10`) after host-scope replay hardening.
+- [x] Stabilization hotfix: AD monitoring ADWS probe port normalization now treats non-positive `port` overrides as default `9389` (instead of clamping to `1`), preventing false ADWS-down endpoint probes (`net.tcp://<dc>:1/...`).
+- [x] Transcript-derived strict scenario seed added: `ad-ldap-go-ahead-followthrough-8-turn` to lock "scope confirmed -> `go ahead` executes LDAP diagnostics" continuation behavior and explicit tool-capability follow-through.
+- [x] Live strict validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after ADWS port normalization hardening.
+- [x] Startup/send dedupe hardening: queued-after-login duplicate suppression now also handles startup/login windows where both prompts have missing conversation ids but equivalent normalized text, reducing duplicate assistant greetings after switch-account recovery.
+- [x] Regression coverage expanded: queue dedupe tests now explicitly lock both-missing-conversation-id startup fallback behavior for manual resend suppression during in-flight queued-after-login dispatch.
+- [x] Catalog contract validation checkpoint: `analyze validate-catalog --workspace .` passes with `0 error(s), 0 warning(s)` after startup/login and ADWS hardening batches.
+- [x] Stabilization hotfix: weighted/planner routing subsets now preserve explicitly requested tool ids (including escaped markdown forms such as ``eventlog\_evtx\_query``), preventing false "tool not active" follow-up responses when the tool is registered.
+- [x] Regression coverage expanded: routing tests now assert explicit escaped tool-id inclusion in weighted subset selection and limit-bound planner backfill (`EnsureMinimumToolSelection`) replacement behavior.
+- [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) with explicit `eventlog_evtx_query` capability turns executing EventLog tools in-session.
+- [x] Scenario-contract clarity hardening: forbidden tool-input directives now render as `key not-in [v1|v2]` in execution contracts/retry prompts (while parser stays backward-compatible with legacy `key!=v1|v2`), reducing model misreads that inverted non-AD0 constraints.
+- [x] Transcript-derived strict replay guardrail added: `ad-other-dcs-transcript-replay-guardrail-10-turn` now passes end-to-end (`10/10`) and locks "other DCs" follow-through with cross-DC execution, explicit non-AD0 follow-up turns, and direct `eventlog_evtx_query` capability handling.
+- [x] Transcript-derived strict fanout guardrail added: `ad-c400-transcript-cross-dc-fanout-10-turn` now passes end-to-end (`10/10`) and locks explicit 4-host non-AD0 fanout (`AD1/AD2/DC1/ADRODC`) after continuation phrasing that previously replayed AD0-only calls.
+- [x] Startup visibility hardening: startup/connect/reconnect status text now emits structured context tokens (`phase startup_*`, `cause ...`), and connected bootstrap status rewrites legacy cause-only suffixes to phase+cause so runtime-ready ambiguity is diagnosable from the header chip alone.
+- [x] Stabilization hotfix: no-text tool-output synthesis retry now runs only when review-loop mode is enabled, redaction is off, and at least one tool output succeeded; deterministic fallback is used first for redaction/tool-failure paths to avoid extra model rounds.
+- [x] Follow-through quality hardening: no-text synthesis prompts now include compact tool-argument context from executed calls (for example host/log/window selectors), reducing false "missing target context" narratives on sparse summaries.
+- [x] Startup UX hardening: shell header status chip now derives compact labels from structured startup phase/cause markers (`startup_connect`, `startup_auth_wait`, `startup_metadata_sync`) before generic fallback labels, improving visibility during connect/auth/bootstrap wait phases.
+- [x] Live strict rerun checkpoint after no-text/startup UX hardening: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass on this branch.
+- [x] Host decoupling cleanup: removed host-side tool-name-specific retry rewrite path (`AD discovery`, `AD replication probe`, `DomainDetective summary`) so runtime no longer mutates calls via hardcoded tool IDs; added architecture guardrail test to prevent reintroduction.
+- [x] Typed-surface guardrail hardening: added pack-wide source guardrail asserting typed-pipeline tools (`RunPipelineAsync` + `ToolRequestBindingResult`) do not regress to ad-hoc `arguments?.Get...`/`arguments.Get...` parsing across AD/DomainDetective/DnsClientX/System/EventLog/TestimoX/FileSystem/Email/PowerShell/OfficeIMO.
+- [x] Typed-envelope migration increment: `ad_scope_discovery` now emits `ToolResultV2` envelopes (`Error` + `OkFlatWithRenderValue`) and is covered by typed-wrapper guardrail assertions.
+- [x] Typed-envelope standardization increment: AD shared base helpers now use `ToolResultV2` (instead of direct `ToolResponse`) for required-argument errors, convention-mapped collection failures, and common AD success/error wrapper helpers; guardrail asserts `ActiveDirectoryToolBase*` files stay `ToolResponse`-free.
+- [x] Startup visibility increment: service now emits runtime-provider connect progress telemetry (`[startup] provider_connect_progress ...` with phase/status/elapsed), and app startup status parsing consumes it with send-safe publish override so first-turn provider connect latency is visible instead of silent.
+- [x] Decoupling guardrail increment: Chat architecture tests now fail if `IntelligenceX.Chat.App` or `IntelligenceX.Chat.Service` source reintroduces hardcoded tool-pack ids (`testimox`, `active_directory`, `adplayground`, `domaindetective`, `dnsclientx`, `reviewer_setup`).
+- [x] Contract-first routing increment: Chat routing scoring pack-hint resolution now uses explicit routing contract pack ids only (no `ToolSelectionMetadata.TryResolvePackId(...)` fallback), and architecture guardrail coverage locks this.
+- [x] Scenario-contract reliability increment: transcript strict scenario `ad-eventlog-tool-capability-followthrough-10-turn` now uses semantic contains-any assertion for eventlog tool availability (`eventlog` or `event log`) to avoid wording-only false failures.
+- [x] Live strict validation rerun: `ad-eventlog-tool-capability-followthrough-10-turn` passes end-to-end (`10/10`) after contract-only routing-hint cleanup and scenario assertion hardening.
+- [x] Contract-first routing decoupling increment: Chat tokenization no longer uses hardcoded compound-pack compact heuristics (`ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact`); routing relies on natural-language tokens + explicit pack metadata aliases only.
+- [x] Live strict validation rerun: transcript-derived cross-pack/follow-up guardrail scenarios remain green after compound-token heuristic removal (`ad-eventlog-tool-capability-followthrough-10-turn` `10/10`, `ad-other-dcs-transcript-replay-guardrail-10-turn` `10/10`).
+- [x] Follow-up recovery hardening: compact continuation turns now trigger execution replan when the assistant emits structured linked "deferred execution" drafts with zero in-turn tool activity, preventing `go ahead` turns from settling on evidence-only summaries.
+- [x] Live strict validation rerun: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after compact follow-up structured-draft recovery hardening.
+- [x] Regression fix (2026-03-04): finalize no-text recovery no longer issues an extra synthesis model round for redacted/tool-failure turns (`RunChatOnCurrentThreadAsync_DoesNotAutoSwitchPacksAfterToolFailure` and `RunChatOnCurrentThreadAsync_RedactsToolOutputRecoveryFallbackWhenRedactionEnabled` restored).
+- [x] Live strict rerun validation (2026-03-04): `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), and `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) pass after the no-text recovery gating fix.
+- [x] Startup UX wording hardening (2026-03-04): header status chip now upgrades generic connected unauthenticated `Sign in to continue` text to `Sign in to continue loading tool packs` while startup tools-loading is pending, improving startup cause clarity during auth wait.
+- [x] Language-neutral strict scenario increment (2026-03-04): added transcript-derived Polish scenario `ad-pl-eventlog-capability-followthrough-10-turn` to lock AD->EventLog capability follow-through without cached-evidence/no-tool fallback phrasing regressions.
+- [x] Live strict validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) with paired EventLog tool execution and no duplicate call/output ids.
+- [x] Startup visibility hardening (2026-03-04): send-safe bootstrap phases now publish even during startup turn/send waits (`pack_register/load`, `plugin_load`, scan/finalize), and connected sessions can still surface send-safe startup statuses when metadata-sync flags lag briefly.
+- [x] Contract-first domain-intent hardening (2026-03-04): Chat tool-routing no longer infers domain family from raw tool-name fallback in `ResolveDomainIntentFamily(string toolName)`; family resolution now stays registry/catalog contract-based, with architecture guardrail coverage locking this.
+- [x] Transcript-snippet guardrail hardening (2026-03-04): Polish strict scenario `ad-pl-eventlog-capability-followthrough-10-turn` now uses the original multiline catalog-descriptor phrasing (`eventlog_evtx_query · Event Log (EventViewerX) ...`) that previously triggered cached-evidence fallback loops.
+- [x] Live strict validation rerun (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` remains green (`10/10`) with direct capability handling for the multiline descriptor follow-up and no cached-evidence fallback response.
+- [x] Documentation increment (2026-03-04): published contract-first onboarding guide for adding tool packs without Chat edits, including plugin contract schema examples (`InternalDocs/agent-playbooks/chat-pack-contract-first-onboarding.md`).
+- [x] Language-neutral routing validation checkpoint (2026-03-04): `ChatServiceRoutingTrimTests` suite passes (`709/709`), including Unicode ordinal parsing and compact follow-up routing safeguards.
+- [x] Routing-heuristic cleanup checkpoint (2026-03-04): Chat service no longer uses raw tool-name `TryResolveDomainIntentFamily(toolName, ...)` paths for domain-family routing decisions; remaining resolution is contract-first with definition metadata fallback only.
+- [x] Decision checkpoint (2026-03-04): strict pack-boundary isolation (`DomainDetective` vs `ADPlayground`) is now enforced by contract/cross-pack isolation tests; no implicit handoff is inferred without explicit `ToolHandoffContract`.
+- [x] Typed adapter increment (2026-03-04): added reusable `ToolRequestAdapter<TRequest>` abstraction in `IntelligenceX.Tools.Common` plus `ToolBase.RunPipelineAsync(..., adapter)` overload, and migrated `dnsclientx_pack_info` + `domaindetective_pack_info` to this adapter path.
+- [x] Typed adapter migration increment (2026-03-04): migrated `domaindetective_checks_catalog`, `reviewer_setup_pack_info`, and `reviewer_setup_contract_verify` to typed binder/adapter pipelines and standardized their envelopes on `ToolResultV2`; added guardrail coverage to keep these wrappers off raw `arguments?.Get*` parsing.
+- [x] Typed binder backfill increment (2026-03-04): migrated `system_bitlocker_status`, `system_installed_applications`, `system_network_adapters`, `system_patch_compliance`, `eventlog_channels_list`, and `eventlog_providers_list` to typed pipeline binders; added folder-wide source guardrail requiring typed binder usage across migrated non-AD packs.
+- [x] Documentation cleanup increment (2026-03-04): refreshed ADR wording in `InternalDocs/architecture/adr-0001-chat-tools-contract-boundary.md` so cross-pack fallback references are historical/current-state accurate (no stale present-tense behavior claims).
+- [x] Fallback-marker cleanup checkpoint (2026-03-04): verified runtime Chat service no longer contains legacy cross-pack fallback telemetry/constants/symbols; only active projection-fallback metadata markers remain (`projection_fallback_*`) for view-argument recovery diagnostics.
 
 ## Hard Decisions (Locked)
 
 - [x] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).
 - [x] `D2` Keep resilience only inside tools/engines (for example CIM -> WMI), not in Chat routing.
-- [ ] `D3` Make routing metadata explicit and contract-validated for every tool.
+- [x] `D3` Make routing metadata explicit and contract-validated for every tool.
 - [ ] `D4` Prefer typed request/response models in tools; keep JSON/text as transport envelope only.
-- [ ] `D5` Treat pack boundaries as strict: DomainDetective != ADPlayground unless contracts declare handoff.
+- [x] `D5` Treat pack boundaries as strict: DomainDetective != ADPlayground unless contracts declare handoff.
 
 ## Current Gaps To Eliminate
 
@@ -128,14 +194,14 @@ Build a contract-first architecture where:
 5. [x] Add `RoutingSource` (`explicit|inferred`) and strict-mode gate `ToolRegistry.RequireExplicitRoutingMetadata` to enforce explicit routing metadata during migration.
 6. [x] Extend `ToolDefinition` validation in `IntelligenceX/Tools/ToolRegistry.cs` to require explicit pack/routing role metadata.
 7. [x] Remove implicit pack/category/domain-family inference pathways from `IntelligenceX/Tools/ToolSelectionMetadata.cs` (or gate them behind hard-fail mode that is always enabled).
-8. [ ] Enforce one canonical source for domain intent family/action mapping from routing contracts.
-9. [ ] Ensure all `_pack_info` tools define explicit routing contracts (not inference).
+8. [x] Enforce one canonical source for domain intent family/action mapping from routing contracts.
+9. [x] Ensure all `_pack_info` tools define explicit routing contracts (not inference).
 10. [ ] Keep `ToolPackGuidance` as rich documentation contract, but make routing-critical fields available without calling tools.
 
 ## Phase 2 - Build Runtime Orchestration Catalog (Chat Reads Contracts, Not Names)
 
 1. [x] Introduce `ToolOrchestrationCatalog` in Chat bootstrapping built from `ToolRegistry.GetDefinitions()`.
-2. [ ] Include in catalog: pack id, role, scope/operation/entity/risk, domain family/action, setup requirements, handoff edges, recovery policy.
+2. [x] Include in catalog: pack id, role, scope/operation/entity/risk, domain family/action, setup requirements, handoff edges, recovery policy.
 3. [x] Replace direct `_toolPackIdsByToolName` and suffix inference consumers with catalog queries.
 4. [x] Keep Chat startup diagnostics but add new contract health metrics (missing role, missing handoff schema, invalid setup contracts).
 5. [x] Surface catalog health in existing routing policy UI payloads.
@@ -156,8 +222,8 @@ Build a contract-first architecture where:
 1. [x] Replace pack preflight suffix detection in `ChatServiceSession.PackPreflight.cs` with role-based contract selection.
 2. [x] Replace deterministic family key heuristics in `ChatServiceSession.ChatRouting.RoutingScoring.cs` with contract pack/role fields.
 3. [x] Ensure domain-intent signals in `ChatServiceSession.ToolRouting.DomainIntentSignals.cs` come from registered contract signals only.
-4. [ ] Keep Unicode-safe ordinal parsing in `ChatServiceSession.PendingActions.IntentParsing.cs` (this is generic and should remain).
-5. [ ] Remove remaining routing paths that depend on tool name prefix assumptions when contract fields exist.
+4. [x] Keep Unicode-safe ordinal parsing in `ChatServiceSession.PendingActions.IntentParsing.cs` (this is generic and should remain).
+5. [x] Remove remaining routing paths that depend on tool name prefix assumptions when contract fields exist.
 
 ## Phase 5 - Tool Pack Migration (Domain Separation + Easy Additions)
 
@@ -170,27 +236,27 @@ Build a contract-first architecture where:
 
 ## Phase 6 - Typed Tool Surface (Less Stringly, More Models)
 
-1. [ ] Add optional typed tool interface/adapter pattern in `IntelligenceX.Tools.Common` (request/response model typed; envelope serialization centralized).
-2. [ ] Keep `ITool` compatibility adapter for transport, but mark direct raw argument parsing patterns as deprecated.
+1. [x] Add optional typed tool interface/adapter pattern in `IntelligenceX.Tools.Common` (request/response model typed; envelope serialization centralized).
+2. [x] Keep `ITool` compatibility adapter for transport, but mark direct raw argument parsing patterns as deprecated.
 3. [ ] Enforce typed binders (`ToolRequestBinder`) for all new tools; backfill existing tools incrementally.
-4. [ ] Standardize success/error envelope shaping through `ToolResultV2` only.
-5. [ ] Add analyzer rule in `IntelligenceX.Tools.Tests` or shared analyzer package to flag ad-hoc `arguments?.Get...` in refactored packs.
+4. [x] Standardize success/error envelope shaping through `ToolResultV2` only.
+5. [x] Add analyzer rule in `IntelligenceX.Tools.Tests` or shared analyzer package to flag ad-hoc `arguments?.Get...` in refactored packs.
 
 ## Phase 7 - Test Migration And Coverage
 
 1. [x] Replace reflection-heavy fallback tests in `IntelligenceX.Chat/IntelligenceX.Chat.Tests/ChatServiceRoutingTrimTests.*PackFallback*.cs` with internal helper exposure tests or remove if behavior deleted.
-2. [ ] Add contract-driven routing tests in Chat that use synthetic tools with explicit contracts.
+2. [x] Add contract-driven routing tests in Chat that use synthetic tools with explicit contracts.
 3. [x] Add regression tests verifying Chat does not auto-switch packs after tool failure.
 4. [x] Add tests ensuring preflight uses role contracts, not suffixes.
-5. [ ] Add tests ensuring DomainDetective and ADPlayground remain isolated unless handoff contract explicitly connects them.
-6. [ ] Keep existing language-neutral routing/ordinal tests green.
+5. [x] Add tests ensuring DomainDetective and ADPlayground remain isolated unless handoff contract explicitly connects them.
+6. [x] Keep existing language-neutral routing/ordinal tests green.
 
 ## Phase 8 - Cutover And Cleanup
 
-1. [ ] Remove dead constants/helpers tied to old fallback reason telemetry markers.
-2. [ ] Remove stale docs referencing Chat cross-pack fallback behavior.
-3. [ ] Publish new "How to add a tool/pack without touching Chat" guide in `InternalDocs/agent-playbooks/`.
-4. [ ] Publish contract schema examples for plugin authors.
+1. [x] Remove dead constants/helpers tied to old fallback reason telemetry markers.
+2. [x] Remove stale docs referencing Chat cross-pack fallback behavior.
+3. [x] Publish new "How to add a tool/pack without touching Chat" guide in `InternalDocs/agent-playbooks/`.
+4. [x] Publish contract schema examples for plugin authors.
 5. [ ] Run full solution build/test gates and close migration tracker items.
 
 ## Parallel Workstreams
@@ -212,7 +278,7 @@ Build a contract-first architecture where:
 - [x] `DoD1` No Chat file contains cross-pack fallback execution methods.
 - [x] `DoD2` Chat does not decide substitute tools based on hardcoded pack names.
 - [x] `DoD3` Pack preflight/routing relies on contracts, not suffix/prefix naming.
-- [ ] `DoD4` Every registered tool has explicit routing role + pack metadata.
+- [x] `DoD4` Every registered tool has explicit routing role + pack metadata.
 - [x] `DoD5` New synthetic pack/tool can be added in tests without Chat code changes.
 - [x] `DoD6` DomainDetective vs ADPlayground separation enforced by contracts/tests.
 - [x] `DoD7` Full build/test suite passes after legacy fallback removal.

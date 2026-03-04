@@ -118,6 +118,7 @@ internal static partial class Program {
                     requireAnyTools: Array.Empty<string>(),
                     forbidTools: Array.Empty<string>(),
                     minDistinctToolInputValues: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    forbidToolInputValues: new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase),
                     assertToolOutputContains: Array.Empty<string>(),
                     assertToolOutputNotContains: Array.Empty<string>(),
                     assertNoToolErrors: false,
@@ -149,6 +150,7 @@ internal static partial class Program {
             var requireAnyTools = ReadScenarioStringList(element, "require_any_tools");
             var forbidTools = ReadScenarioStringList(element, "forbid_tools");
             var minDistinctToolInputValues = ReadScenarioMinDistinctToolInputValues(element, "min_distinct_tool_input_values");
+            var forbidToolInputValues = ReadScenarioForbidToolInputValues(element, "forbid_tool_input_values");
             var assertToolOutputContains = ReadScenarioStringList(element, "assert_tool_output_contains");
             var assertToolOutputNotContains = ReadScenarioStringList(element, "assert_tool_output_not_contains");
             var assertNoToolErrors = ReadScenarioOptionalBoolean(element, "assert_no_tool_errors", defaultValue: false);
@@ -159,6 +161,7 @@ internal static partial class Program {
                 requireTools,
                 requireAnyTools,
                 minDistinctToolInputValues,
+                forbidToolInputValues,
                 assertToolOutputContains,
                 assertToolOutputNotContains,
                 assertNoToolErrors,
@@ -197,6 +200,7 @@ internal static partial class Program {
                 requireAnyTools,
                 forbidTools,
                 minDistinctToolInputValues,
+                forbidToolInputValues,
                 assertToolOutputContains,
                 assertToolOutputNotContains,
                 assertNoToolErrors,
@@ -243,6 +247,7 @@ internal static partial class Program {
                 requireAnyTools: Array.Empty<string>(),
                 forbidTools: Array.Empty<string>(),
                 minDistinctToolInputValues: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                forbidToolInputValues: new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase),
                 assertToolOutputContains: Array.Empty<string>(),
                 assertToolOutputNotContains: Array.Empty<string>(),
                 assertNoToolErrors: false,
@@ -266,6 +271,7 @@ internal static partial class Program {
         IReadOnlyList<string> requireAnyTools,
         IReadOnlyList<string> forbidTools,
         IReadOnlyDictionary<string, int> minDistinctToolInputValues,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> forbidToolInputValues,
         IReadOnlyList<string> assertToolOutputContains,
         IReadOnlyList<string> assertToolOutputNotContains,
         bool assertNoToolErrors,
@@ -277,6 +283,7 @@ internal static partial class Program {
             requireTools,
             requireAnyTools,
             minDistinctToolInputValues,
+            forbidToolInputValues,
             assertToolOutputContains,
             assertToolOutputNotContains,
             assertNoToolErrors,
@@ -296,6 +303,7 @@ internal static partial class Program {
             requireAnyTools,
             forbidTools,
             minDistinctToolInputValues,
+            forbidToolInputValues,
             assertToolOutputContains,
             assertToolOutputNotContains,
             assertNoToolErrors,
@@ -392,6 +400,58 @@ internal static partial class Program {
             }
 
             result[key] = parsed;
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadScenarioForbidToolInputValues(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var valueElement)) {
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (valueElement.ValueKind == JsonValueKind.Null || valueElement.ValueKind == JsonValueKind.Undefined) {
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (valueElement.ValueKind != JsonValueKind.Object) {
+            throw new InvalidOperationException($"'{propertyName}' must be an object mapping input keys to string or string[] values.");
+        }
+
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in valueElement.EnumerateObject()) {
+            var key = (property.Name ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            var values = new List<string>();
+            if (property.Value.ValueKind == JsonValueKind.String) {
+                var single = (property.Value.GetString() ?? string.Empty).Trim();
+                if (single.Length > 0) {
+                    values.Add(single);
+                }
+            } else if (property.Value.ValueKind == JsonValueKind.Array) {
+                foreach (var valueElementItem in property.Value.EnumerateArray()) {
+                    if (valueElementItem.ValueKind != JsonValueKind.String) {
+                        throw new InvalidOperationException($"'{propertyName}.{key}' array must contain only strings.");
+                    }
+
+                    var candidate = (valueElementItem.GetString() ?? string.Empty).Trim();
+                    if (candidate.Length > 0) {
+                        values.Add(candidate);
+                    }
+                }
+            } else {
+                throw new InvalidOperationException($"'{propertyName}.{key}' must be a string or array of strings.");
+            }
+
+            var normalizedValues = values
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (normalizedValues.Length > 0) {
+                result[key] = normalizedValues;
+            }
         }
 
         return result;

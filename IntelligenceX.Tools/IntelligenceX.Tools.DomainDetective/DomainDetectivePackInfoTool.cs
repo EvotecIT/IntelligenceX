@@ -11,6 +11,7 @@ namespace IntelligenceX.Tools.DomainDetective;
 /// </summary>
 public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool {
     private sealed record PackInfoRequest;
+    private readonly PackInfoAdapter _adapter;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "domaindetective_pack_info",
@@ -47,7 +48,9 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
     /// <summary>
     /// Initializes a new instance of the <see cref="DomainDetectivePackInfoTool"/> class.
     /// </summary>
-    public DomainDetectivePackInfoTool(DomainDetectiveToolOptions options) : base(options) { }
+    public DomainDetectivePackInfoTool(DomainDetectiveToolOptions options) : base(options) {
+        _adapter = new PackInfoAdapter(this);
+    }
 
     /// <inheritdoc />
     public override ToolDefinition Definition => DefinitionValue;
@@ -57,16 +60,10 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
         return RunPipelineAsync(
             arguments: arguments,
             cancellationToken: cancellationToken,
-            binder: BindRequest,
-            execute: ExecuteAsync);
+            adapter: _adapter);
     }
 
-    private static ToolRequestBindingResult<PackInfoRequest> BindRequest(JsonObject? arguments) {
-        _ = arguments;
-        return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
-    }
-
-    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+    private Task<string> BuildPackInfoResponseAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -155,5 +152,24 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
             "Use AD pack tools for directory-specific domain controller and LDAP workflows.");
 
         return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
+    }
+
+    private sealed class PackInfoAdapter : ToolRequestAdapter<PackInfoRequest> {
+        private readonly DomainDetectivePackInfoTool _tool;
+
+        public PackInfoAdapter(DomainDetectivePackInfoTool tool) {
+            _tool = tool;
+        }
+
+        public override ToolRequestBindingResult<PackInfoRequest> Bind(JsonObject? arguments) {
+            _ = arguments;
+            return ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest());
+        }
+
+        public override Task<string> ExecuteAsync(
+            ToolPipelineContext<PackInfoRequest> context,
+            CancellationToken cancellationToken) {
+            return _tool.BuildPackInfoResponseAsync(context, cancellationToken);
+        }
     }
 }

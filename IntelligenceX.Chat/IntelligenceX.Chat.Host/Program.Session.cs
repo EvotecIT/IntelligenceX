@@ -36,9 +36,6 @@ internal static partial class Program {
         private const int HostTargetSpecificityShortNameBonus = 1;
         private const int HostTargetSpecificityIpLiteralPenalty = 2;
         private const int HostTargetSpecificityLocalhostPenalty = 3;
-        private const int MinReplicationProbeTimeoutMs = 10000;
-        private const int MinDomainDetectiveSummaryTimeoutMs = 30000;
-        private const string AdDiscoveryRootDseFailureErrorCode = "not_configured";
         private const string ScenarioExecutionContractMarker = "[Scenario execution contract]";
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
         private readonly IntelligenceXClient _client;
@@ -122,6 +119,7 @@ internal static partial class Program {
             var turnReadOnlyOutputBySignature = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var toolRounds = 0;
             var noToolExecutionRetryCount = 0;
+            var noTextToolOutputDirectRetryUsed = false;
 
             var input = ChatInput.FromText(text);
             var toolDefs = _registry.GetDefinitions();
@@ -203,6 +201,29 @@ internal static partial class Program {
                     }
 
                     if (string.IsNullOrWhiteSpace(finalText)) {
+                        var shouldRetryNoTextToolOutputNarrative = !noTextToolOutputDirectRetryUsed && reportedOutputs.Count > 0;
+                        if (shouldRetryNoTextToolOutputNarrative) {
+                            noTextToolOutputDirectRetryUsed = true;
+                            var noTextToolOutputRetryPrompt = BuildNoTextToolOutputRetryPrompt(
+                                userRequest: text,
+                                toolCalls: reportedCalls,
+                                toolOutputs: reportedOutputs);
+                            chatOptions.NewThread = false;
+                            chatOptions.PreviousResponseId = TryGetResponseId(turn);
+                            chatOptions.Tools = null;
+                            chatOptions.ToolChoice = null;
+                            chatOptions.ParallelToolCalls = false;
+                            if (_options.LiveProgress) {
+                                _status?.Invoke("synthesizing executed tool findings...");
+                            }
+                            turn = await ChatWithToolSchemaRecoveryAsync(ChatInput.FromText(noTextToolOutputRetryPrompt), chatOptions, turnToken)
+                                .ConfigureAwait(false);
+                            chatOptions.Tools = toolDefs;
+                            chatOptions.ToolChoice = ToolChoice.Auto;
+                            chatOptions.ParallelToolCalls = _options.ParallelToolCalls;
+                            continue;
+                        }
+
                         finalText = BuildNoTextReplFallbackText(
                             assistantDraft: rawFinalText,
                             toolCalls: reportedCalls,
@@ -365,18 +386,22 @@ internal static partial class Program {
                 int minToolCalls,
                 IReadOnlyDictionary<string, int> minDistinctToolInputValues,
                 IReadOnlyList<string> requiredTools,
-                IReadOnlyList<string> requiredAnyTools) {
+                IReadOnlyList<string> requiredAnyTools,
+                IReadOnlyDictionary<string, IReadOnlyCollection<string>> forbiddenToolInputValues) {
                 MinToolCalls = Math.Max(0, minToolCalls);
                 MinDistinctToolInputValues = minDistinctToolInputValues
                                              ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 RequiredTools = requiredTools ?? Array.Empty<string>();
                 RequiredAnyTools = requiredAnyTools ?? Array.Empty<string>();
+                ForbiddenToolInputValues = forbiddenToolInputValues
+                                           ?? new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
             }
 
             public int MinToolCalls { get; }
             public IReadOnlyDictionary<string, int> MinDistinctToolInputValues { get; }
             public IReadOnlyList<string> RequiredTools { get; }
             public IReadOnlyList<string> RequiredAnyTools { get; }
+            public IReadOnlyDictionary<string, IReadOnlyCollection<string>> ForbiddenToolInputValues { get; }
         }
     }
 

@@ -43,6 +43,9 @@ internal sealed partial class ChatServiceSession {
     private const int RenderHintVisualTypePriorityNetwork = 400;
     private const int RenderHintPriorityMin = -100000;
     private const int RenderHintPriorityMax = 100000;
+    private const int NoTextToolOutputRetryPromptMaxEvidenceItems = 6;
+    private const int NoTextToolOutputRetryPromptMaxArgumentPairs = 4;
+    private const int NoTextToolOutputRetryPromptMaxArgumentValueChars = 64;
 
     internal static string ResolveAssistantTextBeforeNoTextFallback(
         string assistantDraft,
@@ -142,6 +145,161 @@ internal sealed partial class ChatServiceSession {
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    internal static string BuildNoTextToolOutputSynthesisPrompt(
+        string userRequest,
+        IReadOnlyList<ToolCallDto?> toolCalls,
+        IReadOnlyList<ToolOutputDto?> toolOutputs) {
+        var requestText = TrimForPrompt(userRequest, 520);
+        var evidenceBuilder = new StringBuilder();
+        var toolMetadataByCallId = new Dictionary<string, (string ToolName, string ArgumentSummary)>(StringComparer.OrdinalIgnoreCase);
+        if (toolCalls is { Count: > 0 }) {
+            for (var i = 0; i < toolCalls.Count; i++) {
+                var call = toolCalls[i];
+                if (call is null) {
+                    continue;
+                }
+
+                var callId = (call.CallId ?? string.Empty).Trim();
+                var toolName = (call.Name ?? string.Empty).Trim();
+                if (callId.Length == 0 || toolName.Length == 0) {
+                    continue;
+                }
+
+                toolMetadataByCallId[callId] = (
+                    ToolName: toolName,
+                    ArgumentSummary: BuildToolCallArgumentSummary(call.ArgumentsJson));
+            }
+        }
+
+        var appendedCount = 0;
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            var output = toolOutputs[i];
+            if (output is null) {
+                continue;
+            }
+
+            if (appendedCount >= NoTextToolOutputRetryPromptMaxEvidenceItems) {
+                break;
+            }
+
+            var summary = BuildToolOutputFallbackSummary(output);
+            if (summary.Length == 0) {
+                continue;
+            }
+
+            var callId = (output.CallId ?? string.Empty).Trim();
+            var toolName = "tool";
+            var argumentSummary = string.Empty;
+            if (toolMetadataByCallId.TryGetValue(callId, out var metadata)) {
+                toolName = metadata.ToolName;
+                argumentSummary = metadata.ArgumentSummary;
+            }
+
+            var status = output.Ok is false ? "error" : "ok";
+            evidenceBuilder.Append("- ")
+                .Append(toolName);
+            if (argumentSummary.Length > 0) {
+                evidenceBuilder.Append(" [")
+                    .Append(argumentSummary)
+                    .Append("]");
+            }
+
+            evidenceBuilder.Append(" (")
+                .Append(status)
+                .Append("): ")
+                .Append(summary)
+                .AppendLine();
+            appendedCount++;
+        }
+
+        if (evidenceBuilder.Length == 0) {
+            evidenceBuilder.AppendLine("- Tool outputs were present but no concise summaries were available.");
+        }
+
+        return $$"""
+            [No-text tool-output recovery]
+            Tool execution completed but the assistant draft is empty. Produce the final user-facing answer from the executed tool evidence below.
+
+            User request:
+            {{requestText}}
+
+            Executed tool evidence:
+            {{evidenceBuilder.ToString().TrimEnd()}}
+
+            Requirements:
+            - Use only the executed tool evidence above.
+            - Keep the response concise and direct.
+            - Do not call tools again.
+            - If evidence is incomplete, state the exact missing evidence briefly.
+            - Do not emit internal markers or control payload text.
+            Return only the final assistant response text.
+            """;
+    }
+
+    private static string BuildToolCallArgumentSummary(string? argumentsJson) {
+        var normalized = (argumentsJson ?? string.Empty).Trim();
+        if (normalized.Length == 0 || !LooksLikeJsonPayload(normalized)) {
+            return string.Empty;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(normalized);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return string.Empty;
+            }
+
+            var pairs = new List<string>(NoTextToolOutputRetryPromptMaxArgumentPairs);
+            foreach (var property in doc.RootElement.EnumerateObject()) {
+                if (pairs.Count >= NoTextToolOutputRetryPromptMaxArgumentPairs) {
+                    break;
+                }
+
+                var key = CollapseWhitespace((property.Name ?? string.Empty).Trim());
+                if (key.Length == 0) {
+                    continue;
+                }
+
+                if (!TryFormatCompactArgumentValue(property.Value, out var compactValue)) {
+                    continue;
+                }
+
+                pairs.Add(key + "=" + compactValue);
+            }
+
+            if (pairs.Count == 0) {
+                return string.Empty;
+            }
+
+            return "args: " + string.Join(", ", pairs);
+        } catch (JsonException) {
+            return string.Empty;
+        }
+    }
+
+    private static bool TryFormatCompactArgumentValue(JsonElement value, out string compactValue) {
+        compactValue = string.Empty;
+        string raw;
+        switch (value.ValueKind) {
+            case JsonValueKind.String:
+                raw = (value.GetString() ?? string.Empty).Trim();
+                break;
+            case JsonValueKind.Number:
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+                raw = value.ToString();
+                break;
+            default:
+                return false;
+        }
+
+        if (raw.Length == 0) {
+            return false;
+        }
+
+        compactValue = TruncateToolOutputSummary(raw, NoTextToolOutputRetryPromptMaxArgumentValueChars);
+        return compactValue.Length > 0;
     }
 
     private static string BuildToolOutputFallbackSummary(ToolOutputDto output) {

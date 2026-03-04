@@ -129,7 +129,7 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
         }
 
         var name = string.IsNullOrWhiteSpace(queryName) ? "query" : queryName.Trim();
-        errorResponse = ToolResponse.Error(
+        errorResponse = ToolResultV2.Error(
             "query_failed",
             $"No domains resolved for {name} query. Provide domain_name or ensure forest discovery is available.");
         return false;

@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Setup.Onboarding;
@@ -11,6 +12,10 @@ namespace IntelligenceX.Tools.ReviewerSetup;
 /// Returns reviewer setup path contract and command guidance for model-driven orchestration.
 /// </summary>
 public sealed class ReviewerSetupPackInfoTool : ReviewerSetupToolBase, ITool {
+    private sealed record PackInfoRequest;
+
+    private readonly ToolRequestAdapter<PackInfoRequest> _adapter;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "reviewer_setup_pack_info",
         "Return reviewer onboarding path definitions (new-setup, refresh-auth, cleanup, maintenance) and recommended command flows. Call this first before onboarding automation.",
@@ -25,13 +30,22 @@ public sealed class ReviewerSetupPackInfoTool : ReviewerSetupToolBase, ITool {
     /// <summary>
     /// Initializes a new instance of the <see cref="ReviewerSetupPackInfoTool"/> class.
     /// </summary>
-    public ReviewerSetupPackInfoTool(ReviewerSetupToolOptions options) : base(options) { }
+    public ReviewerSetupPackInfoTool(ReviewerSetupToolOptions options) : base(options) {
+        _adapter = new PackInfoAdapter(ExecuteAsync);
+    }
 
     /// <inheritdoc />
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            adapter: _adapter);
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
 
         var root = ToolPackGuidance.Create(
@@ -88,7 +102,23 @@ public sealed class ReviewerSetupPackInfoTool : ReviewerSetupToolBase, ITool {
             "Call this tool first to discover onboarding paths and command templates.",
             "Use `new-setup`, `refresh-auth`, `cleanup`, or `maintenance` as stable path ids.");
 
-        return Task.FromResult(ToolResponse.OkModel(root, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
+    }
+
+    private sealed class PackInfoAdapter : ToolRequestAdapter<PackInfoRequest> {
+        private readonly Func<ToolPipelineContext<PackInfoRequest>, CancellationToken, Task<string>> _execute;
+
+        public PackInfoAdapter(Func<ToolPipelineContext<PackInfoRequest>, CancellationToken, Task<string>> execute) {
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        }
+
+        public override ToolRequestBindingResult<PackInfoRequest> Bind(JsonObject? arguments) {
+            return ToolRequestBinder.Bind(arguments, static _ => ToolRequestBindingResult<PackInfoRequest>.Success(new PackInfoRequest()));
+        }
+
+        public override Task<string> ExecuteAsync(ToolPipelineContext<PackInfoRequest> context, CancellationToken cancellationToken) {
+            return _execute(context, cancellationToken);
+        }
     }
 
     private static object BuildCommandTemplates() {

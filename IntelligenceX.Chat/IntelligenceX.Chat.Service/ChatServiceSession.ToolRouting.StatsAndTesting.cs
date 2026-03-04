@@ -678,6 +678,32 @@ internal sealed partial class ChatServiceSession {
         return BuildDomainIntentClarificationText(new DomainIntentFamilyAvailability(HasAd: hasAdFamily, HasPublic: hasPublicFamily));
     }
 
+    internal static string BuildDomainIntentClarificationTextForTesting(
+        IReadOnlyList<string> families,
+        IReadOnlyDictionary<string, string>? familyActionIds) {
+        var normalizedFamilies = families is null || families.Count == 0
+            ? Array.Empty<string>()
+            : families
+                .Where(static family => TryNormalizeDomainIntentFamily(family, out _))
+                .Select(static family => family.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(static family => string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
+                        ? 0
+                        : string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
+                            ? 1
+                            : 2)
+                .ThenBy(static family => family, StringComparer.Ordinal)
+                .ToArray();
+        var hasAdFamily = normalizedFamilies.Contains(DomainIntentFamilyAd, StringComparer.Ordinal);
+        var hasPublicFamily = normalizedFamilies.Contains(DomainIntentFamilyPublic, StringComparer.Ordinal);
+        var availability = new DomainIntentFamilyAvailability(
+            HasAd: hasAdFamily,
+            HasPublic: hasPublicFamily,
+            Families: normalizedFamilies);
+        var actionCatalog = new DomainIntentActionCatalog(FamilyActionIds: familyActionIds);
+        return BuildDomainIntentClarificationText(availability, actionCatalog);
+    }
+
     internal static string BuildDomainIntentClarificationVisibleTextForTesting(bool hasAdFamily, bool hasPublicFamily) {
         return BuildDomainIntentClarificationVisibleText(new DomainIntentFamilyAvailability(HasAd: hasAdFamily, HasPublic: hasPublicFamily));
     }

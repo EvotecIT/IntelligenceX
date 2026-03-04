@@ -630,7 +630,68 @@
       || lower.indexOf("debug mode on") === 0;
   }
 
+  function parseStartupStatusContext(value) {
+    var normalized = String(value || "").trim();
+    if (!normalized) {
+      return null;
+    }
+
+    var match = normalized.match(/\(\s*phase\s+([a-z0-9_]+)(?:\s*,\s*cause\s+([a-z0-9_]+))?\s*\)/i);
+    if (!match) {
+      return null;
+    }
+
+    var phase = String(match[1] || "").trim().toLowerCase();
+    if (!phase) {
+      return null;
+    }
+
+    var cause = String(match[2] || "").trim().toLowerCase();
+    return {
+      phase: phase,
+      cause: cause
+    };
+  }
+
+  function resolveHeaderStatusChipFromStructuredStartupContext() {
+    var context = parseStartupStatusContext(state.status);
+    if (!context) {
+      return null;
+    }
+
+    if (context.phase === "startup_auth_wait") {
+      if (context.cause === "auth_wait") {
+        return { text: "Sign in to continue loading tool packs", tone: "warn" };
+      }
+
+      return { text: "Sign in to continue", tone: "warn" };
+    }
+
+    if (context.phase === "startup_metadata_sync") {
+      if (context.cause === "metadata_retry") {
+        return { text: "Loading tool packs (retrying metadata sync)", tone: "warn" };
+      }
+
+      return { text: "Loading tool packs", tone: "warn" };
+    }
+
+    if (context.phase === "startup_connect") {
+      if (context.cause === "pipe_retry") {
+        return { text: "Starting runtime (retrying connection)", tone: "warn" };
+      }
+
+      return { text: "Starting runtime", tone: "warn" };
+    }
+
+    return null;
+  }
+
   function resolveHeaderStatusChipFallbackStatus() {
+    var structuredStartupStatus = resolveHeaderStatusChipFromStructuredStartupContext();
+    if (structuredStartupStatus) {
+      return structuredStartupStatus;
+    }
+
     if (normalizeBool(state.connected)) {
       if (normalizeBool(state.authenticated)) {
         return { text: "Ready", tone: "ok" };
@@ -789,9 +850,20 @@
     var statusEl = byId("status");
     var rawValue = String(text || "").trim();
     var value = rawValue;
+    var lowerRawValue = rawValue.toLowerCase();
     var normalizedTone = "";
     if (typeof tone === "string") {
       normalizedTone = tone.trim().toLowerCase();
+    }
+    if (normalizeBool(state.connected)
+      && !normalizeBool(state.authenticated)
+      && normalizeBool(state.options && state.options.toolsLoading)
+      && lowerRawValue.indexOf("sign in to continue") === 0
+      && lowerRawValue.indexOf("loading tool packs") < 0) {
+      value = "Sign in to continue loading tool packs";
+      if (!normalizedTone) {
+        normalizedTone = "warn";
+      }
     }
     if (!shouldRenderHeaderStatusChip(value)) {
       var fallbackStatus = resolveHeaderStatusChipFallbackStatus();

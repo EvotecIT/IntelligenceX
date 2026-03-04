@@ -47,6 +47,22 @@ public sealed class MainWindowServiceBootstrapStatusTests {
     }
 
     /// <summary>
+    /// Marks pack registration progress as send-safe so startup progress remains visible
+    /// during first-turn waits while metadata sync is still running.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_PackRegistrationProgress_IsSendSafe() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[pack warning] [startup] pack_register_progress pack='eventlog' phase='begin' index='2' total='11'",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... registering tool pack 2/11 (eventlog)", statusText);
+        Assert.True(allowDuringSend);
+    }
+
+    /// <summary>
     /// Parses pack registration end-progress diagnostics into a user-facing startup status.
     /// </summary>
     [Fact]
@@ -57,6 +73,36 @@ public sealed class MainWindowServiceBootstrapStatusTests {
 
         Assert.True(parsed);
         Assert.Equal("Starting runtime... registered tool pack 2/11 (eventlog, 42ms)", statusText);
+    }
+
+    /// <summary>
+    /// Parses runtime provider connect begin diagnostics and marks status updates as send-safe.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_ParsesProviderConnectProgressBegin() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[startup] provider_connect_progress phase='begin' operation='connect_client' transport='native'",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... connecting runtime provider (native)", statusText);
+        Assert.True(allowDuringSend);
+    }
+
+    /// <summary>
+    /// Parses runtime provider connect end diagnostics and marks status updates as send-safe.
+    /// </summary>
+    [Fact]
+    public void TryBuildServiceBootstrapStatus_ParsesProviderConnectProgressEnd() {
+        var parsed = MainWindow.TryBuildServiceBootstrapStatus(
+            "[startup] provider_connect_progress phase='end' operation='connect_client' transport='native' status='ok' elapsed_ms='3120'",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... connected runtime provider (native, 3120ms)", statusText);
+        Assert.True(allowDuringSend);
     }
 
     /// <summary>
@@ -149,5 +195,97 @@ public sealed class MainWindowServiceBootstrapStatusTests {
             startupMetadataSyncInProgress);
 
         Assert.Equal(expected, shouldPublish);
+    }
+
+    /// <summary>
+    /// Allows provider-connect progress updates during active send when send-override is requested.
+    /// </summary>
+    [Fact]
+    public void ShouldPublishServiceBootstrapStatus_AllowsSendOverrideForProviderConnectProgress() {
+        var shouldPublish = MainWindow.ShouldPublishServiceBootstrapStatus(
+            shutdownRequested: false,
+            isConnected: true,
+            isSending: true,
+            turnStartupInProgress: false,
+            startupMetadataSyncInProgress: false,
+            allowDuringSend: true);
+
+        Assert.True(shouldPublish);
+    }
+
+    /// <summary>
+    /// Keeps startup pack progress visible even while a turn-startup path is active,
+    /// as long as the status source is marked send-safe.
+    /// </summary>
+    [Fact]
+    public void ShouldPublishServiceBootstrapStatus_AllowsSendOverrideDuringTurnStartup() {
+        var shouldPublish = MainWindow.ShouldPublishServiceBootstrapStatus(
+            shutdownRequested: false,
+            isConnected: true,
+            isSending: true,
+            turnStartupInProgress: true,
+            startupMetadataSyncInProgress: true,
+            allowDuringSend: true);
+
+        Assert.True(shouldPublish);
+    }
+
+    /// <summary>
+    /// Allows send-safe startup statuses to publish while connected even if metadata-sync tracking
+    /// has not yet toggled on, preventing transient visibility gaps.
+    /// </summary>
+    [Fact]
+    public void ShouldPublishServiceBootstrapStatus_AllowsSendSafeConnectedStatusWithoutMetadataFlag() {
+        var shouldPublish = MainWindow.ShouldPublishServiceBootstrapStatus(
+            shutdownRequested: false,
+            isConnected: true,
+            isSending: false,
+            turnStartupInProgress: false,
+            startupMetadataSyncInProgress: false,
+            allowDuringSend: true);
+
+        Assert.True(shouldPublish);
+    }
+
+    /// <summary>
+    /// When runtime is already connected, rewrites startup-prefixed bootstrap text into connected wording and tags metadata-sync cause.
+    /// </summary>
+    [Fact]
+    public void BuildConnectedBootstrapStatusText_RewritesStartingRuntimePrefix_AndAppendsCause() {
+        var statusText = MainWindow.BuildConnectedBootstrapStatusText(
+            "Starting runtime... loading tool packs 3/12 (dnsclientx)",
+            MainWindow.StartupStatusCauseMetadataSync);
+
+        Assert.Equal(
+            "Runtime connected. Loading tool packs 3/12 (dnsclientx) (phase startup_metadata_sync, cause metadata_sync)",
+            statusText);
+    }
+
+    /// <summary>
+    /// Keeps existing cause suffix stable to avoid duplicate cause markers in status-chip text.
+    /// </summary>
+    [Fact]
+    public void BuildConnectedBootstrapStatusText_DoesNotDuplicateCauseSuffix() {
+        var statusText = MainWindow.BuildConnectedBootstrapStatusText(
+            "Runtime connected. Loading tool packs in background... (cause metadata_sync)",
+            MainWindow.StartupStatusCauseMetadataSync);
+
+        Assert.Equal(
+            "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)",
+            statusText);
+    }
+
+    /// <summary>
+    /// Keeps existing structured startup phase/cause context stable to avoid duplicate context markers.
+    /// </summary>
+    [Fact]
+    public void BuildConnectedBootstrapStatusText_DoesNotDuplicatePhaseAndCauseContext() {
+        var statusText = MainWindow.BuildConnectedBootstrapStatusText(
+            "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)",
+            MainWindow.StartupStatusCauseMetadataSync);
+
+        Assert.Equal(
+            "Runtime connected. Loading tool packs in background... (phase startup_metadata_sync, cause metadata_sync)",
+            statusText);
     }
 }

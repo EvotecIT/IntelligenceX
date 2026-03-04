@@ -384,6 +384,7 @@ internal sealed partial class ChatServiceSession {
             return definitions;
         }
 
+        var explicitRequestedToolNames = BuildExplicitRequestedToolNameSet(userRequest);
         var routingTokens = TokenizeRoutingTokens(userRequest, maxTokens: 16);
         var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
         string[]? toolSearchTexts = null;
@@ -419,7 +420,11 @@ internal sealed partial class ChatServiceSession {
             var definition = definitions[i];
             var score = 0d;
             var tokenHits = 0;
+            var explicitToolMatch = IsExplicitRequestedToolMatch(definition.Name, explicitRequestedToolNames);
             var directNameMatch = userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0;
+            if (explicitToolMatch) {
+                score += 9d;
+            }
             if (directNameMatch) {
                 score += 6d;
             }
@@ -456,6 +461,7 @@ internal sealed partial class ChatServiceSession {
                 Definition: definition,
                 Score: score,
                 DirectNameMatch: directNameMatch,
+                ExplicitToolMatch: explicitToolMatch,
                 TokenHits: tokenHits,
                 Adjustment: adjustment));
         }

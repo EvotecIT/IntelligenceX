@@ -49,6 +49,20 @@ public sealed partial class MainWindow : Window {
             var queueConversationId = string.IsNullOrWhiteSpace(preferredConversationId)
                 ? _activeConversationId
                 : preferredConversationId;
+            if (ShouldSuppressEquivalentManualPromptDuringActiveQueuedDispatch(
+                    incomingText: text,
+                    incomingConversationId: queueConversationId,
+                    incomingIsQueuedDispatch: queuedAtUtc.HasValue,
+                    incomingSkipUserBubble: skipUserBubble,
+                    activeDispatchFromQueuedAfterLogin: GetActiveTurnFromQueuedAfterLoginForDispatchDedup(),
+                    activeDispatchText: GetActiveTurnNormalizedPromptTextForDispatchDedup(),
+                    activeDispatchConversationId: GetActiveTurnPromptConversationIdForDispatchDedup(),
+                    startupScopeConversationId: _activeConversationId)) {
+                await SetStatusAsync("Equivalent queued prompt is already running.").ConfigureAwait(false);
+                await PublishSessionStateAsync().ConfigureAwait(false);
+                return;
+            }
+
             if (TryEnqueuePendingTurn(text, queueConversationId, out var queuedCount)) {
                 await SetStatusAsync($"Queued next turn ({queuedCount}/{MaxQueuedTurns})").ConfigureAwait(false);
             } else {
@@ -146,12 +160,18 @@ public sealed partial class MainWindow : Window {
             CancellationTokenSource? turnRequestCts = null;
             try {
                 turnRequestCts = new CancellationTokenSource();
+                var activeTurnFromQueuedAfterLogin = queuedAtUtc.HasValue && skipUserBubble;
+                var activeTurnPromptText = NormalizeQueuedPromptTextForDispatch(turn.UserText);
+                var activeTurnPromptConversationId = NormalizeQueuedPromptConversationId(turn.ConversationId);
                 lock (_activeTurnLifecycleSync) {
                     _activeTurnRequestId = requestId;
                     _latestTurnRequestId = requestId;
                     _cancelRequestedTurnRequestId = null;
                     _activeTurnRequestCts = turnRequestCts;
                     _activeRequestConversationId = turn.ConversationId;
+                    _activeTurnFromQueuedAfterLogin = activeTurnFromQueuedAfterLogin;
+                    _activeTurnNormalizedPromptText = activeTurnPromptText;
+                    _activeTurnPromptConversationId = activeTurnPromptConversationId;
                 }
                 ClearToolRoutingInsights();
                 await SetActivityAsync("Sending request to runtime...").ConfigureAwait(false);
@@ -168,6 +188,10 @@ public sealed partial class MainWindow : Window {
                         if (string.Equals(_activeRequestConversationId, turn.ConversationId, StringComparison.OrdinalIgnoreCase)) {
                             _activeRequestConversationId = null;
                         }
+
+                        _activeTurnFromQueuedAfterLogin = false;
+                        _activeTurnNormalizedPromptText = string.Empty;
+                        _activeTurnPromptConversationId = string.Empty;
                     }
 
                     if (string.Equals(_cancelRequestedTurnRequestId, requestId, StringComparison.Ordinal)) {
@@ -303,6 +327,47 @@ public sealed partial class MainWindow : Window {
         await SendPromptAsync(text, normalized, queuedAtUtc, skipUserBubble).ConfigureAwait(false);
     }
 
+    private bool GetActiveTurnFromQueuedAfterLoginForDispatchDedup() {
+        lock (_activeTurnLifecycleSync) {
+            return _activeTurnFromQueuedAfterLogin;
+        }
+    }
+
+    private string GetActiveTurnNormalizedPromptTextForDispatchDedup() {
+        lock (_activeTurnLifecycleSync) {
+            return _activeTurnNormalizedPromptText;
+        }
+    }
+
+    private string GetActiveTurnPromptConversationIdForDispatchDedup() {
+        lock (_activeTurnLifecycleSync) {
+            return _activeTurnPromptConversationId;
+        }
+    }
+
+    internal static bool ShouldSuppressEquivalentManualPromptDuringActiveQueuedDispatch(
+        string? incomingText,
+        string? incomingConversationId,
+        bool incomingIsQueuedDispatch,
+        bool incomingSkipUserBubble,
+        bool activeDispatchFromQueuedAfterLogin,
+        string? activeDispatchText,
+        string? activeDispatchConversationId,
+        string? startupScopeConversationId) {
+        if (incomingSkipUserBubble || incomingIsQueuedDispatch || !activeDispatchFromQueuedAfterLogin) {
+            return false;
+        }
+
+        return AreQueuedPromptsEquivalentForDispatch(
+            activeDispatchText,
+            activeDispatchConversationId,
+            incomingText,
+            incomingConversationId,
+            allowOneSidedMissingConversationId: true,
+            allowBothMissingConversationIdsInStartupScope: true,
+            startupScopeConversationId: startupScopeConversationId);
+    }
+
     private bool TryEnqueuePendingTurn(string text, string? conversationId, out int queuedCount) {
         var trimmedText = (text ?? string.Empty).Trim();
         var trimmedConversationId = (conversationId ?? string.Empty).Trim();
@@ -388,6 +453,7 @@ public sealed partial class MainWindow : Window {
                         trimmedText,
                         trimmedConversationId,
                         allowOneSidedMissingConversationId: true,
+                        allowBothMissingConversationIdsInStartupScope: true,
                         startupScopeConversationId: startupScopeConversationId)) {
                     continue;
                 }
@@ -435,6 +501,7 @@ public sealed partial class MainWindow : Window {
                         normalizedText,
                         normalizedConversationId,
                         allowOneSidedMissingConversationId: true,
+                        allowBothMissingConversationIdsInStartupScope: true,
                         startupScopeConversationId: startupScopeConversationId)) {
                     removed = true;
                     continue;
@@ -459,6 +526,7 @@ public sealed partial class MainWindow : Window {
         string? rightText,
         string? rightConversationId,
         bool allowOneSidedMissingConversationId = false,
+        bool allowBothMissingConversationIdsInStartupScope = false,
         string? startupScopeConversationId = null) {
         var normalizedLeftText = NormalizeQueuedPromptTextForDispatch(leftText);
         var normalizedRightText = NormalizeQueuedPromptTextForDispatch(rightText);
@@ -473,7 +541,10 @@ public sealed partial class MainWindow : Window {
         var normalizedLeftConversationId = NormalizeQueuedPromptConversationId(leftConversationId);
         var normalizedRightConversationId = NormalizeQueuedPromptConversationId(rightConversationId);
         if (normalizedLeftConversationId.Length == 0 && normalizedRightConversationId.Length == 0) {
-            return false;
+            // Startup/login recovery can capture queued and manual prompt attempts before
+            // any stable conversation id is assigned. Allow callers in that bounded path
+            // to dedupe identical text-only replays.
+            return allowBothMissingConversationIdsInStartupScope;
         }
 
         if (string.Equals(normalizedLeftConversationId, normalizedRightConversationId, StringComparison.OrdinalIgnoreCase)) {

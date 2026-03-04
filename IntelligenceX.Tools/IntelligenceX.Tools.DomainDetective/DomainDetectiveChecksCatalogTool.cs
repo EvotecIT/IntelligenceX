@@ -13,6 +13,10 @@ namespace IntelligenceX.Tools.DomainDetective;
 /// Returns supported DomainDetective check names and alias normalization guidance.
 /// </summary>
 public sealed class DomainDetectiveChecksCatalogTool : DomainDetectiveToolBase, ITool {
+    private sealed record ChecksCatalogRequest(bool IncludeAliases, bool IncludeDefaultChecks);
+
+    private readonly ToolRequestAdapter<ChecksCatalogRequest> _adapter;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "domaindetective_checks_catalog",
         "Return supported DomainDetective check names, baseline defaults, and alias normalization guidance.",
@@ -24,25 +28,32 @@ public sealed class DomainDetectiveChecksCatalogTool : DomainDetectiveToolBase, 
     /// <summary>
     /// Initializes a new instance of the <see cref="DomainDetectiveChecksCatalogTool"/> class.
     /// </summary>
-    public DomainDetectiveChecksCatalogTool(DomainDetectiveToolOptions options) : base(options) { }
+    public DomainDetectiveChecksCatalogTool(DomainDetectiveToolOptions options) : base(options) {
+        _adapter = new ChecksCatalogAdapter(ExecuteAsync);
+    }
 
     /// <inheritdoc />
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            adapter: _adapter);
+    }
 
-        var includeAliases = ToolArgs.GetBoolean(arguments, "include_aliases", defaultValue: true);
-        var includeDefaultChecks = ToolArgs.GetBoolean(arguments, "include_default_checks", defaultValue: true);
+    private Task<string> ExecuteAsync(ToolPipelineContext<ChecksCatalogRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         var supportedChecks = DomainDetectiveCheckNameCatalog.GetSupportedCheckNames();
-        var defaultChecks = includeDefaultChecks
+        var defaultChecks = request.IncludeDefaultChecks
             ? DomainDetectiveCheckNameCatalog.DefaultChecks
                 .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
                 .ToArray()
             : Array.Empty<string>();
-        var aliases = includeAliases
+        var aliases = request.IncludeAliases
             ? DomainDetectiveCheckNameCatalog.AliasByToken
                 .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(static pair => new DomainDetectiveCheckAliasModel {
@@ -98,11 +109,30 @@ public sealed class DomainDetectiveChecksCatalogTool : DomainDetectiveToolBase, 
                 new ToolColumn("canonical", "Canonical", "string")));
         }
 
-        return Task.FromResult(ToolOutputEnvelope.OkFlatWithRenderValue(
+        return Task.FromResult(ToolResultV2.OkFlatWithRenderValue(
             root: ToolJson.ToJsonObjectSnakeCase(result),
             meta: meta,
             summaryMarkdown: summary,
             render: JsonValue.From(renderHints)));
+    }
+
+    private sealed class ChecksCatalogAdapter : ToolRequestAdapter<ChecksCatalogRequest> {
+        private readonly Func<ToolPipelineContext<ChecksCatalogRequest>, CancellationToken, Task<string>> _execute;
+
+        public ChecksCatalogAdapter(Func<ToolPipelineContext<ChecksCatalogRequest>, CancellationToken, Task<string>> execute) {
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        }
+
+        public override ToolRequestBindingResult<ChecksCatalogRequest> Bind(JsonObject? arguments) {
+            return ToolRequestBinder.Bind(arguments, static reader => ToolRequestBindingResult<ChecksCatalogRequest>.Success(
+                new ChecksCatalogRequest(
+                    IncludeAliases: reader.Boolean("include_aliases", defaultValue: true),
+                    IncludeDefaultChecks: reader.Boolean("include_default_checks", defaultValue: true))));
+        }
+
+        public override Task<string> ExecuteAsync(ToolPipelineContext<ChecksCatalogRequest> context, CancellationToken cancellationToken) {
+            return _execute(context, cancellationToken);
+        }
     }
 
     private static string ResolveCatalogSource() {

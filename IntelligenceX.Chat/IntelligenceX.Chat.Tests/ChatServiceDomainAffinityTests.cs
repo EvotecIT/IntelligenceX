@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Json;
@@ -494,6 +495,192 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_DoesNotAcceptDefaultActionIdWhenRoutingDeclaresCustomIds() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-custom-default");
+
+        var availableDefinitions = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info",
+                description: "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_ad_custom"
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_public_custom"
+                })
+        };
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-custom-default",
+            "/act act_domain_scope_public",
+            availableDefinitions,
+            out var family);
+
+        Assert.False(resolved);
+        Assert.Equal(string.Empty, family);
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-custom-default"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_AcceptsAllDeclaredFamilyActionIds_RegardlessOfDefinitionOrder() {
+        var availableDefinitionsPrimaryOrder = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info_primary",
+                description: "AD pack primary mapping",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_ad_primary"
+                }),
+            new(
+                name: "ad_pack_info_secondary",
+                description: "AD pack conflicting mapping",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_ad_secondary"
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_public_custom"
+                })
+        };
+        var availableDefinitionsReversedOrder = availableDefinitionsPrimaryOrder.AsEnumerable().Reverse().ToList();
+
+        var sessionPrimaryOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionPrimaryOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict-a");
+        var secondaryActionPrimaryOrderResolved = sessionPrimaryOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict-a",
+            "/act act_domain_scope_ad_secondary",
+            availableDefinitionsPrimaryOrder,
+            out var secondaryFamilyPrimaryOrder);
+        Assert.True(secondaryActionPrimaryOrderResolved);
+        Assert.Equal("ad_domain", secondaryFamilyPrimaryOrder);
+
+        var sessionReversedOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionReversedOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict-b");
+        var secondaryActionReversedOrderResolved = sessionReversedOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict-b",
+            "/act act_domain_scope_ad_secondary",
+            availableDefinitionsReversedOrder,
+            out var secondaryFamilyReversedOrder);
+        Assert.True(secondaryActionReversedOrderResolved);
+        Assert.Equal("ad_domain", secondaryFamilyReversedOrder);
+
+        sessionReversedOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-conflict-b");
+        var primaryActionResolved = sessionReversedOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-conflict-b",
+            "/act act_domain_scope_ad_primary",
+            availableDefinitionsReversedOrder,
+            out var primaryFamily);
+
+        Assert.True(primaryActionResolved);
+        Assert.Equal("ad_domain", primaryFamily);
+        Assert.Equal("ad_domain", sessionReversedOrder.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-conflict-b"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_ResolvesAmbiguousCrossFamilyActionIdDeterministicallyAcrossDefinitionOrder() {
+        var availableDefinitionsPrimaryOrder = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info",
+                description: "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "act_domain_scope_shared"
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_shared"
+                })
+        };
+        var availableDefinitionsReversedOrder = availableDefinitionsPrimaryOrder.AsEnumerable().Reverse().ToList();
+
+        var sessionPrimaryOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionPrimaryOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-ambiguous-a");
+        var resolvedPrimaryOrder = sessionPrimaryOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-ambiguous-a",
+            "/act act_domain_scope_shared",
+            availableDefinitionsPrimaryOrder,
+            out var familyPrimaryOrder);
+
+        var sessionReversedOrder = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        sessionReversedOrder.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-ambiguous-b");
+        var resolvedReversedOrder = sessionReversedOrder.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-ambiguous-b",
+            "/act act_domain_scope_shared",
+            availableDefinitionsReversedOrder,
+            out var familyReversedOrder);
+
+        Assert.Equal(resolvedPrimaryOrder, resolvedReversedOrder);
+        Assert.Equal(familyPrimaryOrder, familyReversedOrder);
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_UsesFamilyDefaultActionWhenCatalogMappingIsMissing() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-action-default-fallback");
+
+        var availableDefinitions = new List<ToolDefinition> {
+            new(
+                name: "ad_pack_info",
+                description: "AD pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "active_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }),
+            new(
+                name: "domaindetective_pack_info",
+                description: "Domain pack",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "domaindetective",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = "act_domain_scope_public_custom"
+                })
+        };
+
+        // Simulate partial in-memory contract drift after validation.
+        availableDefinitions[0].Routing!.DomainIntentActionId = string.Empty;
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-action-default-fallback",
+            "/act act_domain_scope_ad",
+            availableDefinitions,
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("ad_domain", family);
+        Assert.Equal("ad_domain", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-action-default-fallback"));
+    }
+
+    [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_ParsesExplicitActSelectionCommand() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-explicit-act");
@@ -894,6 +1081,158 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Fact]
+    public void DomainIntentHostGuardrail_BlocksCompactScopeShiftSingleHostReplayWhenThreadHasMultiHostEvidence() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-scope-shift", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-scope-shift",
+            new[] {
+                new ToolCallDto {
+                    CallId = "ad-evx-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}"""
+                },
+                new ToolCallDto {
+                    CallId = "ad-evx-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD2.ad.evotec.xyz","log_name":"System"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "ad-evx-1",
+                    Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""",
+                    Ok = true
+                },
+                new ToolOutputDto {
+                    CallId = "ad-evx-2",
+                    Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-evx-replay",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""",
+            arguments: new JsonObject()
+                .Add("machine_name", "AD0.ad.evotec.xyz")
+                .Add("log_name", "System"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-scope-shift",
+            userRequest: "i mean other dcs",
+            call: call,
+            output: out var output);
+
+        Assert.True(blocked);
+        Assert.Equal("domain_scope_host_guardrail", output.ErrorCode);
+        Assert.Contains("multi-host coverage", output.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DomainIntentHostGuardrail_AllowsCompactScopeShiftSingleHostWhenHostIsPinnedExplicitly() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-scope-shift-explicit", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-scope-shift-explicit",
+            new[] {
+                new ToolCallDto {
+                    CallId = "ad-evx-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}"""
+                },
+                new ToolCallDto {
+                    CallId = "ad-evx-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD2.ad.evotec.xyz","log_name":"System"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "ad-evx-1",
+                    Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""",
+                    Ok = true
+                },
+                new ToolOutputDto {
+                    CallId = "ad-evx-2",
+                    Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-evx-replay-explicit",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""",
+            arguments: new JsonObject()
+                .Add("machine_name", "AD0.ad.evotec.xyz")
+                .Add("log_name", "System"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-scope-shift-explicit",
+            userRequest: "i mean other dcs, but AD0.ad.evotec.xyz first",
+            call: call,
+            output: out _);
+
+        Assert.False(blocked);
+    }
+
+    [Fact]
+    public void DomainIntentHostGuardrail_DoesNotBlockShortAcknowledgementQuestionSingleHostReplay() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetPreferredDomainIntentFamilyForTesting("thread-guardrail-scope-shift-short-question", "ad_domain");
+        session.RememberThreadToolEvidenceForTesting(
+            "thread-guardrail-scope-shift-short-question",
+            new[] {
+                new ToolCallDto {
+                    CallId = "ad-evx-1",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}"""
+                },
+                new ToolCallDto {
+                    CallId = "ad-evx-2",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD2.ad.evotec.xyz","log_name":"System"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "ad-evx-1",
+                    Output = """{"ok":true,"summary_markdown":"AD1 baseline"}""",
+                    Ok = true
+                },
+                new ToolOutputDto {
+                    CallId = "ad-evx-2",
+                    Output = """{"ok":true,"summary_markdown":"AD2 baseline"}""",
+                    Ok = true
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "ad-evx-replay-short-question",
+            name: "eventlog_live_query",
+            input: """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""",
+            arguments: new JsonObject()
+                .Add("machine_name", "AD0.ad.evotec.xyz")
+                .Add("log_name", "System"),
+            raw: new JsonObject().Add("type", "tool_call").Add("name", "eventlog_live_query"));
+
+        var blocked = session.TryBuildDomainIntentHostScopeGuardrailOutputForTesting(
+            threadId: "thread-guardrail-scope-shift-short-question",
+            userRequest: "go ahead?",
+            call: call,
+            output: out _);
+
+        Assert.False(blocked);
+    }
+
+    [Fact]
     public void IsDomainIntentHostGuardrailCandidateToolForTesting_UsesMetadataForCustomNames() {
         var adTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "custom_directory_probe",
@@ -901,7 +1240,12 @@ public sealed class ChatServiceDomainAffinityTests {
                 name: "custom_directory_probe",
                 description: "Custom AD probe",
                 parameters: null,
-                tags: new[] { "domain_family:ad_domain" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "custom_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }));
         var adHostTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "custom_host_timeline",
             new ToolDefinition(
@@ -909,14 +1253,24 @@ public sealed class ChatServiceDomainAffinityTests {
                 description: "Custom host timeline",
                 parameters: null,
                 category: "custom",
-                tags: new[] { "domain_family:ad_domain", "scope:host" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "custom_directory",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }));
         var dnsTagged = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "custom_dns_probe",
             new ToolDefinition(
                 name: "custom_dns_probe",
                 description: "Custom DNS probe",
                 parameters: null,
-                tags: new[] { "domain_family:public_domain", "pack:dnsclientx" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "dnsclientx",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic
+                }));
         var eventLogCategory = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
             "eventlog_live_query",
             new ToolDefinition(
@@ -924,12 +1278,28 @@ public sealed class ChatServiceDomainAffinityTests {
                 description: "Event log query",
                 parameters: null,
                 category: "eventlog",
-                tags: new[] { "domain_family:ad_domain" }));
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    PackId = "eventlog",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                }));
 
         Assert.True(adTagged);
         Assert.True(adHostTagged);
         Assert.False(dnsTagged);
         Assert.True(eventLogCategory);
+    }
+
+    [Fact]
+    public void IsDomainIntentHostGuardrailCandidateToolForTesting_DoesNotInferFamilyFromToolNameWithoutRoutingContract() {
+        var inferredByName = ChatServiceSession.IsDomainIntentHostGuardrailCandidateToolForTesting(
+            "ad_replication_health",
+            new ToolDefinition(
+                name: "ad_replication_health",
+                description: "Legacy-style AD tool name without routing contract"));
+
+        Assert.False(inferredByName);
     }
 
     [Fact]

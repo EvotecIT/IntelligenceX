@@ -24,6 +24,9 @@ public sealed partial class MainWindow {
     private static readonly Regex ServiceBootstrapPackRegistrationProgressRegex = new(
         @"^\[startup\]\s+pack_register_progress\s+pack='(?<pack>[^']*)'\s+phase='(?<phase>[^']*)'\s+index='(?<index>\d+)'\s+total='(?<total>\d+)'",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ServiceBootstrapProviderConnectProgressRegex = new(
+        @"^\[startup\]\s+provider_connect_progress\s+phase='(?<phase>[^']*)'\s+operation='(?<operation>[^']*)'(?:\s+transport='(?<transport>[^']*)')?(?:\s+status='(?<status>[^']*)')?",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ServiceBootstrapProgressSummaryRegex = new(
         @"^\[startup\]\s+plugin load progress:\s+processed\s+(?<processed>\d+)\/(?<total>\d+)\s+plugin folders",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -33,6 +36,17 @@ public sealed partial class MainWindow {
     private static readonly Regex ServiceBootstrapElapsedMsRegex = new(
         @"(?:^|\s)elapsed_ms='(?<elapsed>\d+)'",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StartupStatusCauseSuffixRegex = new(
+        @"\(cause\s+(?<cause>[^)]+)\)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StartupStatusPhaseContextRegex = new(
+        @"\(\s*phase\s+[^)]*\)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StartupStatusCauseContextRegex = new(
+        @"\(\s*(?:phase\s+[^)]*\bcause\s+|cause\s+)[^)]*\)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private const string StartingRuntimePrefix = "Starting runtime...";
+    private const string RuntimeConnectedPrefix = "Runtime connected.";
 
     private async Task<bool> EnsureServiceRunningAsync(string pipeName) {
         if (_serviceProcess is not null && !_serviceProcess.HasExited) {
@@ -231,7 +245,7 @@ public sealed partial class MainWindow {
     }
 
     private void PublishServiceBootstrapStatusFromLogLine(string rawServiceLine) {
-        if (!TryBuildServiceBootstrapStatus(rawServiceLine, out var statusText)) {
+        if (!TryBuildServiceBootstrapStatus(rawServiceLine, out var statusText, out var allowDuringSend)) {
             return;
         }
 
@@ -242,11 +256,15 @@ public sealed partial class MainWindow {
                     isConnected: _isConnected,
                     isSending: _isSending,
                     turnStartupInProgress: _turnStartupInProgress,
-                    startupMetadataSyncInProgress: startupMetadataSyncInProgress)) {
+                    startupMetadataSyncInProgress: startupMetadataSyncInProgress,
+                    allowDuringSend: allowDuringSend)) {
                 return;
             }
 
-            _ = SetStatusAsync(statusText, SessionStatusTone.Warn);
+            var effectiveStatusText = _isConnected
+                ? BuildConnectedBootstrapStatusText(statusText, StartupStatusCauseMetadataSync)
+                : statusText;
+            _ = SetStatusAsync(effectiveStatusText, SessionStatusTone.Warn);
         });
     }
 
@@ -256,7 +274,31 @@ public sealed partial class MainWindow {
         bool isSending,
         bool turnStartupInProgress,
         bool startupMetadataSyncInProgress) {
-        if (shutdownRequested || isSending || turnStartupInProgress) {
+        return ShouldPublishServiceBootstrapStatus(
+            shutdownRequested,
+            isConnected,
+            isSending,
+            turnStartupInProgress,
+            startupMetadataSyncInProgress,
+            allowDuringSend: false);
+    }
+
+    internal static bool ShouldPublishServiceBootstrapStatus(
+        bool shutdownRequested,
+        bool isConnected,
+        bool isSending,
+        bool turnStartupInProgress,
+        bool startupMetadataSyncInProgress,
+        bool allowDuringSend) {
+        if (shutdownRequested) {
+            return false;
+        }
+
+        if (turnStartupInProgress && !allowDuringSend) {
+            return false;
+        }
+
+        if (isSending && !allowDuringSend) {
             return false;
         }
 
@@ -264,11 +306,71 @@ public sealed partial class MainWindow {
             return true;
         }
 
-        return startupMetadataSyncInProgress;
+        if (startupMetadataSyncInProgress) {
+            return true;
+        }
+
+        return allowDuringSend;
+    }
+
+    internal static string BuildConnectedBootstrapStatusText(string statusText, string? cause) {
+        var normalizedStatus = (statusText ?? string.Empty).Trim();
+        var phase = StartupStatusPhaseStartupMetadataSync;
+        if (normalizedStatus.Length == 0) {
+            return AppendStartupStatusContext(
+                "Runtime connected. Loading tool packs in background...",
+                phase,
+                cause);
+        }
+
+        if (normalizedStatus.StartsWith(StartingRuntimePrefix, StringComparison.OrdinalIgnoreCase)) {
+            var suffix = normalizedStatus.Substring(StartingRuntimePrefix.Length).Trim();
+            if (suffix.Length == 0) {
+                normalizedStatus = RuntimeConnectedPrefix;
+            } else {
+                var first = suffix[0];
+                var normalizedSuffix = char.IsLetter(first)
+                    ? char.ToUpperInvariant(first) + suffix.Substring(1)
+                    : suffix;
+                normalizedStatus = RuntimeConnectedPrefix + " " + normalizedSuffix;
+            }
+        }
+
+        var hasPhaseContext = StartupStatusPhaseContextRegex.IsMatch(normalizedStatus);
+        var hasCauseContext = StartupStatusCauseContextRegex.IsMatch(normalizedStatus);
+        if (!hasPhaseContext && hasCauseContext) {
+            normalizedStatus = StartupStatusCauseSuffixRegex.Replace(
+                normalizedStatus,
+                match => {
+                    var existingCause = match.Groups["cause"].Value.Trim();
+                    if (existingCause.Length == 0) {
+                        existingCause = (cause ?? string.Empty).Trim();
+                    }
+
+                    return BuildStartupStatusContextSuffix(phase, existingCause).TrimStart();
+                },
+                1);
+            hasPhaseContext = StartupStatusPhaseContextRegex.IsMatch(normalizedStatus);
+            hasCauseContext = StartupStatusCauseContextRegex.IsMatch(normalizedStatus);
+        }
+
+        if (!hasPhaseContext || (!hasCauseContext && !string.IsNullOrWhiteSpace(cause))) {
+            normalizedStatus = AppendStartupStatusContext(
+                normalizedStatus,
+                hasPhaseContext ? null : phase,
+                hasCauseContext ? null : cause);
+        }
+
+        return normalizedStatus;
     }
 
     internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText) {
+        return TryBuildServiceBootstrapStatus(rawServiceLine, out statusText, out _);
+    }
+
+    internal static bool TryBuildServiceBootstrapStatus(string? rawServiceLine, out string statusText, out bool allowDuringSend) {
         statusText = string.Empty;
+        allowDuringSend = false;
         var normalized = (rawServiceLine ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return false;
@@ -277,6 +379,39 @@ public sealed partial class MainWindow {
         const string packWarningPrefix = "[pack warning]";
         if (normalized.StartsWith(packWarningPrefix, StringComparison.OrdinalIgnoreCase)) {
             normalized = normalized.Substring(packWarningPrefix.Length).Trim();
+        }
+
+        var providerConnectProgressMatch = ServiceBootstrapProviderConnectProgressRegex.Match(normalized);
+        if (providerConnectProgressMatch.Success) {
+            var phase = providerConnectProgressMatch.Groups["phase"].Value.Trim();
+            var status = providerConnectProgressMatch.Groups["status"].Value.Trim();
+            var transport = providerConnectProgressMatch.Groups["transport"].Value.Trim();
+            var transportLabel = string.IsNullOrWhiteSpace(transport) ? "provider" : transport;
+            if (transportLabel.Length > 42) {
+                transportLabel = transportLabel.Substring(0, 39) + "...";
+            }
+
+            if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
+                statusText = $"Starting runtime... connecting runtime provider ({transportLabel})";
+                allowDuringSend = true;
+                return true;
+            }
+
+            if (string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)) {
+                var elapsedMs = TryReadBootstrapElapsedMs(normalized);
+                var elapsedLabel = elapsedMs.HasValue
+                    ? $"{Math.Max(1, elapsedMs.Value)}ms"
+                    : "done";
+                if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase)) {
+                    statusText = $"Starting runtime... runtime provider connection failed ({transportLabel}, {elapsedLabel})";
+                } else {
+                    statusText = $"Starting runtime... connected runtime provider ({transportLabel}, {elapsedLabel})";
+                }
+                allowDuringSend = true;
+                return true;
+            }
+
+            return false;
         }
 
         var packRegistrationProgressMatch = ServiceBootstrapPackRegistrationProgressRegex.Match(normalized);
@@ -299,6 +434,7 @@ public sealed partial class MainWindow {
 
             if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
                 statusText = $"Starting runtime... registering tool pack {index}/{total} ({packLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -308,6 +444,7 @@ public sealed partial class MainWindow {
                     ? $"{Math.Max(1, elapsedMs.Value)}ms"
                     : "done";
                 statusText = $"Starting runtime... registered tool pack {index}/{total} ({packLabel}, {elapsedLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -334,6 +471,7 @@ public sealed partial class MainWindow {
 
             if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
                 statusText = $"Starting runtime... initializing tool packs {index}/{total} ({packLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -343,6 +481,7 @@ public sealed partial class MainWindow {
                     ? $"{Math.Max(1, elapsedMs.Value)}ms"
                     : "done";
                 statusText = $"Starting runtime... initialized tool packs {index}/{total} ({packLabel}, {elapsedLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -369,6 +508,7 @@ public sealed partial class MainWindow {
 
             if (string.Equals(phase, "begin", StringComparison.OrdinalIgnoreCase)) {
                 statusText = $"Starting runtime... loading tool packs {index}/{total} ({pluginLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -378,6 +518,7 @@ public sealed partial class MainWindow {
                     ? $"{Math.Max(1, elapsedMs.Value)}ms"
                     : "done";
                 statusText = $"Starting runtime... loaded tool packs {index}/{total} ({pluginLabel}, {elapsedLabel})";
+                allowDuringSend = true;
                 return true;
             }
 
@@ -396,6 +537,7 @@ public sealed partial class MainWindow {
             processed = Math.Max(0, processed);
             total = Math.Max(processed, total);
             statusText = $"Starting runtime... plugin folder scan {processed}/{total}";
+            allowDuringSend = true;
             return true;
         }
 
@@ -407,6 +549,7 @@ public sealed partial class MainWindow {
             }
 
             statusText = $"Starting runtime... tool bootstrap finished ({total}), finalizing runtime connection";
+            allowDuringSend = true;
             return true;
         }
 

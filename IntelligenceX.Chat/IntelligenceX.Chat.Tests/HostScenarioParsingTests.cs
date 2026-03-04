@@ -31,6 +31,7 @@ public sealed class HostScenarioParsingTests {
       "require_any_tools": ["eventlog_live_query", "eventlog_live_stats"],
       "forbid_tools": ["eventlog_evtx_query"],
       "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0", "localhost"] },
       "assert_tool_output_contains": ["6008", "Kernel-Power"],
       "assert_tool_output_not_contains": ["schema_validation_failed"],
       "assert_no_tool_errors": true,
@@ -66,6 +67,9 @@ public sealed class HostScenarioParsingTests {
         var minDistinctInputValues = ReadIntDictionaryProperty(turns[0], "MinDistinctToolInputValues");
         Assert.True(minDistinctInputValues.TryGetValue("machine_name", out var minMachineNameValues));
         Assert.Equal(2, minMachineNameValues);
+        var forbiddenInputValues = ReadStringListDictionaryProperty(turns[0], "ForbidToolInputValues");
+        Assert.True(forbiddenInputValues.TryGetValue("machine_name", out var forbiddenMachineValues));
+        Assert.Equal(new[] { "AD0", "localhost" }, forbiddenMachineValues);
         Assert.Equal(2, ReadStringListProperty(turns[0], "AssertToolOutputContains").Count);
         Assert.Single(ReadStringListProperty(turns[0], "AssertToolOutputNotContains"));
         Assert.True(ReadBooleanProperty(turns[0], "AssertNoToolErrors"));
@@ -88,6 +92,7 @@ public sealed class HostScenarioParsingTests {
         Assert.Empty(ReadStringListProperty(turns[1], "RequireAnyTools"));
         Assert.Empty(ReadStringListProperty(turns[1], "ForbidTools"));
         Assert.Empty(ReadIntDictionaryProperty(turns[1], "MinDistinctToolInputValues"));
+        Assert.Empty(ReadStringListDictionaryProperty(turns[1], "ForbidToolInputValues"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertToolOutputContains"));
         Assert.Empty(ReadStringListProperty(turns[1], "AssertToolOutputNotContains"));
         Assert.False(ReadBooleanProperty(turns[1], "AssertNoToolErrors"));
@@ -170,6 +175,30 @@ Check AD0 reboot
         Assert.Contains("Make at least one best-effort qualifying tool call in this turn, then summarize results.", prompt, StringComparison.Ordinal);
         Assert.Contains("User request:", prompt, StringComparison.Ordinal);
         Assert.Contains("Compare lastLogon across DCs.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_WithForbiddenToolInputValues_EmbedsForbiddenInputDirective() {
+        const string json = """
+{
+  "name": "forbidden-inputs",
+  "turns": [
+    {
+      "user": "Run eventlog checks only on non-AD0 hosts.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "forbid_tool_input_values": { "machine_name": ["AD0", "localhost"] }
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "forbidden-inputs");
+        var turn = ReadTurns(scenario).Single();
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("forbidden_tool_inputs: machine_name not-in [AD0|localhost]", prompt, StringComparison.Ordinal);
+        Assert.Contains("Forbidden tool input values: machine_name not-in [AD0|localhost].", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -457,6 +486,34 @@ Check AD0 reboot
 
             var parsed = Convert.ToInt32(valueProperty!.GetValue(entry));
             result[key] = parsed;
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadStringListDictionaryProperty(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        var raw = property!.GetValue(instance);
+        var dictionary = Assert.IsAssignableFrom<IEnumerable>(raw);
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in dictionary) {
+            var type = entry.GetType();
+            var keyProperty = type.GetProperty("Key", BindingFlags.Instance | BindingFlags.Public);
+            var valueProperty = type.GetProperty("Value", BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(keyProperty);
+            Assert.NotNull(valueProperty);
+            var key = (keyProperty!.GetValue(entry)?.ToString() ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            var values = Assert.IsAssignableFrom<IEnumerable>(valueProperty!.GetValue(entry))
+                .Cast<object>()
+                .Select(value => value?.ToString() ?? string.Empty)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToArray();
+            result[key] = values;
         }
 
         return result;

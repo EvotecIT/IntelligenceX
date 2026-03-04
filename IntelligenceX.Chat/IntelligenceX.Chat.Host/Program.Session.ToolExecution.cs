@@ -275,64 +275,6 @@ internal static partial class Program {
                 }
 
                 var result = invocation.Output ?? string.Empty;
-                var repairedCall = ApplyAdDiscoveryRootDseFallback(effectiveCall, result);
-                if (!ReferenceEquals(repairedCall, effectiveCall)) {
-                    if (_options.LiveProgress) {
-                        _status?.Invoke("input-repair: retrying AD discovery without pinned domain_controller after RootDSE failure.");
-                    }
-
-                    var repairedInvocation = await InvokeToolWithTimeoutGuardAsync(repairedCall.Arguments).ConfigureAwait(false);
-                    if (repairedInvocation.TimedOut) {
-                        return BuildToolTimeoutOutput(repairedCall.CallId, call.Name);
-                    }
-
-                    var repairedResult = repairedInvocation.Output ?? string.Empty;
-                    if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
-                        var repairedOutput = repairedResult;
-                        TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
-                        return new ToolOutput(repairedCall.CallId, repairedOutput);
-                    }
-                }
-
-                var replicationRepairedCall = ApplyAdReplicationProbeFallback(effectiveCall, result, knownHostTargets);
-                if (!ReferenceEquals(replicationRepairedCall, effectiveCall)) {
-                    if (_options.LiveProgress) {
-                        _status?.Invoke("input-repair: retrying replication probe with expanded timeout and normalized DC target.");
-                    }
-
-                    var repairedInvocation = await InvokeToolWithTimeoutGuardAsync(replicationRepairedCall.Arguments).ConfigureAwait(false);
-                    if (repairedInvocation.TimedOut) {
-                        return BuildToolTimeoutOutput(replicationRepairedCall.CallId, call.Name);
-                    }
-
-                    var repairedResult = repairedInvocation.Output ?? string.Empty;
-                    if (TryReadToolOutputOk(repairedResult, out var repairedOk) && repairedOk) {
-                        var repairedOutput = repairedResult;
-                        TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
-                        return new ToolOutput(replicationRepairedCall.CallId, repairedOutput);
-                    }
-
-                    var failedOutput = repairedResult;
-                    TryStoreSessionToolOutputCache(sessionCacheKey, failedOutput, hasSessionCacheKey);
-                    return new ToolOutput(replicationRepairedCall.CallId, failedOutput);
-                }
-
-                var domainDetectiveRepairedCall = ApplyDomainDetectiveSummaryTimeoutFallback(effectiveCall, result);
-                if (!ReferenceEquals(domainDetectiveRepairedCall, effectiveCall)) {
-                    if (_options.LiveProgress) {
-                        _status?.Invoke("input-repair: retrying DomainDetective summary with expanded timeout.");
-                    }
-
-                    var repairedInvocation = await InvokeToolWithTimeoutGuardAsync(domainDetectiveRepairedCall.Arguments).ConfigureAwait(false);
-                    if (repairedInvocation.TimedOut) {
-                        return BuildToolTimeoutOutput(domainDetectiveRepairedCall.CallId, call.Name);
-                    }
-
-                    var repairedOutput = repairedInvocation.Output ?? string.Empty;
-                    TryStoreSessionToolOutputCache(sessionCacheKey, repairedOutput, hasSessionCacheKey);
-                    return new ToolOutput(domainDetectiveRepairedCall.CallId, repairedOutput);
-                }
-
                 var output = result;
                 TryStoreSessionToolOutputCache(sessionCacheKey, output, hasSessionCacheKey);
                 return new ToolOutput(effectiveCall.CallId, output);

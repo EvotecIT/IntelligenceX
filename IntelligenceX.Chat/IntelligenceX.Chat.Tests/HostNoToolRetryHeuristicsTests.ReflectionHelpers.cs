@@ -147,6 +147,23 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         return Assert.IsType<string>(value);
     }
 
+    private static string InvokeBuildNoTextToolOutputRetryPromptForTesting(
+        string userRequest,
+        IReadOnlyList<ToolCall> toolCalls,
+        IReadOnlyList<ToolOutput> toolOutputs) {
+        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
+        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
+        Assert.NotNull(replSessionType);
+
+        var method = replSessionType!.GetMethod(
+            "BuildNoTextToolOutputRetryPromptForTesting",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, new object?[] { userRequest, toolCalls, toolOutputs });
+        return Assert.IsType<string>(value);
+    }
+
     private static (int[] canonical, int dedupedCount) InvokeBuildReadOnlyCallCanonicalIndices(
         IReadOnlyList<ToolCall> calls,
         ISet<int> nonReusableIndices) {
@@ -211,51 +228,6 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         Assert.NotNull(method);
 
         var value = method!.Invoke(null, new object?[] { call, definition, knownHostTargets });
-        return Assert.IsType<ToolCall>(value);
-    }
-
-    private static ToolCall InvokeApplyAdDiscoveryRootDseFallback(ToolCall call, string output) {
-        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
-        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
-        Assert.NotNull(replSessionType);
-
-        var method = replSessionType!.GetMethod(
-            "ApplyAdDiscoveryRootDseFallback",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        var value = method!.Invoke(null, new object?[] { call, output });
-        return Assert.IsType<ToolCall>(value);
-    }
-
-    private static ToolCall InvokeApplyAdReplicationProbeFallback(
-        ToolCall call,
-        string output,
-        IReadOnlyList<string>? knownHostTargets) {
-        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
-        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
-        Assert.NotNull(replSessionType);
-
-        var method = replSessionType!.GetMethod(
-            "ApplyAdReplicationProbeFallback",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        var value = method!.Invoke(null, new object?[] { call, output, knownHostTargets });
-        return Assert.IsType<ToolCall>(value);
-    }
-
-    private static ToolCall InvokeApplyDomainDetectiveSummaryTimeoutFallback(ToolCall call, string output) {
-        var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
-        var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
-        Assert.NotNull(replSessionType);
-
-        var method = replSessionType!.GetMethod(
-            "ApplyDomainDetectiveSummaryTimeoutFallback",
-            BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-
-        var value = method!.Invoke(null, new object?[] { call, output });
         return Assert.IsType<ToolCall>(value);
     }
 

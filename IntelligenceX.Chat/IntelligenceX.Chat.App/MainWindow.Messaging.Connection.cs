@@ -188,7 +188,7 @@ public sealed partial class MainWindow : Window {
         var timeoutLabel = FormatStartupConnectDurationLabel(timeout);
         return "Starting runtime... ("
                + phase
-               + BuildStartupStatusCauseSegment(cause)
+               + BuildStartupStatusContextSegment(StartupStatusPhaseStartupConnect, cause)
                + ", attempt "
                + boundedAttempt.ToString(CultureInfo.InvariantCulture)
                + "/"
@@ -209,7 +209,7 @@ public sealed partial class MainWindow : Window {
         var delayLabel = FormatStartupConnectDurationLabel(delay);
         return "Starting runtime... (waiting "
                + delayLabel
-               + BuildStartupStatusCauseSegment(cause)
+               + BuildStartupStatusContextSegment(StartupStatusPhaseStartupConnect, cause)
                + " before retry "
                + boundedAttempt.ToString(CultureInfo.InvariantCulture)
                + "/"
@@ -415,8 +415,9 @@ public sealed partial class MainWindow : Window {
             _isConnected = false;
             await SetStatusAsync(SessionStatus.Connecting()).ConfigureAwait(false);
             await SetConnectProgressStatusAsync(
-                    AppendStartupStatusCause(
+                    AppendStartupStatusContext(
                         "Starting runtime... (connecting to service)",
+                        StartupStatusPhaseStartupConnect,
                         StartupStatusCausePipeRetry))
                 .ConfigureAwait(false);
             await DisposeClientAsync().ConfigureAwait(false);
@@ -510,8 +511,9 @@ public sealed partial class MainWindow : Window {
                     sidecarConnectException = CreateBudgetExceededException();
                 } else {
                     await SetConnectProgressStatusAsync(
-                            AppendStartupStatusCause(
+                            AppendStartupStatusContext(
                                 "Starting runtime... (starting local service)",
+                                StartupStatusPhaseStartupConnect,
                                 StartupStatusCauseRuntimeStart))
                         .ConfigureAwait(false);
                     LogStartupConnectPhase("ensure_sidecar", "begin");
@@ -528,8 +530,9 @@ public sealed partial class MainWindow : Window {
 
                     if (sidecarRunning) {
                         await SetConnectProgressStatusAsync(
-                                AppendStartupStatusCause(
+                                AppendStartupStatusContext(
                                     "Starting runtime... (retrying service connection)",
+                                    StartupStatusPhaseStartupConnect,
                                     StartupStatusCausePipeRetry))
                             .ConfigureAwait(false);
                         LogStartupConnectPhase("ensure_sidecar", "done");

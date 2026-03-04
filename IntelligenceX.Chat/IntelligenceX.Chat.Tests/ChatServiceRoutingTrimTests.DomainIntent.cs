@@ -241,6 +241,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildDomainIntentClarificationTextForTesting_FallsBackToDefaultActionIdWhenFamilyMappingMissing() {
+        var familyActionIds = new Dictionary<string, string>(StringComparer.Ordinal) {
+            [ToolSelectionMetadata.DomainIntentFamilyAd] = "act_domain_scope_ad_custom"
+        };
+        var clarification = ChatServiceSession.BuildDomainIntentClarificationTextForTesting(
+            families: new[] { ToolSelectionMetadata.DomainIntentFamilyAd, ToolSelectionMetadata.DomainIntentFamilyPublic },
+            familyActionIds: familyActionIds);
+
+        Assert.Contains("/act act_domain_scope_ad_custom", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/act act_domain_scope_public", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesDomainIntentClarificationOrdinalSelection() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var clarificationText = Assert.IsType<string>(BuildDomainIntentClarificationTextMethod.Invoke(null, Array.Empty<object?>()));

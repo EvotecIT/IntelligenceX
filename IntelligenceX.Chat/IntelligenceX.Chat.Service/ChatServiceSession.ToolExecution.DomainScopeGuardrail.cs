@@ -13,7 +13,7 @@ internal sealed partial class ChatServiceSession {
         output = null!;
         ToolDefinition? toolDefinition = null;
         if (_registry.TryGetDefinition(call.Name, out var registeredDefinition) && registeredDefinition is not null) {
-            toolDefinition = ToolSelectionMetadata.Enrich(registeredDefinition, toolType: null);
+            toolDefinition = registeredDefinition;
         }
 
         if (!TryGetCurrentDomainIntentFamily(threadId, out var family)
@@ -22,44 +22,61 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var hostTargets = ExtractHostScopedTargets(call.Arguments);
+        var normalizedArguments = call.Arguments ?? new JsonObject();
+        var hostTargets = ExtractHostScopedTargets(normalizedArguments);
         if (hostTargets.Length == 0) {
             return false;
         }
 
-        var knownPublicHosts = CollectThreadHostCandidatesByDomainIntentFamily(threadId, DomainIntentFamilyPublic);
-        if (knownPublicHosts.Length == 0) {
-            return false;
-        }
-
         var userHostHints = CollectHostHintsFromUserRequest(userRequest);
-        var blockedTargets = new List<string>(hostTargets.Length);
-        for (var i = 0; i < hostTargets.Length; i++) {
-            var target = hostTargets[i];
-            if (HostMatchesAnyCandidate(target, userHostHints)) {
-                continue;
+        var knownPublicHosts = CollectThreadHostCandidatesByDomainIntentFamily(threadId, DomainIntentFamilyPublic);
+        if (knownPublicHosts.Length > 0) {
+            var blockedTargets = new List<string>(hostTargets.Length);
+            for (var i = 0; i < hostTargets.Length; i++) {
+                var target = hostTargets[i];
+                if (HostMatchesAnyCandidate(target, userHostHints)) {
+                    continue;
+                }
+
+                if (HostMatchesAnyCandidate(target, knownPublicHosts)) {
+                    blockedTargets.Add(target);
+                }
             }
 
-            if (HostMatchesAnyCandidate(target, knownPublicHosts)) {
-                blockedTargets.Add(target);
+            if (blockedTargets.Count > 0) {
+                var blockedPreview = string.Join(", ", blockedTargets.Take(3));
+                var guardrail = ToolOutputEnvelope.Error(
+                    errorCode: DomainScopeHostGuardrailErrorCode,
+                    error:
+                    $"Blocked '{call.Name}' host target(s) in ad_domain scope because they match prior public_domain evidence: {blockedPreview}.",
+                    hints: new[] {
+                        "Run directory scope discovery first, then retry AD-scope host checks with directory-derived hosts.",
+                        "If this exact host is intended, include it explicitly in this turn's user request."
+                    },
+                    isTransient: false);
+                output = BuildToolOutputDto(call.CallId, guardrail);
+                return true;
             }
         }
 
-        if (blockedTargets.Count == 0) {
+        if (!ShouldBlockSingleHostStructuredReplayForScopeShift(
+                normalizedThreadId: threadId,
+                userRequest: userRequest,
+                normalizedArguments: normalizedArguments)) {
             return false;
         }
 
-        var blockedPreview = string.Join(", ", blockedTargets.Take(3));
-        var guardrail = ToolOutputEnvelope.Error(
+        var replayPreview = string.Join(", ", hostTargets.Take(3));
+        var replayGuardrail = ToolOutputEnvelope.Error(
             errorCode: DomainScopeHostGuardrailErrorCode,
             error:
-            $"Blocked '{call.Name}' host target(s) in ad_domain scope because they match prior public_domain evidence: {blockedPreview}.",
+            $"Blocked '{call.Name}' single-host replay in ad_domain scope because this compact follow-up appears to request broader multi-host coverage: {replayPreview}.",
             hints: new[] {
-                "Run directory scope discovery first, then retry AD-scope host checks with directory-derived hosts.",
-                "If this exact host is intended, include it explicitly in this turn's user request."
+                "Run the same AD-scope check across remaining discovered controllers in this turn instead of only one remembered host.",
+                "If a single host is intended, include that host explicitly in this turn request."
             },
             isTransient: false);
-        output = BuildToolOutputDto(call.CallId, guardrail);
+        output = BuildToolOutputDto(call.CallId, replayGuardrail);
         return true;
     }
 
@@ -69,19 +86,13 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (definition is not null) {
-            if (ToolSelectionMetadata.TryResolveDomainIntentFamily(definition, out var family)
-                && string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
-                return true;
-            }
+        if (definition is null) {
+            return false;
         }
 
-        return ToolSelectionMetadata.TryResolveDomainIntentFamily(
-                   normalizedToolName,
-                   definition?.Category,
-                   definition?.Tags,
-                   out var inferredFamily)
-               && string.Equals(inferredFamily, DomainIntentFamilyAd, StringComparison.Ordinal);
+        var routingFamily = (definition.Routing?.DomainIntentFamily ?? string.Empty).Trim();
+        return TryNormalizeDomainIntentFamily(routingFamily, out var normalizedFamily)
+               && string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal);
     }
 
     private static string[] ExtractHostScopedTargets(JsonObject? arguments) {

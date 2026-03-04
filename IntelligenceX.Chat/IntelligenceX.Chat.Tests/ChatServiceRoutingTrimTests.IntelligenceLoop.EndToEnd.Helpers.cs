@@ -36,6 +36,12 @@ public sealed partial class ChatServiceRoutingTrimTests {    private static asyn
         return Assert.IsType<T>(property.GetValue(instance));
     }
 
+    private static T GetPropertyValueAssignable<T>(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)
+                       ?? throw new InvalidOperationException($"Property '{propertyName}' not found.");
+        return Assert.IsAssignableFrom<T>(property.GetValue(instance));
+    }
+
     private static void AssertStatusSubsequence(IReadOnlyList<string> statuses, params string[] expectedSequence) {
         var currentIndex = 0;
         for (var i = 0; i < expectedSequence.Length; i++) {

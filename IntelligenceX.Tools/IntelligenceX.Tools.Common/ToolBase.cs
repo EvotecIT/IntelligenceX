@@ -46,6 +46,24 @@ public abstract class ToolBase : ITool {
     }
 
     /// <summary>
+    /// Runs a typed request adapter through the shared pipeline.
+    /// </summary>
+    protected Task<string> RunPipelineAsync<TRequest>(
+        JsonObject? arguments,
+        CancellationToken cancellationToken,
+        ToolRequestAdapter<TRequest> adapter)
+        where TRequest : notnull {
+        ArgumentNullException.ThrowIfNull(adapter);
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: adapter.Bind,
+            execute: adapter.ExecuteAsync,
+            reliability: adapter.Reliability,
+            middleware: adapter.Middleware);
+    }
+
+    /// <summary>
     /// Adds max_results metadata consistently across tool responses.
     /// </summary>
     protected static void AddMaxResultsMeta(JsonObject meta, int maxResults) {

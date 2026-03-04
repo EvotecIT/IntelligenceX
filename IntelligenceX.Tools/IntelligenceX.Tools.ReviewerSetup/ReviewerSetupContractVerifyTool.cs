@@ -12,6 +12,15 @@ namespace IntelligenceX.Tools.ReviewerSetup;
 /// Verifies onboarding contract metadata from setup autodetect against the canonical contract.
 /// </summary>
 public sealed class ReviewerSetupContractVerifyTool : ReviewerSetupToolBase, ITool {
+    private sealed record ContractVerifyRequest(
+        string AutodetectContractVersion,
+        string AutodetectContractFingerprint,
+        string? PackContractVersion,
+        string? PackContractFingerprint,
+        bool IncludeMaintenancePath);
+
+    private readonly ToolRequestAdapter<ContractVerifyRequest> _adapter;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "reviewer_setup_contract_verify",
         "Compare setup autodetect contract metadata with the canonical reviewer setup contract and report drift/mismatch risk.",
@@ -33,37 +42,35 @@ public sealed class ReviewerSetupContractVerifyTool : ReviewerSetupToolBase, ITo
     /// <summary>
     /// Initializes a new instance of the <see cref="ReviewerSetupContractVerifyTool"/> class.
     /// </summary>
-    public ReviewerSetupContractVerifyTool(ReviewerSetupToolOptions options) : base(options) { }
+    public ReviewerSetupContractVerifyTool(ReviewerSetupToolOptions options) : base(options) {
+        _adapter = new ContractVerifyAdapter(options.IncludeMaintenancePath, ExecuteAsync);
+    }
 
     /// <inheritdoc />
     public override ToolDefinition Definition => DefinitionValue;
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            adapter: _adapter);
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ContractVerifyRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
-        var autodetectContractVersion = ToolArgs.GetOptionalTrimmed(arguments, "autodetect_contract_version");
-        var autodetectContractFingerprint = ToolArgs.GetOptionalTrimmed(arguments, "autodetect_contract_fingerprint");
-        if (string.IsNullOrWhiteSpace(autodetectContractVersion)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "autodetect_contract_version is required."));
-        }
-        if (string.IsNullOrWhiteSpace(autodetectContractFingerprint)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "autodetect_contract_fingerprint is required."));
-        }
-
-        var packContractVersion = ToolArgs.GetOptionalTrimmed(arguments, "pack_contract_version");
-        var packContractFingerprint = ToolArgs.GetOptionalTrimmed(arguments, "pack_contract_fingerprint");
-        var includeMaintenancePath = ToolArgs.GetBoolean(arguments, "include_maintenance_path", defaultValue: Options.IncludeMaintenancePath);
         SetupOnboardingContractVerificationResult verification;
         try {
             verification = SetupOnboardingContractVerification.Verify(
-                autodetectContractVersion: autodetectContractVersion!,
-                autodetectContractFingerprint: autodetectContractFingerprint!,
-                packContractVersion: packContractVersion,
-                packContractFingerprint: packContractFingerprint,
-                includeMaintenancePath: includeMaintenancePath);
+                autodetectContractVersion: request.AutodetectContractVersion,
+                autodetectContractFingerprint: request.AutodetectContractFingerprint,
+                packContractVersion: request.PackContractVersion,
+                packContractFingerprint: request.PackContractFingerprint,
+                includeMaintenancePath: request.IncludeMaintenancePath);
         } catch (ArgumentException ex) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", ex.Message));
+            return Task.FromResult(ToolResultV2.Error("invalid_argument", ex.Message));
         }
 
         var status = verification.IsMatch ? "match" : "mismatch";
@@ -103,7 +110,42 @@ public sealed class ReviewerSetupContractVerifyTool : ReviewerSetupToolBase, ITo
                 "Contract metadata matches the canonical onboarding contract.",
                 "Safe to continue with selected onboarding path (dry-run first).");
 
-        return Task.FromResult(ToolResponse.OkModel(result, summaryMarkdown: summary));
+        return Task.FromResult(ToolResultV2.OkModel(result, summaryMarkdown: summary));
+    }
+
+    private sealed class ContractVerifyAdapter : ToolRequestAdapter<ContractVerifyRequest> {
+        private readonly bool _defaultIncludeMaintenancePath;
+        private readonly Func<ToolPipelineContext<ContractVerifyRequest>, CancellationToken, Task<string>> _execute;
+
+        public ContractVerifyAdapter(
+            bool defaultIncludeMaintenancePath,
+            Func<ToolPipelineContext<ContractVerifyRequest>, CancellationToken, Task<string>> execute) {
+            _defaultIncludeMaintenancePath = defaultIncludeMaintenancePath;
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        }
+
+        public override ToolRequestBindingResult<ContractVerifyRequest> Bind(JsonObject? arguments) {
+            return ToolRequestBinder.Bind(arguments, reader => {
+                if (!reader.TryReadRequiredString("autodetect_contract_version", out var autodetectContractVersion, out var versionError)) {
+                    return ToolRequestBindingResult<ContractVerifyRequest>.Failure(versionError);
+                }
+
+                if (!reader.TryReadRequiredString("autodetect_contract_fingerprint", out var autodetectContractFingerprint, out var fingerprintError)) {
+                    return ToolRequestBindingResult<ContractVerifyRequest>.Failure(fingerprintError);
+                }
+
+                return ToolRequestBindingResult<ContractVerifyRequest>.Success(new ContractVerifyRequest(
+                    AutodetectContractVersion: autodetectContractVersion,
+                    AutodetectContractFingerprint: autodetectContractFingerprint,
+                    PackContractVersion: reader.OptionalString("pack_contract_version"),
+                    PackContractFingerprint: reader.OptionalString("pack_contract_fingerprint"),
+                    IncludeMaintenancePath: reader.Boolean("include_maintenance_path", defaultValue: _defaultIncludeMaintenancePath)));
+            });
+        }
+
+        public override Task<string> ExecuteAsync(ToolPipelineContext<ContractVerifyRequest> context, CancellationToken cancellationToken) {
+            return _execute(context, cancellationToken);
+        }
     }
 
     private sealed class ReviewerSetupContractVerificationResult {

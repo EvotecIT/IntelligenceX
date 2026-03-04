@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,146 +33,6 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         Assert.NotNull(targets);
         Assert.Single(targets!);
         Assert.Equal("explicit.dc", targets[0].AsString());
-    }
-
-    [Fact]
-    public void ApplyAdDiscoveryRootDseFallback_UnpinsDomainControllerAfterRootDseFailure() {
-        var call = BuildToolCall(
-            "call_1",
-            "ad_environment_discover",
-            """{"domain_controller":"AD0.ad.evotec.xyz","search_base_dn":"DC=ad,DC=evotec,DC=xyz","include_domain_controllers":true}""");
-        const string output = """{"ok":false,"error_code":"not_configured","error":"Failed to read RootDSE from 'AD0.ad.evotec.xyz'."}""";
-
-        var repaired = InvokeApplyAdDiscoveryRootDseFallback(call, output);
-
-        Assert.NotSame(call, repaired);
-        Assert.Equal(string.Empty, repaired.Arguments?.GetString("domain_controller"));
-        Assert.Equal("DC=ad,DC=evotec,DC=xyz", repaired.Arguments?.GetString("search_base_dn"));
-    }
-
-    [Fact]
-    public void ApplyAdDiscoveryRootDseFallback_DoesNotPatchWhenFailureIsUnrelated() {
-        var call = BuildToolCall(
-            "call_1",
-            "ad_environment_discover",
-            """{"domain_controller":"AD0.ad.evotec.xyz","search_base_dn":"DC=ad,DC=evotec,DC=xyz","include_domain_controllers":true}""");
-        const string output = """{"ok":false,"error_code":"timeout","error":"Replication query timed out after 0:00:07."}""";
-
-        var repaired = InvokeApplyAdDiscoveryRootDseFallback(call, output);
-
-        Assert.Same(call, repaired);
-    }
-
-    [Fact]
-    public void ApplyAdDiscoveryRootDseFallback_DoesNotPatchForNonAdDiscoveryTools() {
-        var call = BuildToolCall(
-            "call_1",
-            "eventlog_live_query",
-            """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System"}""");
-        const string output = """{"ok":false,"error_code":"not_configured","error":"Failed to read RootDSE from 'AD0.ad.evotec.xyz'."}""";
-
-        var repaired = InvokeApplyAdDiscoveryRootDseFallback(call, output);
-
-        Assert.Same(call, repaired);
-    }
-
-    [Fact]
-    public void ApplyAdReplicationProbeFallback_ExtendsTimeoutAndPromotesFqdnTargets() {
-        var call = BuildToolCall(
-            "call_1",
-            "ad_monitoring_probe_run",
-            """{"probe_kind":"replication","domain_controller":"AD2","targets":["AD2"],"timeout_ms":5000}""");
-        const string output = """{"ok":false,"error_code":"timeout","error":"Replication query timed out after 0:00:05."}""";
-
-        var repaired = InvokeApplyAdReplicationProbeFallback(
-            call: call,
-            output: output,
-            knownHostTargets: new[] { "AD2.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
-
-        Assert.NotSame(call, repaired);
-        Assert.Equal(10000L, repaired.Arguments?.GetInt64("timeout_ms"));
-        Assert.Equal("AD2.ad.evotec.xyz", repaired.Arguments?.GetString("domain_controller"));
-        var targets = repaired.Arguments?.GetArray("targets");
-        Assert.NotNull(targets);
-        Assert.Single(targets!);
-        Assert.Equal("AD2.ad.evotec.xyz", targets[0].AsString());
-    }
-
-    [Fact]
-    public void ApplyAdReplicationProbeFallback_PromotesFqdnOnNoDataFailure() {
-        var call = BuildToolCall(
-            "call_1",
-            "ad_monitoring_probe_run",
-            """{"probe_kind":"replication","domain_controller":"AD1","targets":["AD1"]}""");
-        const string output = """{"ok":false,"error":"No replication data returned (domain=ad.evotec.xyz; explicitDCs=AD1; preferredDC=; ldapFallback=True; cred=False)."}""";
-
-        var repaired = InvokeApplyAdReplicationProbeFallback(
-            call: call,
-            output: output,
-            knownHostTargets: new[] { "AD1.ad.evotec.xyz", "AD2.ad.evotec.xyz" });
-
-        Assert.NotSame(call, repaired);
-        Assert.Equal("AD1.ad.evotec.xyz", repaired.Arguments?.GetString("domain_controller"));
-        var targets = repaired.Arguments?.GetArray("targets");
-        Assert.NotNull(targets);
-        Assert.Equal("AD1.ad.evotec.xyz", targets![0].AsString());
-    }
-
-    [Fact]
-    public void ApplyAdReplicationProbeFallback_DoesNotPatchNonReplicationProbeCalls() {
-        var call = BuildToolCall(
-            "call_1",
-            "ad_monitoring_probe_run",
-            """{"probe_kind":"ldap","domain_controller":"AD2","timeout_ms":5000}""");
-        const string output = """{"ok":false,"error_code":"timeout","error":"Replication query timed out after 0:00:05."}""";
-
-        var repaired = InvokeApplyAdReplicationProbeFallback(
-            call: call,
-            output: output,
-            knownHostTargets: new[] { "AD2.ad.evotec.xyz" });
-
-        Assert.Same(call, repaired);
-    }
-
-    [Fact]
-    public void ApplyDomainDetectiveSummaryTimeoutFallback_ExtendsLowTimeoutOnTimeoutFailure() {
-        var call = BuildToolCall(
-            "call_1",
-            "domaindetective_domain_summary",
-            """{"domain":"contoso.com","checks":["NS","MX"],"timeout_ms":8000}""");
-        const string output = """{"ok":false,"error_code":"timeout","error":"DomainDetective run timed out after timeout_ms=8000."}""";
-
-        var repaired = InvokeApplyDomainDetectiveSummaryTimeoutFallback(call, output);
-
-        Assert.NotSame(call, repaired);
-        Assert.Equal(30000L, repaired.Arguments?.GetInt64("timeout_ms"));
-        Assert.Equal("contoso.com", repaired.Arguments?.GetString("domain"));
-    }
-
-    [Fact]
-    public void ApplyDomainDetectiveSummaryTimeoutFallback_DoesNotPatchWhenTimeoutAlreadyHighEnough() {
-        var call = BuildToolCall(
-            "call_1",
-            "domaindetective_domain_summary",
-            """{"domain":"contoso.com","checks":["NS","MX"],"timeout_ms":60000}""");
-        const string output = """{"ok":false,"error_code":"timeout","error":"DomainDetective run timed out after timeout_ms=60000."}""";
-
-        var repaired = InvokeApplyDomainDetectiveSummaryTimeoutFallback(call, output);
-
-        Assert.Same(call, repaired);
-    }
-
-    [Fact]
-    public void ApplyDomainDetectiveSummaryTimeoutFallback_DoesNotPatchNonTimeoutFailures() {
-        var call = BuildToolCall(
-            "call_1",
-            "domaindetective_domain_summary",
-            """{"domain":"contoso.com","checks":["NS","MX"],"timeout_ms":8000}""");
-        const string output = """{"ok":false,"error_code":"tool_exception","error":"Unhandled exception."}""";
-
-        var repaired = InvokeApplyDomainDetectiveSummaryTimeoutFallback(call, output);
-
-        Assert.Same(call, repaired);
     }
 
     [Fact]
@@ -382,6 +243,127 @@ Continue that failure-signature collection across all remaining DCs in this turn
     }
 
     [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_ReplacesForbiddenHostTarget() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD0
+User request:
+Continue that failure-signature collection across all remaining non-AD0 DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_query", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD0","log_name":"System"}"""),
+            BuildToolCall("call_2", "eventlog_live_query", """{"machine_name":"AD1","log_name":"System"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "AD1", "AD2" });
+
+        Assert.Equal(2, repaired.Count);
+        var hosts = repaired
+            .Select(call => call.Arguments?.GetString("machine_name") ?? string.Empty)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        Assert.DoesNotContain(hosts, host => string.Equals(host, "AD0", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hosts, host => string.Equals(host, "AD2", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_DoesNotUseForbiddenFallbackTargetForDerivedCalls() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD0
+User request:
+Continue that failure-signature collection across all remaining non-AD0 DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_query", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD1","log_name":"System"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "AD1", "AD2" });
+
+        Assert.Equal(2, repaired.Count);
+        var derivedHost = repaired[1].Arguments?.GetString("machine_name");
+        Assert.Equal("AD2", derivedHost);
+        Assert.False(string.Equals("AD0", derivedHost, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_TreatsShortForbiddenHostAsMatchingFqdnCandidates() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*query*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD0
+User request:
+Continue that failure-signature collection across all remaining non-AD0 DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_query", parameters: schema)
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz", "AD2.ad.evotec.xyz" });
+
+        Assert.Equal(2, repaired.Count);
+        var hosts = repaired
+            .Select(call => call.Arguments?.GetString("machine_name") ?? string.Empty)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        Assert.DoesNotContain(hosts, host => host.StartsWith("AD0.", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hosts, host => string.Equals(host, "AD2.ad.evotec.xyz", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ReplSession_HostTargetRetentionCapacity_IsSizedForLongContinuationRuns() {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
@@ -474,6 +456,26 @@ Continue that failure-signature collection across all remaining DCs in this turn
         Assert.Contains("Recovered findings from executed tools", text, StringComparison.Ordinal);
         Assert.Contains("dnsclientx_query", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("DNS NS records look consistent", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextToolOutputRetryPromptForTesting_IncludesCompactCallArgumentsInEvidence() {
+        var calls = new[] {
+            BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System","max_events":200,"event_ids":[41,6008]}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"summary_markdown":"No reboot markers found in selected UTC window."}""")
+        };
+
+        var prompt = InvokeBuildNoTextToolOutputRetryPromptForTesting(
+            userRequest: "Compare non-AD0 DC reboot evidence.",
+            toolCalls: calls,
+            toolOutputs: outputs);
+
+        Assert.Contains("eventlog_live_query", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("args: machine_name=AD1.ad.evotec.xyz", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_events=200", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No reboot markers found", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

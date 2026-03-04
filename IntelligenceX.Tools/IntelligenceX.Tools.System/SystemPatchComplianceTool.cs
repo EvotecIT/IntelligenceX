@@ -84,6 +84,16 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
         PatchComplianceSummary Summary,
         IReadOnlyList<ComplianceRow> Compliance);
 
+    private sealed record PatchComplianceRequest(
+        string? ComputerName,
+        bool IncludePendingLocal,
+        bool MissingOnly,
+        bool ExploitedOnly,
+        bool PubliclyDisclosedOnly,
+        string? CveContains,
+        string? KbContains,
+        int MaxResults);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemPatchComplianceTool"/> class.
     /// </summary>
@@ -94,23 +104,41 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override async Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return await RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync).ConfigureAwait(false);
+    }
+
+    private ToolRequestBindingResult<PatchComplianceRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<PatchComplianceRequest>.Success(new PatchComplianceRequest(
+            ComputerName: reader.OptionalString("computer_name"),
+            IncludePendingLocal: reader.Boolean("include_pending_local", defaultValue: false),
+            MissingOnly: reader.Boolean("missing_only", defaultValue: false),
+            ExploitedOnly: reader.Boolean("exploited_only", defaultValue: false),
+            PubliclyDisclosedOnly: reader.Boolean("publicly_disclosed_only", defaultValue: false),
+            CveContains: reader.OptionalString("cve_contains"),
+            KbContains: reader.OptionalString("kb_contains"),
+            MaxResults: ResolveMaxResults(arguments))));
+    }
+
+    private async Task<string> ExecuteAsync(ToolPipelineContext<PatchComplianceRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         var windowsError = ValidateWindowsSupport("system_patch_compliance");
         if (windowsError is not null) {
             return windowsError;
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = ResolveTargetComputerName(computerName);
-        var includePendingLocal = ToolArgs.GetBoolean(arguments, "include_pending_local", defaultValue: false);
-        var missingOnly = ToolArgs.GetBoolean(arguments, "missing_only", defaultValue: false);
+        var target = ResolveTargetComputerName(request.ComputerName);
 
-        if (!TryResolvePatchReleaseWindow(arguments, out var year, out var month, out var releaseError)) {
+        if (!TryResolvePatchReleaseWindow(context.Arguments, out var year, out var month, out var releaseError)) {
             return releaseError!;
         }
         if (!TryResolvePatchProductFilter(
-                arguments,
+                context.Arguments,
                 out var productFamily,
                 out var productVersion,
                 out var productBuild,
@@ -118,15 +146,9 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
                 out var productError)) {
             return productError!;
         }
-        if (!TryResolvePatchSeverityAllowlist(arguments, out var severity, out var severityError)) {
+        if (!TryResolvePatchSeverityAllowlist(context.Arguments, out var severity, out var severityError)) {
             return severityError!;
         }
-
-        var exploitedOnly = ToolArgs.GetBoolean(arguments, "exploited_only", defaultValue: false);
-        var publiclyDisclosedOnly = ToolArgs.GetBoolean(arguments, "publicly_disclosed_only", defaultValue: false);
-        var cveContains = ToolArgs.GetOptionalTrimmed(arguments, "cve_contains");
-        var kbContains = ToolArgs.GetOptionalTrimmed(arguments, "kb_contains");
-        var maxResults = ResolveMaxResults(arguments);
 
         var (monthly, patchError) = await TryGetMonthlyPatchDetailsAsync(
             year: year,
@@ -141,9 +163,9 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
         }
 
         if (!TryGetInstalledAndPendingUpdates(
-                computerName: computerName,
+                computerName: request.ComputerName,
                 target: target,
-                includePendingLocal: includePendingLocal,
+                includePendingLocal: request.IncludePendingLocal,
                 updates: out var updates,
                 pendingIncluded: out var pendingIncluded,
                 errorResponse: out var updateError)) {
@@ -166,12 +188,12 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
 
         var filtered = monthly
             .Where(x => severitySet is null || severitySet.Contains(x.Severity))
-            .Where(x => !exploitedOnly || x.IsExploited)
-            .Where(x => !publiclyDisclosedOnly || x.PubliclyDisclosed)
-            .Where(x => string.IsNullOrWhiteSpace(cveContains)
-                || x.CveId.Contains(cveContains, StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(kbContains)
-                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, kbContains))
+            .Where(x => !request.ExploitedOnly || x.IsExploited)
+            .Where(x => !request.PubliclyDisclosedOnly || x.PubliclyDisclosed)
+            .Where(x => string.IsNullOrWhiteSpace(request.CveContains)
+                || x.CveId.Contains(request.CveContains, StringComparison.OrdinalIgnoreCase))
+            .Where(x => string.IsNullOrWhiteSpace(request.KbContains)
+                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, request.KbContains))
             .OrderByDescending(static x => x.IsExploited)
             .ThenByDescending(static x => x.Published ?? DateTime.MinValue)
             .ThenBy(static x => x.CveId, StringComparer.OrdinalIgnoreCase);
@@ -194,7 +216,7 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
                 : missing.Length == 0
                     ? "installed"
                     : "missing";
-            if (missingOnly && !string.Equals(state, "missing", StringComparison.OrdinalIgnoreCase)) {
+            if (request.MissingOnly && !string.Equals(state, "missing", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 
@@ -211,7 +233,7 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
                 ComplianceState: state));
         }
 
-        var rows = CapRows(complianceRows, maxResults, out var scanned, out var truncated);
+        var rows = CapRows(complianceRows, request.MaxResults, out var scanned, out var truncated);
         var summary = BuildSummary(complianceRows);
         var release = new DateTime(year, month, 1).ToString("yyyy-MM");
 
@@ -226,20 +248,20 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             ProductBuild: productBuild,
             ProductEdition: productEdition,
             Severity: severity,
-            ExploitedOnly: exploitedOnly,
-            PubliclyDisclosedOnly: publiclyDisclosedOnly,
-            MissingOnly: missingOnly,
-            IncludePendingLocal: includePendingLocal,
+            ExploitedOnly: request.ExploitedOnly,
+            PubliclyDisclosedOnly: request.PubliclyDisclosedOnly,
+            MissingOnly: request.MissingOnly,
+            IncludePendingLocal: request.IncludePendingLocal,
             PendingIncluded: pendingIncluded,
-            CveContains: cveContains,
-            KbContains: kbContains,
+            CveContains: request.CveContains,
+            KbContains: request.KbContains,
             Scanned: scanned,
             Truncated: truncated,
             Summary: summary,
             Compliance: rows);
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "compliance_view",
@@ -249,8 +271,8 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 AddComputerNameMeta(meta, target);
-                AddMaxResultsMeta(meta, maxResults);
-                AddPendingLocalMeta(meta, includePendingLocal, pendingIncluded);
+                AddMaxResultsMeta(meta, request.MaxResults);
+                AddPendingLocalMeta(meta, request.IncludePendingLocal, pendingIncluded);
                 AddPatchFilterMeta(
                     meta: meta,
                     year: year,
@@ -261,11 +283,11 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
                     productBuild: productBuild,
                     productEdition: productEdition,
                     severity: severity,
-                    exploitedOnly: exploitedOnly,
-                    publiclyDisclosedOnly: publiclyDisclosedOnly,
-                    cveContains: cveContains,
-                    kbContains: kbContains);
-                if (missingOnly) {
+                    exploitedOnly: request.ExploitedOnly,
+                    publiclyDisclosedOnly: request.PubliclyDisclosedOnly,
+                    cveContains: request.CveContains,
+                    kbContains: request.KbContains);
+                if (request.MissingOnly) {
                     meta.Add("missing_only", true);
                 }
             });

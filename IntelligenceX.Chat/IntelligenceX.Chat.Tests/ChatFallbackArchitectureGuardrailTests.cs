@@ -49,9 +49,104 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void DomainIntentHostScopeGuardrail_ShouldNotInferFamilyFromToolNameFallback() {
+        var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ToolExecution.DomainScopeGuardrail.cs"));
+
+        Assert.DoesNotContain(
+            "ToolSelectionMetadata.TryResolveDomainIntentFamily(",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToolRouting_ShouldNotInferDomainIntentFamilyFromSelectionMetadataFallback() {
+        var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ToolRouting.cs"));
+        const string methodStart = "private string ResolveDomainIntentFamily(string toolName)";
+        const string methodEnd = "private static DomainIntentActionCatalog ResolveDomainIntentActionCatalog";
+        var start = source.IndexOf(methodStart, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"{methodStart} not found in ChatServiceSession.ToolRouting.cs");
+
+        var end = source.IndexOf(methodEnd, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"{methodEnd} not found after {methodStart} in ChatServiceSession.ToolRouting.cs");
+
+        var methodSource = source.Substring(start, end - start);
+
+        Assert.DoesNotContain(
+            "ToolSelectionMetadata.TryResolveDomainIntentFamily(",
+            methodSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RoutingScoring_ShouldNotFallbackToSelectionMetadataPackInferenceForPackHints() {
+        var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ChatRouting.RoutingScoring.cs"));
+
+        Assert.DoesNotContain(
+            "ToolSelectionMetadata.TryResolvePackId(definition, out var resolvedPackId)",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RoutingScoring_ShouldNotUseHardcodedCompoundPackTokenHeuristics() {
+        var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ChatRouting.RoutingScoring.cs"));
+
+        Assert.DoesNotContain(
+            "ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact(",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChatHost_ShouldNotContainHardcodedToolSpecificRetryRewrites() {
+        var source = File.ReadAllText(GetHostSourceFilePath("Program.Session.ToolExecution.cs"));
+        var legacySymbols = new[] {
+            "ApplyAdDiscoveryRootDseFallback(",
+            "ApplyAdReplicationProbeFallback(",
+            "ApplyDomainDetectiveSummaryTimeoutFallback("
+        };
+
+        for (var i = 0; i < legacySymbols.Length; i++) {
+            Assert.DoesNotContain(legacySymbols[i], source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void ChatRuntimeSurface_ShouldNotHardcodePackIdsInAppOrService() {
+        var repoRoot = FindRepoRoot();
+        var roots = new[] {
+            Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.App"),
+            Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Service")
+        };
+        var disallowedPackTokens = new[] {
+            "testimox",
+            "active_directory",
+            "adplayground",
+            "domaindetective",
+            "dnsclientx",
+            "reviewer_setup"
+        };
+
+        for (var rootIndex = 0; rootIndex < roots.Length; rootIndex++) {
+            var root = roots[rootIndex];
+            foreach (var file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)) {
+                var source = File.ReadAllText(file);
+                for (var tokenIndex = 0; tokenIndex < disallowedPackTokens.Length; tokenIndex++) {
+                    Assert.DoesNotContain(disallowedPackTokens[tokenIndex], source, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+        }
+    }
+
     private static string GetServiceSourceFilePath(string fileName) {
         var repoRoot = FindRepoRoot();
         return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Service", fileName);
+    }
+
+    private static string GetHostSourceFilePath(string fileName) {
+        var repoRoot = FindRepoRoot();
+        return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Host", fileName);
     }
 
     private static string FindRepoRoot() {

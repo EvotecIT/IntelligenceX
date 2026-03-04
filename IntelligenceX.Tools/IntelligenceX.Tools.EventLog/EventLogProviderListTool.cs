@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.EventLog;
 /// Lists Windows Event Log providers on the local or remote machine.
 /// </summary>
 public sealed class EventLogProviderListTool : EventLogToolBase, ITool {
+    private sealed record ProviderListRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_providers_list",
         "List Windows Event Log providers available on this machine (or remote machine_name) (read-only, capped).",
@@ -30,8 +32,20 @@ public sealed class EventLogProviderListTool : EventLogToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        return Task.FromResult(RunCatalogNameList(
+        return RunPipelineAsync(
             arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<ProviderListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, static _ => ToolRequestBindingResult<ProviderListRequest>.Success(new ProviderListRequest()));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ProviderListRequest> context, CancellationToken cancellationToken) {
+        return Task.FromResult(RunCatalogNameList(
+            arguments: context.Arguments,
             providers: true,
             maxArgumentName: "max_providers",
             title: "Event Log providers (preview)",

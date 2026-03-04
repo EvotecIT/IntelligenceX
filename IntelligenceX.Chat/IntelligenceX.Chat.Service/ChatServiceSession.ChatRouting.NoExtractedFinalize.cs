@@ -61,6 +61,7 @@ internal sealed partial class ChatServiceSession {
         var autoPendingActionReplayUsed = state.AutoPendingActionReplayUsed;
         var proactiveFollowUpUsed = state.ProactiveFollowUpUsed;
         var localNoTextDirectRetryUsed = state.LocalNoTextDirectRetryUsed;
+        var noTextToolOutputDirectRetryUsed = state.NoTextToolOutputDirectRetryUsed;
         var structuredNextActionRetryUsed = state.StructuredNextActionRetryUsed;
         var toolProgressRecoveryUsed = state.ToolProgressRecoveryUsed;
         var hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;
@@ -476,6 +477,43 @@ internal sealed partial class ChatServiceSession {
                 if (string.IsNullOrWhiteSpace(textBeforeNoTextFallback) && !string.IsNullOrWhiteSpace(text)) {
                     noTextRecoveryHitCount++;
                 }
+
+                var hasSuccessfulToolOutput = false;
+                for (var outputIndex = 0; outputIndex < toolOutputs.Count; outputIndex++) {
+                    if (toolOutputs[outputIndex]?.Ok is true) {
+                        hasSuccessfulToolOutput = true;
+                        break;
+                    }
+                }
+
+                var shouldAttemptNoTextToolOutputDirectRetry = !noTextToolOutputDirectRetryUsed
+                                                                && planExecuteReviewLoop
+                                                                && !_options.Redact
+                                                                && hasSuccessfulToolOutput
+                                                                && toolOutputs.Count > 0
+                                                                && string.IsNullOrWhiteSpace(text);
+                if (shouldAttemptNoTextToolOutputDirectRetry) {
+                    noTextToolOutputDirectRetryUsed = true;
+                    var noTextToolOutputRetryPrompt = BuildNoTextToolOutputSynthesisPrompt(
+                        userRequest: routedUserRequest,
+                        toolCalls: toolCalls,
+                        toolOutputs: toolOutputs);
+                    turn = await RunReviewOnlyModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            ChatInput.FromText(noTextToolOutputRetryPrompt),
+                            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
+                            phaseMessage: "Tool execution completed without narrative. Synthesizing findings...",
+                            heartbeatLabel: "Synthesizing findings",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    return ContinueRound();
+                }
+
                 var textBeforeToolOutputFallback = text;
                 text = ResolveAssistantTextFromToolOutputsFallback(
                     assistantDraft: text,
@@ -588,6 +626,7 @@ internal sealed partial class ChatServiceSession {
             state.AutoPendingActionReplayUsed = autoPendingActionReplayUsed;
             state.ProactiveFollowUpUsed = proactiveFollowUpUsed;
             state.LocalNoTextDirectRetryUsed = localNoTextDirectRetryUsed;
+            state.NoTextToolOutputDirectRetryUsed = noTextToolOutputDirectRetryUsed;
             state.StructuredNextActionRetryUsed = structuredNextActionRetryUsed;
             state.ToolProgressRecoveryUsed = toolProgressRecoveryUsed;
             state.HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;

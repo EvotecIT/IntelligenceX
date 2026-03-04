@@ -1,0 +1,72 @@
+{
+  "name": "ad-ldap-go-ahead-followthrough-8-turn",
+  "tags": ["ad", "ldap", "continuation", "go-ahead", "strict", "live", "transcript"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover forest scope",
+      "user": "Discover forest/domain scope and list discovered domain controllers for this run.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Prepare LDAP verification scope",
+      "user": "Could you verify LDAP connectivity across forest as well? First confirm scope and planned checks only.",
+      "assert_no_questions": true
+    },
+    {
+      "name": "Go-ahead executes LDAP diagnostics",
+      "user": "go ahead",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*diagnostics*", "ad_monitoring_probe_*"],
+      "assert_not_contains": [
+        "only environment discovery was executed",
+        "no per-DC",
+        "share the host replay"
+      ],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Per-DC LDAP matrix",
+      "user": "Return a compact per-DC matrix for LDAP 389, LDAPS 636, GC 3268/3269 with pass/fail and brief evidence.",
+      "assert_contains": ["389", "636", "3268", "3269"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "ADWS endpoint check",
+      "user": "Also check ADWS endpoint responsiveness across the same discovered DCs and include exact blocker text per failed host.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_monitoring_probe_*", "ad_*diagnostics*"],
+      "assert_not_contains": [":1/ActiveDirectoryWebServices"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-pack DNS quick check",
+      "user": "Quickly check DNS health for ad.evotec.xyz and summarize in two lines.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["domaindetective_*", "dnsclientx_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit tool capability question",
+      "user": "What is `eventlog_evtx_query` and when should I use it?",
+      "assert_contains": ["eventlog_evtx_query"],
+      "assert_not_contains": ["[Cached evidence fallback]", "dnsclientx_pack_info"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final summary",
+      "user": "Summarize final LDAP and ADWS findings in 6 bullets with UTC markers and no follow-up question.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}

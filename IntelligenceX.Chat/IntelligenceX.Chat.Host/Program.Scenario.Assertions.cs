@@ -31,6 +31,7 @@ internal static partial class Program {
             turn.RequireTools,
             turn.RequireAnyTools,
             turn.MinDistinctToolInputValues,
+            turn.ForbidToolInputValues,
             turn.AssertToolOutputContains,
             turn.AssertToolOutputNotContains,
             turn.AssertNoToolErrors,
@@ -124,6 +125,43 @@ internal static partial class Program {
                 failures.Add(
                     $"Expected at least {minDistinct} distinct '{inputKey}' tool input value(s); observed {observedValues.Count}."
                     + " Values: " + FormatValuesForAssertion(observedValues.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray()) + ".");
+            }
+        }
+
+        if (turn.ForbidToolInputValues.Count > 0) {
+            foreach (var requirement in turn.ForbidToolInputValues) {
+                var inputKey = requirement.Key;
+                var forbiddenValues = requirement.Value ?? Array.Empty<string>();
+                if (forbiddenValues.Count == 0) {
+                    continue;
+                }
+
+                var observedValues = CollectDistinctToolInputValuesByKey(toolCalls, inputKey);
+                if (observedValues.Count == 0) {
+                    continue;
+                }
+
+                var normalizedForbiddenValues = forbiddenValues
+                    .SelectMany(value => GetScenarioAssertionComparableInputValues(inputKey, value))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (normalizedForbiddenValues.Count == 0) {
+                    continue;
+                }
+
+                var matchedForbiddenValues = observedValues
+                    .SelectMany(value => GetScenarioAssertionComparableInputValues(inputKey, value))
+                    .Where(value => value.Length > 0 && normalizedForbiddenValues.Contains(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                if (matchedForbiddenValues.Length == 0) {
+                    continue;
+                }
+
+                failures.Add(
+                    $"Expected forbidden '{inputKey}' tool input values to be absent, but observed "
+                    + FormatValuesForAssertion(matchedForbiddenValues)
+                    + ".");
             }
         }
 
@@ -394,6 +432,69 @@ internal static partial class Program {
         }
 
         return aliases.ToArray();
+    }
+
+    private static string NormalizeScenarioAssertionInputValue(string inputKey, string value) {
+        var normalizedKey = (inputKey ?? string.Empty).Trim();
+        var normalizedValue = (value ?? string.Empty).Trim();
+        if (normalizedKey.Length == 0 || normalizedValue.Length == 0) {
+            return string.Empty;
+        }
+
+        var aliases = GetScenarioInputKeyAliases(normalizedKey);
+        if (aliases.Any(IsHostTargetAliasForAssertion)) {
+            return NormalizeHostTargetCandidateForAssertion(normalizedValue);
+        }
+
+        return normalizedValue;
+    }
+
+    private static IReadOnlyList<string> GetScenarioAssertionComparableInputValues(string inputKey, string value) {
+        var normalized = NormalizeScenarioAssertionInputValue(inputKey, value);
+        if (normalized.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var aliases = GetScenarioInputKeyAliases(inputKey);
+        if (!aliases.Any(IsHostTargetAliasForAssertion)) {
+            return new[] { normalized };
+        }
+
+        var dotIndex = normalized.IndexOf('.');
+        if (dotIndex <= 0) {
+            return new[] { normalized };
+        }
+
+        var shortLabel = normalized[..dotIndex].Trim();
+        if (shortLabel.Length < 2 || shortLabel.Length > 128) {
+            return new[] { normalized };
+        }
+
+        return new[] { normalized, shortLabel };
+    }
+
+    private static bool IsHostTargetAliasForAssertion(string key) {
+        return string.Equals(key, "machine_name", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(key, "domain_controller", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(key, "host", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(key, "server", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(key, "target", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(key, "targets", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(key, "servers", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(key, "computer_name", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeHostTargetCandidateForAssertion(string value) {
+        var candidate = (value ?? string.Empty).Trim();
+        if (candidate.Length < 2 || candidate.Length > 128) {
+            return string.Empty;
+        }
+
+        if (candidate.Any(static ch => char.IsWhiteSpace(ch) || char.IsControl(ch))) {
+            return string.Empty;
+        }
+
+        return candidate;
     }
 
     private static bool TryReadToolInputValuesByKey(IxJsonObject arguments, string inputKey, out IReadOnlyList<string> values) {

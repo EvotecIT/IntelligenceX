@@ -537,6 +537,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildNoTextToolOutputSynthesisPrompt_IncludesCompactCallArgumentsInEvidence() {
+        var prompt = ChatServiceSession.BuildNoTextToolOutputSynthesisPrompt(
+            userRequest: "Compare non-AD0 DC reboot evidence.",
+            toolCalls: new[] {
+                new ToolCallDto {
+                    CallId = "call-ctx",
+                    Name = "eventlog_live_query",
+                    ArgumentsJson = """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System","max_events":200,"event_ids":[41,6008]}"""
+                }
+            },
+            toolOutputs: new[] {
+                new ToolOutputDto {
+                    CallId = "call-ctx",
+                    Output = """{"ok":true}""",
+                    SummaryMarkdown = "No reboot markers found in the selected UTC window."
+                }
+            });
+
+        Assert.Contains("eventlog_live_query", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("args: machine_name=AD1.ad.evotec.xyz", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("max_events=200", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No reboot markers found", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_EmitsStableMarkersAndAvoidsDefaultVisualInsertion() {
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt("analyze failed logons", "Current findings...");
 

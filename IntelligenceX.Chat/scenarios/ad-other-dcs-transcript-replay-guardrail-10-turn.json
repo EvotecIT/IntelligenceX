@@ -1,0 +1,92 @@
+{
+  "name": "ad-other-dcs-transcript-replay-guardrail-10-turn",
+  "tags": ["ad", "eventlog", "continuation", "cross-dc", "strict", "live", "transcript"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Replication baseline",
+      "user": "Can you check AD replication?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD0 reboot time and reason",
+      "user": "Can you check AD0 when it was last rebooted? and what was the reason?",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_top_events"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Go ahead targeted marker pull",
+      "user": "go ahead",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_top_events"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Other DCs request",
+      "user": "could you check across the whole domain controllers for other eveidence?",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_not_contains": ["blocked by one minimal input", "I still can’t execute"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit non-AD0 follow-up",
+      "user": "i mean other dcs",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_not_contains": ["AD0-only", "minimal missing input"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Transcript phrase go-ahead",
+      "user": "well you got them right? those are correct dcs, go ahead",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*"],
+      "assert_not_contains": ["blocked by execution scope", "still AD0-only"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit tool descriptor capability",
+      "user": "dobra a co to `eventlog_evtx_query · Event Log (EventViewerX)\nRead events from a local .evtx file with basic filters (restricted to allowed roots).`",
+      "assert_contains": ["eventlog_evtx_query"],
+      "assert_not_contains": ["[Cached evidence fallback]", "dnsclientx_pack_info"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Compare EVTX and live query",
+      "user": "Compare `eventlog_evtx_query` versus `eventlog_live_query` in short, with one practical difference.",
+      "assert_contains": ["eventlog_evtx_query", "eventlog_live_query"],
+      "assert_not_contains": ["[Cached evidence fallback]"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Per-DC matrix",
+      "user": "Return a compact per-DC matrix with last reboot UTC, planned vs unexpected, and confidence.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final summary",
+      "user": "Summarize final guidance in 6 bullets with UTC mention and no follow-up question.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}

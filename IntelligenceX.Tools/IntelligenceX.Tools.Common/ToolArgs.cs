@@ -7,6 +7,11 @@ namespace IntelligenceX.Tools.Common;
 /// <summary>
 /// Shared helpers for reading tool arguments from <see cref="JsonObject"/>.
 /// </summary>
+/// <remarks>
+/// Kept for transport compatibility and legacy wrappers. New or refactored tool wrappers
+/// should prefer <see cref="ToolRequestBinder"/> + <see cref="ToolArgumentReader"/> so
+/// binding, validation, and error shaping stay centralized and typed.
+/// </remarks>
 public static class ToolArgs {
     /// <summary>
     /// Controls how non-positive numeric arguments are normalized in bounded integer helpers.

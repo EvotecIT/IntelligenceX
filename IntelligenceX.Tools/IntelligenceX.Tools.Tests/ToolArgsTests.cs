@@ -57,6 +57,15 @@ public sealed class ToolArgsTests {
     }
 
     [Fact]
+    public void GetPositiveCappedInt32OrDefault_ShouldKeepDefaultForNonPositiveAndCapHighValues() {
+        Assert.Equal(9389, ToolArgs.GetPositiveCappedInt32OrDefault(arguments: null, key: "port", defaultValue: 9389, maxInclusive: 65535));
+        Assert.Equal(9389, ToolArgs.GetPositiveCappedInt32OrDefault(new JsonObject().Add("port", 0), "port", 9389, 65535));
+        Assert.Equal(9389, ToolArgs.GetPositiveCappedInt32OrDefault(new JsonObject().Add("port", -1), "port", 9389, 65535));
+        Assert.Equal(65535, ToolArgs.GetPositiveCappedInt32OrDefault(new JsonObject().Add("port", 70000), "port", 9389, 65535));
+        Assert.Equal(636, ToolArgs.GetPositiveCappedInt32OrDefault(new JsonObject().Add("port", 636), "port", 9389, 65535));
+    }
+
+    [Fact]
     public void GetOptionBoundedInt32_WithClampBehavior_ShouldClampNonPositiveToMinimum() {
         var args = new JsonObject().Add("max_results", 0);
 

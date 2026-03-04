@@ -10,6 +10,8 @@ namespace IntelligenceX.Tools.EventLog;
 /// Lists Windows Event Log channels on the local or remote machine.
 /// </summary>
 public sealed class EventLogChannelListTool : EventLogToolBase, ITool {
+    private sealed record ChannelListRequest;
+
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_channels_list",
         "List Windows Event Log channels available on this machine (or remote machine_name) (read-only, capped).",
@@ -30,8 +32,20 @@ public sealed class EventLogChannelListTool : EventLogToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        return Task.FromResult(RunCatalogNameList(
+        return RunPipelineAsync(
             arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<ChannelListRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, static _ => ToolRequestBindingResult<ChannelListRequest>.Success(new ChannelListRequest()));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ChannelListRequest> context, CancellationToken cancellationToken) {
+        return Task.FromResult(RunCatalogNameList(
+            arguments: context.Arguments,
             providers: false,
             maxArgumentName: "max_channels",
             title: "Event Log channels (preview)",

@@ -95,6 +95,7 @@ Scenario file formats:
   - `require_tools` (string or array; all listed tool names must be called; supports `*` and `?` wildcards)
   - `require_any_tools` (string or array; at least one listed tool name must be called; supports `*` and `?` wildcards)
   - `forbid_tools` (string or array; listed tool names must not be called; supports `*` and `?` wildcards)
+  - `forbid_tool_input_values` (object; disallowed tool input values by key, for example `"machine_name": ["AD0"]`; each value can be a string or string array)
   - `assert_tool_output_contains` (string or array; expected evidence in tool output payloads)
   - `assert_tool_output_not_contains` (string or array; disallowed content in tool output payloads)
   - `assert_no_tool_errors` (boolean; when true, fails turn if any tool output envelope has `ok=false`)
@@ -115,8 +116,14 @@ Included AD scenario seeds:
 - `IntelligenceX.Chat/scenarios/ad-cross-dc-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-compaction-soak-cross-dc-24-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-eventlog-correlation-partial-failures-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-domainwide-reboot-followthrough-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-c400-transcript-cross-dc-fanout-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-eventlog-tool-capability-followthrough-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-other-dcs-go-ahead-followthrough-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-other-dcs-transcript-replay-guardrail-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-ldap-adws-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-ldap-go-ahead-followthrough-8-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-long-continuation-no-partials-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-transport-recovery-no-duplicate-replay-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-user-last-logon-przemyslaw-10-turn.json`

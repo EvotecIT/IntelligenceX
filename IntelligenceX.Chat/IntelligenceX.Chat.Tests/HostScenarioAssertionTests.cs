@@ -263,6 +263,123 @@ public sealed class HostScenarioAssertionTests {
     }
 
     [Fact]
+    public void EvaluateScenarioAssertions_FailsWhenForbiddenToolInputValueIsObserved() {
+        const string json = """
+{
+  "name": "forbidden-input-values",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on non-AD0 DCs only.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*"],
+      "forbid_tool_input_values": { "machine_name": ["AD0"] }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD0\"}"),
+            BuildToolCall("call_2", "eventlog_live_query", "{\"machine_name\":\"AD1\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("forbidden 'machine_name' tool input values", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_PassesWhenForbiddenToolInputValueIsNotObserved() {
+        const string json = """
+{
+  "name": "forbidden-input-values-pass",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on non-AD0 DCs only.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*"],
+      "forbid_tool_input_values": { "machine_name": ["AD0"] }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD1\"}"),
+            BuildToolCall("call_2", "eventlog_live_query", "{\"machine_name\":\"AD2\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("forbidden 'machine_name' tool input values", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_FailsWhenForbiddenShortHostMatchesFqdnInputValue() {
+        const string json = """
+{
+  "name": "forbidden-input-values-fqdn",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on non-AD0 DCs only.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["eventlog_*query*"],
+      "forbid_tool_input_values": { "machine_name": ["AD0"] }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "eventlog_live_query", "{\"machine_name\":\"AD0.ad.evotec.xyz\"}"),
+            BuildToolCall("call_2", "eventlog_live_query", "{\"machine_name\":\"AD1.ad.evotec.xyz\"}")
+        };
+        var outputs = new List<ToolOutput> {
+            new("call_1", "{\"ok\":true}"),
+            new("call_2", "{\"ok\":true}")
+        };
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            toolRounds: 1,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("forbidden 'machine_name' tool input values", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void EvaluateScenarioAssertions_PassesWhenAssertContainsAnyMatches() {
         const string json = """
 {
@@ -369,6 +486,30 @@ public sealed class HostScenarioAssertionTests {
         Assert.Contains("DNSHEALTH", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("NameServers", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("use NS", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildScenarioTurnPrompt_UsesNotInForbiddenInputSyntax() {
+        const string json = """
+{
+  "name": "forbidden-input-contract-shape",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Continue on non-AD0 DCs only.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*"],
+      "forbid_tool_input_values": { "machine_name": ["AD0"] }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+
+        Assert.Contains("forbidden_tool_inputs: machine_name not-in [AD0]", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Forbidden tool input values: machine_name not-in [AD0].", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -252,6 +252,32 @@ public class SourceGuardrailTests {
     }
 
     [Fact]
+    public void ActiveDirectoryToolBaseHelpers_ShouldUseToolResultV2InsteadOfToolResponse() {
+        var repoRoot = FindRepoRoot();
+        var folder = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground");
+        var files = Directory.EnumerateFiles(folder, "ActiveDirectoryToolBase*.cs", SearchOption.TopDirectoryOnly);
+
+        foreach (var file in files) {
+            var source = File.ReadAllText(file);
+            Assert.DoesNotContain("ToolResponse.", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void AdGpoInventoryHealthTool_ShouldUseSharedTypedRowsViewHelperPath() {
+        var repoRoot = FindRepoRoot();
+        var filePath = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGpoInventoryHealthTool.cs");
+        var source = File.ReadAllText(filePath);
+
+        Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+        Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+        Assert.Contains("ExecuteDomainRowsViewTool(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToolResponse.", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ActiveDirectoryTools_ShouldNotLeakRawExceptionMessagesInToolErrors() {
         var repoRoot = FindRepoRoot();
         var folder = Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground");
@@ -298,6 +324,10 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemTimeSyncTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemWhoAmITool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "WslStatusTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemBitlockerStatusTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemInstalledApplicationsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemNetworkAdaptersTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemPatchComplianceTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogPackInfoTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogNamedEventsCatalogTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogNamedEventsQueryTool.cs"),
@@ -346,6 +376,7 @@ public class SourceGuardrailTests {
         var repoRoot = FindRepoRoot();
         string[] filePaths = {
             Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectivePackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveChecksCatalogTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveNetworkProbeTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective", "DomainDetectiveDomainSummaryTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX", "DnsClientXPackInfoTool.cs"),
@@ -357,6 +388,7 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdUsersExpiredTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdWhoAmITool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdScopeDiscoveryTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdMonitoringProbeCatalogTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdRecycleBinLifetimeTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupMembersTool.cs"),
@@ -391,6 +423,85 @@ public class SourceGuardrailTests {
             Assert.DoesNotContain("ToolResponse.Error(", source, StringComparison.Ordinal);
             Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
             Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void ReviewerSetupWrappers_ShouldUseTypedPipelineAndResultV2() {
+        var repoRoot = FindRepoRoot();
+        string[] filePaths = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup", "ReviewerSetupPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup", "ReviewerSetupContractVerifyTool.cs")
+        };
+
+        foreach (var filePath in filePaths) {
+            var source = File.ReadAllText(filePath);
+            Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+            Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+            Assert.Contains("ToolResultV2.", source, StringComparison.Ordinal);
+
+            Assert.DoesNotContain("ToolResponse.Ok", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("ToolResponse.Error(", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void RefactoredPackWrappers_ShouldUseTypedPipelineBinder() {
+        var repoRoot = FindRepoRoot();
+        string[] targetToolFolders = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.Email"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO")
+        };
+
+        foreach (var folder in targetToolFolders) {
+            var files = Directory.EnumerateFiles(folder, "*Tool.cs", SearchOption.TopDirectoryOnly);
+            foreach (var file in files) {
+                var source = File.ReadAllText(file);
+                Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+                Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    [Fact]
+    public void RefactoredTypedPipelineTools_ShouldNotUseRawArgumentGetPatterns() {
+        var repoRoot = FindRepoRoot();
+        string[] targetToolFolders = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.Email"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup")
+        };
+
+        foreach (var folder in targetToolFolders) {
+            var files = Directory.EnumerateFiles(folder, "*Tool.cs", SearchOption.TopDirectoryOnly);
+            foreach (var file in files) {
+                var source = File.ReadAllText(file);
+                if (!source.Contains("RunPipelineAsync(", StringComparison.Ordinal)
+                    || !source.Contains("ToolRequestBindingResult<", StringComparison.Ordinal)) {
+                    continue;
+                }
+
+                Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+            }
         }
     }
 
