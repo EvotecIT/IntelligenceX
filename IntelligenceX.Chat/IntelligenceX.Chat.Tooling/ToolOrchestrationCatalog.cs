@@ -32,6 +32,7 @@ public sealed record ToolOrchestrationHandoffEdge {
 
     /// <summary>
     /// Normalized source-to-target binding pairs ("source->target").
+    /// Duplicate pairs are preserved to keep declared contract multiplicity.
     /// </summary>
     public IReadOnlyList<string> BindingPairs { get; init; } = Array.Empty<string>();
 }
@@ -144,6 +145,7 @@ public sealed record ToolOrchestrationCatalogEntry {
 
     /// <summary>
     /// Number of declared outbound handoff bindings across all routes.
+    /// Duplicate normalized binding pairs are counted when explicitly declared.
     /// </summary>
     public int HandoffBindingCount { get; init; }
 
@@ -299,17 +301,17 @@ public sealed class ToolOrchestrationCatalog {
                         bindingPairs.Add(source + "->" + target);
                     }
 
-                    var normalizedBindingPairs = NormalizeDistinctTokens(bindingPairs);
-                    if (normalizedBindingPairs.Length == 0) {
+                    var normalizedBindingPairs = NormalizeTokensPreserveMultiplicity(bindingPairs);
+                    if (normalizedBindingPairs.Count == 0) {
                         continue;
                     }
 
-                    handoffBindingCount += normalizedBindingPairs.Length;
+                    handoffBindingCount += normalizedBindingPairs.Count;
                     handoffEdges.Add(new ToolOrchestrationHandoffEdge {
                         TargetPackId = NormalizePackId(route?.TargetPackId),
                         TargetToolName = NormalizeToken(route?.TargetToolName),
                         TargetRole = NormalizeToken(route?.TargetRole),
-                        BindingCount = normalizedBindingPairs.Length,
+                        BindingCount = normalizedBindingPairs.Count,
                         BindingPairs = FreezeStringList(normalizedBindingPairs)
                     });
                 }
@@ -532,6 +534,26 @@ public sealed class ToolOrchestrationCatalog {
         return unique.Count == 0
             ? Array.Empty<string>()
             : unique.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static IReadOnlyList<string> NormalizeTokensPreserveMultiplicity(IEnumerable<string>? values) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>();
+        foreach (var value in values) {
+            var token = NormalizeToken(value);
+            if (token.Length == 0) {
+                continue;
+            }
+
+            normalized.Add(token);
+        }
+
+        return normalized.Count == 0
+            ? Array.Empty<string>()
+            : normalized;
     }
 
     private static IReadOnlyList<string> FreezeStringList(IReadOnlyList<string> values) {

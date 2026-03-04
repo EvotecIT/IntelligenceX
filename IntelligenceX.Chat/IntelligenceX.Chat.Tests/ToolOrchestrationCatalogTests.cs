@@ -282,7 +282,7 @@ public sealed class ToolOrchestrationCatalogTests {
     }
 
     [Fact]
-    public void Build_NormalizesHandoffCountersAgainstProjectedBindings() {
+    public void Build_PreservesNormalizedHandoffBindingMultiplicity() {
         var catalog = ToolOrchestrationCatalog.Build(new[] {
             CreateDefinition(
                 name: "custom_pack_info",
@@ -309,10 +309,10 @@ public sealed class ToolOrchestrationCatalogTests {
 
         Assert.True(catalog.TryGetEntry("custom_pack_info", out var entry));
         Assert.Equal(1, entry.HandoffRouteCount);
-        Assert.Equal(1, entry.HandoffBindingCount);
+        Assert.Equal(2, entry.HandoffBindingCount);
         Assert.Single(entry.HandoffEdges);
-        Assert.Equal(1, entry.HandoffEdges[0].BindingCount);
-        Assert.Equal(new[] { "host->target" }, entry.HandoffEdges[0].BindingPairs);
+        Assert.Equal(2, entry.HandoffEdges[0].BindingCount);
+        Assert.Equal(new[] { "host->target", "host->target" }, entry.HandoffEdges[0].BindingPairs);
     }
 
     [Fact]
