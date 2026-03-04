@@ -106,6 +106,33 @@ public sealed partial class ChatServiceRoutingTrimTests {    private static asyn
         return false;
     }
 
+    private static string GetLatestUserMessageContent(string requestBody) {
+        using var doc = JsonDocument.Parse(requestBody);
+        if (!doc.RootElement.TryGetProperty("messages", out var messages)
+            || messages.ValueKind != System.Text.Json.JsonValueKind.Array) {
+            return string.Empty;
+        }
+
+        var items = messages.EnumerateArray().ToArray();
+        for (var i = items.Length - 1; i >= 0; i--) {
+            var message = items[i];
+            if (!message.TryGetProperty("role", out var roleEl)
+                || !string.Equals(roleEl.GetString(), "user", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (!message.TryGetProperty("content", out var contentEl)) {
+                continue;
+            }
+
+            if (contentEl.ValueKind == System.Text.Json.JsonValueKind.String) {
+                return contentEl.GetString() ?? string.Empty;
+            }
+        }
+
+        return string.Empty;
+    }
+
     private sealed class RoundTripStubTool : ITool {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 

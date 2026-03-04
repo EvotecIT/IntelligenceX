@@ -37,6 +37,72 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_UsesStructuredContinuationContractFollowUp() {
+        var input = """
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: Keep going with the same scope and include AD2.
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal("Keep going with the same scope and include AD2.", text);
+    }
+
+    [Fact]
+    public void ExtractIntentUserText_UsesStructuredContinuationContractIntentAnchor() {
+        var input = """
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: Keep going with the same scope and include AD2.
+            """;
+
+        var result = ExtractIntentUserTextMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal("Run forest-wide replication and LDAP diagnostics.", text);
+    }
+
+    [Fact]
+    public void ExtractIntentUserText_NormalizesStructuredIntentAnchorLikePlainIntent() {
+        const string anchor = "Please run ```replication``` diagnostics and `LDAP` checks.";
+        var structuredInput = """
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: "Please run ```replication``` diagnostics and `LDAP` checks."
+            follow_up: run now
+            """;
+
+        var structuredResult = ExtractIntentUserTextMethod.Invoke(null, new object?[] { structuredInput });
+        var plainResult = ExtractIntentUserTextMethod.Invoke(null, new object?[] { anchor });
+        var structuredText = Assert.IsType<string>(structuredResult);
+        var plainText = Assert.IsType<string>(plainResult);
+
+        Assert.Equal(plainText, structuredText);
+        Assert.DoesNotContain("```", structuredText, StringComparison.Ordinal);
+        Assert.DoesNotContain("`", structuredText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotActivateStructuredContractForIncidentalMarkerMention() {
+        var input = """
+            Please document what ix:continuation:v1 means in our prompt schema.
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: run now
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.NotEqual("run now", text);
+        Assert.Contains("Please document what ix:continuation:v1 means", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_IncludesLastIntent() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
@@ -46,6 +112,43 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("run now", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_ForceContinuationFollowUpBypassesShapeGate() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        session.RememberUserIntentForTesting("thread-force-follow-up", "Run forest-wide replication and LDAP diagnostics.");
+        var expanded = session.ExpandContinuationUserRequestForTesting(
+            "thread-force-follow-up",
+            "keep going with the same diagnostics scope across all domain controllers and include AD2 evidence",
+            forceContinuationFollowUp: true);
+
+        Assert.Contains("Run forest-wide replication", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Follow-up:", expanded, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("include AD2 evidence", expanded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveFollowUpTurnClassification_DoesNotMarkCompactForContractWithoutExpansion() {
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
+            continuationContractDetected: true,
+            userRequest: "Please run a full forest replication and LDAP diagnostics sweep across every domain controller and include a clear matrix.",
+            routedUserRequest: "Please run a full forest replication and LDAP diagnostics sweep across every domain controller and include a clear matrix.");
+
+        Assert.False(continuationFollowUpTurn);
+        Assert.False(compactFollowUpTurn);
+    }
+
+    [Fact]
+    public void ResolveFollowUpTurnClassification_DoesNotMarkCompactForLexicalCompactContractWithoutExpansion() {
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
+            continuationContractDetected: true,
+            userRequest: "run now",
+            routedUserRequest: "run now");
+
+        Assert.False(continuationFollowUpTurn);
+        Assert.False(compactFollowUpTurn);
     }
 
     [Fact]

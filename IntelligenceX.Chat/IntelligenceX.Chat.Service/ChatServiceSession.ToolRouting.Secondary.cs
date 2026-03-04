@@ -715,6 +715,22 @@ internal sealed partial class ChatServiceSession {
         return LooksLikeFollowUpShape(userRequest, ContinuationFollowUpQuestionCharLimit);
     }
 
+    private static (bool ContinuationFollowUpTurn, bool CompactFollowUpTurn) ResolveFollowUpTurnClassification(
+        bool continuationContractDetected,
+        string userRequest,
+        string routedUserRequest) {
+        if (continuationContractDetected) {
+            var contractExpandedFollowUpTurn = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
+            return (contractExpandedFollowUpTurn, contractExpandedFollowUpTurn);
+        }
+
+        var lexicalCompactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);
+        var continuationFollowUpTurn = lexicalCompactFollowUpTurn
+                                       && !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
+        var compactFollowUpTurn = continuationFollowUpTurn || lexicalCompactFollowUpTurn;
+        return (continuationFollowUpTurn, compactFollowUpTurn);
+    }
+
     private bool ShouldTreatAsPassiveCompactFollowUp(string threadId, string userRequest) {
         var normalized = (userRequest ?? string.Empty).Trim();
         if (normalized.Length == 0 || !LooksLikeContinuationFollowUp(normalized)) {

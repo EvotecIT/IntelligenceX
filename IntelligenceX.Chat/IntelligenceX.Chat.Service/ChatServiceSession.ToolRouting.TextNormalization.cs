@@ -40,6 +40,10 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
+        if (TryReadContinuationContractFromRequestText(text, out _, out var continuationFollowUp)) {
+            return NormalizeRoutingUserText(continuationFollowUp);
+        }
+
         var match = UserRequestSectionRegex.Match(text);
         if (match.Success && match.Groups.Count > 1) {
             var value = match.Groups["value"].Value;
@@ -57,6 +61,11 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
+        if (TryReadContinuationContractFromRequestText(text, out var continuationIntentAnchor, out _)
+            && continuationIntentAnchor.Length > 0) {
+            return NormalizeIntentUserText(continuationIntentAnchor);
+        }
+
         var match = UserRequestSectionRegex.Match(text);
         if (match.Success && match.Groups.Count > 1) {
             var value = match.Groups["value"].Value;
@@ -65,17 +74,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        // Keep intent relatively faithful while still removing markdown delimiters.
-        var withoutInlineDelimiters = StripInlineCode(text);
-        var strippedFences = StripCodeFences(withoutInlineDelimiters);
-        var collapsed = CollapseWhitespace(strippedFences);
-        if (collapsed.Length > 0) {
-            return collapsed;
-        }
-
-        // If stripping fences wiped out everything (e.g., an all-code message), keep a compact version of the
-        // original content but remove fence markers so follow-ups can still anchor on *some* context.
-        return CollapseWhitespace(withoutInlineDelimiters.Replace("```", " ", StringComparison.Ordinal));
+        return NormalizeIntentUserText(text);
     }
 
     private static string NormalizeRoutingUserText(string text) {
@@ -90,6 +89,25 @@ internal sealed partial class ChatServiceSession {
         normalized = CollapseWhitespace(normalized);
         // Never fall back to the original text here: it may contain the very content we intentionally stripped.
         return normalized;
+    }
+
+    private static string NormalizeIntentUserText(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        // Keep intent relatively faithful while still removing markdown delimiters.
+        var withoutInlineDelimiters = StripInlineCode(normalized);
+        var strippedFences = StripCodeFences(withoutInlineDelimiters);
+        var collapsed = CollapseWhitespace(strippedFences);
+        if (collapsed.Length > 0) {
+            return collapsed;
+        }
+
+        // If stripping fences wiped out everything (e.g., an all-code message), keep a compact version of the
+        // original content but remove fence markers so follow-ups can still anchor on *some* context.
+        return CollapseWhitespace(withoutInlineDelimiters.Replace("```", " ", StringComparison.Ordinal));
     }
 
     private static string StripCodeFences(string text) {
@@ -248,6 +266,176 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool TryReadContinuationContractFromRequestText(string? requestText, out string intentAnchor, out string followUp) {
+        intentAnchor = string.Empty;
+        followUp = string.Empty;
+        var text = requestText ?? string.Empty;
+        if (text.Length == 0) {
+            return false;
+        }
+
+        var scanLength = Math.Min(MaxContinuationContractScanChars, text.Length);
+        if (scanLength <= 0) {
+            return false;
+        }
+
+        var scan = text.AsSpan(0, scanLength);
+        var markerSeen = false;
+        var enabled = false;
+        var enabledSeen = false;
+        while (!scan.IsEmpty) {
+            var lineBreakIndex = scan.IndexOfAny('\r', '\n');
+            ReadOnlySpan<char> line;
+            if (lineBreakIndex < 0) {
+                line = scan;
+                scan = ReadOnlySpan<char>.Empty;
+            } else {
+                line = scan.Slice(0, lineBreakIndex);
+                var nextIndex = lineBreakIndex + 1;
+                if (nextIndex < scan.Length && scan[lineBreakIndex] == '\r' && scan[nextIndex] == '\n') {
+                    nextIndex++;
+                }
+
+                scan = scan.Slice(nextIndex);
+            }
+
+            var trimmed = line.Trim();
+            if (trimmed.IsEmpty) {
+                continue;
+            }
+
+            if (!markerSeen) {
+                // Only treat the payload as a continuation contract when the marker is
+                // the first non-empty line; this avoids incidental substring matches.
+                if (trimmed.Equals(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase)) {
+                    markerSeen = true;
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (trimmed.StartsWith("ix:", StringComparison.OrdinalIgnoreCase)
+                && trimmed.IndexOf(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+                break;
+            }
+
+            if (TryParseBooleanStructuredField(trimmed, "enabled", out var parsedEnabled)) {
+                enabled = parsedEnabled;
+                enabledSeen = true;
+                continue;
+            }
+
+            if (TryParseStringStructuredField(trimmed, "intent_anchor", out var parsedIntentAnchor)) {
+                intentAnchor = CollapseWhitespace(parsedIntentAnchor);
+                continue;
+            }
+
+            if (TryParseStringStructuredField(trimmed, "follow_up", out var parsedFollowUp)) {
+                followUp = CollapseWhitespace(parsedFollowUp);
+            }
+        }
+
+        if (!enabledSeen || !enabled || followUp.Length == 0) {
+            intentAnchor = string.Empty;
+            followUp = string.Empty;
+            return false;
+        }
+
+        if (intentAnchor.Length > MaxContinuationContractFieldChars) {
+            intentAnchor = intentAnchor.Substring(0, MaxContinuationContractFieldChars);
+        }
+        if (followUp.Length > MaxContinuationContractFieldChars) {
+            followUp = followUp.Substring(0, MaxContinuationContractFieldChars);
+        }
+
+        return true;
+    }
+
+    private static bool TryParseBooleanStructuredField(ReadOnlySpan<char> line, string key, out bool value) {
+        value = false;
+        if (!TryParseStringStructuredField(line, key, out var parsedValue)) {
+            return false;
+        }
+
+        if (parsedValue.Equals("true", StringComparison.OrdinalIgnoreCase)) {
+            value = true;
+            return true;
+        }
+
+        if (parsedValue.Equals("false", StringComparison.OrdinalIgnoreCase)) {
+            value = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseStringStructuredField(ReadOnlySpan<char> line, string key, out string value) {
+        value = string.Empty;
+        var trimmed = line.Trim();
+        if (!trimmed.StartsWith(key, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var remainder = trimmed.Slice(key.Length).TrimStart();
+        if (remainder.IsEmpty || (remainder[0] != ':' && remainder[0] != '\uFF1A')) {
+            return false;
+        }
+
+        var rawValue = remainder.Slice(1).Trim();
+        if (rawValue.Length >= 2) {
+            var startsWithDoubleQuote = rawValue[0] == '"';
+            var startsWithSingleQuote = rawValue[0] == '\'';
+            if ((startsWithDoubleQuote && rawValue[^1] == '"') || (startsWithSingleQuote && rawValue[^1] == '\'')) {
+                rawValue = rawValue.Slice(1, rawValue.Length - 2).Trim();
+            }
+        }
+
+        value = rawValue.ToString();
+        return true;
+    }
+
+    private static string BuildContinuationContractEnvelope(string routedUserRequest, string followUpRequest) {
+        var routed = (routedUserRequest ?? string.Empty).Trim();
+        if (routed.Length == 0) {
+            return string.Empty;
+        }
+
+        var followUp = CollapseWhitespace((followUpRequest ?? string.Empty).Trim());
+        if (followUp.Length == 0) {
+            return string.Empty;
+        }
+
+        var intentAnchor = routed;
+        var followUpLabelIndex = routed.LastIndexOf("\nFollow-up:", StringComparison.OrdinalIgnoreCase);
+        if (followUpLabelIndex > 0) {
+            intentAnchor = routed[..followUpLabelIndex].Trim();
+        }
+        intentAnchor = CollapseWhitespace(intentAnchor);
+        if (intentAnchor.Length == 0) {
+            intentAnchor = routed;
+        }
+        if (intentAnchor.Length > MaxContinuationContractFieldChars) {
+            intentAnchor = intentAnchor.Substring(0, MaxContinuationContractFieldChars);
+        }
+        if (followUp.Length > MaxContinuationContractFieldChars) {
+            followUp = followUp.Substring(0, MaxContinuationContractFieldChars);
+        }
+
+        return
+            routed
+            + "\n\n"
+            + ContinuationContractMarker
+            + "\n"
+            + "enabled: true\n"
+            + "intent_anchor: "
+            + intentAnchor
+            + "\n"
+            + "follow_up: "
+            + followUp;
     }
 
 }
