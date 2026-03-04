@@ -111,6 +111,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Contract-first domain-intent hardening (2026-03-04): removed raw tool-name domain-family fallback from `ToolRouting.ResolveDomainIntentFamily(string toolName)` so family resolution relies on registered definition/catalog contracts; architecture guardrail now enforces this method-level boundary.
 - [x] Transcript-snippet scenario hardening (2026-03-04): updated `ad-pl-eventlog-capability-followthrough-10-turn` with the original multiline descriptor turn (`eventlog_evtx_query · Event Log (EventViewerX) ...`) that previously regressed into cached-evidence fallback.
 - [x] Live strict rerun validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) after descriptor-snippet hardening, with no cached-evidence fallback output on the explicit capability turn.
+- [x] Documentation increment (2026-03-04): published `InternalDocs/agent-playbooks/chat-pack-contract-first-onboarding.md` with zero-Chat-edits onboarding flow and plugin contract schema examples.
 
 ## Rules For This Migration
 
