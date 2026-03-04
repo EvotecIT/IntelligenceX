@@ -507,6 +507,23 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryValidateChatRequestOptions_RejectsWhitespaceOnlySelectorEntriesExceedingLengthLimit() {
+        var whitespaceEntry = new string(' ', ChatRequestOptionLimits.MaxToolSelectorLength + 1);
+        var invokeArgs = new object?[] {
+            new ChatRequestOptions {
+                EnabledTools = new[] { whitespaceEntry }
+            },
+            null
+        };
+
+        var result = Assert.IsType<bool>(TryValidateChatRequestOptionsMethod.Invoke(null, invokeArgs));
+        Assert.False(result);
+        Assert.Equal(
+            $"enabledTools entries must be at most {ChatRequestOptionLimits.MaxToolSelectorLength} characters.",
+            Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Fact]
     public void TryValidateChatRequestOptions_AcceptsSelectorWhitespaceEntriesForExplicitEmptySemantics() {
         var invokeArgs = new object?[] {
             new ChatRequestOptions {

@@ -722,14 +722,14 @@ internal sealed partial class ChatServiceSession {
         }
 
         for (var i = 0; i < values.Length; i++) {
-            var value = (values[i] ?? string.Empty).Trim();
-            if (value.Length == 0) {
-                continue;
-            }
-
-            if (value.Length > ChatRequestOptionLimits.MaxToolSelectorLength) {
+            var rawValue = values[i] ?? string.Empty;
+            if (rawValue.Length > ChatRequestOptionLimits.MaxToolSelectorLength) {
                 error = $"{optionName} entries must be at most {ChatRequestOptionLimits.MaxToolSelectorLength} characters.";
                 return false;
+            }
+
+            if (rawValue.Trim().Length == 0) {
+                continue;
             }
         }
 
