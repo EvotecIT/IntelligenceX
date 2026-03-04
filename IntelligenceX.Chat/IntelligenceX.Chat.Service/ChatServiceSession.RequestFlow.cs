@@ -27,11 +27,14 @@ internal sealed partial class ChatServiceSession {
 
     private async Task HandleListToolsAsync(StreamWriter writer, string requestId, CancellationToken cancellationToken) {
         var defs = _registry.GetDefinitions();
+        var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        var startupToolingBootstrapInProgress = startupToolingBootstrapTask is { IsCompleted: false };
         ToolDefinitionDto[] tools;
         if (defs.Count > 0) {
             tools = BuildToolDefinitionDtosFromRegistryDefinitions(defs);
             Volatile.Write(ref _cachedToolDefinitions, tools);
-        } else if (!TryGetCachedToolCatalogForListTools(out tools)) {
+        } else if (!ShouldUseCachedToolCatalogFallbackForListTools(startupToolingBootstrapInProgress)
+                   || !TryGetCachedToolCatalogForListTools(out tools)) {
             tools = Array.Empty<ToolDefinitionDto>();
         }
 
@@ -40,6 +43,10 @@ internal sealed partial class ChatServiceSession {
             RequestId = requestId,
             Tools = tools
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static bool ShouldUseCachedToolCatalogFallbackForListTools(bool startupToolingBootstrapInProgress) {
+        return !startupToolingBootstrapInProgress;
     }
 
     private bool TryGetCachedToolCatalogForListTools(out ToolDefinitionDto[] tools) {

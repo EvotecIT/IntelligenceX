@@ -86,4 +86,34 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
         Assert.Contains("tool catalog", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Plugin manifest invalid", message, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData(true, true, true, true)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, true, true, false)]
+    public void ShouldBypassToolingBootstrapWaitForListTools_ReturnsExpectedValue(
+        bool isListToolsRequest,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool hasCachedToolCatalog,
+        bool expected) {
+        var shouldBypass = ChatServiceSession.ShouldBypassToolingBootstrapWaitForListTools(
+            isListToolsRequest: isListToolsRequest,
+            startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapCompletedSuccessfully,
+            hasCachedToolCatalog: hasCachedToolCatalog);
+
+        Assert.Equal(expected, shouldBypass);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void ShouldUseCachedToolCatalogFallbackForListTools_ReturnsExpectedValue(
+        bool startupToolingBootstrapInProgress,
+        bool expected) {
+        var shouldUseCachedFallback = ChatServiceSession.ShouldUseCachedToolCatalogFallbackForListTools(
+            startupToolingBootstrapInProgress: startupToolingBootstrapInProgress);
+
+        Assert.Equal(expected, shouldUseCachedFallback);
+    }
 }

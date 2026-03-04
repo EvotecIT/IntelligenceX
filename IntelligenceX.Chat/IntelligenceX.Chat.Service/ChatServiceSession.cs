@@ -100,6 +100,7 @@ internal sealed partial class ChatServiceSession {
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private string? _instructions;
+    private Task? _startupToolingBootstrapTask;
 
     private readonly object _loginLock = new();
     private LoginFlow? _login;
@@ -241,6 +242,7 @@ internal sealed partial class ChatServiceSession {
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
         var startupToolingBootstrapTask = Task.Run(() => RebuildToolingCore(clearRoutingCaches: false), CancellationToken.None);
+        _startupToolingBootstrapTask = startupToolingBootstrapTask;
         _ = startupToolingBootstrapTask.ContinueWith(
             faultedBootstrapTask => {
                 var detail = (faultedBootstrapTask.Exception?.GetBaseException().Message ?? "Tool bootstrap failed.").Trim();
@@ -313,7 +315,7 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 if (RequestRequiresToolingBootstrap(request)) {
-                    var shouldBypassToolingBootstrapWait = ShouldBypassToolingBootstrapWait(request);
+                    var shouldBypassToolingBootstrapWait = ShouldBypassToolingBootstrapWait(request, startupToolingBootstrapTask);
                     try {
                         if (!shouldBypassToolingBootstrapWait) {
                             await startupToolingBootstrapTask.ConfigureAwait(false);
@@ -493,18 +495,29 @@ internal sealed partial class ChatServiceSession {
                 }
             }
         } finally {
+            _startupToolingBootstrapTask = null;
             await CancelActiveChatIfAnyAsync().ConfigureAwait(false);
             CancelLoginIfActive();
             await DisposeClientAsync(client).ConfigureAwait(false);
         }
     }
 
-    private bool ShouldBypassToolingBootstrapWait(ChatServiceRequest request) {
-        if (request is not ListToolsRequest) {
+    internal static bool ShouldBypassToolingBootstrapWaitForListTools(
+        bool isListToolsRequest,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool hasCachedToolCatalog) {
+        if (!isListToolsRequest || !startupToolingBootstrapCompletedSuccessfully) {
             return false;
         }
 
-        return TryGetCachedToolCatalogForListTools(out _);
+        return hasCachedToolCatalog;
+    }
+
+    private bool ShouldBypassToolingBootstrapWait(ChatServiceRequest request, Task startupToolingBootstrapTask) {
+        return ShouldBypassToolingBootstrapWaitForListTools(
+            isListToolsRequest: request is ListToolsRequest,
+            startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully,
+            hasCachedToolCatalog: TryGetCachedToolCatalogForListTools(out _));
     }
 
 }
