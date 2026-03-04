@@ -22,7 +22,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 intentAnchor: "Run AD replication + failed-logon diagnostics across DCs and summarize top risks.",
                 domainIntentFamily: "ad_domain",
                 recentToolNames: new[] { "ad_replication_summary", "eventlog_live_query" },
-                recentEvidenceSnippets: new[] { "ad_replication_summary: replication failures were concentrated on DC02." });
+                recentEvidenceSnippets: new[] { "ad_replication_summary: replication failures were concentrated on DC02." },
+                enabledPackIds: new[] { "adplayground", "eventlog" },
+                routingFamilies: new[] { "ad_domain", "public_domain" },
+                healthyToolNames: new[] { "ad_replication_summary", "eventlog_live_query" });
 
             var session2 = new ChatServiceSession(
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
@@ -38,6 +41,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.Contains("intent_anchor:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("domain_scope_family: ad_domain", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("recent_tools:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("ix:capability-snapshot:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("enabled_packs:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("routing_families:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("healthy_tools:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("follow_up: run now", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
         } finally {
             try {

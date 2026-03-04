@@ -13,8 +13,12 @@ internal sealed partial class ChatServiceSession {
     private const int MaxWorkingMemoryEvidenceLines = 3;
     private const int MaxWorkingMemoryEvidenceChars = 220;
     private const int MaxWorkingMemoryAugmentedRequestChars = 1600;
+    private const int MaxWorkingMemoryCapabilityPackIds = 8;
+    private const int MaxWorkingMemoryCapabilityFamilies = 6;
+    private const int MaxWorkingMemoryCapabilityHealthyTools = 12;
     private static readonly TimeSpan WorkingMemoryContextMaxAge = TimeSpan.FromHours(24);
     private const string WorkingMemoryMarker = "ix:working-memory:v1";
+    private const string CapabilitySnapshotMarker = "ix:capability-snapshot:v1";
     private readonly object _workingMemoryCheckpointLock = new();
     private readonly Dictionary<string, WorkingMemoryCheckpoint> _workingMemoryCheckpointByThreadId = new(StringComparer.Ordinal);
 
@@ -23,6 +27,9 @@ internal sealed partial class ChatServiceSession {
         string DomainIntentFamily,
         string[] RecentToolNames,
         string[] RecentEvidenceSnippets,
+        string[] CapabilityEnabledPackIds,
+        string[] CapabilityRoutingFamilies,
+        string[] CapabilityHealthyToolNames,
         long SeenUtcTicks);
 
     private void RememberWorkingMemoryCheckpoint(
@@ -49,11 +56,19 @@ internal sealed partial class ChatServiceSession {
             mutatingToolHintsByName,
             fallbackToolNames: existing.RecentToolNames,
             fallbackEvidenceSnippets: existing.RecentEvidenceSnippets);
+        var capabilityEnabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(existing.CapabilityEnabledPackIds);
+        var capabilityRoutingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(existing.CapabilityRoutingFamilies);
+        var capabilityHealthyToolNames = ResolveWorkingMemoryCapabilityHealthyToolNames(
+            recentToolNames,
+            existing.CapabilityHealthyToolNames);
 
         if (resolvedIntentAnchor.Length == 0
             && resolvedDomainIntentFamily.Length == 0
             && recentToolNames.Length == 0
-            && recentEvidenceSnippets.Length == 0) {
+            && recentEvidenceSnippets.Length == 0
+            && capabilityEnabledPackIds.Length == 0
+            && capabilityRoutingFamilies.Length == 0
+            && capabilityHealthyToolNames.Length == 0) {
             return;
         }
 
@@ -62,6 +77,9 @@ internal sealed partial class ChatServiceSession {
             DomainIntentFamily: resolvedDomainIntentFamily,
             RecentToolNames: recentToolNames,
             RecentEvidenceSnippets: recentEvidenceSnippets,
+            CapabilityEnabledPackIds: capabilityEnabledPackIds,
+            CapabilityRoutingFamilies: capabilityRoutingFamilies,
+            CapabilityHealthyToolNames: capabilityHealthyToolNames,
             SeenUtcTicks: DateTime.UtcNow.Ticks);
         UpsertWorkingMemoryCheckpoint(normalizedThreadId, checkpoint);
     }
@@ -102,7 +120,10 @@ internal sealed partial class ChatServiceSession {
         if (checkpoint.IntentAnchor.Length == 0
             && checkpoint.DomainIntentFamily.Length == 0
             && checkpoint.RecentToolNames.Length == 0
-            && checkpoint.RecentEvidenceSnippets.Length == 0) {
+            && checkpoint.RecentEvidenceSnippets.Length == 0
+            && checkpoint.CapabilityEnabledPackIds.Length == 0
+            && checkpoint.CapabilityRoutingFamilies.Length == 0
+            && checkpoint.CapabilityHealthyToolNames.Length == 0) {
             return false;
         }
 
@@ -126,6 +147,25 @@ internal sealed partial class ChatServiceSession {
                 .Append(i + 1)
                 .Append(": ")
                 .AppendLine(checkpoint.RecentEvidenceSnippets[i]);
+        }
+
+        if (checkpoint.CapabilityEnabledPackIds.Length > 0
+            || checkpoint.CapabilityRoutingFamilies.Length > 0
+            || checkpoint.CapabilityHealthyToolNames.Length > 0) {
+            builder.AppendLine();
+            builder.AppendLine("[Capability snapshot]");
+            builder.AppendLine(CapabilitySnapshotMarker);
+            if (checkpoint.CapabilityEnabledPackIds.Length > 0) {
+                builder.Append("enabled_packs: ").AppendLine(string.Join(", ", checkpoint.CapabilityEnabledPackIds));
+            }
+
+            if (checkpoint.CapabilityRoutingFamilies.Length > 0) {
+                builder.Append("routing_families: ").AppendLine(string.Join(", ", checkpoint.CapabilityRoutingFamilies));
+            }
+
+            if (checkpoint.CapabilityHealthyToolNames.Length > 0) {
+                builder.Append("healthy_tools: ").AppendLine(string.Join(", ", checkpoint.CapabilityHealthyToolNames));
+            }
         }
 
         builder.Append("follow_up: ").Append(normalizedFollowUp);
@@ -330,6 +370,87 @@ internal sealed partial class ChatServiceSession {
         return NormalizeDistinctStrings(values ?? Array.Empty<string>(), maxItems);
     }
 
+    private string[] ResolveWorkingMemoryCapabilityEnabledPackIds(IReadOnlyList<string> fallbackEnabledPackIds) {
+        var enabledPackIds = _packAvailability
+            .Where(static pack => pack.Enabled)
+            .Select(static pack => NormalizePackId(pack.Id))
+            .Where(static packId => packId.Length > 0);
+        var normalized = NormalizeDistinctStrings(enabledPackIds, MaxWorkingMemoryCapabilityPackIds);
+        if (normalized.Length > 0) {
+            return normalized;
+        }
+
+        return NormalizeDistinctStrings(
+            (fallbackEnabledPackIds ?? Array.Empty<string>())
+            .Select(static packId => NormalizePackId(packId))
+            .Where(static packId => packId.Length > 0),
+            MaxWorkingMemoryCapabilityPackIds);
+    }
+
+    private string[] ResolveWorkingMemoryCapabilityRoutingFamilies(IReadOnlyList<string> fallbackRoutingFamilies) {
+        var routingFamilies = _routingCatalogDiagnostics.FamilyActions
+            .Select(static summary => summary.Family);
+        var normalized = NormalizeWorkingMemoryCapabilityFamilies(routingFamilies);
+        if (normalized.Length > 0) {
+            return normalized;
+        }
+
+        return NormalizeWorkingMemoryCapabilityFamilies(fallbackRoutingFamilies ?? Array.Empty<string>());
+    }
+
+    private static string[] NormalizeWorkingMemoryCapabilityFamilies(IEnumerable<string> values) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+
+        var families = new List<string>();
+        foreach (var value in values) {
+            if (!TryNormalizeDomainIntentFamily(value, out var normalizedFamily)) {
+                continue;
+            }
+
+            families.Add(normalizedFamily);
+        }
+
+        return NormalizeDistinctStrings(families, MaxWorkingMemoryCapabilityFamilies);
+    }
+
+    private string[] ResolveWorkingMemoryCapabilityHealthyToolNames(
+        IReadOnlyList<string> recentToolNames,
+        IReadOnlyList<string> fallbackHealthyToolNames) {
+        var candidates = new List<string>();
+        if (recentToolNames is { Count: > 0 }) {
+            candidates.AddRange(recentToolNames);
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        lock (_toolRoutingStatsLock) {
+            var healthyFromStats = _toolRoutingStats
+                .Where(static pair => !string.IsNullOrWhiteSpace(pair.Key))
+                .Select(static pair => (ToolName: pair.Key.Trim(), Stats: pair.Value))
+                .Where(static pair => pair.ToolName.Length > 0 && pair.Stats.LastSuccessUtcTicks > 0)
+                .Select(pair => {
+                    var hasSeen = TryGetUtcDateTimeFromTicks(pair.Stats.LastSuccessUtcTicks, out var seenUtc);
+                    return (pair.ToolName, HasSeen: hasSeen, SeenUtc: seenUtc);
+                })
+                .Where(pair => pair.HasSeen && pair.SeenUtc <= nowUtc && nowUtc - pair.SeenUtc <= UserIntentContextMaxAge)
+                .OrderByDescending(static pair => pair.SeenUtc)
+                .ThenBy(static pair => pair.ToolName, StringComparer.OrdinalIgnoreCase)
+                .Select(static pair => pair.ToolName)
+                .Take(MaxWorkingMemoryCapabilityHealthyTools)
+                .ToArray();
+            if (healthyFromStats.Length > 0) {
+                candidates.AddRange(healthyFromStats);
+            }
+        }
+
+        if (candidates.Count == 0 && fallbackHealthyToolNames is { Count: > 0 }) {
+            candidates.AddRange(fallbackHealthyToolNames);
+        }
+
+        return NormalizeDistinctStrings(candidates, MaxWorkingMemoryCapabilityHealthyTools);
+    }
+
     private static bool TryReadIntentAnchorFromWorkingMemoryPrompt(string routedUserRequest, out string intentAnchor) {
         intentAnchor = string.Empty;
         var raw = routedUserRequest ?? string.Empty;
@@ -475,12 +596,22 @@ internal sealed partial class ChatServiceSession {
         string domainIntentFamily,
         IReadOnlyList<string> recentToolNames,
         IReadOnlyList<string> recentEvidenceSnippets,
+        IReadOnlyList<string>? enabledPackIds = null,
+        IReadOnlyList<string>? routingFamilies = null,
+        IReadOnlyList<string>? healthyToolNames = null,
         long? seenUtcTicks = null) {
         var checkpoint = new WorkingMemoryCheckpoint(
             IntentAnchor: NormalizeWorkingMemoryIntentAnchor(intentAnchor),
             DomainIntentFamily: (domainIntentFamily ?? string.Empty).Trim(),
             RecentToolNames: NormalizeWorkingMemoryList(recentToolNames ?? Array.Empty<string>(), MaxWorkingMemoryToolNames),
             RecentEvidenceSnippets: NormalizeWorkingMemoryList(recentEvidenceSnippets ?? Array.Empty<string>(), MaxWorkingMemoryEvidenceLines),
+            CapabilityEnabledPackIds: NormalizeDistinctStrings(
+                (enabledPackIds ?? Array.Empty<string>())
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+                MaxWorkingMemoryCapabilityPackIds),
+            CapabilityRoutingFamilies: NormalizeWorkingMemoryCapabilityFamilies(routingFamilies ?? Array.Empty<string>()),
+            CapabilityHealthyToolNames: NormalizeDistinctStrings(healthyToolNames ?? Array.Empty<string>(), MaxWorkingMemoryCapabilityHealthyTools),
             SeenUtcTicks: seenUtcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks));
         UpsertWorkingMemoryCheckpoint(threadId, checkpoint);
     }
