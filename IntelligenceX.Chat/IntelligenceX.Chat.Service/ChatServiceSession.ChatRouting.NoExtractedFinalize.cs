@@ -454,6 +454,11 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 text = AppendTurnCompletionNotice(text, turn);
+                text = AppendNoToolExecutionDisclosureIfNeeded(
+                    assistantDraft: text,
+                    tools: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count);
 
                 var finalizedStructuredNextActionToolDefs = fullToolDefs.Length > 0 ? fullToolDefs : toolDefs;
                 RememberStructuredNextActionCarryover(

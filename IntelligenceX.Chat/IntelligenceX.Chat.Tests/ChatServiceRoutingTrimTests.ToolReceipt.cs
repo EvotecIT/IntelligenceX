@@ -200,4 +200,64 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var value = Assert.IsType<string>(prompt);
         Assert.DoesNotContain("(empty)", value, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void AppendNoToolExecutionDisclosureIfNeeded_AppendsDisclosure_WhenDraftMentionsToolAndNoToolActivity() {
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var tools = new[] { new ToolDefinition("ad_search", "AD search", schema) };
+        var draft = "You can use ad_search to find matching users.";
+
+        var result = AppendNoToolExecutionDisclosureIfNeededMethod.Invoke(
+            null,
+            new object?[] { draft, tools, 0, 0 });
+
+        var value = Assert.IsType<string>(result);
+        Assert.Contains("Tool receipt: no tools were run in this turn.", value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AppendNoToolExecutionDisclosureIfNeeded_DoesNotAppend_WhenToolActivityExists() {
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var tools = new[] { new ToolDefinition("ad_search", "AD search", schema) };
+        var draft = "I will summarize the result.";
+
+        var result = AppendNoToolExecutionDisclosureIfNeededMethod.Invoke(
+            null,
+            new object?[] { draft, tools, 1, 1 });
+
+        var value = Assert.IsType<string>(result);
+        Assert.Equal(draft, value);
+    }
+
+    [Fact]
+    public void AppendNoToolExecutionDisclosureIfNeeded_DoesNotAppend_WhenDraftDoesNotMentionKnownTool() {
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var tools = new[] { new ToolDefinition("ad_search", "AD search", schema) };
+        var draft = "Here is a direct explanation without tool names.";
+
+        var result = AppendNoToolExecutionDisclosureIfNeededMethod.Invoke(
+            null,
+            new object?[] { draft, tools, 0, 0 });
+
+        var value = Assert.IsType<string>(result);
+        Assert.Equal(draft, value);
+    }
+
+    [Fact]
+    public void AppendNoToolExecutionDisclosureIfNeeded_DoesNotDuplicateDisclosure() {
+        var schema = ToolSchema.Object().NoAdditionalProperties();
+        var tools = new[] { new ToolDefinition("ad_search", "AD search", schema) };
+        var draft = """
+                    You can use ad_search to find matching users.
+
+                    Tool receipt: no tools were run in this turn.
+                    """;
+
+        var result = AppendNoToolExecutionDisclosureIfNeededMethod.Invoke(
+            null,
+            new object?[] { draft, tools, 0, 0 });
+
+        var value = Assert.IsType<string>(result);
+        Assert.Equal(draft, value);
+    }
 }
