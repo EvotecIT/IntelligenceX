@@ -103,12 +103,13 @@ internal sealed partial class ChatServiceSession {
             continuationContractDetected,
             userRequest,
             routedUserRequest);
+        var structuredCompactFollowUpTurn = continuationContractDetected && compactFollowUpTurn;
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
             if (!executionContractApplies) {
-                if (compactFollowUpTurn) {
+                if (structuredCompactFollowUpTurn) {
                     // Keep follow-up turns unconstrained so users don't see "subset retry" rewrites for
-                    // short continuation requests (for example compact follow-up text or ordinal selections).
+                    // explicit structured continuation requests.
                     routingInsights = new List<ToolRoutingInsight>();
                 } else if (!TryGetContinuationToolSubset(threadId, userRequest, toolDefs, out var continuationSubset)) {
                     await TryWriteStatusAsync(
@@ -336,7 +337,7 @@ internal sealed partial class ChatServiceSession {
         }
         var hasFreshPendingActionContext = HasFreshPendingActionsContext(threadId);
         if (ShouldSuppressDomainIntentClarificationForCompactFollowUp(
-                compactFollowUpTurn,
+                structuredCompactFollowUpTurn,
                 hasPreferredDomainIntentFamily,
                 hasFreshPendingActionContext,
                 conflictingDomainSignals)) {

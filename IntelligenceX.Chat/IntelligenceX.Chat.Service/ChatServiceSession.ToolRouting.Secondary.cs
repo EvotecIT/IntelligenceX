@@ -709,13 +709,6 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        // For explicit action selections, keep all tools available so execution can proceed immediately.
-        // Keep follow-up turns unconstrained: short continuation prompts (for example "1" or other compact follow-up text)
-        // should have immediate access to the full toolset.
-        if (LooksLikeContinuationFollowUp(normalized)) {
-            return true;
-        }
-
         return false;
     }
 
