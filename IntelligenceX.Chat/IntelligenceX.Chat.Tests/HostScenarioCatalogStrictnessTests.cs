@@ -178,6 +178,55 @@ public sealed class HostScenarioCatalogStrictnessTests {
     }
 
     [Fact]
+    public void AdDomainwideRebootScenario_NonAd0ContinuationTurnsForbidAd0HostInputs() {
+        var scenarioDir = ResolveScenarioDirectory();
+        var file = Path.Combine(scenarioDir, "ad-domainwide-reboot-followthrough-10-turn.json");
+
+        Assert.True(File.Exists(file), $"Expected scenario file '{file}' to exist.");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(file));
+        var root = document.RootElement;
+        var turns = RequireProperty(root, "turns");
+        Assert.Equal(JsonValueKind.Array, turns.ValueKind);
+
+        var matched = 0;
+        foreach (var turn in turns.EnumerateArray()) {
+            if (turn.ValueKind != JsonValueKind.Object
+                || !turn.TryGetProperty("name", out var nameElement)
+                || nameElement.ValueKind != JsonValueKind.String) {
+                continue;
+            }
+
+            var name = nameElement.GetString() ?? string.Empty;
+            var user = turn.TryGetProperty("user", out var userElement) && userElement.ValueKind == JsonValueKind.String
+                ? userElement.GetString() ?? string.Empty
+                : string.Empty;
+            if (!name.Contains("non-AD0", StringComparison.OrdinalIgnoreCase)
+                && !name.Contains("remaining", StringComparison.OrdinalIgnoreCase)
+                && !user.Contains("non-AD0", StringComparison.OrdinalIgnoreCase)
+                && !user.Contains("remaining", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var minToolCalls = ReadRequiredInt32(turn, "min_tool_calls");
+            if (minToolCalls < 2) {
+                continue;
+            }
+
+            matched++;
+            var minimumDistinctInputValues = ReadNonNegativeIntMap(turn, "min_distinct_tool_input_values");
+            Assert.True(minimumDistinctInputValues.TryGetValue("machine_name", out var minMachineNameValues));
+            Assert.True(minMachineNameValues >= 2);
+
+            var forbiddenInputValues = ReadStringListMap(turn, "forbid_tool_input_values");
+            Assert.True(forbiddenInputValues.TryGetValue("machine_name", out var machineNameForbidden));
+            Assert.Contains(machineNameForbidden, value => string.Equals(value, "AD0", StringComparison.OrdinalIgnoreCase));
+        }
+
+        Assert.True(matched >= 2, "Expected at least two non-AD0 continuation turns.");
+    }
+
+    [Fact]
     public void MixedDomainAmbiguityScenarios_RequireClarifyBeforeSplitToolPaths() {
         var scenarioDir = ResolveScenarioDirectory();
         var files = Directory.GetFiles(scenarioDir, "mixed-domain-ambiguity-*-10-turn.json", SearchOption.TopDirectoryOnly)

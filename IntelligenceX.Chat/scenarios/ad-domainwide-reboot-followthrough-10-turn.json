@@ -1,0 +1,91 @@
+{
+  "name": "ad-domainwide-reboot-followthrough-10-turn",
+  "tags": ["ad", "eventlog", "continuation", "go-ahead", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover DC scope",
+      "user": "Discover all domain controllers in scope for this run and keep the host list for follow-up checks.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD0 reboot baseline",
+      "user": "Check AD0 last reboot time and reason with exact UTC markers.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "AD0 targeted marker pull",
+      "user": "Go ahead and pull the reboot marker IDs for AD0 to classify planned vs unexpected restart.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Domain-wide non-AD0 sweep",
+      "user": "Now check across the whole domain controllers for other reboot evidence, but not AD0.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Go-ahead continuation stays cross-DC",
+      "user": "go ahead and continue on the remaining non-AD0 discovered controllers in this same turn.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Explicit eventlog capability question",
+      "user": "What is `eventlog_evtx_query` and when should I use it?",
+      "assert_contains": ["eventlog_evtx_query"],
+      "assert_not_contains": ["[Cached evidence fallback]", "dnsclientx_pack_info"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Cross-pack DNS validation",
+      "user": "Check if DNS is functioning correctly for ad.evotec.xyz and summarize quickly.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["dnsclientx_query", "domaindetective_domain_summary"],
+      "forbid_tools": ["ad_*", "eventlog_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Return to domain-wide reboot evidence",
+      "user": "Return to AD reboot evidence and verify remaining non-AD0 controllers again.",
+      "min_tool_calls": 2,
+      "min_distinct_tool_input_values": { "machine_name": 2 },
+      "forbid_tool_input_values": { "machine_name": ["AD0"] },
+      "require_any_tools": ["eventlog_*query*", "eventlog_*events*", "eventlog_*stats*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Per-DC reboot matrix",
+      "user": "Return a compact per-DC matrix with last reboot UTC, planned vs unexpected, and confidence.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final summary",
+      "user": "Summarize final guidance in 6 bullets with UTC mention and no follow-up question.",
+      "assert_contains": ["UTC"],
+      "assert_no_questions": true
+    }
+  ]
+}

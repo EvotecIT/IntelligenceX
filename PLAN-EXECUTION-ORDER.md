@@ -65,6 +65,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict scenario validation: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn` passes end-to-end, covering continuation-style `go ahead` execution across multiple DC hosts and explicit `eventlog_evtx_query` capability follow-ups.
 - [x] Scenario-contract hardening: host scenario contracts now support forbidden tool-input values (`forbid_tool_input_values` / `forbidden_tool_inputs`) and enforce them during retry repair, fallback host patching, and assertion evaluation.
 - [x] Transcript guardrail hardening: `ad-other-dcs-go-ahead-followthrough-10-turn` continuation turns now include explicit non-AD0 host exclusions, and catalog strictness tests lock those exclusions.
+- [x] Transcript-derived strict scenario seed added: `ad-domainwide-reboot-followthrough-10-turn` (AD0 reboot baseline -> non-AD0 domain-wide continuation + explicit `eventlog_evtx_query` capability question + DNS cross-pack turn).
 
 ## Rules For This Migration
 

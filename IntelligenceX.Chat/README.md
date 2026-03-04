@@ -116,6 +116,7 @@ Included AD scenario seeds:
 - `IntelligenceX.Chat/scenarios/ad-cross-dc-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-compaction-soak-cross-dc-24-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-eventlog-correlation-partial-failures-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-domainwide-reboot-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-eventlog-tool-capability-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-other-dcs-go-ahead-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`

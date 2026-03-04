@@ -103,6 +103,7 @@ Build a contract-first architecture where:
 - [x] Live strict scenario validation: transcript-derived `ad-other-dcs-go-ahead-followthrough-10-turn` now passes end-to-end (`10/10` turns), guarding continuation-style `go ahead` follow-through with cross-DC tool execution (`machine_name>=2`) and direct `eventlog_evtx_query` capability responses.
 - [x] Scenario-contract hardening: host runtime now supports explicit forbidden tool-input values (`forbid_tool_input_values` / `forbidden_tool_inputs`) and applies them in retry eligibility, assertion checks, and distinct-host fallback repair paths.
 - [x] Transcript guardrail hardening: `ad-other-dcs-go-ahead-followthrough-10-turn` continuation turns now explicitly forbid `machine_name=AD0`, and strict catalog tests lock this requirement.
+- [x] Added transcript-derived strict scenario seed `ad-domainwide-reboot-followthrough-10-turn` to guard AD0-baseline -> domain-wide non-AD0 continuation flow, explicit `eventlog_evtx_query` capability follow-up behavior, and DNS cross-pack routing in one 10-turn sequence.
 
 ## Hard Decisions (Locked)
 
