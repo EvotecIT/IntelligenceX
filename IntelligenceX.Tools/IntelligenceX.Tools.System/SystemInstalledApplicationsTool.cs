@@ -35,6 +35,12 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
         bool Truncated,
         IReadOnlyList<InstalledApplicationInfo> Applications);
 
+    private sealed record InstalledApplicationsRequest(
+        string? ComputerName,
+        string? NameContains,
+        string? PublisherContains,
+        int MaxResults);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemInstalledApplicationsTool"/> class.
     /// </summary>
@@ -45,45 +51,58 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<InstalledApplicationsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<InstalledApplicationsRequest>.Success(new InstalledApplicationsRequest(
+            ComputerName: reader.OptionalString("computer_name"),
+            NameContains: reader.OptionalString("name_contains"),
+            PublisherContains: reader.OptionalString("publisher_contains"),
+            MaxResults: ResolveMaxResults(arguments))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<InstalledApplicationsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         var windowsError = ValidateWindowsSupport("system_installed_applications");
         if (windowsError is not null) {
             return Task.FromResult(windowsError);
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = ResolveTargetComputerName(computerName);
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var publisherContains = ToolArgs.GetOptionalTrimmed(arguments, "publisher_contains");
-        var maxResults = ResolveMaxResults(arguments);
+        var target = ResolveTargetComputerName(request.ComputerName);
 
         IEnumerable<InstalledApplicationInfo> query;
         try {
-            query = InstalledApplications.Query(computerName);
+            query = InstalledApplications.Query(request.ComputerName);
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "Installed applications query failed."));
         }
 
         var filtered = query
-            .Where(x => string.IsNullOrWhiteSpace(nameContains)
-                || x.Name?.Contains(nameContains, StringComparison.OrdinalIgnoreCase) == true)
-            .Where(x => string.IsNullOrWhiteSpace(publisherContains)
-                || x.Publisher?.Contains(publisherContains, StringComparison.OrdinalIgnoreCase) == true)
+            .Where(x => string.IsNullOrWhiteSpace(request.NameContains)
+                || x.Name?.Contains(request.NameContains, StringComparison.OrdinalIgnoreCase) == true)
+            .Where(x => string.IsNullOrWhiteSpace(request.PublisherContains)
+                || x.Publisher?.Contains(request.PublisherContains, StringComparison.OrdinalIgnoreCase) == true)
             .ToArray();
 
-        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
+        var rows = CapRows(filtered, request.MaxResults, out var scanned, out var truncated);
 
         var result = new SystemInstalledApplicationsResult(
             ComputerName: target,
-            NameContains: nameContains,
-            PublisherContains: publisherContains,
+            NameContains: request.NameContains,
+            PublisherContains: request.PublisherContains,
             Scanned: scanned,
             Truncated: truncated,
             Applications: rows);
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "applications_view",
@@ -93,12 +112,12 @@ public sealed class SystemInstalledApplicationsTool : SystemToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 AddComputerNameMeta(meta, target);
-                AddMaxResultsMeta(meta, maxResults);
-                if (!string.IsNullOrWhiteSpace(nameContains)) {
-                    meta.Add("name_contains", nameContains);
+                AddMaxResultsMeta(meta, request.MaxResults);
+                if (!string.IsNullOrWhiteSpace(request.NameContains)) {
+                    meta.Add("name_contains", request.NameContains);
                 }
-                if (!string.IsNullOrWhiteSpace(publisherContains)) {
-                    meta.Add("publisher_contains", publisherContains);
+                if (!string.IsNullOrWhiteSpace(request.PublisherContains)) {
+                    meta.Add("publisher_contains", request.PublisherContains);
                 }
             });
         return Task.FromResult(response);

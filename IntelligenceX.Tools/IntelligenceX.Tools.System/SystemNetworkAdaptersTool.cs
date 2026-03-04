@@ -15,6 +15,8 @@ namespace IntelligenceX.Tools.System;
 public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
     private const int MaxViewTop = 5000;
 
+    private sealed record NetworkAdaptersRequest(string? NameContains, int MaxAdapters, int TimeoutMs);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "system_network_adapters",
         "List network adapters with IP/DNS details (read-only, capped).",
@@ -35,17 +37,29 @@ public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var nameContains = ToolArgs.GetOptionalTrimmed(arguments, "name_contains");
-        var max = ResolveBoundedOptionLimit(arguments, "max_adapters");
-        var timeoutMs = ResolveTimeoutMs(arguments);
+    private ToolRequestBindingResult<NetworkAdaptersRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<NetworkAdaptersRequest>.Success(new NetworkAdaptersRequest(
+            NameContains: reader.OptionalString("name_contains"),
+            MaxAdapters: ResolveBoundedOptionLimit(arguments, "max_adapters"),
+            TimeoutMs: ResolveTimeoutMs(arguments))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<NetworkAdaptersRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         if (!NetworkAdapterInventoryQueryExecutor.TryExecute(
                 request: new NetworkAdapterInventoryQueryRequest {
-                    NameContains = nameContains,
-                    MaxResults = max,
-                    Timeout = TimeSpan.FromMilliseconds(timeoutMs)
+                    NameContains = request.NameContains,
+                    MaxResults = request.MaxAdapters,
+                    Timeout = TimeSpan.FromMilliseconds(request.TimeoutMs)
                 },
                 result: out var queryResult,
                 failure: out var failure,
@@ -54,8 +68,8 @@ public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new NetworkAdapterInventoryQueryResult();
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Adapters,
             viewRowsPath: "adapters_view",
@@ -64,7 +78,7 @@ public sealed class SystemNetworkAdaptersTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
-                meta.Add("timeout_ms", timeoutMs);
+                meta.Add("timeout_ms", request.TimeoutMs);
             });
         return Task.FromResult(response);
     }

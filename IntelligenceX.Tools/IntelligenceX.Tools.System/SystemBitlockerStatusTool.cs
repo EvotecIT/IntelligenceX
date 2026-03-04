@@ -35,6 +35,12 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
         bool Truncated,
         IReadOnlyList<BitLockerVolumeInfo> Volumes);
 
+    private sealed record BitlockerStatusRequest(
+        string? ComputerName,
+        bool ProtectedOnly,
+        bool EncryptedOnly,
+        int MaxResults);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemBitlockerStatusTool"/> class.
     /// </summary>
@@ -45,43 +51,56 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private ToolRequestBindingResult<BitlockerStatusRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<BitlockerStatusRequest>.Success(new BitlockerStatusRequest(
+            ComputerName: reader.OptionalString("computer_name"),
+            ProtectedOnly: reader.Boolean("protected_only", defaultValue: false),
+            EncryptedOnly: reader.Boolean("encrypted_only", defaultValue: false),
+            MaxResults: ResolveMaxResults(arguments))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<BitlockerStatusRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         var windowsError = ValidateWindowsSupport("system_bitlocker_status");
         if (windowsError is not null) {
             return Task.FromResult(windowsError);
         }
 
-        var computerName = ToolArgs.GetOptionalTrimmed(arguments, "computer_name");
-        var target = ResolveTargetComputerName(computerName);
-        var protectedOnly = ToolArgs.GetBoolean(arguments, "protected_only", defaultValue: false);
-        var encryptedOnly = ToolArgs.GetBoolean(arguments, "encrypted_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
+        var target = ResolveTargetComputerName(request.ComputerName);
 
         IEnumerable<BitLockerVolumeInfo> query;
         try {
-            query = BitLocker.Get(computerName);
+            query = BitLocker.Get(request.ComputerName);
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "BitLocker status query failed."));
         }
 
         var filtered = query
-            .Where(x => !protectedOnly || x.ProtectionStatus == BitLockerProtectionStatus.Protected)
-            .Where(x => !encryptedOnly || x.EncryptionPercentage > 0)
+            .Where(x => !request.ProtectedOnly || x.ProtectionStatus == BitLockerProtectionStatus.Protected)
+            .Where(x => !request.EncryptedOnly || x.EncryptionPercentage > 0)
             .ToArray();
 
-        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
+        var rows = CapRows(filtered, request.MaxResults, out var scanned, out var truncated);
 
         var result = new SystemBitlockerStatusResult(
             ComputerName: target,
-            ProtectedOnly: protectedOnly,
-            EncryptedOnly: encryptedOnly,
+            ProtectedOnly: request.ProtectedOnly,
+            EncryptedOnly: request.EncryptedOnly,
             Scanned: scanned,
             Truncated: truncated,
             Volumes: rows);
 
-        var response = BuildAutoTableResponse(
-            arguments: arguments,
+        var response = ToolResultV2.OkAutoTableResponse(
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "volumes_view",
@@ -91,9 +110,9 @@ public sealed class SystemBitlockerStatusTool : SystemToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 AddComputerNameMeta(meta, target);
-                meta.Add("protected_only", protectedOnly);
-                meta.Add("encrypted_only", encryptedOnly);
-                AddMaxResultsMeta(meta, maxResults);
+                meta.Add("protected_only", request.ProtectedOnly);
+                meta.Add("encrypted_only", request.EncryptedOnly);
+                AddMaxResultsMeta(meta, request.MaxResults);
             });
         return Task.FromResult(response);
     }

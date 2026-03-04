@@ -324,6 +324,10 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemTimeSyncTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemWhoAmITool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "WslStatusTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemBitlockerStatusTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemInstalledApplicationsTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemNetworkAdaptersTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemPatchComplianceTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogPackInfoTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogNamedEventsCatalogTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog", "EventLogNamedEventsQueryTool.cs"),
@@ -440,6 +444,32 @@ public class SourceGuardrailTests {
             Assert.DoesNotContain("ToolResponse.Error(", source, StringComparison.Ordinal);
             Assert.DoesNotContain("arguments?.Get", source, StringComparison.Ordinal);
             Assert.DoesNotContain("arguments.Get", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void RefactoredPackWrappers_ShouldUseTypedPipelineBinder() {
+        var repoRoot = FindRepoRoot();
+        string[] targetToolFolders = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DomainDetective"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.DnsClientX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ReviewerSetup"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.EventLog"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.Email"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.PowerShell"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.OfficeIMO")
+        };
+
+        foreach (var folder in targetToolFolders) {
+            var files = Directory.EnumerateFiles(folder, "*Tool.cs", SearchOption.TopDirectoryOnly);
+            foreach (var file in files) {
+                var source = File.ReadAllText(file);
+                Assert.Contains("RunPipelineAsync(", source, StringComparison.Ordinal);
+                Assert.Contains("ToolRequestBindingResult<", source, StringComparison.Ordinal);
+            }
         }
     }
 
