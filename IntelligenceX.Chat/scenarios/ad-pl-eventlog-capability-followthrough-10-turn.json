@@ -43,7 +43,7 @@
     },
     {
       "name": "PL explicit eventlog capability question",
-      "user": "dobra a co to `eventlog_evtx_query` i kiedy tego uzywac?",
+      "user": "dobra a co to `eventlog_evtx_query · Event Log (EventViewerX)\nRead events from a local .evtx file with basic filters (restricted to allowed roots).`",
       "assert_contains": ["eventlog_evtx_query"],
       "assert_not_contains": ["[Cached evidence fallback]", "nie mam dostepnych narzedzi", "nie mam dostępnych narzędzi"],
       "assert_no_questions": true

@@ -109,6 +109,8 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) with strict tool call/output pairing and no duplicate call/output ids.
 - [x] Startup visibility hardening (2026-03-04): send-safe bootstrap progress phases now publish during startup turn/send waits, and connected sessions continue surfacing send-safe startup statuses even when metadata-sync flags have transient lag.
 - [x] Contract-first domain-intent hardening (2026-03-04): removed raw tool-name domain-family fallback from `ToolRouting.ResolveDomainIntentFamily(string toolName)` so family resolution relies on registered definition/catalog contracts; architecture guardrail now enforces this method-level boundary.
+- [x] Transcript-snippet scenario hardening (2026-03-04): updated `ad-pl-eventlog-capability-followthrough-10-turn` with the original multiline descriptor turn (`eventlog_evtx_query · Event Log (EventViewerX) ...`) that previously regressed into cached-evidence fallback.
+- [x] Live strict rerun validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) after descriptor-snippet hardening, with no cached-evidence fallback output on the explicit capability turn.
 
 ## Rules For This Migration
 

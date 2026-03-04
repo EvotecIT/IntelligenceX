@@ -148,6 +148,8 @@ Build a contract-first architecture where:
 - [x] Live strict validation (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` passes end-to-end (`10/10`) with paired EventLog tool execution and no duplicate call/output ids.
 - [x] Startup visibility hardening (2026-03-04): send-safe bootstrap phases now publish even during startup turn/send waits (`pack_register/load`, `plugin_load`, scan/finalize), and connected sessions can still surface send-safe startup statuses when metadata-sync flags lag briefly.
 - [x] Contract-first domain-intent hardening (2026-03-04): Chat tool-routing no longer infers domain family from raw tool-name fallback in `ResolveDomainIntentFamily(string toolName)`; family resolution now stays registry/catalog contract-based, with architecture guardrail coverage locking this.
+- [x] Transcript-snippet guardrail hardening (2026-03-04): Polish strict scenario `ad-pl-eventlog-capability-followthrough-10-turn` now uses the original multiline catalog-descriptor phrasing (`eventlog_evtx_query · Event Log (EventViewerX) ...`) that previously triggered cached-evidence fallback loops.
+- [x] Live strict validation rerun (2026-03-04): `ad-pl-eventlog-capability-followthrough-10-turn` remains green (`10/10`) with direct capability handling for the multiline descriptor follow-up and no cached-evidence fallback response.
 
 ## Hard Decisions (Locked)
 
