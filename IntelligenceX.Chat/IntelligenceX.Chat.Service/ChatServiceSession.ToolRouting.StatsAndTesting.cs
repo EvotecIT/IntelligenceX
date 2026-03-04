@@ -662,6 +662,16 @@ internal sealed partial class ChatServiceSession {
             conflictingDomainSignals);
     }
 
+    internal static (bool ContinuationFollowUpTurn, bool CompactFollowUpTurn) ResolveFollowUpTurnClassificationForTesting(
+        bool continuationContractDetected,
+        string userRequest,
+        string routedUserRequest) {
+        return ResolveFollowUpTurnClassification(
+            continuationContractDetected,
+            userRequest,
+            routedUserRequest);
+    }
+
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {
         RememberPendingDomainIntentClarificationRequest(threadId);
     }

@@ -99,9 +99,10 @@ internal sealed partial class ChatServiceSession {
                     message: $"Applied pending domain scope selection: family={DescribeDomainIntentFamily(selectedDomainIntentFamily)}.")
                 .ConfigureAwait(false);
         }
-        var compactFollowUpTurn = continuationContractDetected || LooksLikeContinuationFollowUp(userRequest);
-        var continuationFollowUpTurn = compactFollowUpTurn
-                                       && !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ResolveFollowUpTurnClassification(
+            continuationContractDetected,
+            userRequest,
+            routedUserRequest);
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
             if (!executionContractApplies) {

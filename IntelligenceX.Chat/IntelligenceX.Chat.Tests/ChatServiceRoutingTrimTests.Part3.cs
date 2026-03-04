@@ -110,6 +110,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveFollowUpTurnClassification_DoesNotMarkCompactForContractWithoutExpansion() {
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
+            continuationContractDetected: true,
+            userRequest: "Please run a full forest replication and LDAP diagnostics sweep across every domain controller and include a clear matrix.",
+            routedUserRequest: "Please run a full forest replication and LDAP diagnostics sweep across every domain controller and include a clear matrix.");
+
+        Assert.False(continuationFollowUpTurn);
+        Assert.False(compactFollowUpTurn);
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_DoesNotInjectIntentForPassiveCompactAckWithSymbolCue() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
