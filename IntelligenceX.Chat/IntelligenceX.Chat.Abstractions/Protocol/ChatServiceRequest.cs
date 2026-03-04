@@ -347,6 +347,7 @@ public sealed record ChatRequestOptions {
     /// <summary>
     /// Optional allow-list of tool names to expose for this request.
     /// When provided, only listed tools remain available before <see cref="DisabledTools"/> filtering applies.
+    /// An explicit empty/whitespace-only list disables tool exposure for the turn.
     /// </summary>
     public string[]? EnabledTools { get; init; }
     /// <summary>

@@ -60,6 +60,43 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(new[] { "ad_search", "dnsclientx_query" }, selected.Select(static d => d.Name), StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ApplyToolExposureOverrides_ExplicitEmptyEnabledTools_DisablesAllTools() {
+        var defs = BuildToolDefinitions("ad_search", "dnsclientx_query");
+
+        var result = ApplyToolExposureOverridesMethod.Invoke(
+            null,
+            new object?[] { defs, Array.Empty<string>(), null });
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
+        Assert.Empty(selected);
+    }
+
+    [Fact]
+    public void ApplyToolExposureOverrides_WhitespaceOnlyEnabledTools_DisablesAllTools() {
+        var defs = BuildToolDefinitions("ad_search", "dnsclientx_query");
+
+        var result = ApplyToolExposureOverridesMethod.Invoke(
+            null,
+            new object?[] { defs, new[] { "  ", "\t" }, null });
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
+        Assert.Empty(selected);
+    }
+
+    [Fact]
+    public void ApplyToolExposureOverrides_MatchesEnabledToolsCaseInsensitivelyAndDeduplicatesEntries() {
+        var defs = BuildToolDefinitions("dnsclientx_query", "ad_search");
+
+        var result = ApplyToolExposureOverridesMethod.Invoke(
+            null,
+            new object?[] { defs, new[] { "DNSCLIENTX_QUERY", "dnsclientx_query", " DNSCLIENTX_QUERY " }, null });
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
+        Assert.Single(selected);
+        Assert.Equal("dnsclientx_query", selected[0].Name, StringComparer.OrdinalIgnoreCase);
+    }
+
     private static IReadOnlyList<ToolDefinition> BuildToolDefinitions(params string[] names) {
         var schema = ToolSchema.Object().NoAdditionalProperties();
         var tools = new List<ToolDefinition>(names.Length);
