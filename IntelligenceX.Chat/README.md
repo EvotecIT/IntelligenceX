@@ -121,6 +121,7 @@ Included AD scenario seeds:
 - `IntelligenceX.Chat/scenarios/ad-other-dcs-go-ahead-followthrough-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-identity-correlation-przemyslaw-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-ldap-adws-health-10-turn.json`
+- `IntelligenceX.Chat/scenarios/ad-ldap-go-ahead-followthrough-8-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-long-continuation-no-partials-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-transport-recovery-no-duplicate-replay-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-user-last-logon-przemyslaw-10-turn.json`

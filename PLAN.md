@@ -116,12 +116,13 @@ Build a contract-first architecture where:
 - [x] Live strict validation: `ad-ldap-go-ahead-followthrough-8-turn` passes end-to-end (`8/8`) after ADWS port normalization hardening.
 - [x] Startup/send dedupe hardening: queued-after-login duplicate suppression now also handles startup/login windows where both prompts have missing conversation ids but equivalent normalized text, reducing duplicate assistant greetings after switch-account recovery.
 - [x] Regression coverage expanded: queue dedupe tests now explicitly lock both-missing-conversation-id startup fallback behavior for manual resend suppression during in-flight queued-after-login dispatch.
+- [x] Catalog contract validation checkpoint: `analyze validate-catalog --workspace .` passes with `0 error(s), 0 warning(s)` after startup/login and ADWS hardening batches.
 
 ## Hard Decisions (Locked)
 
 - [x] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).
 - [x] `D2` Keep resilience only inside tools/engines (for example CIM -> WMI), not in Chat routing.
-- [ ] `D3` Make routing metadata explicit and contract-validated for every tool.
+- [x] `D3` Make routing metadata explicit and contract-validated for every tool.
 - [ ] `D4` Prefer typed request/response models in tools; keep JSON/text as transport envelope only.
 - [ ] `D5` Treat pack boundaries as strict: DomainDetective != ADPlayground unless contracts declare handoff.
 
@@ -235,7 +236,7 @@ Build a contract-first architecture where:
 - [x] `DoD1` No Chat file contains cross-pack fallback execution methods.
 - [x] `DoD2` Chat does not decide substitute tools based on hardcoded pack names.
 - [x] `DoD3` Pack preflight/routing relies on contracts, not suffix/prefix naming.
-- [ ] `DoD4` Every registered tool has explicit routing role + pack metadata.
+- [x] `DoD4` Every registered tool has explicit routing role + pack metadata.
 - [x] `DoD5` New synthetic pack/tool can be added in tests without Chat code changes.
 - [x] `DoD6` DomainDetective vs ADPlayground separation enforced by contracts/tests.
 - [x] `DoD7` Full build/test suite passes after legacy fallback removal.
