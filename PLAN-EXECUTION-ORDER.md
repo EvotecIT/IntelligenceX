@@ -91,6 +91,7 @@ Execute `PLAN.md` in small, merge-safe increments with clear dependencies, paral
 - [x] Live strict rerun checkpoint after this batch: `ad-c400-transcript-cross-dc-fanout-10-turn` (`10/10`), `ad-eventlog-tool-capability-followthrough-10-turn` (`10/10`), `ad-ldap-go-ahead-followthrough-8-turn` (`8/8`) all pass.
 - [x] Host fallback decoupling cleanup: removed host runtime hardcoded tool-specific retry transforms (`ApplyAdDiscoveryRootDseFallback`, `ApplyAdReplicationProbeFallback`, `ApplyDomainDetectiveSummaryTimeoutFallback`) and added architecture guardrail coverage to block reintroduction.
 - [x] Typed-surface guardrail expansion: `SourceGuardrailTests` now scans typed-pipeline tool wrappers pack-wide and fails if refactored tools reintroduce ad-hoc `arguments?.Get...`/`arguments.Get...` parsing.
+- [x] Typed-envelope increment: `ad_scope_discovery` migrated to `ToolResultV2` success/error envelope path and included in typed-wrapper guardrail enforcement list.
 
 ## Rules For This Migration
 

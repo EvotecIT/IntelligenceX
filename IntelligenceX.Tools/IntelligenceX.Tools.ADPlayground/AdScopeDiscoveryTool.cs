@@ -183,7 +183,7 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
             explicitDomain is null &&
             request.IncludeDomains.Count == 0 &&
             request.DiscoveryFallback == DirectoryDiscoveryFallback.None) {
-            return ToolResponse.Error(
+            return ToolResultV2.Error(
                 "invalid_argument",
                 "Forest/domain scope is missing. Provide forest_name, domain_name, include_domains, or set discovery_fallback to current_domain/current_forest.",
                 hints: new[] {
@@ -473,7 +473,7 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
             $"Forest: `{effectiveForest ?? string.Empty}`; Domains: `{domains.Count}`; DCs: `{allDcs.Count}`; Gaps: `{gaps.Count}`.",
             "Use `receipt.steps` to review endpoints checked, timeouts, and failed probes.");
 
-        return ToolOutputEnvelope.OkFlatWithRenderValue(
+        return ToolResultV2.OkFlatWithRenderValue(
             root: ToolJson.ToJsonObjectSnakeCase(model),
             summaryMarkdown: summary,
             render: BuildRenderHints(

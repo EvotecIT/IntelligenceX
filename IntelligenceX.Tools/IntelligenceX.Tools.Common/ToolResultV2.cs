@@ -122,6 +122,19 @@ public static class ToolResultV2 {
     }
 
     /// <summary>
+    /// Creates a success envelope from a pre-shaped root object with optional render hints.
+    /// </summary>
+    public static string OkFlatWithRenderValue(
+        JsonObject root,
+        string? summaryMarkdown = null,
+        JsonValue? render = null) {
+        return ToolOutputEnvelope.OkFlatWithRenderValue(
+            root: CloneObject(root) ?? new JsonObject(StringComparer.Ordinal),
+            summaryMarkdown: summaryMarkdown,
+            render: render is null ? null : CloneValue(render));
+    }
+
+    /// <summary>
     /// Creates a standardized mutating-tool success envelope.
     /// </summary>
     public static string OkWriteActionModel<T>(

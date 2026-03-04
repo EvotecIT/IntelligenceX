@@ -357,6 +357,7 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdUsersExpiredTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdWhoAmITool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdPackInfoTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdScopeDiscoveryTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdMonitoringProbeCatalogTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdRecycleBinLifetimeTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.ADPlayground", "AdGroupMembersTool.cs"),
