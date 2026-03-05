@@ -45,7 +45,7 @@ graph TD
 ## Lane D - Reliability Harness
 - [x] Add queue contention and cancellation progression scenario tests.
 - [x] Add startup bootstrap lag fault-injection tests with latency budget assertions.
-- [ ] Add deterministic host-target fallback ranking soak coverage.
+- [x] Add deterministic host-target fallback ranking soak coverage.
 
 ## Current Patch Set (Started)
 
@@ -69,3 +69,4 @@ graph TD
 13. Added session queue/global lane wait heartbeat progression tests validating repeated wait statuses with queue-position + elapsed messaging and global-lane elapsed heartbeat visibility.
 14. Added queue contention + cancellation progression request-flow scenarios covering active-turn cancellation progression and queued-turn cancellation while preserving downstream queue advancement.
 15. Added startup bootstrap lag fault-injection tests with explicit wait/priming latency budget assertions.
+16. Added deterministic host-target fallback ranking soak coverage for known-host and scenario-distinct fallback paths.
