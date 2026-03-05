@@ -248,7 +248,7 @@ internal static partial class Program {
                      .ThenBy(static pair => pair.Key, StringComparer.Ordinal)) {
             var key = (entry.Key ?? string.Empty).Trim();
             if (key.Length == 0) {
-                continue;
+                throw new InvalidOperationException("Scenario phase threshold keys cannot be blank.");
             }
 
             // Use a stable ordering so case-colliding keys resolve consistently regardless of caller comparer.
