@@ -390,6 +390,18 @@ public sealed class HostScenarioReportingTests {
         Assert.DoesNotContain(failures, value => value.Contains("p95 <= 200ms", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void ChatScenarioDefinition_ConstructorFailsWhenThresholdKeyIsBlank() {
+        var externalThresholds = new Dictionary<string, int>(StringComparer.Ordinal) {
+            ["   "] = 500
+        };
+
+        var exception = Assert.Throws<TargetInvocationException>(() => BuildScenarioDefinitionWithRollupThresholds(externalThresholds));
+
+        var inner = Assert.IsType<InvalidOperationException>(exception.InnerException);
+        Assert.Contains("cannot be blank", inner.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static object BuildScenarioDefinitionWithRollupThresholds(IReadOnlyDictionary<string, int> maxPhaseP95DurationMs) {
         var programType = ResolveHostProgramType();
         var scenarioDefinitionType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ChatScenarioDefinition", throwOnError: true);
