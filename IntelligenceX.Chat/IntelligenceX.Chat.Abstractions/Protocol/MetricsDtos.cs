@@ -70,6 +70,10 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// </summary>
     public IReadOnlyList<TurnCounterMetricDto>? AutonomyCounters { get; init; }
     /// <summary>
+    /// Optional lifecycle phase timing aggregates derived from turn timeline events.
+    /// </summary>
+    public IReadOnlyList<TurnPhaseTimingDto>? PhaseTimings { get; init; }
+    /// <summary>
     /// Optional normalized autonomy telemetry summary for the turn.
     /// </summary>
     public AutonomyTelemetryDto? AutonomyTelemetry { get; init; }
@@ -156,6 +160,24 @@ public sealed record TurnCounterMetricDto {
     /// Counter value for the turn.
     /// </summary>
     public int Count { get; init; }
+}
+
+/// <summary>
+/// Aggregated lifecycle phase timing telemetry for a single turn.
+/// </summary>
+public sealed record TurnPhaseTimingDto {
+    /// <summary>
+    /// Canonical phase identifier (accepted/queued/lane_wait/context_ready/model_plan/tool_execute/review/done/error/timeout).
+    /// </summary>
+    public required string Phase { get; init; }
+    /// <summary>
+    /// Total elapsed duration attributed to the phase (milliseconds).
+    /// </summary>
+    public long DurationMs { get; init; }
+    /// <summary>
+    /// Number of timeline events attributed to the phase.
+    /// </summary>
+    public int EventCount { get; init; }
 }
 
 /// <summary>

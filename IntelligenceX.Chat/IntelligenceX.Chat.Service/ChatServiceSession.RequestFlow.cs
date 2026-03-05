@@ -634,6 +634,8 @@ internal sealed partial class ChatServiceSession {
                 try {
                     var metricsTransport = ResolveMetricsTransport();
                     var metricsEndpointHost = ResolveMetricsEndpointHost();
+                    var timelineEvents = SnapshotTurnTimelineEvents(request.RequestId);
+                    var phaseTimings = BuildTurnPhaseTimings(timelineEvents);
                     var autonomyTelemetry = BuildAutonomyTelemetrySummary(
                         toolRounds: toolRounds,
                         projectionFallbackCount: projectionFallbackCount,
@@ -658,6 +660,7 @@ internal sealed partial class ChatServiceSession {
                         ProjectionFallbackCount = projectionFallbackCount,
                         ToolErrors = toolErrors is { Count: > 0 } ? toolErrors : null,
                         AutonomyCounters = autonomyCounters is { Count: > 0 } ? autonomyCounters : null,
+                        PhaseTimings = phaseTimings,
                         AutonomyTelemetry = autonomyTelemetry,
                         Model = telemetryModel,
                         RequestedModel = requestedModel,

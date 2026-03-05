@@ -90,3 +90,4 @@ graph TD
 29. Added mixed chaos autonomy + isolation coverage combining dropped transport response, consecutive tool exceptions, and cross-thread pack isolation in one deterministic end-to-end scenario.
 30. Added seeded autonomy parity benchmark coverage measuring continuation depth/completion rate across baseline, drop+replay, and consecutive soft-failure scenarios.
 31. Added explicit autonomy telemetry contract (`autonomyDepth`, `recoveryEvents`, `completionRate`) on result/metrics payloads for direct runtime parity tracking.
+32. Added deterministic `phaseTimings` lifecycle telemetry (`phase`, `durationMs`, `eventCount`) on `chat_metrics`, derived from turn timeline statuses for queue/lane/model/tool/review parity profiling.
