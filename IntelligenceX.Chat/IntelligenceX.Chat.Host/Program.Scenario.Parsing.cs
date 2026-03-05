@@ -90,7 +90,8 @@ internal static partial class Program {
             assertNoDuplicateToolCallIds: ReadScenarioOptionalNullableBoolean(element, "assert_no_duplicate_tool_call_ids"),
             assertNoDuplicateToolOutputCallIds: ReadScenarioOptionalNullableBoolean(element, "assert_no_duplicate_tool_output_call_ids"),
             maxNoToolExecutionRetries: ReadScenarioOptionalNonNegativeInt(element, "max_no_tool_execution_retries"),
-            maxDuplicateToolCallSignatures: ReadScenarioOptionalNonNegativeInt(element, "max_duplicate_tool_call_signatures"));
+            maxDuplicateToolCallSignatures: ReadScenarioOptionalNonNegativeInt(element, "max_duplicate_tool_call_signatures"),
+            maxPhaseDurationMs: ReadScenarioMaxPhaseDurationMs(element, "max_phase_duration_ms"));
     }
 
     private static IReadOnlyList<ChatScenarioTurn> ParseChatScenarioTurnsFromJsonArray(JsonElement arrayElement, ChatScenarioDefaults defaults) {
@@ -123,6 +124,7 @@ internal static partial class Program {
                     assertToolOutputNotContains: Array.Empty<string>(),
                     assertNoToolErrors: false,
                     forbidToolErrorCodes: Array.Empty<string>(),
+                    maxPhaseDurationMs: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                     defaults: effectiveDefaults));
                 continue;
             }
@@ -186,6 +188,15 @@ internal static partial class Program {
             var maxDuplicateToolCallSignatures = ReadScenarioOptionalNonNegativeInt(element, "max_duplicate_tool_call_signatures")
                                                  ?? effectiveDefaults.MaxDuplicateToolCallSignatures
                                                  ?? (hasToolContract ? 1 : null);
+            var maxPhaseDurationMs = ReadScenarioMaxPhaseDurationMs(element, "max_phase_duration_ms");
+            if (effectiveDefaults.MaxPhaseDurationMs.Count > 0) {
+                var mergedPhaseDurationMs = new Dictionary<string, int>(effectiveDefaults.MaxPhaseDurationMs, StringComparer.OrdinalIgnoreCase);
+                foreach (var overrideLimit in maxPhaseDurationMs) {
+                    mergedPhaseDurationMs[overrideLimit.Key] = overrideLimit.Value;
+                }
+
+                maxPhaseDurationMs = mergedPhaseDurationMs;
+            }
             turns.Add(new ChatScenarioTurn(
                 name,
                 user.Trim(),
@@ -210,7 +221,8 @@ internal static partial class Program {
                 assertNoDuplicateToolCallIds,
                 assertNoDuplicateToolOutputCallIds,
                 maxNoToolExecutionRetries,
-                maxDuplicateToolCallSignatures));
+                maxDuplicateToolCallSignatures,
+                maxPhaseDurationMs));
         }
 
         return turns;
@@ -252,6 +264,7 @@ internal static partial class Program {
                 assertToolOutputNotContains: Array.Empty<string>(),
                 assertNoToolErrors: false,
                 forbidToolErrorCodes: Array.Empty<string>(),
+                maxPhaseDurationMs: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                 defaults: ChatScenarioDefaults.None));
         }
         return turns;
@@ -276,6 +289,7 @@ internal static partial class Program {
         IReadOnlyList<string> assertToolOutputNotContains,
         bool assertNoToolErrors,
         IReadOnlyList<string> forbidToolErrorCodes,
+        IReadOnlyDictionary<string, int> maxPhaseDurationMs,
         ChatScenarioDefaults defaults) {
         var hasToolContract = TurnHasToolContract(
             minToolCalls,
@@ -313,7 +327,10 @@ internal static partial class Program {
             assertNoDuplicateToolCallIds: effectiveDefaults.AssertNoDuplicateToolCallIds ?? hasToolContract,
             assertNoDuplicateToolOutputCallIds: effectiveDefaults.AssertNoDuplicateToolOutputCallIds ?? hasToolContract,
             maxNoToolExecutionRetries: effectiveDefaults.MaxNoToolExecutionRetries ?? (hasToolContract ? 0 : null),
-            maxDuplicateToolCallSignatures: effectiveDefaults.MaxDuplicateToolCallSignatures ?? (hasToolContract ? 1 : null));
+            maxDuplicateToolCallSignatures: effectiveDefaults.MaxDuplicateToolCallSignatures ?? (hasToolContract ? 1 : null),
+            maxPhaseDurationMs: maxPhaseDurationMs.Count > 0
+                ? maxPhaseDurationMs
+                : effectiveDefaults.MaxPhaseDurationMs);
     }
 
     private static string ReadScenarioUserText(JsonElement element) {
@@ -457,6 +474,45 @@ internal static partial class Program {
         return result;
     }
 
+    private static IReadOnlyDictionary<string, int> ReadScenarioMaxPhaseDurationMs(JsonElement element, string propertyName) {
+        if (!element.TryGetProperty(propertyName, out var valueElement)) {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (valueElement.ValueKind == JsonValueKind.Null || valueElement.ValueKind == JsonValueKind.Undefined) {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (valueElement.ValueKind != JsonValueKind.Object) {
+            throw new InvalidOperationException($"'{propertyName}' must be an object mapping phase names to integers >= 0.");
+        }
+
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in valueElement.EnumerateObject()) {
+            if (!TryNormalizeScenarioPhaseName(property.Name, out var normalizedPhase)) {
+                throw new InvalidOperationException($"'{propertyName}.{property.Name}' uses unknown phase name.");
+            }
+
+            int parsed;
+            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt32(out var numberValue)) {
+                parsed = numberValue;
+            } else if (property.Value.ValueKind == JsonValueKind.String
+                       && int.TryParse(property.Value.GetString(), out var stringValue)) {
+                parsed = stringValue;
+            } else {
+                throw new InvalidOperationException($"'{propertyName}.{property.Name}' must be an integer >= 0.");
+            }
+
+            if (parsed < 0) {
+                throw new InvalidOperationException($"'{propertyName}.{property.Name}' must be >= 0.");
+            }
+
+            result[normalizedPhase] = parsed;
+        }
+
+        return result;
+    }
+
     private static int? ReadScenarioOptionalNonNegativeInt(JsonElement element, string propertyName) {
         if (!element.TryGetProperty(propertyName, out var intElement)) {
             return null;
@@ -507,6 +563,32 @@ internal static partial class Program {
         }
 
         throw new InvalidOperationException($"'{propertyName}' must be a boolean.");
+    }
+
+    private static bool TryNormalizeScenarioPhaseName(string? phaseName, out string normalizedPhase) {
+        normalizedPhase = string.Empty;
+        var normalized = (phaseName ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        normalized = normalized.Replace('-', '_');
+        normalized = normalized.Replace(' ', '_');
+        normalizedPhase = normalized switch {
+            "accepted" => "accepted",
+            "queued" => "queued",
+            "lane_wait" => "lane_wait",
+            "context_ready" => "context_ready",
+            "model_plan" => "model_plan",
+            "tool_execute" => "tool_execute",
+            "review" => "review",
+            "done" => "done",
+            "error" => "error",
+            "timeout" => "timeout",
+            _ => string.Empty
+        };
+
+        return normalizedPhase.Length > 0;
     }
 
 }

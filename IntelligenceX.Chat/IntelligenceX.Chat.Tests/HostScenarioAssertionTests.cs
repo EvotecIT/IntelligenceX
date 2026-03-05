@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using Xunit;
@@ -438,6 +439,149 @@ public sealed class HostScenarioAssertionTests {
     }
 
     [Fact]
+    public void EvaluateScenarioAssertions_FailsWhenPhaseDurationExceedsConfiguredLimit() {
+        const string json = """
+{
+  "name": "phase-duration-fail",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Run scenario turn.",
+      "max_phase_duration_ms": {
+        "model_plan": 500
+      }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            toolRounds: 0,
+            noToolExecutionRetries: 0,
+            phaseTimings: new[] {
+                new TurnPhaseTimingDto {
+                    Phase = "model_plan",
+                    DurationMs = 800,
+                    EventCount = 2
+                }
+            });
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("phase 'model_plan' duration <= 500ms", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_PassesWhenPhaseDurationIsWithinConfiguredLimit() {
+        const string json = """
+{
+  "name": "phase-duration-pass",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Run scenario turn.",
+      "max_phase_duration_ms": {
+        "model_plan": 500
+      }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            toolRounds: 0,
+            noToolExecutionRetries: 0,
+            phaseTimings: new[] {
+                new TurnPhaseTimingDto {
+                    Phase = "model_plan",
+                    DurationMs = 420,
+                    EventCount = 1
+                }
+            });
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.DoesNotContain(failures, value => value.Contains("phase 'model_plan' duration", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_FailsWhenConfiguredPhaseTimingIsMissing() {
+        const string json = """
+{
+  "name": "phase-duration-missing",
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Run scenario turn.",
+      "max_phase_duration_ms": {
+        "lane_wait": 250
+      }
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            toolRounds: 0,
+            noToolExecutionRetries: 0);
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("phase timing 'lane_wait' to be present", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioAssertions_AppliesDefaultPhaseDurationLimitWhenTurnDoesNotOverride() {
+        const string json = """
+{
+  "name": "phase-duration-default",
+  "defaults": {
+    "max_phase_duration_ms": {
+      "model_plan": 300
+    }
+  },
+  "turns": [
+    {
+      "name": "Turn 1",
+      "user": "Run scenario turn."
+    }
+  ]
+}
+""";
+        var turn = ParseSingleTurn(json);
+
+        var metricsResult = BuildMetricsResult(
+            assistantText: "Completed.",
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            toolRounds: 0,
+            noToolExecutionRetries: 0,
+            phaseTimings: new[] {
+                new TurnPhaseTimingDto {
+                    Phase = "model_plan",
+                    DurationMs = 350,
+                    EventCount = 1
+                }
+            });
+
+        var failures = InvokeEvaluateScenarioAssertions(turn, metricsResult);
+
+        Assert.Contains(failures, value => value.Contains("phase 'model_plan' duration <= 300ms", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildScenarioTurnPrompt_EnforcesNoToolsContract_ForClarificationTurns() {
         const string json = """
 {
@@ -656,7 +800,7 @@ public sealed class HostScenarioAssertionTests {
     }
 
     private static object BuildMetricsResult(string assistantText, IReadOnlyList<ToolCall> toolCalls, IReadOnlyList<ToolOutput> toolOutputs,
-        int toolRounds, int noToolExecutionRetries) {
+        int toolRounds, int noToolExecutionRetries, IReadOnlyList<TurnPhaseTimingDto>? phaseTimings = null) {
         var programType = ResolveHostProgramType();
         var hostAssembly = programType.Assembly;
         var resultType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplTurnResult", throwOnError: true);
@@ -678,17 +822,33 @@ public sealed class HostScenarioAssertionTests {
         });
         Assert.NotNull(result);
 
-        var metrics = Activator.CreateInstance(metricsType!, new object?[] {
-            now,
-            null,
-            now,
-            1L,
-            null,
-            null,
-            toolCalls.Count,
-            toolRounds,
-            noToolExecutionRetries
-        });
+        object? metrics;
+        if (phaseTimings is { Count: > 0 }) {
+            metrics = Activator.CreateInstance(metricsType!, new object?[] {
+                now,
+                null,
+                now,
+                1L,
+                null,
+                null,
+                toolCalls.Count,
+                toolRounds,
+                noToolExecutionRetries,
+                phaseTimings
+            });
+        } else {
+            metrics = Activator.CreateInstance(metricsType!, new object?[] {
+                now,
+                null,
+                now,
+                1L,
+                null,
+                null,
+                toolCalls.Count,
+                toolRounds,
+                noToolExecutionRetries
+            });
+        }
         Assert.NotNull(metrics);
 
         var metricsResult = Activator.CreateInstance(metricsResultType!, new[] { result, metrics });

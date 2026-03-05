@@ -66,7 +66,8 @@ internal static partial class Program {
             bool assertNoDuplicateToolCallIds,
             bool assertNoDuplicateToolOutputCallIds,
             int? maxNoToolExecutionRetries,
-            int? maxDuplicateToolCallSignatures) {
+            int? maxDuplicateToolCallSignatures,
+            IReadOnlyDictionary<string, int> maxPhaseDurationMs) {
             Name = name;
             User = user ?? string.Empty;
             AssertContains = assertContains ?? Array.Empty<string>();
@@ -91,6 +92,7 @@ internal static partial class Program {
             AssertNoDuplicateToolOutputCallIds = assertNoDuplicateToolOutputCallIds;
             MaxNoToolExecutionRetries = maxNoToolExecutionRetries;
             MaxDuplicateToolCallSignatures = maxDuplicateToolCallSignatures;
+            MaxPhaseDurationMs = maxPhaseDurationMs ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
 
         public string? Name { get; }
@@ -117,6 +119,7 @@ internal static partial class Program {
         public bool AssertNoDuplicateToolOutputCallIds { get; }
         public int? MaxNoToolExecutionRetries { get; }
         public int? MaxDuplicateToolCallSignatures { get; }
+        public IReadOnlyDictionary<string, int> MaxPhaseDurationMs { get; }
     }
 
     private sealed class ChatScenarioDefaults {
@@ -126,7 +129,8 @@ internal static partial class Program {
             assertNoDuplicateToolCallIds: null,
             assertNoDuplicateToolOutputCallIds: null,
             maxNoToolExecutionRetries: null,
-            maxDuplicateToolCallSignatures: null);
+            maxDuplicateToolCallSignatures: null,
+            maxPhaseDurationMs: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase));
 
         public ChatScenarioDefaults(
             bool? assertCleanCompletion,
@@ -134,13 +138,15 @@ internal static partial class Program {
             bool? assertNoDuplicateToolCallIds,
             bool? assertNoDuplicateToolOutputCallIds,
             int? maxNoToolExecutionRetries,
-            int? maxDuplicateToolCallSignatures) {
+            int? maxDuplicateToolCallSignatures,
+            IReadOnlyDictionary<string, int> maxPhaseDurationMs) {
             AssertCleanCompletion = assertCleanCompletion;
             AssertToolCallOutputPairing = assertToolCallOutputPairing;
             AssertNoDuplicateToolCallIds = assertNoDuplicateToolCallIds;
             AssertNoDuplicateToolOutputCallIds = assertNoDuplicateToolOutputCallIds;
             MaxNoToolExecutionRetries = maxNoToolExecutionRetries;
             MaxDuplicateToolCallSignatures = maxDuplicateToolCallSignatures;
+            MaxPhaseDurationMs = maxPhaseDurationMs ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
 
         public bool? AssertCleanCompletion { get; }
@@ -149,6 +155,7 @@ internal static partial class Program {
         public bool? AssertNoDuplicateToolOutputCallIds { get; }
         public int? MaxNoToolExecutionRetries { get; }
         public int? MaxDuplicateToolCallSignatures { get; }
+        public IReadOnlyDictionary<string, int> MaxPhaseDurationMs { get; }
     }
 
     private sealed class ScenarioTurnRun {
