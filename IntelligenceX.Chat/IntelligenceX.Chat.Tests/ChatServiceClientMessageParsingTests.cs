@@ -164,6 +164,11 @@ public sealed class ChatServiceClientMessageParsingTests {
               "toolCallsCount":2,
               "toolRounds":1,
               "projectionFallbackCount":0,
+              "autonomyTelemetry":{
+                "autonomyDepth":1,
+                "recoveryEvents":2,
+                "completionRate":1.0
+              },
               "outcome":"ok"
             }
             """;
@@ -174,5 +179,9 @@ public sealed class ChatServiceClientMessageParsingTests {
         Assert.Equal(120, metrics.EnsureThreadMs);
         Assert.Equal(930, metrics.WeightedSubsetSelectionMs);
         Assert.Equal(410, metrics.ResolveModelMs);
+        var autonomy = Assert.IsType<AutonomyTelemetryDto>(metrics.AutonomyTelemetry);
+        Assert.Equal(1, autonomy.AutonomyDepth);
+        Assert.Equal(2, autonomy.RecoveryEvents);
+        Assert.Equal(1.0d, autonomy.CompletionRate);
     }
 }

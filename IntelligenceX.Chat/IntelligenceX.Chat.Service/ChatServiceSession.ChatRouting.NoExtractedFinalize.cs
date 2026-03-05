@@ -586,6 +586,13 @@ internal sealed partial class ChatServiceSession {
                     proactiveSkipMutatingCount: proactiveSkipMutatingCount,
                     proactiveSkipReadOnlyCount: proactiveSkipReadOnlyCount,
                     proactiveSkipUnknownCount: proactiveSkipUnknownCount);
+                var toolErrorMetrics = BuildToolErrorMetrics(toolCalls, toolOutputs);
+                var autonomyTelemetry = BuildAutonomyTelemetrySummary(
+                    toolRounds: toolRounds,
+                    projectionFallbackCount: projectionFallbackCount,
+                    toolErrors: toolErrorMetrics,
+                    autonomyCounters: autonomyCounters,
+                    completed: true);
 
                 var result = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
@@ -595,7 +602,8 @@ internal sealed partial class ChatServiceSession {
                     Tools = toolCalls.Count == 0 && toolOutputs.Count == 0
                         ? null
                         : new ToolRunDto { Calls = toolCalls.ToArray(), Outputs = toolOutputs.ToArray() },
-                    TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
+                    TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId),
+                    AutonomyTelemetry = autonomyTelemetry
                 };
                 return NoExtractedToolRoundOutcome.ReturnFinal(new ChatTurnRunResult(
                     Result: result,
@@ -603,7 +611,7 @@ internal sealed partial class ChatServiceSession {
                     ToolCallsCount: toolCalls.Count,
                     ToolRounds: toolRounds,
                     ProjectionFallbackCount: projectionFallbackCount,
-                    ToolErrors: BuildToolErrorMetrics(toolCalls, toolOutputs),
+                    ToolErrors: toolErrorMetrics,
                     AutonomyCounters: autonomyCounters,
                     ResolvedModel: resolvedModel,
                     WeightedSubsetSelectionMs: weightedSubsetSelectionMs,

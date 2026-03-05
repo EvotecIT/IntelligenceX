@@ -993,9 +993,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
             Assert.Equal("Benchmark scenario " + scenario.Name + " completed.", resultMessage.Text);
             Assert.NotNull(resultMessage.Tools);
+            var autonomyTelemetry = Assert.IsType<AutonomyTelemetryDto>(resultMessage.AutonomyTelemetry);
+            Assert.Equal(toolRounds, autonomyTelemetry.AutonomyDepth);
+            Assert.Equal(1.0d, autonomyTelemetry.CompletionRate);
+            Assert.True(autonomyTelemetry.RecoveryEvents >= 0);
 
             if (string.Equals(scenario.Name, "drop_replay", StringComparison.Ordinal)) {
                 Assert.Equal(1, server.DroppedChatCompletionRequestCount);
+            } else if (string.Equals(scenario.Name, "consecutive_soft_failures", StringComparison.Ordinal)) {
+                Assert.True(autonomyTelemetry.RecoveryEvents > 0);
             }
 
             completedScenarios++;

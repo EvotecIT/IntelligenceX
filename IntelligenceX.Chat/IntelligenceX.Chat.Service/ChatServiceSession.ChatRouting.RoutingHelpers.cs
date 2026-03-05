@@ -166,6 +166,29 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private static AutonomyTelemetryDto BuildAutonomyTelemetrySummary(
+        int toolRounds,
+        int projectionFallbackCount,
+        IReadOnlyList<ToolErrorMetricDto>? toolErrors,
+        IReadOnlyList<TurnCounterMetricDto>? autonomyCounters,
+        bool completed) {
+        var recoveryEvents = Math.Max(0, projectionFallbackCount);
+
+        if (toolErrors is { Count: > 0 }) {
+            recoveryEvents += toolErrors.Sum(static metric => Math.Max(0, metric.Count));
+        }
+
+        if (autonomyCounters is { Count: > 0 }) {
+            recoveryEvents += autonomyCounters.Sum(static counter => Math.Max(0, counter.Count));
+        }
+
+        return new AutonomyTelemetryDto {
+            AutonomyDepth = Math.Max(0, toolRounds),
+            RecoveryEvents = recoveryEvents,
+            CompletionRate = completed ? 1.0d : 0.0d
+        };
+    }
+
     private static IReadOnlyList<ToolErrorMetricDto> BuildToolErrorMetrics(
         IReadOnlyList<ToolCallDto> calls,
         IReadOnlyList<ToolOutputDto> outputs) {

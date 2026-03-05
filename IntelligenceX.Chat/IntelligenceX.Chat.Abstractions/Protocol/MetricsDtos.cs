@@ -70,6 +70,10 @@ public sealed record ChatMetricsMessage : ChatServiceMessage {
     /// </summary>
     public IReadOnlyList<TurnCounterMetricDto>? AutonomyCounters { get; init; }
     /// <summary>
+    /// Optional normalized autonomy telemetry summary for the turn.
+    /// </summary>
+    public AutonomyTelemetryDto? AutonomyTelemetry { get; init; }
+    /// <summary>
     /// Effective model identifier used for the turn.
     /// </summary>
     public string? Model { get; init; }
@@ -152,4 +156,22 @@ public sealed record TurnCounterMetricDto {
     /// Counter value for the turn.
     /// </summary>
     public int Count { get; init; }
+}
+
+/// <summary>
+/// Normalized autonomy telemetry summary for a completed or attempted turn.
+/// </summary>
+public sealed record AutonomyTelemetryDto {
+    /// <summary>
+    /// Autonomous continuation depth measured by completed tool rounds.
+    /// </summary>
+    public int AutonomyDepth { get; init; }
+    /// <summary>
+    /// Count of recovery-path events observed while completing the turn.
+    /// </summary>
+    public int RecoveryEvents { get; init; }
+    /// <summary>
+    /// Per-turn completion score (1.0 for completed, 0.0 for non-completed outcomes).
+    /// </summary>
+    public double CompletionRate { get; init; }
 }
