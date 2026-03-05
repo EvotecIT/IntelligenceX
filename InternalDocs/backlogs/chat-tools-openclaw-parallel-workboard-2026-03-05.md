@@ -27,8 +27,8 @@ graph TD
 ## Lane A - Lifecycle Contract
 - [x] Add explicit `accepted` and `context_ready` status emission with compatibility aliases.
 - [x] Add terminal `done|error|timeout` status emission before terminal frames.
-- [ ] Add queue/lane wait heartbeat updates with elapsed and queue position.
-- [ ] Add deterministic status-order tests for default and timeout flows.
+- [x] Add queue/lane wait heartbeat updates with elapsed and queue position.
+- [x] Add deterministic status-order tests for default and timeout flows.
 
 ## Lane B - Plugin Isolation
 - [x] Remove hardcoded built-in assembly allowlist from bootstrap path.
@@ -65,3 +65,5 @@ graph TD
 9. Extended architecture guardrail coverage to host/tooling plugin-neutrality paths (host manifest-coupling guardrails + tooling built-in assembly allowlist guardrail).
 10. Tightened carryover replay gating so single-token compact follow-ups require structural continuation anchors, with regression coverage for anchored vs unanchored behavior.
 11. Made continuation marker parsing wrapper-tolerant (quote/fence/list wrappers) while preserving fail-closed behavior for non-wrapper preface content.
+12. Added request-flow lifecycle status-order tests covering default success and timeout terminal ordering (`accepted -> context_ready -> done|timeout`) with terminal-frame ordering assertions.
+13. Added session queue/global lane wait heartbeat progression tests validating repeated wait statuses with queue-position + elapsed messaging and global-lane elapsed heartbeat visibility.
