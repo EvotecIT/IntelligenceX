@@ -15,6 +15,18 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoPermissionAdministrativeTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private const int DefaultMaxGpos = 50000;
+    private const int MaxGposCap = 200000;
+
+    internal readonly record struct GpoPermissionAdministrativeBindingContract(
+        bool IncludeCompliant,
+        bool ErrorsOnly,
+        int MaxGpos);
+
+    private sealed record GpoPermissionAdministrativeRequest(
+        bool IncludeCompliant,
+        bool ErrorsOnly,
+        int MaxGpos);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_permission_administrative",
@@ -50,61 +62,68 @@ public sealed class AdGpoPermissionAdministrativeTool : ActiveDirectoryToolBase,
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
-            return Task.FromResult(argumentError!);
-        }
-
-        var domainName = domainQuery.DomainName;
-
-        var includeCompliant = ToolArgs.GetBoolean(arguments, "include_compliant", defaultValue: false);
-        var errorsOnly = ToolArgs.GetBoolean(arguments, "errors_only", defaultValue: false);
-        var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var maxResults = domainQuery.MaxResults;
-
-        if (!TryExecuteCollectionQuery(
-                query: () => GpoPermissionAdministrativeService.Get(domainName, includeCompliant: includeCompliant, maxGpos: maxGpos),
-                collectionSucceededSelector: static view => view.CollectionSucceeded,
-                collectionErrorSelector: static view => view.CollectionError,
-                result: out var view,
-                errorResponse: out var errorResponse,
-                defaultErrorMessage: "GPO administrative-permission baseline query failed.")) {
-            return Task.FromResult(errorResponse!);
-        }
-
-        var filtered = view.Items
-            .Where(row => !errorsOnly || !string.IsNullOrWhiteSpace(row.Error))
-            .ToArray();
-
-        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
-
-        var result = new AdGpoPermissionAdministrativeResult(
-            DomainName: domainName,
-            IncludeCompliant: includeCompliant,
-            ErrorsOnly: errorsOnly,
-            MaxGpos: maxGpos,
-            Scanned: scanned,
-            Truncated: truncated,
-            NonCompliantCount: filtered.Count(static row => !row.IsCompliant),
-            ErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
-            Rows: projectedRows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return RunPipelineAsync(
             arguments: arguments,
-            model: result,
-            sourceRows: projectedRows,
-            viewRowsPath: "rows_view",
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<GpoPermissionAdministrativeRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<GpoPermissionAdministrativeRequest>.Success(new GpoPermissionAdministrativeRequest(
+                IncludeCompliant: reader.Boolean("include_compliant", defaultValue: false),
+                ErrorsOnly: reader.Boolean("errors_only", defaultValue: false),
+                MaxGpos: reader.CappedInt32("max_gpos", DefaultMaxGpos, 1, MaxGposCap))));
+    }
+
+    internal static ToolRequestBindingResult<GpoPermissionAdministrativeBindingContract> BindRequestContract(JsonObject? arguments) {
+        var binding = BindRequest(arguments);
+        if (!binding.IsValid || binding.Request is null) {
+            return ToolRequestBindingResult<GpoPermissionAdministrativeBindingContract>.Failure(
+                binding.Error,
+                binding.ErrorCode,
+                binding.Hints,
+                binding.IsTransient);
+        }
+
+        var request = binding.Request;
+        return ToolRequestBindingResult<GpoPermissionAdministrativeBindingContract>.Success(new GpoPermissionAdministrativeBindingContract(
+            IncludeCompliant: request.IncludeCompliant,
+            ErrorsOnly: request.ErrorsOnly,
+            MaxGpos: request.MaxGpos));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoPermissionAdministrativeRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+
+        return ExecuteDomainRowsViewTool(
+            arguments: context.Arguments,
+            cancellationToken: cancellationToken,
             title: "Active Directory: GPO Administrative Permissions (preview)",
+            defaultErrorMessage: "GPO administrative-permission baseline query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
-                meta.Add("include_compliant", includeCompliant);
-                meta.Add("errors_only", errorsOnly);
-                meta.Add("max_gpos", maxGpos);
-            }));
+            query: domainName => GpoPermissionAdministrativeService.Get(domainName, includeCompliant: request.IncludeCompliant, maxGpos: request.MaxGpos),
+            collectionSucceededSelector: static view => view.CollectionSucceeded,
+            collectionErrorSelector: static view => view.CollectionError,
+            allRowsSelector: view => view.Items
+                .Where(row => !request.ErrorsOnly || !string.IsNullOrWhiteSpace(row.Error))
+                .ToArray(),
+            resultFactory: (domainName, _, allRows, rows, scanned, truncated) => new AdGpoPermissionAdministrativeResult(
+                DomainName: domainName,
+                IncludeCompliant: request.IncludeCompliant,
+                ErrorsOnly: request.ErrorsOnly,
+                MaxGpos: request.MaxGpos,
+                Scanned: scanned,
+                Truncated: truncated,
+                NonCompliantCount: allRows.Count(static row => !row.IsCompliant),
+                ErrorCount: allRows.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
+                Rows: rows),
+            additionalMetaMutate: (meta, _, _, _) => {
+                meta.Add("include_compliant", request.IncludeCompliant);
+                meta.Add("errors_only", request.ErrorsOnly);
+                meta.Add("max_gpos", request.MaxGpos);
+            });
     }
 }
-
