@@ -232,6 +232,8 @@ internal sealed partial class ChatServiceSession {
     }
 
     private sealed class ChatRun {
+        private int _turnTimeoutCancellationMarked;
+
         public ChatRun(string chatRequestId, CancellationTokenSource cts, IntelligenceXClient client, StreamWriter writer, ChatRequest request) {
             ChatRequestId = chatRequestId;
             Cts = cts;
@@ -246,6 +248,7 @@ internal sealed partial class ChatServiceSession {
         public Task? Task { get; set; }
         public bool IsCompleted { get; private set; }
         public bool Started { get; private set; }
+        public bool TurnTimeoutCancellationMarked => Volatile.Read(ref _turnTimeoutCancellationMarked) == 1;
         public long EnqueuedUtcTicks { get; init; } = DateTime.UtcNow.Ticks;
         public int QueuePositionAtEnqueue { get; set; } = 1;
         public IntelligenceXClient Client { get; }
@@ -271,6 +274,10 @@ internal sealed partial class ChatServiceSession {
 
         public void MarkStarted() {
             Started = true;
+        }
+
+        public void MarkTurnTimeoutCancellation() {
+            Interlocked.Exchange(ref _turnTimeoutCancellationMarked, 1);
         }
     }
 
