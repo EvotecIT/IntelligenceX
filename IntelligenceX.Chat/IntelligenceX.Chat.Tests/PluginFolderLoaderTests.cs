@@ -6,8 +6,10 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using SystemPackType = IntelligenceX.Tools.System.SystemToolPack;
@@ -885,6 +887,74 @@ public sealed class PluginFolderLoaderTests {
         }
     }
 
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_PluginSyntheticPackFlowsIntoCatalogWithoutChatCodeEdits() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-synthetic-catalog");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            var copiedAssemblyPath = Path.Combine(pluginFolder, entryAssemblyName);
+            File.Copy(sourceAssemblyPath, copiedAssemblyPath, overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-synthetic-catalog",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableBuiltInPackLoading = false,
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
+            });
+
+            _ = Assert.Single(
+                packs,
+                static p => string.Equals(p.Descriptor.Id, "plugin-loader-synthetic-catalog", StringComparison.OrdinalIgnoreCase));
+
+            var registry = new ToolRegistry {
+                RequireExplicitRoutingMetadata = true
+            };
+            var toolPackIdsByToolName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            ToolPackBootstrap.RegisterAll(registry, packs, toolPackIdsByToolName);
+
+            Assert.True(toolPackIdsByToolName.TryGetValue("plugin_loader_synthetic_probe", out var mappedPackId));
+            Assert.Equal("plugin_loader_synthetic_catalog", mappedPackId);
+
+            Assert.True(registry.TryGetDefinition("plugin_loader_synthetic_probe", out var definition));
+            Assert.NotNull(definition);
+            var routing = Assert.IsType<ToolRoutingContract>(definition!.Routing);
+            Assert.Equal("plugin_loader_synthetic_catalog", routing.PackId, ignoreCase: true);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+            Assert.Equal(ToolRoutingTaxonomy.RoleOperational, routing.Role, ignoreCase: true);
+
+            var catalog = ToolOrchestrationCatalog.Build(registry.GetDefinitions());
+            Assert.True(catalog.TryGetEntry("plugin_loader_synthetic_probe", out var entry));
+            Assert.Equal("plugin_loader_synthetic_catalog", entry.PackId);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, entry.RoutingSource);
+            Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.Role);
+            Assert.Equal("plugin_ops", entry.DomainIntentFamily);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     public sealed class PluginFolderLoaderTestPack : IToolPack {
         public ToolPackDescriptor Descriptor { get; } = new() {
             Id = "plugin-loader-test",
@@ -929,6 +999,53 @@ public sealed class PluginFolderLoaderTests {
 
         public void Register(ToolRegistry registry) {
             ArgumentNullException.ThrowIfNull(registry);
+        }
+    }
+
+    public sealed class PluginFolderLoaderSyntheticCatalogPack : IToolPack {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "plugin-loader-synthetic-catalog",
+            Name = "Plugin Loader Synthetic Catalog",
+            Tier = ToolCapabilityTier.ReadOnly,
+            IsDangerous = false,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            ArgumentNullException.ThrowIfNull(registry);
+            registry.Register(new PluginFolderLoaderSyntheticCatalogTool(ToolPackBootstrap.NormalizePackId(Descriptor.Id)));
+        }
+    }
+
+    private sealed class PluginFolderLoaderSyntheticCatalogTool : ITool {
+        public PluginFolderLoaderSyntheticCatalogTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "plugin_loader_synthetic_probe",
+                description: "Synthetic plugin-discovered tool used for catalog integration coverage.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject().Add("target", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                tags: new[] {
+                    "pack:plugin_loader_synthetic_catalog",
+                    "domain_family:plugin_ops"
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RoleOperational,
+                    DomainIntentFamily = "plugin_ops",
+                    DomainIntentActionId = "act_domain_scope_plugin_ops"
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult("{}");
         }
     }
 }
