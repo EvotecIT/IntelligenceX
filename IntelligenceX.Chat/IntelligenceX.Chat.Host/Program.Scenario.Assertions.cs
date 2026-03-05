@@ -375,7 +375,9 @@ internal static partial class Program {
 
             var maxP95DurationMs = phaseLimit.Value;
             if (maxP95DurationMs < 0) {
-                failures.Add($"Expected scenario rollup phase '{normalizedPhase}' p95 threshold to be >= 0ms; observed {maxP95DurationMs}ms.");
+                failures.Add(
+                    $"Expected scenario rollup phase '{phaseLimit.Key}' (normalized '{normalizedPhase}') p95 threshold to be >= 0ms;"
+                    + $" observed {maxP95DurationMs}ms.");
                 continue;
             }
 

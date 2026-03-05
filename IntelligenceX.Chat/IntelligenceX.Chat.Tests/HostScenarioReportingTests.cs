@@ -366,6 +366,30 @@ public sealed class HostScenarioReportingTests {
         Assert.DoesNotContain(failures, value => value.Contains("lane_wait", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void ChatScenarioDefinition_ConstructorHandlesCaseCollidingThresholdKeysDeterministically() {
+        var externalThresholds = new Dictionary<string, int>(StringComparer.Ordinal) {
+            ["model_plan"] = 500,
+            ["Model_Plan"] = 200
+        };
+        var scenario = BuildScenarioDefinitionWithRollupThresholds(externalThresholds);
+        var turnRuns = new[] {
+            BuildScenarioTurnRun(
+                index: 1,
+                label: "Turn 1",
+                user: "Run turn one.",
+                assistantText: "Completed turn one.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 600, EventCount = 1 }
+                })
+        };
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, turnRuns);
+
+        Assert.Contains(failures, value => value.Contains("p95 <= 500ms", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(failures, value => value.Contains("p95 <= 200ms", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static object BuildScenarioDefinitionWithRollupThresholds(IReadOnlyDictionary<string, int> maxPhaseP95DurationMs) {
         var programType = ResolveHostProgramType();
         var scenarioDefinitionType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ChatScenarioDefinition", throwOnError: true);
