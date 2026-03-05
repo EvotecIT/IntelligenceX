@@ -202,32 +202,35 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         }
 
         if (options.NoStateDb) {
-            if (ServiceProfilePresets.TryResolve(name, out var presetName, out var presetProfile)) {
-                options.ApplyProfile(presetProfile);
-                options.ProfileName = presetName;
-                return true;
+            if (!ServiceProfilePresets.TryResolveStoredOrBuiltInProfile(
+                    name,
+                    allowStoredProfiles: false,
+                    static _ => null,
+                    out var resolvedName,
+                    out var resolvedProfile,
+                    out var storedProfilesUnavailable)) {
+                error = storedProfilesUnavailable
+                    ? "State DB is disabled; saved profiles are unavailable."
+                    : $"Profile not found: {name}";
+                return false;
             }
 
-            error = "State DB is disabled; saved profiles are unavailable.";
-            return false;
+            options.ApplyProfile(resolvedProfile!);
+            options.ProfileName = resolvedName;
+            return true;
         }
 
         var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? GetDefaultStateDbPath() : options.StateDbPath!;
         using var store = new SqliteServiceProfileStore(dbPath);
-        foreach (var candidateName in ServiceProfilePresets.GetStoredProfileLookupCandidates(name)) {
-            var storedProfile = store.GetAsync(candidateName, CancellationToken.None).GetAwaiter().GetResult();
-            if (storedProfile == null) {
-                continue;
-            }
-
-            options.ApplyProfile(storedProfile);
-            options.ProfileName = candidateName;
-            return true;
-        }
-
-        if (ServiceProfilePresets.TryResolve(name, out var builtInPresetName, out var builtInPresetProfile)) {
-            options.ApplyProfile(builtInPresetProfile);
-            options.ProfileName = builtInPresetName;
+        if (ServiceProfilePresets.TryResolveStoredOrBuiltInProfile(
+                name,
+                allowStoredProfiles: true,
+                candidateName => store.GetAsync(candidateName, CancellationToken.None).GetAwaiter().GetResult(),
+                out var storedOrPresetName,
+                out var storedOrPresetProfile,
+                out _)) {
+            options.ApplyProfile(storedOrPresetProfile!);
+            options.ProfileName = storedOrPresetName;
             return true;
         }
 

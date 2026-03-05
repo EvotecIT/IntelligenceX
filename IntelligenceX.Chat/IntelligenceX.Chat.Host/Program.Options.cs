@@ -483,25 +483,20 @@ internal static partial class Program {
             var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? GetDefaultStateDbPath() : options.StateDbPath!.Trim();
             try {
                 using var store = new SqliteServiceProfileStore(dbPath);
-                foreach (var candidateName in ServiceProfilePresets.GetStoredProfileLookupCandidates(name)) {
-                    var storedProfile = store.GetAsync(candidateName, CancellationToken.None).GetAwaiter().GetResult();
-                    if (storedProfile is null) {
-                        continue;
-                    }
-
-                    options.ApplyProfile(storedProfile);
-                    options.ProfileName = candidateName;
+                if (ServiceProfilePresets.TryResolveStoredOrBuiltInProfile(
+                        name,
+                        allowStoredProfiles: true,
+                        candidateName => store.GetAsync(candidateName, CancellationToken.None).GetAwaiter().GetResult(),
+                        out var resolvedName,
+                        out var resolvedProfile,
+                        out _)) {
+                    options.ApplyProfile(resolvedProfile!);
+                    options.ProfileName = resolvedName;
                     return true;
                 }
             } catch (Exception ex) {
                 error = $"Failed to load profile '{name}': {ex.Message}";
                 return false;
-            }
-
-            if (ServiceProfilePresets.TryResolve(name, out var presetName, out var presetProfile)) {
-                options.ApplyProfile(presetProfile);
-                options.ProfileName = presetName;
-                return true;
             }
 
             error = $"Profile not found: {name}";

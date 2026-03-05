@@ -244,6 +244,21 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_NormalizesBuiltInPluginOnlyPresetAlias_WhenStateDbDisabled() {
+        var options = ServiceOptions.Parse(new[] {
+            "--pipe", "test.pipe",
+            "--no-state-db",
+            "--profile", "plugin_only"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.Equal("plugin-only", options.ProfileName);
+        Assert.False(options.EnableBuiltInPackLoading);
+        Assert.True(options.EnableDefaultPluginPaths);
+    }
+
+    [Fact]
     public void Parse_RejectsSavedProfileLookup_WhenStateDbDisabled() {
         _ = ServiceOptions.Parse(new[] {
             "--pipe", "test.pipe",
