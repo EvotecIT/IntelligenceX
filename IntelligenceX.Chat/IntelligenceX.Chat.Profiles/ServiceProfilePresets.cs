@@ -101,7 +101,7 @@ internal static class ServiceProfilePresets {
             return true;
         }
 
-        storedProfilesUnavailable = !allowStoredProfiles;
+        storedProfilesUnavailable = !allowStoredProfiles && !LooksLikeBuiltInPresetReference(resolvedName);
         return false;
     }
 
@@ -130,7 +130,7 @@ internal static class ServiceProfilePresets {
             return (true, presetName, presetProfile, false);
         }
 
-        return (false, resolvedName, null, !allowStoredProfiles);
+        return (false, resolvedName, null, !allowStoredProfiles && !LooksLikeBuiltInPresetReference(resolvedName));
     }
 
     internal static string[] MergeBuiltInPresetNames(IEnumerable<string>? storedNames) {
@@ -182,5 +182,84 @@ internal static class ServiceProfilePresets {
     private static bool IsBuiltInPresetNameOrAlias(string name) {
         return BuiltInPresetNameSet.Contains(name)
             || TryGetCanonicalName(name, out var canonicalName) && BuiltInPresetNameSet.Contains(canonicalName);
+    }
+
+    private static bool LooksLikeBuiltInPresetReference(string name) {
+        var compactName = CompactPresetReference(name);
+        if (compactName.Length == 0) {
+            return false;
+        }
+
+        foreach (var builtInPresetName in BuiltInPresetNames) {
+            var compactBuiltIn = CompactPresetReference(builtInPresetName);
+            if (string.Equals(compactName, compactBuiltIn, StringComparison.Ordinal)
+                || AreWithinSingleEdit(compactName, compactBuiltIn)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string CompactPresetReference(string? name) {
+        var normalized = NormalizePresetName(name);
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var chars = new char[normalized.Length];
+        var length = 0;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (ch == '-') {
+                continue;
+            }
+
+            chars[length++] = ch;
+        }
+
+        return length == 0 ? string.Empty : new string(chars, 0, length);
+    }
+
+    private static bool AreWithinSingleEdit(string left, string right) {
+        if (string.Equals(left, right, StringComparison.Ordinal)) {
+            return true;
+        }
+
+        var lengthDelta = Math.Abs(left.Length - right.Length);
+        if (lengthDelta > 1) {
+            return false;
+        }
+
+        var leftIndex = 0;
+        var rightIndex = 0;
+        var edits = 0;
+        while (leftIndex < left.Length && rightIndex < right.Length) {
+            if (left[leftIndex] == right[rightIndex]) {
+                leftIndex++;
+                rightIndex++;
+                continue;
+            }
+
+            edits++;
+            if (edits > 1) {
+                return false;
+            }
+
+            if (left.Length == right.Length) {
+                leftIndex++;
+                rightIndex++;
+            } else if (left.Length > right.Length) {
+                leftIndex++;
+            } else {
+                rightIndex++;
+            }
+        }
+
+        if (leftIndex < left.Length || rightIndex < right.Length) {
+            edits++;
+        }
+
+        return edits <= 1;
     }
 }

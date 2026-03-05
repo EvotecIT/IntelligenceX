@@ -58,6 +58,22 @@ public sealed class ServiceProfilePresetsTests {
     }
 
     [Fact]
+    public void TryResolveStoredOrBuiltInProfile_DoesNotReportSavedProfilesUnavailable_ForBuiltInTypoInNoStateMode() {
+        var success = ServiceProfilePresets.TryResolveStoredOrBuiltInProfile(
+            "plugin-onli",
+            allowStoredProfiles: false,
+            static _ => null,
+            out var resolvedName,
+            out var profile,
+            out var storedProfilesUnavailable);
+
+        Assert.False(success);
+        Assert.False(storedProfilesUnavailable);
+        Assert.Equal("plugin-onli", resolvedName);
+        Assert.Null(profile);
+    }
+
+    [Fact]
     public async Task TryResolveStoredOrBuiltInProfileAsync_UsesCanonicalStoredCandidateBeforePresetFallback() {
         var storedProfile = new ServiceProfile {
             Model = "stored-alias-model"
@@ -75,6 +91,20 @@ public sealed class ServiceProfilePresetsTests {
         Assert.Equal("plugin_only", resolution.ResolvedName);
         Assert.Same(storedProfile, resolution.Profile);
         Assert.Equal("stored-alias-model", resolution.Profile!.Model);
+    }
+
+    [Fact]
+    public async Task TryResolveStoredOrBuiltInProfileAsync_DoesNotReportSavedProfilesUnavailable_ForBuiltInTypoInNoStateMode() {
+        var resolution = await ServiceProfilePresets.TryResolveStoredOrBuiltInProfileAsync(
+            "plugin-onli",
+            allowStoredProfiles: false,
+            static (_, _) => Task.FromResult<ServiceProfile?>(null),
+            CancellationToken.None);
+
+        Assert.False(resolution.Success);
+        Assert.False(resolution.StoredProfilesUnavailable);
+        Assert.Equal("plugin-onli", resolution.ResolvedName);
+        Assert.Null(resolution.Profile);
     }
 
     [Fact]
