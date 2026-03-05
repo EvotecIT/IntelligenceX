@@ -28,14 +28,27 @@ public static partial class ToolPackBootstrap {
         }
 
         var packKeys = ResolvePackRuntimeOptionKeys(packType, explicitPackKey);
+        var effectiveProperties = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var packKey in packKeys) {
             if (!effectiveBag.TryGetValue(packKey, out var properties) || properties.Count == 0) {
                 continue;
             }
 
-            foreach (var property in properties.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
-                ApplyPackOptionValueIfPresent(options, property.Key, property.Value);
+            foreach (var property in properties) {
+                var propertyName = (property.Key ?? string.Empty).Trim();
+                if (propertyName.Length == 0) {
+                    continue;
+                }
+
+                // Merge by precedence first, then apply once for deterministic behavior:
+                // later, more-specific keys win over earlier defaults.
+                effectiveProperties[propertyName] = property.Value;
             }
+        }
+
+        foreach (var property in effectiveProperties.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+            ApplyPackOptionValueIfPresent(options, property.Key, property.Value);
         }
     }
 
@@ -48,7 +61,6 @@ public static partial class ToolPackBootstrap {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         AddPackOptionKey(keys, seen, PackOptionKeyGlobal);
-        AddPackOptionKey(keys, seen, explicitPackKey);
         AddPackOptionKey(keys, seen, packType.Assembly.GetName().Name);
 
         var namespaceValue = packType.Namespace ?? string.Empty;
@@ -70,6 +82,7 @@ public static partial class ToolPackBootstrap {
             typeName = typeName[..^"Pack".Length];
         }
         AddPackOptionKey(keys, seen, typeName);
+        AddPackOptionKey(keys, seen, explicitPackKey);
 
         return keys;
     }

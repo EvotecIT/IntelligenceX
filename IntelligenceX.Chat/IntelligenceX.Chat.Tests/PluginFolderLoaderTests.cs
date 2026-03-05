@@ -941,6 +941,66 @@ public sealed class PluginFolderLoaderTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacks_PackRuntimeOptionBag_PrefersPluginIdOverGlobalAndAlias() {
+        PluginFolderLoaderOptionsPack.ResetCapturedOptions();
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-options-test");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            var copiedAssemblyPath = Path.Combine(pluginFolder, entryAssemblyName);
+            File.Copy(sourceAssemblyPath, copiedAssemblyPath, overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderOptionsPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-options-test",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}"
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var packRuntimeOptionBag = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) {
+                [ToolPackBootstrap.PackOptionKeyGlobal] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                    ["RunAsProfilePath"] = "C:/temp/run-as-global-custom.json"
+                },
+                ["intelligencex_chat_tests"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                    ["RunAsProfilePath"] = "C:/temp/run-as-alias.json"
+                },
+                ["plugin_loader_options_test"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                    ["RunAsProfilePath"] = "C:/temp/run-as-plugin-id.json"
+                }
+            };
+
+            var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+                EnableBuiltInPackLoading = false,
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache"),
+                RunAsProfilePath = "C:/temp/run-as-legacy-global.json",
+                PackRuntimeOptionBag = packRuntimeOptionBag
+            });
+
+            _ = Assert.Single(packs, static p => string.Equals(p.Descriptor.Id, "plugin-loader-options-test", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("C:/temp/run-as-plugin-id.json", PluginFolderLoaderOptionsPack.LastRunAsProfilePath);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+            PluginFolderLoaderOptionsPack.ResetCapturedOptions();
+        }
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacks_PluginSyntheticPackFlowsIntoCatalogWithoutChatCodeEdits() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
         var pluginRoot = Path.Combine(tempRoot, "plugins");
