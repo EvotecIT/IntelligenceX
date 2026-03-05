@@ -43,7 +43,7 @@ graph TD
 - [x] Make continuation marker parsing tolerant to wrappers while remaining fail-closed.
 
 ## Lane D - Reliability Harness
-- [ ] Add queue contention and cancellation progression scenario tests.
+- [x] Add queue contention and cancellation progression scenario tests.
 - [ ] Add startup bootstrap lag fault-injection tests with latency budget assertions.
 - [ ] Add deterministic host-target fallback ranking soak coverage.
 
@@ -67,3 +67,4 @@ graph TD
 11. Made continuation marker parsing wrapper-tolerant (quote/fence/list wrappers) while preserving fail-closed behavior for non-wrapper preface content.
 12. Added request-flow lifecycle status-order tests covering default success and timeout terminal ordering (`accepted -> context_ready -> done|timeout`) with terminal-frame ordering assertions.
 13. Added session queue/global lane wait heartbeat progression tests validating repeated wait statuses with queue-position + elapsed messaging and global-lane elapsed heartbeat visibility.
+14. Added queue contention + cancellation progression request-flow scenarios covering active-turn cancellation progression and queued-turn cancellation while preserving downstream queue advancement.
