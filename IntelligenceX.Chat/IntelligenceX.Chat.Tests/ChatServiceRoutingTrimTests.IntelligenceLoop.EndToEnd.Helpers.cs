@@ -145,7 +145,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         return false;
     }
 
-    private static string GetLatestUserMessageContent(string requestBody) {
+    private static string GetLatestMessageContentByRole(string requestBody, string role) {
         using var doc = JsonDocument.Parse(requestBody);
         if (!doc.RootElement.TryGetProperty("messages", out var messages)
             || messages.ValueKind != System.Text.Json.JsonValueKind.Array) {
@@ -156,7 +156,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         for (var i = items.Length - 1; i >= 0; i--) {
             var message = items[i];
             if (!message.TryGetProperty("role", out var roleEl)
-                || !string.Equals(roleEl.GetString(), "user", StringComparison.OrdinalIgnoreCase)) {
+                || !string.Equals(roleEl.GetString(), role, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 
@@ -170,6 +170,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         return string.Empty;
+    }
+
+    private static string GetLatestUserMessageContent(string requestBody) {
+        return GetLatestMessageContentByRole(requestBody, "user");
     }
 
     private sealed class RoundTripStubTool : ITool {
