@@ -31,6 +31,7 @@ internal sealed partial class ChatServiceSession {
         string[] RecentEvidenceSnippets,
         string[] CapabilityEnabledPackIds,
         string[] CapabilityRoutingFamilies,
+        string[] CapabilitySkills,
         string[] CapabilityHealthyToolNames,
         long SeenUtcTicks);
 
@@ -60,6 +61,7 @@ internal sealed partial class ChatServiceSession {
             fallbackEvidenceSnippets: existing.RecentEvidenceSnippets);
         var capabilityEnabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(existing.CapabilityEnabledPackIds);
         var capabilityRoutingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(existing.CapabilityRoutingFamilies);
+        var capabilitySkills = ResolveWorkingMemoryCapabilitySkills(existing.CapabilitySkills);
         var capabilityHealthyToolNames = ResolveWorkingMemoryCapabilityHealthyToolNames(
             recentToolNames,
             existing.CapabilityHealthyToolNames);
@@ -70,6 +72,7 @@ internal sealed partial class ChatServiceSession {
             && recentEvidenceSnippets.Length == 0
             && capabilityEnabledPackIds.Length == 0
             && capabilityRoutingFamilies.Length == 0
+            && capabilitySkills.Length == 0
             && capabilityHealthyToolNames.Length == 0) {
             return;
         }
@@ -81,6 +84,7 @@ internal sealed partial class ChatServiceSession {
             RecentEvidenceSnippets: recentEvidenceSnippets,
             CapabilityEnabledPackIds: capabilityEnabledPackIds,
             CapabilityRoutingFamilies: capabilityRoutingFamilies,
+            CapabilitySkills: capabilitySkills,
             CapabilityHealthyToolNames: capabilityHealthyToolNames,
             SeenUtcTicks: DateTime.UtcNow.Ticks);
         UpsertWorkingMemoryCheckpoint(normalizedThreadId, checkpoint);
@@ -125,6 +129,7 @@ internal sealed partial class ChatServiceSession {
             && checkpoint.RecentEvidenceSnippets.Length == 0
             && checkpoint.CapabilityEnabledPackIds.Length == 0
             && checkpoint.CapabilityRoutingFamilies.Length == 0
+            && checkpoint.CapabilitySkills.Length == 0
             && checkpoint.CapabilityHealthyToolNames.Length == 0) {
             return false;
         }
@@ -153,6 +158,7 @@ internal sealed partial class ChatServiceSession {
 
         if (checkpoint.CapabilityEnabledPackIds.Length > 0
             || checkpoint.CapabilityRoutingFamilies.Length > 0
+            || checkpoint.CapabilitySkills.Length > 0
             || checkpoint.CapabilityHealthyToolNames.Length > 0) {
             builder.AppendLine();
             builder.AppendLine("[Capability snapshot]");
@@ -163,6 +169,10 @@ internal sealed partial class ChatServiceSession {
 
             if (checkpoint.CapabilityRoutingFamilies.Length > 0) {
                 builder.Append("routing_families: ").AppendLine(string.Join(", ", checkpoint.CapabilityRoutingFamilies));
+            }
+
+            if (checkpoint.CapabilitySkills.Length > 0) {
+                builder.Append("skills: ").AppendLine(string.Join(", ", checkpoint.CapabilitySkills));
             }
 
             if (checkpoint.CapabilityHealthyToolNames.Length > 0) {
@@ -657,6 +667,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<string> recentEvidenceSnippets,
         IReadOnlyList<string>? enabledPackIds = null,
         IReadOnlyList<string>? routingFamilies = null,
+        IReadOnlyList<string>? skills = null,
         IReadOnlyList<string>? healthyToolNames = null,
         long? seenUtcTicks = null) {
         var checkpoint = new WorkingMemoryCheckpoint(
@@ -670,6 +681,7 @@ internal sealed partial class ChatServiceSession {
                 .Where(static packId => packId.Length > 0),
                 MaxWorkingMemoryCapabilityPackIds),
             CapabilityRoutingFamilies: NormalizeWorkingMemoryCapabilityFamilies(routingFamilies ?? Array.Empty<string>()),
+            CapabilitySkills: ResolveWorkingMemoryCapabilitySkills(skills ?? Array.Empty<string>()),
             CapabilityHealthyToolNames: NormalizeDistinctStrings(healthyToolNames ?? Array.Empty<string>(), MaxWorkingMemoryCapabilityHealthyTools),
             SeenUtcTicks: seenUtcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks));
         UpsertWorkingMemoryCheckpoint(threadId, checkpoint);

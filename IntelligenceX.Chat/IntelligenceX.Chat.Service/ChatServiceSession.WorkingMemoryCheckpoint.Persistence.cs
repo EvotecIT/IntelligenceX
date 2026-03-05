@@ -28,6 +28,7 @@ internal sealed partial class ChatServiceSession {
         public string[] RecentEvidenceSnippets { get; set; } = Array.Empty<string>();
         public string[] CapabilityEnabledPackIds { get; set; } = Array.Empty<string>();
         public string[] CapabilityRoutingFamilies { get; set; } = Array.Empty<string>();
+        public string[] CapabilitySkills { get; set; } = Array.Empty<string>();
         public string[] CapabilityHealthyToolNames { get; set; } = Array.Empty<string>();
         public long SeenUtcTicks { get; set; }
     }
@@ -71,6 +72,7 @@ internal sealed partial class ChatServiceSession {
                     .Where(static packId => packId.Length > 0),
                     MaxWorkingMemoryCapabilityPackIds),
                 CapabilityRoutingFamilies = NormalizeWorkingMemoryCapabilityFamilies(checkpoint.CapabilityRoutingFamilies ?? Array.Empty<string>()),
+                CapabilitySkills = ResolveWorkingMemoryCapabilitySkills(checkpoint.CapabilitySkills ?? Array.Empty<string>()),
                 CapabilityHealthyToolNames =
                     NormalizeDistinctStrings(checkpoint.CapabilityHealthyToolNames ?? Array.Empty<string>(), MaxWorkingMemoryCapabilityHealthyTools),
                 SeenUtcTicks = checkpoint.SeenUtcTicks
@@ -105,6 +107,7 @@ internal sealed partial class ChatServiceSession {
                 .Where(static packId => packId.Length > 0),
                 MaxWorkingMemoryCapabilityPackIds);
             var capabilityRoutingFamilies = NormalizeWorkingMemoryCapabilityFamilies(entry.CapabilityRoutingFamilies ?? Array.Empty<string>());
+            var capabilitySkills = ResolveWorkingMemoryCapabilitySkills(entry.CapabilitySkills ?? Array.Empty<string>());
             var capabilityHealthyToolNames =
                 NormalizeDistinctStrings(entry.CapabilityHealthyToolNames ?? Array.Empty<string>(), MaxWorkingMemoryCapabilityHealthyTools);
 
@@ -114,6 +117,7 @@ internal sealed partial class ChatServiceSession {
                 && recentEvidenceSnippets.Length == 0
                 && capabilityEnabledPackIds.Length == 0
                 && capabilityRoutingFamilies.Length == 0
+                && capabilitySkills.Length == 0
                 && capabilityHealthyToolNames.Length == 0) {
                 store.Threads.Remove(normalizedThreadId);
                 WriteWorkingMemoryCheckpointStoreNoThrow(path, store);
@@ -140,6 +144,7 @@ internal sealed partial class ChatServiceSession {
                 RecentEvidenceSnippets: recentEvidenceSnippets,
                 CapabilityEnabledPackIds: capabilityEnabledPackIds,
                 CapabilityRoutingFamilies: capabilityRoutingFamilies,
+                CapabilitySkills: capabilitySkills,
                 CapabilityHealthyToolNames: capabilityHealthyToolNames,
                 SeenUtcTicks: entry.SeenUtcTicks);
             return true;
