@@ -89,3 +89,4 @@ graph TD
 28. Added consecutive soft-failure autonomy coverage proving two back-to-back `tool_exception` rounds still progress to a later successful round and terminal completion.
 29. Added mixed chaos autonomy + isolation coverage combining dropped transport response, consecutive tool exceptions, and cross-thread pack isolation in one deterministic end-to-end scenario.
 30. Added seeded autonomy parity benchmark coverage measuring continuation depth/completion rate across baseline, drop+replay, and consecutive soft-failure scenarios.
+31. Added explicit autonomy telemetry contract (`autonomyDepth`, `recoveryEvents`, `completionRate`) on result/metrics payloads for direct runtime parity tracking.

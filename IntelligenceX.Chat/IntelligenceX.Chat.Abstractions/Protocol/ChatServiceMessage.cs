@@ -454,4 +454,8 @@ public sealed record ChatResultMessage : ChatServiceMessage {
     /// Optional structured timeline captured for this completed turn.
     /// </summary>
     public TurnTimelineEventDto[]? TurnTimelineEvents { get; init; }
+    /// <summary>
+    /// Optional normalized autonomy telemetry summary for this turn.
+    /// </summary>
+    public AutonomyTelemetryDto? AutonomyTelemetry { get; init; }
 }

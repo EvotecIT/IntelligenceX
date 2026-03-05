@@ -367,7 +367,13 @@ internal sealed partial class ChatServiceSession {
                     ThreadId = threadId,
                     Text = clarificationVisibleText,
                     Tools = null,
-                    TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId)
+                    TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId),
+                    AutonomyTelemetry = BuildAutonomyTelemetrySummary(
+                        toolRounds: 0,
+                        projectionFallbackCount: 0,
+                        toolErrors: Array.Empty<ToolErrorMetricDto>(),
+                        autonomyCounters: Array.Empty<TurnCounterMetricDto>(),
+                        completed: true)
                 };
                 return new ChatTurnRunResult(
                     Result: clarificationResult,

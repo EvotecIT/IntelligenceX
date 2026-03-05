@@ -634,6 +634,12 @@ internal sealed partial class ChatServiceSession {
                 try {
                     var metricsTransport = ResolveMetricsTransport();
                     var metricsEndpointHost = ResolveMetricsEndpointHost();
+                    var autonomyTelemetry = BuildAutonomyTelemetrySummary(
+                        toolRounds: toolRounds,
+                        projectionFallbackCount: projectionFallbackCount,
+                        toolErrors: toolErrors,
+                        autonomyCounters: autonomyCounters,
+                        completed: string.Equals(outcome, "ok", StringComparison.OrdinalIgnoreCase));
                     await WriteAsync(writer, new ChatMetricsMessage {
                         Kind = ChatServiceMessageKind.Event,
                         RequestId = request.RequestId,
@@ -652,6 +658,7 @@ internal sealed partial class ChatServiceSession {
                         ProjectionFallbackCount = projectionFallbackCount,
                         ToolErrors = toolErrors is { Count: > 0 } ? toolErrors : null,
                         AutonomyCounters = autonomyCounters is { Count: > 0 } ? autonomyCounters : null,
+                        AutonomyTelemetry = autonomyTelemetry,
                         Model = telemetryModel,
                         RequestedModel = requestedModel,
                         Transport = metricsTransport,
