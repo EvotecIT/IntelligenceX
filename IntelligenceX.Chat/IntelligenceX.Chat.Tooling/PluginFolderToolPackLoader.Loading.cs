@@ -209,7 +209,7 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         if (pluginPackAvailability.Count > 0) {
-            onPluginAvailability?.Invoke(CreatePluginAvailability(pluginDirectory, manifest, pluginPackAvailability));
+            onPluginAvailability?.Invoke(CreatePluginAvailability(pluginDirectory, manifest, pluginPackAvailability, onWarning));
         }
 
         return loadedPackCount > 0;
@@ -758,7 +758,8 @@ internal static partial class PluginFolderToolPackLoader {
     private static ToolPluginAvailabilityInfo CreatePluginAvailability(
         string rootPath,
         PluginManifest? manifest,
-        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability) {
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
+        Action<string>? onWarning) {
         var pluginId = DeterminePluginId(rootPath, manifest);
         var normalizedPluginId = ToolPackBootstrap.NormalizePackId(pluginId);
         var pluginName = (manifest?.DisplayName ?? string.Empty).Trim();
@@ -799,7 +800,7 @@ internal static partial class PluginFolderToolPackLoader {
             PackIds = normalizedPackIds,
             RootPath = string.IsNullOrWhiteSpace(rootPath) ? null : rootPath,
             SkillDirectories = ResolvePluginSkillDirectories(rootPath, manifest),
-            SkillIds = ResolvePluginSkillIds(rootPath, manifest)
+            SkillIds = ResolvePluginSkillIds(rootPath, manifest, onWarning)
         };
     }
 

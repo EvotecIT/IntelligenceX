@@ -39,6 +39,10 @@ internal static partial class PluginFolderToolPackLoader {
     }
 
     private static string[] ResolvePluginSkillIds(string rootPath, PluginManifest? manifest) {
+        return ResolvePluginSkillIds(rootPath, manifest, onWarning: null);
+    }
+
+    private static string[] ResolvePluginSkillIds(string rootPath, PluginManifest? manifest, Action<string>? onWarning) {
         var skillDirectories = ResolvePluginSkillDirectories(rootPath, manifest);
         if (skillDirectories.Length == 0) {
             return Array.Empty<string>();
@@ -53,12 +57,14 @@ internal static partial class PluginFolderToolPackLoader {
             IEnumerable<string> skillFiles;
             try {
                 skillFiles = Directory.EnumerateFiles(skillDirectory, SkillManifestFileName, SearchOption.AllDirectories);
-            } catch {
+            } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) {
+                onWarning?.Invoke(
+                    $"[plugin] skill_inventory_scan_failed path='{skillDirectory}' error='{ex.GetType().Name}: {ex.Message}'");
                 continue;
             }
 
             foreach (var skillFile in skillFiles) {
-                var skillId = ResolvePluginSkillId(skillDirectory, skillFile);
+                var skillId = ResolvePluginSkillId(skillDirectory, skillFile, onWarning);
                 if (skillId.Length > 0) {
                     skillIds.Add(skillId);
                 }
@@ -71,20 +77,21 @@ internal static partial class PluginFolderToolPackLoader {
             .ToArray();
     }
 
-    private static string ResolvePluginSkillId(string skillDirectory, string skillFile) {
+    private static string ResolvePluginSkillId(string skillDirectory, string skillFile, Action<string>? onWarning) {
         if (string.IsNullOrWhiteSpace(skillDirectory) || string.IsNullOrWhiteSpace(skillFile)) {
             return string.Empty;
         }
 
-        string relativeDirectory;
+        string? relativeDirectory = null;
         try {
             relativeDirectory = Path.GetRelativePath(skillDirectory, Path.GetDirectoryName(skillFile) ?? skillDirectory);
-        } catch {
-            relativeDirectory = string.Empty;
+        } catch (Exception ex) when (ex is IOException or ArgumentException or NotSupportedException) {
+            onWarning?.Invoke(
+                $"[plugin] skill_inventory_relative_path_failed path='{skillFile}' root='{skillDirectory}' error='{ex.GetType().Name}: {ex.Message}'");
         }
 
         if (string.IsNullOrWhiteSpace(relativeDirectory) || relativeDirectory == ".") {
-            return NormalizePluginSkillId(Path.GetFileName(skillDirectory));
+            return NormalizePluginSkillId(Path.GetFileName(Path.GetDirectoryName(skillFile) ?? skillDirectory));
         }
 
         var segments = relativeDirectory
