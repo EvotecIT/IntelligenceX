@@ -225,6 +225,37 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_LoadsBuiltInPluginOnlyPreset_WhenNoStoredProfileExists() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            var options = ParseHostOptions(new[] { "--state-db", dbPath, "--profile", "plugin-only" }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin-only", ReadStringProperty(options!, "ProfileName"));
+            Assert.False(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
+            Assert.True(ReadBoolProperty(options!, "EnableDefaultPluginPaths"));
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Parse_NormalizesBuiltInPluginOnlyPresetAlias() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            var options = ParseHostOptions(new[] { "--state-db", dbPath, "--profile", "plugin_only" }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin-only", ReadStringProperty(options!, "ProfileName"));
+            Assert.False(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
     public void Parse_BuiltInToolAssemblyFlags_AreApplied() {
         var options = ParseHostOptions(
             new[] {

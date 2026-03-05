@@ -548,7 +548,7 @@ internal static partial class Program {
         Console.WriteLine("  --openai-no-stream      Disable streaming responses.");
         Console.WriteLine("  --openai-allow-insecure-http  Allow http:// base URLs for loopback hosts (default: off).");
         Console.WriteLine("  --openai-allow-insecure-http-non-loopback  Allow http:// base URLs for non-loopback hosts (dangerous).");
-        Console.WriteLine("  --profile <NAME>        Load a saved profile (SQLite-backed) and apply it as defaults.");
+        Console.WriteLine("  --profile <NAME>        Load a saved profile or built-in preset (for example: plugin-only).");
         Console.WriteLine("  --state-db <PATH>       Override the SQLite state DB path (defaults to LocalAppData).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --auth-path <PATH>      Override auth store path (default: %USERPROFILE%\\.intelligencex\\auth.json).");

@@ -103,7 +103,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             return options;
         }
 
-        if (!options.NoStateDb && !string.IsNullOrWhiteSpace(options.ProfileName)) {
+        if (!string.IsNullOrWhiteSpace(options.ProfileName)) {
             if (!TryLoadProfile(options, out error)) {
                 return options;
             }
@@ -293,7 +293,9 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
                 }
-                options.ProfileName = value;
+                options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(value, out var canonicalProfileName)
+                    ? canonicalProfileName
+                    : value;
                 continue;
             }
             if (arg is "--save-profile") {
@@ -575,7 +577,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --openai-no-stream      Disable streaming responses.");
         Console.WriteLine("  --openai-allow-insecure-http  Allow http:// base URLs for loopback hosts (default: off).");
         Console.WriteLine("  --openai-allow-insecure-http-non-loopback  Allow http:// base URLs for non-loopback hosts (dangerous).");
-        Console.WriteLine("  --profile <NAME>        Load a saved service profile (SQLite-backed) and apply it as defaults.");
+        Console.WriteLine("  --profile <NAME>        Load a saved service profile or built-in preset (for example: plugin-only).");
         Console.WriteLine("  --save-profile <NAME>   Save the effective options as a named profile (SQLite-backed).");
         Console.WriteLine("  --state-db <PATH>       Override the SQLite state DB path (defaults to LocalAppData).");
         Console.WriteLine("  --no-state-db           Disable SQLite state storage (profiles unavailable).");

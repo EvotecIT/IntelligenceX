@@ -232,7 +232,9 @@ internal static partial class Program {
                         if (!TryGetValue(args, ref i, out var profileName, out error)) {
                             return options;
                         }
-                        options.ProfileName = profileName;
+                        options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(profileName, out var canonicalProfileName)
+                            ? canonicalProfileName
+                            : profileName;
                         break;
                     case "--state-db":
                         if (!TryGetValue(args, ref i, out var stateDb, out error)) {
@@ -468,7 +470,9 @@ internal static partial class Program {
                     if (!TryGetValue(args, ref i, out var name, out error)) {
                         return;
                     }
-                    options.ProfileName = name;
+                    options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(name, out var canonicalProfileName)
+                        ? canonicalProfileName
+                        : name;
                     continue;
                 }
             }
@@ -478,6 +482,12 @@ internal static partial class Program {
             error = null;
             var name = (options.ProfileName ?? string.Empty).Trim();
             if (name.Length == 0) {
+                return true;
+            }
+
+            if (ServiceProfilePresets.TryResolve(name, out var presetName, out var presetProfile)) {
+                options.ApplyProfile(presetProfile);
+                options.ProfileName = presetName;
                 return true;
             }
 

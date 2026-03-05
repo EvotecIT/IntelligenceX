@@ -176,7 +176,9 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return;
                 }
-                options.ProfileName = value;
+                options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(value, out var canonicalProfileName)
+                    ? canonicalProfileName
+                    : value;
                 continue;
             }
             if (arg is "--save-profile") {
@@ -199,6 +201,17 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         var name = (options.ProfileName ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name)) {
             return true;
+        }
+
+        if (ServiceProfilePresets.TryResolve(name, out var presetName, out var presetProfile)) {
+            options.ApplyProfile(presetProfile);
+            options.ProfileName = presetName;
+            return true;
+        }
+
+        if (options.NoStateDb) {
+            error = "State DB is disabled; saved profiles are unavailable.";
+            return false;
         }
 
         var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? GetDefaultStateDbPath() : options.StateDbPath!;
