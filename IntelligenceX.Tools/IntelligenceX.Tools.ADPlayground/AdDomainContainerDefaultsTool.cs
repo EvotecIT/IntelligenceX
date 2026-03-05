@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,16 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+
+    internal readonly record struct DomainContainerDefaultsBindingContract(
+        string? DomainName,
+        string? ForestName,
+        bool ChangedOnly);
+
+    private sealed record DomainContainerDefaultsRequest(
+        string? DomainName,
+        string? ForestName,
+        bool ChangedOnly);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_domain_container_defaults",
@@ -60,10 +71,50 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
-        var changedOnly = ToolArgs.GetBoolean(arguments, "changed_only", defaultValue: false);
+    private static ToolRequestBindingResult<DomainContainerDefaultsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!TryReadBooleanCompat(arguments, "changed_only", defaultValue: false, out var changedOnly, out var changedOnlyError)) {
+                return ToolRequestBindingResult<DomainContainerDefaultsRequest>.Failure(changedOnlyError!);
+            }
+
+            return ToolRequestBindingResult<DomainContainerDefaultsRequest>.Success(new DomainContainerDefaultsRequest(
+                DomainName: reader.OptionalString("domain_name"),
+                ForestName: reader.OptionalString("forest_name"),
+                ChangedOnly: changedOnly));
+        });
+    }
+
+    internal static ToolRequestBindingResult<DomainContainerDefaultsBindingContract> BindRequestContract(JsonObject? arguments) {
+        var binding = BindRequest(arguments);
+        if (!binding.IsValid || binding.Request is null) {
+            return ToolRequestBindingResult<DomainContainerDefaultsBindingContract>.Failure(
+                binding.Error,
+                binding.ErrorCode,
+                binding.Hints,
+                binding.IsTransient);
+        }
+
+        var request = binding.Request;
+        return ToolRequestBindingResult<DomainContainerDefaultsBindingContract>.Success(new DomainContainerDefaultsBindingContract(
+            DomainName: request.DomainName,
+            ForestName: request.ForestName,
+            ChangedOnly: request.ChangedOnly));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DomainContainerDefaultsRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+        var domainName = request.DomainName;
+        var forestName = request.ForestName;
+        var maxResults = ResolveMaxResults(context.Arguments);
+        var changedOnly = request.ChangedOnly;
 
         if (!TryResolveTargetDomains(
                 domainName: domainName,
@@ -115,7 +166,7 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
             Domains: projectedRows);
 
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: result,
             sourceRows: projectedRows,
             viewRowsPath: "domains_view",
@@ -128,5 +179,63 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
                 meta.Add("error_count", errors.Count);
                 AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
+    }
+
+    private static bool TryReadBooleanCompat(
+        JsonObject? arguments,
+        string key,
+        bool defaultValue,
+        out bool value,
+        out string? error) {
+        value = defaultValue;
+        error = null;
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return true;
+        }
+
+        if (!arguments.TryGetValue(key, out var rawValue) || rawValue is null) {
+            return true;
+        }
+
+        if (rawValue.Kind == JsonValueKind.Boolean) {
+            value = rawValue.AsBoolean(defaultValue);
+            return true;
+        }
+
+        if (rawValue.Kind == JsonValueKind.Number) {
+            var numericValue = rawValue.AsInt64();
+            if (!numericValue.HasValue) {
+                error = $"{key} must be a boolean or a parseable boolean string/number.";
+                return false;
+            }
+
+            value = numericValue.Value != 0;
+            return true;
+        }
+
+        if (rawValue.Kind != JsonValueKind.String) {
+            error = $"{key} must be a boolean or a parseable boolean string/number.";
+            return false;
+        }
+
+        var raw = rawValue.AsString();
+        if (string.IsNullOrWhiteSpace(raw)) {
+            error = $"{key} must be a boolean or a parseable boolean string/number.";
+            return false;
+        }
+
+        var normalized = raw.Trim();
+        if (bool.TryParse(normalized, out var parsed)) {
+            value = parsed;
+            return true;
+        }
+
+        if (long.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numeric)) {
+            value = numeric != 0;
+            return true;
+        }
+
+        error = $"{key} must be a boolean or a parseable boolean string/number.";
+        return false;
     }
 }
