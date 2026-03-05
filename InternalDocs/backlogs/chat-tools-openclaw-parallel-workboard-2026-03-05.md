@@ -50,7 +50,7 @@ graph TD
 ## Lane E - Skills Parity
 - [x] Add structured `ix:skills:v1` runtime snapshot derived from routing family/action diagnostics.
 - [x] Thread skills snapshot through working-memory continuation augmentation/persistence.
-- [ ] Add autonomous continuation-loop tests that assert multi-step execution guided by skills snapshot.
+- [x] Add autonomous continuation-loop tests that assert multi-step execution guided by skills snapshot.
 
 ## Current Patch Set (Started)
 
@@ -77,3 +77,4 @@ graph TD
 16. Added deterministic host-target fallback ranking soak coverage for known-host and scenario-distinct fallback paths.
 17. Added structured runtime/hello skills snapshot signaling (`ix:skills:v1`) with deterministic family-action skill inventory coverage.
 18. Persisted and replayed skills snapshot in working-memory checkpoints so restart follow-ups keep capability skill context.
+19. Added end-to-end autonomous continuation-loop coverage validating compact follow-up skill snapshot carryover plus tool-round progression.

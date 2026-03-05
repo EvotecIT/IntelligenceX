@@ -352,6 +352,176 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_CarriesSkillsSnapshotIntoAutonomousContinuationLoop() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-skills-continuation-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_skills_continuation_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "skills_continuation" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-skills-continuation-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Skills-guided continuation completed."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 3,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "active_directory",
+                    Name = "Active Directory",
+                    SourceKind = "builtin",
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "eventlog",
+                    Name = "Event Log",
+                    SourceKind = "builtin",
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 12,
+                RoutingAwareTools = 12,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 2,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "scope_hosts",
+                        ToolCount = 4
+                    },
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "public_domain",
+                        ActionId = "query_whois",
+                        ToolCount = 2
+                    }
+                }
+            });
+
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+        session.RememberUserIntentForTesting(thread.Id, "Continue AD replication and event-log diagnostics across remaining controllers.");
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: thread.Id,
+            intentAnchor: "Continue AD replication and event-log diagnostics across remaining controllers.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary", "eventlog_live_query" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: replication backlog remains on DC03." },
+            enabledPackIds: new[] { "active_directory", "eventlog" },
+            routingFamilies: new[] { "ad_domain", "public_domain" },
+            skills: new[] { "ad_domain.scope_hosts", "public_domain.query_whois" },
+            healthyToolNames: new[] { "ad_replication_summary", "eventlog_live_query" });
+
+        var request = new ChatRequest {
+            RequestId = "req-skills-continuation-loop",
+            ThreadId = thread.Id,
+            Text = "continue",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 3,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            request.ThreadId,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        AssertStatusSubsequence(statuses, "tool_round_started", "tool_round_completed");
+        Assert.Equal(1, statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(1, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+
+        Assert.Equal(2, server.ChatCompletionRequestCount);
+        var firstRequestBody = server.GetChatRequestBody(0);
+        var userMessage = GetLatestUserMessageContent(firstRequestBody);
+        var systemMessage = GetLatestMessageContentByRole(firstRequestBody, "system");
+        Assert.Contains("ix:continuation:v1", userMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled: true", userMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("follow_up: continue", userMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:skills:v1", systemMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skills: ad_domain.scope_hosts, public_domain.query_whois", systemMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(1), "call_skills_continuation_1"));
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Skills-guided continuation completed.", resultMessage.Text);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Single(resultMessage.Tools!.Calls);
+        Assert.Single(resultMessage.Tools.Outputs);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_EmitsPhaseHeartbeatDuringLongToolExecution() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => JsonSerializer.Serialize(new {
