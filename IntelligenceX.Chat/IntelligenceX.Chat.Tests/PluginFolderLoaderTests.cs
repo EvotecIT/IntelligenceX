@@ -18,6 +18,8 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed class PluginFolderLoaderTests {
+    private const string GlobalPackOptionKey = "*";
+
     private static readonly string[] DefaultEnabledKnownPackIds = {
         "filesystem",
         "eventlog",
@@ -970,7 +972,7 @@ public sealed class PluginFolderLoaderTests {
             File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
 
             var packRuntimeOptionBag = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) {
-                [ToolPackBootstrap.PackOptionKeyGlobal] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                [GlobalPackOptionKey] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
                     ["RunAsProfilePath"] = "C:/temp/run-as-global-custom.json"
                 },
                 ["intelligencex_chat_tests"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
