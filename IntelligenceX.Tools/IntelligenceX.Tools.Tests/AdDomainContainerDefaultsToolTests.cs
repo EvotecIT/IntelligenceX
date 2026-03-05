@@ -47,4 +47,30 @@ public sealed class AdDomainContainerDefaultsToolTests {
         Assert.False(binding.IsValid);
         Assert.Contains("changed_only", binding.Error);
     }
+
+    [Fact]
+    public void BindRequestContract_WhenChangedOnlyProvidedAsNumericToken_ParsesCompatibly() {
+        var enabled = AdDomainContainerDefaultsTool.BindRequestContract(new JsonObject()
+            .Add("changed_only", 1));
+        Assert.True(enabled.IsValid);
+        Assert.True(Assert.IsType<AdDomainContainerDefaultsTool.DomainContainerDefaultsBindingContract>(enabled.Request).ChangedOnly);
+
+        var disabled = AdDomainContainerDefaultsTool.BindRequestContract(new JsonObject()
+            .Add("changed_only", 0));
+        Assert.True(disabled.IsValid);
+        Assert.False(Assert.IsType<AdDomainContainerDefaultsTool.DomainContainerDefaultsBindingContract>(disabled.Request).ChangedOnly);
+    }
+
+    [Fact]
+    public void BindRequestContract_WhenChangedOnlyProvidedAsNumericString_ParsesCompatibly() {
+        var enabled = AdDomainContainerDefaultsTool.BindRequestContract(new JsonObject()
+            .Add("changed_only", "1"));
+        Assert.True(enabled.IsValid);
+        Assert.True(Assert.IsType<AdDomainContainerDefaultsTool.DomainContainerDefaultsBindingContract>(enabled.Request).ChangedOnly);
+
+        var disabled = AdDomainContainerDefaultsTool.BindRequestContract(new JsonObject()
+            .Add("changed_only", "0"));
+        Assert.True(disabled.IsValid);
+        Assert.False(Assert.IsType<AdDomainContainerDefaultsTool.DomainContainerDefaultsBindingContract>(disabled.Request).ChangedOnly);
+    }
 }

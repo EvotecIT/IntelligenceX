@@ -213,6 +213,11 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
             return true;
         }
 
+        if (rawValue.Kind != JsonValueKind.String) {
+            error = $"{key} must be a boolean or a parseable boolean string/number.";
+            return false;
+        }
+
         var raw = rawValue.AsString();
         if (string.IsNullOrWhiteSpace(raw)) {
             error = $"{key} must be a boolean or a parseable boolean string/number.";
