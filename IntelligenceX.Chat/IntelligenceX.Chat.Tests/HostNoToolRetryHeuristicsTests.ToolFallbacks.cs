@@ -282,6 +282,98 @@ Continue that failure-signature collection across all remaining DCs in this turn
     }
 
     [Fact]
+    public void ApplyKnownHostTargetFallbacks_RankingOrderIsDeterministicUnderSoak() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("target", new JsonObject().Add("type", "string"))
+                .Add("targets", new JsonObject().Add("type", "array")));
+
+        const int iterations = 128;
+        string? baselineTarget = null;
+        string[]? baselineTargets = null;
+        for (var iteration = 0; iteration < iterations; iteration++) {
+            var repaired = InvokeApplyKnownHostTargetFallbacks(
+                BuildToolCall("call_1", "dnsclientx_ping", "{}"),
+                new ToolDefinition("dnsclientx_ping", parameters: schema),
+                new[] { "AD0", "AD0.ad.evotec.xyz", "localhost", "AD1.ad.evotec.xyz", "AD1" });
+
+            var target = repaired.Arguments?.GetString("target");
+            Assert.False(string.IsNullOrWhiteSpace(target));
+
+            var targetsArray = repaired.Arguments?.GetArray("targets");
+            Assert.NotNull(targetsArray);
+            var orderedTargets = targetsArray!
+                .Select(static value => value?.AsString() ?? string.Empty)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .ToArray();
+            Assert.NotEmpty(orderedTargets);
+
+            if (iteration == 0) {
+                baselineTarget = target;
+                baselineTargets = orderedTargets;
+                continue;
+            }
+
+            Assert.Equal(baselineTarget, target);
+            Assert.Equal(baselineTargets, orderedTargets);
+        }
+    }
+
+    [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_RankingOrderIsDeterministicUnderSoak() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: eventlog_*stats*
+distinct_tool_inputs: machine_name>=2
+forbidden_tool_inputs: machine_name!=AD2
+User request:
+Continue that failure-signature collection across all remaining non-AD2 DCs in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("eventlog_live_stats", parameters: schema)
+        };
+
+        const int iterations = 128;
+        string[]? baselineHosts = null;
+        for (var iteration = 0; iteration < iterations; iteration++) {
+            var calls = new List<ToolCall> {
+                BuildToolCall("call_1", "eventlog_live_stats", """{"log_name":"System","machine_name":"localhost"}"""),
+                BuildToolCall("call_2", "eventlog_live_stats", """{"log_name":"Directory Service","machine_name":"localhost"}""")
+            };
+
+            var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+                userRequest: request,
+                calls: calls,
+                toolDefinitions: definitions,
+                knownHostTargets: new[] { "AD0.ad.evotec.xyz", "AD2.ad.evotec.xyz", "AD3", "AD3", "localhost" });
+            Assert.Equal(2, repaired.Count);
+
+            var hosts = repaired
+                .Select(call => call.Arguments?.GetString("machine_name") ?? string.Empty)
+                .ToArray();
+            Assert.DoesNotContain(hosts, host => string.Equals(host, "AD2", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(hosts, host => host.StartsWith("AD2.", StringComparison.OrdinalIgnoreCase));
+
+            if (iteration == 0) {
+                baselineHosts = hosts;
+                continue;
+            }
+
+            Assert.Equal(baselineHosts, hosts);
+        }
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_DoesNotPatchWhenDistinctMachineCoverageIsAlreadyMet() {
         const string request = """
 [Scenario execution contract]
