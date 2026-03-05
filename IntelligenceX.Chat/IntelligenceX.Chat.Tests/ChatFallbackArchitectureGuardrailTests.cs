@@ -113,6 +113,46 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
+    public void ChatHost_ShouldNotContainPluginManifestContractCoupling() {
+        var repoRoot = FindRepoRoot();
+        var hostRoot = Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Host");
+        var disallowedTokens = new[] {
+            "ix-plugin.json",
+            ".ix-plugin.zip",
+            "PluginFolderToolPackLoader"
+        };
+
+        foreach (var file in Directory.EnumerateFiles(hostRoot, "*.cs", SearchOption.AllDirectories)) {
+            var source = File.ReadAllText(file);
+            for (var i = 0; i < disallowedTokens.Length; i++) {
+                Assert.DoesNotContain(disallowedTokens[i], source, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public void ToolingDiscovery_ShouldNotContainHardcodedBuiltInAssemblyAllowlistNames() {
+        var source = File.ReadAllText(GetToolingSourceFilePath("ToolPackBootstrap.RegistryAndReflection.cs"));
+        var disallowedAssemblyNames = new[] {
+            "IntelligenceX.Tools.FileSystem",
+            "IntelligenceX.Tools.EventLog",
+            "IntelligenceX.Tools.ADPlayground",
+            "IntelligenceX.Tools.System",
+            "IntelligenceX.Tools.PowerShell",
+            "IntelligenceX.Tools.TestimoX",
+            "IntelligenceX.Tools.OfficeIMO",
+            "IntelligenceX.Tools.Email",
+            "IntelligenceX.Tools.ReviewerSetup",
+            "IntelligenceX.Tools.DnsClientX",
+            "IntelligenceX.Tools.DomainDetective"
+        };
+
+        for (var i = 0; i < disallowedAssemblyNames.Length; i++) {
+            Assert.DoesNotContain(disallowedAssemblyNames[i], source, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public void ChatRuntimeSurface_ShouldNotHardcodePackIdsInAppOrService() {
         var repoRoot = FindRepoRoot();
         var roots = new[] {
@@ -147,6 +187,11 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     private static string GetHostSourceFilePath(string fileName) {
         var repoRoot = FindRepoRoot();
         return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Host", fileName);
+    }
+
+    private static string GetToolingSourceFilePath(string fileName) {
+        var repoRoot = FindRepoRoot();
+        return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Tooling", fileName);
     }
 
     private static string FindRepoRoot() {

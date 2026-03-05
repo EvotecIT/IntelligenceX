@@ -33,7 +33,7 @@ graph TD
 ## Lane B - Plugin Isolation
 - [x] Remove hardcoded built-in assembly allowlist from bootstrap path.
 - [x] Move pack-specific runtime option contract to pack-keyed config bag.
-- [ ] Extend architecture guardrail coverage to host/tooling plugin neutrality paths.
+- [x] Extend architecture guardrail coverage to host/tooling plugin neutrality paths.
 - [x] Add synthetic pack integration test proving no Chat code edits for new pack discovery.
 
 ## Lane C - Continuation Autonomy
@@ -62,3 +62,4 @@ graph TD
 6. Built-in tool assembly default discovery now comes from runtime `IntelligenceX.Tools.*.dll` scanning (no hardcoded static allowlist in bootstrap path), with updated metadata tests.
 7. Added plugin synthetic-pack integration coverage proving plugin discovery flows into registry/catalog contracts without Chat runtime code edits.
 8. Introduced pack-keyed runtime option bag flow and shared option-bag application for built-in/plugin pack constructors, with plugin-id override coverage.
+9. Extended architecture guardrail coverage to host/tooling plugin-neutrality paths (host manifest-coupling guardrails + tooling built-in assembly allowlist guardrail).
