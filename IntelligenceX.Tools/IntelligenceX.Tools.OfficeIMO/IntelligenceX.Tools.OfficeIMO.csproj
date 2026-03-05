@@ -12,7 +12,10 @@
     <Nullable>enable</Nullable>
 
     <!-- Local-dev discovery: OfficeIMO repo is a sibling checkout next to IntelligenceX. -->
-    <OfficeImoReaderProject>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)OfficeIMO\OfficeIMO.Reader\OfficeIMO.Reader.csproj'))</OfficeImoReaderProject>
+    <OfficeImoReaderProjectOverride>$(OfficeImoRepoRoot)\OfficeIMO.Reader\OfficeIMO.Reader.csproj</OfficeImoReaderProjectOverride>
+    <OfficeImoReaderProjectFallback>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)OfficeIMO\OfficeIMO.Reader\OfficeIMO.Reader.csproj'))</OfficeImoReaderProjectFallback>
+    <OfficeImoReaderProject Condition="Exists('$(OfficeImoReaderProjectOverride)')">$(OfficeImoReaderProjectOverride)</OfficeImoReaderProject>
+    <OfficeImoReaderProject Condition="'$(OfficeImoReaderProject)' == '' and Exists('$(OfficeImoReaderProjectFallback)')">$(OfficeImoReaderProjectFallback)</OfficeImoReaderProject>
     <OfficeImoReaderAvailable Condition="Exists('$(OfficeImoReaderProject)') OR '$(OfficeImoReaderNuGetVersion)' != ''">true</OfficeImoReaderAvailable>
     <DefineConstants Condition="'$(OfficeImoReaderAvailable)' == 'true'">$(DefineConstants);OFFICEIMO_ENABLED</DefineConstants>
     <DefineConstants Condition="'$(OfficeImoReaderAvailable)' != 'true'">$(DefineConstants);OFFICEIMO_DISABLED</DefineConstants>
@@ -35,4 +38,3 @@
     <PackageReference Include="OfficeIMO.Reader" Version="$(OfficeImoReaderNuGetVersion)" />
   </ItemGroup>
 </Project>
-
