@@ -16,6 +16,9 @@ namespace IntelligenceX.Tools.ADPlayground;
 public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
 
+    private sealed record SchemaVersionRequest(
+        bool MismatchedOnly);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_schema_version",
         "Get Active Directory schema version information across domains and optionally show only mismatches (read-only).",
@@ -44,10 +47,23 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var mismatchedOnly = ToolArgs.GetBoolean(arguments, "mismatched_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
+    private static ToolRequestBindingResult<SchemaVersionRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<SchemaVersionRequest>.Success(new SchemaVersionRequest(
+                MismatchedOnly: reader.Boolean("mismatched_only"))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<SchemaVersionRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+        var maxResults = ResolveMaxResults(context.Arguments);
 
         if (!TryExecute(
                 action: () => {
@@ -66,11 +82,11 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
             ? versions.Where(x => x.Version != referenceVersion.Value).ToArray()
             : Array.Empty<SchemaVersionInfo>();
 
-        IReadOnlyList<SchemaVersionInfo> selectedRows = mismatchedOnly ? mismatches : versions;
+        IReadOnlyList<SchemaVersionInfo> selectedRows = request.MismatchedOnly ? mismatches : versions;
         var rows = CapRows(selectedRows, maxResults, out var scanned, out var truncated);
 
         var result = new AdSchemaVersionResult(
-            MismatchedOnly: mismatchedOnly,
+            MismatchedOnly: request.MismatchedOnly,
             Scanned: scanned,
             Truncated: truncated,
             ReferenceVersion: referenceVersion,
@@ -79,7 +95,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
             Versions: rows);
 
         var response = BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: result,
             sourceRows: rows,
             viewRowsPath: "versions_view",
@@ -89,7 +105,7 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
             maxTop: MaxViewTop,
             metaMutate: meta => {
                 AddMaxResultsMeta(meta, maxResults);
-                meta.Add("mismatched_only", mismatchedOnly);
+                meta.Add("mismatched_only", request.MismatchedOnly);
                 meta.Add("mismatch_count", mismatches.Length);
                 if (referenceVersion.HasValue) {
                     meta.Add("reference_version", referenceVersion.Value);
@@ -98,4 +114,3 @@ public sealed class AdSchemaVersionTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
