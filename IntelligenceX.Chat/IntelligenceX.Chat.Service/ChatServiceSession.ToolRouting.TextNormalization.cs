@@ -380,18 +380,13 @@ internal sealed partial class ChatServiceSession {
                 normalized = normalized.Slice(1).TrimStart();
                 continue;
             }
-
-            if (normalized.Length >= 2 && normalized[0] == '`' && normalized[^1] == '`') {
-                normalized = normalized.Slice(1, normalized.Length - 2).Trim();
-                continue;
-            }
         }
 
         return normalized;
     }
 
     private static bool IsContinuationContractWrapperLine(ReadOnlySpan<char> line) {
-        var normalized = line.Trim();
+        var normalized = NormalizeContinuationContractLine(line);
         if (normalized.IsEmpty) {
             return true;
         }
@@ -401,21 +396,7 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
-        var hasVisibleCharacter = false;
-        for (var i = 0; i < normalized.Length; i++) {
-            var ch = normalized[i];
-            if (char.IsWhiteSpace(ch)) {
-                continue;
-            }
-
-            if (char.IsLetterOrDigit(ch)) {
-                return false;
-            }
-
-            hasVisibleCharacter = true;
-        }
-
-        return hasVisibleCharacter;
+        return false;
     }
 
     private static bool TryParseBooleanStructuredField(ReadOnlySpan<char> line, string key, out bool value) {

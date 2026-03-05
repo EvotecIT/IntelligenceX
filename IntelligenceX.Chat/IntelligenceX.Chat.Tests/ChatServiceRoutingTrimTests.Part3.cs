@@ -88,6 +88,23 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotActivateStructuredContractWhenPunctuationPrefaceAppearsBeforeMarker() {
+        var input = """
+            ---
+            ix:continuation:v1
+            enabled: true
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: Keep going with the same scope and include AD2.
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.StartsWith("---", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Keep going with the same scope and include AD2.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ExtractIntentUserText_UsesStructuredContinuationContractIntentAnchor() {
         var input = """
             ix:continuation:v1
