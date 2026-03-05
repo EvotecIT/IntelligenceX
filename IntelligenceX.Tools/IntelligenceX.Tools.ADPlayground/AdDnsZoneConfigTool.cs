@@ -16,6 +16,12 @@ namespace IntelligenceX.Tools.ADPlayground;
 public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
 
+    private sealed record DnsZoneConfigRequest(
+        string DnsServer,
+        string? ZoneNameContains,
+        bool DynamicUpdatesOnly,
+        bool InsecureUpdatesOnly);
+
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_dns_zone_config",
         "Get DNS zone configuration (zone type, dynamic update mode, secondaries) from a DNS server via WMI (read-only).",
@@ -61,17 +67,35 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<DnsZoneConfigRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!reader.TryReadRequiredString("dns_server", out var dnsServer, out var dnsServerError)) {
+                return ToolRequestBindingResult<DnsZoneConfigRequest>.Failure(dnsServerError);
+            }
+
+            return ToolRequestBindingResult<DnsZoneConfigRequest>.Success(new DnsZoneConfigRequest(
+                DnsServer: dnsServer,
+                ZoneNameContains: reader.OptionalString("zone_name_contains"),
+                DynamicUpdatesOnly: reader.Boolean("dynamic_updates_only"),
+                InsecureUpdatesOnly: reader.Boolean("insecure_updates_only")));
+        });
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DnsZoneConfigRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-
-        var dnsServer = ToolArgs.GetOptionalTrimmed(arguments, "dns_server");
-        if (string.IsNullOrWhiteSpace(dnsServer)) {
-            return Task.FromResult(ToolResponse.Error("invalid_argument", "dns_server is required."));
-        }
-
-        var zoneNameContains = ToolArgs.GetOptionalTrimmed(arguments, "zone_name_contains");
-        var dynamicUpdatesOnly = ToolArgs.GetBoolean(arguments, "dynamic_updates_only", defaultValue: false);
-        var insecureUpdatesOnly = ToolArgs.GetBoolean(arguments, "insecure_updates_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
+        var request = context.Request;
+        var dnsServer = request.DnsServer;
+        var zoneNameContains = request.ZoneNameContains;
+        var dynamicUpdatesOnly = request.DynamicUpdatesOnly;
+        var insecureUpdatesOnly = request.InsecureUpdatesOnly;
+        var maxResults = ResolveMaxResults(context.Arguments);
 
         if (!TryExecute(
                 action: () => DnsZoneConfigService.GetZonesResult(dnsServer),
@@ -116,7 +140,7 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
             Zones: projectedRows);
 
         var response = BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: result,
             sourceRows: projectedRows,
             viewRowsPath: "zones_view",
@@ -140,4 +164,3 @@ public sealed class AdDnsZoneConfigTool : ActiveDirectoryToolBase, ITool {
         return Task.FromResult(response);
     }
 }
-
