@@ -381,6 +381,9 @@ internal sealed partial class ChatServiceSession {
 
         var globalLane = ResolveGlobalExecutionLane(ResolveGlobalExecutionLaneConcurrency(_options.GlobalExecutionLaneConcurrency));
         var enteredGlobalLane = false;
+        var effectiveTurnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
+        using var turnTimeoutCts = CreateTimeoutCts(run.Cts.Token, effectiveTurnTimeoutSeconds);
+        var turnExecutionToken = turnTimeoutCts?.Token ?? run.Cts.Token;
 
         try {
             if (globalLane is not null) {
@@ -525,7 +528,7 @@ internal sealed partial class ChatServiceSession {
                     _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta);
                 });
 
-                var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run.Cts.Token)
+                var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, turnExecutionToken)
                     .ConfigureAwait(false);
                 usageDto = MapUsage(result.Usage);
                 toolCallsCount = result.ToolCallsCount;
@@ -581,12 +584,18 @@ internal sealed partial class ChatServiceSession {
                     Error = "Chat canceled by client.",
                     Code = "chat_canceled"
                 }, CancellationToken.None).ConfigureAwait(false);
-            } catch (OperationCanceledException ex) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken, ex.CancellationToken)) {
+            } catch (OperationCanceledException ex) when (
+                IsTurnTimeoutCancellation(
+                    request,
+                    run,
+                    sessionCancellationToken,
+                    ex.CancellationToken,
+                    turnTimeoutToken: turnExecutionToken,
+                    turnTimeoutCancellationRequested: turnTimeoutCts?.IsCancellationRequested == true)) {
                 outcome = "timeout";
                 outcomeCode = "chat_timeout";
-                var turnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
-                var timeoutMessage = turnTimeoutSeconds > 0
-                    ? $"Chat timed out after {turnTimeoutSeconds}s."
+                var timeoutMessage = effectiveTurnTimeoutSeconds > 0
+                    ? $"Chat timed out after {effectiveTurnTimeoutSeconds}s."
                     : "Chat timed out.";
                 await TryWriteStatusAsync(
                         writer,
@@ -680,10 +689,16 @@ internal sealed partial class ChatServiceSession {
                 Error = "Chat canceled by client.",
                 Code = "chat_canceled"
             }, CancellationToken.None).ConfigureAwait(false);
-        } catch (OperationCanceledException ex) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken, ex.CancellationToken)) {
-            var turnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
-            var timeoutMessage = turnTimeoutSeconds > 0
-                ? $"Chat timed out after {turnTimeoutSeconds}s."
+        } catch (OperationCanceledException ex) when (
+            IsTurnTimeoutCancellation(
+                request,
+                run,
+                sessionCancellationToken,
+                ex.CancellationToken,
+                turnTimeoutToken: turnExecutionToken,
+                turnTimeoutCancellationRequested: turnTimeoutCts?.IsCancellationRequested == true)) {
+            var timeoutMessage = effectiveTurnTimeoutSeconds > 0
+                ? $"Chat timed out after {effectiveTurnTimeoutSeconds}s."
                 : "Chat timed out.";
             await TryWriteStatusAsync(
                     writer,
@@ -854,14 +869,18 @@ internal sealed partial class ChatServiceSession {
         ChatRequest request,
         ChatRun run,
         CancellationToken sessionCancellationToken,
-        CancellationToken exceptionCancellationToken) {
+        CancellationToken exceptionCancellationToken,
+        CancellationToken turnTimeoutToken,
+        bool turnTimeoutCancellationRequested) {
         return ShouldClassifyTurnTimeoutCancellation(
             effectiveTurnTimeoutSeconds: ResolveEffectiveTurnTimeoutSeconds(request),
             runCancellationRequested: run.Cts.IsCancellationRequested,
             sessionCancellationRequested: sessionCancellationToken.IsCancellationRequested,
             exceptionCancellationToken,
             run.Cts.Token,
-            sessionCancellationToken);
+            sessionCancellationToken,
+            turnTimeoutToken,
+            turnTimeoutCancellationRequested);
     }
 
     internal static bool ShouldClassifyTurnTimeoutCancellation(
@@ -870,7 +889,9 @@ internal sealed partial class ChatServiceSession {
         bool sessionCancellationRequested,
         CancellationToken exceptionCancellationToken,
         CancellationToken runCancellationToken,
-        CancellationToken sessionCancellationToken) {
+        CancellationToken sessionCancellationToken,
+        CancellationToken turnTimeoutToken,
+        bool turnTimeoutCancellationRequested) {
         if (runCancellationRequested || sessionCancellationRequested) {
             return false;
         }
@@ -879,11 +900,25 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!exceptionCancellationToken.CanBeCanceled || !exceptionCancellationToken.IsCancellationRequested) {
+        if (!turnTimeoutCancellationRequested) {
+            return false;
+        }
+
+        if (!exceptionCancellationToken.CanBeCanceled) {
+            // Some call paths surface OperationCanceledException without flowing the origin token.
+            // Once the turn-timeout CTS is known canceled, classify this as timeout.
+            return true;
+        }
+
+        if (!exceptionCancellationToken.IsCancellationRequested) {
             return false;
         }
 
         if (exceptionCancellationToken == runCancellationToken || exceptionCancellationToken == sessionCancellationToken) {
+            return false;
+        }
+
+        if (exceptionCancellationToken != turnTimeoutToken) {
             return false;
         }
 

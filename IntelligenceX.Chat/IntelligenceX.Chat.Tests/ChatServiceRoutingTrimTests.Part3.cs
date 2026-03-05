@@ -488,7 +488,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             sessionCancellationRequested: false,
             exceptionCancellationToken: timeoutCts.Token,
             runCancellationToken: runCts.Token,
-            sessionCancellationToken: sessionCts.Token);
+            sessionCancellationToken: sessionCts.Token,
+            turnTimeoutToken: timeoutCts.Token,
+            turnTimeoutCancellationRequested: true);
 
         Assert.True(classified);
     }
@@ -505,7 +507,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             sessionCancellationRequested: false,
             exceptionCancellationToken: runCts.Token,
             runCancellationToken: runCts.Token,
-            sessionCancellationToken: sessionCts.Token);
+            sessionCancellationToken: sessionCts.Token,
+            turnTimeoutToken: runCts.Token,
+            turnTimeoutCancellationRequested: false);
 
         using var run2Cts = new CancellationTokenSource();
         using var session2Cts = new CancellationTokenSource();
@@ -516,10 +520,55 @@ public sealed partial class ChatServiceRoutingTrimTests {
             sessionCancellationRequested: true,
             exceptionCancellationToken: session2Cts.Token,
             runCancellationToken: run2Cts.Token,
-            sessionCancellationToken: session2Cts.Token);
+            sessionCancellationToken: session2Cts.Token,
+            turnTimeoutToken: session2Cts.Token,
+            turnTimeoutCancellationRequested: false);
 
         Assert.False(clientCanceled);
         Assert.False(sessionCanceled);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyUnrelatedCanceledTokenWhenTurnTimeoutNotTriggered() {
+        using var runCts = new CancellationTokenSource();
+        using var sessionCts = new CancellationTokenSource();
+        using var turnTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
+        using var unrelatedCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
+        unrelatedCts.Cancel();
+
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: unrelatedCts.Token,
+            runCancellationToken: runCts.Token,
+            sessionCancellationToken: sessionCts.Token,
+            turnTimeoutToken: turnTimeoutCts.Token,
+            turnTimeoutCancellationRequested: false);
+
+        Assert.False(classified);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyDifferentCanceledTokenWhenTurnTimeoutTriggered() {
+        using var runCts = new CancellationTokenSource();
+        using var sessionCts = new CancellationTokenSource();
+        using var turnTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
+        using var unrelatedCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
+        turnTimeoutCts.Cancel();
+        unrelatedCts.Cancel();
+
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: unrelatedCts.Token,
+            runCancellationToken: runCts.Token,
+            sessionCancellationToken: sessionCts.Token,
+            turnTimeoutToken: turnTimeoutCts.Token,
+            turnTimeoutCancellationRequested: true);
+
+        Assert.False(classified);
     }
 
     [Theory]

@@ -144,10 +144,8 @@ internal sealed partial class ChatServiceSession {
             ResolveParallelToolExecutionMode(request.Options, _options.ParallelTools, _options.AllowMutatingParallelToolCalls);
         var requestedMaxRounds = Math.Max(1, request.Options?.MaxToolRounds ?? _options.MaxToolRounds);
         var maxRounds = ResolveMaxToolRounds(request.Options, _options.MaxToolRounds);
-        var turnTimeoutSeconds = request.Options?.TurnTimeoutSeconds ?? _options.TurnTimeoutSeconds;
         var toolTimeoutSeconds = request.Options?.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
-        using var turnCts = CreateTimeoutCts(cancellationToken, turnTimeoutSeconds);
-        var turnToken = turnCts?.Token ?? cancellationToken;
+        var turnToken = cancellationToken;
         var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? false;
         var maxReviewPasses = ResolveMaxReviewPasses(request.Options);
         var modelHeartbeatSeconds = ResolveModelHeartbeatSeconds(request.Options);
