@@ -207,6 +207,197 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_AppliesPackTogglesPerTurnWithoutCrossTurnLeakage() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-packa-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_packa_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "packa_echo",
+                                        arguments = JsonSerializer.Serialize(new { value = "alpha" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-packa-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Pack A completed."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-packb-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_packb_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "packb_echo",
+                                        arguments = JsonSerializer.Serialize(new { value = "beta" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-packb-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Pack B completed."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "packa_echo",
+            static (arguments, _) => Task.FromResult(JsonSerializer.Serialize(new { ok = true, value = arguments?.GetString("value") }))));
+        registry.Register(new RoundTripStubTool(
+            "packb_echo",
+            static (arguments, _) => Task.FromResult(JsonSerializer.Serialize(new { ok = true, value = arguments?.GetString("value") }))));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var turn1 = new ChatRequest {
+            RequestId = "req-pack-toggle-turn-1",
+            ThreadId = thread.Id,
+            Text = "Use plugin pack A to echo alpha.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                EnabledPackIds = new[] { "packa" },
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var captureTurn1 = new SynchronizedCaptureStream();
+        using var writerTurn1 = new StreamWriter(captureTurn1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var turn1Result = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerTurn1,
+            turn1,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(2, server.ChatCompletionRequestCount);
+        for (var requestIndex = 0; requestIndex < 2; requestIndex++) {
+            var requestBody = server.GetChatRequestBody(requestIndex);
+            Assert.True(HasToolSchemaForFunctionName(requestBody, "packa_echo"));
+            Assert.False(HasToolSchemaForFunctionName(requestBody, "packb_echo"));
+        }
+
+        var turn1Statuses = ParseStatuses(captureTurn1.Snapshot());
+        Assert.Equal(1, turn1Statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(1, turn1Statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        var turn1Message = GetPropertyValue<ChatResultMessage>(turn1Result, "Result");
+        Assert.Equal("Pack A completed.", turn1Message.Text);
+        Assert.NotNull(turn1Message.Tools);
+        Assert.Single(turn1Message.Tools!.Calls);
+        Assert.Equal("packa_echo", turn1Message.Tools.Calls[0].Name);
+
+        var turn2 = new ChatRequest {
+            RequestId = "req-pack-toggle-turn-2",
+            ThreadId = thread.Id,
+            Text = "Use plugin pack B to echo beta.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                EnabledPackIds = new[] { "packb" },
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var captureTurn2 = new SynchronizedCaptureStream();
+        using var writerTurn2 = new StreamWriter(captureTurn2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var turn2Result = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerTurn2,
+            turn2,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(4, server.ChatCompletionRequestCount);
+        for (var requestIndex = 2; requestIndex < 4; requestIndex++) {
+            var requestBody = server.GetChatRequestBody(requestIndex);
+            Assert.True(HasToolSchemaForFunctionName(requestBody, "packb_echo"));
+            Assert.False(HasToolSchemaForFunctionName(requestBody, "packa_echo"));
+        }
+
+        var turn2Statuses = ParseStatuses(captureTurn2.Snapshot());
+        Assert.Equal(1, turn2Statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(1, turn2Statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        var turn2Message = GetPropertyValue<ChatResultMessage>(turn2Result, "Result");
+        Assert.Equal("Pack B completed.", turn2Message.Text);
+        Assert.NotNull(turn2Message.Tools);
+        Assert.Single(turn2Message.Tools!.Calls);
+        Assert.Equal("packb_echo", turn2Message.Tools.Calls[0].Name);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_SustainsFiveAutonomousToolRoundsWithoutUserReprompt() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => BuildAutonomySoakToolCallResponse("call_autonomy_1", "step_1"),
