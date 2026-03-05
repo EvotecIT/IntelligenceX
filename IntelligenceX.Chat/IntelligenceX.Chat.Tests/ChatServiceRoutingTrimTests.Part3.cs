@@ -476,50 +476,83 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ShouldClassifyTurnTimeoutCancellation_RequiresConfiguredTimeoutAndDistinctCanceledToken() {
-        using var runCts = new CancellationTokenSource();
-        using var sessionCts = new CancellationTokenSource();
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
-        timeoutCts.Cancel();
-
+    public void ShouldClassifyTurnTimeoutCancellation_RequiresConfiguredTimeoutAndMarkedRunTimeout() {
         var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
             effectiveTurnTimeoutSeconds: 30,
+            runTurnTimeoutCancellationMarked: true,
             runCancellationRequested: false,
             sessionCancellationRequested: false,
-            exceptionCancellationToken: timeoutCts.Token,
-            runCancellationToken: runCts.Token,
-            sessionCancellationToken: sessionCts.Token);
+            exceptionCancellationToken: new CancellationToken(canceled: true));
 
         Assert.True(classified);
     }
 
     [Fact]
     public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyClientOrSessionCancellation() {
-        using var runCts = new CancellationTokenSource();
-        using var sessionCts = new CancellationTokenSource();
-        runCts.Cancel();
-
         var clientCanceled = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
             effectiveTurnTimeoutSeconds: 30,
+            runTurnTimeoutCancellationMarked: true,
             runCancellationRequested: true,
             sessionCancellationRequested: false,
-            exceptionCancellationToken: runCts.Token,
-            runCancellationToken: runCts.Token,
-            sessionCancellationToken: sessionCts.Token);
-
-        using var run2Cts = new CancellationTokenSource();
-        using var session2Cts = new CancellationTokenSource();
-        session2Cts.Cancel();
+            exceptionCancellationToken: new CancellationToken(canceled: true));
         var sessionCanceled = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
             effectiveTurnTimeoutSeconds: 30,
+            runTurnTimeoutCancellationMarked: true,
             runCancellationRequested: false,
             sessionCancellationRequested: true,
-            exceptionCancellationToken: session2Cts.Token,
-            runCancellationToken: run2Cts.Token,
-            sessionCancellationToken: session2Cts.Token);
+            exceptionCancellationToken: new CancellationToken(canceled: true));
 
         Assert.False(clientCanceled);
         Assert.False(sessionCanceled);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyWhenRunTimeoutWasNotMarked() {
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runTurnTimeoutCancellationMarked: false,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: new CancellationToken(canceled: true));
+
+        Assert.False(classified);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyWhenExceptionTokenIsNotCanceled() {
+        using var notCanceled = new CancellationTokenSource();
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runTurnTimeoutCancellationMarked: true,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: notCanceled.Token);
+
+        Assert.False(classified);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyWhenExceptionTokenIsDefault() {
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runTurnTimeoutCancellationMarked: true,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: default);
+
+        Assert.False(classified);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyWhenTimeoutIsDisabled() {
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 0,
+            runTurnTimeoutCancellationMarked: true,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: new CancellationToken(canceled: true));
+
+        Assert.False(classified);
     }
 
     [Theory]

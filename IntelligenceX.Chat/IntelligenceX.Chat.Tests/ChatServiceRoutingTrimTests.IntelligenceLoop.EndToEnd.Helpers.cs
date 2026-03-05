@@ -18,9 +18,20 @@ using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
 
-public sealed partial class ChatServiceRoutingTrimTests {    private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
+public sealed partial class ChatServiceRoutingTrimTests {
+    private static readonly Type? ChatRunType = typeof(ChatServiceSession).GetNestedType("ChatRun", BindingFlags.NonPublic);
+
+    private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
         ChatRequest request, string threadId, CancellationToken cancellationToken) {
-        var taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, cancellationToken });
+        object? taskObj;
+        if (RunChatOnCurrentThreadAsyncMethod.GetParameters().Length >= 6) {
+            using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var run = CreateChatRunForTesting(runCts, client, writer, request);
+            taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, run, cancellationToken });
+        } else {
+            taskObj = RunChatOnCurrentThreadAsyncMethod.Invoke(session, new object?[] { client, writer, request, threadId, cancellationToken });
+        }
+
         var task = Assert.IsAssignableFrom<Task>(taskObj);
         await task.ConfigureAwait(false);
 
@@ -28,6 +39,34 @@ public sealed partial class ChatServiceRoutingTrimTests {    private static asyn
                              ?? throw new InvalidOperationException("Task result property not found.");
         return resultProperty.GetValue(taskObj)
                ?? throw new InvalidOperationException("RunChatOnCurrentThreadAsync returned null.");
+    }
+
+    private static object CreateChatRunForTesting(
+        CancellationTokenSource runCts,
+        IntelligenceXClient client,
+        StreamWriter writer,
+        ChatRequest request) {
+        if (ChatRunType is null) {
+            throw new InvalidOperationException("ChatRun nested type not found.");
+        }
+
+        var ctor = ChatRunType.GetConstructor(
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+            binder: null,
+            types: new[] {
+                typeof(string),
+                typeof(CancellationTokenSource),
+                typeof(IntelligenceXClient),
+                typeof(StreamWriter),
+                typeof(ChatRequest)
+            },
+            modifiers: null);
+        if (ctor is null) {
+            throw new InvalidOperationException("ChatRun constructor not found.");
+        }
+
+        var requestId = (request.RequestId ?? string.Empty).Trim();
+        return ctor.Invoke(new object?[] { requestId, runCts, client, writer, request });
     }
 
     private static T GetPropertyValue<T>(object instance, string propertyName) {

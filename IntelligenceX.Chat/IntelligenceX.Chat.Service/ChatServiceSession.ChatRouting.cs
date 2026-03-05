@@ -26,6 +26,7 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private async Task<ChatTurnRunResult> RunChatOnCurrentThreadAsync(IntelligenceXClient client, StreamWriter writer, ChatRequest request, string threadId,
+        ChatRun run,
         CancellationToken cancellationToken) {
         var toolCalls = new List<ToolCallDto>();
         var toolOutputs = new List<ToolOutputDto>();
@@ -148,6 +149,7 @@ internal sealed partial class ChatServiceSession {
         var toolTimeoutSeconds = request.Options?.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
         using var turnCts = CreateTimeoutCts(cancellationToken, turnTimeoutSeconds);
         var turnToken = turnCts?.Token ?? cancellationToken;
+        using var turnTimeoutRegistration = RegisterTurnTimeoutCancellationMarker(turnCts, cancellationToken, run);
         var planExecuteReviewLoop = request.Options?.PlanExecuteReviewLoop ?? false;
         var maxReviewPasses = ResolveMaxReviewPasses(request.Options);
         var modelHeartbeatSeconds = ResolveModelHeartbeatSeconds(request.Options);
@@ -822,6 +824,21 @@ internal sealed partial class ChatServiceSession {
             .ConfigureAwait(false);
 
         throw new InvalidOperationException($"Tool runner exceeded max rounds ({maxRounds}).");
+    }
+
+    private static CancellationTokenRegistration RegisterTurnTimeoutCancellationMarker(
+        CancellationTokenSource? turnTimeoutCts,
+        CancellationToken requestCancellationToken,
+        ChatRun run) {
+        if (turnTimeoutCts is null) {
+            return default;
+        }
+
+        return turnTimeoutCts.Token.Register(() => {
+            if (!requestCancellationToken.IsCancellationRequested) {
+                run.MarkTurnTimeoutCancellation();
+            }
+        });
     }
 
 }

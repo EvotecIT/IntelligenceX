@@ -525,7 +525,7 @@ internal sealed partial class ChatServiceSession {
                     _ = TryWriteDeltaAsync(writer, request.RequestId, threadIdForDelta, delta);
                 });
 
-                var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run.Cts.Token)
+                var result = await RunChatOnCurrentThreadAsync(client, writer, request, threadIdForDelta, run, run.Cts.Token)
                     .ConfigureAwait(false);
                 usageDto = MapUsage(result.Usage);
                 toolCallsCount = result.ToolCallsCount;
@@ -857,20 +857,18 @@ internal sealed partial class ChatServiceSession {
         CancellationToken exceptionCancellationToken) {
         return ShouldClassifyTurnTimeoutCancellation(
             effectiveTurnTimeoutSeconds: ResolveEffectiveTurnTimeoutSeconds(request),
+            runTurnTimeoutCancellationMarked: run.TurnTimeoutCancellationMarked,
             runCancellationRequested: run.Cts.IsCancellationRequested,
             sessionCancellationRequested: sessionCancellationToken.IsCancellationRequested,
-            exceptionCancellationToken,
-            run.Cts.Token,
-            sessionCancellationToken);
+            exceptionCancellationToken);
     }
 
     internal static bool ShouldClassifyTurnTimeoutCancellation(
         int effectiveTurnTimeoutSeconds,
+        bool runTurnTimeoutCancellationMarked,
         bool runCancellationRequested,
         bool sessionCancellationRequested,
-        CancellationToken exceptionCancellationToken,
-        CancellationToken runCancellationToken,
-        CancellationToken sessionCancellationToken) {
+        CancellationToken exceptionCancellationToken) {
         if (runCancellationRequested || sessionCancellationRequested) {
             return false;
         }
@@ -879,15 +877,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!exceptionCancellationToken.CanBeCanceled || !exceptionCancellationToken.IsCancellationRequested) {
+        if (!runTurnTimeoutCancellationMarked) {
             return false;
         }
 
-        if (exceptionCancellationToken == runCancellationToken || exceptionCancellationToken == sessionCancellationToken) {
-            return false;
-        }
-
-        return true;
+        return exceptionCancellationToken.CanBeCanceled
+               && exceptionCancellationToken.IsCancellationRequested;
     }
 
     private string? GetActiveThreadIdSnapshot() {
