@@ -79,11 +79,16 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
     }
 
     private static ToolRequestBindingResult<DomainContainerDefaultsRequest> BindRequest(JsonObject? arguments) {
-        return ToolRequestBinder.Bind(arguments, reader =>
-            ToolRequestBindingResult<DomainContainerDefaultsRequest>.Success(new DomainContainerDefaultsRequest(
+        return ToolRequestBinder.Bind(arguments, reader => {
+            if (!TryReadBooleanCompat(arguments, "changed_only", defaultValue: false, out var changedOnly, out var changedOnlyError)) {
+                return ToolRequestBindingResult<DomainContainerDefaultsRequest>.Failure(changedOnlyError!);
+            }
+
+            return ToolRequestBindingResult<DomainContainerDefaultsRequest>.Success(new DomainContainerDefaultsRequest(
                 DomainName: reader.OptionalString("domain_name"),
                 ForestName: reader.OptionalString("forest_name"),
-                ChangedOnly: ReadBooleanCompat(arguments, "changed_only"))));
+                ChangedOnly: changedOnly));
+        });
     }
 
     internal static ToolRequestBindingResult<DomainContainerDefaultsBindingContract> BindRequestContract(JsonObject? arguments) {
@@ -176,33 +181,56 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
             }));
     }
 
-    private static bool ReadBooleanCompat(JsonObject? arguments, string key, bool defaultValue = false) {
+    private static bool TryReadBooleanCompat(
+        JsonObject? arguments,
+        string key,
+        bool defaultValue,
+        out bool value,
+        out string? error) {
+        value = defaultValue;
+        error = null;
         if (arguments is null || string.IsNullOrWhiteSpace(key)) {
-            return defaultValue;
+            return true;
         }
 
-        if (!arguments.TryGetValue(key, out var value) || value is null) {
-            return defaultValue;
+        if (!arguments.TryGetValue(key, out var rawValue) || rawValue is null) {
+            return true;
         }
 
-        if (value.Kind == JsonValueKind.Boolean) {
-            return value.AsBoolean(defaultValue);
+        if (rawValue.Kind == JsonValueKind.Boolean) {
+            value = rawValue.AsBoolean(defaultValue);
+            return true;
         }
 
-        var raw = value.AsString();
+        if (rawValue.Kind == JsonValueKind.Number) {
+            var numericValue = rawValue.AsInt64();
+            if (!numericValue.HasValue) {
+                error = $"{key} must be a boolean or a parseable boolean string/number.";
+                return false;
+            }
+
+            value = numericValue.Value != 0;
+            return true;
+        }
+
+        var raw = rawValue.AsString();
         if (string.IsNullOrWhiteSpace(raw)) {
-            return defaultValue;
+            error = $"{key} must be a boolean or a parseable boolean string/number.";
+            return false;
         }
 
         var normalized = raw.Trim();
         if (bool.TryParse(normalized, out var parsed)) {
-            return parsed;
+            value = parsed;
+            return true;
         }
 
         if (long.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numeric)) {
-            return numeric != 0;
+            value = numeric != 0;
+            return true;
         }
 
-        return defaultValue;
+        error = $"{key} must be a boolean or a parseable boolean string/number.";
+        return false;
     }
 }

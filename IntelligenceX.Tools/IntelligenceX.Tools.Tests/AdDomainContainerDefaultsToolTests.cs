@@ -39,4 +39,12 @@ public sealed class AdDomainContainerDefaultsToolTests {
         var request = Assert.IsType<AdDomainContainerDefaultsTool.DomainContainerDefaultsBindingContract>(binding.Request);
         Assert.True(request.ChangedOnly);
     }
+
+    [Fact]
+    public void BindRequestContract_WhenChangedOnlyStringIsInvalid_FailsBinding() {
+        var binding = AdDomainContainerDefaultsTool.BindRequestContract(new JsonObject()
+            .Add("changed_only", "notabool"));
+        Assert.False(binding.IsValid);
+        Assert.Contains("changed_only", binding.Error);
+    }
 }
