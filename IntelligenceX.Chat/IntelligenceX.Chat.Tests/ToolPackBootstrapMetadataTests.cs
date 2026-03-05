@@ -127,6 +127,36 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void EnumerateToolAssemblyNamesForDiscovery_SkipsInvalidConfiguredAssemblyNames_WithoutThrowing() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "EnumerateToolAssemblyNamesForDiscovery",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var warnings = new List<string>();
+        var options = new ToolPackBootstrapOptions {
+            UseDefaultBuiltInToolAssemblyNames = false,
+            BuiltInToolAssemblyNames = new[] {
+                "IntelligenceX.Tools.System",
+                "IntelligenceX.Tools.System, Version=not-a-version"
+            },
+            OnBootstrapWarning = warnings.Add
+        };
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
+        var discoveredNames = discovered
+            .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
+            .Where(static name => name.Length > 0)
+            .ToArray();
+
+        Assert.Single(discoveredNames);
+        Assert.Equal("IntelligenceX.Tools.System", discoveredNames[0], ignoreCase: true);
+        Assert.Contains(
+            warnings,
+            static warning => warning.Contains("built_in_pack_assembly_skipped", StringComparison.OrdinalIgnoreCase)
+                              && warning.Contains("invalid assembly name", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void TryResolveTrustedToolAssemblyPath_ResolvesLoadablePath_ForDiscoveredToolAssembly() {
         var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",

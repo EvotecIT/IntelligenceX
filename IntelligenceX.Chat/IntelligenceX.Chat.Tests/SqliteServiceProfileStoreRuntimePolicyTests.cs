@@ -101,6 +101,31 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
     }
 
     [Fact]
+    public async Task UpsertAndGet_BuiltInAssemblyDiscoverySettings_RoundTripWithDedupedOrder() {
+        var dbPath = CreateTempDbPath();
+        try {
+            using var store = new SqliteServiceProfileStore(dbPath);
+            var profile = new ServiceProfile {
+                UseDefaultBuiltInToolAssemblyNames = false,
+                BuiltInToolAssemblyNames = new() {
+                    " IntelligenceX.Tools.System ",
+                    "IntelligenceX.Tools.EventLog",
+                    "intelligencex.tools.system"
+                }
+            };
+
+            await store.UpsertAsync("built-in-assemblies", profile, CancellationToken.None);
+            var loaded = await store.GetAsync("built-in-assemblies", CancellationToken.None);
+
+            Assert.NotNull(loaded);
+            Assert.False(loaded!.UseDefaultBuiltInToolAssemblyNames);
+            Assert.Equal(new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" }, loaded.BuiltInToolAssemblyNames);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
     public async Task EnsureSchema_MigratesLegacyPackToggleColumns_ToPackIdOverrideLists() {
         var dbPath = CreateTempDbPath();
         try {

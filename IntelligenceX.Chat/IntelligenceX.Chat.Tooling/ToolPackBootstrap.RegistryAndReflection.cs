@@ -165,7 +165,14 @@ public static partial class ToolPackBootstrap {
                     continue;
                 }
 
-                AddAssemblyName(new AssemblyName(configuredName));
+                try {
+                    AddAssemblyName(new AssemblyName(configuredName));
+                } catch (Exception ex) when (ex is ArgumentException or FileLoadException) {
+                    Warn(
+                        options.OnBootstrapWarning,
+                        $"[startup] built_in_pack_assembly_skipped assembly='{configuredName}' reason='invalid assembly name: {NormalizeDisabledReason(ex.Message)}'",
+                        shouldWarn: true);
+                }
             }
         }
 

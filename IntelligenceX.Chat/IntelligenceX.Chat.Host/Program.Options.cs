@@ -533,6 +533,11 @@ internal static partial class Program {
             AdMaxResults = profile.AdMaxResults;
             PowerShellAllowWrite = profile.PowerShellAllowWrite;
             EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading;
+            UseDefaultBuiltInToolAssemblyNames = profile.UseDefaultBuiltInToolAssemblyNames;
+            BuiltInToolAssemblyNames.Clear();
+            if (profile.BuiltInToolAssemblyNames is { Count: > 0 }) {
+                BuiltInToolAssemblyNames.AddRange(profile.BuiltInToolAssemblyNames);
+            }
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
             PluginPaths.Clear();
             if (profile.PluginPaths is { Count: > 0 }) {

@@ -119,6 +119,27 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void ApplyProfile_PropagatesBuiltInAssemblyDiscoverySettings() {
+        var options = CreateHostOptionsInstance();
+        Assert.NotNull(options);
+
+        var replOptionsType = options!.GetType();
+        var applyProfile = replOptionsType.GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(applyProfile);
+
+        var profile = new ServiceProfile {
+            UseDefaultBuiltInToolAssemblyNames = false,
+            BuiltInToolAssemblyNames = new List<string> { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" }
+        };
+
+        applyProfile!.Invoke(options, new object?[] { profile });
+        Assert.False(ReadBoolProperty(options, "UseDefaultBuiltInToolAssemblyNames"));
+        var assemblyNames = ReadStringListProperty(options, "BuiltInToolAssemblyNames");
+        Assert.Contains("IntelligenceX.Tools.System", assemblyNames);
+        Assert.Contains("IntelligenceX.Tools.EventLog", assemblyNames);
+    }
+
+    [Fact]
     public void Parse_ProfileDefaultMutatingParallelTrue_IsAppliedWithoutCliOverride() {
         var dbPath = CreateTempProfileDbPath();
         try {
