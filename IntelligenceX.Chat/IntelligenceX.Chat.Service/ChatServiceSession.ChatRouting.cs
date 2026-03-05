@@ -57,10 +57,13 @@ internal sealed partial class ChatServiceSession {
         var userRequest = ExtractPrimaryUserRequest(request.Text);
         var userIntent = ExtractIntentUserText(request.Text);
         var continuationContractDetected = TryReadContinuationContractFromRequestText(request.Text, out _, out _);
+        var hasFreshPendingActionContext = HasFreshPendingActionsContext(threadId);
         RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequestWithOptions(threadId, userRequest, forceContinuationFollowUp: continuationContractDetected);
+        var continuationExpandedFromContext = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
         if (TryAugmentRoutedUserRequestFromWorkingMemoryCheckpoint(threadId, userRequest, routedUserRequest, out var checkpointAugmentedRequest)) {
             routedUserRequest = checkpointAugmentedRequest;
+            continuationExpandedFromContext = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
@@ -69,6 +72,9 @@ internal sealed partial class ChatServiceSession {
                     message: "Recovered compact follow-up context from working-memory checkpoint.")
                 .ConfigureAwait(false);
         }
+        var hasStructuredContinuationContext = continuationContractDetected
+                                              || hasFreshPendingActionContext
+                                              || continuationExpandedFromContext;
         var requestedMaxCandidateTools = request.Options?.MaxCandidateTools;
         var maxCandidateToolDiagnostics = ResolveMaxCandidateToolsDiagnosticsForTurn(requestedMaxCandidateTools, client.TransportKind, selectedModel);
         var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
@@ -90,6 +96,7 @@ internal sealed partial class ChatServiceSession {
         }
         var (continuationFollowUpTurn, compactFollowUpTurn) = ResolveFollowUpTurnClassification(
             continuationContractDetected,
+            hasStructuredContinuationContext,
             userRequest,
             routedUserRequest);
         var structuredCompactFollowUpTurn = continuationContractDetected && compactFollowUpTurn;
@@ -324,7 +331,6 @@ internal sealed partial class ChatServiceSession {
             ClearPreferredDomainIntentFamily(threadId);
             hasPreferredDomainIntentFamily = false;
         }
-        var hasFreshPendingActionContext = HasFreshPendingActionsContext(threadId);
         if (ShouldSuppressDomainIntentClarificationForCompactFollowUp(
                 structuredCompactFollowUpTurn,
                 hasPreferredDomainIntentFamily,

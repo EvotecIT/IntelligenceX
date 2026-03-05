@@ -80,9 +80,19 @@ public static class ChatRequestOptionLimits {
 /// </summary>
 public static class ChatStatusCodes {
     /// <summary>
+    /// Indicates a chat request was accepted by the service.
+    /// </summary>
+    public const string Accepted = "accepted";
+
+    /// <summary>
     /// Generic thinking/progress status.
     /// </summary>
     public const string Thinking = "thinking";
+
+    /// <summary>
+    /// Indicates conversation context (thread/session binding) is ready.
+    /// </summary>
+    public const string ContextReady = "context_ready";
 
     /// <summary>
     /// Indicates the chat turn is queued in the session execution lane.
@@ -248,6 +258,21 @@ public static class ChatStatusCodes {
     /// Heartbeat emitted for long-running phases.
     /// </summary>
     public const string PhaseHeartbeat = "phase_heartbeat";
+
+    /// <summary>
+    /// Indicates the turn finished successfully.
+    /// </summary>
+    public const string Done = "done";
+
+    /// <summary>
+    /// Indicates the turn finished with an error.
+    /// </summary>
+    public const string Error = "error";
+
+    /// <summary>
+    /// Indicates the turn timed out.
+    /// </summary>
+    public const string Timeout = "timeout";
 
     /// <summary>
     /// Indicates repeated plan/review loops were cut off with deterministic blocker output.

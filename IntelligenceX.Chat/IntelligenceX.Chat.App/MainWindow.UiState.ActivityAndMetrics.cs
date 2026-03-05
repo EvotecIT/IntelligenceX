@@ -221,7 +221,9 @@ public sealed partial class MainWindow : Window {
             : ResolveToolActivityName(status.ToolName!);
 
         return status.Status switch {
+            ChatStatusCodes.Accepted => "Request accepted...",
             ChatStatusCodes.Thinking => "Thinking...",
+            ChatStatusCodes.ContextReady => "Conversation context ready...",
             ChatStatusCodes.TurnQueued => "Queued in session execution lane...",
             ChatStatusCodes.ExecutionLaneWaiting => "Waiting for global execution lane...",
             ChatStatusCodes.ExecutionLaneAcquired => "Global execution lane acquired...",
@@ -256,6 +258,9 @@ public sealed partial class MainWindow : Window {
             ChatStatusCodes.PhaseExecute => "Executing plan...",
             ChatStatusCodes.PhaseReview => "Reviewing...",
             ChatStatusCodes.PhaseHeartbeat => "Still working...",
+            ChatStatusCodes.Done => "Turn complete",
+            ChatStatusCodes.Error => "Turn failed",
+            ChatStatusCodes.Timeout => "Turn timed out",
             ChatStatusCodes.NoResultWatchdogTriggered => "No-result watchdog triggered",
             _ => string.IsNullOrWhiteSpace(status.Status)
                 ? "Working..."
@@ -368,7 +373,9 @@ public sealed partial class MainWindow : Window {
         var toolLabel = string.IsNullOrWhiteSpace(status.ToolName) ? string.Empty : ResolveToolActivityName(status.ToolName!);
         var normalizedStatus = (status.Status ?? string.Empty).Trim().ToLowerInvariant();
         var label = normalizedStatus switch {
+            ChatStatusCodes.Accepted => "accepted",
             ChatStatusCodes.Thinking => "thinking",
+            ChatStatusCodes.ContextReady => "context ready",
             ChatStatusCodes.TurnQueued => "queue session",
             ChatStatusCodes.ExecutionLaneWaiting => "queue global",
             ChatStatusCodes.ExecutionLaneAcquired => "queue acquired",
@@ -399,10 +406,12 @@ public sealed partial class MainWindow : Window {
             ChatStatusCodes.PhaseExecute => "execute",
             ChatStatusCodes.PhaseReview => "review",
             ChatStatusCodes.PhaseHeartbeat => "phase wait",
+            ChatStatusCodes.Done => "done",
+            ChatStatusCodes.Error => "error",
+            ChatStatusCodes.Timeout => "timeout",
             ChatStatusCodes.NoResultWatchdogTriggered => "watchdog no-result",
             "completed" => "completed",
             "finished" => "finished",
-            "done" => "done",
             _ => activityText
         };
 

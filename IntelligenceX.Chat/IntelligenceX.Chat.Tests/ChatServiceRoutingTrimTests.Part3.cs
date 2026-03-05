@@ -133,6 +133,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ResolveFollowUpTurnClassification_DoesNotMarkCompactForContractWithoutExpansion() {
         var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
             continuationContractDetected: true,
+            hasStructuredContinuationContext: true,
             userRequest: "Please run a full forest replication and LDAP diagnostics sweep across every domain controller and include a clear matrix.",
             routedUserRequest: "Please run a full forest replication and LDAP diagnostics sweep across every domain controller and include a clear matrix.");
 
@@ -144,11 +145,38 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ResolveFollowUpTurnClassification_DoesNotMarkCompactForLexicalCompactContractWithoutExpansion() {
         var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
             continuationContractDetected: true,
+            hasStructuredContinuationContext: true,
             userRequest: "run now",
             routedUserRequest: "run now");
 
         Assert.False(continuationFollowUpTurn);
         Assert.False(compactFollowUpTurn);
+    }
+
+    [Theory]
+    [InlineData("run now")]
+    [InlineData("開始")]
+    public void ResolveFollowUpTurnClassification_DoesNotMarkCompactWithoutStructuredContext_ForShortFreshIntent(string userRequest) {
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
+            continuationContractDetected: false,
+            hasStructuredContinuationContext: false,
+            userRequest: userRequest,
+            routedUserRequest: userRequest);
+
+        Assert.False(continuationFollowUpTurn);
+        Assert.False(compactFollowUpTurn);
+    }
+
+    [Fact]
+    public void ResolveFollowUpTurnClassification_MarksCompactWithStructuredContext_ForShortFollowUpShape() {
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
+            continuationContractDetected: false,
+            hasStructuredContinuationContext: true,
+            userRequest: "run now",
+            routedUserRequest: "run now");
+
+        Assert.False(continuationFollowUpTurn);
+        Assert.True(compactFollowUpTurn);
     }
 
     [Fact]
@@ -415,6 +443,83 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(
             "parallelToolMode must be one of: auto, force_serial, allow_parallel.",
             Assert.IsType<string>(invokeArgs[1]));
+    }
+
+    [Fact]
+    public void BuildSessionLaneQueuedStatusMessage_FormatsQueuePositionSafely() {
+        var message = ChatServiceSession.BuildSessionLaneQueuedStatusMessage(queuePosition: 0);
+
+        Assert.Equal("Queued turn request (1 in session lane).", message);
+    }
+
+    [Fact]
+    public void BuildSessionLaneQueuedHeartbeatStatusMessage_FormatsElapsedAndPositionSafely() {
+        var message = ChatServiceSession.BuildSessionLaneQueuedHeartbeatStatusMessage(queuePosition: -3, elapsedSeconds: 0);
+
+        Assert.Equal("Still queued in session lane (1 in session lane, waiting 1s).", message);
+    }
+
+    [Fact]
+    public void BuildGlobalLaneWaitingHeartbeatStatusMessage_FormatsElapsedSafely() {
+        var message = ChatServiceSession.BuildGlobalLaneWaitingHeartbeatStatusMessage(elapsedSeconds: 0);
+
+        Assert.Equal("Still waiting for global execution lane (1s elapsed).", message);
+    }
+
+    [Fact]
+    public void BuildGlobalLaneAcquiredStatusMessage_KeepsCompatibilityForShortWait() {
+        var immediate = ChatServiceSession.BuildGlobalLaneAcquiredStatusMessage(waitedSeconds: 1);
+        var delayed = ChatServiceSession.BuildGlobalLaneAcquiredStatusMessage(waitedSeconds: 3);
+
+        Assert.Equal("Global execution lane acquired.", immediate);
+        Assert.Equal("Global execution lane acquired after 3s wait.", delayed);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_RequiresConfiguredTimeoutAndDistinctCanceledToken() {
+        using var runCts = new CancellationTokenSource();
+        using var sessionCts = new CancellationTokenSource();
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(runCts.Token);
+        timeoutCts.Cancel();
+
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: timeoutCts.Token,
+            runCancellationToken: runCts.Token,
+            sessionCancellationToken: sessionCts.Token);
+
+        Assert.True(classified);
+    }
+
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyClientOrSessionCancellation() {
+        using var runCts = new CancellationTokenSource();
+        using var sessionCts = new CancellationTokenSource();
+        runCts.Cancel();
+
+        var clientCanceled = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runCancellationRequested: true,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: runCts.Token,
+            runCancellationToken: runCts.Token,
+            sessionCancellationToken: sessionCts.Token);
+
+        using var run2Cts = new CancellationTokenSource();
+        using var session2Cts = new CancellationTokenSource();
+        session2Cts.Cancel();
+        var sessionCanceled = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runCancellationRequested: false,
+            sessionCancellationRequested: true,
+            exceptionCancellationToken: session2Cts.Token,
+            runCancellationToken: run2Cts.Token,
+            sessionCancellationToken: session2Cts.Token);
+
+        Assert.False(clientCanceled);
+        Assert.False(sessionCanceled);
     }
 
     [Theory]
