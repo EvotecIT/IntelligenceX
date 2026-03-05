@@ -512,6 +512,153 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_ContinuesAfterConsecutiveToolExceptionsAndCompletes() {
+        using var server = new DeterministicCompatibleHttpServer(
+            responseIndex => responseIndex switch {
+                1 => BuildToolCallResponse("call_consecutive_fail_1", "step_fail_1"),
+                2 => BuildToolCallResponse("call_consecutive_fail_2", "step_fail_2"),
+                3 => BuildToolCallResponse("call_consecutive_success_3", "step_3"),
+                _ => BuildTextResponse("Autonomy continued after consecutive soft failures.")
+            });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 6,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                if (string.Equals(step, "step_fail_1", StringComparison.Ordinal)
+                    || string.Equals(step, "step_fail_2", StringComparison.Ordinal)) {
+                    throw new InvalidOperationException("Injected soft failure for consecutive-failure autonomy coverage.");
+                }
+
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-autonomy-consecutive-soft-failures",
+            ThreadId = thread.Id,
+            Text = "Continue autonomous troubleshooting even if two consecutive tool steps fail.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 6,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.InRange(server.ChatCompletionRequestCount, 4, 6);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Equal(3, statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(3, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(3, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(3, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Autonomy continued after consecutive soft failures.", resultMessage.Text);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(3, resultMessage.Tools!.Calls.Count);
+        Assert.Equal(3, resultMessage.Tools.Outputs.Count);
+
+        Assert.Contains(resultMessage.Tools.Calls, static call => string.Equals(call.CallId, "call_consecutive_fail_1", StringComparison.Ordinal));
+        Assert.Contains(resultMessage.Tools.Calls, static call => string.Equals(call.CallId, "call_consecutive_fail_2", StringComparison.Ordinal));
+        Assert.Contains(resultMessage.Tools.Calls, static call => string.Equals(call.CallId, "call_consecutive_success_3", StringComparison.Ordinal));
+
+        var outputFail1 = Assert.Single(resultMessage.Tools.Outputs, static output =>
+            string.Equals(output.CallId, "call_consecutive_fail_1", StringComparison.Ordinal));
+        var outputFail2 = Assert.Single(resultMessage.Tools.Outputs, static output =>
+            string.Equals(output.CallId, "call_consecutive_fail_2", StringComparison.Ordinal));
+        var outputSuccess = Assert.Single(resultMessage.Tools.Outputs, static output =>
+            string.Equals(output.CallId, "call_consecutive_success_3", StringComparison.Ordinal));
+
+        Assert.Equal("tool_exception", outputFail1.ErrorCode);
+        Assert.Equal("tool_exception", outputFail2.ErrorCode);
+        Assert.NotEqual(true, outputFail1.Ok);
+        Assert.NotEqual(true, outputFail2.Ok);
+        Assert.True(outputSuccess.Ok ?? false);
+
+        static string BuildToolCallResponse(string callId, string step) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-" + callId,
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = callId,
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            });
+        }
+
+        static string BuildTextResponse(string text) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-consecutive-failures-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = text
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            });
+        }
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_CompletesWithEmptyToolRegistryAndOmitsToolSchemas() {
         using var server = new DeterministicCompatibleHttpServer(_ => JsonSerializer.Serialize(new {
             id = "chatcmpl-plugin-isolated",
