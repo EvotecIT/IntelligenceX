@@ -580,7 +580,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --profile <NAME>        Load a saved service profile or built-in preset (for example: plugin-only).");
         Console.WriteLine("  --save-profile <NAME>   Save the effective options as a named profile (SQLite-backed).");
         Console.WriteLine("  --state-db <PATH>       Override the SQLite state DB path (defaults to LocalAppData).");
-        Console.WriteLine("  --no-state-db           Disable SQLite state storage (profiles unavailable).");
+        Console.WriteLine("  --no-state-db           Disable SQLite state storage (saved profiles unavailable; built-in presets still available).");
         Console.WriteLine("  --allow-root <PATH>     Allow filesystem/evtx operations under PATH (repeatable).");
         Console.WriteLine("  --instructions-file <PATH>  Load system instructions from a file (default: bundled HostSystemPrompt.md).");
         Console.WriteLine(BuildMaxToolRoundsHelpLine());
