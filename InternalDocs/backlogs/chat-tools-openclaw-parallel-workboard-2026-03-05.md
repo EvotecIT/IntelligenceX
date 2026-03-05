@@ -87,3 +87,4 @@ graph TD
 26. Added extended mixed-failure autonomy soak coverage (drop + replay anomalies) proving six-round continuation completes without user re-prompt or tool-round-limit termination.
 27. Added mid-loop tool-exception autonomy coverage proving `PlanExecuteReviewLoop` continues remaining rounds and reaches completion with stable `tool_exception` attribution.
 28. Added consecutive soft-failure autonomy coverage proving two back-to-back `tool_exception` rounds still progress to a later successful round and terminal completion.
+29. Added mixed chaos autonomy + isolation coverage combining dropped transport response, consecutive tool exceptions, and cross-thread pack isolation in one deterministic end-to-end scenario.

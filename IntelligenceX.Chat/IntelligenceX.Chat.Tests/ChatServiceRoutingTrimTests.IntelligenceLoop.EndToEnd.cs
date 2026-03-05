@@ -659,6 +659,221 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_MixedChaosDropAndConsecutiveFailuresRemainIsolatedAcrossThreads() {
+        using var server = new DeterministicCompatibleHttpServer(
+            responseIndex => responseIndex switch {
+                1 => BuildToolCallResponse("call_chaos_a_1", "packa_round_tool", "step_fail_1"),
+                2 => BuildToolCallResponse("call_chaos_a_2", "packa_round_tool", "step_fail_2"),
+                3 => BuildToolCallResponse("call_chaos_a_3", "packa_round_tool", "step_success_3"),
+                _ => BuildTextResponse("Mixed chaos turn completed.")
+            },
+            dropChatCompletionResponseOnRequestIndices: new[] { 2 });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 8,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "packa_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                if (string.Equals(step, "step_fail_1", StringComparison.Ordinal)
+                    || string.Equals(step, "step_fail_2", StringComparison.Ordinal)) {
+                    throw new InvalidOperationException("Injected pack A chaos failure for mixed-thread chaos coverage.");
+                }
+
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        registry.Register(new RoundTripStubTool(
+            "packb_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var threadA = await client.StartNewThreadAsync("mock-local-model");
+        var threadB = await client.StartNewThreadAsync("mock-local-model");
+
+        var requestA = new ChatRequest {
+            RequestId = "req-chaos-thread-a",
+            ThreadId = threadA.Id,
+            Text = "Thread A chaos run with pack A should continue despite transient failures.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 8,
+                EnabledPackIds = new[] { "packa" },
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var captureA = new SynchronizedCaptureStream();
+        using var writerA = new StreamWriter(captureA, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResultA = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerA,
+            requestA,
+            threadA.Id,
+            CancellationToken.None);
+
+        var requestB = new ChatRequest {
+            RequestId = "req-chaos-thread-b",
+            ThreadId = threadB.Id,
+            Text = "Thread B isolated run must stay on pack B only.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 8,
+                EnabledPackIds = new[] { "packb" },
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var captureB = new SynchronizedCaptureStream();
+        using var writerB = new StreamWriter(captureB, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResultB = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerB,
+            requestB,
+            threadB.Id,
+            CancellationToken.None);
+
+        Assert.Equal(1, server.DroppedChatCompletionRequestCount);
+        Assert.InRange(server.ChatCompletionRequestCount, 6, 12);
+
+        var statusesA = ParseStatuses(captureA.Snapshot());
+        var startedA = statusesA.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase));
+        var completedA = statusesA.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase));
+        Assert.InRange(startedA, 3, 5);
+        Assert.InRange(completedA, 3, 5);
+        Assert.True(startedA >= completedA);
+        Assert.DoesNotContain(statusesA, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+
+        var statusesB = ParseStatuses(captureB.Snapshot());
+        Assert.Equal(0, statusesB.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(0, statusesB.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(statusesB, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+
+        var observedThreadARequests = 0;
+        var observedThreadBRequests = 0;
+        for (var requestIndex = 0; requestIndex < server.ChatCompletionRequestCount; requestIndex++) {
+            var requestBody = server.GetChatRequestBody(requestIndex);
+            var latestUserMessage = GetLatestUserMessageContent(requestBody);
+            if (latestUserMessage.Contains("Thread A chaos run with pack A should continue despite transient failures.", StringComparison.Ordinal)) {
+                observedThreadARequests++;
+                Assert.True(HasToolSchemaForFunctionName(requestBody, "packa_round_tool"));
+                Assert.False(HasToolSchemaForFunctionName(requestBody, "packb_round_tool"));
+            } else if (latestUserMessage.Contains("Thread B isolated run must stay on pack B only.", StringComparison.Ordinal)) {
+                observedThreadBRequests++;
+                Assert.True(HasToolSchemaForFunctionName(requestBody, "packb_round_tool"));
+                Assert.False(HasToolSchemaForFunctionName(requestBody, "packa_round_tool"));
+            }
+        }
+
+        Assert.True(observedThreadARequests > 0);
+        Assert.True(observedThreadBRequests > 0);
+
+        Assert.InRange(GetPropertyValue<int>(runResultA, "ToolRounds"), 3, 5);
+        Assert.InRange(GetPropertyValue<int>(runResultA, "ToolCallsCount"), 3, 5);
+        var resultMessageA = GetPropertyValue<ChatResultMessage>(runResultA, "Result");
+        Assert.Equal("Mixed chaos turn completed.", resultMessageA.Text);
+        Assert.NotNull(resultMessageA.Tools);
+        Assert.True(resultMessageA.Tools!.Calls.Count >= 3);
+        Assert.True(resultMessageA.Tools.Outputs.Count >= 3);
+        Assert.Contains(resultMessageA.Tools.Calls, static call => string.Equals(call.CallId, "call_chaos_a_1", StringComparison.Ordinal));
+        Assert.Contains(resultMessageA.Tools.Calls, static call => string.Equals(call.CallId, "call_chaos_a_2", StringComparison.Ordinal));
+        Assert.Contains(resultMessageA.Tools.Calls, static call => string.Equals(call.CallId, "call_chaos_a_3", StringComparison.Ordinal));
+        Assert.Contains(resultMessageA.Tools.Outputs, static output => string.Equals(output.CallId, "call_chaos_a_1", StringComparison.Ordinal));
+        Assert.Contains(resultMessageA.Tools.Outputs, static output => string.Equals(output.CallId, "call_chaos_a_2", StringComparison.Ordinal));
+        Assert.Contains(resultMessageA.Tools.Outputs, static output => string.Equals(output.CallId, "call_chaos_a_3", StringComparison.Ordinal));
+        var outputA1 = resultMessageA.Tools.Outputs.First(static output =>
+            string.Equals(output.CallId, "call_chaos_a_1", StringComparison.Ordinal));
+        var outputA2 = resultMessageA.Tools.Outputs.First(static output =>
+            string.Equals(output.CallId, "call_chaos_a_2", StringComparison.Ordinal));
+        var outputA3 = resultMessageA.Tools.Outputs.First(static output =>
+            string.Equals(output.CallId, "call_chaos_a_3", StringComparison.Ordinal));
+        Assert.Equal("tool_exception", outputA1.ErrorCode);
+        Assert.Equal("tool_exception", outputA2.ErrorCode);
+        Assert.NotEqual(true, outputA1.Ok);
+        Assert.NotEqual(true, outputA2.Ok);
+        Assert.True(outputA3.Ok ?? false);
+
+        Assert.Equal(0, GetPropertyValue<int>(runResultB, "ToolRounds"));
+        Assert.Equal(0, GetPropertyValue<int>(runResultB, "ToolCallsCount"));
+        var resultMessageB = GetPropertyValue<ChatResultMessage>(runResultB, "Result");
+        Assert.Equal("Mixed chaos turn completed.", resultMessageB.Text);
+        Assert.Null(resultMessageB.Tools);
+
+        static string BuildToolCallResponse(string callId, string toolName, string step) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-" + callId,
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = callId,
+                                    type = "function",
+                                    function = new {
+                                        name = toolName,
+                                        arguments = JsonSerializer.Serialize(new { step })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            });
+        }
+
+        static string BuildTextResponse(string text) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-chaos-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = text
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            });
+        }
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_CompletesWithEmptyToolRegistryAndOmitsToolSchemas() {
         using var server = new DeterministicCompatibleHttpServer(_ => JsonSerializer.Serialize(new {
             id = "chatcmpl-plugin-isolated",
