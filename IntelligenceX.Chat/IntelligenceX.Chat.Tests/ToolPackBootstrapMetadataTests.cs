@@ -70,6 +70,30 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(600, options.SmtpProbeMaxAgeSeconds);
         Assert.Equal(runtimePolicyContext.Options.RunAsProfilePath, options.RunAsProfilePath);
         Assert.Equal(runtimePolicyContext.Options.AuthenticationProfilePath, options.AuthenticationProfilePath);
+
+        Assert.True(options.PackRuntimeOptionBag.TryGetValue("*", out var globalBag));
+        Assert.NotNull(globalBag);
+        Assert.True(globalBag!.TryGetValue("AllowedRoots", out var allowedRootsValue));
+        var allowedRootsBag = Assert.IsAssignableFrom<IEnumerable<string>>(allowedRootsValue);
+        Assert.Equal(new[] { "C:/allowed-a", "C:/allowed-b" }, allowedRootsBag);
+        Assert.Equal("C:/temp/runas.json", globalBag["RunAsProfilePath"]);
+        Assert.Equal("C:/temp/auth.json", globalBag["AuthenticationProfilePath"]);
+
+        Assert.True(options.PackRuntimeOptionBag.TryGetValue("active_directory", out var adBag));
+        Assert.NotNull(adBag);
+        Assert.Equal("dc.contoso.local", adBag!["DomainController"]);
+        Assert.Equal("DC=contoso,DC=local", adBag["DefaultSearchBaseDn"]);
+        Assert.Equal(2222, Assert.IsType<int>(adBag["MaxResults"]));
+
+        Assert.True(options.PackRuntimeOptionBag.TryGetValue("powershell", out var powershellBag));
+        Assert.NotNull(powershellBag);
+        Assert.True(Assert.IsType<bool>(powershellBag!["AllowWrite"]));
+
+        Assert.True(options.PackRuntimeOptionBag.TryGetValue("email", out var emailBag));
+        Assert.NotNull(emailBag);
+        Assert.Same(runtimePolicyContext.AuthenticationProbeStore, emailBag!["AuthenticationProbeStore"]);
+        Assert.True(Assert.IsType<bool>(emailBag["RequireSuccessfulSmtpProbeForSend"]));
+        Assert.Equal(600, Assert.IsType<int>(emailBag["SmtpProbeMaxAgeSeconds"]));
     }
 
     [Fact]

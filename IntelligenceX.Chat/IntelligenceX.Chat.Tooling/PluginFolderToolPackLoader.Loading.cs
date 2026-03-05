@@ -115,7 +115,7 @@ internal static partial class PluginFolderToolPackLoader {
             candidateTypeCount = candidateTypes.Count;
 
             foreach (var candidateType in candidateTypes) {
-                if (!TryCreatePack(candidateType, options, out var pack, out var error)) {
+                if (!TryCreatePack(candidateType, pluginId, options, out var pack, out var error)) {
                     onWarning?.Invoke($"[plugin] init_failed plugin='{pluginId}' type='{candidateType.FullName}' error='{error}'");
                     failedPackCount++;
                     continue;
@@ -311,7 +311,7 @@ internal static partial class PluginFolderToolPackLoader {
             candidateTypeCount += candidateTypes.Count;
             for (var typeIndex = 0; typeIndex < candidateTypes.Count; typeIndex++) {
                 var candidateType = candidateTypes[typeIndex];
-                if (!TryCreatePack(candidateType, options, out var pack, out _)) {
+                if (!TryCreatePack(candidateType, pluginId, options, out var pack, out _)) {
                     failedPackCount++;
                     return false;
                 }
@@ -533,7 +533,12 @@ internal static partial class PluginFolderToolPackLoader {
         return new[] { configuredType };
     }
 
-    private static bool TryCreatePack(Type packType, ToolPackBootstrapOptions bootstrapOptions, out IToolPack pack, out string error) {
+    private static bool TryCreatePack(
+        Type packType,
+        string? pluginId,
+        ToolPackBootstrapOptions bootstrapOptions,
+        out IToolPack pack,
+        out string error) {
         pack = null!;
 
         try {
@@ -566,7 +571,7 @@ internal static partial class PluginFolderToolPackLoader {
                     continue;
                 }
 
-                ConfigurePackOptions(options, bootstrapOptions);
+                ConfigurePackOptions(options, bootstrapOptions, packType, pluginId);
                 var created = ctor.Invoke(new[] { options });
                 if (created is IToolPack toolPack) {
                     pack = toolPack;
@@ -583,65 +588,12 @@ internal static partial class PluginFolderToolPackLoader {
         }
     }
 
-    private static void ConfigurePackOptions(object options, ToolPackBootstrapOptions bootstrapOptions) {
-        AddStringListValuesIfPresent(options, "AllowedRoots", bootstrapOptions.AllowedRoots);
-        SetPropertyIfPresent(options, "DomainController", bootstrapOptions.AdDomainController);
-        SetPropertyIfPresent(options, "DefaultSearchBaseDn", bootstrapOptions.AdDefaultSearchBaseDn);
-        SetPropertyIfPresent(options, "MaxResults", bootstrapOptions.AdMaxResults > 0 ? bootstrapOptions.AdMaxResults : 1000);
-        SetPropertyIfPresent(options, "Enabled", true);
-        SetPropertyIfPresent(options, "DefaultTimeoutMs", bootstrapOptions.PowerShellDefaultTimeoutMs);
-        SetPropertyIfPresent(options, "MaxTimeoutMs", bootstrapOptions.PowerShellMaxTimeoutMs);
-        SetPropertyIfPresent(options, "DefaultMaxOutputChars", bootstrapOptions.PowerShellDefaultMaxOutputChars);
-        SetPropertyIfPresent(options, "MaxOutputChars", bootstrapOptions.PowerShellMaxOutputChars);
-        SetPropertyIfPresent(options, "AllowWrite", bootstrapOptions.PowerShellAllowWrite);
-        SetPropertyIfPresent(options, "AuthenticationProbeStore", bootstrapOptions.AuthenticationProbeStore);
-        SetPropertyIfPresent(options, "RequireSuccessfulSmtpProbeForSend", bootstrapOptions.RequireSuccessfulSmtpProbeForSend);
-        SetPropertyIfPresent(options, "SmtpProbeMaxAgeSeconds", bootstrapOptions.SmtpProbeMaxAgeSeconds);
-        SetPropertyIfPresent(options, "RunAsProfilePath", bootstrapOptions.RunAsProfilePath);
-        SetPropertyIfPresent(options, "AuthenticationProfilePath", bootstrapOptions.AuthenticationProfilePath);
-    }
-
-    private static void SetPropertyIfPresent(object instance, string propertyName, object? value) {
-        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        if (property is null || !property.CanWrite) {
-            return;
-        }
-
-        if (value is null) {
-            property.SetValue(instance, null);
-            return;
-        }
-
-        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-        if (targetType.IsInstanceOfType(value)) {
-            property.SetValue(instance, value);
-            return;
-        }
-
-        try {
-            var converted = Convert.ChangeType(value, targetType);
-            property.SetValue(instance, converted);
-        } catch {
-            // Keep plugin defaults when conversion fails.
-        }
-    }
-
-    private static void AddStringListValuesIfPresent(object instance, string propertyName, IEnumerable<string> values) {
-        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        if (property is null || !property.CanRead) {
-            return;
-        }
-
-        if (property.GetValue(instance) is not IList list) {
-            return;
-        }
-
-        foreach (var value in values) {
-            if (string.IsNullOrWhiteSpace(value)) {
-                continue;
-            }
-            list.Add(value.Trim());
-        }
+    private static void ConfigurePackOptions(
+        object options,
+        ToolPackBootstrapOptions bootstrapOptions,
+        Type packType,
+        string? pluginId) {
+        ToolPackBootstrap.ConfigurePackOptionsFromRuntimeBag(options, bootstrapOptions, packType, explicitPackKey: pluginId);
     }
 
     private static string? NormalizePath(string? path) {

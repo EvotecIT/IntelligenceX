@@ -138,6 +138,14 @@ public sealed record ToolPackBootstrapOptions {
     /// Defaults to %LOCALAPPDATA%\IntelligenceX.Chat\plugin-cache when not provided.
     /// </summary>
     public string? PluginArchiveCacheRoot { get; init; }
+
+    /// <summary>
+    /// Pack-keyed runtime option bag applied to pack option constructors.
+    /// Keys use normalized pack ids (<c>active_directory</c>, <c>powershell</c>, ...)
+    /// and may include the global key <c>*</c>.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> PackRuntimeOptionBag { get; init; }
+        = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -272,6 +280,12 @@ public static partial class ToolPackBootstrap {
     internal const string PackSourceBuiltin = "builtin";
     internal const string PackSourceOpenSource = "open_source";
     internal const string PackSourceClosedSource = "closed_source";
+    internal const string PackOptionKeyGlobal = "*";
+    internal const string PackOptionKeyActiveDirectory = "active_directory";
+    internal const string PackOptionKeyAdPlayground = "adplayground";
+    internal const string PackOptionKeyPowerShell = "powershell";
+    internal const string PackOptionKeyEmail = "email";
+    internal const string PackOptionKeyReviewerSetup = "reviewer_setup";
 
     /// <summary>
     /// Returns <c>true</c> when runtime configuration selects plugin-only mode and no packs were loaded.
@@ -320,8 +334,7 @@ public static partial class ToolPackBootstrap {
         var pluginPaths = settings.PluginPaths?.ToArray() ?? Array.Empty<string>();
         var disabledPackIds = settings.DisabledPackIds?.ToArray() ?? Array.Empty<string>();
         var enabledPackIds = settings.EnabledPackIds?.ToArray() ?? Array.Empty<string>();
-
-        return new ToolPackBootstrapOptions {
+        var baseOptions = new ToolPackBootstrapOptions {
             AllowedRoots = allowedRoots,
             AdDomainController = settings.AdDomainController,
             AdDefaultSearchBaseDn = settings.AdDefaultSearchBaseDn,
@@ -341,6 +354,49 @@ public static partial class ToolPackBootstrap {
             AuthenticationProfilePath = runtimePolicyContext.Options.AuthenticationProfilePath,
             OnBootstrapWarning = onBootstrapWarning
         };
+
+        return baseOptions with {
+            PackRuntimeOptionBag = BuildLegacyPackRuntimeOptionBag(baseOptions)
+        };
+    }
+
+    internal static IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> BuildLegacyPackRuntimeOptionBag(
+        ToolPackBootstrapOptions options) {
+        var bag = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) {
+            [PackOptionKeyGlobal] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                ["AllowedRoots"] = options.AllowedRoots?.ToArray() ?? Array.Empty<string>(),
+                ["RunAsProfilePath"] = options.RunAsProfilePath,
+                ["AuthenticationProfilePath"] = options.AuthenticationProfilePath
+            },
+            [PackOptionKeyActiveDirectory] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                ["DomainController"] = options.AdDomainController,
+                ["DefaultSearchBaseDn"] = options.AdDefaultSearchBaseDn,
+                ["MaxResults"] = options.AdMaxResults > 0 ? options.AdMaxResults : 1000
+            },
+            [PackOptionKeyAdPlayground] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                ["DomainController"] = options.AdDomainController,
+                ["DefaultSearchBaseDn"] = options.AdDefaultSearchBaseDn,
+                ["MaxResults"] = options.AdMaxResults > 0 ? options.AdMaxResults : 1000
+            },
+            [PackOptionKeyPowerShell] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                ["Enabled"] = true,
+                ["DefaultTimeoutMs"] = options.PowerShellDefaultTimeoutMs,
+                ["MaxTimeoutMs"] = options.PowerShellMaxTimeoutMs,
+                ["DefaultMaxOutputChars"] = options.PowerShellDefaultMaxOutputChars,
+                ["MaxOutputChars"] = options.PowerShellMaxOutputChars,
+                ["AllowWrite"] = options.PowerShellAllowWrite
+            },
+            [PackOptionKeyEmail] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                ["AuthenticationProbeStore"] = options.AuthenticationProbeStore,
+                ["RequireSuccessfulSmtpProbeForSend"] = options.RequireSuccessfulSmtpProbeForSend,
+                ["SmtpProbeMaxAgeSeconds"] = options.SmtpProbeMaxAgeSeconds
+            },
+            [PackOptionKeyReviewerSetup] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                ["IncludeMaintenancePath"] = options.ReviewerSetupIncludeMaintenancePath
+            }
+        };
+
+        return bag;
     }
 
     /// <summary>
