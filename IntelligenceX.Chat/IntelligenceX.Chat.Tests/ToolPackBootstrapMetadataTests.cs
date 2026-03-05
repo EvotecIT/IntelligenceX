@@ -157,6 +157,27 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void EnumerateToolAssemblyNamesForDiscovery_NormalizesConfiguredDisplayNames_ToSimpleAssemblyNameMatching() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "EnumerateToolAssemblyNamesForDiscovery",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var options = new ToolPackBootstrapOptions {
+            UseDefaultBuiltInToolAssemblyNames = false,
+            BuiltInToolAssemblyNames = new[] { "IntelligenceX.Tools.System, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" }
+        };
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
+        var discoveredNames = discovered
+            .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
+            .Where(static name => name.Length > 0)
+            .ToArray();
+
+        Assert.Single(discoveredNames);
+        Assert.Equal("IntelligenceX.Tools.System", discoveredNames[0], ignoreCase: true);
+    }
+
+    [Fact]
     public void TryResolveTrustedToolAssemblyPath_ResolvesLoadablePath_ForDiscoveredToolAssembly() {
         var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",

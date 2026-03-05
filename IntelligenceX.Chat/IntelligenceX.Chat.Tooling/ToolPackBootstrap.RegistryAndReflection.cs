@@ -150,29 +150,14 @@ public static partial class ToolPackBootstrap {
             }
         }
 
-        for (var i = 0; i < KnownBuiltInToolAssemblyNames.Length; i++) {
-            if (!options.UseDefaultBuiltInToolAssemblyNames) {
-                break;
-            }
-
-            AddAssemblyName(new AssemblyName(KnownBuiltInToolAssemblyNames[i]));
-        }
-
-        if (options.BuiltInToolAssemblyNames is { Count: > 0 } configuredAssemblyNames) {
-            for (var i = 0; i < configuredAssemblyNames.Count; i++) {
-                var configuredName = (configuredAssemblyNames[i] ?? string.Empty).Trim();
-                if (configuredName.Length == 0) {
-                    continue;
-                }
-
-                try {
-                    AddAssemblyName(new AssemblyName(configuredName));
-                } catch (Exception ex) when (ex is ArgumentException or FileLoadException) {
-                    Warn(
-                        options.OnBootstrapWarning,
-                        $"[startup] built_in_pack_assembly_skipped assembly='{configuredName}' reason='invalid assembly name: {NormalizeDisabledReason(ex.Message)}'",
-                        shouldWarn: true);
-                }
+        foreach (var allowedAssemblyName in allowedAssemblyNames) {
+            try {
+                AddAssemblyName(new AssemblyName(allowedAssemblyName));
+            } catch (Exception ex) when (ex is ArgumentException or FileLoadException) {
+                Warn(
+                    options.OnBootstrapWarning,
+                    $"[startup] built_in_pack_assembly_skipped assembly='{allowedAssemblyName}' reason='invalid assembly name: {NormalizeDisabledReason(ex.Message)}'",
+                    shouldWarn: true);
             }
         }
 
@@ -199,11 +184,24 @@ public static partial class ToolPackBootstrap {
         if (options.BuiltInToolAssemblyNames is { Count: > 0 } configuredAssemblyNames) {
             for (var i = 0; i < configuredAssemblyNames.Count; i++) {
                 var configuredAssemblyName = (configuredAssemblyNames[i] ?? string.Empty).Trim();
-                if (configuredAssemblyName.Length == 0 || !IsBuiltInToolAssemblyName(configuredAssemblyName)) {
+                if (configuredAssemblyName.Length == 0) {
                     continue;
                 }
 
-                allowed.Add(configuredAssemblyName);
+                try {
+                    var parsedAssemblyName = new AssemblyName(configuredAssemblyName);
+                    var simpleName = (parsedAssemblyName.Name ?? string.Empty).Trim();
+                    if (simpleName.Length == 0 || !IsBuiltInToolAssemblyName(simpleName)) {
+                        continue;
+                    }
+
+                    allowed.Add(simpleName);
+                } catch (Exception ex) when (ex is ArgumentException or FileLoadException) {
+                    Warn(
+                        options.OnBootstrapWarning,
+                        $"[startup] built_in_pack_assembly_skipped assembly='{configuredAssemblyName}' reason='invalid assembly name: {NormalizeDisabledReason(ex.Message)}'",
+                        shouldWarn: true);
+                }
             }
         }
 
