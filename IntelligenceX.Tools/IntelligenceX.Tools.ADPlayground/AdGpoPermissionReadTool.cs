@@ -15,6 +15,18 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private const int DefaultMaxGpos = 50000;
+    private const int MaxGposCap = 200000;
+
+    internal readonly record struct GpoPermissionReadBindingContract(
+        bool IncludeCompliant,
+        bool DenyOnly,
+        int MaxGpos);
+
+    private sealed record GpoPermissionReadRequest(
+        bool IncludeCompliant,
+        bool DenyOnly,
+        int MaxGpos);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_permission_read",
@@ -51,62 +63,69 @@ public sealed class AdGpoPermissionReadTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
-            return Task.FromResult(argumentError!);
-        }
-
-        var domainName = domainQuery.DomainName;
-
-        var includeCompliant = ToolArgs.GetBoolean(arguments, "include_compliant", defaultValue: false);
-        var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
-        var maxGpos = ToolArgs.GetCappedInt32(arguments, "max_gpos", 50000, 1, 200000);
-        var maxResults = domainQuery.MaxResults;
-
-        if (!TryExecuteCollectionQuery(
-                query: () => GpoPermissionReadService.Get(domainName, includeCompliant: includeCompliant, maxGpos: maxGpos),
-                collectionSucceededSelector: static view => view.CollectionSucceeded,
-                collectionErrorSelector: static view => view.CollectionError,
-                result: out var view,
-                errorResponse: out var errorResponse,
-                defaultErrorMessage: "GPO read-permission baseline query failed.")) {
-            return Task.FromResult(errorResponse!);
-        }
-
-        var filtered = view.Items
-            .Where(row => !denyOnly || row.HasAuthenticatedUsersDeny)
-            .ToArray();
-
-        var projectedRows = CapRows(filtered, maxResults, out var scanned, out var truncated);
-
-        var result = new AdGpoPermissionReadResult(
-            DomainName: domainName,
-            IncludeCompliant: includeCompliant,
-            DenyOnly: denyOnly,
-            MaxGpos: maxGpos,
-            Scanned: scanned,
-            Truncated: truncated,
-            NonCompliantCount: filtered.Count(static row => !row.IsCompliant),
-            DenyCount: filtered.Count(static row => row.HasAuthenticatedUsersDeny),
-            ErrorCount: filtered.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
-            Rows: projectedRows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return RunPipelineAsync(
             arguments: arguments,
-            model: result,
-            sourceRows: projectedRows,
-            viewRowsPath: "rows_view",
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<GpoPermissionReadRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<GpoPermissionReadRequest>.Success(new GpoPermissionReadRequest(
+                IncludeCompliant: reader.Boolean("include_compliant", defaultValue: false),
+                DenyOnly: reader.Boolean("deny_only", defaultValue: false),
+                MaxGpos: reader.CappedInt32("max_gpos", DefaultMaxGpos, 1, MaxGposCap))));
+    }
+
+    internal static ToolRequestBindingResult<GpoPermissionReadBindingContract> BindRequestContract(JsonObject? arguments) {
+        var binding = BindRequest(arguments);
+        if (!binding.IsValid || binding.Request is null) {
+            return ToolRequestBindingResult<GpoPermissionReadBindingContract>.Failure(
+                binding.Error,
+                binding.ErrorCode,
+                binding.Hints,
+                binding.IsTransient);
+        }
+
+        var request = binding.Request;
+        return ToolRequestBindingResult<GpoPermissionReadBindingContract>.Success(new GpoPermissionReadBindingContract(
+            IncludeCompliant: request.IncludeCompliant,
+            DenyOnly: request.DenyOnly,
+            MaxGpos: request.MaxGpos));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoPermissionReadRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+
+        return ExecuteDomainRowsViewTool(
+            arguments: context.Arguments,
+            cancellationToken: cancellationToken,
             title: "Active Directory: GPO Permission Read Baseline (preview)",
+            defaultErrorMessage: "GPO read-permission baseline query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
-                meta.Add("include_compliant", includeCompliant);
-                meta.Add("deny_only", denyOnly);
-                meta.Add("max_gpos", maxGpos);
-            }));
+            query: domainName => GpoPermissionReadService.Get(domainName, includeCompliant: request.IncludeCompliant, maxGpos: request.MaxGpos),
+            collectionSucceededSelector: static view => view.CollectionSucceeded,
+            collectionErrorSelector: static view => view.CollectionError,
+            allRowsSelector: view => view.Items
+                .Where(row => !request.DenyOnly || row.HasAuthenticatedUsersDeny)
+                .ToArray(),
+            resultFactory: (domainName, _, allRows, rows, scanned, truncated) => new AdGpoPermissionReadResult(
+                DomainName: domainName,
+                IncludeCompliant: request.IncludeCompliant,
+                DenyOnly: request.DenyOnly,
+                MaxGpos: request.MaxGpos,
+                Scanned: scanned,
+                Truncated: truncated,
+                NonCompliantCount: allRows.Count(static row => !row.IsCompliant),
+                DenyCount: allRows.Count(static row => row.HasAuthenticatedUsersDeny),
+                ErrorCount: allRows.Count(static row => !string.IsNullOrWhiteSpace(row.Error)),
+                Rows: rows),
+            additionalMetaMutate: (meta, _, _, _) => {
+                meta.Add("include_compliant", request.IncludeCompliant);
+                meta.Add("deny_only", request.DenyOnly);
+                meta.Add("max_gpos", request.MaxGpos);
+            });
     }
 }
-
