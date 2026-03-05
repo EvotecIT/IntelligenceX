@@ -47,7 +47,7 @@ public static partial class ToolPackBootstrap {
 
         var candidates = new List<BuiltInPackRegistrationCandidate>();
         var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var packTypes = DiscoverBuiltInPackTypes(options.OnBootstrapWarning);
+        var packTypes = DiscoverBuiltInPackTypes(options, options.OnBootstrapWarning);
 
         for (var i = 0; i < packTypes.Count; i++) {
             var packType = packTypes[i];
@@ -94,11 +94,11 @@ public static partial class ToolPackBootstrap {
             .ToArray();
     }
 
-    private static IReadOnlyList<Type> DiscoverBuiltInPackTypes(Action<string>? onWarning) {
+    private static IReadOnlyList<Type> DiscoverBuiltInPackTypes(ToolPackBootstrapOptions options, Action<string>? onWarning) {
         var toolPackTypes = new List<Type>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var assemblyName in EnumerateToolAssemblyNamesForDiscovery()) {
+        foreach (var assemblyName in EnumerateToolAssemblyNamesForDiscovery(options)) {
             var assembly = TryLoadToolAssembly(assemblyName, onWarning);
             if (assembly is null) {
                 continue;
@@ -126,11 +126,16 @@ public static partial class ToolPackBootstrap {
             .ToArray();
     }
 
-    private static IEnumerable<AssemblyName> EnumerateToolAssemblyNamesForDiscovery() {
+    private static IEnumerable<AssemblyName> EnumerateToolAssemblyNamesForDiscovery(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
         var discovered = new Dictionary<string, AssemblyName>(StringComparer.OrdinalIgnoreCase);
-        var allowedAssemblyNames = new HashSet<string>(
-            KnownBuiltInToolAssemblyNames,
-            StringComparer.OrdinalIgnoreCase);
+        var allowedAssemblyNames = ResolveAllowedBuiltInAssemblyNames(options);
+        if (allowedAssemblyNames.Count == 0) {
+            return Array.Empty<AssemblyName>();
+        }
 
         void AddAssemblyName(AssemblyName? candidate) {
             if (candidate is null
@@ -146,8 +151,22 @@ public static partial class ToolPackBootstrap {
         }
 
         for (var i = 0; i < KnownBuiltInToolAssemblyNames.Length; i++) {
-            var assemblyName = KnownBuiltInToolAssemblyNames[i];
-            AddAssemblyName(new AssemblyName(assemblyName));
+            if (!options.UseDefaultBuiltInToolAssemblyNames) {
+                break;
+            }
+
+            AddAssemblyName(new AssemblyName(KnownBuiltInToolAssemblyNames[i]));
+        }
+
+        if (options.BuiltInToolAssemblyNames is { Count: > 0 } configuredAssemblyNames) {
+            for (var i = 0; i < configuredAssemblyNames.Count; i++) {
+                var configuredName = (configuredAssemblyNames[i] ?? string.Empty).Trim();
+                if (configuredName.Length == 0) {
+                    continue;
+                }
+
+                AddAssemblyName(new AssemblyName(configuredName));
+            }
         }
 
         foreach (var loadedAssembly in AppDomain.CurrentDomain.GetAssemblies()) {
@@ -157,6 +176,31 @@ public static partial class ToolPackBootstrap {
         return discovered.Values
             .OrderBy(static name => name.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static HashSet<string> ResolveAllowedBuiltInAssemblyNames(ToolPackBootstrapOptions options) {
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (options.UseDefaultBuiltInToolAssemblyNames) {
+            for (var i = 0; i < KnownBuiltInToolAssemblyNames.Length; i++) {
+                var defaultAssemblyName = (KnownBuiltInToolAssemblyNames[i] ?? string.Empty).Trim();
+                if (defaultAssemblyName.Length > 0 && IsBuiltInToolAssemblyName(defaultAssemblyName)) {
+                    allowed.Add(defaultAssemblyName);
+                }
+            }
+        }
+
+        if (options.BuiltInToolAssemblyNames is { Count: > 0 } configuredAssemblyNames) {
+            for (var i = 0; i < configuredAssemblyNames.Count; i++) {
+                var configuredAssemblyName = (configuredAssemblyNames[i] ?? string.Empty).Trim();
+                if (configuredAssemblyName.Length == 0 || !IsBuiltInToolAssemblyName(configuredAssemblyName)) {
+                    continue;
+                }
+
+                allowed.Add(configuredAssemblyName);
+            }
+        }
+
+        return allowed;
     }
 
     private static bool IsBuiltInToolAssemblyName(string? assemblyName) {

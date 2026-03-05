@@ -938,8 +938,10 @@ internal sealed partial class ChatServiceSession {
         builder.Append("ad_max=").Append(options.AdMaxResults.ToString(CultureInfo.InvariantCulture)).Append(';');
         builder.Append("ps_allow_write=").Append(options.PowerShellAllowWrite ? '1' : '0').Append(';');
         builder.Append("built_in_packs=").Append(options.EnableBuiltInPackLoading ? '1' : '0').Append(';');
+        builder.Append("default_built_in_assemblies=").Append(options.UseDefaultBuiltInToolAssemblyNames ? '1' : '0').Append(';');
         builder.Append("default_plugin_paths=").Append(options.EnableDefaultPluginPaths ? '1' : '0').Append(';');
         AppendStringList(builder, "allowed_roots", options.AllowedRoots);
+        AppendStringList(builder, "built_in_tool_assemblies", options.BuiltInToolAssemblyNames);
         AppendStringList(builder, "plugin_paths", options.PluginPaths);
         AppendStringList(builder, "enabled_packs", options.EnabledPackIds, normalizePackId: true);
         AppendStringList(builder, "disabled_packs", options.DisabledPackIds, normalizePackId: true);

@@ -44,6 +44,8 @@ public sealed class ToolPackBootstrapMetadataTests {
                 AdMaxResults = 2222,
                 PowerShellAllowWrite = true,
                 EnableBuiltInPackLoading = false,
+                UseDefaultBuiltInToolAssemblyNames = false,
+                BuiltInToolAssemblyNames = new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" },
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" },
                 DisabledPackIds = new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" },
@@ -57,6 +59,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(2222, options.AdMaxResults);
         Assert.True(options.PowerShellAllowWrite);
         Assert.False(options.EnableBuiltInPackLoading);
+        Assert.False(options.UseDefaultBuiltInToolAssemblyNames);
+        Assert.Equal(new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" }, options.BuiltInToolAssemblyNames);
         Assert.False(options.EnableDefaultPluginPaths);
         Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
         Assert.Equal(new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" }, options.DisabledPackIds);
@@ -84,7 +88,8 @@ public sealed class ToolPackBootstrapMetadataTests {
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(knownNamesField);
 
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, Array.Empty<object>()));
+        var options = new ToolPackBootstrapOptions();
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
         var discoveredNames = discovered
             .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
             .Where(static name => name.Length > 0)
@@ -101,6 +106,27 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void EnumerateToolAssemblyNamesForDiscovery_UsesConfiguredAssemblyNames_WhenDefaultAllowlistIsDisabled() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "EnumerateToolAssemblyNamesForDiscovery",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var options = new ToolPackBootstrapOptions {
+            UseDefaultBuiltInToolAssemblyNames = false,
+            BuiltInToolAssemblyNames = new[] { "IntelligenceX.Tools.System" }
+        };
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
+        var discoveredNames = discovered
+            .Select(static assemblyName => (assemblyName.Name ?? string.Empty).Trim())
+            .Where(static name => name.Length > 0)
+            .ToArray();
+
+        Assert.Single(discoveredNames);
+        Assert.Equal("IntelligenceX.Tools.System", discoveredNames[0], ignoreCase: true);
+    }
+
+    [Fact]
     public void TryResolveTrustedToolAssemblyPath_ResolvesLoadablePath_ForDiscoveredToolAssembly() {
         var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",
@@ -111,7 +137,8 @@ public sealed class ToolPackBootstrapMetadataTests {
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(resolvePathMethod);
 
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, Array.Empty<object>()));
+        var options = new ToolPackBootstrapOptions();
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, new object[] { options }));
         var assemblyName = Assert.Single(discovered.Take(1));
         var invocationArguments = new object?[] { assemblyName, null };
         var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
@@ -147,7 +174,8 @@ public sealed class ToolPackBootstrapMetadataTests {
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(resolvePathMethod);
 
-        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, Array.Empty<object>()));
+        var options = new ToolPackBootstrapOptions();
+        var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, new object[] { options }));
         var discoveredAssemblyNames = discovered.ToArray();
         Assert.NotEmpty(discoveredAssemblyNames);
 
@@ -179,6 +207,18 @@ public sealed class ToolPackBootstrapMetadataTests {
     public void CreateDefaultReadOnlyPacks_DisablesBuiltInPacks_WhenConfigured() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
             EnableBuiltInPackLoading = false,
+            EnablePluginFolderLoading = false,
+            EnableDefaultPluginPaths = false
+        });
+
+        Assert.Empty(packs);
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_DisablesDefaultBuiltInAssemblyAllowlist_WhenConfigured() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnableBuiltInPackLoading = true,
+            UseDefaultBuiltInToolAssemblyNames = false,
             EnablePluginFolderLoading = false,
             EnableDefaultPluginPaths = false
         });
@@ -444,6 +484,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         public int AdMaxResults { get; init; } = 1000;
         public bool PowerShellAllowWrite { get; init; }
         public bool EnableBuiltInPackLoading { get; init; } = true;
+        public bool UseDefaultBuiltInToolAssemblyNames { get; init; } = true;
+        public IReadOnlyList<string> BuiltInToolAssemblyNames { get; init; } = Array.Empty<string>();
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DisabledPackIds { get; init; } = Array.Empty<string>();

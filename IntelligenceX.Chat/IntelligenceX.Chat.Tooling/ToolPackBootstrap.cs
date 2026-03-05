@@ -67,6 +67,16 @@ public sealed record ToolPackBootstrapOptions {
     public bool EnableBuiltInPackLoading { get; init; } = true;
 
     /// <summary>
+    /// Enables built-in assembly discovery from the default allowlist shipped with Chat tooling.
+    /// </summary>
+    public bool UseDefaultBuiltInToolAssemblyNames { get; init; } = true;
+
+    /// <summary>
+    /// Additional built-in tool assembly names to include in discovery (repeatable).
+    /// </summary>
+    public IReadOnlyList<string> BuiltInToolAssemblyNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Shared authentication probe store used by probe-aware packs.
     /// </summary>
     public IToolAuthenticationProbeStore? AuthenticationProbeStore { get; init; }
@@ -163,6 +173,16 @@ public interface IToolPackRuntimeSettings {
     /// Enables loading built-in packs discovered from trusted IntelligenceX.Tools assemblies.
     /// </summary>
     bool EnableBuiltInPackLoading { get; }
+
+    /// <summary>
+    /// Enables built-in assembly discovery from the default allowlist shipped with Chat tooling.
+    /// </summary>
+    bool UseDefaultBuiltInToolAssemblyNames { get; }
+
+    /// <summary>
+    /// Additional built-in tool assembly names to include in discovery (repeatable).
+    /// </summary>
+    IReadOnlyList<string> BuiltInToolAssemblyNames { get; }
 
     /// <summary>
     /// Enables default plugin search roots.
@@ -296,6 +316,7 @@ public static partial class ToolPackBootstrap {
         }
 
         var allowedRoots = settings.AllowedRoots?.ToArray() ?? Array.Empty<string>();
+        var builtInToolAssemblyNames = settings.BuiltInToolAssemblyNames?.ToArray() ?? Array.Empty<string>();
         var pluginPaths = settings.PluginPaths?.ToArray() ?? Array.Empty<string>();
         var disabledPackIds = settings.DisabledPackIds?.ToArray() ?? Array.Empty<string>();
         var enabledPackIds = settings.EnabledPackIds?.ToArray() ?? Array.Empty<string>();
@@ -307,6 +328,8 @@ public static partial class ToolPackBootstrap {
             AdMaxResults = settings.AdMaxResults,
             PowerShellAllowWrite = settings.PowerShellAllowWrite,
             EnableBuiltInPackLoading = settings.EnableBuiltInPackLoading,
+            UseDefaultBuiltInToolAssemblyNames = settings.UseDefaultBuiltInToolAssemblyNames,
+            BuiltInToolAssemblyNames = builtInToolAssemblyNames,
             EnableDefaultPluginPaths = settings.EnableDefaultPluginPaths,
             PluginPaths = pluginPaths,
             DisabledPackIds = disabledPackIds,

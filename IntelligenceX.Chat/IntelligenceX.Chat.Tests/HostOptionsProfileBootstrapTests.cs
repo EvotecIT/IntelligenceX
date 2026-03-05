@@ -204,6 +204,24 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_BuiltInToolAssemblyFlags_AreApplied() {
+        var options = ParseHostOptions(
+            new[] {
+                "--no-default-built-in-tool-assemblies",
+                "--built-in-tool-assembly", "IntelligenceX.Tools.System",
+                "--built-in-tool-assembly", "IntelligenceX.Tools.EventLog"
+            },
+            out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.False(ReadBoolProperty(options!, "UseDefaultBuiltInToolAssemblyNames"));
+        var assemblyNames = ReadStringListProperty(options, "BuiltInToolAssemblyNames");
+        Assert.Contains("IntelligenceX.Tools.System", assemblyNames);
+        Assert.Contains("IntelligenceX.Tools.EventLog", assemblyNames);
+    }
+
+    [Fact]
     public void BuildPacks_AllowsToollessMode_WhenPluginOnlyModeLoadsNoPacks() {
         var options = ParseHostOptions(
             new[] { "--no-built-in-packs", "--no-default-plugin-paths" },
