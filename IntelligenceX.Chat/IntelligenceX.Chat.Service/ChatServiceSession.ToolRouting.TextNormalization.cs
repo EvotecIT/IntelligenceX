@@ -319,7 +319,7 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                if (IsContinuationContractWrapperLine(trimmed)) {
+                if (IsContinuationContractWrapperLine(normalizedLine)) {
                     continue;
                 }
 
@@ -386,7 +386,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool IsContinuationContractWrapperLine(ReadOnlySpan<char> line) {
-        var normalized = NormalizeContinuationContractLine(line);
+        var normalized = line.Trim();
         if (normalized.IsEmpty) {
             return true;
         }
