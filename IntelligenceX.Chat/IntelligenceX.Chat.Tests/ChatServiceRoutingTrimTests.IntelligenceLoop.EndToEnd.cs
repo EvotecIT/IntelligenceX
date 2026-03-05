@@ -123,6 +123,90 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RecoversFromDroppedModelResponseDuringAutonomousToolLoop() {
+        using var server = new DeterministicCompatibleHttpServer(
+            dropChatCompletionResponseOnRequestIndices: new[] { 2 },
+            emitReplayDuplicateToolCallAfterDrop: true);
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 6,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-autonomy-drop-recovery",
+            ThreadId = thread.Id,
+            Text = "Run diagnostics workflow and recover from transient transport issues.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 6,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(1, server.DroppedChatCompletionRequestCount);
+        Assert.Equal(5, server.ChatCompletionRequestCount);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(2), "call_round_1"));
+        Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(4), "call_round_2"));
+
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(2, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Final answer after two tool rounds.", resultMessage.Text);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(2, resultMessage.Tools!.Calls.Count);
+        Assert.Equal(2, resultMessage.Tools.Outputs.Count);
+        Assert.Equal("call_round_1", resultMessage.Tools.Calls[0].CallId);
+        Assert.Equal("call_round_2", resultMessage.Tools.Calls[1].CallId);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_CompletesWithEmptyToolRegistryAndOmitsToolSchemas() {
         using var server = new DeterministicCompatibleHttpServer(_ => JsonSerializer.Serialize(new {
             id = "chatcmpl-plugin-isolated",

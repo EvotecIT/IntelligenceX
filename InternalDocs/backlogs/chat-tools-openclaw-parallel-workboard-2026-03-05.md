@@ -81,3 +81,4 @@ graph TD
 20. Added deterministic five-round autonomous continuation soak coverage to verify no user re-prompt is required during extended tool-round execution.
 21. Added plugin-isolation end-to-end coverage proving empty-registry chat turns omit model tool schemas and complete without tool lifecycle/status activity.
 22. Added per-turn plugin pack hot-toggle coverage proving `EnabledPackIds` changes tool schema exposure between turns without cross-turn leakage.
+23. Added dropped-response autonomous recovery coverage proving duplicate replay tool-calls are deduplicated while the loop continues to completion without user re-prompt.
