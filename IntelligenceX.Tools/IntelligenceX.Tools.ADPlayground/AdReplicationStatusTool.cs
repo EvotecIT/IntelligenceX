@@ -17,6 +17,10 @@ namespace IntelligenceX.Tools.ADPlayground;
 public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
 
+    internal readonly record struct ReplicationStatusBindingContract(
+        IReadOnlyList<string> RequestedComputerNames,
+        bool HealthOnly);
+
     private sealed record ReplicationStatusRequest(
         IReadOnlyList<string> RequestedComputerNames,
         bool HealthOnly);
@@ -71,6 +75,22 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             ToolRequestBindingResult<ReplicationStatusRequest>.Success(new ReplicationStatusRequest(
                 RequestedComputerNames: reader.DistinctStringArray("computer_names"),
                 HealthOnly: reader.Boolean("health_only"))));
+    }
+
+    internal static ToolRequestBindingResult<ReplicationStatusBindingContract> BindRequestContract(JsonObject? arguments) {
+        var binding = BindRequest(arguments);
+        if (!binding.IsValid || binding.Request is null) {
+            return ToolRequestBindingResult<ReplicationStatusBindingContract>.Failure(
+                binding.Error,
+                binding.ErrorCode,
+                binding.Hints,
+                binding.IsTransient);
+        }
+
+        var request = binding.Request;
+        return ToolRequestBindingResult<ReplicationStatusBindingContract>.Success(new ReplicationStatusBindingContract(
+            RequestedComputerNames: request.RequestedComputerNames,
+            HealthOnly: request.HealthOnly));
     }
 
     private Task<string> ExecuteAsync(ToolPipelineContext<ReplicationStatusRequest> context, CancellationToken cancellationToken) {

@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Reflection;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.ADPlayground;
 using Xunit;
@@ -8,48 +5,42 @@ using Xunit;
 namespace IntelligenceX.Tools.Tests;
 
 public sealed class AdReplicationStatusToolTests {
-    private static readonly MethodInfo BindRequestMethod =
-        typeof(AdReplicationStatusTool).GetMethod("BindRequest", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("BindRequest not found.");
-
     [Fact]
-    public void BindRequest_UsesExpectedDefaultsWhenArgumentsMissing() {
-        var binding = BindRequestMethod.Invoke(null, new object?[] { null });
-        var request = AssertValidBindingAndGetRequest(binding);
+    public void BindRequestContract_UsesExpectedDefaultsWhenArgumentsMissing() {
+        var binding = AdReplicationStatusTool.BindRequestContract(arguments: null);
+        Assert.True(binding.IsValid);
 
-        Assert.Empty(GetRequestProperty<IReadOnlyList<string>>(request, "RequestedComputerNames"));
-        Assert.False(GetRequestProperty<bool>(request, "HealthOnly"));
+        var request = Assert.IsType<AdReplicationStatusTool.ReplicationStatusBindingContract>(binding.Request);
+        Assert.Empty(request.RequestedComputerNames);
+        Assert.False(request.HealthOnly);
     }
 
     [Fact]
-    public void BindRequest_NormalizesAndDeduplicatesRequestedComputerNames() {
-        var binding = BindRequestMethod.Invoke(null, new object?[] {
-            new JsonObject()
-                .Add("computer_names", new JsonArray()
-                    .Add(" dc1.ad.evotec.xyz ")
-                    .Add("DC1.AD.EVOTEC.XYZ")
-                    .Add(string.Empty)
-                    .Add("dc2.ad.evotec.xyz"))
-                .Add("health_only", true)
-        });
+    public void BindRequestContract_NormalizesAndDeduplicatesRequestedComputerNames() {
+        var binding = AdReplicationStatusTool.BindRequestContract(new JsonObject()
+            .Add("computer_names", new JsonArray()
+                .Add(" dc1.ad.evotec.xyz ")
+                .Add("DC1.AD.EVOTEC.XYZ")
+                .Add(string.Empty)
+                .Add("dc2.ad.evotec.xyz"))
+            .Add("health_only", true));
+        Assert.True(binding.IsValid);
 
-        var request = AssertValidBindingAndGetRequest(binding);
+        var request = Assert.IsType<AdReplicationStatusTool.ReplicationStatusBindingContract>(binding.Request);
         Assert.Equal(
             new[] { "dc1.ad.evotec.xyz", "dc2.ad.evotec.xyz" },
-            GetRequestProperty<IReadOnlyList<string>>(request, "RequestedComputerNames"));
-        Assert.True(GetRequestProperty<bool>(request, "HealthOnly"));
+            request.RequestedComputerNames);
+        Assert.True(request.HealthOnly);
     }
 
-    private static object AssertValidBindingAndGetRequest(object? binding) {
-        Assert.NotNull(binding);
-        var bindingType = binding!.GetType();
-        var isValid = Assert.IsType<bool>(bindingType.GetProperty("IsValid")?.GetValue(binding));
-        Assert.True(isValid);
-        return bindingType.GetProperty("Request")?.GetValue(binding)
-               ?? throw new InvalidOperationException("Binding request value is null.");
-    }
+    [Fact]
+    public void BindRequestContract_WhenComputerNamesArgumentNotArray_UsesDefaults() {
+        var binding = AdReplicationStatusTool.BindRequestContract(new JsonObject()
+            .Add("computer_names", "dc1.ad.evotec.xyz"));
+        Assert.True(binding.IsValid);
 
-    private static T GetRequestProperty<T>(object request, string propertyName) {
-        return Assert.IsAssignableFrom<T>(request.GetType().GetProperty(propertyName)?.GetValue(request));
+        var request = Assert.IsType<AdReplicationStatusTool.ReplicationStatusBindingContract>(binding.Request);
+        Assert.Empty(request.RequestedComputerNames);
+        Assert.False(request.HealthOnly);
     }
 }
