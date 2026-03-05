@@ -15,7 +15,17 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns DNS server recursion/forwarder posture for one or more DNS servers (read-only).
 /// </summary>
 public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
+    private const int DefaultMaxServers = 200;
+    private const int MaxServersCap = 5000;
     private const int MaxViewTop = 5000;
+
+    private sealed record DnsServerConfigRequest(
+        IReadOnlyList<string> ExplicitServers,
+        string? DomainName,
+        string? ForestName,
+        bool RecursionDisabledOnly,
+        bool MissingForwardersOnly,
+        int MaxServers);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_dns_server_config",
@@ -64,13 +74,35 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var explicitServers = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("dns_servers"));
-        var (domainName, forestName, maxResults) = ResolveDomainAndForestScopeWithMaxResults(arguments);
-        var recursionDisabledOnly = ToolArgs.GetBoolean(arguments, "recursion_disabled_only", defaultValue: false);
-        var missingForwardersOnly = ToolArgs.GetBoolean(arguments, "missing_forwarders_only", defaultValue: false);
-        var maxServers = ToolArgs.GetCappedInt32(arguments, "max_servers", 200, 1, 5000);
+    private static ToolRequestBindingResult<DnsServerConfigRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<DnsServerConfigRequest>.Success(new DnsServerConfigRequest(
+                ExplicitServers: reader.DistinctStringArray("dns_servers"),
+                DomainName: reader.OptionalString("domain_name"),
+                ForestName: reader.OptionalString("forest_name"),
+                RecursionDisabledOnly: reader.Boolean("recursion_disabled_only"),
+                MissingForwardersOnly: reader.Boolean("missing_forwarders_only"),
+                MaxServers: reader.CappedInt32("max_servers", DefaultMaxServers, 1, MaxServersCap))));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DnsServerConfigRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+
+        var explicitServers = request.ExplicitServers;
+        var domainName = request.DomainName;
+        var forestName = request.ForestName;
+        var recursionDisabledOnly = request.RecursionDisabledOnly;
+        var missingForwardersOnly = request.MissingForwardersOnly;
+        var maxServers = request.MaxServers;
+        var maxResults = ResolveMaxResults(context.Arguments);
 
         var errors = new List<DnsServerConfigError>();
 
@@ -157,7 +189,7 @@ public sealed class AdDnsServerConfigTool : ActiveDirectoryToolBase, ITool {
             Rows: projectedRows);
 
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: result,
             sourceRows: projectedRows,
             viewRowsPath: "rows_view",
