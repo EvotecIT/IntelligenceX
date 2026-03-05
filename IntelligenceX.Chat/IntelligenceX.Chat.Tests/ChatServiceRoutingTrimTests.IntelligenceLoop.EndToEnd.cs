@@ -874,6 +874,209 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_AutonomyParityBenchmark_TracksContinuationDepthAcrossSeededFailurePatterns() {
+        var scenarios = new (string Name, Func<DeterministicCompatibleHttpServer> CreateServer)[] {
+            (
+                "baseline_clean",
+                () => new DeterministicCompatibleHttpServer(
+                    responseIndex => responseIndex switch {
+                        1 => BuildToolCallResponse("call_baseline_1", "step_1"),
+                        2 => BuildToolCallResponse("call_baseline_2", "step_2"),
+                        _ => BuildTextResponse("Benchmark scenario baseline_clean completed.")
+                    })
+            ),
+            (
+                "drop_replay",
+                () => new DeterministicCompatibleHttpServer(
+                    responseIndex => responseIndex switch {
+                        1 => BuildToolCallResponse("call_drop_1", "step_1"),
+                        2 => BuildMultiToolCallResponse(("call_drop_1", "step_1"), ("call_drop_2", "step_2")),
+                        3 => BuildToolCallResponse("call_drop_3", "step_3"),
+                        _ => BuildTextResponse("Benchmark scenario drop_replay completed.")
+                    },
+                    dropChatCompletionResponseOnRequestIndices: new[] { 2 })
+            ),
+            (
+                "consecutive_soft_failures",
+                () => new DeterministicCompatibleHttpServer(
+                    responseIndex => responseIndex switch {
+                        1 => BuildToolCallResponse("call_fail_1", "step_fail_1"),
+                        2 => BuildToolCallResponse("call_fail_2", "step_fail_2"),
+                        3 => BuildToolCallResponse("call_fail_3", "step_3"),
+                        _ => BuildTextResponse("Benchmark scenario consecutive_soft_failures completed.")
+                    })
+            )
+        };
+
+        var completedScenarios = 0;
+        var observedDepths = new List<int>();
+        var observedCalls = new List<int>();
+
+        foreach (var scenario in scenarios) {
+            using var server = scenario.CreateServer();
+
+            var serviceOptions = new ServiceOptions {
+                OpenAITransport = OpenAITransportKind.CompatibleHttp,
+                OpenAIBaseUrl = server.BaseUrl,
+                OpenAIAllowInsecureHttp = true,
+                OpenAIStreaming = false,
+                Model = "mock-local-model",
+                MaxToolRounds = 8,
+                DisabledPackIds = { "testimox", "officeimo" }
+            };
+            var session = new ChatServiceSession(serviceOptions, Stream.Null);
+            var registry = new ToolRegistry();
+            registry.Register(new RoundTripStubTool(
+                "mock_round_tool",
+                static (arguments, _) => {
+                    var step = arguments?.GetString("step") ?? "unknown";
+                    if (step.Contains("fail", StringComparison.Ordinal)) {
+                        throw new InvalidOperationException("Injected benchmark soft failure.");
+                    }
+
+                    return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+                }));
+            SetSessionRegistry(session, registry);
+
+            var clientOptions = new IntelligenceXClientOptions {
+                TransportKind = OpenAITransportKind.CompatibleHttp,
+                AutoInitialize = false,
+                DefaultModel = "mock-local-model"
+            };
+            clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+            clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+            clientOptions.CompatibleHttpOptions.Streaming = false;
+            clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+            using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+            var thread = await client.StartNewThreadAsync("mock-local-model");
+
+            var request = new ChatRequest {
+                RequestId = "req-autonomy-parity-" + scenario.Name,
+                ThreadId = thread.Id,
+                Text = "Run benchmark scenario " + scenario.Name + " and continue autonomously until completion.",
+                Options = new ChatRequestOptions {
+                    WeightedToolRouting = false,
+                    MaxToolRounds = 8,
+                    ParallelTools = false,
+                    PlanExecuteReviewLoop = true,
+                    MaxReviewPasses = 0,
+                    ModelHeartbeatSeconds = 0
+                }
+            };
+
+            using var capture = new SynchronizedCaptureStream();
+            using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+            var runResult = await InvokeRunChatOnCurrentThreadAsync(
+                session,
+                client,
+                writer,
+                request,
+                thread.Id,
+                CancellationToken.None);
+
+            var statuses = ParseStatuses(capture.Snapshot());
+            var startedCount = statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase));
+            var completedCount = statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+            Assert.True(startedCount >= completedCount);
+            Assert.True(startedCount >= 2);
+            Assert.True(completedCount >= 2);
+
+            var toolRounds = GetPropertyValue<int>(runResult, "ToolRounds");
+            var toolCalls = GetPropertyValue<int>(runResult, "ToolCallsCount");
+            Assert.InRange(toolRounds, 2, 8);
+            Assert.InRange(toolCalls, 2, 8);
+            observedDepths.Add(toolRounds);
+            observedCalls.Add(toolCalls);
+
+            var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+            Assert.Equal("Benchmark scenario " + scenario.Name + " completed.", resultMessage.Text);
+            Assert.NotNull(resultMessage.Tools);
+
+            if (string.Equals(scenario.Name, "drop_replay", StringComparison.Ordinal)) {
+                Assert.Equal(1, server.DroppedChatCompletionRequestCount);
+            }
+
+            completedScenarios++;
+        }
+
+        Assert.Equal(scenarios.Length, completedScenarios);
+        var completionRate = (double)completedScenarios / scenarios.Length;
+        Assert.Equal(1.0d, completionRate);
+        Assert.True(observedDepths.Max() >= 3);
+        Assert.True(observedDepths.Average() >= 2.0d);
+        Assert.True(observedCalls.Average() >= 2.0d);
+
+        static string BuildToolCallResponse(string callId, string step) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-" + callId,
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = callId,
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            });
+        }
+
+        static string BuildMultiToolCallResponse(params (string CallId, string Step)[] calls) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-benchmark-multi",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = calls.Select(call => new {
+                                id = call.CallId,
+                                type = "function",
+                                function = new {
+                                    name = "mock_round_tool",
+                                    arguments = JsonSerializer.Serialize(new { step = call.Step })
+                                }
+                            }).ToArray()
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            });
+        }
+
+        static string BuildTextResponse(string text) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-benchmark-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = text
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            });
+        }
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_CompletesWithEmptyToolRegistryAndOmitsToolSchemas() {
         using var server = new DeterministicCompatibleHttpServer(_ => JsonSerializer.Serialize(new {
             id = "chatcmpl-plugin-isolated",
