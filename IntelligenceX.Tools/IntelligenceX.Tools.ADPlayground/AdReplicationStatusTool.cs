@@ -16,6 +16,15 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+
+    internal readonly record struct ReplicationStatusBindingContract(
+        IReadOnlyList<string> RequestedComputerNames,
+        bool HealthOnly);
+
+    private sealed record ReplicationStatusRequest(
+        IReadOnlyList<string> RequestedComputerNames,
+        bool HealthOnly);
+
     private static readonly string[] SupportedProjectionColumns = {
         "server",
         "source_dsa",
@@ -54,18 +63,48 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var requestedComputerNames = ToolArgs.ReadDistinctStringArray(arguments?.GetArray("computer_names"));
-        var healthOnly = ToolArgs.GetBoolean(arguments, "health_only", defaultValue: false);
-        var maxResults = ResolveMaxResults(arguments);
+    private static ToolRequestBindingResult<ReplicationStatusRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<ReplicationStatusRequest>.Success(new ReplicationStatusRequest(
+                RequestedComputerNames: reader.DistinctStringArray("computer_names"),
+                HealthOnly: reader.Boolean("health_only"))));
+    }
+
+    internal static ToolRequestBindingResult<ReplicationStatusBindingContract> BindRequestContract(JsonObject? arguments) {
+        var binding = BindRequest(arguments);
+        if (!binding.IsValid || binding.Request is null) {
+            return ToolRequestBindingResult<ReplicationStatusBindingContract>.Failure(
+                binding.Error,
+                binding.ErrorCode,
+                binding.Hints,
+                binding.IsTransient);
+        }
+
+        var request = binding.Request;
+        return ToolRequestBindingResult<ReplicationStatusBindingContract>.Success(new ReplicationStatusBindingContract(
+            RequestedComputerNames: request.RequestedComputerNames,
+            HealthOnly: request.HealthOnly));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<ReplicationStatusRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+        var requestedComputerNames = request.RequestedComputerNames;
+        var maxResults = ResolveMaxResults(context.Arguments);
 
         IReadOnlyList<string> targetServers = requestedComputerNames.Count == 0
             ? DomainHelper.EnumerateDomainControllers().Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
             : requestedComputerNames;
 
         if (!TryExecute(
-                action: () => StatusExplorer.GetStatusInfos(targetServers, healthOnly),
+                action: () => StatusExplorer.GetStatusInfos(targetServers, request.HealthOnly),
                 result: out IReadOnlyList<ReplicationStatusInfo> allRows,
                 errorResponse: out var errorResponse,
                 defaultErrorMessage: "Replication status query failed.",
@@ -76,14 +115,14 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
         var rows = CapRows(allRows, maxResults, out var scanned, out var truncated);
 
         var result = new AdReplicationStatusResult(
-            HealthOnly: healthOnly,
+            HealthOnly: request.HealthOnly,
             RequestedComputerNames: requestedComputerNames,
             Scanned: scanned,
             Truncated: truncated,
             Rows: rows);
 
         var shapedArguments = AdProjectionArgumentSanitizer.RemoveUnsupportedProjectionArguments(
-            arguments,
+            context.Arguments,
             SupportedProjectionColumns);
 
         return Task.FromResult(BuildAutoTableResponse(
@@ -97,7 +136,7 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
             scanned: scanned,
             metaMutate: meta => {
                 AddMaxResultsMeta(meta, maxResults);
-                meta.Add("health_only", healthOnly);
+                meta.Add("health_only", request.HealthOnly);
                 meta.Add("target_server_count", targetServers.Count);
             }));
     }
