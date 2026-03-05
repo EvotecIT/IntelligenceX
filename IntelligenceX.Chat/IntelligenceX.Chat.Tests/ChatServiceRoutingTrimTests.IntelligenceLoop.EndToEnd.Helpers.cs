@@ -145,6 +145,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         return false;
     }
 
+    private static bool HasToolsArrayProperty(string requestBody) {
+        using var doc = JsonDocument.Parse(requestBody);
+        if (!doc.RootElement.TryGetProperty("tools", out var toolsElement)) {
+            return false;
+        }
+
+        return toolsElement.ValueKind == System.Text.Json.JsonValueKind.Array;
+    }
+
     private static string GetLatestMessageContentByRole(string requestBody, string role) {
         using var doc = JsonDocument.Parse(requestBody);
         if (!doc.RootElement.TryGetProperty("messages", out var messages)
