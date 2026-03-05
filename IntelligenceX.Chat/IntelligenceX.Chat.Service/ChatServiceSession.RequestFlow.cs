@@ -881,11 +881,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!exceptionCancellationToken.CanBeCanceled) {
-            return true;
-        }
-
-        return exceptionCancellationToken.IsCancellationRequested;
+        return exceptionCancellationToken.CanBeCanceled
+               && exceptionCancellationToken.IsCancellationRequested;
     }
 
     private string? GetActiveThreadIdSnapshot() {

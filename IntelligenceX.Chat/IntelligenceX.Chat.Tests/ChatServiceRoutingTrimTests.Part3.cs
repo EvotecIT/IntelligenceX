@@ -531,6 +531,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(classified);
     }
 
+    [Fact]
+    public void ShouldClassifyTurnTimeoutCancellation_DoesNotClassifyWhenExceptionTokenIsDefault() {
+        var classified = ChatServiceSession.ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: 30,
+            runTurnTimeoutCancellationMarked: true,
+            runCancellationRequested: false,
+            sessionCancellationRequested: false,
+            exceptionCancellationToken: default);
+
+        Assert.False(classified);
+    }
+
     [Theory]
     [InlineData("auto")]
     [InlineData("force_serial")]
