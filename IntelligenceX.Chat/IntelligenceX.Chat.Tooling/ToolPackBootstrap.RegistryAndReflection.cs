@@ -363,7 +363,7 @@ public static partial class ToolPackBootstrap {
                     continue;
                 }
 
-                ConfigurePackOptions(options, bootstrapOptions);
+                ConfigurePackOptions(options, bootstrapOptions, packType);
                 var created = constructor.Invoke(new[] { options });
                 if (created is IToolPack optionsPack) {
                     pack = optionsPack;
@@ -379,23 +379,8 @@ public static partial class ToolPackBootstrap {
         }
     }
 
-    private static void ConfigurePackOptions(object options, ToolPackBootstrapOptions bootstrapOptions) {
-        AddStringListValuesIfPresent(options, "AllowedRoots", bootstrapOptions.AllowedRoots);
-        SetPropertyIfPresent(options, "DomainController", bootstrapOptions.AdDomainController);
-        SetPropertyIfPresent(options, "DefaultSearchBaseDn", bootstrapOptions.AdDefaultSearchBaseDn);
-        SetPropertyIfPresent(options, "MaxResults", bootstrapOptions.AdMaxResults > 0 ? bootstrapOptions.AdMaxResults : 1000);
-        SetPropertyIfPresent(options, "Enabled", true);
-        SetPropertyIfPresent(options, "DefaultTimeoutMs", bootstrapOptions.PowerShellDefaultTimeoutMs);
-        SetPropertyIfPresent(options, "MaxTimeoutMs", bootstrapOptions.PowerShellMaxTimeoutMs);
-        SetPropertyIfPresent(options, "DefaultMaxOutputChars", bootstrapOptions.PowerShellDefaultMaxOutputChars);
-        SetPropertyIfPresent(options, "MaxOutputChars", bootstrapOptions.PowerShellMaxOutputChars);
-        SetPropertyIfPresent(options, "AllowWrite", bootstrapOptions.PowerShellAllowWrite);
-        SetPropertyIfPresent(options, "IncludeMaintenancePath", bootstrapOptions.ReviewerSetupIncludeMaintenancePath);
-        SetPropertyIfPresent(options, "AuthenticationProbeStore", bootstrapOptions.AuthenticationProbeStore);
-        SetPropertyIfPresent(options, "RequireSuccessfulSmtpProbeForSend", bootstrapOptions.RequireSuccessfulSmtpProbeForSend);
-        SetPropertyIfPresent(options, "SmtpProbeMaxAgeSeconds", bootstrapOptions.SmtpProbeMaxAgeSeconds);
-        SetPropertyIfPresent(options, "RunAsProfilePath", bootstrapOptions.RunAsProfilePath);
-        SetPropertyIfPresent(options, "AuthenticationProfilePath", bootstrapOptions.AuthenticationProfilePath);
+    private static void ConfigurePackOptions(object options, ToolPackBootstrapOptions bootstrapOptions, Type packType) {
+        ConfigurePackOptionsFromRuntimeBag(options, bootstrapOptions, packType);
     }
 
     /// <summary>
@@ -691,51 +676,6 @@ public static partial class ToolPackBootstrap {
         }
 
         return WithSourceKind(pack, descriptorSourceKind);
-    }
-
-    private static void SetPropertyIfPresent(object instance, string propertyName, object? value) {
-        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        if (property is null || !property.CanWrite) {
-            return;
-        }
-
-        if (value is null) {
-            property.SetValue(instance, null);
-            return;
-        }
-
-        var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-        var valueType = value.GetType();
-
-        if (targetType.IsAssignableFrom(valueType)) {
-            property.SetValue(instance, value);
-            return;
-        }
-
-        try {
-            var converted = Convert.ChangeType(value, targetType);
-            property.SetValue(instance, converted);
-        } catch {
-            // Ignore conversion failures; keep pack defaults.
-        }
-    }
-
-    private static void AddStringListValuesIfPresent(object instance, string propertyName, IEnumerable<string> values) {
-        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-        if (property is null || !property.CanRead) {
-            return;
-        }
-
-        if (property.GetValue(instance) is not System.Collections.IList list) {
-            return;
-        }
-
-        foreach (var value in values) {
-            if (string.IsNullOrWhiteSpace(value)) {
-                continue;
-            }
-            list.Add(value);
-        }
     }
 
     private static string NormalizeDisabledReason(string? value) {
