@@ -9,6 +9,9 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed class StartupToolHealthPrimingBehaviorTests {
+    private static readonly TimeSpan StartupPrimingLagBudget = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan HelloWaitBudget = TimeSpan.FromMilliseconds(120);
+
     [Fact]
     public async Task RunStartupToolHealthPrimingAsync_PrimingFaultIsNonFatalAndRecorded() {
         var warnings = new List<string>();
@@ -40,18 +43,35 @@ public sealed class StartupToolHealthPrimingBehaviorTests {
     }
 
     [Fact]
-    public async Task AwaitStartupToolHealthPrimingForHelloAsync_ReturnsAfterWaitBudget() {
+    public async Task RunStartupToolHealthPrimingAsync_PrimingLagExceedsBudget_RecordsWarningWithinLatencyBudget() {
+        var warnings = new List<string>();
+        var stopwatch = Stopwatch.StartNew();
+
+        await ChatServiceSession.RunStartupToolHealthPrimingAsync(
+            token => Task.Delay(TimeSpan.FromSeconds(5), token),
+            warnings.Add,
+            StartupPrimingLagBudget,
+            CancellationToken.None);
+
+        stopwatch.Stop();
+        Assert.Single(warnings);
+        Assert.StartsWith("[tool health] Startup probe priming failed:", warnings[0], StringComparison.OrdinalIgnoreCase);
+        Assert.InRange(stopwatch.ElapsedMilliseconds, 80, 2000);
+    }
+
+    [Fact]
+    public async Task AwaitStartupToolHealthPrimingForHelloAsync_ReturnsAfterWaitBudgetWithinLatencyBounds() {
         var priming = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var stopwatch = Stopwatch.StartNew();
 
         await ChatServiceSession.AwaitStartupToolHealthPrimingForHelloAsync(
             priming.Task,
-            TimeSpan.FromMilliseconds(40),
+            HelloWaitBudget,
             CancellationToken.None);
 
         stopwatch.Stop();
         Assert.False(priming.Task.IsCompleted);
-        Assert.InRange(stopwatch.ElapsedMilliseconds, 0, 2500);
+        Assert.InRange(stopwatch.ElapsedMilliseconds, 80, 2000);
     }
 
     [Fact]
