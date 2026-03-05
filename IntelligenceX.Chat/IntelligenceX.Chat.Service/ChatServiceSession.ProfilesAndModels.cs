@@ -811,6 +811,7 @@ internal sealed partial class ChatServiceSession {
                 PluginSearchPaths = pluginSearchPaths,
                 RuntimePolicyDiagnostics = _runtimePolicyDiagnostics,
                 RoutingCatalogDiagnostics = _routingCatalogDiagnostics,
+                CapabilitySnapshot = BuildRuntimeCapabilitySnapshot(),
                 ToolOrchestrationCatalog = _toolOrchestrationCatalog
             });
 

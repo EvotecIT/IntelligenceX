@@ -10,7 +10,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed class ChatServiceToolingBootstrapCache {
-    private const int PersistedSnapshotSchemaVersion = 1;
+    private const int PersistedSnapshotSchemaVersion = 2;
     private const string DefaultPersistedSnapshotFileName = "tooling-bootstrap-cache-v1.json";
     private static readonly JsonSerializerOptions PersistedSnapshotJson = new() {
         PropertyNameCaseInsensitive = true,
@@ -106,7 +106,8 @@ internal sealed class ChatServiceToolingBootstrapCache {
             StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
             PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
             RuntimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics,
-            RoutingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics
+            RoutingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics,
+            CapabilitySnapshot = snapshot.CapabilitySnapshot
         };
     }
 
@@ -156,7 +157,11 @@ internal sealed class ChatServiceToolingBootstrapCache {
                 StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
                 PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
                 RuntimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics,
-                RoutingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics
+                RoutingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics,
+                CapabilitySnapshot = snapshot.CapabilitySnapshot ?? ChatServiceSession.BuildCapabilitySnapshot(
+                    new ServiceOptions(),
+                    snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
+                    snapshot.RoutingCatalogDiagnostics)
             };
         } catch {
             return null;
@@ -205,6 +210,7 @@ internal sealed record ChatServiceToolingBootstrapSnapshot {
     public required string[] PluginSearchPaths { get; init; }
     public required ToolRuntimePolicyDiagnostics RuntimePolicyDiagnostics { get; init; }
     public required ToolRoutingCatalogDiagnostics RoutingCatalogDiagnostics { get; init; }
+    public required SessionCapabilitySnapshotDto CapabilitySnapshot { get; init; }
     public required ToolOrchestrationCatalog ToolOrchestrationCatalog { get; init; }
 }
 
@@ -219,4 +225,5 @@ internal sealed record ChatServiceToolingBootstrapPersistedSnapshot {
     public required string[] PluginSearchPaths { get; init; }
     public required ToolRuntimePolicyDiagnostics RuntimePolicyDiagnostics { get; init; }
     public required ToolRoutingCatalogDiagnostics RoutingCatalogDiagnostics { get; init; }
+    public required SessionCapabilitySnapshotDto CapabilitySnapshot { get; init; }
 }

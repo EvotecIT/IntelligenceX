@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using Xunit;
@@ -79,6 +80,57 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("healthy_tools:", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ad_replication_summary", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("eventlog_live_query", instructionsText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_BuildRuntimeCapabilitySnapshot_ProducesStructuredCapabilityArtifact() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var nowTicks = DateTime.UtcNow.Ticks;
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "AD Playground",
+                    Name = "AD Playground",
+                    SourceKind = "builtin",
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 9,
+                RoutingAwareTools = 9,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 2,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "scope_hosts",
+                        ToolCount = 2
+                    },
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "public_domain",
+                        ActionId = "query_whois",
+                        ToolCount = 1
+                    }
+                }
+            });
+        session.SetToolRoutingStatsForTesting(new Dictionary<string, (long LastUsedUtcTicks, long LastSuccessUtcTicks)> {
+            ["ad_replication_summary"] = (nowTicks, nowTicks)
+        });
+
+        var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+
+        Assert.True(snapshot.ToolingAvailable);
+        Assert.Equal(9, snapshot.RegisteredTools);
+        Assert.Equal(1, snapshot.EnabledPackCount);
+        Assert.Equal("active_directory", Assert.Single(snapshot.EnabledPackIds));
+        Assert.Equal(2, snapshot.RoutingFamilies.Length);
+        Assert.Equal(2, snapshot.FamilyActions.Length);
+        Assert.Equal("ad_domain.scope_hosts", snapshot.Skills[0]);
+        Assert.Equal("ad_replication_summary", Assert.Single(snapshot.HealthyTools));
     }
 
     [Fact]
@@ -199,6 +251,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("enabled_pack_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools='9'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed_roots='2'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tooling_available='true'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("remote_reachability_mode='", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count='2'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);

@@ -70,11 +70,11 @@ internal sealed partial class ChatServiceSession {
                     (checkpoint.CapabilityEnabledPackIds ?? Array.Empty<string>())
                     .Select(static packId => NormalizePackId(packId))
                     .Where(static packId => packId.Length > 0),
-                    MaxWorkingMemoryCapabilityPackIds),
-                CapabilityRoutingFamilies = NormalizeWorkingMemoryCapabilityFamilies(checkpoint.CapabilityRoutingFamilies ?? Array.Empty<string>()),
+                    MaxCapabilitySnapshotPackIds),
+                CapabilityRoutingFamilies = NormalizeCapabilitySnapshotRoutingFamilies(checkpoint.CapabilityRoutingFamilies ?? Array.Empty<string>()),
                 CapabilitySkills = ResolveWorkingMemoryCapabilitySkills(checkpoint.CapabilitySkills ?? Array.Empty<string>()),
-                CapabilityHealthyToolNames =
-                    NormalizeDistinctStrings(checkpoint.CapabilityHealthyToolNames ?? Array.Empty<string>(), MaxWorkingMemoryCapabilityHealthyTools),
+                CapabilityHealthyToolNames = NormalizeCapabilitySnapshotHealthyToolNames(
+                    checkpoint.CapabilityHealthyToolNames ?? Array.Empty<string>()),
                 SeenUtcTicks = checkpoint.SeenUtcTicks
             };
             PruneWorkingMemoryCheckpointStore(store);
@@ -105,11 +105,11 @@ internal sealed partial class ChatServiceSession {
                 (entry.CapabilityEnabledPackIds ?? Array.Empty<string>())
                 .Select(static packId => NormalizePackId(packId))
                 .Where(static packId => packId.Length > 0),
-                MaxWorkingMemoryCapabilityPackIds);
-            var capabilityRoutingFamilies = NormalizeWorkingMemoryCapabilityFamilies(entry.CapabilityRoutingFamilies ?? Array.Empty<string>());
+                MaxCapabilitySnapshotPackIds);
+            var capabilityRoutingFamilies = NormalizeCapabilitySnapshotRoutingFamilies(entry.CapabilityRoutingFamilies ?? Array.Empty<string>());
             var capabilitySkills = ResolveWorkingMemoryCapabilitySkills(entry.CapabilitySkills ?? Array.Empty<string>());
-            var capabilityHealthyToolNames =
-                NormalizeDistinctStrings(entry.CapabilityHealthyToolNames ?? Array.Empty<string>(), MaxWorkingMemoryCapabilityHealthyTools);
+            var capabilityHealthyToolNames = NormalizeCapabilitySnapshotHealthyToolNames(
+                entry.CapabilityHealthyToolNames ?? Array.Empty<string>());
 
             if (intentAnchor.Length == 0
                 && domainIntentFamily.Length == 0

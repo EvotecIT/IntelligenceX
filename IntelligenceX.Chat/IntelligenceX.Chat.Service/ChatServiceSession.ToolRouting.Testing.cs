@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI.ToolCalling;
@@ -62,6 +63,10 @@ internal sealed partial class ChatServiceSession {
     internal string[] BuildHelloStartupWarningsForTesting(Task startupToolingBootstrapTask) {
         ArgumentNullException.ThrowIfNull(startupToolingBootstrapTask);
         return BuildHelloStartupWarnings(startupToolingBootstrapTask);
+    }
+
+    internal SessionCapabilitySnapshotDto BuildRuntimeCapabilitySnapshotForTesting() {
+        return BuildRuntimeCapabilitySnapshot();
     }
 
     internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest, bool forceContinuationFollowUp = false) {

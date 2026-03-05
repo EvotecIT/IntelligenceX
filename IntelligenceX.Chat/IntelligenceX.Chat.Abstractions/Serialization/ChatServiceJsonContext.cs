@@ -68,6 +68,7 @@ namespace IntelligenceX.Chat.Abstractions.Serialization;
 [JsonSerializable(typeof(TurnPhaseTimingDto))]
 [JsonSerializable(typeof(AutonomyTelemetryDto))]
 [JsonSerializable(typeof(SessionPolicyDto))]
+[JsonSerializable(typeof(SessionCapabilitySnapshotDto))]
 [JsonSerializable(typeof(SessionStartupBootstrapTelemetryDto))]
 [JsonSerializable(typeof(SessionStartupBootstrapPhaseTelemetryDto))]
 [JsonSerializable(typeof(SessionRuntimePolicyDto))]

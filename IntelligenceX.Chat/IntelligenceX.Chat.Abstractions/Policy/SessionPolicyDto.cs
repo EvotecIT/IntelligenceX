@@ -82,4 +82,9 @@ public sealed record SessionPolicyDto {
     /// Structured routing catalog diagnostics for the active registry.
     /// </summary>
     public SessionRoutingCatalogDiagnosticsDto? RoutingCatalog { get; init; }
+
+    /// <summary>
+    /// Structured capability snapshot for the active runtime/tool inventory.
+    /// </summary>
+    public SessionCapabilitySnapshotDto? CapabilitySnapshot { get; init; }
 }
