@@ -154,6 +154,30 @@ public sealed partial class ChatServiceRoutingTrimTests {
         return toolsElement.ValueKind == System.Text.Json.JsonValueKind.Array;
     }
 
+    private static bool HasToolSchemaForFunctionName(string requestBody, string functionName) {
+        using var doc = JsonDocument.Parse(requestBody);
+        if (!doc.RootElement.TryGetProperty("tools", out var toolsElement)
+            || toolsElement.ValueKind != System.Text.Json.JsonValueKind.Array) {
+            return false;
+        }
+
+        foreach (var tool in toolsElement.EnumerateArray()) {
+            if (tool.TryGetProperty("function", out var functionElement)
+                && functionElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && functionElement.TryGetProperty("name", out var functionNameElement)
+                && string.Equals(functionNameElement.GetString(), functionName, StringComparison.Ordinal)) {
+                return true;
+            }
+
+            if (tool.TryGetProperty("name", out var nameElement)
+                && string.Equals(nameElement.GetString(), functionName, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static string GetLatestMessageContentByRole(string requestBody, string role) {
         using var doc = JsonDocument.Parse(requestBody);
         if (!doc.RootElement.TryGetProperty("messages", out var messages)

@@ -80,3 +80,4 @@ graph TD
 19. Added end-to-end autonomous continuation-loop coverage validating compact follow-up skill snapshot carryover plus tool-round progression.
 20. Added deterministic five-round autonomous continuation soak coverage to verify no user re-prompt is required during extended tool-round execution.
 21. Added plugin-isolation end-to-end coverage proving empty-registry chat turns omit model tool schemas and complete without tool lifecycle/status activity.
+22. Added per-turn plugin pack hot-toggle coverage proving `EnabledPackIds` changes tool schema exposure between turns without cross-turn leakage.
