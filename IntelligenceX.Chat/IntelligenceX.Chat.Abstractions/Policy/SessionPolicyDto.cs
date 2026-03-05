@@ -19,6 +19,10 @@ public sealed record SessionPolicyDto {
     /// </summary>
     public ToolPackInfoDto[] Packs { get; init; } = Array.Empty<ToolPackInfoDto>();
     /// <summary>
+    /// Plugin-style tool sources visible to the runtime.
+    /// </summary>
+    public PluginInfoDto[] Plugins { get; init; } = Array.Empty<PluginInfoDto>();
+    /// <summary>
     /// Whether any dangerous/write tools are enabled.
     /// </summary>
     public required bool DangerousToolsEnabled { get; init; }

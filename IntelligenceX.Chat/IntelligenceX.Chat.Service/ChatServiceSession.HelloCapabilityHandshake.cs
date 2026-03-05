@@ -39,6 +39,8 @@ internal sealed partial class ChatServiceSession {
         warning.Append(StartupCapabilityHandshakePrefix);
         warning.Append("marker='").Append(CapabilitySnapshotMarker).Append('\'');
         warning.Append(" enabled_pack_count='").Append(snapshot.EnabledPackCount).Append('\'');
+        warning.Append(" plugin_count='").Append(snapshot.PluginCount).Append('\'');
+        warning.Append(" enabled_plugin_count='").Append(snapshot.EnabledPluginCount).Append('\'');
         warning.Append(" registered_tools='").Append(snapshot.RegisteredTools).Append('\'');
         warning.Append(" allowed_roots='").Append(snapshot.AllowedRootCount).Append('\'');
         warning.Append(" tooling_available='").Append(snapshot.ToolingAvailable ? "true" : "false").Append('\'');
@@ -48,6 +50,10 @@ internal sealed partial class ChatServiceSession {
 
         if (snapshot.EnabledPackIds.Length > 0) {
             warning.Append(" enabled_packs='").Append(string.Join(",", snapshot.EnabledPackIds)).Append('\'');
+        }
+
+        if (snapshot.EnabledPluginIds.Length > 0) {
+            warning.Append(" enabled_plugins='").Append(string.Join(",", snapshot.EnabledPluginIds)).Append('\'');
         }
 
         if (snapshot.RoutingFamilies.Length > 0) {

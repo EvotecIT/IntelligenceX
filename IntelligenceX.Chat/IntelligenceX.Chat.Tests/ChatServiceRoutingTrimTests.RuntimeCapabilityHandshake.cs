@@ -73,7 +73,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:skills:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools: 17", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("plugin_count: 3", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_plugin_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_plugins: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families: ad_domain, public_domain", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skills: ad_domain.scope_hosts, public_domain.query_whois", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -126,7 +129,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(snapshot.ToolingAvailable);
         Assert.Equal(9, snapshot.RegisteredTools);
         Assert.Equal(1, snapshot.EnabledPackCount);
+        Assert.Equal(1, snapshot.PluginCount);
+        Assert.Equal(1, snapshot.EnabledPluginCount);
         Assert.Equal("active_directory", Assert.Single(snapshot.EnabledPackIds));
+        Assert.Equal("active_directory", Assert.Single(snapshot.EnabledPluginIds));
         Assert.Equal(2, snapshot.RoutingFamilies.Length);
         Assert.Equal(2, snapshot.FamilyActions.Length);
         Assert.Equal("ad_domain.scope_hosts", snapshot.Skills[0]);
@@ -145,8 +151,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:skills:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("plugin_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_plugin_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("enabled_packs:", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("enabled_plugins:", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Null(TryReadInstructionLine(instructionsText, "skills:"));
     }
 
@@ -194,10 +203,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var routingFamiliesLine = TryReadInstructionLine(instructionsText, "routing_families:");
         var skillsLine = TryReadInstructionLine(instructionsText, "skills:");
         Assert.NotNull(enabledPackLine);
+        var enabledPluginLine = TryReadInstructionLine(instructionsText, "enabled_plugins:");
         Assert.NotNull(healthyToolsLine);
         Assert.NotNull(routingFamiliesLine);
         Assert.NotNull(skillsLine);
         Assert.Equal(8, CountCsvItemsFromInstructionLine(enabledPackLine!, "enabled_packs:"));
+        Assert.NotNull(enabledPluginLine);
+        Assert.Equal(8, CountCsvItemsFromInstructionLine(enabledPluginLine!, "enabled_plugins:"));
         Assert.Equal(12, CountCsvItemsFromInstructionLine(healthyToolsLine!, "healthy_tools:"));
         Assert.Equal(6, CountCsvItemsFromInstructionLine(routingFamiliesLine!, "routing_families:"));
         Assert.Equal(8, CountCsvItemsFromInstructionLine(skillsLine!, "skills:"));
@@ -249,12 +261,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("marker='ix:capability-snapshot:v1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skills_marker='ix:skills:v1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("plugin_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_plugin_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools='9'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed_roots='2'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_available='true'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("remote_reachability_mode='", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count='2'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_plugins='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families='ad_domain,public_domain'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skills='ad_domain.scope_hosts,public_domain.query_whois'", handshake, StringComparison.OrdinalIgnoreCase);
     }

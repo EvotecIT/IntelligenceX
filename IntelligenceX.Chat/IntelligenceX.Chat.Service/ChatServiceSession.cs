@@ -55,6 +55,7 @@ internal sealed partial class ChatServiceSession {
     private ToolRegistry _registry;
     private IReadOnlyList<IToolPack> _packs;
     private ToolPackAvailabilityInfo[] _packAvailability;
+    private ToolPluginAvailabilityInfo[] _pluginAvailability;
     private string[] _startupWarnings;
     private SessionStartupBootstrapTelemetryDto? _startupBootstrap;
     private string[] _pluginSearchPaths;
@@ -124,6 +125,7 @@ internal sealed partial class ChatServiceSession {
         };
         _packs = Array.Empty<IToolPack>();
         _packAvailability = Array.Empty<ToolPackAvailabilityInfo>();
+        _pluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>();
         _startupWarnings = Array.Empty<string>();
         _startupBootstrap = null;
         _pluginSearchPaths = Array.Empty<string>();
@@ -343,6 +345,7 @@ internal sealed partial class ChatServiceSession {
                             Policy = BuildSessionPolicy(
                                 _options,
                                 _packAvailability,
+                                _pluginAvailability,
                                 helloStartupWarnings,
                                 _startupBootstrap,
                                 _pluginSearchPaths,

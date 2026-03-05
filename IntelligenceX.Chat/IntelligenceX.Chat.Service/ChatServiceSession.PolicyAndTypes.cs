@@ -25,6 +25,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
 
     internal static SessionPolicyDto BuildSessionPolicy(ServiceOptions options, IEnumerable<ToolPackAvailabilityInfo> packAvailability,
+        IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         IReadOnlyList<string> startupWarnings, SessionStartupBootstrapTelemetryDto? startupBootstrap, IReadOnlyList<string> pluginSearchPaths,
         ToolRuntimePolicyDiagnostics runtimePolicy, ToolRoutingCatalogDiagnostics? routingCatalog = null,
         IReadOnlyList<string>? healthyToolNames = null, string? remoteReachabilityMode = null) {
@@ -55,10 +56,13 @@ internal sealed partial class ChatServiceSession {
             return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
         });
 
+        var pluginList = MapPluginPolicyList(pluginAvailability, packAvailability);
+
         var dangerousEnabled = packList.Exists(static p => p.Enabled && (p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite));
         var capabilitySnapshot = BuildCapabilitySnapshot(
             options,
             packAvailability,
+            pluginAvailability,
             routingCatalog,
             healthyToolNames,
             remoteReachabilityMode);
@@ -67,6 +71,7 @@ internal sealed partial class ChatServiceSession {
             ReadOnly = !dangerousEnabled,
             AllowedRoots = roots,
             Packs = packList.ToArray(),
+            Plugins = pluginList,
             DangerousToolsEnabled = dangerousEnabled,
             ToolTimeoutSeconds = options.ToolTimeoutSeconds <= 0 ? null : options.ToolTimeoutSeconds,
             TurnTimeoutSeconds = options.TurnTimeoutSeconds <= 0 ? null : options.TurnTimeoutSeconds,
@@ -99,6 +104,54 @@ internal sealed partial class ChatServiceSession {
             RoutingCatalog = MapRoutingCatalogDiagnostics(routingCatalog),
             CapabilitySnapshot = capabilitySnapshot
         };
+    }
+
+    private static PluginInfoDto[] MapPluginPolicyList(
+        IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
+        IEnumerable<ToolPackAvailabilityInfo> packAvailability) {
+        var pluginList = new List<PluginInfoDto>();
+        var normalizedPlugins = (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
+            .Where(static plugin => plugin is not null)
+            .ToArray();
+
+        if (normalizedPlugins.Length == 0) {
+            foreach (var pack in packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()) {
+                pluginList.Add(new PluginInfoDto {
+                    Id = pack.Id,
+                    Name = ResolvePackDisplayName(pack.Id, pack.Name),
+                    Origin = pack.SourceKind,
+                    SourceKind = MapSourceKind(pack.SourceKind, pack.Id),
+                    DefaultEnabled = pack.Enabled,
+                    Enabled = pack.Enabled,
+                    DisabledReason = pack.Enabled ? null : pack.DisabledReason,
+                    IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
+                    PackIds = string.IsNullOrWhiteSpace(pack.Id) ? Array.Empty<string>() : new[] { NormalizePackId(pack.Id) },
+                    SkillDirectories = Array.Empty<string>()
+                });
+            }
+        } else {
+            foreach (var plugin in normalizedPlugins) {
+                pluginList.Add(new PluginInfoDto {
+                    Id = plugin.Id,
+                    Name = plugin.Name,
+                    Version = string.IsNullOrWhiteSpace(plugin.Version) ? null : plugin.Version.Trim(),
+                    Origin = string.IsNullOrWhiteSpace(plugin.Origin) ? "unknown" : plugin.Origin.Trim(),
+                    SourceKind = MapSourceKind(plugin.SourceKind, plugin.Id),
+                    DefaultEnabled = plugin.DefaultEnabled,
+                    Enabled = plugin.Enabled,
+                    DisabledReason = plugin.Enabled ? null : plugin.DisabledReason,
+                    IsDangerous = plugin.IsDangerous,
+                    PackIds = NormalizeDistinctStrings(plugin.PackIds ?? Array.Empty<string>(), maxItems: 0),
+                    RootPath = string.IsNullOrWhiteSpace(plugin.RootPath) ? null : plugin.RootPath.Trim(),
+                    SkillDirectories = NormalizeDistinctStrings(plugin.SkillDirectories ?? Array.Empty<string>(), maxItems: 0)
+                });
+            }
+        }
+
+        return pluginList
+            .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static SessionRoutingCatalogDiagnosticsDto? MapRoutingCatalogDiagnostics(ToolRoutingCatalogDiagnostics? diagnostics) {

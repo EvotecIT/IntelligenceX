@@ -75,7 +75,8 @@ internal static partial class PluginFolderToolPackLoader {
         ToolPackBootstrapOptions options,
         HashSet<string> existingPackIds,
         Action<string>? onWarning,
-        Action<ToolPackAvailabilityInfo>? onPackAvailability = null) {
+        Action<ToolPackAvailabilityInfo>? onPackAvailability = null,
+        Action<ToolPluginAvailabilityInfo>? onPluginAvailability = null) {
         if (packs is null) {
             throw new ArgumentNullException(nameof(packs));
         }
@@ -125,6 +126,7 @@ internal static partial class PluginFolderToolPackLoader {
                 loadedPacksByAssemblyName: loadedPacksByAssemblyName,
                 onWarning: onWarning,
                 onPackAvailability: onPackAvailability,
+                onPluginAvailability: onPluginAvailability,
                 loadIndex: i + 1,
                 loadTotal: total);
             if (loadedAnyPack && pending.PluginIdentity.Length > 0) {
@@ -542,5 +544,6 @@ internal static partial class PluginFolderToolPackLoader {
         public string? Visibility { get; set; }
         public string? EntryAssembly { get; set; }
         public string? EntryType { get; set; }
+        public string[]? SkillDirectories { get; set; }
     }
 }

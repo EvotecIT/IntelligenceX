@@ -793,8 +793,10 @@ internal sealed partial class ChatServiceSession {
 
         var packs = bootstrapResult.Packs.ToArray();
         var packAvailability = bootstrapResult.PackAvailability.ToArray();
+        var pluginAvailability = bootstrapResult.PluginAvailability.ToArray();
         _packs = packs;
         _packAvailability = packAvailability;
+        _pluginAvailability = pluginAvailability;
         _pluginSearchPaths = pluginSearchPaths;
         _startupWarnings = warnings;
         var startupBootstrap = new SessionStartupBootstrapTelemetryDto {
@@ -836,6 +838,7 @@ internal sealed partial class ChatServiceSession {
                 ToolDefinitions = toolDefinitions,
                 Packs = packs,
                 PackAvailability = packAvailability,
+                PluginAvailability = bootstrapResult.PluginAvailability.ToArray(),
                 StartupWarnings = warnings,
                 StartupBootstrap = startupBootstrap,
                 PluginSearchPaths = pluginSearchPaths,
@@ -856,6 +859,7 @@ internal sealed partial class ChatServiceSession {
         nameof(_registry),
         nameof(_packs),
         nameof(_packAvailability),
+        nameof(_pluginAvailability),
         nameof(_startupWarnings),
         nameof(_pluginSearchPaths),
         nameof(_runtimePolicyDiagnostics),
@@ -869,6 +873,7 @@ internal sealed partial class ChatServiceSession {
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packs = snapshot.Packs;
         _packAvailability = snapshot.PackAvailability.ToArray();
+        _pluginAvailability = snapshot.PluginAvailability.ToArray();
         _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
         _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
         _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;
@@ -927,6 +932,7 @@ internal sealed partial class ChatServiceSession {
     private void ApplyToolingBootstrapPersistedSnapshot(ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packAvailability = snapshot.PackAvailability.ToArray();
+        _pluginAvailability = snapshot.PluginAvailability.ToArray();
         _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
         _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
         _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;

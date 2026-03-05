@@ -17,6 +17,16 @@ public sealed record SessionCapabilitySnapshotDto {
     public required int EnabledPackCount { get; init; }
 
     /// <summary>
+    /// Total number of plugin-style tool sources visible to the session.
+    /// </summary>
+    public required int PluginCount { get; init; }
+
+    /// <summary>
+    /// Number of enabled plugin-style tool sources currently available.
+    /// </summary>
+    public required int EnabledPluginCount { get; init; }
+
+    /// <summary>
     /// Whether the runtime currently has any tool capability available.
     /// </summary>
     public required bool ToolingAvailable { get; init; }
@@ -30,6 +40,11 @@ public sealed record SessionCapabilitySnapshotDto {
     /// Normalized enabled pack identifiers available to the session.
     /// </summary>
     public string[] EnabledPackIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Normalized enabled plugin identifiers available to the session.
+    /// </summary>
+    public string[] EnabledPluginIds { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Normalized routing families exposed by the active registry.

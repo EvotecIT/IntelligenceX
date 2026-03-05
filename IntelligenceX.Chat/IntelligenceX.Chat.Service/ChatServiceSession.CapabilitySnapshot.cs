@@ -11,6 +11,7 @@ internal sealed partial class ChatServiceSession {
     private const string CapabilitySnapshotMarker = "ix:capability-snapshot:v1";
     private const string SkillsSnapshotMarker = "ix:skills:v1";
     private const int MaxCapabilitySnapshotPackIds = 8;
+    private const int MaxCapabilitySnapshotPluginIds = 8;
     private const int MaxCapabilitySnapshotFamilies = 6;
     private const int MaxCapabilitySnapshotSkills = 8;
     private const int MaxCapabilitySnapshotHealthyTools = 12;
@@ -19,6 +20,7 @@ internal sealed partial class ChatServiceSession {
         return BuildCapabilitySnapshot(
             _options,
             _packAvailability,
+            _pluginAvailability,
             _routingCatalogDiagnostics,
             healthyToolNames: ResolveWorkingMemoryCapabilityHealthyToolNames(
                 Array.Empty<string>(),
@@ -29,6 +31,7 @@ internal sealed partial class ChatServiceSession {
     internal static SessionCapabilitySnapshotDto BuildCapabilitySnapshot(
         ServiceOptions options,
         IEnumerable<ToolPackAvailabilityInfo> packAvailability,
+        IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         ToolRoutingCatalogDiagnostics? routingCatalog,
         IEnumerable<string>? healthyToolNames = null,
         string? remoteReachabilityMode = null) {
@@ -38,6 +41,30 @@ internal sealed partial class ChatServiceSession {
             (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
             .Where(static pack => pack.Enabled)
             .Select(static pack => pack.Id));
+        var allPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
+            (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
+            .Select(static plugin => plugin.Id),
+            maxItems: 0);
+        if (allPluginIds.Length == 0) {
+            allPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
+                (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+                .Select(static pack => pack.Id),
+                maxItems: 0);
+        }
+
+        var enabledPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
+            (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
+            .Where(static plugin => plugin.Enabled)
+            .Select(static plugin => plugin.Id),
+            MaxCapabilitySnapshotPluginIds);
+        if (enabledPluginIds.Length == 0) {
+            enabledPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
+                (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+                .Where(static pack => pack.Enabled)
+                .Select(static pack => pack.Id),
+                MaxCapabilitySnapshotPluginIds);
+        }
+
         var familyActions = MapCapabilityFamilyActions(routingCatalog);
         var routingFamilies = NormalizeCapabilitySnapshotRoutingFamilies(
             familyActions.Select(static summary => summary.Family));
@@ -50,9 +77,12 @@ internal sealed partial class ChatServiceSession {
         return new SessionCapabilitySnapshotDto {
             RegisteredTools = registeredTools,
             EnabledPackCount = enabledPackIds.Length,
+            PluginCount = allPluginIds.Length,
+            EnabledPluginCount = enabledPluginIds.Length,
             ToolingAvailable = enabledPackIds.Length > 0 || registeredTools > 0,
             AllowedRootCount = allowedRootCount,
             EnabledPackIds = enabledPackIds,
+            EnabledPluginIds = enabledPluginIds,
             RoutingFamilies = routingFamilies,
             FamilyActions = familyActions,
             Skills = skills,
@@ -88,6 +118,14 @@ internal sealed partial class ChatServiceSession {
             .Select(static packId => NormalizePackId(packId))
             .Where(static packId => packId.Length > 0),
             MaxCapabilitySnapshotPackIds);
+    }
+
+    private static string[] NormalizeCapabilitySnapshotEnabledPluginIds(IEnumerable<string> pluginIds, int maxItems) {
+        return NormalizeDistinctStrings(
+            (pluginIds ?? Array.Empty<string>())
+            .Select(static pluginId => NormalizePackId(pluginId))
+            .Where(static pluginId => pluginId.Length > 0),
+            maxItems);
     }
 
     private static string[] NormalizeCapabilitySnapshotRoutingFamilies(IEnumerable<string> routingFamilies) {
@@ -137,8 +175,14 @@ internal sealed partial class ChatServiceSession {
         runtimeIdentity.AppendLine(CapabilitySnapshotMarker);
         runtimeIdentity.AppendLine("registered_tools: " + snapshot.RegisteredTools);
         runtimeIdentity.AppendLine("enabled_pack_count: " + snapshot.EnabledPackCount);
+        runtimeIdentity.AppendLine("plugin_count: " + snapshot.PluginCount);
+        runtimeIdentity.AppendLine("enabled_plugin_count: " + snapshot.EnabledPluginCount);
         if (snapshot.EnabledPackIds.Length > 0) {
             runtimeIdentity.AppendLine("enabled_packs: " + string.Join(", ", snapshot.EnabledPackIds));
+        }
+
+        if (snapshot.EnabledPluginIds.Length > 0) {
+            runtimeIdentity.AppendLine("enabled_plugins: " + string.Join(", ", snapshot.EnabledPluginIds));
         }
 
         if (snapshot.RoutingFamilies.Length > 0) {
