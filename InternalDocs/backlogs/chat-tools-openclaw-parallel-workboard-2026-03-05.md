@@ -85,3 +85,4 @@ graph TD
 24. Added protocol-level isolation assertion coverage proving empty-registry turns emit no tool-related status frames across routing/execution/recovery tool status families.
 25. Added cross-thread plugin isolation coverage proving per-thread `EnabledPackIds` pack selection does not leak tool schema exposure or executed tool identity across concurrent session threads.
 26. Added extended mixed-failure autonomy soak coverage (drop + replay anomalies) proving six-round continuation completes without user re-prompt or tool-round-limit termination.
+27. Added mid-loop tool-exception autonomy coverage proving `PlanExecuteReviewLoop` continues remaining rounds and reaches completion with stable `tool_exception` attribution.
