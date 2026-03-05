@@ -49,6 +49,7 @@ internal static partial class Program {
 
         string scenarioName;
         IReadOnlyList<ChatScenarioTurn> turns;
+        IReadOnlyDictionary<string, int> maxPhaseP95DurationMs;
         if (root.ValueKind == JsonValueKind.Object) {
             scenarioName = root.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
                 ? nameElement.GetString() ?? string.Empty
@@ -56,6 +57,7 @@ internal static partial class Program {
             var defaults = root.TryGetProperty("defaults", out var defaultsElement)
                 ? ReadScenarioDefaults(defaultsElement)
                 : ChatScenarioDefaults.None;
+            maxPhaseP95DurationMs = ReadScenarioMaxPhaseDurationMs(root, "max_phase_p95_duration_ms");
             if (!root.TryGetProperty("turns", out var turnsElement) || turnsElement.ValueKind != JsonValueKind.Array) {
                 throw new InvalidOperationException("Scenario JSON object must include a 'turns' array.");
             }
@@ -63,6 +65,7 @@ internal static partial class Program {
         } else if (root.ValueKind == JsonValueKind.Array) {
             scenarioName = fallbackName;
             turns = ParseChatScenarioTurnsFromJsonArray(root, ChatScenarioDefaults.None);
+            maxPhaseP95DurationMs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         } else {
             throw new InvalidOperationException("Scenario JSON must be an object or an array.");
         }
@@ -73,7 +76,8 @@ internal static partial class Program {
 
         return new ChatScenarioDefinition(
             string.IsNullOrWhiteSpace(scenarioName) ? "scenario" : scenarioName.Trim(),
-            turns);
+            turns,
+            maxPhaseP95DurationMs);
     }
 
     private static ChatScenarioDefaults ReadScenarioDefaults(JsonElement element) {

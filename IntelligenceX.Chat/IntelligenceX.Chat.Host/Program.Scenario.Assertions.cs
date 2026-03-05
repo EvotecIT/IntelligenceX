@@ -356,6 +356,40 @@ internal static partial class Program {
         return failures;
     }
 
+    private static List<string> EvaluateScenarioRollupAssertions(ChatScenarioDefinition scenario, IReadOnlyList<ScenarioTurnRun> turnRuns) {
+        var failures = new List<string>();
+        if (scenario is null || scenario.MaxPhaseP95DurationMs.Count == 0) {
+            return failures;
+        }
+
+        var rollups = BuildScenarioPhaseTimingRollups(turnRuns);
+        var observedByPhase = rollups.ToDictionary(
+            static rollup => rollup.Phase,
+            static rollup => rollup,
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var phaseLimit in scenario.MaxPhaseP95DurationMs) {
+            if (!TryNormalizeScenarioPhaseName(phaseLimit.Key, out var normalizedPhase)) {
+                continue;
+            }
+
+            if (!observedByPhase.TryGetValue(normalizedPhase, out var observedRollup)) {
+                failures.Add($"Expected scenario rollup phase timing '{normalizedPhase}' to be present for p95 guardrail checks.");
+                continue;
+            }
+
+            var maxP95DurationMs = Math.Max(0, phaseLimit.Value);
+            if (observedRollup.P95DurationMs <= maxP95DurationMs) {
+                continue;
+            }
+
+            failures.Add(
+                $"Expected scenario rollup phase '{normalizedPhase}' p95 <= {maxP95DurationMs}ms;"
+                + $" observed {observedRollup.P95DurationMs}ms across {observedRollup.Samples} sample(s).");
+        }
+
+        return failures;
+    }
+
     private static bool ContainsPartialCompletionMarker(string text) {
         if (string.IsNullOrWhiteSpace(text)) {
             return false;

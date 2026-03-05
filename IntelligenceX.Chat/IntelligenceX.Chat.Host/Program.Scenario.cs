@@ -35,10 +35,18 @@ internal static partial class Program {
         public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns) {
             Name = string.IsNullOrWhiteSpace(name) ? "scenario" : name.Trim();
             Turns = turns ?? Array.Empty<ChatScenarioTurn>();
+            MaxPhaseP95DurationMs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns, IReadOnlyDictionary<string, int> maxPhaseP95DurationMs) {
+            Name = string.IsNullOrWhiteSpace(name) ? "scenario" : name.Trim();
+            Turns = turns ?? Array.Empty<ChatScenarioTurn>();
+            MaxPhaseP95DurationMs = maxPhaseP95DurationMs ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         }
 
         public string Name { get; }
         public IReadOnlyList<ChatScenarioTurn> Turns { get; }
+        public IReadOnlyDictionary<string, int> MaxPhaseP95DurationMs { get; }
     }
 
     private sealed class ChatScenarioTurn {
@@ -203,6 +211,24 @@ internal static partial class Program {
             CompletedAtUtc = completedAtUtc;
             ContinueOnError = continueOnError;
             TurnRuns = turnRuns ?? Array.Empty<ScenarioTurnRun>();
+            RollupAssertionFailures = Array.Empty<string>();
+        }
+
+        public ScenarioRunReport(
+            string scenarioName,
+            string scenarioSourcePath,
+            DateTime startedAtUtc,
+            DateTime completedAtUtc,
+            bool continueOnError,
+            IReadOnlyList<ScenarioTurnRun> turnRuns,
+            IReadOnlyList<string> rollupAssertionFailures) {
+            ScenarioName = string.IsNullOrWhiteSpace(scenarioName) ? "scenario" : scenarioName.Trim();
+            ScenarioSourcePath = scenarioSourcePath ?? string.Empty;
+            StartedAtUtc = startedAtUtc;
+            CompletedAtUtc = completedAtUtc;
+            ContinueOnError = continueOnError;
+            TurnRuns = turnRuns ?? Array.Empty<ScenarioTurnRun>();
+            RollupAssertionFailures = rollupAssertionFailures ?? Array.Empty<string>();
         }
 
         public string ScenarioName { get; }
@@ -211,5 +237,6 @@ internal static partial class Program {
         public DateTime CompletedAtUtc { get; }
         public bool ContinueOnError { get; }
         public IReadOnlyList<ScenarioTurnRun> TurnRuns { get; }
+        public IReadOnlyList<string> RollupAssertionFailures { get; }
     }
 }
