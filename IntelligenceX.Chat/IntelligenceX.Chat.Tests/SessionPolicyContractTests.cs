@@ -79,6 +79,24 @@ public sealed class SessionPolicyContractTests {
                     "C:\\Users\\user\\AppData\\Local\\IntelligenceX.Chat\\plugins",
                     "C:\\Support\\GitHub\\IntelligenceX\\plugins"
                 },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 8,
+                    EnabledPackCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    EnabledPackIds = System.Array.Empty<string>(),
+                    RoutingFamilies = new[] { "ad_domain", "public_domain" },
+                    FamilyActions = new[] {
+                        new SessionRoutingFamilyActionSummaryDto {
+                            Family = "ad_domain",
+                            ActionId = "act_domain_scope_ad",
+                            ToolCount = 2
+                        }
+                    },
+                    Skills = new[] { "ad_domain.act_domain_scope_ad" },
+                    HealthyTools = new[] { "unit_test_tool" },
+                    RemoteReachabilityMode = "remote_capable"
+                },
                 RoutingCatalog = new SessionRoutingCatalogDiagnosticsDto {
                     TotalTools = 8,
                     RoutingAwareTools = 8,
@@ -114,6 +132,11 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal("[plugin] path_not_found path='C:\\plugins\\missing'", policy.StartupWarnings[0]);
         Assert.Equal(2, policy.PluginSearchPaths.Length);
         Assert.Equal("C:\\Support\\GitHub\\IntelligenceX\\plugins", policy.PluginSearchPaths[1]);
+        var capabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(policy.CapabilitySnapshot);
+        Assert.True(capabilitySnapshot.ToolingAvailable);
+        Assert.Equal(8, capabilitySnapshot.RegisteredTools);
+        Assert.Empty(capabilitySnapshot.EnabledPackIds);
+        Assert.Equal("unit_test_tool", capabilitySnapshot.HealthyTools[0]);
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(policy.StartupBootstrap);
         Assert.Equal(4120, startupBootstrap.TotalMs);
         Assert.Equal(3988, startupBootstrap.PackLoadMs);

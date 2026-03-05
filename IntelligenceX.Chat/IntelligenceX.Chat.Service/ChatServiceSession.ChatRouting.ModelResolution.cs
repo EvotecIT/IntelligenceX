@@ -213,43 +213,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void AppendRuntimeCapabilityHandshake(StringBuilder runtimeIdentity) {
-        var enabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(Array.Empty<string>());
-        var routingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(Array.Empty<string>());
-        var skills = ResolveWorkingMemoryCapabilitySkills(Array.Empty<string>());
-        var healthyToolNames = ResolveWorkingMemoryCapabilityHealthyToolNames(
-            Array.Empty<string>(),
-            Array.Empty<string>());
-        var registeredToolCount = Math.Max(0, _routingCatalogDiagnostics.TotalTools);
-        var enabledPackCount = enabledPackIds.Length;
-
-        runtimeIdentity.AppendLine();
-        runtimeIdentity.AppendLine("[Capability snapshot]");
-        runtimeIdentity.AppendLine(CapabilitySnapshotMarker);
-        runtimeIdentity.AppendLine("registered_tools: " + registeredToolCount);
-        runtimeIdentity.AppendLine("enabled_pack_count: " + enabledPackCount);
-        if (enabledPackIds.Length > 0) {
-            runtimeIdentity.AppendLine("enabled_packs: " + string.Join(", ", enabledPackIds));
-        }
-
-        if (routingFamilies.Length > 0) {
-            runtimeIdentity.AppendLine("routing_families: " + string.Join(", ", routingFamilies));
-        }
-
-        if (healthyToolNames.Length > 0) {
-            runtimeIdentity.AppendLine("healthy_tools: " + string.Join(", ", healthyToolNames));
-        }
-
-        runtimeIdentity.AppendLine("Treat this capability snapshot as the authoritative runtime tool context for this turn.");
-
-        runtimeIdentity.AppendLine();
-        runtimeIdentity.AppendLine("[Skills snapshot]");
-        runtimeIdentity.AppendLine(SkillsSnapshotMarker);
-        runtimeIdentity.AppendLine("skill_count: " + skills.Length);
-        if (skills.Length > 0) {
-            runtimeIdentity.AppendLine("skills: " + string.Join(", ", skills));
-        }
-
-        runtimeIdentity.AppendLine("Treat this skills snapshot as the authoritative reusable skill inventory for this turn.");
+        AppendCapabilitySnapshotPromptBlock(runtimeIdentity, BuildRuntimeCapabilitySnapshot());
     }
 
     private static string BuildCompatibleRuntimeNoTextDirectRetryPrompt(string userRequest) {

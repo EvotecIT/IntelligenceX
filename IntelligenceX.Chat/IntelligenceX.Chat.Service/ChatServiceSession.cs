@@ -333,6 +333,7 @@ internal sealed partial class ChatServiceSession {
                     case HelloRequest:
                         var helloStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask) ?? startupToolingBootstrapTask;
                         var helloStartupWarnings = BuildHelloStartupWarnings(helloStartupToolingBootstrapTask);
+                        var helloCapabilitySnapshot = BuildRuntimeCapabilitySnapshot();
                         await WriteAsync(writer, new HelloMessage {
                             Kind = ChatServiceMessageKind.Response,
                             RequestId = request.RequestId,
@@ -346,7 +347,9 @@ internal sealed partial class ChatServiceSession {
                                 _startupBootstrap,
                                 _pluginSearchPaths,
                                 _runtimePolicyDiagnostics,
-                                _routingCatalogDiagnostics)
+                                _routingCatalogDiagnostics,
+                                healthyToolNames: helloCapabilitySnapshot.HealthyTools,
+                                remoteReachabilityMode: helloCapabilitySnapshot.RemoteReachabilityMode)
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 

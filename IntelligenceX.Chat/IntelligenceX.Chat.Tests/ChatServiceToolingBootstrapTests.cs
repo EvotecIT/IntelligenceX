@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Service;
@@ -189,6 +190,17 @@ public sealed class ChatServiceToolingBootstrapTests {
                     PluginSearchPaths = Array.Empty<string>(),
                     RuntimePolicyDiagnostics = diagnostics,
                     RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "unit_test_tool" }
+                    },
                     ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
                 });
 
@@ -197,6 +209,64 @@ public sealed class ChatServiceToolingBootstrapTests {
             var toolDefinition = Assert.Single(persistedSnapshot.ToolDefinitions);
             Assert.Equal("unit_test_tool", toolDefinition.Name);
             Assert.Equal("unit test tool definition", toolDefinition.Description);
+            Assert.Equal("unit_test_tool", Assert.Single(persistedSnapshot.CapabilitySnapshot.HealthyTools));
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void ToolingBootstrapCache_PersistedSnapshotJson_IncludesCapabilitySnapshot() {
+        var cachePath = Path.Combine(
+            Path.GetTempPath(),
+            "IntelligenceX.Chat.Tests",
+            "tooling-cache-capability-json-" + Guid.NewGuid().ToString("N") + ".json");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            const string cacheKey = "unit-test-capability-json";
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                cacheKey,
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = Array.Empty<ToolDefinitionDto>(),
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 0,
+                        EnabledPackCount = 0,
+                        ToolingAvailable = false,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = Array.Empty<string>()
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                });
+
+            using var document = JsonDocument.Parse(File.ReadAllText(cachePath));
+            Assert.True(document.RootElement.TryGetProperty("CapabilitySnapshot", out var capabilitySnapshot));
+            Assert.False(capabilitySnapshot.GetProperty("ToolingAvailable").GetBoolean());
         } finally {
             try {
                 if (File.Exists(cachePath)) {

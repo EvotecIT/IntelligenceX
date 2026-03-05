@@ -13,14 +13,8 @@ internal sealed partial class ChatServiceSession {
     private const int MaxWorkingMemoryEvidenceLines = 3;
     private const int MaxWorkingMemoryEvidenceChars = 220;
     private const int MaxWorkingMemoryAugmentedRequestChars = 1600;
-    private const int MaxWorkingMemoryCapabilityPackIds = 8;
-    private const int MaxWorkingMemoryCapabilityFamilies = 6;
-    private const int MaxWorkingMemoryCapabilitySkills = 8;
-    private const int MaxWorkingMemoryCapabilityHealthyTools = 12;
     private static readonly TimeSpan WorkingMemoryContextMaxAge = TimeSpan.FromHours(24);
     private const string WorkingMemoryMarker = "ix:working-memory:v1";
-    private const string CapabilitySnapshotMarker = "ix:capability-snapshot:v1";
-    private const string SkillsSnapshotMarker = "ix:skills:v1";
     private readonly object _workingMemoryCheckpointLock = new();
     private readonly Dictionary<string, WorkingMemoryCheckpoint> _workingMemoryCheckpointByThreadId = new(StringComparer.Ordinal);
 
@@ -387,7 +381,7 @@ internal sealed partial class ChatServiceSession {
             .Where(static pack => pack.Enabled)
             .Select(static pack => NormalizePackId(pack.Id))
             .Where(static packId => packId.Length > 0);
-        var normalized = NormalizeDistinctStrings(enabledPackIds, MaxWorkingMemoryCapabilityPackIds);
+        var normalized = NormalizeDistinctStrings(enabledPackIds, MaxCapabilitySnapshotPackIds);
         if (normalized.Length > 0) {
             return normalized;
         }
@@ -396,18 +390,18 @@ internal sealed partial class ChatServiceSession {
             (fallbackEnabledPackIds ?? Array.Empty<string>())
             .Select(static packId => NormalizePackId(packId))
             .Where(static packId => packId.Length > 0),
-            MaxWorkingMemoryCapabilityPackIds);
+            MaxCapabilitySnapshotPackIds);
     }
 
     private string[] ResolveWorkingMemoryCapabilityRoutingFamilies(IReadOnlyList<string> fallbackRoutingFamilies) {
         var routingFamilies = _routingCatalogDiagnostics.FamilyActions
             .Select(static summary => summary.Family);
-        var normalized = NormalizeWorkingMemoryCapabilityFamilies(routingFamilies);
+        var normalized = NormalizeCapabilitySnapshotRoutingFamilies(routingFamilies);
         if (normalized.Length > 0) {
             return normalized;
         }
 
-        return NormalizeWorkingMemoryCapabilityFamilies(fallbackRoutingFamilies ?? Array.Empty<string>());
+        return NormalizeCapabilitySnapshotRoutingFamilies(fallbackRoutingFamilies ?? Array.Empty<string>());
     }
 
     private string[] ResolveWorkingMemoryCapabilitySkills(IReadOnlyList<string> fallbackSkills) {
@@ -420,15 +414,12 @@ internal sealed partial class ChatServiceSession {
             .ThenBy(static summary => summary.ActionId, StringComparer.OrdinalIgnoreCase)
             .Select(static summary => BuildSkillSnapshotValue(summary.Family, summary.ActionId))
             .Where(static skill => skill.Length > 0);
-        var normalized = NormalizeDistinctStrings(skills, MaxWorkingMemoryCapabilitySkills);
+        var normalized = NormalizeCapabilitySnapshotSkills(skills);
         if (normalized.Length > 0) {
             return normalized;
         }
 
-        return NormalizeDistinctStrings(
-            (fallbackSkills ?? Array.Empty<string>())
-            .Select(static skill => NormalizeSkillSnapshotValue(skill)),
-            MaxWorkingMemoryCapabilitySkills);
+        return NormalizeCapabilitySnapshotSkills(fallbackSkills ?? Array.Empty<string>());
     }
 
     private static string BuildSkillSnapshotValue(string family, string actionId) {
@@ -467,23 +458,6 @@ internal sealed partial class ChatServiceSession {
         return normalized;
     }
 
-    private static string[] NormalizeWorkingMemoryCapabilityFamilies(IEnumerable<string> values) {
-        if (values is null) {
-            return Array.Empty<string>();
-        }
-
-        var families = new List<string>();
-        foreach (var value in values) {
-            if (!TryNormalizeDomainIntentFamily(value, out var normalizedFamily)) {
-                continue;
-            }
-
-            families.Add(normalizedFamily);
-        }
-
-        return NormalizeDistinctStrings(families, MaxWorkingMemoryCapabilityFamilies);
-    }
-
     private string[] ResolveWorkingMemoryCapabilityHealthyToolNames(
         IReadOnlyList<string> recentToolNames,
         IReadOnlyList<string> fallbackHealthyToolNames) {
@@ -506,7 +480,7 @@ internal sealed partial class ChatServiceSession {
                 .OrderByDescending(static pair => pair.SeenUtc)
                 .ThenBy(static pair => pair.ToolName, StringComparer.OrdinalIgnoreCase)
                 .Select(static pair => pair.ToolName)
-                .Take(MaxWorkingMemoryCapabilityHealthyTools)
+                .Take(MaxCapabilitySnapshotHealthyTools)
                 .ToArray();
             if (healthyFromStats.Length > 0) {
                 candidates.AddRange(healthyFromStats);
@@ -517,7 +491,7 @@ internal sealed partial class ChatServiceSession {
             candidates.AddRange(fallbackHealthyToolNames);
         }
 
-        return NormalizeDistinctStrings(candidates, MaxWorkingMemoryCapabilityHealthyTools);
+        return NormalizeCapabilitySnapshotHealthyToolNames(candidates);
     }
 
     private static bool TryReadIntentAnchorFromWorkingMemoryPrompt(string routedUserRequest, out string intentAnchor) {
@@ -679,10 +653,10 @@ internal sealed partial class ChatServiceSession {
                 (enabledPackIds ?? Array.Empty<string>())
                 .Select(static packId => NormalizePackId(packId))
                 .Where(static packId => packId.Length > 0),
-                MaxWorkingMemoryCapabilityPackIds),
-            CapabilityRoutingFamilies: NormalizeWorkingMemoryCapabilityFamilies(routingFamilies ?? Array.Empty<string>()),
+                MaxCapabilitySnapshotPackIds),
+            CapabilityRoutingFamilies: NormalizeCapabilitySnapshotRoutingFamilies(routingFamilies ?? Array.Empty<string>()),
             CapabilitySkills: ResolveWorkingMemoryCapabilitySkills(skills ?? Array.Empty<string>()),
-            CapabilityHealthyToolNames: NormalizeDistinctStrings(healthyToolNames ?? Array.Empty<string>(), MaxWorkingMemoryCapabilityHealthyTools),
+            CapabilityHealthyToolNames: NormalizeCapabilitySnapshotHealthyToolNames(healthyToolNames ?? Array.Empty<string>()),
             SeenUtcTicks: seenUtcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks));
         UpsertWorkingMemoryCheckpoint(threadId, checkpoint);
     }

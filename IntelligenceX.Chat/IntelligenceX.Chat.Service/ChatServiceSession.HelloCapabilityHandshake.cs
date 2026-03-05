@@ -33,33 +33,33 @@ internal sealed partial class ChatServiceSession {
     }
 
     private string BuildHelloCapabilityHandshakeWarning() {
-        var enabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(Array.Empty<string>());
-        var routingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(Array.Empty<string>());
-        var skills = ResolveWorkingMemoryCapabilitySkills(Array.Empty<string>());
-        var registeredToolCount = Math.Max(0, _routingCatalogDiagnostics.TotalTools);
-        var remoteReachabilityMode = ResolveHelloRemoteReachabilityMode();
-        var allowedRootCount = Math.Max(0, _options.AllowedRoots.Count);
+        var snapshot = BuildRuntimeCapabilitySnapshot();
 
         var warning = new StringBuilder(256);
         warning.Append(StartupCapabilityHandshakePrefix);
         warning.Append("marker='").Append(CapabilitySnapshotMarker).Append('\'');
-        warning.Append(" enabled_pack_count='").Append(enabledPackIds.Length).Append('\'');
-        warning.Append(" registered_tools='").Append(registeredToolCount).Append('\'');
-        warning.Append(" allowed_roots='").Append(allowedRootCount).Append('\'');
-        warning.Append(" remote_reachability_mode='").Append(remoteReachabilityMode).Append('\'');
+        warning.Append(" enabled_pack_count='").Append(snapshot.EnabledPackCount).Append('\'');
+        warning.Append(" registered_tools='").Append(snapshot.RegisteredTools).Append('\'');
+        warning.Append(" allowed_roots='").Append(snapshot.AllowedRootCount).Append('\'');
+        warning.Append(" tooling_available='").Append(snapshot.ToolingAvailable ? "true" : "false").Append('\'');
+        warning.Append(" remote_reachability_mode='").Append(snapshot.RemoteReachabilityMode ?? "none").Append('\'');
         warning.Append(" skills_marker='").Append(SkillsSnapshotMarker).Append('\'');
-        warning.Append(" skill_count='").Append(skills.Length).Append('\'');
+        warning.Append(" skill_count='").Append(snapshot.Skills.Length).Append('\'');
 
-        if (enabledPackIds.Length > 0) {
-            warning.Append(" enabled_packs='").Append(string.Join(",", enabledPackIds)).Append('\'');
+        if (snapshot.EnabledPackIds.Length > 0) {
+            warning.Append(" enabled_packs='").Append(string.Join(",", snapshot.EnabledPackIds)).Append('\'');
         }
 
-        if (routingFamilies.Length > 0) {
-            warning.Append(" routing_families='").Append(string.Join(",", routingFamilies)).Append('\'');
+        if (snapshot.RoutingFamilies.Length > 0) {
+            warning.Append(" routing_families='").Append(string.Join(",", snapshot.RoutingFamilies)).Append('\'');
         }
 
-        if (skills.Length > 0) {
-            warning.Append(" skills='").Append(string.Join(",", skills)).Append('\'');
+        if (snapshot.Skills.Length > 0) {
+            warning.Append(" skills='").Append(string.Join(",", snapshot.Skills)).Append('\'');
+        }
+
+        if (snapshot.HealthyTools.Length > 0) {
+            warning.Append(" healthy_tools='").Append(string.Join(",", snapshot.HealthyTools)).Append('\'');
         }
 
         return warning.ToString();

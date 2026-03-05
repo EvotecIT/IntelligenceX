@@ -1,4 +1,5 @@
 using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Chat.Service;
@@ -68,7 +69,9 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             null,
             Array.Empty<string>(),
             runtimePolicy,
-            routingCatalog);
+            routingCatalog,
+            healthyToolNames: new[] { "ad_domain_lookup" },
+            remoteReachabilityMode: "remote_capable");
 
         var hello = new HelloMessage {
             Kind = ChatServiceMessageKind.Response,
@@ -119,6 +122,16 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 .GetProperty("familyActions")[0]
                 .GetProperty("actionId")
                 .GetString());
+
+        var capabilitySnapshot = serializedPolicy.GetProperty("capabilitySnapshot");
+        Assert.True(capabilitySnapshot.GetProperty("toolingAvailable").GetBoolean());
+        Assert.Equal(12, capabilitySnapshot.GetProperty("registeredTools").GetInt32());
+        Assert.Equal(0, capabilitySnapshot.GetProperty("enabledPackCount").GetInt32());
+        Assert.Equal("remote_capable", capabilitySnapshot.GetProperty("remoteReachabilityMode").GetString());
+        Assert.Equal(2, capabilitySnapshot.GetProperty("routingFamilies").GetArrayLength());
+        Assert.Equal(2, capabilitySnapshot.GetProperty("familyActions").GetArrayLength());
+        Assert.Equal(2, capabilitySnapshot.GetProperty("skills").GetArrayLength());
+        Assert.Equal("ad_domain_lookup", capabilitySnapshot.GetProperty("healthyTools")[0].GetString());
     }
 
     [Fact]
