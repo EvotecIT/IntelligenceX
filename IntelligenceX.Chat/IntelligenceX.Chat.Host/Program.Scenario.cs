@@ -32,16 +32,15 @@ internal static partial class Program {
     };
 
     private sealed class ChatScenarioDefinition {
-        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns) {
-            Name = string.IsNullOrWhiteSpace(name) ? "scenario" : name.Trim();
-            Turns = turns ?? Array.Empty<ChatScenarioTurn>();
-            MaxPhaseP95DurationMs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        }
+        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns)
+            : this(name, turns, null) { }
 
-        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns, IReadOnlyDictionary<string, int> maxPhaseP95DurationMs) {
+        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns, IReadOnlyDictionary<string, int>? maxPhaseP95DurationMs) {
             Name = string.IsNullOrWhiteSpace(name) ? "scenario" : name.Trim();
             Turns = turns ?? Array.Empty<ChatScenarioTurn>();
-            MaxPhaseP95DurationMs = maxPhaseP95DurationMs ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            MaxPhaseP95DurationMs = maxPhaseP95DurationMs is null
+                ? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, int>(maxPhaseP95DurationMs, StringComparer.OrdinalIgnoreCase);
         }
 
         public string Name { get; }
