@@ -123,6 +123,134 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_SustainsFiveAutonomousToolRoundsWithoutUserReprompt() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => BuildAutonomySoakToolCallResponse("call_autonomy_1", "step_1"),
+            2 => BuildAutonomySoakToolCallResponse("call_autonomy_2", "step_2"),
+            3 => BuildAutonomySoakToolCallResponse("call_autonomy_3", "step_3"),
+            4 => BuildAutonomySoakToolCallResponse("call_autonomy_4", "step_4"),
+            5 => BuildAutonomySoakToolCallResponse("call_autonomy_5", "step_5"),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-autonomy-soak-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Autonomous 5-round diagnostics completed."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 8,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-autonomy-soak-5-rounds",
+            ThreadId = thread.Id,
+            Text = "Run the diagnostics workflow through all planned rounds to completion.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 8,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = true,
+                MaxReviewPasses = 0,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.Equal(5, statuses.Count(static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(5, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(7, server.ChatCompletionRequestCount);
+        Assert.Equal(1, CountRoleMessages(server.GetChatRequestBody(0), "user"));
+        for (var round = 1; round <= 5; round++) {
+            Assert.True(
+                ContainsToolMessageForCallId(server.GetChatRequestBody(round), "call_autonomy_" + round),
+                "Expected request " + (round + 1) + " to include tool output for call_autonomy_" + round + ".");
+        }
+
+        Assert.Equal(5, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(5, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Autonomous 5-round diagnostics completed.", resultMessage.Text);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(5, resultMessage.Tools!.Calls.Count);
+        Assert.Equal(5, resultMessage.Tools.Outputs.Count);
+
+        static string BuildAutonomySoakToolCallResponse(string callId, string step) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-" + callId,
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = callId,
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            });
+        }
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_UsesStructuredContinuationContractForCompactFollowUpTurn() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => JsonSerializer.Serialize(new {
             id = "chatcmpl-continuation-contract",
