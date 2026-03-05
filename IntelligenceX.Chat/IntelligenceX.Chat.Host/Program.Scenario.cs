@@ -32,16 +32,13 @@ internal static partial class Program {
     };
 
     private sealed class ChatScenarioDefinition {
-        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns) {
-            Name = string.IsNullOrWhiteSpace(name) ? "scenario" : name.Trim();
-            Turns = turns ?? Array.Empty<ChatScenarioTurn>();
-            MaxPhaseP95DurationMs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        }
+        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns)
+            : this(name, turns, null) { }
 
-        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns, IReadOnlyDictionary<string, int> maxPhaseP95DurationMs) {
+        public ChatScenarioDefinition(string name, IReadOnlyList<ChatScenarioTurn> turns, IReadOnlyDictionary<string, int>? maxPhaseP95DurationMs) {
             Name = string.IsNullOrWhiteSpace(name) ? "scenario" : name.Trim();
             Turns = turns ?? Array.Empty<ChatScenarioTurn>();
-            MaxPhaseP95DurationMs = maxPhaseP95DurationMs ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            MaxPhaseP95DurationMs = CopyScenarioThresholdDictionary(maxPhaseP95DurationMs);
         }
 
         public string Name { get; }
@@ -238,5 +235,27 @@ internal static partial class Program {
         public bool ContinueOnError { get; }
         public IReadOnlyList<ScenarioTurnRun> TurnRuns { get; }
         public IReadOnlyList<string> RollupAssertionFailures { get; }
+    }
+
+    private static IReadOnlyDictionary<string, int> CopyScenarioThresholdDictionary(IReadOnlyDictionary<string, int>? source) {
+        if (source is null || source.Count == 0) {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var copy = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in source
+                     .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(static pair => pair.Key, StringComparer.Ordinal)) {
+            var key = (entry.Key ?? string.Empty).Trim();
+            if (key.Length == 0) {
+                continue;
+            }
+
+            // Use a stable ordering so case-colliding keys resolve consistently regardless of caller comparer.
+            // Later ordinal entries overwrite earlier ones, which makes lowercase/canonical spellings win ties.
+            copy[key] = entry.Value;
+        }
+
+        return copy;
     }
 }

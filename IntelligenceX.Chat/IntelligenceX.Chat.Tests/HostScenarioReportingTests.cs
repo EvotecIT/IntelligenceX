@@ -314,6 +314,99 @@ public sealed class HostScenarioReportingTests {
         Assert.Empty(failures);
     }
 
+    [Fact]
+    public void EvaluateScenarioRollupAssertions_FailsWhenConfiguredPhaseKeyCannotBeNormalized() {
+        var scenario = BuildScenarioDefinitionWithRollupThresholds(
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+                ["not-a-real-phase"] = 250
+            });
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, Array.Empty<object>());
+
+        Assert.Contains(failures, value => value.Contains("known phase name", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(failures, value => value.Contains("not-a-real-phase", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioRollupAssertions_FailsWhenConfiguredThresholdIsNegative() {
+        var scenario = BuildScenarioDefinitionWithRollupThresholds(
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+                ["model_plan"] = -5
+            });
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, Array.Empty<object>());
+
+        Assert.Contains(failures, value => value.Contains("model_plan", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(failures, value => value.Contains(">= 0ms", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ChatScenarioDefinition_ConstructorDefensivelyCopiesRollupThresholdDictionary() {
+        var externalThresholds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+            ["model_plan"] = 500
+        };
+        var scenario = BuildScenarioDefinitionWithRollupThresholds(externalThresholds);
+        externalThresholds["model_plan"] = 100;
+        externalThresholds["lane_wait"] = 50;
+
+        var turnRuns = new[] {
+            BuildScenarioTurnRun(
+                index: 1,
+                label: "Turn 1",
+                user: "Run turn one.",
+                assistantText: "Completed turn one.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 300, EventCount = 1 }
+                })
+        };
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, turnRuns);
+
+        Assert.DoesNotContain(failures, value => value.Contains("model_plan", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(failures, value => value.Contains("lane_wait", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ChatScenarioDefinition_ConstructorHandlesCaseCollidingThresholdKeysDeterministically() {
+        var externalThresholds = new Dictionary<string, int>(StringComparer.Ordinal) {
+            ["model_plan"] = 500,
+            ["Model_Plan"] = 200
+        };
+        var scenario = BuildScenarioDefinitionWithRollupThresholds(externalThresholds);
+        var turnRuns = new[] {
+            BuildScenarioTurnRun(
+                index: 1,
+                label: "Turn 1",
+                user: "Run turn one.",
+                assistantText: "Completed turn one.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 600, EventCount = 1 }
+                })
+        };
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, turnRuns);
+
+        Assert.Contains(failures, value => value.Contains("p95 <= 500ms", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(failures, value => value.Contains("p95 <= 200ms", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static object BuildScenarioDefinitionWithRollupThresholds(IReadOnlyDictionary<string, int> maxPhaseP95DurationMs) {
+        var programType = ResolveHostProgramType();
+        var scenarioDefinitionType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ChatScenarioDefinition", throwOnError: true);
+        var turnType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ChatScenarioTurn", throwOnError: true);
+        Assert.NotNull(scenarioDefinitionType);
+        Assert.NotNull(turnType);
+
+        var emptyTurns = Array.CreateInstance(turnType!, 0);
+        var scenario = Activator.CreateInstance(scenarioDefinitionType!, new object?[] {
+            "scenario-rollup-thresholds",
+            emptyTurns,
+            maxPhaseP95DurationMs
+        });
+        Assert.NotNull(scenario);
+        return scenario!;
+    }
+
     private static object BuildScenarioRunReport(IReadOnlyList<object> turnRuns, IReadOnlyList<string>? rollupAssertionFailures = null) {
         var programType = ResolveHostProgramType();
         var turnRunType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ScenarioTurnRun", throwOnError: true);
