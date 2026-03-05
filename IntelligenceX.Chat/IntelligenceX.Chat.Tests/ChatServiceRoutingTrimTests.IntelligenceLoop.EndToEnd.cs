@@ -123,6 +123,90 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_CompletesWithEmptyToolRegistryAndOmitsToolSchemas() {
+        using var server = new DeterministicCompatibleHttpServer(_ => JsonSerializer.Serialize(new {
+            id = "chatcmpl-plugin-isolated",
+            @object = "chat.completion",
+            choices = new[] {
+                new {
+                    index = 0,
+                    message = new {
+                        role = "assistant",
+                        content = "Completed without any plugin tools loaded."
+                    },
+                    finish_reason = "stop"
+                }
+            }
+        }));
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        SetSessionRegistry(session, new ToolRegistry());
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-plugin-isolated-empty-registry",
+            ThreadId = thread.Id,
+            Text = "Summarize current session status in one short sentence.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = true,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        var statuses = ParseStatuses(capture.Snapshot());
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_call", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+
+        Assert.InRange(server.ChatCompletionRequestCount, 1, 2);
+        for (var requestIndex = 0; requestIndex < server.ChatCompletionRequestCount; requestIndex++) {
+            var requestBody = server.GetChatRequestBody(requestIndex);
+            Assert.False(HasToolsArrayProperty(requestBody));
+            Assert.Equal(0, CountRoleMessages(requestBody, "tool"));
+        }
+
+        Assert.Equal(0, GetPropertyValue<int>(runResult, "ToolRounds"));
+        Assert.Equal(0, GetPropertyValue<int>(runResult, "ToolCallsCount"));
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Equal("Completed without any plugin tools loaded.", resultMessage.Text);
+        Assert.Null(resultMessage.Tools);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_SustainsFiveAutonomousToolRoundsWithoutUserReprompt() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => BuildAutonomySoakToolCallResponse("call_autonomy_1", "step_1"),
