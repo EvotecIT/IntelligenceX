@@ -103,6 +103,7 @@ internal static partial class Program {
             continue_on_error = report.ContinueOnError,
             passed_turns = report.TurnRuns.Count(static turn => turn.Success),
             total_turns = report.TurnRuns.Count,
+            rollup_assertion_failures = report.RollupAssertionFailures.Count == 0 ? null : report.RollupAssertionFailures,
             phase_timing_rollups = phaseTimingRollups.Count == 0
                 ? null
                 : phaseTimingRollups
@@ -200,6 +201,9 @@ internal static partial class Program {
         sb.AppendLine($"- Completed (UTC): {report.CompletedAtUtc:yyyy-MM-ddTHH:mm:ss.fffZ}");
         sb.AppendLine($"- Continue on error: {report.ContinueOnError}");
         sb.AppendLine($"- Passed turns: {report.TurnRuns.Count(static t => t.Success)}/{report.TurnRuns.Count}");
+        if (report.RollupAssertionFailures.Count > 0) {
+            sb.AppendLine($"- Rollup assertion failures: {report.RollupAssertionFailures.Count}");
+        }
         if (phaseTimingRollups.Count > 0) {
             var rollupSummary = phaseTimingRollups
                 .Select(static rollup =>
@@ -208,6 +212,15 @@ internal static partial class Program {
             sb.AppendLine($"- Phase timing rollups: {string.Join("; ", rollupSummary)}");
         }
         sb.AppendLine();
+
+        if (report.RollupAssertionFailures.Count > 0) {
+            sb.AppendLine("## Scenario Rollup Assertion Failures");
+            sb.AppendLine();
+            for (var i = 0; i < report.RollupAssertionFailures.Count; i++) {
+                sb.AppendLine("- " + report.RollupAssertionFailures[i]);
+            }
+            sb.AppendLine();
+        }
 
         for (var i = 0; i < report.TurnRuns.Count; i++) {
             var turn = report.TurnRuns[i];
@@ -284,14 +297,22 @@ internal static partial class Program {
     }
 
     private static IReadOnlyList<ScenarioPhaseTimingRollup> BuildScenarioPhaseTimingRollups(ScenarioRunReport report) {
-        if (report is null || report.TurnRuns.Count == 0) {
+        if (report is null) {
+            return Array.Empty<ScenarioPhaseTimingRollup>();
+        }
+
+        return BuildScenarioPhaseTimingRollups(report.TurnRuns);
+    }
+
+    private static IReadOnlyList<ScenarioPhaseTimingRollup> BuildScenarioPhaseTimingRollups(IReadOnlyList<ScenarioTurnRun> turnRuns) {
+        if (turnRuns is null || turnRuns.Count == 0) {
             return Array.Empty<ScenarioPhaseTimingRollup>();
         }
 
         var durationsByPhase = new Dictionary<string, List<long>>(StringComparer.OrdinalIgnoreCase);
         var totalEventsByPhase = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-        for (var turnIndex = 0; turnIndex < report.TurnRuns.Count; turnIndex++) {
-            var phaseTimings = report.TurnRuns[turnIndex].Result?.Metrics.PhaseTimings;
+        for (var turnIndex = 0; turnIndex < turnRuns.Count; turnIndex++) {
+            var phaseTimings = turnRuns[turnIndex].Result?.Metrics.PhaseTimings;
             if (phaseTimings is not { Count: > 0 }) {
                 continue;
             }

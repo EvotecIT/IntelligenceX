@@ -399,6 +399,32 @@ Check AD0 reboot
         Assert.Equal(1, ReadNullableIntProperty(turns[1], "MaxDuplicateToolCallSignatures"));
     }
 
+    [Fact]
+    public void ParseChatScenarioDefinition_WithScenarioRollupP95Thresholds_ParsesAndNormalizesPhases() {
+        const string json = """
+{
+  "name": "scenario-rollup-thresholds",
+  "max_phase_p95_duration_ms": {
+    "model-plan": 700,
+    "tool execute": 350
+  },
+  "turns": [
+    {
+      "user": "Run scenario turn."
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "scenario-rollup-thresholds");
+
+        var rollupThresholds = ReadIntDictionaryProperty(scenario, "MaxPhaseP95DurationMs");
+        Assert.Equal(2, rollupThresholds.Count);
+        Assert.True(rollupThresholds.TryGetValue("model_plan", out var modelPlanThreshold));
+        Assert.Equal(700, modelPlanThreshold);
+        Assert.True(rollupThresholds.TryGetValue("tool_execute", out var toolExecuteThreshold));
+        Assert.Equal(350, toolExecuteThreshold);
+    }
+
     private static object InvokeParseScenarioDefinition(string raw, string fallbackName) {
         var programType = ResolveHostProgramType();
         var parseMethod = programType.GetMethod("ParseChatScenarioDefinition", BindingFlags.NonPublic | BindingFlags.Static);

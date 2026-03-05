@@ -102,6 +102,14 @@ internal static partial class Program {
         }
 
         var completedAtUtc = DateTime.UtcNow;
+        var rollupAssertionFailures = EvaluateScenarioRollupAssertions(scenario, turnRuns);
+        if (rollupAssertionFailures.Count > 0) {
+            failed = true;
+            foreach (var rollupAssertionFailure in rollupAssertionFailures) {
+                Console.WriteLine("Scenario rollup assertion failed: " + rollupAssertionFailure);
+            }
+            Console.WriteLine();
+        }
         var reportPath = ResolveScenarioReportPath(options, scenarioPath, scenario.Name, startedAtUtc);
         var report = new ScenarioRunReport(
             scenarioName: scenario.Name,
@@ -109,7 +117,8 @@ internal static partial class Program {
             startedAtUtc: startedAtUtc,
             completedAtUtc: completedAtUtc,
             continueOnError: options.ScenarioContinueOnError,
-            turnRuns: turnRuns);
+            turnRuns: turnRuns,
+            rollupAssertionFailures: rollupAssertionFailures);
         try {
             WriteScenarioReportMarkdown(reportPath, report);
             Console.WriteLine($"Scenario report saved: {reportPath}");

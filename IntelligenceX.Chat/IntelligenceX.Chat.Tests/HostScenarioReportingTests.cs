@@ -109,7 +109,212 @@ public sealed class HostScenarioReportingTests {
         }
     }
 
-    private static object BuildScenarioRunReport(IReadOnlyList<object> turnRuns) {
+    [Fact]
+    public void BuildScenarioReportMarkdown_IncludesScenarioRollupAssertionFailures() {
+        var report = BuildScenarioRunReport(
+            new[] {
+                BuildScenarioTurnRun(
+                    index: 1,
+                    label: "Turn 1",
+                    user: "Run model planning.",
+                    assistantText: "Completed turn 1.",
+                    phaseTimings: new[] {
+                        new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 800, EventCount = 1 }
+                    })
+            },
+            rollupAssertionFailures: new[] {
+                "Expected scenario rollup phase 'model_plan' p95 <= 500ms; observed 800ms across 1 sample(s)."
+            });
+
+        var markdown = InvokeBuildScenarioReportMarkdown(report);
+
+        Assert.Contains("Rollup assertion failures: 1", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Scenario Rollup Assertion Failures", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("model_plan", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("p95 <= 500ms", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WriteScenarioReportJson_EmitsScenarioRollupAssertionFailures() {
+        var report = BuildScenarioRunReport(
+            new[] {
+                BuildScenarioTurnRun(
+                    index: 1,
+                    label: "Turn 1",
+                    user: "Run model planning.",
+                    assistantText: "Completed turn 1.",
+                    phaseTimings: new[] {
+                        new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 800, EventCount = 1 }
+                    })
+            },
+            rollupAssertionFailures: new[] {
+                "Expected scenario rollup phase 'model_plan' p95 <= 500ms; observed 800ms across 1 sample(s)."
+            });
+
+        var reportPath = Path.Combine(Path.GetTempPath(), $"ix-chat-rollup-assertions-{Guid.NewGuid():N}.json");
+        try {
+            InvokeWriteScenarioReportJson(reportPath, report);
+            using var document = JsonDocument.Parse(File.ReadAllText(reportPath));
+            var root = document.RootElement;
+
+            Assert.True(root.TryGetProperty("rollup_assertion_failures", out var failuresElement));
+            Assert.Equal(JsonValueKind.Array, failuresElement.ValueKind);
+            Assert.Single(failuresElement.EnumerateArray());
+            Assert.Contains("model_plan", failuresElement[0].GetString(), StringComparison.OrdinalIgnoreCase);
+        } finally {
+            try {
+                if (File.Exists(reportPath)) {
+                    File.Delete(reportPath);
+                }
+            } catch {
+                // Best-effort cleanup for temp test artifacts.
+            }
+        }
+    }
+
+    [Fact]
+    public void EvaluateScenarioRollupAssertions_FailsWhenP95ExceedsConfiguredLimit() {
+        const string json = """
+{
+  "name": "scenario-rollup-guardrail-fail",
+  "max_phase_p95_duration_ms": {
+    "model_plan": 500
+  },
+  "turns": [
+    {
+      "user": "Run turn one."
+    },
+    {
+      "user": "Run turn two."
+    },
+    {
+      "user": "Run turn three."
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "scenario-rollup-guardrail-fail");
+        var turnRuns = new[] {
+            BuildScenarioTurnRun(
+                index: 1,
+                label: "Turn 1",
+                user: "Run turn one.",
+                assistantText: "Completed turn one.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 100, EventCount = 1 }
+                }),
+            BuildScenarioTurnRun(
+                index: 2,
+                label: "Turn 2",
+                user: "Run turn two.",
+                assistantText: "Completed turn two.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 700, EventCount = 1 }
+                }),
+            BuildScenarioTurnRun(
+                index: 3,
+                label: "Turn 3",
+                user: "Run turn three.",
+                assistantText: "Completed turn three.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 200, EventCount = 1 }
+                })
+        };
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, turnRuns);
+
+        Assert.Contains(failures, value => value.Contains("model_plan", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(failures, value => value.Contains("p95 <= 500ms", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioRollupAssertions_FailsWhenConfiguredPhaseIsMissing() {
+        const string json = """
+{
+  "name": "scenario-rollup-guardrail-missing",
+  "max_phase_p95_duration_ms": {
+    "lane_wait": 250
+  },
+  "turns": [
+    {
+      "user": "Run turn one."
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "scenario-rollup-guardrail-missing");
+        var turnRuns = new[] {
+            BuildScenarioTurnRun(
+                index: 1,
+                label: "Turn 1",
+                user: "Run turn one.",
+                assistantText: "Completed turn one.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 100, EventCount = 1 }
+                })
+        };
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, turnRuns);
+
+        Assert.Contains(failures, value => value.Contains("lane_wait", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(failures, value => value.Contains("to be present", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EvaluateScenarioRollupAssertions_PassesWhenP95IsWithinLimit() {
+        const string json = """
+{
+  "name": "scenario-rollup-guardrail-pass",
+  "max_phase_p95_duration_ms": {
+    "model_plan": 700
+  },
+  "turns": [
+    {
+      "user": "Run turn one."
+    },
+    {
+      "user": "Run turn two."
+    },
+    {
+      "user": "Run turn three."
+    }
+  ]
+}
+""";
+        var scenario = InvokeParseScenarioDefinition(json, "scenario-rollup-guardrail-pass");
+        var turnRuns = new[] {
+            BuildScenarioTurnRun(
+                index: 1,
+                label: "Turn 1",
+                user: "Run turn one.",
+                assistantText: "Completed turn one.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 100, EventCount = 1 }
+                }),
+            BuildScenarioTurnRun(
+                index: 2,
+                label: "Turn 2",
+                user: "Run turn two.",
+                assistantText: "Completed turn two.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 700, EventCount = 1 }
+                }),
+            BuildScenarioTurnRun(
+                index: 3,
+                label: "Turn 3",
+                user: "Run turn three.",
+                assistantText: "Completed turn three.",
+                phaseTimings: new[] {
+                    new TurnPhaseTimingDto { Phase = "model_plan", DurationMs = 200, EventCount = 1 }
+                })
+        };
+
+        var failures = InvokeEvaluateScenarioRollupAssertions(scenario, turnRuns);
+
+        Assert.Empty(failures);
+    }
+
+    private static object BuildScenarioRunReport(IReadOnlyList<object> turnRuns, IReadOnlyList<string>? rollupAssertionFailures = null) {
         var programType = ResolveHostProgramType();
         var turnRunType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ScenarioTurnRun", throwOnError: true);
         var runReportType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ScenarioRunReport", throwOnError: true);
@@ -128,7 +333,8 @@ public sealed class HostScenarioReportingTests {
             startedAtUtc,
             completedAtUtc,
             false,
-            typedTurnRuns
+            typedTurnRuns,
+            rollupAssertionFailures ?? Array.Empty<string>()
         });
         Assert.NotNull(report);
         return report!;
@@ -244,6 +450,34 @@ public sealed class HostScenarioReportingTests {
         var method = programType.GetMethod("WriteScenarioReportJson", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         method!.Invoke(null, new[] { reportPath, report });
+    }
+
+    private static object InvokeParseScenarioDefinition(string raw, string fallbackName) {
+        var programType = ResolveHostProgramType();
+        var parseMethod = programType.GetMethod("ParseChatScenarioDefinition", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(parseMethod);
+        var result = parseMethod!.Invoke(null, new object?[] { raw, fallbackName });
+        Assert.NotNull(result);
+        return result!;
+    }
+
+    private static IReadOnlyList<string> InvokeEvaluateScenarioRollupAssertions(object scenario, IReadOnlyList<object> turnRuns) {
+        var programType = ResolveHostProgramType();
+        var evaluateMethod = programType.GetMethod("EvaluateScenarioRollupAssertions", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(evaluateMethod);
+
+        var turnRunType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ScenarioTurnRun", throwOnError: true);
+        Assert.NotNull(turnRunType);
+        var typedTurnRuns = Array.CreateInstance(turnRunType!, turnRuns.Count);
+        for (var i = 0; i < turnRuns.Count; i++) {
+            typedTurnRuns.SetValue(turnRuns[i], i);
+        }
+
+        var result = evaluateMethod!.Invoke(null, new object?[] { scenario, typedTurnRuns });
+        var enumerable = Assert.IsAssignableFrom<System.Collections.IEnumerable>(result);
+        return enumerable.Cast<object>()
+            .Select(static value => value?.ToString() ?? string.Empty)
+            .ToList();
     }
 
     private static Type ResolveHostProgramType() {
