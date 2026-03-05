@@ -31,7 +31,7 @@ graph TD
 - [ ] Add deterministic status-order tests for default and timeout flows.
 
 ## Lane B - Plugin Isolation
-- [ ] Remove hardcoded built-in assembly allowlist from bootstrap path.
+- [x] Remove hardcoded built-in assembly allowlist from bootstrap path.
 - [ ] Move pack-specific runtime option contract to pack-keyed config bag.
 - [ ] Extend architecture guardrail coverage to host/tooling plugin neutrality paths.
 - [ ] Add synthetic pack integration test proving no Chat code edits for new pack discovery.
@@ -59,3 +59,4 @@ graph TD
    - `error`
    - `timeout`
 5. Added timeout-specific error classification path (`chat_timeout`) instead of generic `chat_failed` for turn-timeout cancellations.
+6. Built-in tool assembly default discovery now comes from runtime `IntelligenceX.Tools.*.dll` scanning (no hardcoded static allowlist in bootstrap path), with updated metadata tests.

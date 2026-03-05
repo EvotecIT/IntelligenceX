@@ -11,20 +11,6 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Tooling;
 
 public static partial class ToolPackBootstrap {
-    private static readonly string[] KnownBuiltInToolAssemblyNames = {
-        "IntelligenceX.Tools.ADPlayground",
-        "IntelligenceX.Tools.DnsClientX",
-        "IntelligenceX.Tools.DomainDetective",
-        "IntelligenceX.Tools.Email",
-        "IntelligenceX.Tools.EventLog",
-        "IntelligenceX.Tools.FileSystem",
-        "IntelligenceX.Tools.OfficeIMO",
-        "IntelligenceX.Tools.PowerShell",
-        "IntelligenceX.Tools.ReviewerSetup",
-        "IntelligenceX.Tools.System",
-        "IntelligenceX.Tools.TestimoX"
-    };
-
     /// <summary>
     /// Resolves plugin search roots used by folder-based plugin loading.
     /// </summary>
@@ -173,8 +159,9 @@ public static partial class ToolPackBootstrap {
     private static HashSet<string> ResolveAllowedBuiltInAssemblyNames(ToolPackBootstrapOptions options) {
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (options.UseDefaultBuiltInToolAssemblyNames) {
-            for (var i = 0; i < KnownBuiltInToolAssemblyNames.Length; i++) {
-                var defaultAssemblyName = (KnownBuiltInToolAssemblyNames[i] ?? string.Empty).Trim();
+            var discoveredDefaultAssemblyNames = DiscoverDefaultBuiltInAssemblyNames(options.OnBootstrapWarning);
+            for (var i = 0; i < discoveredDefaultAssemblyNames.Count; i++) {
+                var defaultAssemblyName = (discoveredDefaultAssemblyNames[i] ?? string.Empty).Trim();
                 if (defaultAssemblyName.Length > 0 && IsBuiltInToolAssemblyName(defaultAssemblyName)) {
                     allowed.Add(defaultAssemblyName);
                 }
@@ -206,6 +193,40 @@ public static partial class ToolPackBootstrap {
         }
 
         return allowed;
+    }
+
+    private static IReadOnlyList<string> DiscoverDefaultBuiltInAssemblyNames(Action<string>? onWarning) {
+        var bootstrapAssemblyPath = typeof(ToolPackBootstrap).Assembly.Location;
+        var searchRoot = Path.GetDirectoryName(bootstrapAssemblyPath ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(searchRoot)) {
+            searchRoot = AppContext.BaseDirectory;
+        }
+
+        if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot)) {
+            return Array.Empty<string>();
+        }
+
+        try {
+            var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var assemblyPath in Directory.EnumerateFiles(searchRoot, "IntelligenceX.Tools.*.dll", SearchOption.TopDirectoryOnly)) {
+                var assemblySimpleName = (Path.GetFileNameWithoutExtension(assemblyPath) ?? string.Empty).Trim();
+                if (assemblySimpleName.Length == 0 || !IsBuiltInToolAssemblyName(assemblySimpleName)) {
+                    continue;
+                }
+
+                discovered.Add(assemblySimpleName);
+            }
+
+            return discovered
+                .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } catch (Exception ex) {
+            Warn(
+                onWarning,
+                $"[startup] built_in_pack_default_discovery_failed reason='{NormalizeDisabledReason(ex.Message)}'",
+                shouldWarn: true);
+            return Array.Empty<string>();
+        }
     }
 
     private static bool IsBuiltInToolAssemblyName(string? assemblyName) {
