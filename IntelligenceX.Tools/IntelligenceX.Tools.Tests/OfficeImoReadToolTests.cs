@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -430,5 +431,79 @@ public class OfficeImoReadToolTests {
                 // Best-effort cleanup.
             }
         }
+    }
+
+    [Fact]
+    public void OfficeImoRead_PreviewMarkdown_PreservesRichMarkdownChunks() {
+        var preview = InvokeBuildPreviewMarkdown(
+            chunks: [
+                new OfficeImoChunk {
+                    Id = "chunk-1",
+                    Kind = "markdown",
+                    Markdown = "# SOP\n\n| Name | Value |\n| --- | --- |\n| Alpha | 1 |",
+                    Text = "fallback text"
+                }
+            ],
+            documents: Array.Empty<OfficeImoDocument>(),
+            includeDocumentChunks: false,
+            maxChunks: 6,
+            maxCharsPerChunk: 1800);
+
+        Assert.Contains("# SOP", preview, StringComparison.Ordinal);
+        Assert.Contains("| Name | Value |", preview, StringComparison.Ordinal);
+        Assert.DoesNotContain("```text", preview, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OfficeImoRead_PreviewMarkdown_RendersChunkTablesAsMarkdownTables() {
+        var preview = InvokeBuildPreviewMarkdown(
+            chunks: [
+                new OfficeImoChunk {
+                    Id = "chunk-1",
+                    Kind = "excel",
+                    Tables = [
+                        new OfficeImoChunkTable {
+                            Title = "Extracted table",
+                            Columns = [ "Name", "Value" ],
+                            Rows = [
+                                new[] { "Alpha", "1" },
+                                new[] { "Beta", "2" }
+                            ],
+                            TotalRowCount = 2
+                        }
+                    ]
+                }
+            ],
+            documents: Array.Empty<OfficeImoDocument>(),
+            includeDocumentChunks: false,
+            maxChunks: 6,
+            maxCharsPerChunk: 1800);
+
+        Assert.Contains("### Extracted table", preview, StringComparison.Ordinal);
+        Assert.Contains("| Name | Value |", preview, StringComparison.Ordinal);
+        Assert.Contains("Count: 2", preview, StringComparison.Ordinal);
+    }
+
+    private static string InvokeBuildPreviewMarkdown(
+        IReadOnlyList<OfficeImoChunk> chunks,
+        IReadOnlyList<OfficeImoDocument> documents,
+        bool includeDocumentChunks,
+        int maxChunks,
+        int maxCharsPerChunk) {
+        var method = typeof(OfficeImoReadTool).GetMethod(
+            "BuildPreviewMarkdown",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        var value = method!.Invoke(null, [
+            chunks,
+            documents,
+            includeDocumentChunks,
+            maxChunks,
+            maxCharsPerChunk
+        ]);
+
+        return Assert.IsType<string>(value);
     }
 }

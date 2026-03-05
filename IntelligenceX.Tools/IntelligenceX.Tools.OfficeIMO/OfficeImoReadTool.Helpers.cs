@@ -16,6 +16,9 @@ using OfficeIMO.Reader;
 namespace IntelligenceX.Tools.OfficeIMO;
 
 public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
+    private const int PreviewTableRowLimit = 8;
+    private const int PreviewTablesPerChunkLimit = 2;
+
     private static string BuildPreviewMarkdown(
         IReadOnlyList<OfficeImoChunk> chunks,
         IReadOnlyList<OfficeImoDocument> documents,
@@ -55,19 +58,197 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
         var n = Math.Min(take, chunks.Count);
         for (var i = 0; i < n; i++) {
             var c = chunks[i];
-            var title = $"{i + 1}. {c.Kind} {c.Id}";
-            sb.AppendLine(ToolMarkdown.Heading(4, title));
-            sb.AppendLine();
-
-            var text = c.Markdown ?? c.Text ?? string.Empty;
-            if (text.Length > maxCharsPerChunk) {
-                text = text.Substring(0, maxCharsPerChunk) + "\n\n<!-- truncated -->";
-            }
-            sb.AppendLine(ToolMarkdown.CodeBlock(language: "text", content: text));
+            sb.AppendLine(BuildChunkPreviewMarkdown(c, i + 1, maxCharsPerChunk));
             sb.AppendLine();
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildChunkPreviewMarkdown(OfficeImoChunk chunk, int ordinal, int maxCharsPerChunk) {
+        var title = $"{ordinal}. {chunk.Kind} {chunk.Id}".Trim();
+        var blocks = new List<string> {
+            ToolMarkdown.Heading(4, title)
+        };
+
+        var bodyPreview = BuildChunkBodyPreviewMarkdown(chunk, maxCharsPerChunk);
+        if (!string.IsNullOrWhiteSpace(bodyPreview)) {
+            blocks.Add(bodyPreview);
+        }
+
+        if (chunk.Tables is { Count: > 0 }) {
+            var previewTableCount = Math.Min(PreviewTablesPerChunkLimit, chunk.Tables.Count);
+            for (var i = 0; i < previewTableCount; i++) {
+                blocks.Add(BuildChunkTablePreviewMarkdown(chunk.Tables[i], i + 1));
+            }
+
+            var remaining = chunk.Tables.Count - previewTableCount;
+            if (remaining > 0) {
+                blocks.Add($"Additional tables omitted from preview: {remaining}.");
+            }
+        }
+
+        return ToolMarkdown.JoinBlocks(blocks.ToArray());
+    }
+
+    private static string BuildChunkBodyPreviewMarkdown(OfficeImoChunk chunk, int maxCharsPerChunk) {
+        if (!string.IsNullOrWhiteSpace(chunk.Markdown)) {
+            return TrimMarkdownPreview(chunk.Markdown, maxCharsPerChunk);
+        }
+
+        if (!string.IsNullOrWhiteSpace(chunk.Text)) {
+            var text = TrimTextPreview(chunk.Text, maxCharsPerChunk);
+            return ToolMarkdown.CodeBlock(language: "text", content: text);
+        }
+
+        return "No text preview available.";
+    }
+
+    private static string BuildChunkTablePreviewMarkdown(OfficeImoChunkTable table, int tableIndex) {
+        var columnCount = Math.Max(
+            1,
+            Math.Max(
+                table.Columns?.Count ?? 0,
+                table.Rows is { Count: > 0 } ? table.Rows.Max(static row => row.Count) : 0));
+
+        var headers = BuildPreviewTableHeaders(table, columnCount);
+        var previewRowCount = Math.Min(PreviewTableRowLimit, table.Rows?.Count ?? 0);
+        var previewRows = new List<IReadOnlyList<string>>(previewRowCount);
+        for (var i = 0; i < previewRowCount; i++) {
+            var sourceRow = table.Rows![i];
+            var row = new string[columnCount];
+            for (var c = 0; c < columnCount; c++) {
+                row[c] = c < sourceRow.Count ? sourceRow[c] : string.Empty;
+            }
+            previewRows.Add(row);
+        }
+
+        var title = string.IsNullOrWhiteSpace(table.Title) ? $"Table {tableIndex}" : table.Title.Trim();
+        var totalCount = table.TotalRowCount > 0 ? table.TotalRowCount : table.Rows?.Count ?? 0;
+        var truncated = table.Truncated || (table.Rows?.Count ?? 0) > previewRows.Count;
+
+        return MarkdownTable.Table(
+            title: title,
+            headers: headers,
+            rows: previewRows,
+            totalCount: totalCount,
+            truncated: truncated);
+    }
+
+    private static IReadOnlyList<string> BuildPreviewTableHeaders(OfficeImoChunkTable table, int columnCount) {
+        var headers = new string[columnCount];
+        for (var i = 0; i < columnCount; i++) {
+            if (table.Columns is { Count: > 0 } && i < table.Columns.Count && !string.IsNullOrWhiteSpace(table.Columns[i])) {
+                headers[i] = table.Columns[i]!;
+            } else {
+                headers[i] = $"Column {i + 1}";
+            }
+        }
+
+        return headers;
+    }
+
+    private static string TrimTextPreview(string text, int maxCharsPerChunk) {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxCharsPerChunk) {
+            return text ?? string.Empty;
+        }
+
+        return text.Substring(0, maxCharsPerChunk) + "\n\n<!-- truncated -->";
+    }
+
+    private static string TrimMarkdownPreview(string markdown, int maxCharsPerChunk) {
+        var normalized = NormalizePreviewMarkdown(markdown);
+        if (normalized.Length <= maxCharsPerChunk) {
+            return normalized;
+        }
+
+        var cutoff = normalized.LastIndexOf('\n', Math.Min(maxCharsPerChunk, normalized.Length - 1));
+        if (cutoff < maxCharsPerChunk / 3) {
+            cutoff = maxCharsPerChunk;
+        }
+
+        var preview = normalized.Substring(0, cutoff).TrimEnd();
+        if (TryFindOpenFence(preview, out var marker, out var length)) {
+            preview += "\n" + new string(marker, length);
+        }
+
+        return preview + "\n\n<!-- truncated -->";
+    }
+
+    private static string NormalizePreviewMarkdown(string markdown) {
+        return (markdown ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\r", "\n", StringComparison.Ordinal)
+            .Trim();
+    }
+
+    private static bool TryFindOpenFence(string markdown, out char marker, out int length) {
+        marker = default;
+        length = 0;
+
+        var lines = markdown.Split('\n');
+        var insideFence = false;
+        char currentMarker = default;
+        var currentLength = 0;
+
+        for (var i = 0; i < lines.Length; i++) {
+            if (!TryReadFence(lines[i], out var lineMarker, out var lineLength)) {
+                continue;
+            }
+
+            if (!insideFence) {
+                insideFence = true;
+                currentMarker = lineMarker;
+                currentLength = lineLength;
+                continue;
+            }
+
+            if (lineMarker == currentMarker && lineLength >= currentLength) {
+                insideFence = false;
+                currentMarker = default;
+                currentLength = 0;
+            }
+        }
+
+        if (!insideFence) {
+            return false;
+        }
+
+        marker = currentMarker;
+        length = currentLength;
+        return true;
+    }
+
+    private static bool TryReadFence(string line, out char marker, out int length) {
+        marker = default;
+        length = 0;
+
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var trimmed = line.TrimStart();
+        if (trimmed.Length < 3) {
+            return false;
+        }
+
+        var candidate = trimmed[0];
+        if (candidate != '`' && candidate != '~') {
+            return false;
+        }
+
+        var runLength = 1;
+        while (runLength < trimmed.Length && trimmed[runLength] == candidate) {
+            runLength++;
+        }
+
+        if (runLength < 3) {
+            return false;
+        }
+
+        marker = candidate;
+        length = runLength;
+        return true;
     }
 
     private static bool TryParseOutputMode(string? raw, out OfficeImoOutputMode outputMode) {

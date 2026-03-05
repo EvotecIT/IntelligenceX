@@ -1,4 +1,6 @@
 using IntelligenceX.Chat.App;
+using OfficeIMO.MarkdownRenderer;
+using System.Reflection;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -32,5 +34,25 @@ public sealed class ChatMarkdownOptionsTests {
         first.Mermaid.Enabled = false;
 
         Assert.True(second.Mermaid.Enabled);
+    }
+
+    /// <summary>
+    /// Ensures newly available OfficeIMO normalization flags are enabled when the referenced renderer exposes them.
+    /// </summary>
+    [Fact]
+    public void Create_EnablesOptionalOfficeImoNormalizationFlags_WhenAvailable() {
+        var options = ChatMarkdownOptions.Create();
+
+        AssertOptionalFlagEnabled(options, "NormalizeTightArrowStrongBoundaries");
+        AssertOptionalFlagEnabled(options, "NormalizeTightColonSpacing");
+    }
+
+    private static void AssertOptionalFlagEnabled(MarkdownRendererOptions options, string propertyName) {
+        var property = typeof(MarkdownRendererOptions).GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property?.PropertyType != typeof(bool)) {
+            return;
+        }
+
+        Assert.Equal(true, property.GetValue(options));
     }
 }
