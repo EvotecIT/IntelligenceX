@@ -42,6 +42,10 @@
     <EventViewerXNuGetVersion Condition="'$(EventViewerXNuGetVersion)'==''">3.3.2</EventViewerXNuGetVersion>
     <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">0.1.7</OfficeImoReaderNuGetVersion>
     <DnsClientXNuGetVersion Condition="'$(DnsClientXNuGetVersion)'==''">1.0.7</DnsClientXNuGetVersion>
+    <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
+    <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))))</OfficeImoRepoRootInputNormalized>
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(IxToolsSiblingsRoot)OfficeIMO\\OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)OfficeIMO\\'))))</OfficeImoRepoRoot>
   </PropertyGroup>
 
   <!-- Normalize caller-provided roots first. -->
