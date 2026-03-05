@@ -152,6 +152,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldBlockUnanchoredSingleTokenCarryoverReplay(
+                continuationFollowUpTurn: continuationFollowUpTurn,
+                userRequest: request)) {
+            return false;
+        }
+
         // If this turn is already anchored to new contextual request content, avoid replaying stale carryover
         // actions from previous turns and let normal tool planning proceed.
         if (LooksLikeContextualFollowUpForExecutionNudge(request, assistantDraft)) {
@@ -173,6 +179,22 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
+    }
+
+    private static bool ShouldBlockUnanchoredSingleTokenCarryoverReplay(
+        bool continuationFollowUpTurn,
+        string userRequest) {
+        if (continuationFollowUpTurn) {
+            return false;
+        }
+
+        var request = NormalizeContextualFollowUpRequest(userRequest);
+        if (request.Length == 0 || request.Length > FollowUpShapeShortCharLimit || ContainsQuestionSignal(request)) {
+            return false;
+        }
+
+        var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 4);
+        return requestTokens.Count <= 1;
     }
 
     private static bool LooksLikeContextualCompactFollowUpWithoutDraftAnchor(string userRequest) {

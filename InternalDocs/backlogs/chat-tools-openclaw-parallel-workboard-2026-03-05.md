@@ -39,7 +39,7 @@ graph TD
 ## Lane C - Continuation Autonomy
 - [x] Gate compact follow-up classification behind structured continuation context.
 - [x] Add tests for short fresh-intent negative classification including non-Latin input.
-- [ ] Tighten single-token carryover replay eligibility without structural anchors.
+- [x] Tighten single-token carryover replay eligibility without structural anchors.
 - [ ] Make continuation marker parsing tolerant to wrappers while remaining fail-closed.
 
 ## Lane D - Reliability Harness
@@ -63,3 +63,4 @@ graph TD
 7. Added plugin synthetic-pack integration coverage proving plugin discovery flows into registry/catalog contracts without Chat runtime code edits.
 8. Introduced pack-keyed runtime option bag flow and shared option-bag application for built-in/plugin pack constructors, with plugin-id override coverage.
 9. Extended architecture guardrail coverage to host/tooling plugin-neutrality paths (host manifest-coupling guardrails + tooling built-in assembly allowlist guardrail).
+10. Tightened carryover replay gating so single-token compact follow-ups require structural continuation anchors, with regression coverage for anchored vs unanchored behavior.

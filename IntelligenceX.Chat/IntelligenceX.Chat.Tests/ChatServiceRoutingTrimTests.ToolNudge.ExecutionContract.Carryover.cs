@@ -737,6 +737,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsSingleTokenWithoutExpandedContinuation() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: true,
+            userRequest: "continue",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAttemptCarryoverStructuredNextActionReplay_AllowsSingleTokenWithExpandedContinuationAnchor() {
+        var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            userRequest: "continue",
+            assistantDraft: "I can run the next action now.");
+
+        Assert.True(result);
+    }
+
+    [Fact]
     public void ShouldAttemptCarryoverStructuredNextActionReplay_SkipsCompactQuestions() {
         var result = ChatServiceSession.ShouldAttemptCarryoverStructuredNextActionReplay(
             continuationFollowUpTurn: false,
@@ -806,4 +828,3 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(result);
     }
 }
-
