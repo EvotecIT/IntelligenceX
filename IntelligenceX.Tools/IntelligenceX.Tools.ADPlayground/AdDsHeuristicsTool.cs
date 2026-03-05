@@ -14,7 +14,21 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// Returns dsHeuristics posture for a forest (read-only).
 /// </summary>
 public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
+    private const int DefaultMaxPositionRows = 64;
+    private const int MaxPositionRowsCap = 2048;
     private const int MaxViewTop = 5000;
+
+    internal readonly record struct DsHeuristicsBindingContract(
+        string? ForestName,
+        bool IncludePositions,
+        bool NonDefaultOnly,
+        int MaxPositionRows);
+
+    private sealed record DsHeuristicsRequest(
+        string? ForestName,
+        bool IncludePositions,
+        bool NonDefaultOnly,
+        int MaxPositionRows);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_ds_heuristics",
@@ -62,12 +76,47 @@ public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
+        return RunPipelineAsync(
+            arguments: arguments,
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
 
-        var forestName = ToolArgs.GetOptionalTrimmed(arguments, "forest_name");
-        var includePositions = ToolArgs.GetBoolean(arguments, "include_positions", defaultValue: false);
-        var nonDefaultOnly = ToolArgs.GetBoolean(arguments, "non_default_only", defaultValue: false);
-        var maxPositionRows = ToolArgs.GetCappedInt32(arguments, "max_position_rows", 64, 1, 2048);
+    private static ToolRequestBindingResult<DsHeuristicsRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader =>
+            ToolRequestBindingResult<DsHeuristicsRequest>.Success(new DsHeuristicsRequest(
+                ForestName: reader.OptionalString("forest_name"),
+                IncludePositions: reader.Boolean("include_positions"),
+                NonDefaultOnly: reader.Boolean("non_default_only"),
+                MaxPositionRows: reader.CappedInt32("max_position_rows", DefaultMaxPositionRows, 1, MaxPositionRowsCap))));
+    }
+
+    internal static ToolRequestBindingResult<DsHeuristicsBindingContract> BindRequestContract(JsonObject? arguments) {
+        var binding = BindRequest(arguments);
+        if (!binding.IsValid || binding.Request is null) {
+            return ToolRequestBindingResult<DsHeuristicsBindingContract>.Failure(
+                binding.Error,
+                binding.ErrorCode,
+                binding.Hints,
+                binding.IsTransient);
+        }
+
+        var request = binding.Request;
+        return ToolRequestBindingResult<DsHeuristicsBindingContract>.Success(new DsHeuristicsBindingContract(
+            ForestName: request.ForestName,
+            IncludePositions: request.IncludePositions,
+            NonDefaultOnly: request.NonDefaultOnly,
+            MaxPositionRows: request.MaxPositionRows));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<DsHeuristicsRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+        var forestName = request.ForestName;
+        var includePositions = request.IncludePositions;
+        var nonDefaultOnly = request.NonDefaultOnly;
+        var maxPositionRows = request.MaxPositionRows;
 
         DsHeuristicsSnapshot snapshot;
         DsHeuristicsDetails details;
@@ -114,7 +163,7 @@ public sealed class AdDsHeuristicsTool : ActiveDirectoryToolBase, ITool {
             PositionRows: positions);
 
         return Task.FromResult(BuildAutoTableResponse(
-            arguments: arguments,
+            arguments: context.Arguments,
             model: result,
             sourceRows: result.Rows,
             viewRowsPath: "rows_view",
