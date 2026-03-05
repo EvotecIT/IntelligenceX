@@ -19,6 +19,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo HandleChatRequestAsyncMethod =
         typeof(ChatServiceSession).GetMethod("HandleChatRequestAsync", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("HandleChatRequestAsync not found.");
+    private static readonly MethodInfo HandleCancelChatAsyncMethod =
+        typeof(ChatServiceSession).GetMethod("HandleCancelChatAsync", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("HandleCancelChatAsync not found.");
 
     [Fact]
     public async Task HandleChatRequestAsync_EmitsDeterministicStatusOrder_ForDefaultFlow() {
@@ -241,6 +244,129 @@ public sealed partial class ChatServiceRoutingTrimTests {
         await WaitForRequestStatusAsync(captureB, laneWaiterRequest.RequestId!, ChatStatusCodes.Done, TimeSpan.FromSeconds(20));
     }
 
+    [Fact]
+    public async Task HandleCancelChatAsync_CancelActiveRun_AllowsQueuedRunToProgressUnderContention() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => {
+            if (responseIndex == 1) {
+                Thread.Sleep(TimeSpan.FromSeconds(8));
+                return BuildTextOnlyCompletion("Canceled run should not deliver final response.");
+            }
+
+            return BuildTextOnlyCompletion("Queued run completed after active cancellation.");
+        });
+
+        var session = new ChatServiceSession(CreateCompatibleHttpServiceOptions(server.BaseUrl), Stream.Null);
+        using var client = await ConnectCompatibleClientAsync(server.BaseUrl);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var activeRequest = new ChatRequest {
+            RequestId = "req-cancel-active",
+            ThreadId = thread.Id,
+            Text = "Run long active task."
+        };
+        var queuedRequest = new ChatRequest {
+            RequestId = "req-after-cancel-active",
+            ThreadId = thread.Id,
+            Text = "Reply with the word ready."
+        };
+        var cancelRequest = new CancelChatRequest {
+            RequestId = "req-cancel-active-control",
+            ChatRequestId = activeRequest.RequestId
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        await InvokeHandleChatRequestAsync(session, client, writer, activeRequest, CancellationToken.None);
+        await InvokeHandleChatRequestAsync(session, client, writer, queuedRequest, CancellationToken.None);
+        await WaitForRequestStatusAsync(capture, activeRequest.RequestId!, ChatStatusCodes.ContextReady, TimeSpan.FromSeconds(5));
+        await WaitForRequestStatusAsync(capture, queuedRequest.RequestId!, ChatStatusCodes.TurnQueued, TimeSpan.FromSeconds(5));
+
+        await InvokeHandleCancelChatAsync(session, writer, cancelRequest, CancellationToken.None);
+
+        await WaitForAckAsync(capture, cancelRequest.RequestId, TimeSpan.FromSeconds(5));
+        await WaitForRequestErrorCodeAsync(capture, activeRequest.RequestId!, "chat_canceled", TimeSpan.FromSeconds(10));
+        await WaitForRequestStatusAsync(capture, queuedRequest.RequestId!, ChatStatusCodes.Done, TimeSpan.FromSeconds(30));
+        Assert.False(
+            HasRequestErrorCode(capture.Snapshot(), queuedRequest.RequestId!, "chat_canceled"),
+            "Queued request should not be canceled when canceling the active request.");
+        Assert.True(
+            HasFrameType(capture.Snapshot(), queuedRequest.RequestId!, "chat_result"),
+            "Queued request did not produce chat_result after active cancellation.");
+        Assert.False(
+            HasFrameType(capture.Snapshot(), queuedRequest.RequestId!, "error"),
+            "Queued request emitted an error frame after active cancellation.");
+        Assert.False(
+            HasFrameType(capture.Snapshot(), activeRequest.RequestId!, "chat_result"),
+            "Canceled active request unexpectedly emitted a chat_result frame.");
+    }
+
+    [Fact]
+    public async Task HandleCancelChatAsync_CancelQueuedRun_KeepsRemainingQueueProgressing() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => {
+            if (responseIndex == 1) {
+                Thread.Sleep(TimeSpan.FromSeconds(7));
+                return BuildTextOnlyCompletion("Head run completed.");
+            }
+
+            return responseIndex switch {
+                2 => BuildTextOnlyCompletion("This canceled queued run should not complete."),
+                3 => BuildTextOnlyCompletion("Trailing queued run completed."),
+                _ => BuildTextOnlyCompletion("Unexpected request.")
+            };
+        });
+
+        var session = new ChatServiceSession(CreateCompatibleHttpServiceOptions(server.BaseUrl), Stream.Null);
+        using var client = await ConnectCompatibleClientAsync(server.BaseUrl);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var activeRequest = new ChatRequest {
+            RequestId = "req-queue-head",
+            ThreadId = thread.Id,
+            Text = "Run long queue head."
+        };
+        var canceledQueuedRequest = new ChatRequest {
+            RequestId = "req-queue-canceled",
+            ThreadId = thread.Id,
+            Text = "Run this queued task then cancel it."
+        };
+        var trailingQueuedRequest = new ChatRequest {
+            RequestId = "req-queue-trailing",
+            ThreadId = thread.Id,
+            Text = "Run after canceled queued task."
+        };
+        var cancelRequest = new CancelChatRequest {
+            RequestId = "req-cancel-queued-control",
+            ChatRequestId = canceledQueuedRequest.RequestId
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+
+        await InvokeHandleChatRequestAsync(session, client, writer, activeRequest, CancellationToken.None);
+        await InvokeHandleChatRequestAsync(session, client, writer, canceledQueuedRequest, CancellationToken.None);
+        await InvokeHandleChatRequestAsync(session, client, writer, trailingQueuedRequest, CancellationToken.None);
+
+        await WaitForRequestStatusAsync(capture, canceledQueuedRequest.RequestId!, ChatStatusCodes.TurnQueued, TimeSpan.FromSeconds(5));
+        await WaitForRequestStatusAsync(capture, trailingQueuedRequest.RequestId!, ChatStatusCodes.TurnQueued, TimeSpan.FromSeconds(5));
+
+        await InvokeHandleCancelChatAsync(session, writer, cancelRequest, CancellationToken.None);
+
+        await WaitForAckAsync(capture, cancelRequest.RequestId, TimeSpan.FromSeconds(5));
+        await WaitForRequestStatusAsync(capture, activeRequest.RequestId!, ChatStatusCodes.Done, TimeSpan.FromSeconds(20));
+        await WaitForRequestStatusAsync(capture, trailingQueuedRequest.RequestId!, ChatStatusCodes.Done, TimeSpan.FromSeconds(20));
+
+        Assert.False(
+            HasRequestStatus(capture.Snapshot(), canceledQueuedRequest.RequestId!, ChatStatusCodes.Done),
+            "Canceled queued request unexpectedly reached done status.");
+        Assert.False(
+            HasRequestErrorCode(capture.Snapshot(), canceledQueuedRequest.RequestId!, "chat_canceled"),
+            "Queued cancellation should remove the queued run without emitting a terminal chat_canceled frame.");
+        Assert.False(
+            HasTerminalFrame(capture.Snapshot(), canceledQueuedRequest.RequestId!),
+            "Canceled queued request unexpectedly emitted a terminal frame.");
+    }
+
     private static async Task InvokeHandleChatRequestAsync(
         ChatServiceSession session,
         IntelligenceXClient client,
@@ -248,6 +374,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
         ChatRequest request,
         CancellationToken cancellationToken) {
         var taskObj = HandleChatRequestAsyncMethod.Invoke(session, new object?[] { client, writer, request, cancellationToken });
+        var task = Assert.IsAssignableFrom<Task>(taskObj);
+        await task;
+    }
+
+    private static async Task InvokeHandleCancelChatAsync(
+        ChatServiceSession session,
+        StreamWriter writer,
+        CancelChatRequest request,
+        CancellationToken cancellationToken) {
+        var taskObj = HandleCancelChatAsyncMethod.Invoke(session, new object?[] { writer, request, cancellationToken });
         var task = Assert.IsAssignableFrom<Task>(taskObj);
         await task;
     }
@@ -266,7 +402,23 @@ public sealed partial class ChatServiceRoutingTrimTests {
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
 
-        Assert.True(HasRequestStatus(stream.Snapshot(), requestId, status), $"Timed out waiting for status '{status}' for request '{requestId}'.");
+        var snapshot = stream.Snapshot();
+        var requestFrames = ParseCapturedFrames(snapshot)
+            .Where(frame => string.Equals(frame.RequestId, requestId, StringComparison.Ordinal))
+            .ToList();
+        var observedStatuses = requestFrames
+            .Where(frame => string.Equals(frame.Type, "chat_status", StringComparison.OrdinalIgnoreCase))
+            .Select(frame => frame.Status ?? string.Empty)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        var terminalSummaries = requestFrames
+            .Where(IsTerminalResponseFrame)
+            .Select(frame => $"{frame.Type}:{frame.Code ?? frame.Text ?? frame.Error ?? string.Empty}")
+            .ToArray();
+
+        Assert.True(
+            HasRequestStatus(snapshot, requestId, status),
+            $"Timed out waiting for status '{status}' for request '{requestId}'. Observed statuses=[{string.Join(", ", observedStatuses)}]; terminal=[{string.Join(", ", terminalSummaries)}].");
     }
 
     private static async Task WaitForRequestStatusCountAsync(
@@ -310,6 +462,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
             $"Timed out waiting for error code '{errorCode}' for request '{requestId}'.");
     }
 
+    private static async Task WaitForAckAsync(
+        SynchronizedCaptureStream stream,
+        string requestId,
+        TimeSpan timeout) {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.Elapsed < timeout) {
+            if (HasAck(stream.Snapshot(), requestId)) {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        Assert.True(HasAck(stream.Snapshot(), requestId), $"Timed out waiting for ack frame for request '{requestId}'.");
+    }
+
     private static bool HasRequestStatus(byte[] snapshotBytes, string requestId, string status) {
         return ParseCapturedFrames(snapshotBytes).Any(frame =>
             string.Equals(frame.Type, "chat_status", StringComparison.OrdinalIgnoreCase)
@@ -329,6 +497,24 @@ public sealed partial class ChatServiceRoutingTrimTests {
             string.Equals(frame.Type, "error", StringComparison.OrdinalIgnoreCase)
             && string.Equals(frame.RequestId, requestId, StringComparison.Ordinal)
             && string.Equals(frame.Code, errorCode, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HasAck(byte[] snapshotBytes, string requestId) {
+        return ParseCapturedFrames(snapshotBytes).Any(frame =>
+            string.Equals(frame.Type, "ack", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(frame.RequestId, requestId, StringComparison.Ordinal));
+    }
+
+    private static bool HasTerminalFrame(byte[] snapshotBytes, string requestId) {
+        return ParseCapturedFrames(snapshotBytes).Any(frame =>
+            string.Equals(frame.RequestId, requestId, StringComparison.Ordinal)
+            && IsTerminalResponseFrame(frame));
+    }
+
+    private static bool HasFrameType(byte[] snapshotBytes, string requestId, string type) {
+        return ParseCapturedFrames(snapshotBytes).Any(frame =>
+            string.Equals(frame.RequestId, requestId, StringComparison.Ordinal)
+            && string.Equals(frame.Type, type, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsTerminalResponseFrame(CapturedFrame frame) {
