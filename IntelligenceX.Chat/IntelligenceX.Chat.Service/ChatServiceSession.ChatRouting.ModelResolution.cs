@@ -215,6 +215,7 @@ internal sealed partial class ChatServiceSession {
     private void AppendRuntimeCapabilityHandshake(StringBuilder runtimeIdentity) {
         var enabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(Array.Empty<string>());
         var routingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(Array.Empty<string>());
+        var skills = ResolveWorkingMemoryCapabilitySkills(Array.Empty<string>());
         var healthyToolNames = ResolveWorkingMemoryCapabilityHealthyToolNames(
             Array.Empty<string>(),
             Array.Empty<string>());
@@ -239,6 +240,16 @@ internal sealed partial class ChatServiceSession {
         }
 
         runtimeIdentity.AppendLine("Treat this capability snapshot as the authoritative runtime tool context for this turn.");
+
+        runtimeIdentity.AppendLine();
+        runtimeIdentity.AppendLine("[Skills snapshot]");
+        runtimeIdentity.AppendLine(SkillsSnapshotMarker);
+        runtimeIdentity.AppendLine("skill_count: " + skills.Length);
+        if (skills.Length > 0) {
+            runtimeIdentity.AppendLine("skills: " + string.Join(", ", skills));
+        }
+
+        runtimeIdentity.AppendLine("Treat this skills snapshot as the authoritative reusable skill inventory for this turn.");
     }
 
     private static string BuildCompatibleRuntimeNoTextDirectRetryPrompt(string userRequest) {

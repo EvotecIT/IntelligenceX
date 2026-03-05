@@ -15,10 +15,12 @@ internal sealed partial class ChatServiceSession {
     private const int MaxWorkingMemoryAugmentedRequestChars = 1600;
     private const int MaxWorkingMemoryCapabilityPackIds = 8;
     private const int MaxWorkingMemoryCapabilityFamilies = 6;
+    private const int MaxWorkingMemoryCapabilitySkills = 8;
     private const int MaxWorkingMemoryCapabilityHealthyTools = 12;
     private static readonly TimeSpan WorkingMemoryContextMaxAge = TimeSpan.FromHours(24);
     private const string WorkingMemoryMarker = "ix:working-memory:v1";
     private const string CapabilitySnapshotMarker = "ix:capability-snapshot:v1";
+    private const string SkillsSnapshotMarker = "ix:skills:v1";
     private readonly object _workingMemoryCheckpointLock = new();
     private readonly Dictionary<string, WorkingMemoryCheckpoint> _workingMemoryCheckpointByThreadId = new(StringComparer.Ordinal);
 
@@ -396,6 +398,63 @@ internal sealed partial class ChatServiceSession {
         }
 
         return NormalizeWorkingMemoryCapabilityFamilies(fallbackRoutingFamilies ?? Array.Empty<string>());
+    }
+
+    private string[] ResolveWorkingMemoryCapabilitySkills(IReadOnlyList<string> fallbackSkills) {
+        var skills = _routingCatalogDiagnostics.FamilyActions
+            .Where(static summary =>
+                !string.IsNullOrWhiteSpace(summary.Family)
+                && !string.IsNullOrWhiteSpace(summary.ActionId))
+            .OrderByDescending(static summary => Math.Max(0, summary.ToolCount))
+            .ThenBy(static summary => summary.Family, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static summary => summary.ActionId, StringComparer.OrdinalIgnoreCase)
+            .Select(static summary => BuildSkillSnapshotValue(summary.Family, summary.ActionId))
+            .Where(static skill => skill.Length > 0);
+        var normalized = NormalizeDistinctStrings(skills, MaxWorkingMemoryCapabilitySkills);
+        if (normalized.Length > 0) {
+            return normalized;
+        }
+
+        return NormalizeDistinctStrings(
+            (fallbackSkills ?? Array.Empty<string>())
+            .Select(static skill => NormalizeSkillSnapshotValue(skill)),
+            MaxWorkingMemoryCapabilitySkills);
+    }
+
+    private static string BuildSkillSnapshotValue(string family, string actionId) {
+        var normalizedFamily = NormalizeSkillSnapshotToken(family);
+        var normalizedActionId = NormalizeSkillSnapshotToken(actionId);
+        if (normalizedFamily.Length == 0 || normalizedActionId.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalizedFamily + "." + normalizedActionId;
+    }
+
+    private static string NormalizeSkillSnapshotValue(string value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0 || normalized.Length > 128) {
+            return string.Empty;
+        }
+
+        if (normalized.Any(static ch => char.IsWhiteSpace(ch) || char.IsControl(ch))) {
+            return string.Empty;
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeSkillSnapshotToken(string value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0 || normalized.Length > 64) {
+            return string.Empty;
+        }
+
+        if (normalized.Any(static ch => char.IsWhiteSpace(ch) || char.IsControl(ch))) {
+            return string.Empty;
+        }
+
+        return normalized;
     }
 
     private static string[] NormalizeWorkingMemoryCapabilityFamilies(IEnumerable<string> values) {

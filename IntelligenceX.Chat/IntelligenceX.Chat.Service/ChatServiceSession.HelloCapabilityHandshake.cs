@@ -35,6 +35,7 @@ internal sealed partial class ChatServiceSession {
     private string BuildHelloCapabilityHandshakeWarning() {
         var enabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(Array.Empty<string>());
         var routingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(Array.Empty<string>());
+        var skills = ResolveWorkingMemoryCapabilitySkills(Array.Empty<string>());
         var registeredToolCount = Math.Max(0, _routingCatalogDiagnostics.TotalTools);
         var remoteReachabilityMode = ResolveHelloRemoteReachabilityMode();
         var allowedRootCount = Math.Max(0, _options.AllowedRoots.Count);
@@ -46,6 +47,8 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" registered_tools='").Append(registeredToolCount).Append('\'');
         warning.Append(" allowed_roots='").Append(allowedRootCount).Append('\'');
         warning.Append(" remote_reachability_mode='").Append(remoteReachabilityMode).Append('\'');
+        warning.Append(" skills_marker='").Append(SkillsSnapshotMarker).Append('\'');
+        warning.Append(" skill_count='").Append(skills.Length).Append('\'');
 
         if (enabledPackIds.Length > 0) {
             warning.Append(" enabled_packs='").Append(string.Join(",", enabledPackIds)).Append('\'');
@@ -53,6 +56,10 @@ internal sealed partial class ChatServiceSession {
 
         if (routingFamilies.Length > 0) {
             warning.Append(" routing_families='").Append(string.Join(",", routingFamilies)).Append('\'');
+        }
+
+        if (skills.Length > 0) {
+            warning.Append(" skills='").Append(string.Join(",", skills)).Append('\'');
         }
 
         return warning.ToString();

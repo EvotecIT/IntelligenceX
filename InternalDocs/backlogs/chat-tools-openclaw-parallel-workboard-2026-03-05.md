@@ -47,6 +47,11 @@ graph TD
 - [x] Add startup bootstrap lag fault-injection tests with latency budget assertions.
 - [x] Add deterministic host-target fallback ranking soak coverage.
 
+## Lane E - Skills Parity
+- [x] Add structured `ix:skills:v1` runtime snapshot derived from routing family/action diagnostics.
+- [ ] Thread skills snapshot through working-memory continuation augmentation/persistence.
+- [ ] Add autonomous continuation-loop tests that assert multi-step execution guided by skills snapshot.
+
 ## Current Patch Set (Started)
 
 1. `ResolveFollowUpTurnClassification` now requires structured continuation context for lexical compact follow-up classification.
@@ -70,3 +75,4 @@ graph TD
 14. Added queue contention + cancellation progression request-flow scenarios covering active-turn cancellation progression and queued-turn cancellation while preserving downstream queue advancement.
 15. Added startup bootstrap lag fault-injection tests with explicit wait/priming latency budget assertions.
 16. Added deterministic host-target fallback ranking soak coverage for known-host and scenario-distinct fallback paths.
+17. Added structured runtime/hello skills snapshot signaling (`ix:skills:v1`) with deterministic family-action skill inventory coverage.

@@ -69,10 +69,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.StartsWith("Base instructions", instructionsText);
         Assert.Contains("ix:runtime-identity:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:capability-snapshot:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:skills:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools: 17", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families: ad_domain, public_domain", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skill_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skills: ad_domain.scope_hosts, public_domain.query_whois", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("healthy_tools:", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ad_replication_summary", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("eventlog_live_query", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -87,9 +90,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("ix:runtime-identity:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:capability-snapshot:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:skills:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skill_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("enabled_packs:", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(TryReadInstructionLine(instructionsText, "skills:"));
     }
 
     [Fact]
@@ -134,12 +140,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var enabledPackLine = TryReadInstructionLine(instructionsText, "enabled_packs:");
         var healthyToolsLine = TryReadInstructionLine(instructionsText, "healthy_tools:");
         var routingFamiliesLine = TryReadInstructionLine(instructionsText, "routing_families:");
+        var skillsLine = TryReadInstructionLine(instructionsText, "skills:");
         Assert.NotNull(enabledPackLine);
         Assert.NotNull(healthyToolsLine);
         Assert.NotNull(routingFamiliesLine);
+        Assert.NotNull(skillsLine);
         Assert.Equal(8, CountCsvItemsFromInstructionLine(enabledPackLine!, "enabled_packs:"));
         Assert.Equal(12, CountCsvItemsFromInstructionLine(healthyToolsLine!, "healthy_tools:"));
         Assert.Equal(6, CountCsvItemsFromInstructionLine(routingFamiliesLine!, "routing_families:"));
+        Assert.Equal(8, CountCsvItemsFromInstructionLine(skillsLine!, "skills:"));
     }
 
     [Fact]
@@ -186,12 +195,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
             static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
 
         Assert.Contains("marker='ix:capability-snapshot:v1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skills_marker='ix:skills:v1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools='9'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed_roots='2'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("remote_reachability_mode='", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skill_count='2'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families='ad_domain,public_domain'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skills='ad_domain.scope_hosts,public_domain.query_whois'", handshake, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
