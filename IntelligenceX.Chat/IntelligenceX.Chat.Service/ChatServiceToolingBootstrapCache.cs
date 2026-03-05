@@ -102,6 +102,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
             CachedAtUtc = DateTime.UtcNow,
             ToolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>(),
             PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
+            PluginAvailability = snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
             StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
             StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
             PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
@@ -153,6 +154,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
                 CacheKey = normalizedCacheKey,
                 ToolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>(),
                 PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
+                PluginAvailability = snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
                 StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
                 StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
                 PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
@@ -161,6 +163,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
                 CapabilitySnapshot = snapshot.CapabilitySnapshot ?? ChatServiceSession.BuildCapabilitySnapshot(
                     new ServiceOptions(),
                     snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
+                    snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
                     snapshot.RoutingCatalogDiagnostics)
             };
         } catch {
@@ -205,6 +208,7 @@ internal sealed record ChatServiceToolingBootstrapSnapshot {
     public required ToolDefinitionDto[] ToolDefinitions { get; init; }
     public required IToolPack[] Packs { get; init; }
     public required ToolPackAvailabilityInfo[] PackAvailability { get; init; }
+    public required ToolPluginAvailabilityInfo[] PluginAvailability { get; init; }
     public required string[] StartupWarnings { get; init; }
     public required SessionStartupBootstrapTelemetryDto StartupBootstrap { get; init; }
     public required string[] PluginSearchPaths { get; init; }
@@ -220,6 +224,7 @@ internal sealed record ChatServiceToolingBootstrapPersistedSnapshot {
     public DateTime CachedAtUtc { get; init; }
     public required ToolDefinitionDto[] ToolDefinitions { get; init; }
     public required ToolPackAvailabilityInfo[] PackAvailability { get; init; }
+    public ToolPluginAvailabilityInfo[] PluginAvailability { get; init; } = Array.Empty<ToolPluginAvailabilityInfo>();
     public required string[] StartupWarnings { get; init; }
     public required SessionStartupBootstrapTelemetryDto StartupBootstrap { get; init; }
     public required string[] PluginSearchPaths { get; init; }

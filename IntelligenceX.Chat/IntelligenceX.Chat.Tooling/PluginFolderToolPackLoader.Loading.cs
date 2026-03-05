@@ -27,6 +27,7 @@ internal static partial class PluginFolderToolPackLoader {
         IReadOnlyDictionary<string, IReadOnlyList<IToolPack>> loadedPacksByAssemblyName,
         Action<string>? onWarning,
         Action<ToolPackAvailabilityInfo>? onPackAvailability,
+        Action<ToolPluginAvailabilityInfo>? onPluginAvailability,
         int loadIndex,
         int loadTotal) {
         PluginManifest? manifest = null;
@@ -48,6 +49,7 @@ internal static partial class PluginFolderToolPackLoader {
         var disabledPackCount = 0;
         var duplicatePackCount = 0;
         var failedPackCount = 0;
+        var pluginPackAvailability = new List<ToolPackAvailabilityInfo>();
 
         try {
             if (manifest is null) {
@@ -134,12 +136,14 @@ internal static partial class PluginFolderToolPackLoader {
                         onWarning?.Invoke($"[plugin] duplicate_pack plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
                     }
                     duplicatePackCount++;
-                    onPackAvailability?.Invoke(CreatePluginPackAvailability(
+                    var duplicateAvailability = CreatePluginPackAvailability(
                         pack: pack,
                         normalizedDescriptorId: normalizedDescriptorId,
                         manifest: manifest,
                         enabled: false,
-                        disabledReason: DisabledByDuplicatePackReason));
+                        disabledReason: DisabledByDuplicatePackReason);
+                    onPackAvailability?.Invoke(duplicateAvailability);
+                    pluginPackAvailability.Add(duplicateAvailability);
                     continue;
                 }
 
@@ -149,24 +153,28 @@ internal static partial class PluginFolderToolPackLoader {
                         onWarning?.Invoke($"[plugin] pack_disabled plugin='{pluginId}' descriptor='{normalizedDescriptorId}' action='skipped'");
                     }
                     disabledPackCount++;
-                    onPackAvailability?.Invoke(CreatePluginPackAvailability(
+                    var disabledAvailability = CreatePluginPackAvailability(
                         pack: pack,
                         normalizedDescriptorId: normalizedDescriptorId,
                         manifest: manifest,
                         enabled: false,
-                        disabledReason: enablementDecision.DisabledReason));
+                        disabledReason: enablementDecision.DisabledReason);
+                    onPackAvailability?.Invoke(disabledAvailability);
+                    pluginPackAvailability.Add(disabledAvailability);
                     continue;
                 }
 
                 if (!TryResolvePluginSourceKind(manifest, pack, out var sourceKind, out var sourceKindError)) {
                     onWarning?.Invoke($"[plugin] source_kind_missing plugin='{pluginId}' descriptor='{descriptorId}' error='{sourceKindError}'");
                     failedPackCount++;
-                    onPackAvailability?.Invoke(CreatePluginPackAvailability(
+                    var invalidAvailability = CreatePluginPackAvailability(
                         pack: pack,
                         normalizedDescriptorId: normalizedDescriptorId,
                         manifest: manifest,
                         enabled: false,
-                        disabledReason: sourceKindError));
+                        disabledReason: sourceKindError);
+                    onPackAvailability?.Invoke(invalidAvailability);
+                    pluginPackAvailability.Add(invalidAvailability);
                     continue;
                 }
 
@@ -174,6 +182,12 @@ internal static partial class PluginFolderToolPackLoader {
                 existingPackIds.Add(normalizedDescriptorId);
                 packs.Add(pack);
                 loadedPackCount++;
+                pluginPackAvailability.Add(CreatePluginPackAvailability(
+                    pack: pack,
+                    normalizedDescriptorId: normalizedDescriptorId,
+                    manifest: manifest,
+                    enabled: true,
+                    disabledReason: null));
             }
         } finally {
             loadStopwatch.Stop();
@@ -192,6 +206,10 @@ internal static partial class PluginFolderToolPackLoader {
                     $"duplicate='{duplicatePackCount}' " +
                     $"failed='{failedPackCount}'");
             }
+        }
+
+        if (pluginPackAvailability.Count > 0) {
+            onPluginAvailability?.Invoke(CreatePluginAvailability(pluginDirectory, manifest, pluginPackAvailability));
         }
 
         return loadedPackCount > 0;
@@ -735,6 +753,83 @@ internal static partial class PluginFolderToolPackLoader {
 
         error = $"invalid manifest source kind '{configured}'.";
         return false;
+    }
+
+    private static ToolPluginAvailabilityInfo CreatePluginAvailability(
+        string rootPath,
+        PluginManifest? manifest,
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability) {
+        var pluginId = DeterminePluginId(rootPath, manifest);
+        var normalizedPluginId = ToolPackBootstrap.NormalizePackId(pluginId);
+        var pluginName = (manifest?.DisplayName ?? string.Empty).Trim();
+        if (pluginName.Length == 0) {
+            pluginName = normalizedPluginId.Length == 0 ? pluginId : normalizedPluginId;
+        }
+
+        var normalizedPackIds = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+            .Where(static pack => pack is not null)
+            .Select(static pack => ToolPackBootstrap.NormalizePackId(pack.Id))
+            .Where(static packId => packId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var enabled = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).Any(static pack => pack.Enabled);
+        var disabledReason = enabled
+            ? null
+            : (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+                .Select(static pack => (pack.DisabledReason ?? string.Empty).Trim())
+                .FirstOrDefault(static reason => reason.Length > 0);
+        var sourceKind = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+            .Select(static pack => (pack.SourceKind ?? string.Empty).Trim())
+            .FirstOrDefault(static kind => kind.Length > 0) ?? string.Empty;
+        if (sourceKind.Length == 0) {
+            sourceKind = ToolPackBootstrap.PackSourceOpenSource;
+        }
+
+        return new ToolPluginAvailabilityInfo {
+            Id = normalizedPluginId.Length == 0 ? pluginId : normalizedPluginId,
+            Name = pluginName,
+            Version = string.IsNullOrWhiteSpace(manifest?.Version) ? null : manifest.Version.Trim(),
+            Origin = "plugin_folder",
+            SourceKind = sourceKind,
+            DefaultEnabled = manifest?.DefaultEnabled ?? true,
+            Enabled = enabled,
+            DisabledReason = disabledReason,
+            IsDangerous = (manifest?.IsDangerous ?? false) || (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).Any(static pack => pack.IsDangerous),
+            PackIds = normalizedPackIds,
+            RootPath = string.IsNullOrWhiteSpace(rootPath) ? null : rootPath,
+            SkillDirectories = ResolvePluginSkillDirectories(rootPath, manifest)
+        };
+    }
+
+    private static string[] ResolvePluginSkillDirectories(string rootPath, PluginManifest? manifest) {
+        if (manifest?.SkillDirectories is null || manifest.SkillDirectories.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var normalizedRootPath = NormalizePath(rootPath) ?? string.Empty;
+        var directories = new List<string>();
+        for (var i = 0; i < manifest.SkillDirectories.Length; i++) {
+            var candidate = (manifest.SkillDirectories[i] ?? string.Empty).Trim();
+            if (candidate.Length == 0) {
+                continue;
+            }
+
+            var path = candidate;
+            if (normalizedRootPath.Length > 0 && !Path.IsPathRooted(path)) {
+                path = Path.Combine(normalizedRootPath, path);
+            }
+
+            var normalizedPath = NormalizePath(path);
+            if (!string.IsNullOrWhiteSpace(normalizedPath)) {
+                directories.Add(normalizedPath);
+            }
+        }
+
+        return directories
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private readonly record struct PackEnablementDecision(bool Enabled, string? DisabledReason);

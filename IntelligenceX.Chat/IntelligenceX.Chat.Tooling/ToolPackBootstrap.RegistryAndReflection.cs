@@ -659,6 +659,32 @@ public static partial class ToolPackBootstrap {
         };
     }
 
+    private static ToolPluginAvailabilityInfo CreateBuiltInPluginAvailability(
+        BuiltInPackRegistrationCandidate candidate,
+        bool enabled,
+        string? disabledReason) {
+        var descriptor = candidate.Pack.Descriptor;
+        var normalizedPackId = NormalizePackId(descriptor.Id);
+        var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedPackId : descriptor.Name.Trim();
+        var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
+        var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
+        var version = candidate.Pack.GetType().Assembly.GetName().Version?.ToString();
+
+        return new ToolPluginAvailabilityInfo {
+            Id = normalizedPackId.Length == 0 ? descriptor.Id : normalizedPackId,
+            Name = normalizedName,
+            Version = string.IsNullOrWhiteSpace(version) ? null : version,
+            Origin = PackSourceBuiltin,
+            SourceKind = normalizedSourceKind,
+            DefaultEnabled = candidate.DefaultEnabled,
+            Enabled = enabled,
+            DisabledReason = normalizedReason,
+            IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
+            PackIds = normalizedPackId.Length == 0 ? Array.Empty<string>() : new[] { normalizedPackId },
+            SkillDirectories = Array.Empty<string>()
+        };
+    }
+
     private static void UpsertAvailability(Dictionary<string, ToolPackAvailabilityInfo> availabilityById, ToolPackAvailabilityInfo availability) {
         var normalizedPackId = NormalizePackId(availability.Id);
         if (normalizedPackId.Length == 0) {
@@ -667,6 +693,38 @@ public static partial class ToolPackBootstrap {
 
         var normalizedName = string.IsNullOrWhiteSpace(availability.Name) ? normalizedPackId : availability.Name.Trim();
         availabilityById[normalizedPackId] = availability with { Id = normalizedPackId, Name = normalizedName };
+    }
+
+    private static void UpsertPluginAvailability(
+        Dictionary<string, ToolPluginAvailabilityInfo> availabilityById,
+        ToolPluginAvailabilityInfo availability) {
+        var normalizedPluginId = NormalizePackId(availability.Id);
+        if (normalizedPluginId.Length == 0) {
+            return;
+        }
+
+        var normalizedName = string.IsNullOrWhiteSpace(availability.Name) ? normalizedPluginId : availability.Name.Trim();
+        var normalizedPackIds = (availability.PackIds ?? Array.Empty<string>())
+            .Select(static packId => NormalizePackId(packId))
+            .Where(static packId => packId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var normalizedSkillDirectories = (availability.SkillDirectories ?? Array.Empty<string>())
+            .Select(static path => (path ?? string.Empty).Trim())
+            .Where(static path => path.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var normalizedReason = availability.Enabled ? null : NormalizeDisabledReason(availability.DisabledReason);
+
+        availabilityById[normalizedPluginId] = availability with {
+            Id = normalizedPluginId,
+            Name = normalizedName,
+            PackIds = normalizedPackIds,
+            SkillDirectories = normalizedSkillDirectories,
+            DisabledReason = normalizedReason
+        };
     }
 
     private static IToolPack RequireDeclaredSourceKind(IToolPack pack, string packLabel) {

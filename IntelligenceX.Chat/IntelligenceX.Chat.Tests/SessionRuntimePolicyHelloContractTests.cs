@@ -65,6 +65,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 AllowMutatingParallelToolCalls = true
             },
             Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<ToolPluginAvailabilityInfo>(),
             Array.Empty<string>(),
             null,
             Array.Empty<string>(),
@@ -127,6 +128,8 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.True(capabilitySnapshot.GetProperty("toolingAvailable").GetBoolean());
         Assert.Equal(12, capabilitySnapshot.GetProperty("registeredTools").GetInt32());
         Assert.Equal(0, capabilitySnapshot.GetProperty("enabledPackCount").GetInt32());
+        Assert.Equal(0, capabilitySnapshot.GetProperty("pluginCount").GetInt32());
+        Assert.Equal(0, capabilitySnapshot.GetProperty("enabledPluginCount").GetInt32());
         Assert.Equal("remote_capable", capabilitySnapshot.GetProperty("remoteReachabilityMode").GetString());
         Assert.Equal(2, capabilitySnapshot.GetProperty("routingFamilies").GetArrayLength());
         Assert.Equal(2, capabilitySnapshot.GetProperty("familyActions").GetArrayLength());
@@ -141,6 +144,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 MaxToolRounds = ChatRequestOptionLimits.MinToolRounds - 1
             },
             Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<ToolPluginAvailabilityInfo>(),
             Array.Empty<string>(),
             null,
             Array.Empty<string>(),
@@ -169,6 +173,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 MaxToolRounds = 500
             },
             Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<ToolPluginAvailabilityInfo>(),
             Array.Empty<string>(),
             null,
             Array.Empty<string>(),

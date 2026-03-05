@@ -33,6 +33,22 @@ public sealed class SessionPolicyContractTests {
                         SourceKind = ToolPackSourceKind.ClosedSource
                     }
                 },
+                Plugins = new[] {
+                    new PluginInfoDto {
+                        Id = "ix-testimox",
+                        Name = "TestimoX Plugin",
+                        Version = "1.2.3",
+                        Origin = "plugin_folder",
+                        SourceKind = ToolPackSourceKind.ClosedSource,
+                        DefaultEnabled = false,
+                        Enabled = false,
+                        DisabledReason = "License expired on 2026-03-31.",
+                        IsDangerous = false,
+                        PackIds = new[] { "testimox" },
+                        RootPath = "C:\\plugins\\testimox",
+                        SkillDirectories = new[] { "C:\\plugins\\testimox\\skills" }
+                    }
+                },
                 StartupWarnings = new[] {
                     "[plugin] path_not_found path='C:\\plugins\\missing'",
                     "[plugin] init_failed plugin='ix.mail' error='dependency missing'"
@@ -82,9 +98,12 @@ public sealed class SessionPolicyContractTests {
                 CapabilitySnapshot = new SessionCapabilitySnapshotDto {
                     RegisteredTools = 8,
                     EnabledPackCount = 0,
+                    PluginCount = 1,
+                    EnabledPluginCount = 0,
                     ToolingAvailable = true,
                     AllowedRootCount = 0,
                     EnabledPackIds = System.Array.Empty<string>(),
+                    EnabledPluginIds = System.Array.Empty<string>(),
                     RoutingFamilies = new[] { "ad_domain", "public_domain" },
                     FamilyActions = new[] {
                         new SessionRoutingFamilyActionSummaryDto {
@@ -136,6 +155,7 @@ public sealed class SessionPolicyContractTests {
         Assert.True(capabilitySnapshot.ToolingAvailable);
         Assert.Equal(8, capabilitySnapshot.RegisteredTools);
         Assert.Empty(capabilitySnapshot.EnabledPackIds);
+        Assert.Empty(capabilitySnapshot.EnabledPluginIds);
         Assert.Equal("unit_test_tool", capabilitySnapshot.HealthyTools[0]);
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(policy.StartupBootstrap);
         Assert.Equal(4120, startupBootstrap.TotalMs);
@@ -154,6 +174,9 @@ public sealed class SessionPolicyContractTests {
         Assert.Single(policy.Packs);
         Assert.False(policy.Packs[0].Enabled);
         Assert.Equal("License expired on 2026-03-31.", policy.Packs[0].DisabledReason);
+        Assert.Single(policy.Plugins);
+        Assert.Equal("ix-testimox", policy.Plugins[0].Id);
+        Assert.Equal("C:\\plugins\\testimox\\skills", Assert.Single(policy.Plugins[0].SkillDirectories));
         var routingCatalog = Assert.IsType<SessionRoutingCatalogDiagnosticsDto>(policy.RoutingCatalog);
         Assert.True(routingCatalog.IsHealthy);
         Assert.Equal(8, routingCatalog.TotalTools);
