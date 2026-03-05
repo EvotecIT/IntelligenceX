@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace IntelligenceX.Chat.Profiles;
 
@@ -14,6 +16,7 @@ internal static class ServiceProfilePresets {
         PluginOnly
     };
     private static readonly IReadOnlyList<string> BuiltInPresetNamesView = Array.AsReadOnly(BuiltInPresetNames);
+    private static readonly HashSet<string> BuiltInPresetNameSet = new(BuiltInPresetNames, StringComparer.OrdinalIgnoreCase);
 
     internal static IReadOnlyList<string> GetBuiltInPresetNames() {
         return BuiltInPresetNamesView;
@@ -64,13 +67,79 @@ internal static class ServiceProfilePresets {
         return new[] { trimmed, canonicalName };
     }
 
+    internal static bool TryResolveStoredOrBuiltInProfile(
+        string? requestedName,
+        bool allowStoredProfiles,
+        Func<string, ServiceProfile?> tryGetStoredProfile,
+        out string resolvedName,
+        out ServiceProfile? profile,
+        out bool storedProfilesUnavailable) {
+        resolvedName = (requestedName ?? string.Empty).Trim();
+        profile = null;
+        storedProfilesUnavailable = false;
+
+        if (resolvedName.Length == 0) {
+            return false;
+        }
+
+        if (allowStoredProfiles) {
+            foreach (var candidateName in GetStoredProfileLookupCandidates(resolvedName)) {
+                var storedProfile = tryGetStoredProfile(candidateName);
+                if (storedProfile == null) {
+                    continue;
+                }
+
+                resolvedName = candidateName;
+                profile = storedProfile;
+                return true;
+            }
+        }
+
+        if (TryResolve(resolvedName, out var presetName, out var presetProfile)) {
+            resolvedName = presetName;
+            profile = presetProfile;
+            return true;
+        }
+
+        storedProfilesUnavailable = !allowStoredProfiles;
+        return false;
+    }
+
+    internal static async ValueTask<(bool Success, string ResolvedName, ServiceProfile? Profile, bool StoredProfilesUnavailable)> TryResolveStoredOrBuiltInProfileAsync(
+        string? requestedName,
+        bool allowStoredProfiles,
+        Func<string, CancellationToken, Task<ServiceProfile?>> tryGetStoredProfileAsync,
+        CancellationToken cancellationToken) {
+        var resolvedName = (requestedName ?? string.Empty).Trim();
+        if (resolvedName.Length == 0) {
+            return (false, string.Empty, null, false);
+        }
+
+        if (allowStoredProfiles) {
+            foreach (var candidateName in GetStoredProfileLookupCandidates(resolvedName)) {
+                var storedProfile = await tryGetStoredProfileAsync(candidateName, cancellationToken).ConfigureAwait(false);
+                if (storedProfile == null) {
+                    continue;
+                }
+
+                return (true, candidateName, storedProfile, false);
+            }
+        }
+
+        if (TryResolve(resolvedName, out var presetName, out var presetProfile)) {
+            return (true, presetName, presetProfile, false);
+        }
+
+        return (false, resolvedName, null, !allowStoredProfiles);
+    }
+
     internal static string[] MergeBuiltInPresetNames(IEnumerable<string>? storedNames) {
         var builtIns = BuiltInPresetNames
             .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase);
         var stored = (storedNames ?? Array.Empty<string>())
             .Select(static name => (name ?? string.Empty).Trim())
             .Where(static name => name.Length > 0)
-            .Where(static name => !BuiltInPresetNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+            .Where(static name => !IsBuiltInPresetNameOrAlias(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase);
 
@@ -108,5 +177,10 @@ internal static class ServiceProfilePresets {
         return length == 0
             ? string.Empty
             : new string(chars, 0, length).Trim('-');
+    }
+
+    private static bool IsBuiltInPresetNameOrAlias(string name) {
+        return BuiltInPresetNameSet.Contains(name)
+            || TryGetCanonicalName(name, out var canonicalName) && BuiltInPresetNameSet.Contains(canonicalName);
     }
 }
