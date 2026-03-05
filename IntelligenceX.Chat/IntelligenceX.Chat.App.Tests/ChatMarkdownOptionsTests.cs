@@ -1,4 +1,6 @@
 using IntelligenceX.Chat.App;
+using OfficeIMO.MarkdownRenderer;
+using System.Reflection;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -15,7 +17,7 @@ public sealed class ChatMarkdownOptionsTests {
         var options = ChatMarkdownOptions.Create();
 
         Assert.True(options.Mermaid.Enabled);
-        Assert.False(options.Chart.Enabled);
+        Assert.True(options.Chart.Enabled);
         Assert.False(options.Math.Enabled);
         Assert.False(options.EnableCodeCopyButtons);
         Assert.False(options.EnableTableCopyButtons);
@@ -32,5 +34,41 @@ public sealed class ChatMarkdownOptionsTests {
         first.Mermaid.Enabled = false;
 
         Assert.True(second.Mermaid.Enabled);
+    }
+
+    /// <summary>
+    /// Ensures newly available OfficeIMO normalization flags are enabled when the referenced renderer exposes them.
+    /// </summary>
+    [Fact]
+    public void Create_EnablesOptionalOfficeImoNormalizationFlags_WhenAvailable() {
+        var options = ChatMarkdownOptions.Create();
+
+        AssertOptionalBooleanPropertyEnabled(options, "NormalizeTightArrowStrongBoundaries");
+        AssertOptionalBooleanPropertyEnabled(options, "NormalizeTightColonSpacing");
+    }
+
+    /// <summary>
+    /// Ensures optional OfficeIMO network support is enabled when the referenced renderer exposes it.
+    /// </summary>
+    [Fact]
+    public void Create_EnablesOptionalOfficeImoNetworkSupport_WhenAvailable() {
+        var options = ChatMarkdownOptions.Create();
+        var networkProperty = typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public);
+        if (networkProperty is null) {
+            return;
+        }
+
+        var networkOptions = networkProperty.GetValue(options);
+        Assert.NotNull(networkOptions);
+        AssertOptionalBooleanPropertyEnabled(networkOptions!, "Enabled");
+    }
+
+    private static void AssertOptionalBooleanPropertyEnabled(object target, string propertyName) {
+        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property?.PropertyType != typeof(bool)) {
+            return;
+        }
+
+        Assert.Equal(true, property.GetValue(target));
     }
 }

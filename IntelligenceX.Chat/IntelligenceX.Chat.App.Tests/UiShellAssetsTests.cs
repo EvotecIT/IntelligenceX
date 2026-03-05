@@ -384,6 +384,8 @@ public sealed class UiShellAssetsTests {
             "window.ixMaterializeVisualFencesForDocx",
             "renderIxChartBlock",
             "renderIxNetworkBlock",
+            "renderOfficeImoChartBlock",
+            "renderOfficeImoNetworkBlock",
             "ixRenderTranscriptVisuals(transcript)",
             "ixDisposeTranscriptVisuals(transcript)");
     }
@@ -448,6 +450,7 @@ public sealed class UiShellAssetsTests {
         AssertContainsAll(
             html,
             "ensureMermaidThemeInitialized",
+            "decodeBase64Utf8Value",
             "normalizeMermaidExportSvg",
             "htmlLabels: normalizedRenderProfile !== \"export\"",
             "svg.replace(/<br\\s*\\/?\\s*>/gi, \"<br/>\")",
@@ -458,6 +461,10 @@ public sealed class UiShellAssetsTests {
             "window.requestAnimationFrame(function()",
             "normalized === \"network\" || normalized === \"visnetwork\"",
             "code.language-ix-network, code.language-visnetwork, code.language-network",
+            "canvas.omd-chart",
+            ".omd-network",
+            "data-chart-config-b64",
+            "data-network-config-b64",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",
             "Object.prototype.hasOwnProperty.call(rawEdge, \"target\")");
     }

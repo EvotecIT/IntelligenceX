@@ -36,10 +36,10 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
-    /// Ensures ix-chart fenced blocks remain as code blocks for host-side runtime validation and rendering.
+    /// Ensures ix-chart fenced blocks either render natively through OfficeIMO or remain as host-rendered fences.
     /// </summary>
     [Fact]
-    public void Format_PreservesIxChartFenceForHostRuntime() {
+    public void Format_SupportsIxChartViaRendererOrHostRuntime() {
         var options = ChatMarkdownOptions.Create();
         var now = new DateTime(2026, 2, 20, 9, 12, 45, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
@@ -52,15 +52,18 @@ public sealed class TranscriptHtmlFormatterTests {
                           """, now)
         }, "HH:mm:ss", options);
 
-        Assert.Contains("language-ix-chart", html, StringComparison.Ordinal);
         Assert.Contains("Chart preview:", html, StringComparison.Ordinal);
+        Assert.True(
+            html.Contains("class=\"omd-chart\"", StringComparison.Ordinal)
+            || html.Contains("language-ix-chart", StringComparison.Ordinal),
+            "Expected OfficeIMO-native chart HTML or the legacy ix-chart code fence.");
     }
 
     /// <summary>
-    /// Ensures ix-network fenced blocks remain as code blocks for host-side runtime validation and rendering.
+    /// Ensures ix-network fenced blocks either render natively through OfficeIMO or remain as host-rendered fences.
     /// </summary>
     [Fact]
-    public void Format_PreservesIxNetworkFenceForHostRuntime() {
+    public void Format_SupportsIxNetworkViaRendererOrHostRuntime() {
         var options = ChatMarkdownOptions.Create();
         var now = new DateTime(2026, 2, 20, 9, 16, 22, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
@@ -73,8 +76,11 @@ public sealed class TranscriptHtmlFormatterTests {
                           """, now)
         }, "HH:mm:ss", options);
 
-        Assert.Contains("language-ix-network", html, StringComparison.Ordinal);
         Assert.Contains("Relationship network:", html, StringComparison.Ordinal);
+        Assert.True(
+            html.Contains("class=\"omd-network\"", StringComparison.Ordinal)
+            || html.Contains("language-ix-network", StringComparison.Ordinal),
+            "Expected OfficeIMO-native network HTML or the legacy ix-network code fence.");
     }
 
     /// <summary>
