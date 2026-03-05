@@ -709,6 +709,15 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 6);
+        var compactLength = NormalizeCompactToken(normalized.AsSpan()).Length;
+        if (tokenCount > 0
+            && tokenCount <= 2
+            && normalized.Length <= FollowUpShapeShortCharLimit
+            && compactLength >= 8) {
+            return true;
+        }
+
         return false;
     }
 
@@ -718,11 +727,16 @@ internal sealed partial class ChatServiceSession {
 
     private static (bool ContinuationFollowUpTurn, bool CompactFollowUpTurn) ResolveFollowUpTurnClassification(
         bool continuationContractDetected,
+        bool hasStructuredContinuationContext,
         string userRequest,
         string routedUserRequest) {
         if (continuationContractDetected) {
             var contractExpandedFollowUpTurn = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
             return (contractExpandedFollowUpTurn, contractExpandedFollowUpTurn);
+        }
+
+        if (!hasStructuredContinuationContext) {
+            return (false, false);
         }
 
         var lexicalCompactFollowUpTurn = LooksLikeContinuationFollowUp(userRequest);

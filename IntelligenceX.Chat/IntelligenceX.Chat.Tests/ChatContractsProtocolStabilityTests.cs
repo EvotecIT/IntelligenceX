@@ -14,7 +14,9 @@ namespace IntelligenceX.Chat.Tests;
 public sealed class ChatContractsProtocolStabilityTests {
     [Fact]
     public void ChatStatusCodes_ExposeStableWireTokens() {
+        Assert.Equal("accepted", ChatStatusCodes.Accepted);
         Assert.Equal("thinking", ChatStatusCodes.Thinking);
+        Assert.Equal("context_ready", ChatStatusCodes.ContextReady);
         Assert.Equal("turn_queued", ChatStatusCodes.TurnQueued);
         Assert.Equal("execution_lane_waiting", ChatStatusCodes.ExecutionLaneWaiting);
         Assert.Equal("execution_lane_acquired", ChatStatusCodes.ExecutionLaneAcquired);
@@ -48,6 +50,9 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("phase_execute", ChatStatusCodes.PhaseExecute);
         Assert.Equal("phase_review", ChatStatusCodes.PhaseReview);
         Assert.Equal("phase_heartbeat", ChatStatusCodes.PhaseHeartbeat);
+        Assert.Equal("done", ChatStatusCodes.Done);
+        Assert.Equal("error", ChatStatusCodes.Error);
+        Assert.Equal("timeout", ChatStatusCodes.Timeout);
         Assert.Equal("no_result_watchdog_triggered", ChatStatusCodes.NoResultWatchdogTriggered);
     }
 
@@ -59,7 +64,7 @@ public sealed class ChatContractsProtocolStabilityTests {
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Assert.Equal(35, values.Length);
+        Assert.Equal(40, values.Length);
         Assert.Equal(values.Length, values.Distinct(StringComparer.Ordinal).Count());
     }
 

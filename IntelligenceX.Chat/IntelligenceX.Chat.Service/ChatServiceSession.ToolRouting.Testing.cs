@@ -232,10 +232,12 @@ internal sealed partial class ChatServiceSession {
 
     internal static (bool ContinuationFollowUpTurn, bool CompactFollowUpTurn) ResolveFollowUpTurnClassificationForTesting(
         bool continuationContractDetected,
+        bool hasStructuredContinuationContext,
         string userRequest,
         string routedUserRequest) {
         return ResolveFollowUpTurnClassification(
             continuationContractDetected,
+            hasStructuredContinuationContext,
             userRequest,
             routedUserRequest);
     }

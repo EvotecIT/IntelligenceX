@@ -16,9 +16,23 @@ internal sealed partial class ChatServiceSession {
             toolDefinition = registeredDefinition;
         }
 
+        var isCandidateTool = IsDomainIntentHostGuardrailCandidateTool(call.Name, toolDefinition);
+        if (!isCandidateTool && toolDefinition is null) {
+            EnsureStartupToolingBootstrapCompletedForDomainIntentResolution();
+            if (_registry.TryGetDefinition(call.Name, out registeredDefinition) && registeredDefinition is not null) {
+                toolDefinition = registeredDefinition;
+                isCandidateTool = IsDomainIntentHostGuardrailCandidateTool(call.Name, toolDefinition);
+            }
+        }
+
+        if (!isCandidateTool) {
+            var fallbackFamily = ResolveDomainIntentFamily(call.Name);
+            isCandidateTool = string.Equals(fallbackFamily, DomainIntentFamilyAd, StringComparison.Ordinal);
+        }
+
         if (!TryGetCurrentDomainIntentFamily(threadId, out var family)
             || !string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
-            || !IsDomainIntentHostGuardrailCandidateTool(call.Name, toolDefinition)) {
+            || !isCandidateTool) {
             return false;
         }
 

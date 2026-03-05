@@ -498,19 +498,126 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
+        if (TryResolveDomainIntentFamilyFromCatalogs(normalizedToolName, out var resolvedFamily)) {
+            return resolvedFamily;
+        }
+
+        if (TryResolveDomainIntentFamilyFromToolNameSignals(normalizedToolName, out resolvedFamily)) {
+            return resolvedFamily;
+        }
+
+        // Bootstrap runs asynchronously at startup; when callers ask for family resolution before it
+        // completes, wait once and retry so domain-affinity/evidence logic stays deterministic.
+        EnsureStartupToolingBootstrapCompletedForDomainIntentResolution();
+        if (TryResolveDomainIntentFamilyFromCatalogs(normalizedToolName, out resolvedFamily)) {
+            return resolvedFamily;
+        }
+
+        if (TryResolveDomainIntentFamilyFromToolNameSignals(normalizedToolName, out resolvedFamily)) {
+            return resolvedFamily;
+        }
+
+        return string.Empty;
+    }
+
+    private bool TryResolveDomainIntentFamilyFromCatalogs(string normalizedToolName, out string family) {
+        family = string.Empty;
         if (_registry.TryGetDefinition(normalizedToolName, out var definition) && definition is not null) {
-            var family = ResolveDomainIntentFamily(definition);
-            if (family.Length > 0) {
-                return family;
+            var resolved = ResolveDomainIntentFamily(definition);
+            if (resolved.Length > 0) {
+                family = resolved;
+                return true;
             }
         }
 
         if (_toolOrchestrationCatalog.TryGetEntry(normalizedToolName, out var catalogEntry)
             && TryNormalizeDomainIntentFamily(catalogEntry.DomainIntentFamily, out var normalizedCatalogFamily)) {
-            return normalizedCatalogFamily;
+            family = normalizedCatalogFamily;
+            return true;
         }
 
-        return string.Empty;
+        return false;
+    }
+
+    private void EnsureStartupToolingBootstrapCompletedForDomainIntentResolution() {
+        var startupTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        if (startupTask is null || startupTask.IsCompleted) {
+            return;
+        }
+
+        try {
+            _ = startupTask.Wait(millisecondsTimeout: 250);
+        } catch {
+            // Keep existing best-effort behavior when bootstrap fails.
+        }
+    }
+
+    private static bool TryResolveDomainIntentFamilyFromToolNameSignals(string toolName, out string family) {
+        family = string.Empty;
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return false;
+        }
+
+        if (TryGetLeadingToolNameToken(normalizedToolName, out var leadingToken)
+            && string.Equals(leadingToken, "ad", StringComparison.OrdinalIgnoreCase)) {
+            family = DomainIntentFamilyAd;
+            return true;
+        }
+
+        var compactToolName = NormalizeCompactToken(normalizedToolName.AsSpan());
+        if (compactToolName.Length == 0) {
+            return false;
+        }
+
+        var adScore = CountDomainIntentSignalMatches(compactToolName, ToolSelectionMetadata.GetDefaultDomainSignalTokens(DomainIntentFamilyAd));
+        var publicScore = CountDomainIntentSignalMatches(compactToolName, ToolSelectionMetadata.GetDefaultDomainSignalTokens(DomainIntentFamilyPublic));
+        if (adScore <= 0 && publicScore <= 0) {
+            return false;
+        }
+
+        if (adScore == publicScore) {
+            return false;
+        }
+
+        family = adScore > publicScore ? DomainIntentFamilyAd : DomainIntentFamilyPublic;
+        return true;
+    }
+
+    private static int CountDomainIntentSignalMatches(string compactToolName, IReadOnlyList<string> signals) {
+        if (compactToolName.Length == 0 || signals is null || signals.Count == 0) {
+            return 0;
+        }
+
+        var score = 0;
+        for (var i = 0; i < signals.Count; i++) {
+            var compactSignal = NormalizeCompactToken((signals[i] ?? string.Empty).AsSpan());
+            if (compactSignal.Length < 3) {
+                continue;
+            }
+
+            if (compactToolName.Contains(compactSignal, StringComparison.OrdinalIgnoreCase)) {
+                score++;
+            }
+        }
+
+        return score;
+    }
+
+    private static bool TryGetLeadingToolNameToken(string toolName, out string token) {
+        token = string.Empty;
+        var normalized = (toolName ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var separatorIndex = normalized.IndexOfAny(new[] { '_', '-' });
+        if (separatorIndex <= 0) {
+            return false;
+        }
+
+        token = normalized.Substring(0, separatorIndex).Trim();
+        return token.Length > 0;
     }
 
     private static DomainIntentActionCatalog ResolveDomainIntentActionCatalog(IReadOnlyList<ToolDefinition>? definitions) {

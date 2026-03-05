@@ -57,8 +57,13 @@ internal sealed partial class ChatServiceSession {
         var userRequest = ExtractPrimaryUserRequest(request.Text);
         var userIntent = ExtractIntentUserText(request.Text);
         var continuationContractDetected = TryReadContinuationContractFromRequestText(request.Text, out _, out _);
+        var hasFreshPendingActionContext = HasFreshPendingActionsContext(threadId);
         RememberUserIntent(threadId, userIntent);
         var routedUserRequest = ExpandContinuationUserRequestWithOptions(threadId, userRequest, forceContinuationFollowUp: continuationContractDetected);
+        var continuationExpandedFromContext = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
+        var hasStructuredContinuationContext = continuationContractDetected
+                                              || hasFreshPendingActionContext
+                                              || continuationExpandedFromContext;
         if (TryAugmentRoutedUserRequestFromWorkingMemoryCheckpoint(threadId, userRequest, routedUserRequest, out var checkpointAugmentedRequest)) {
             routedUserRequest = checkpointAugmentedRequest;
             await TryWriteStatusAsync(
@@ -90,6 +95,7 @@ internal sealed partial class ChatServiceSession {
         }
         var (continuationFollowUpTurn, compactFollowUpTurn) = ResolveFollowUpTurnClassification(
             continuationContractDetected,
+            hasStructuredContinuationContext,
             userRequest,
             routedUserRequest);
         var structuredCompactFollowUpTurn = continuationContractDetected && compactFollowUpTurn;
@@ -324,7 +330,6 @@ internal sealed partial class ChatServiceSession {
             ClearPreferredDomainIntentFamily(threadId);
             hasPreferredDomainIntentFamily = false;
         }
-        var hasFreshPendingActionContext = HasFreshPendingActionsContext(threadId);
         if (ShouldSuppressDomainIntentClarificationForCompactFollowUp(
                 structuredCompactFollowUpTurn,
                 hasPreferredDomainIntentFamily,

@@ -48,6 +48,7 @@ public static class ToolSelectionMetadata {
         "ntds",
         "forest",
         "trust",
+        "eventlog",
         "adplayground",
         "active_directory",
         "ad_domain",

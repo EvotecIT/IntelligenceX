@@ -150,6 +150,7 @@ internal sealed partial class ChatServiceSession {
 
                 var entryFamily = ResolveDomainIntentFamily(entry.ToolName);
                 if (hasRequestedFamily
+                    && entryFamily.Length > 0
                     && !string.Equals(entryFamily, requestedFamily, StringComparison.Ordinal)) {
                     continue;
                 }

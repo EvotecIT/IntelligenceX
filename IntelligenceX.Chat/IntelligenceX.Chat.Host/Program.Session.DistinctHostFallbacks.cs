@@ -290,7 +290,7 @@ internal static partial class Program {
                 allowedTargets.Add(normalized);
             }
 
-            return OrderHostTargetCandidatesBySpecificity(allowedTargets);
+            return allowedTargets;
         }
 
         private static HashSet<string> GetForbiddenHostTargets(ScenarioExecutionContractRequirements requirements) {

@@ -26,6 +26,8 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> GlobalExecutionLanes = new();
+    private static readonly TimeSpan SessionQueueWaitHeartbeatInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan GlobalLaneWaitHeartbeatInterval = TimeSpan.FromSeconds(5);
 
     internal static int ResolveSessionExecutionQueueLimit(int configuredLimit) {
         return configuredLimit < 0 ? 0 : configuredLimit;
@@ -292,26 +294,36 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        var acceptedThreadHint = ResolveRecoveredThreadAlias(request.ThreadId) ?? string.Empty;
+        await TryWriteStatusAsync(
+                writer,
+                requestId,
+                acceptedThreadHint,
+                status: ChatStatusCodes.Accepted,
+                message: "Request accepted.")
+            .ConfigureAwait(false);
+
         if (queuePosition > 1) {
-            var threadHint = ResolveRecoveredThreadAlias(request.ThreadId);
-            if (string.IsNullOrWhiteSpace(threadHint)) {
-                threadHint = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot());
+            var queueThreadHint = acceptedThreadHint;
+            if (string.IsNullOrWhiteSpace(queueThreadHint)) {
+                queueThreadHint = ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot()) ?? string.Empty;
             }
 
             await TryWriteStatusAsync(
                     writer,
                     requestId,
-                    threadHint ?? string.Empty,
+                    queueThreadHint,
                     status: ChatStatusCodes.TurnQueued,
-                    message: $"Queued turn request ({queuePosition} in session lane).")
+                    message: BuildSessionLaneQueuedStatusMessage(queuePosition))
                 .ConfigureAwait(false);
+            StartSessionQueueWaitHeartbeat(run, cancellationToken);
         } else {
             await TryWriteStatusAsync(
                     writer,
                     requestId,
                     string.Empty,
                     status: ChatStatusCodes.Thinking,
-                    message: "Request accepted. Entering execution lane...")
+                    message: "Entering execution lane...")
                 .ConfigureAwait(false);
         }
     }
@@ -372,26 +384,8 @@ internal sealed partial class ChatServiceSession {
 
         try {
             if (globalLane is not null) {
-                if (globalLane.Wait(0)) {
-                    enteredGlobalLane = true;
-                } else {
-                    await TryWriteStatusAsync(
-                            writer,
-                            request.RequestId,
-                            preflightThreadId,
-                            status: ChatStatusCodes.ExecutionLaneWaiting,
-                            message: "Waiting for global execution lane...")
-                        .ConfigureAwait(false);
-                    await globalLane.WaitAsync(run.Cts.Token).ConfigureAwait(false);
-                    enteredGlobalLane = true;
-                    await TryWriteStatusAsync(
-                            writer,
-                            request.RequestId,
-                            preflightThreadId,
-                            status: ChatStatusCodes.ExecutionLaneAcquired,
-                            message: "Global execution lane acquired.")
-                        .ConfigureAwait(false);
-                }
+                await WaitForGlobalExecutionLaneAsync(globalLane, run, preflightThreadId).ConfigureAwait(false);
+                enteredGlobalLane = true;
             }
 
             await TryWriteStatusAsync(
@@ -399,7 +393,7 @@ internal sealed partial class ChatServiceSession {
                     request.RequestId,
                     preflightThreadId,
                     status: ChatStatusCodes.Thinking,
-                    message: "Request accepted. Preparing conversation context...")
+                    message: "Preparing conversation context...")
                 .ConfigureAwait(false);
 
             try {
@@ -427,10 +421,24 @@ internal sealed partial class ChatServiceSession {
                         writer,
                         request.RequestId,
                         normalizedActiveThreadId,
+                        status: ChatStatusCodes.ContextReady,
+                        message: "Conversation context ready.")
+                    .ConfigureAwait(false);
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        normalizedActiveThreadId,
                         status: ChatStatusCodes.Thinking,
-                        message: "Conversation context ready. Starting routing and planning...")
+                        message: "Starting routing and planning...")
                     .ConfigureAwait(false);
             } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        preflightThreadId,
+                        status: ChatStatusCodes.Error,
+                        message: "Chat canceled by client.")
+                    .ConfigureAwait(false);
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -442,6 +450,13 @@ internal sealed partial class ChatServiceSession {
                 // Session shutting down.
                 return;
             } catch (OpenAIAuthenticationRequiredException) {
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        preflightThreadId,
+                        status: ChatStatusCodes.Error,
+                        message: "Authentication required.")
+                    .ConfigureAwait(false);
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -450,6 +465,13 @@ internal sealed partial class ChatServiceSession {
                 }, CancellationToken.None).ConfigureAwait(false);
                 return;
             } catch (Exception ex) {
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        preflightThreadId,
+                        status: ChatStatusCodes.Error,
+                        message: "Chat failed: " + ex.Message)
+                    .ConfigureAwait(false);
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -517,12 +539,26 @@ internal sealed partial class ChatServiceSession {
                     result.ResolvedModel,
                     requestedModel,
                     runtimeDefaultModel);
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadIdForDelta,
+                        status: ChatStatusCodes.Done,
+                        message: "Turn completed.")
+                    .ConfigureAwait(false);
                 await WriteAsync(writer, result.Result, CancellationToken.None).ConfigureAwait(false);
 
                 await TryRecordRecentModelAsync(telemetryModel, CancellationToken.None).ConfigureAwait(false);
             } catch (OpenAIAuthenticationRequiredException) {
                 outcome = "error";
                 outcomeCode = "not_authenticated";
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadIdForDelta,
+                        status: ChatStatusCodes.Error,
+                        message: "Authentication required.")
+                    .ConfigureAwait(false);
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -532,11 +568,38 @@ internal sealed partial class ChatServiceSession {
             } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
                 outcome = "canceled";
                 outcomeCode = "chat_canceled";
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadIdForDelta,
+                        status: ChatStatusCodes.Error,
+                        message: "Chat canceled by client.")
+                    .ConfigureAwait(false);
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     Error = "Chat canceled by client.",
                     Code = "chat_canceled"
+                }, CancellationToken.None).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken)) {
+                outcome = "timeout";
+                outcomeCode = "chat_timeout";
+                var turnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
+                var timeoutMessage = turnTimeoutSeconds > 0
+                    ? $"Chat timed out after {turnTimeoutSeconds}s."
+                    : "Chat timed out.";
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadIdForDelta,
+                        status: ChatStatusCodes.Timeout,
+                        message: timeoutMessage)
+                    .ConfigureAwait(false);
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = timeoutMessage,
+                    Code = "chat_timeout"
                 }, CancellationToken.None).ConfigureAwait(false);
             } catch (OperationCanceledException) when (sessionCancellationToken.IsCancellationRequested) {
                 // Session shutting down.
@@ -545,6 +608,13 @@ internal sealed partial class ChatServiceSession {
             } catch (Exception ex) {
                 outcome = "error";
                 outcomeCode = "chat_failed";
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadIdForDelta,
+                        status: ChatStatusCodes.Error,
+                        message: "Chat failed: " + ex.Message)
+                    .ConfigureAwait(false);
                 await WriteAsync(writer, new ErrorMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -597,11 +667,36 @@ internal sealed partial class ChatServiceSession {
                 EndTurnTimelineCapture(request.RequestId);
             }
         } catch (OperationCanceledException) when (run.Cts.IsCancellationRequested && !sessionCancellationToken.IsCancellationRequested) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    preflightThreadId,
+                    status: ChatStatusCodes.Error,
+                    message: "Chat canceled by client.")
+                .ConfigureAwait(false);
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
                 Error = "Chat canceled by client.",
                 Code = "chat_canceled"
+            }, CancellationToken.None).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken)) {
+            var turnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
+            var timeoutMessage = turnTimeoutSeconds > 0
+                ? $"Chat timed out after {turnTimeoutSeconds}s."
+                : "Chat timed out.";
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    preflightThreadId,
+                    status: ChatStatusCodes.Timeout,
+                    message: timeoutMessage)
+                .ConfigureAwait(false);
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = timeoutMessage,
+                Code = "chat_timeout"
             }, CancellationToken.None).ConfigureAwait(false);
         } catch (OperationCanceledException) when (sessionCancellationToken.IsCancellationRequested) {
             // Session shutting down.
@@ -618,6 +713,149 @@ internal sealed partial class ChatServiceSession {
 
     private int GetQueuedChatRunCountNoLock() {
         return _queuedChats.Count;
+    }
+
+    private void StartSessionQueueWaitHeartbeat(ChatRun run, CancellationToken sessionCancellationToken) {
+        _ = Task.Run(() => RunSessionQueueWaitHeartbeatAsync(run, sessionCancellationToken), CancellationToken.None);
+    }
+
+    private async Task RunSessionQueueWaitHeartbeatAsync(ChatRun run, CancellationToken sessionCancellationToken) {
+        var waitStartedUtc = DateTime.UtcNow;
+        while (!sessionCancellationToken.IsCancellationRequested) {
+            try {
+                await Task.Delay(SessionQueueWaitHeartbeatInterval, run.Cts.Token).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                break;
+            }
+
+            if (run.Started || run.IsCompleted) {
+                break;
+            }
+
+            if (!TryGetSessionLaneQueuePosition(run, out var queuePosition)) {
+                break;
+            }
+
+            var elapsedSeconds = Math.Max(1, (int)Math.Round((DateTime.UtcNow - waitStartedUtc).TotalSeconds));
+            await TryWriteStatusAsync(
+                    run.Writer,
+                    run.ChatRequestId,
+                    ResolveQueueStatusThreadHint(run),
+                    status: ChatStatusCodes.TurnQueued,
+                    message: BuildSessionLaneQueuedHeartbeatStatusMessage(queuePosition, elapsedSeconds))
+                .ConfigureAwait(false);
+        }
+    }
+
+    private bool TryGetSessionLaneQueuePosition(ChatRun run, out int queuePosition) {
+        queuePosition = 0;
+        lock (_chatRunLock) {
+            if (run.IsCompleted || run.Started) {
+                return false;
+            }
+
+            var turnsAhead = (_activeChat is { IsCompleted: false } ? 1 : 0);
+            foreach (var queuedRun in _queuedChats) {
+                if (ReferenceEquals(queuedRun, run)) {
+                    queuePosition = turnsAhead + 1;
+                    return true;
+                }
+
+                turnsAhead++;
+            }
+        }
+
+        return false;
+    }
+
+    private string ResolveQueueStatusThreadHint(ChatRun run) {
+        var threadHint = ResolveRecoveredThreadAlias(run.Request.ThreadId);
+        if (!string.IsNullOrWhiteSpace(threadHint)) {
+            return threadHint;
+        }
+
+        return ResolveRecoveredThreadAlias(GetActiveThreadIdSnapshot()) ?? string.Empty;
+    }
+
+    private async Task WaitForGlobalExecutionLaneAsync(SemaphoreSlim globalLane, ChatRun run, string threadId) {
+        if (globalLane.Wait(0)) {
+            return;
+        }
+
+        await TryWriteStatusAsync(
+                run.Writer,
+                run.ChatRequestId,
+                threadId,
+                status: ChatStatusCodes.ExecutionLaneWaiting,
+                message: BuildGlobalLaneWaitingStatusMessage())
+            .ConfigureAwait(false);
+
+        var waitStartedUtc = DateTime.UtcNow;
+        while (true) {
+            if (await globalLane.WaitAsync(GlobalLaneWaitHeartbeatInterval, run.Cts.Token).ConfigureAwait(false)) {
+                var waitedSeconds = Math.Max(1, (int)Math.Round((DateTime.UtcNow - waitStartedUtc).TotalSeconds));
+                await TryWriteStatusAsync(
+                        run.Writer,
+                        run.ChatRequestId,
+                        threadId,
+                        status: ChatStatusCodes.ExecutionLaneAcquired,
+                        message: BuildGlobalLaneAcquiredStatusMessage(waitedSeconds))
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            var elapsedSeconds = Math.Max(1, (int)Math.Round((DateTime.UtcNow - waitStartedUtc).TotalSeconds));
+            await TryWriteStatusAsync(
+                    run.Writer,
+                    run.ChatRequestId,
+                    threadId,
+                    status: ChatStatusCodes.ExecutionLaneWaiting,
+                    message: BuildGlobalLaneWaitingHeartbeatStatusMessage(elapsedSeconds))
+                .ConfigureAwait(false);
+        }
+    }
+
+    internal static string BuildSessionLaneQueuedStatusMessage(int queuePosition) {
+        return "Queued turn request (" + Math.Max(1, queuePosition) + " in session lane).";
+    }
+
+    internal static string BuildSessionLaneQueuedHeartbeatStatusMessage(int queuePosition, int elapsedSeconds) {
+        return "Still queued in session lane ("
+               + Math.Max(1, queuePosition)
+               + " in queue, waiting "
+               + Math.Max(1, elapsedSeconds)
+               + "s).";
+    }
+
+    internal static string BuildGlobalLaneWaitingStatusMessage() {
+        return "Waiting for global execution lane...";
+    }
+
+    internal static string BuildGlobalLaneWaitingHeartbeatStatusMessage(int elapsedSeconds) {
+        return "Still waiting for global execution lane ("
+               + Math.Max(1, elapsedSeconds)
+               + "s elapsed).";
+    }
+
+    internal static string BuildGlobalLaneAcquiredStatusMessage(int waitedSeconds) {
+        var boundedSeconds = Math.Max(1, waitedSeconds);
+        if (boundedSeconds <= 1) {
+            return "Global execution lane acquired.";
+        }
+
+        return "Global execution lane acquired after " + boundedSeconds + "s wait.";
+    }
+
+    private int ResolveEffectiveTurnTimeoutSeconds(ChatRequest request) {
+        return request.Options?.TurnTimeoutSeconds ?? _options.TurnTimeoutSeconds;
+    }
+
+    private bool IsTurnTimeoutCancellation(ChatRequest request, ChatRun run, CancellationToken sessionCancellationToken) {
+        if (run.Cts.IsCancellationRequested || sessionCancellationToken.IsCancellationRequested) {
+            return false;
+        }
+
+        return ResolveEffectiveTurnTimeoutSeconds(request) > 0;
     }
 
     private string? GetActiveThreadIdSnapshot() {
