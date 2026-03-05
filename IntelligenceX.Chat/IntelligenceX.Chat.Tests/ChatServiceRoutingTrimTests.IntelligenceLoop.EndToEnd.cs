@@ -271,10 +271,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             CancellationToken.None);
 
         var statuses = ParseStatuses(capture.Snapshot());
-        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_started", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_call", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
+        var toolStatuses = statuses.Where(IsToolRelatedStatusCode).ToArray();
+        Assert.Empty(toolStatuses);
 
         Assert.InRange(server.ChatCompletionRequestCount, 1, 2);
         for (var requestIndex = 0; requestIndex < server.ChatCompletionRequestCount; requestIndex++) {

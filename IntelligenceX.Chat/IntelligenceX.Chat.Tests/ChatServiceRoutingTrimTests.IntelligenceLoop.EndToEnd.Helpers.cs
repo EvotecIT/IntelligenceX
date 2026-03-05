@@ -20,6 +20,29 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly Type? ChatRunType = typeof(ChatServiceSession).GetNestedType("ChatRun", BindingFlags.NonPublic);
+    private static readonly HashSet<string> ToolRelatedStatusCodes = new(StringComparer.OrdinalIgnoreCase) {
+        ChatStatusCodes.RoutingTool,
+        ChatStatusCodes.ToolCall,
+        ChatStatusCodes.ToolRunning,
+        ChatStatusCodes.ToolHeartbeat,
+        ChatStatusCodes.ToolCompleted,
+        ChatStatusCodes.ToolCanceled,
+        ChatStatusCodes.ToolRecovered,
+        ChatStatusCodes.ToolParallelMode,
+        ChatStatusCodes.ToolParallelForced,
+        ChatStatusCodes.ToolParallelSafetyOff,
+        ChatStatusCodes.ToolBatchStarted,
+        ChatStatusCodes.ToolBatchProgress,
+        ChatStatusCodes.ToolBatchHeartbeat,
+        ChatStatusCodes.ToolBatchRecovering,
+        ChatStatusCodes.ToolBatchRecovered,
+        ChatStatusCodes.ToolBatchCompleted,
+        ChatStatusCodes.ToolRoundStarted,
+        ChatStatusCodes.ToolRoundCompleted,
+        ChatStatusCodes.ToolReplayCompacted,
+        ChatStatusCodes.ToolRoundLimitReached,
+        ChatStatusCodes.ToolRoundCapApplied
+    };
 
     private static async Task<object> InvokeRunChatOnCurrentThreadAsync(ChatServiceSession session, IntelligenceXClient client, StreamWriter writer,
         ChatRequest request, string threadId, CancellationToken cancellationToken) {
@@ -176,6 +199,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         return false;
+    }
+
+    private static bool IsToolRelatedStatusCode(string? statusCode) {
+        var normalized = (statusCode ?? string.Empty).Trim();
+        return normalized.Length > 0 && ToolRelatedStatusCodes.Contains(normalized);
     }
 
     private static string GetLatestMessageContentByRole(string requestBody, string role) {
