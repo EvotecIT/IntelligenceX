@@ -194,4 +194,67 @@ public sealed class SessionRuntimePolicyHelloContractTests {
 
         Assert.Equal(ChatRequestOptionLimits.MaxToolRounds, policy.MaxToolRounds);
     }
+
+    [Fact]
+    public void BuildSessionPolicy_PrefersResolvedPluginSkillIdsInCapabilitySnapshot() {
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions(),
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "plugin-loader-test",
+                    Name = "Plugin Loader Test",
+                    SourceKind = "open_source",
+                    Enabled = true
+                }
+            },
+            new[] {
+                new ToolPluginAvailabilityInfo {
+                    Id = "plugin-loader-test",
+                    Name = "Plugin Loader Test",
+                    Origin = "plugin_folder",
+                    SourceKind = "open_source",
+                    DefaultEnabled = true,
+                    Enabled = true,
+                    PackIds = new[] { "plugin-loader-test" },
+                    SkillIds = new[] { "inventory-test", "network-recon" }
+                }
+            },
+            Array.Empty<string>(),
+            null,
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 4,
+                RoutingAwareTools = 4,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 1,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "scope_hosts",
+                        ToolCount = 4
+                    }
+                }
+            });
+
+        Assert.Equal(new[] { "inventory-test", "network-recon" }, policy.CapabilitySnapshot!.Skills);
+        Assert.Equal(new[] { "inventory-test", "network-recon" }, policy.Plugins[0].SkillIds);
+    }
 }

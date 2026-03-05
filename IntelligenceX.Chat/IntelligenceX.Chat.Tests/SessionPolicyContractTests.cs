@@ -46,7 +46,8 @@ public sealed class SessionPolicyContractTests {
                         IsDangerous = false,
                         PackIds = new[] { "testimox" },
                         RootPath = "C:\\plugins\\testimox",
-                        SkillDirectories = new[] { "C:\\plugins\\testimox\\skills" }
+                        SkillDirectories = new[] { "C:\\plugins\\testimox\\skills" },
+                        SkillIds = new[] { "testimox.health", "testimox.permissions" }
                     }
                 },
                 StartupWarnings = new[] {
@@ -177,6 +178,7 @@ public sealed class SessionPolicyContractTests {
         Assert.Single(policy.Plugins);
         Assert.Equal("ix-testimox", policy.Plugins[0].Id);
         Assert.Equal("C:\\plugins\\testimox\\skills", Assert.Single(policy.Plugins[0].SkillDirectories));
+        Assert.Equal(new[] { "testimox.health", "testimox.permissions" }, policy.Plugins[0].SkillIds);
         var routingCatalog = Assert.IsType<SessionRoutingCatalogDiagnosticsDto>(policy.RoutingCatalog);
         Assert.True(routingCatalog.IsHealthy);
         Assert.Equal(8, routingCatalog.TotalTools);

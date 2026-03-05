@@ -798,38 +798,9 @@ internal static partial class PluginFolderToolPackLoader {
             IsDangerous = (manifest?.IsDangerous ?? false) || (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).Any(static pack => pack.IsDangerous),
             PackIds = normalizedPackIds,
             RootPath = string.IsNullOrWhiteSpace(rootPath) ? null : rootPath,
-            SkillDirectories = ResolvePluginSkillDirectories(rootPath, manifest)
+            SkillDirectories = ResolvePluginSkillDirectories(rootPath, manifest),
+            SkillIds = ResolvePluginSkillIds(rootPath, manifest)
         };
-    }
-
-    private static string[] ResolvePluginSkillDirectories(string rootPath, PluginManifest? manifest) {
-        if (manifest?.SkillDirectories is null || manifest.SkillDirectories.Length == 0) {
-            return Array.Empty<string>();
-        }
-
-        var normalizedRootPath = NormalizePath(rootPath) ?? string.Empty;
-        var directories = new List<string>();
-        for (var i = 0; i < manifest.SkillDirectories.Length; i++) {
-            var candidate = (manifest.SkillDirectories[i] ?? string.Empty).Trim();
-            if (candidate.Length == 0) {
-                continue;
-            }
-
-            var path = candidate;
-            if (normalizedRootPath.Length > 0 && !Path.IsPathRooted(path)) {
-                path = Path.Combine(normalizedRootPath, path);
-            }
-
-            var normalizedPath = NormalizePath(path);
-            if (!string.IsNullOrWhiteSpace(normalizedPath)) {
-                directories.Add(normalizedPath);
-            }
-        }
-
-        return directories
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     private readonly record struct PackEnablementDecision(bool Enabled, string? DisabledReason);

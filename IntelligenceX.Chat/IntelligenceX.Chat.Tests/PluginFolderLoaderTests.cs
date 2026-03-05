@@ -83,6 +83,61 @@ public sealed class PluginFolderLoaderTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_ResolvesPluginSkillIdsFromDeclaredDirectories() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
+        var skillRoot = Path.Combine(pluginFolder, "skills");
+        Directory.CreateDirectory(Path.Combine(skillRoot, "inventory-test"));
+        Directory.CreateDirectory(Path.Combine(skillRoot, "network-recon"));
+
+        try {
+            File.WriteAllText(Path.Combine(skillRoot, "inventory-test", "SKILL.md"), "# Inventory test");
+            File.WriteAllText(Path.Combine(skillRoot, "network-recon", "SKILL.md"), "# Network recon");
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            var copiedAssemblyPath = Path.Combine(pluginFolder, entryAssemblyName);
+            File.Copy(sourceAssemblyPath, copiedAssemblyPath, overwrite: true);
+
+            var entryType = typeof(PluginFolderLoaderTestPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            var manifest = $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "plugin-loader-test",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "skillDirectories": [ "skills" ]
+            }
+            """;
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), manifest);
+
+            var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                DisabledPackIds = DefaultEnabledKnownPackIds,
+                PluginArchiveCacheRoot = Path.Combine(tempRoot, "plugin-cache")
+            });
+
+            var normalizedPluginId = ToolPackBootstrap.NormalizePackId("plugin-loader-test");
+            var pluginAvailability = Assert.Single(
+                result.PluginAvailability,
+                plugin => string.Equals(plugin.Id, normalizedPluginId, StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(Path.Combine(pluginFolder, "skills"), Assert.Single(pluginAvailability.SkillDirectories));
+            Assert.Equal(
+                new[] { "inventory-test", "network-recon" },
+                pluginAvailability.SkillIds);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacks_DuplicateBuiltInPluginUsesFastpathSkip() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
         var pluginRoot = Path.Combine(tempRoot, "plugins");

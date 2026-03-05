@@ -303,6 +303,10 @@ public sealed record ToolPluginAvailabilityInfo {
     /// Optional skill directories exposed by the plugin.
     /// </summary>
     public string[] SkillDirectories { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Optional resolved skill identifiers exposed by the plugin.
+    /// </summary>
+    public string[] SkillIds { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

@@ -185,7 +185,19 @@ public sealed class ChatServiceToolingBootstrapTests {
                     },
                     Packs = Array.Empty<IToolPack>(),
                     PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
-                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    PluginAvailability = new[] {
+                        new ToolPluginAvailabilityInfo {
+                            Id = "plugin_loader_test",
+                            Name = "Plugin Loader Test",
+                            Origin = "plugin_folder",
+                            SourceKind = "open_source",
+                            DefaultEnabled = true,
+                            Enabled = true,
+                            PackIds = new[] { "plugin_loader_test" },
+                            SkillDirectories = new[] { "C:\\plugins\\plugin-loader-test\\skills" },
+                            SkillIds = new[] { "inventory-test", "network-recon" }
+                        }
+                    },
                     StartupWarnings = new[] { "[startup] unit-test warning" },
                     StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
                     PluginSearchPaths = Array.Empty<string>(),
@@ -213,6 +225,9 @@ public sealed class ChatServiceToolingBootstrapTests {
             var toolDefinition = Assert.Single(persistedSnapshot.ToolDefinitions);
             Assert.Equal("unit_test_tool", toolDefinition.Name);
             Assert.Equal("unit test tool definition", toolDefinition.Description);
+            var pluginAvailability = Assert.Single(persistedSnapshot.PluginAvailability);
+            Assert.Equal("plugin_loader_test", pluginAvailability.Id);
+            Assert.Equal(new[] { "inventory-test", "network-recon" }, pluginAvailability.SkillIds);
             Assert.Equal("unit_test_tool", Assert.Single(persistedSnapshot.CapabilitySnapshot.HealthyTools));
         } finally {
             try {

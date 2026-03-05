@@ -126,7 +126,8 @@ internal sealed partial class ChatServiceSession {
                     DisabledReason = pack.Enabled ? null : pack.DisabledReason,
                     IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
                     PackIds = string.IsNullOrWhiteSpace(pack.Id) ? Array.Empty<string>() : new[] { NormalizePackId(pack.Id) },
-                    SkillDirectories = Array.Empty<string>()
+                    SkillDirectories = Array.Empty<string>(),
+                    SkillIds = Array.Empty<string>()
                 });
             }
         } else {
@@ -143,7 +144,8 @@ internal sealed partial class ChatServiceSession {
                     IsDangerous = plugin.IsDangerous,
                     PackIds = NormalizeDistinctStrings(plugin.PackIds ?? Array.Empty<string>(), maxItems: 0),
                     RootPath = string.IsNullOrWhiteSpace(plugin.RootPath) ? null : plugin.RootPath.Trim(),
-                    SkillDirectories = NormalizeDistinctStrings(plugin.SkillDirectories ?? Array.Empty<string>(), maxItems: 0)
+                    SkillDirectories = NormalizeDistinctStrings(plugin.SkillDirectories ?? Array.Empty<string>(), maxItems: 0),
+                    SkillIds = NormalizeCapabilitySnapshotSkills(plugin.SkillIds ?? Array.Empty<string>())
                 });
             }
         }
