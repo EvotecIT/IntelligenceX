@@ -267,7 +267,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var queuedRequest = new ChatRequest {
             RequestId = "req-after-cancel-active",
             ThreadId = thread.Id,
-            Text = "Run immediately after active cancellation."
+            Text = "Reply with the word ready."
         };
         var cancelRequest = new CancelChatRequest {
             RequestId = "req-cancel-active-control",
@@ -286,11 +286,19 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         await WaitForAckAsync(capture, cancelRequest.RequestId, TimeSpan.FromSeconds(5));
         await WaitForRequestErrorCodeAsync(capture, activeRequest.RequestId!, "chat_canceled", TimeSpan.FromSeconds(10));
-        await WaitForRequestStatusAsync(capture, queuedRequest.RequestId!, ChatStatusCodes.ContextReady, TimeSpan.FromSeconds(20));
-        await WaitForRequestTerminalFrameAsync(capture, queuedRequest.RequestId!, TimeSpan.FromSeconds(30));
+        await WaitForRequestStatusAsync(capture, queuedRequest.RequestId!, ChatStatusCodes.Done, TimeSpan.FromSeconds(30));
         Assert.False(
             HasRequestErrorCode(capture.Snapshot(), queuedRequest.RequestId!, "chat_canceled"),
             "Queued request should not be canceled when canceling the active request.");
+        Assert.True(
+            HasFrameType(capture.Snapshot(), queuedRequest.RequestId!, "chat_result"),
+            "Queued request did not produce chat_result after active cancellation.");
+        Assert.False(
+            HasFrameType(capture.Snapshot(), queuedRequest.RequestId!, "error"),
+            "Queued request emitted an error frame after active cancellation.");
+        Assert.False(
+            HasFrameType(capture.Snapshot(), activeRequest.RequestId!, "chat_result"),
+            "Canceled active request unexpectedly emitted a chat_result frame.");
     }
 
     [Fact]
@@ -354,6 +362,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(
             HasRequestErrorCode(capture.Snapshot(), canceledQueuedRequest.RequestId!, "chat_canceled"),
             "Queued cancellation should remove the queued run without emitting a terminal chat_canceled frame.");
+        Assert.False(
+            HasTerminalFrame(capture.Snapshot(), canceledQueuedRequest.RequestId!),
+            "Canceled queued request unexpectedly emitted a terminal frame.");
     }
 
     private static async Task InvokeHandleChatRequestAsync(
@@ -467,22 +478,6 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(HasAck(stream.Snapshot(), requestId), $"Timed out waiting for ack frame for request '{requestId}'.");
     }
 
-    private static async Task WaitForRequestTerminalFrameAsync(
-        SynchronizedCaptureStream stream,
-        string requestId,
-        TimeSpan timeout) {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (sw.Elapsed < timeout) {
-            if (HasTerminalFrame(stream.Snapshot(), requestId)) {
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
-        }
-
-        Assert.True(HasTerminalFrame(stream.Snapshot(), requestId), $"Timed out waiting for terminal frame for request '{requestId}'.");
-    }
-
     private static bool HasRequestStatus(byte[] snapshotBytes, string requestId, string status) {
         return ParseCapturedFrames(snapshotBytes).Any(frame =>
             string.Equals(frame.Type, "chat_status", StringComparison.OrdinalIgnoreCase)
@@ -514,6 +509,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         return ParseCapturedFrames(snapshotBytes).Any(frame =>
             string.Equals(frame.RequestId, requestId, StringComparison.Ordinal)
             && IsTerminalResponseFrame(frame));
+    }
+
+    private static bool HasFrameType(byte[] snapshotBytes, string requestId, string type) {
+        return ParseCapturedFrames(snapshotBytes).Any(frame =>
+            string.Equals(frame.RequestId, requestId, StringComparison.Ordinal)
+            && string.Equals(frame.Type, type, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsTerminalResponseFrame(CapturedFrame frame) {
