@@ -164,6 +164,23 @@ public sealed class ChatServiceClientMessageParsingTests {
               "toolCallsCount":2,
               "toolRounds":1,
               "projectionFallbackCount":0,
+              "phaseTimings":[
+                {
+                  "phase":"queued",
+                  "durationMs":1300,
+                  "eventCount":2
+                },
+                {
+                  "phase":"model_plan",
+                  "durationMs":820,
+                  "eventCount":3
+                },
+                {
+                  "phase":"done",
+                  "durationMs":0,
+                  "eventCount":1
+                }
+              ],
               "autonomyTelemetry":{
                 "autonomyDepth":1,
                 "recoveryEvents":2,
@@ -179,6 +196,10 @@ public sealed class ChatServiceClientMessageParsingTests {
         Assert.Equal(120, metrics.EnsureThreadMs);
         Assert.Equal(930, metrics.WeightedSubsetSelectionMs);
         Assert.Equal(410, metrics.ResolveModelMs);
+        var queuedPhaseTiming = Assert.Single(metrics.PhaseTimings!, phase =>
+            string.Equals(phase.Phase, "queued", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(1300, queuedPhaseTiming.DurationMs);
+        Assert.Equal(2, queuedPhaseTiming.EventCount);
         var autonomy = Assert.IsType<AutonomyTelemetryDto>(metrics.AutonomyTelemetry);
         Assert.Equal(1, autonomy.AutonomyDepth);
         Assert.Equal(2, autonomy.RecoveryEvents);
