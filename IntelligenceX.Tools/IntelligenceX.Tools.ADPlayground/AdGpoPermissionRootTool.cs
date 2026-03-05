@@ -15,6 +15,20 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// </summary>
 public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
+    private const int DefaultMaxRows = 100000;
+    private const int MaxRowsCap = 1000000;
+
+    internal readonly record struct GpoPermissionRootBindingContract(
+        string? Permission,
+        bool DenyOnly,
+        bool InheritedOnly,
+        int MaxRows);
+
+    private sealed record GpoPermissionRootRequest(
+        string? Permission,
+        bool DenyOnly,
+        bool InheritedOnly,
+        int MaxRows);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_gpo_permission_root",
@@ -53,77 +67,86 @@ public sealed class AdGpoPermissionRootTool : ActiveDirectoryToolBase, ITool {
 
     /// <inheritdoc />
     protected override Task<string> InvokeCoreAsync(JsonObject? arguments, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (!TryReadRequiredDomainQueryRequest(arguments, out var domainQuery, out var argumentError)) {
-            return Task.FromResult(argumentError!);
-        }
-
-        var domainName = domainQuery.DomainName;
-
-        var permission = ToolArgs.GetOptionalTrimmed(arguments, "permission");
-        if (!string.IsNullOrWhiteSpace(permission) &&
-            !string.Equals(permission, "GpoRootCreate", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(permission, "GpoRootOwner", StringComparison.OrdinalIgnoreCase)) {
-            return Task.FromResult(ToolResponse.Error(
-                "invalid_argument",
-                "permission must be one of: GpoRootCreate, GpoRootOwner."));
-        }
-
-        var denyOnly = ToolArgs.GetBoolean(arguments, "deny_only", defaultValue: false);
-        var inheritedOnly = ToolArgs.GetBoolean(arguments, "inherited_only", defaultValue: false);
-        var maxRows = ToolArgs.GetCappedInt32(arguments, "max_rows", 100000, 1, 1000000);
-        var maxResults = domainQuery.MaxResults;
-
-        if (!TryExecuteCollectionQuery(
-                query: () => GpoPermissionRootService.Get(domainName, maxRows: maxRows),
-                collectionSucceededSelector: static view => view.CollectionSucceeded,
-                collectionErrorSelector: static view => view.CollectionError,
-                result: out var view,
-                errorResponse: out var errorResponse,
-                defaultErrorMessage: "GPO root-permission query failed.")) {
-            return Task.FromResult(errorResponse!);
-        }
-
-        var filtered = view.Items
-            .Where(row => string.IsNullOrWhiteSpace(permission) || string.Equals(row.Permission, permission, StringComparison.OrdinalIgnoreCase))
-            .Where(row => !denyOnly || row.PermissionType == GpoPermissionType.Deny)
-            .Where(row => !inheritedOnly || row.Inherited)
-            .ToArray();
-
-        var rows = CapRows(filtered, maxResults, out var scanned, out var truncated);
-
-        var result = new AdGpoPermissionRootResult(
-            DomainName: domainName,
-            Permission: permission,
-            DenyOnly: denyOnly,
-            InheritedOnly: inheritedOnly,
-            MaxRows: maxRows,
-            Scanned: scanned,
-            Truncated: truncated,
-            DenyCount: filtered.Count(static row => row.PermissionType == GpoPermissionType.Deny),
-            OwnerPermissionCount: filtered.Count(static row => string.Equals(row.Permission, "GpoRootOwner", StringComparison.OrdinalIgnoreCase)),
-            CreatePermissionCount: filtered.Count(static row => string.Equals(row.Permission, "GpoRootCreate", StringComparison.OrdinalIgnoreCase)),
-            Rows: rows);
-
-        return Task.FromResult(BuildAutoTableResponse(
+        return RunPipelineAsync(
             arguments: arguments,
-            model: result,
-            sourceRows: rows,
-            viewRowsPath: "rows_view",
+            cancellationToken: cancellationToken,
+            binder: BindRequest,
+            execute: ExecuteAsync);
+    }
+
+    private static ToolRequestBindingResult<GpoPermissionRootRequest> BindRequest(JsonObject? arguments) {
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var permission = reader.OptionalString("permission");
+            if (!string.IsNullOrWhiteSpace(permission) &&
+                !string.Equals(permission, "GpoRootCreate", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(permission, "GpoRootOwner", StringComparison.OrdinalIgnoreCase)) {
+                return ToolRequestBindingResult<GpoPermissionRootRequest>.Failure(
+                    "permission must be one of: GpoRootCreate, GpoRootOwner.");
+            }
+
+            return ToolRequestBindingResult<GpoPermissionRootRequest>.Success(new GpoPermissionRootRequest(
+                Permission: permission,
+                DenyOnly: reader.Boolean("deny_only", defaultValue: false),
+                InheritedOnly: reader.Boolean("inherited_only", defaultValue: false),
+                MaxRows: reader.CappedInt32("max_rows", DefaultMaxRows, 1, MaxRowsCap)));
+        });
+    }
+
+    internal static ToolRequestBindingResult<GpoPermissionRootBindingContract> BindRequestContract(JsonObject? arguments) {
+        var binding = BindRequest(arguments);
+        if (!binding.IsValid || binding.Request is null) {
+            return ToolRequestBindingResult<GpoPermissionRootBindingContract>.Failure(
+                binding.Error,
+                binding.ErrorCode,
+                binding.Hints,
+                binding.IsTransient);
+        }
+
+        var request = binding.Request;
+        return ToolRequestBindingResult<GpoPermissionRootBindingContract>.Success(new GpoPermissionRootBindingContract(
+            Permission: request.Permission,
+            DenyOnly: request.DenyOnly,
+            InheritedOnly: request.InheritedOnly,
+            MaxRows: request.MaxRows));
+    }
+
+    private Task<string> ExecuteAsync(ToolPipelineContext<GpoPermissionRootRequest> context, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
+
+        return ExecuteDomainRowsViewTool(
+            arguments: context.Arguments,
+            cancellationToken: cancellationToken,
             title: "Active Directory: GPO Root Permissions (preview)",
+            defaultErrorMessage: "GPO root-permission query failed.",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
-            metaMutate: meta => {
-                AddDomainAndMaxResultsMeta(meta, domainName, maxResults);
-                meta.Add("deny_only", denyOnly);
-                meta.Add("inherited_only", inheritedOnly);
-                meta.Add("max_rows", maxRows);
-                if (!string.IsNullOrWhiteSpace(permission)) {
-                    meta.Add("permission", permission);
+            query: domainName => GpoPermissionRootService.Get(domainName, maxRows: request.MaxRows),
+            collectionSucceededSelector: static view => view.CollectionSucceeded,
+            collectionErrorSelector: static view => view.CollectionError,
+            allRowsSelector: view => view.Items
+                .Where(row => string.IsNullOrWhiteSpace(request.Permission) || string.Equals(row.Permission, request.Permission, StringComparison.OrdinalIgnoreCase))
+                .Where(row => !request.DenyOnly || row.PermissionType == GpoPermissionType.Deny)
+                .Where(row => !request.InheritedOnly || row.Inherited)
+                .ToArray(),
+            resultFactory: (domainName, _, allRows, rows, scanned, truncated) => new AdGpoPermissionRootResult(
+                DomainName: domainName,
+                Permission: request.Permission,
+                DenyOnly: request.DenyOnly,
+                InheritedOnly: request.InheritedOnly,
+                MaxRows: request.MaxRows,
+                Scanned: scanned,
+                Truncated: truncated,
+                DenyCount: allRows.Count(static row => row.PermissionType == GpoPermissionType.Deny),
+                OwnerPermissionCount: allRows.Count(static row => string.Equals(row.Permission, "GpoRootOwner", StringComparison.OrdinalIgnoreCase)),
+                CreatePermissionCount: allRows.Count(static row => string.Equals(row.Permission, "GpoRootCreate", StringComparison.OrdinalIgnoreCase)),
+                Rows: rows),
+            additionalMetaMutate: (meta, _, _, _) => {
+                meta.Add("deny_only", request.DenyOnly);
+                meta.Add("inherited_only", request.InheritedOnly);
+                meta.Add("max_rows", request.MaxRows);
+                if (!string.IsNullOrWhiteSpace(request.Permission)) {
+                    meta.Add("permission", request.Permission);
                 }
-            }));
+            });
     }
 }
-
