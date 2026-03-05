@@ -15,8 +15,14 @@ internal static class ServiceProfilePresets {
     private static readonly string[] BuiltInPresetNames = new[] {
         PluginOnly
     };
+    private static readonly string[] PluginOnlyAliases = new[] {
+        PluginOnly,
+        "plugin_only",
+        "plugin only"
+    };
     private static readonly IReadOnlyList<string> BuiltInPresetNamesView = Array.AsReadOnly(BuiltInPresetNames);
     private static readonly HashSet<string> BuiltInPresetNameSet = new(BuiltInPresetNames, StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, string> BuiltInPresetAliasMap = BuildBuiltInPresetAliasMap();
 
     internal static IReadOnlyList<string> GetBuiltInPresetNames() {
         return BuiltInPresetNamesView;
@@ -25,16 +31,23 @@ internal static class ServiceProfilePresets {
     internal static bool TryGetCanonicalName(string? name, out string canonicalName) {
         canonicalName = string.Empty;
 
-        var normalized = NormalizePresetName(name);
-        if (normalized.Length == 0) {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0) {
             return false;
         }
 
-        if (!string.Equals(normalized, PluginOnly, StringComparison.Ordinal)) {
+        if (BuiltInPresetAliasMap.TryGetValue(trimmed, out var directCanonicalName)) {
+            canonicalName = directCanonicalName;
+            return true;
+        }
+
+        var normalized = NormalizePresetName(trimmed);
+        if (normalized.Length == 0
+            || !BuiltInPresetAliasMap.TryGetValue(normalized, out var normalizedCanonicalName)) {
             return false;
         }
 
-        canonicalName = PluginOnly;
+        canonicalName = normalizedCanonicalName;
         return true;
     }
 
@@ -180,11 +193,14 @@ internal static class ServiceProfilePresets {
     }
 
     private static bool IsBuiltInPresetNameOrAlias(string name) {
-        return BuiltInPresetNameSet.Contains(name)
-            || TryGetCanonicalName(name, out var canonicalName) && BuiltInPresetNameSet.Contains(canonicalName);
+        return TryGetCanonicalName(name, out _);
     }
 
     private static bool LooksLikeBuiltInPresetReference(string name) {
+        if (IsBuiltInPresetNameOrAlias(name)) {
+            return true;
+        }
+
         var compactName = CompactPresetReference(name);
         if (compactName.Length == 0) {
             return false;
@@ -261,5 +277,28 @@ internal static class ServiceProfilePresets {
         }
 
         return edits <= 1;
+    }
+
+    private static Dictionary<string, string> BuildBuiltInPresetAliasMap() {
+        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        AddBuiltInAliases(aliases, PluginOnly, PluginOnlyAliases);
+        return aliases;
+    }
+
+    private static void AddBuiltInAliases(Dictionary<string, string> aliases, string canonicalName, IEnumerable<string> names) {
+        foreach (var name in names) {
+            AddBuiltInAlias(aliases, name, canonicalName);
+            AddBuiltInAlias(aliases, NormalizePresetName(name), canonicalName);
+        }
+    }
+
+    private static void AddBuiltInAlias(Dictionary<string, string> aliases, string? name, string canonicalName) {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0) {
+            return;
+        }
+
+        aliases[trimmed] = canonicalName;
     }
 }

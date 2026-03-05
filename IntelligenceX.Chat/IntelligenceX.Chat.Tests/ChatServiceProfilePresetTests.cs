@@ -192,6 +192,33 @@ public sealed class ChatServiceProfilePresetTests {
         Assert.False(options.EnableBuiltInPackLoading);
     }
 
+    [Fact]
+    public async Task HandleSetProfileAsync_NormalizesBuiltInPluginOnlyPresetAlias_WhenStateDbDisabled() {
+        var options = new ServiceOptions {
+            NoStateDb = true
+        };
+        using var buffer = new MemoryStream();
+        using var writer = new StreamWriter(buffer, new UTF8Encoding(false), 1024, leaveOpen: true);
+        var session = new ChatServiceSession(options, Stream.Null);
+        var request = new SetProfileRequest {
+            RequestId = "req_profile_set_nostate_alias",
+            ProfileName = "plugin_only"
+        };
+
+        await InvokeHandleSetProfileAsync(session, writer, request);
+        writer.Flush();
+        buffer.Position = 0;
+
+        using var document = await JsonDocument.ParseAsync(buffer);
+        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
+        var ack = Assert.IsType<AckMessage>(response);
+
+        Assert.True(ack.Ok);
+        Assert.Equal("plugin-only", options.ProfileName);
+        Assert.False(options.EnableBuiltInPackLoading);
+        Assert.True(options.EnableDefaultPluginPaths);
+    }
+
     private static async Task InvokeHandleListProfilesAsync(ChatServiceSession session, StreamWriter writer, ListProfilesRequest request) {
         var method = typeof(ChatServiceSession).GetMethod("HandleListProfilesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);

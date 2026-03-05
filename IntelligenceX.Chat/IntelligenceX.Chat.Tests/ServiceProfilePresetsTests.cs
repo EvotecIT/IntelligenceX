@@ -74,7 +74,25 @@ public sealed class ServiceProfilePresetsTests {
     }
 
     [Fact]
-    public async Task TryResolveStoredOrBuiltInProfileAsync_UsesCanonicalStoredCandidateBeforePresetFallback() {
+    public void TryResolveStoredOrBuiltInProfile_ResolvesBuiltInAliasInNoStateMode() {
+        var success = ServiceProfilePresets.TryResolveStoredOrBuiltInProfile(
+            "plugin_only",
+            allowStoredProfiles: false,
+            static _ => null,
+            out var resolvedName,
+            out var profile,
+            out var storedProfilesUnavailable);
+
+        Assert.True(success);
+        Assert.False(storedProfilesUnavailable);
+        Assert.Equal("plugin-only", resolvedName);
+        Assert.NotNull(profile);
+        Assert.False(profile!.EnableBuiltInPackLoading);
+        Assert.True(profile.EnableDefaultPluginPaths);
+    }
+
+    [Fact]
+    public async Task TryResolveStoredOrBuiltInProfileAsync_PrefersStoredAliasCandidateBeforePresetFallback() {
         var storedProfile = new ServiceProfile {
             Model = "stored-alias-model"
         };
@@ -105,6 +123,22 @@ public sealed class ServiceProfilePresetsTests {
         Assert.False(resolution.StoredProfilesUnavailable);
         Assert.Equal("plugin-onli", resolution.ResolvedName);
         Assert.Null(resolution.Profile);
+    }
+
+    [Fact]
+    public async Task TryResolveStoredOrBuiltInProfileAsync_ResolvesBuiltInAliasInNoStateMode() {
+        var resolution = await ServiceProfilePresets.TryResolveStoredOrBuiltInProfileAsync(
+            "plugin_only",
+            allowStoredProfiles: false,
+            static (_, _) => Task.FromResult<ServiceProfile?>(null),
+            CancellationToken.None);
+
+        Assert.True(resolution.Success);
+        Assert.False(resolution.StoredProfilesUnavailable);
+        Assert.Equal("plugin-only", resolution.ResolvedName);
+        Assert.NotNull(resolution.Profile);
+        Assert.False(resolution.Profile!.EnableBuiltInPackLoading);
+        Assert.True(resolution.Profile.EnableDefaultPluginPaths);
     }
 
     [Fact]
