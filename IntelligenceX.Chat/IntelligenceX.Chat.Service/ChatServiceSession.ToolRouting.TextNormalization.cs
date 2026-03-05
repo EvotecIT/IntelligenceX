@@ -306,34 +306,43 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            var normalizedLine = NormalizeContinuationContractLine(trimmed);
+            if (normalizedLine.IsEmpty) {
+                continue;
+            }
+
             if (!markerSeen) {
-                // Only treat the payload as a continuation contract when the marker is
-                // the first non-empty line; this avoids incidental substring matches.
-                if (trimmed.Equals(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase)) {
+                // Allow structural wrappers (for example quote/code-fence/list prefixes) before
+                // the marker, but fail closed when any non-wrapper content appears first.
+                if (normalizedLine.Equals(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase)) {
                     markerSeen = true;
+                    continue;
+                }
+
+                if (IsContinuationContractWrapperLine(normalizedLine)) {
                     continue;
                 }
 
                 return false;
             }
 
-            if (trimmed.StartsWith("ix:", StringComparison.OrdinalIgnoreCase)
-                && trimmed.IndexOf(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            if (normalizedLine.StartsWith("ix:", StringComparison.OrdinalIgnoreCase)
+                && normalizedLine.IndexOf(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
                 break;
             }
 
-            if (TryParseBooleanStructuredField(trimmed, "enabled", out var parsedEnabled)) {
+            if (TryParseBooleanStructuredField(normalizedLine, "enabled", out var parsedEnabled)) {
                 enabled = parsedEnabled;
                 enabledSeen = true;
                 continue;
             }
 
-            if (TryParseStringStructuredField(trimmed, "intent_anchor", out var parsedIntentAnchor)) {
+            if (TryParseStringStructuredField(normalizedLine, "intent_anchor", out var parsedIntentAnchor)) {
                 intentAnchor = CollapseWhitespace(parsedIntentAnchor);
                 continue;
             }
 
-            if (TryParseStringStructuredField(trimmed, "follow_up", out var parsedFollowUp)) {
+            if (TryParseStringStructuredField(normalizedLine, "follow_up", out var parsedFollowUp)) {
                 followUp = CollapseWhitespace(parsedFollowUp);
             }
         }
@@ -352,6 +361,42 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
+    }
+
+    private static ReadOnlySpan<char> NormalizeContinuationContractLine(ReadOnlySpan<char> line) {
+        var normalized = line.Trim();
+        var previousLength = -1;
+        while (!normalized.IsEmpty && normalized.Length != previousLength) {
+            previousLength = normalized.Length;
+
+            if (normalized[0] == '>') {
+                normalized = normalized.Slice(1).TrimStart();
+                continue;
+            }
+
+            if (normalized.Length >= 2
+                && (normalized[0] == '-' || normalized[0] == '*' || normalized[0] == '+')
+                && char.IsWhiteSpace(normalized[1])) {
+                normalized = normalized.Slice(1).TrimStart();
+                continue;
+            }
+        }
+
+        return normalized;
+    }
+
+    private static bool IsContinuationContractWrapperLine(ReadOnlySpan<char> line) {
+        var normalized = line.Trim();
+        if (normalized.IsEmpty) {
+            return true;
+        }
+
+        if (normalized.StartsWith("```", StringComparison.Ordinal)
+            || normalized.StartsWith("~~~", StringComparison.Ordinal)) {
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryParseBooleanStructuredField(ReadOnlySpan<char> line, string key, out bool value) {

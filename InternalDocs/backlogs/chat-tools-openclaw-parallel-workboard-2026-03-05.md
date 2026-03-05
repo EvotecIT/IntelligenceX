@@ -40,7 +40,7 @@ graph TD
 - [x] Gate compact follow-up classification behind structured continuation context.
 - [x] Add tests for short fresh-intent negative classification including non-Latin input.
 - [x] Tighten single-token carryover replay eligibility without structural anchors.
-- [ ] Make continuation marker parsing tolerant to wrappers while remaining fail-closed.
+- [x] Make continuation marker parsing tolerant to wrappers while remaining fail-closed.
 
 ## Lane D - Reliability Harness
 - [ ] Add queue contention and cancellation progression scenario tests.
@@ -64,3 +64,4 @@ graph TD
 8. Introduced pack-keyed runtime option bag flow and shared option-bag application for built-in/plugin pack constructors, with plugin-id override coverage.
 9. Extended architecture guardrail coverage to host/tooling plugin-neutrality paths (host manifest-coupling guardrails + tooling built-in assembly allowlist guardrail).
 10. Tightened carryover replay gating so single-token compact follow-ups require structural continuation anchors, with regression coverage for anchored vs unanchored behavior.
+11. Made continuation marker parsing wrapper-tolerant (quote/fence/list wrappers) while preserving fail-closed behavior for non-wrapper preface content.
