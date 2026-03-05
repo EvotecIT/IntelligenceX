@@ -541,14 +541,25 @@ internal sealed partial class ChatServiceSession {
 
     private void EnsureStartupToolingBootstrapCompletedForDomainIntentResolution() {
         var startupTask = Volatile.Read(ref _startupToolingBootstrapTask);
-        if (startupTask is null || startupTask.IsCompleted) {
+        if (startupTask is null) {
             return;
         }
 
-        try {
-            _ = startupTask.Wait(millisecondsTimeout: 250);
-        } catch {
-            // Keep existing best-effort behavior when bootstrap fails.
+        if (!startupTask.IsCompleted) {
+            // Avoid blocking request threads while startup bootstrap is still running.
+            return;
+        }
+
+        if (startupTask.IsFaulted) {
+            var exception = startupTask.Exception?.GetBaseException();
+            Trace.TraceWarning(
+                "Startup tooling bootstrap failed during domain intent family resolution fallback: {0}",
+                exception?.Message ?? "unknown");
+            return;
+        }
+
+        if (startupTask.IsCanceled) {
+            Trace.TraceWarning("Startup tooling bootstrap was canceled during domain intent family resolution fallback.");
         }
     }
 
@@ -611,7 +622,15 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var separatorIndex = normalized.IndexOfAny(new[] { '_', '-' });
+        var separatorIndex = -1;
+        for (var i = 0; i < normalized.Length; i++) {
+            var c = normalized[i];
+            if (c == '_' || c == '-') {
+                separatorIndex = i;
+                break;
+            }
+        }
+
         if (separatorIndex <= 0) {
             return false;
         }

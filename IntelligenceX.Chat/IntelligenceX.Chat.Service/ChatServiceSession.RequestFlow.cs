@@ -581,7 +581,7 @@ internal sealed partial class ChatServiceSession {
                     Error = "Chat canceled by client.",
                     Code = "chat_canceled"
                 }, CancellationToken.None).ConfigureAwait(false);
-            } catch (OperationCanceledException) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken)) {
+            } catch (OperationCanceledException ex) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken, ex.CancellationToken)) {
                 outcome = "timeout";
                 outcomeCode = "chat_timeout";
                 var turnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
@@ -680,7 +680,7 @@ internal sealed partial class ChatServiceSession {
                 Error = "Chat canceled by client.",
                 Code = "chat_canceled"
             }, CancellationToken.None).ConfigureAwait(false);
-        } catch (OperationCanceledException) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken)) {
+        } catch (OperationCanceledException ex) when (IsTurnTimeoutCancellation(request, run, sessionCancellationToken, ex.CancellationToken)) {
             var turnTimeoutSeconds = ResolveEffectiveTurnTimeoutSeconds(request);
             var timeoutMessage = turnTimeoutSeconds > 0
                 ? $"Chat timed out after {turnTimeoutSeconds}s."
@@ -822,7 +822,7 @@ internal sealed partial class ChatServiceSession {
     internal static string BuildSessionLaneQueuedHeartbeatStatusMessage(int queuePosition, int elapsedSeconds) {
         return "Still queued in session lane ("
                + Math.Max(1, queuePosition)
-               + " in queue, waiting "
+               + " in session lane, waiting "
                + Math.Max(1, elapsedSeconds)
                + "s).";
     }
@@ -850,12 +850,44 @@ internal sealed partial class ChatServiceSession {
         return request.Options?.TurnTimeoutSeconds ?? _options.TurnTimeoutSeconds;
     }
 
-    private bool IsTurnTimeoutCancellation(ChatRequest request, ChatRun run, CancellationToken sessionCancellationToken) {
-        if (run.Cts.IsCancellationRequested || sessionCancellationToken.IsCancellationRequested) {
+    private bool IsTurnTimeoutCancellation(
+        ChatRequest request,
+        ChatRun run,
+        CancellationToken sessionCancellationToken,
+        CancellationToken exceptionCancellationToken) {
+        return ShouldClassifyTurnTimeoutCancellation(
+            effectiveTurnTimeoutSeconds: ResolveEffectiveTurnTimeoutSeconds(request),
+            runCancellationRequested: run.Cts.IsCancellationRequested,
+            sessionCancellationRequested: sessionCancellationToken.IsCancellationRequested,
+            exceptionCancellationToken,
+            run.Cts.Token,
+            sessionCancellationToken);
+    }
+
+    internal static bool ShouldClassifyTurnTimeoutCancellation(
+        int effectiveTurnTimeoutSeconds,
+        bool runCancellationRequested,
+        bool sessionCancellationRequested,
+        CancellationToken exceptionCancellationToken,
+        CancellationToken runCancellationToken,
+        CancellationToken sessionCancellationToken) {
+        if (runCancellationRequested || sessionCancellationRequested) {
             return false;
         }
 
-        return ResolveEffectiveTurnTimeoutSeconds(request) > 0;
+        if (effectiveTurnTimeoutSeconds <= 0) {
+            return false;
+        }
+
+        if (!exceptionCancellationToken.CanBeCanceled || !exceptionCancellationToken.IsCancellationRequested) {
+            return false;
+        }
+
+        if (exceptionCancellationToken == runCancellationToken || exceptionCancellationToken == sessionCancellationToken) {
+            return false;
+        }
+
+        return true;
     }
 
     private string? GetActiveThreadIdSnapshot() {
