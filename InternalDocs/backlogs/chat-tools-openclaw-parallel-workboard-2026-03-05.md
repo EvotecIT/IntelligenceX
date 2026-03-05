@@ -83,3 +83,4 @@ graph TD
 22. Added per-turn plugin pack hot-toggle coverage proving `EnabledPackIds` changes tool schema exposure between turns without cross-turn leakage.
 23. Added dropped-response autonomous recovery coverage proving duplicate replay tool-calls are deduplicated while the loop continues to completion without user re-prompt.
 24. Added protocol-level isolation assertion coverage proving empty-registry turns emit no tool-related status frames across routing/execution/recovery tool status families.
+25. Added cross-thread plugin isolation coverage proving per-thread `EnabledPackIds` pack selection does not leak tool schema exposure or executed tool identity across concurrent session threads.

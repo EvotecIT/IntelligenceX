@@ -480,6 +480,164 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task RunChatOnCurrentThreadAsync_DoesNotLeakPackSelectionAcrossThreadsInSameSession() {
+        using var server = new DeterministicCompatibleHttpServer(_ => JsonSerializer.Serialize(new {
+            id = "chatcmpl-cross-thread-pack-isolation",
+            @object = "chat.completion",
+            choices = new[] {
+                new {
+                    index = 0,
+                    message = new {
+                        role = "assistant",
+                        content = "Thread response complete."
+                    },
+                    finish_reason = "stop"
+                }
+            }
+        }));
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "packa_echo",
+            static (arguments, _) => Task.FromResult(JsonSerializer.Serialize(new { ok = true, value = arguments?.GetString("value") }))));
+        registry.Register(new RoundTripStubTool(
+            "packb_echo",
+            static (arguments, _) => Task.FromResult(JsonSerializer.Serialize(new { ok = true, value = arguments?.GetString("value") }))));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var threadA = await client.StartNewThreadAsync("mock-local-model");
+        var threadB = await client.StartNewThreadAsync("mock-local-model");
+
+        var requestThreadATurn1 = new ChatRequest {
+            RequestId = "req-thread-a-turn-1",
+            ThreadId = threadA.Id,
+            Text = "Thread A turn 1 diagnostics for pack A.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                EnabledPackIds = new[] { "packa" },
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        var requestThreadBTurn1 = new ChatRequest {
+            RequestId = "req-thread-b-turn-1",
+            ThreadId = threadB.Id,
+            Text = "Thread B turn 1 diagnostics for pack B.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                EnabledPackIds = new[] { "packb" },
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        var requestThreadATurn2 = new ChatRequest {
+            RequestId = "req-thread-a-turn-2",
+            ThreadId = threadA.Id,
+            Text = "Thread A turn 2 diagnostics for pack A.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                EnabledPackIds = new[] { "packa" },
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var captureATurn1 = new SynchronizedCaptureStream();
+        using var writerATurn1 = new StreamWriter(captureATurn1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var resultATurn1 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerATurn1,
+            requestThreadATurn1,
+            threadA.Id,
+            CancellationToken.None);
+
+        using var captureBTurn1 = new SynchronizedCaptureStream();
+        using var writerBTurn1 = new StreamWriter(captureBTurn1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var resultBTurn1 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerBTurn1,
+            requestThreadBTurn1,
+            threadB.Id,
+            CancellationToken.None);
+
+        using var captureATurn2 = new SynchronizedCaptureStream();
+        using var writerATurn2 = new StreamWriter(captureATurn2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var resultATurn2 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writerATurn2,
+            requestThreadATurn2,
+            threadA.Id,
+            CancellationToken.None);
+
+        Assert.True(server.ChatCompletionRequestCount >= 3);
+        var observedThreadATurn1Requests = 0;
+        var observedThreadBTurn1Requests = 0;
+        var observedThreadATurn2Requests = 0;
+        for (var requestIndex = 0; requestIndex < server.ChatCompletionRequestCount; requestIndex++) {
+            var requestBody = server.GetChatRequestBody(requestIndex);
+            var latestUserMessage = GetLatestUserMessageContent(requestBody);
+            if (latestUserMessage.Contains("Thread A turn 1 diagnostics for pack A.", StringComparison.Ordinal)) {
+                observedThreadATurn1Requests++;
+                Assert.True(HasToolSchemaForFunctionName(requestBody, "packa_echo"));
+                Assert.False(HasToolSchemaForFunctionName(requestBody, "packb_echo"));
+            } else if (latestUserMessage.Contains("Thread B turn 1 diagnostics for pack B.", StringComparison.Ordinal)) {
+                observedThreadBTurn1Requests++;
+                Assert.True(HasToolSchemaForFunctionName(requestBody, "packb_echo"));
+                Assert.False(HasToolSchemaForFunctionName(requestBody, "packa_echo"));
+            } else if (latestUserMessage.Contains("Thread A turn 2 diagnostics for pack A.", StringComparison.Ordinal)) {
+                observedThreadATurn2Requests++;
+                Assert.True(HasToolSchemaForFunctionName(requestBody, "packa_echo"));
+                Assert.False(HasToolSchemaForFunctionName(requestBody, "packb_echo"));
+            }
+        }
+
+        Assert.True(observedThreadATurn1Requests > 0);
+        Assert.True(observedThreadBTurn1Requests > 0);
+        Assert.True(observedThreadATurn2Requests > 0);
+
+        var messageATurn1 = GetPropertyValue<ChatResultMessage>(resultATurn1, "Result");
+        Assert.Equal("Thread response complete.", messageATurn1.Text);
+        Assert.Null(messageATurn1.Tools);
+
+        var messageBTurn1 = GetPropertyValue<ChatResultMessage>(resultBTurn1, "Result");
+        Assert.Equal("Thread response complete.", messageBTurn1.Text);
+        Assert.Null(messageBTurn1.Tools);
+
+        var messageATurn2 = GetPropertyValue<ChatResultMessage>(resultATurn2, "Result");
+        Assert.Equal("Thread response complete.", messageATurn2.Text);
+        Assert.Null(messageATurn2.Tools);
+    }
+
+    [Fact]
     public async Task RunChatOnCurrentThreadAsync_SustainsFiveAutonomousToolRoundsWithoutUserReprompt() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => BuildAutonomySoakToolCallResponse("call_autonomy_1", "step_1"),
