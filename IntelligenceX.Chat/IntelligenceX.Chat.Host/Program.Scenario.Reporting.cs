@@ -142,6 +142,15 @@ internal static partial class Program {
                             tool_calls = turn.Result.Metrics.ToolCallsCount,
                             tool_rounds = turn.Result.Metrics.ToolRounds,
                             no_tool_retries = turn.Result.Metrics.NoToolExecutionRetries,
+                            phase_timings = turn.Result.Metrics.PhaseTimings.Count == 0
+                                ? null
+                                : turn.Result.Metrics.PhaseTimings
+                                    .Select(phaseTiming => new {
+                                        phase = phaseTiming.Phase,
+                                        duration_ms = phaseTiming.DurationMs,
+                                        event_count = phaseTiming.EventCount
+                                    })
+                                    .ToArray(),
                             usage = turn.Result.Result.Usage is null
                                 ? null
                                 : new {
@@ -190,6 +199,13 @@ internal static partial class Program {
                 sb.AppendLine($"- Tool calls: {turn.Result.Metrics.ToolCallsCount}");
                 sb.AppendLine($"- Tool rounds: {turn.Result.Metrics.ToolRounds}");
                 sb.AppendLine($"- No-tool retries: {turn.Result.Metrics.NoToolExecutionRetries}");
+                if (turn.Result.Metrics.PhaseTimings.Count > 0) {
+                    var phaseTimingSummary = turn.Result.Metrics.PhaseTimings
+                        .OrderBy(static phaseTiming => phaseTiming.Phase, StringComparer.OrdinalIgnoreCase)
+                        .Select(static phaseTiming => $"{phaseTiming.Phase}={Math.Max(0, phaseTiming.DurationMs)}ms/{Math.Max(0, phaseTiming.EventCount)}ev")
+                        .ToArray();
+                    sb.AppendLine($"- Phase timings: {string.Join(", ", phaseTimingSummary)}");
+                }
                 var toolNames = turn.Result.Result.ToolCalls
                     .Select(static c => (c.Name ?? string.Empty).Trim())
                     .Where(static n => n.Length > 0)

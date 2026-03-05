@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -107,6 +108,48 @@ internal static partial class Program {
         var toolRounds = turnResult?.Metrics.ToolRounds ?? 0;
         if (turn.MinToolRounds.HasValue && toolRounds < turn.MinToolRounds.Value) {
             failures.Add($"Expected at least {turn.MinToolRounds.Value} tool round(s); observed {toolRounds}.");
+        }
+
+        if (turn.MaxPhaseDurationMs.Count > 0) {
+            var observedPhaseDurations = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var observedPhaseEventCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var phaseTimings = turnResult?.Metrics.PhaseTimings ?? Array.Empty<TurnPhaseTimingDto>();
+            for (var i = 0; i < phaseTimings.Count; i++) {
+                var phaseTiming = phaseTimings[i];
+                if (!TryNormalizeScenarioPhaseName(phaseTiming.Phase, out var normalizedPhase)) {
+                    continue;
+                }
+
+                observedPhaseDurations[normalizedPhase] = observedPhaseDurations.TryGetValue(normalizedPhase, out var currentDuration)
+                    ? currentDuration + Math.Max(0, phaseTiming.DurationMs)
+                    : Math.Max(0, phaseTiming.DurationMs);
+                observedPhaseEventCounts[normalizedPhase] = observedPhaseEventCounts.TryGetValue(normalizedPhase, out var currentEventCount)
+                    ? currentEventCount + Math.Max(0, phaseTiming.EventCount)
+                    : Math.Max(0, phaseTiming.EventCount);
+            }
+
+            foreach (var phaseLimit in turn.MaxPhaseDurationMs) {
+                if (!TryNormalizeScenarioPhaseName(phaseLimit.Key, out var normalizedPhase)) {
+                    continue;
+                }
+
+                if (!observedPhaseDurations.TryGetValue(normalizedPhase, out var observedDurationMs)) {
+                    failures.Add($"Expected phase timing '{normalizedPhase}' to be present for duration guardrail checks.");
+                    continue;
+                }
+
+                var maxDurationMs = Math.Max(0, phaseLimit.Value);
+                if (observedDurationMs <= maxDurationMs) {
+                    continue;
+                }
+
+                var observedEventCount = observedPhaseEventCounts.TryGetValue(normalizedPhase, out var value)
+                    ? value
+                    : 0;
+                failures.Add(
+                    $"Expected phase '{normalizedPhase}' duration <= {maxDurationMs}ms;"
+                    + $" observed {observedDurationMs}ms across {observedEventCount} event(s).");
+            }
         }
 
         if (turn.MinDistinctToolInputValues.Count > 0) {

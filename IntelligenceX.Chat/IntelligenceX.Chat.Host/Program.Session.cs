@@ -426,7 +426,22 @@ internal static partial class Program {
 
     private sealed class ReplTurnMetrics {
         public ReplTurnMetrics(DateTime startedAtUtc, DateTime? firstDeltaAtUtc, DateTime completedAtUtc, long durationMs, long? ttftMs,
-            TurnUsage? usage, int toolCallsCount, int toolRounds, int noToolExecutionRetries) {
+            TurnUsage? usage, int toolCallsCount, int toolRounds, int noToolExecutionRetries)
+            : this(
+                startedAtUtc,
+                firstDeltaAtUtc,
+                completedAtUtc,
+                durationMs,
+                ttftMs,
+                usage,
+                toolCallsCount,
+                toolRounds,
+                noToolExecutionRetries,
+                phaseTimings: null) {
+        }
+
+        public ReplTurnMetrics(DateTime startedAtUtc, DateTime? firstDeltaAtUtc, DateTime completedAtUtc, long durationMs, long? ttftMs,
+            TurnUsage? usage, int toolCallsCount, int toolRounds, int noToolExecutionRetries, IReadOnlyList<TurnPhaseTimingDto>? phaseTimings) {
             StartedAtUtc = startedAtUtc;
             FirstDeltaAtUtc = firstDeltaAtUtc;
             CompletedAtUtc = completedAtUtc;
@@ -436,6 +451,9 @@ internal static partial class Program {
             ToolCallsCount = Math.Max(0, toolCallsCount);
             ToolRounds = Math.Max(0, toolRounds);
             NoToolExecutionRetries = Math.Max(0, noToolExecutionRetries);
+            PhaseTimings = phaseTimings is { Count: > 0 }
+                ? phaseTimings
+                : Array.Empty<TurnPhaseTimingDto>();
         }
 
         public DateTime StartedAtUtc { get; }
@@ -447,6 +465,7 @@ internal static partial class Program {
         public int ToolCallsCount { get; }
         public int ToolRounds { get; }
         public int NoToolExecutionRetries { get; }
+        public IReadOnlyList<TurnPhaseTimingDto> PhaseTimings { get; }
     }
 
     private sealed class ReplTurnMetricsResult {

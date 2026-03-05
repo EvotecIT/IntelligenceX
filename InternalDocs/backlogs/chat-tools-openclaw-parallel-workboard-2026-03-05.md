@@ -91,3 +91,4 @@ graph TD
 30. Added seeded autonomy parity benchmark coverage measuring continuation depth/completion rate across baseline, drop+replay, and consecutive soft-failure scenarios.
 31. Added explicit autonomy telemetry contract (`autonomyDepth`, `recoveryEvents`, `completionRate`) on result/metrics payloads for direct runtime parity tracking.
 32. Added deterministic `phaseTimings` lifecycle telemetry (`phase`, `durationMs`, `eventCount`) on `chat_metrics`, derived from turn timeline statuses for queue/lane/model/tool/review parity profiling.
+33. Added host scenario assertion contract support for per-phase latency guardrails (`max_phase_duration_ms`) with report surfacing, including explicit missing-phase failure semantics and defaults inheritance coverage.
