@@ -144,11 +144,11 @@ internal sealed partial class ChatServiceSession {
 
     private async Task HandleListProfilesAsync(StreamWriter writer, ListProfilesRequest request, CancellationToken cancellationToken) {
         if (_options.NoStateDb) {
-            await WriteAsync(writer, new ErrorMessage {
+            await WriteAsync(writer, new ProfileListMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
-                Error = "State DB is disabled; profiles are unavailable.",
-                Code = "state_db_disabled"
+                Profiles = ServiceProfilePresets.GetBuiltInPresetNames().ToArray(),
+                ActiveProfile = string.IsNullOrWhiteSpace(_options.ProfileName) ? null : _options.ProfileName
             }, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -156,10 +156,11 @@ internal sealed partial class ChatServiceSession {
         try {
             using var store = new SqliteServiceProfileStore(ResolveStateDbPath());
             var names = await store.ListNamesAsync(cancellationToken).ConfigureAwait(false);
+            var availableNames = ServiceProfilePresets.MergeBuiltInPresetNames(names);
             await WriteAsync(writer, new ProfileListMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
-                Profiles = names.Count == 0 ? Array.Empty<string>() : names.ToArray(),
+                Profiles = availableNames,
                 ActiveProfile = string.IsNullOrWhiteSpace(_options.ProfileName) ? null : _options.ProfileName
             }, cancellationToken).ConfigureAwait(false);
         } catch (Exception ex) {
@@ -184,16 +185,6 @@ internal sealed partial class ChatServiceSession {
             return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
         }
 
-        if (_options.NoStateDb) {
-            await WriteAsync(writer, new ErrorMessage {
-                Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
-                Error = "State DB is disabled; profiles are unavailable.",
-                Code = "state_db_disabled"
-            }, cancellationToken).ConfigureAwait(false);
-            return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
-        }
-
         if (HasActiveLoginOrChat(out var busyCode, out var busyError)) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
@@ -204,25 +195,51 @@ internal sealed partial class ChatServiceSession {
             return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
         }
 
-        ServiceProfile? profile;
-        try {
-            using var store = new SqliteServiceProfileStore(ResolveStateDbPath());
-            profile = await store.GetAsync(name, cancellationToken).ConfigureAwait(false);
-        } catch (Exception ex) {
-            await WriteAsync(writer, new ErrorMessage {
-                Kind = ChatServiceMessageKind.Response,
-                RequestId = request.RequestId,
-                Error = $"Failed to load profile '{name}': {ex.Message}",
-                Code = "profile_failed"
-            }, cancellationToken).ConfigureAwait(false);
-            return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+        var requestedName = name;
+        ServiceProfile? profile = null;
+        if (!_options.NoStateDb) {
+            try {
+                using var store = new SqliteServiceProfileStore(ResolveStateDbPath());
+                foreach (var candidateName in ServiceProfilePresets.GetStoredProfileLookupCandidates(requestedName)) {
+                    profile = await store.GetAsync(candidateName, cancellationToken).ConfigureAwait(false);
+                    if (profile == null) {
+                        continue;
+                    }
+
+                    name = candidateName;
+                    break;
+                }
+            } catch (Exception ex) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"Failed to load profile '{requestedName}': {ex.Message}",
+                    Code = "profile_failed"
+                }, cancellationToken).ConfigureAwait(false);
+                return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+            }
+        }
+
+        if (profile == null) {
+            if (ServiceProfilePresets.TryResolve(requestedName, out var presetName, out var presetProfile)) {
+                name = presetName;
+                profile = presetProfile;
+            } else if (_options.NoStateDb) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = "State DB is disabled; saved profiles are unavailable.",
+                    Code = "state_db_disabled"
+                }, cancellationToken).ConfigureAwait(false);
+                return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+            }
         }
 
         if (profile is null) {
             await WriteAsync(writer, new ErrorMessage {
                 Kind = ChatServiceMessageKind.Response,
                 RequestId = request.RequestId,
-                Error = $"Profile not found: {name}",
+                Error = $"Profile not found: {requestedName}",
                 Code = "profile_not_found"
             }, cancellationToken).ConfigureAwait(false);
             return new SetProfileResult(ReconnectClient: false, ModelChanged: false);

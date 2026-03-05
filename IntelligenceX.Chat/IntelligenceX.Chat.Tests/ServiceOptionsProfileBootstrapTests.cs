@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using DBAClientX;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Profiles;
@@ -141,6 +142,116 @@ public sealed class ServiceOptionsProfileBootstrapTests {
         } finally {
             TryDelete(dbPath);
         }
+    }
+
+    [Fact]
+    public void Parse_LoadsBuiltInPluginOnlyPreset_WhenNoStoredProfileExists() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-" + Guid.NewGuid().ToString("N") + ".db");
+        try {
+            var options = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "plugin-only"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin-only", options.ProfileName);
+            Assert.False(options.EnableBuiltInPackLoading);
+            Assert.True(options.EnableDefaultPluginPaths);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Parse_LoadsSavedProfileNamedPluginOnly_BeforeBuiltInPreset() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-collision-" + Guid.NewGuid().ToString("N") + ".db");
+        try {
+            SeedProfile(dbPath, "plugin-only", "saved-plugin-model", enableBuiltInPackLoading: true, enableDefaultPluginPaths: false);
+
+            var options = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "plugin-only"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin-only", options.ProfileName);
+            Assert.Equal("saved-plugin-model", options.Model);
+            Assert.True(options.EnableBuiltInPackLoading);
+            Assert.False(options.EnableDefaultPluginPaths);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Parse_LoadsSavedProfileNamedPluginOnlyAlias_BeforeBuiltInPresetAlias() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-alias-collision-" + Guid.NewGuid().ToString("N") + ".db");
+        try {
+            SeedProfile(dbPath, "plugin_only", "saved-plugin-alias-model", enableBuiltInPackLoading: true, enableDefaultPluginPaths: false);
+
+            var options = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "plugin_only"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin_only", options.ProfileName);
+            Assert.Equal("saved-plugin-alias-model", options.Model);
+            Assert.True(options.EnableBuiltInPackLoading);
+            Assert.False(options.EnableDefaultPluginPaths);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Parse_NormalizesBuiltInPluginOnlyPresetAlias() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-alias-" + Guid.NewGuid().ToString("N") + ".db");
+        try {
+            var options = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "plugin_only"
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin-only", options.ProfileName);
+            Assert.False(options.EnableBuiltInPackLoading);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Parse_LoadsBuiltInPluginOnlyPreset_WhenStateDbDisabled() {
+        var options = ServiceOptions.Parse(new[] {
+            "--pipe", "test.pipe",
+            "--no-state-db",
+            "--profile", "plugin-only"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.Equal("plugin-only", options.ProfileName);
+        Assert.False(options.EnableBuiltInPackLoading);
+    }
+
+    [Fact]
+    public void Parse_RejectsSavedProfileLookup_WhenStateDbDisabled() {
+        _ = ServiceOptions.Parse(new[] {
+            "--pipe", "test.pipe",
+            "--no-state-db",
+            "--profile", "default"
+        }, out var error);
+
+        Assert.Equal("State DB is disabled; saved profiles are unavailable.", error);
     }
 
     [Fact]
@@ -521,6 +632,16 @@ public sealed class ServiceOptionsProfileBootstrapTests {
                 Environment.SetEnvironmentVariable(name, original);
             }
         }
+    }
+
+    private static void SeedProfile(string dbPath, string profileName, string model, bool enableBuiltInPackLoading, bool enableDefaultPluginPaths) {
+        using var store = new SqliteServiceProfileStore(dbPath);
+        var profile = new ServiceProfile {
+            Model = model,
+            EnableBuiltInPackLoading = enableBuiltInPackLoading,
+            EnableDefaultPluginPaths = enableDefaultPluginPaths
+        };
+        store.UpsertAsync(profileName, profile, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     private static void SeedLegacyProfileRow(string dbPath, string profileName, string model, int maxToolRounds = 24) {
