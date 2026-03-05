@@ -93,6 +93,7 @@ internal static partial class Program {
     }
 
     private static void WriteScenarioReportJson(string reportPath, ScenarioRunReport report) {
+        var phaseTimingRollups = BuildScenarioPhaseTimingRollups(report);
         var payload = new {
             schema_version = "ix_chat_scenario_report_v1",
             name = report.ScenarioName,
@@ -102,6 +103,20 @@ internal static partial class Program {
             continue_on_error = report.ContinueOnError,
             passed_turns = report.TurnRuns.Count(static turn => turn.Success),
             total_turns = report.TurnRuns.Count,
+            phase_timing_rollups = phaseTimingRollups.Count == 0
+                ? null
+                : phaseTimingRollups
+                    .Select(rollup => new {
+                        phase = rollup.Phase,
+                        samples = rollup.Samples,
+                        total_duration_ms = rollup.TotalDurationMs,
+                        total_events = rollup.TotalEvents,
+                        average_duration_ms = rollup.AverageDurationMs,
+                        p50_duration_ms = rollup.P50DurationMs,
+                        p95_duration_ms = rollup.P95DurationMs,
+                        max_duration_ms = rollup.MaxDurationMs
+                    })
+                    .ToArray(),
             turns = report.TurnRuns.Select(turn => {
                 var toolCalls = turn.Result?.Result.ToolCalls
                     .Select(call => new {
@@ -175,6 +190,7 @@ internal static partial class Program {
     }
 
     private static string BuildScenarioReportMarkdown(ScenarioRunReport report) {
+        var phaseTimingRollups = BuildScenarioPhaseTimingRollups(report);
         var sb = new StringBuilder();
         sb.AppendLine("# Chat Scenario Report");
         sb.AppendLine();
@@ -184,6 +200,13 @@ internal static partial class Program {
         sb.AppendLine($"- Completed (UTC): {report.CompletedAtUtc:yyyy-MM-ddTHH:mm:ss.fffZ}");
         sb.AppendLine($"- Continue on error: {report.ContinueOnError}");
         sb.AppendLine($"- Passed turns: {report.TurnRuns.Count(static t => t.Success)}/{report.TurnRuns.Count}");
+        if (phaseTimingRollups.Count > 0) {
+            var rollupSummary = phaseTimingRollups
+                .Select(static rollup =>
+                    $"{rollup.Phase}:{rollup.Samples} samples p50={rollup.P50DurationMs}ms p95={rollup.P95DurationMs}ms max={rollup.MaxDurationMs}ms")
+                .ToArray();
+            sb.AppendLine($"- Phase timing rollups: {string.Join("; ", rollupSummary)}");
+        }
         sb.AppendLine();
 
         for (var i = 0; i < report.TurnRuns.Count; i++) {
@@ -259,6 +282,99 @@ internal static partial class Program {
 
         return sb.ToString();
     }
+
+    private static IReadOnlyList<ScenarioPhaseTimingRollup> BuildScenarioPhaseTimingRollups(ScenarioRunReport report) {
+        if (report is null || report.TurnRuns.Count == 0) {
+            return Array.Empty<ScenarioPhaseTimingRollup>();
+        }
+
+        var durationsByPhase = new Dictionary<string, List<long>>(StringComparer.OrdinalIgnoreCase);
+        var totalEventsByPhase = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        for (var turnIndex = 0; turnIndex < report.TurnRuns.Count; turnIndex++) {
+            var phaseTimings = report.TurnRuns[turnIndex].Result?.Metrics.PhaseTimings;
+            if (phaseTimings is not { Count: > 0 }) {
+                continue;
+            }
+
+            for (var timingIndex = 0; timingIndex < phaseTimings.Count; timingIndex++) {
+                var phaseTiming = phaseTimings[timingIndex];
+                var phase = (phaseTiming.Phase ?? string.Empty).Trim();
+                if (phase.Length == 0) {
+                    continue;
+                }
+
+                var durationMs = Math.Max(0L, phaseTiming.DurationMs);
+                if (!durationsByPhase.TryGetValue(phase, out var durations)) {
+                    durations = new List<long>();
+                    durationsByPhase[phase] = durations;
+                }
+
+                durations.Add(durationMs);
+                totalEventsByPhase[phase] = totalEventsByPhase.TryGetValue(phase, out var currentEvents)
+                    ? currentEvents + Math.Max(0L, phaseTiming.EventCount)
+                    : Math.Max(0L, phaseTiming.EventCount);
+            }
+        }
+
+        if (durationsByPhase.Count == 0) {
+            return Array.Empty<ScenarioPhaseTimingRollup>();
+        }
+
+        var results = new List<ScenarioPhaseTimingRollup>(durationsByPhase.Count);
+        var orderedPhases = durationsByPhase.Keys
+            .OrderBy(static phase => phase, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        for (var i = 0; i < orderedPhases.Length; i++) {
+            var phase = orderedPhases[i];
+            var durations = durationsByPhase[phase];
+            durations.Sort();
+            var totalDurationMs = durations.Sum();
+            var samples = durations.Count;
+            var averageDurationMs = samples > 0
+                ? (long)Math.Round(totalDurationMs / (double)samples, MidpointRounding.AwayFromZero)
+                : 0L;
+            var totalEvents = totalEventsByPhase.TryGetValue(phase, out var observedEvents)
+                ? observedEvents
+                : 0L;
+            results.Add(new ScenarioPhaseTimingRollup(
+                Phase: phase,
+                Samples: samples,
+                TotalDurationMs: totalDurationMs,
+                TotalEvents: totalEvents,
+                AverageDurationMs: averageDurationMs,
+                P50DurationMs: ComputeDurationPercentile(durations, 0.50d),
+                P95DurationMs: ComputeDurationPercentile(durations, 0.95d),
+                MaxDurationMs: durations.Count == 0 ? 0L : durations[^1]));
+        }
+
+        return results;
+    }
+
+    private static long ComputeDurationPercentile(IReadOnlyList<long> sortedDurations, double percentile) {
+        if (sortedDurations is null || sortedDurations.Count == 0) {
+            return 0L;
+        }
+
+        var clamped = Math.Clamp(percentile, 0d, 1d);
+        var index = (int)Math.Ceiling(clamped * sortedDurations.Count) - 1;
+        if (index < 0) {
+            index = 0;
+        } else if (index >= sortedDurations.Count) {
+            index = sortedDurations.Count - 1;
+        }
+
+        return Math.Max(0L, sortedDurations[index]);
+    }
+
+    private sealed record ScenarioPhaseTimingRollup(
+        string Phase,
+        int Samples,
+        long TotalDurationMs,
+        long TotalEvents,
+        long AverageDurationMs,
+        long P50DurationMs,
+        long P95DurationMs,
+        long MaxDurationMs);
 
     private static bool TryReadToolOutputOk(string output, out bool ok) {
         ok = false;
