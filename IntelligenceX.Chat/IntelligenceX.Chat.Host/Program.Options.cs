@@ -232,9 +232,6 @@ internal static partial class Program {
                         if (!TryGetValue(args, ref i, out var profileName, out error)) {
                             return options;
                         }
-                        options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(profileName, out var canonicalProfileName)
-                            ? canonicalProfileName
-                            : profileName;
                         break;
                     case "--state-db":
                         if (!TryGetValue(args, ref i, out var stateDb, out error)) {
@@ -470,9 +467,7 @@ internal static partial class Program {
                     if (!TryGetValue(args, ref i, out var name, out error)) {
                         return;
                     }
-                    options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(name, out var canonicalProfileName)
-                        ? canonicalProfileName
-                        : name;
+                    options.ProfileName = name;
                     continue;
                 }
             }
@@ -485,27 +480,32 @@ internal static partial class Program {
                 return true;
             }
 
+            var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? GetDefaultStateDbPath() : options.StateDbPath!.Trim();
+            try {
+                using var store = new SqliteServiceProfileStore(dbPath);
+                foreach (var candidateName in ServiceProfilePresets.GetStoredProfileLookupCandidates(name)) {
+                    var storedProfile = store.GetAsync(candidateName, CancellationToken.None).GetAwaiter().GetResult();
+                    if (storedProfile is null) {
+                        continue;
+                    }
+
+                    options.ApplyProfile(storedProfile);
+                    options.ProfileName = candidateName;
+                    return true;
+                }
+            } catch (Exception ex) {
+                error = $"Failed to load profile '{name}': {ex.Message}";
+                return false;
+            }
+
             if (ServiceProfilePresets.TryResolve(name, out var presetName, out var presetProfile)) {
                 options.ApplyProfile(presetProfile);
                 options.ProfileName = presetName;
                 return true;
             }
 
-            var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? GetDefaultStateDbPath() : options.StateDbPath!.Trim();
-            try {
-                using var store = new SqliteServiceProfileStore(dbPath);
-                var profile = store.GetAsync(name, CancellationToken.None).GetAwaiter().GetResult();
-                if (profile is null) {
-                    error = $"Profile not found: {name}";
-                    return false;
-                }
-                options.ApplyProfile(profile);
-                options.ProfileName = name;
-                return true;
-            } catch (Exception ex) {
-                error = $"Failed to load profile '{name}': {ex.Message}";
-                return false;
-            }
+            error = $"Profile not found: {name}";
+            return false;
         }
 
         internal void ApplyProfile(ServiceProfile profile) {

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
+using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Service;
 using Xunit;
 
@@ -67,6 +68,76 @@ public sealed class ChatServiceProfilePresetTests {
             Assert.Equal("plugin-only", options.ProfileName);
             Assert.False(options.EnableBuiltInPackLoading);
             Assert.True(options.EnableDefaultPluginPaths);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task HandleSetProfileAsync_LoadsSavedProfileNamedPluginOnly_BeforeBuiltInPreset() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            SeedProfile(dbPath, "plugin-only", "saved-plugin-model", enableBuiltInPackLoading: true, enableDefaultPluginPaths: false);
+
+            var options = new ServiceOptions {
+                StateDbPath = dbPath
+            };
+            using var buffer = new MemoryStream();
+            using var writer = new StreamWriter(buffer, new UTF8Encoding(false), 1024, leaveOpen: true);
+            var session = new ChatServiceSession(options, Stream.Null);
+            var request = new SetProfileRequest {
+                RequestId = "req_profile_set_saved_exact",
+                ProfileName = "plugin-only"
+            };
+
+            await InvokeHandleSetProfileAsync(session, writer, request);
+            writer.Flush();
+            buffer.Position = 0;
+
+            using var document = await JsonDocument.ParseAsync(buffer);
+            var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
+            var ack = Assert.IsType<AckMessage>(response);
+
+            Assert.True(ack.Ok);
+            Assert.Equal("plugin-only", options.ProfileName);
+            Assert.Equal("saved-plugin-model", options.Model);
+            Assert.True(options.EnableBuiltInPackLoading);
+            Assert.False(options.EnableDefaultPluginPaths);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task HandleSetProfileAsync_LoadsSavedProfileNamedPluginOnlyAlias_BeforeBuiltInPresetAlias() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            SeedProfile(dbPath, "plugin_only", "saved-plugin-alias-model", enableBuiltInPackLoading: true, enableDefaultPluginPaths: false);
+
+            var options = new ServiceOptions {
+                StateDbPath = dbPath
+            };
+            using var buffer = new MemoryStream();
+            using var writer = new StreamWriter(buffer, new UTF8Encoding(false), 1024, leaveOpen: true);
+            var session = new ChatServiceSession(options, Stream.Null);
+            var request = new SetProfileRequest {
+                RequestId = "req_profile_set_saved_alias",
+                ProfileName = "plugin_only"
+            };
+
+            await InvokeHandleSetProfileAsync(session, writer, request);
+            writer.Flush();
+            buffer.Position = 0;
+
+            using var document = await JsonDocument.ParseAsync(buffer);
+            var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
+            var ack = Assert.IsType<AckMessage>(response);
+
+            Assert.True(ack.Ok);
+            Assert.Equal("plugin_only", options.ProfileName);
+            Assert.Equal("saved-plugin-alias-model", options.Model);
+            Assert.True(options.EnableBuiltInPackLoading);
+            Assert.False(options.EnableDefaultPluginPaths);
         } finally {
             TryDelete(dbPath);
         }
@@ -137,6 +208,16 @@ public sealed class ChatServiceProfilePresetTests {
 
     private static string CreateTempProfileDbPath() {
         return Path.Combine(Path.GetTempPath(), "ix-chat-service-profile-preset-tests-" + Guid.NewGuid().ToString("N") + ".db");
+    }
+
+    private static void SeedProfile(string dbPath, string profileName, string model, bool enableBuiltInPackLoading, bool enableDefaultPluginPaths) {
+        using var store = new SqliteServiceProfileStore(dbPath);
+        var profile = new ServiceProfile {
+            Model = model,
+            EnableBuiltInPackLoading = enableBuiltInPackLoading,
+            EnableDefaultPluginPaths = enableDefaultPluginPaths
+        };
+        store.UpsertAsync(profileName, profile, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     private static void TryDelete(string path) {

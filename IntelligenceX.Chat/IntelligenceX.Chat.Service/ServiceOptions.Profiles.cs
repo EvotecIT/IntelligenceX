@@ -176,9 +176,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return;
                 }
-                options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(value, out var canonicalProfileName)
-                    ? canonicalProfileName
-                    : value;
+                options.ProfileName = value;
                 continue;
             }
             if (arg is "--save-profile") {
@@ -203,29 +201,42 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             return true;
         }
 
-        if (ServiceProfilePresets.TryResolve(name, out var presetName, out var presetProfile)) {
-            options.ApplyProfile(presetProfile);
-            options.ProfileName = presetName;
-            return true;
-        }
-
         if (options.NoStateDb) {
+            if (ServiceProfilePresets.TryResolve(name, out var presetName, out var presetProfile)) {
+                options.ApplyProfile(presetProfile);
+                options.ProfileName = presetName;
+                return true;
+            }
+
             error = "State DB is disabled; saved profiles are unavailable.";
             return false;
         }
 
         var dbPath = string.IsNullOrWhiteSpace(options.StateDbPath) ? GetDefaultStateDbPath() : options.StateDbPath!;
         using var store = new SqliteServiceProfileStore(dbPath);
-        var profile = store.GetAsync(name, CancellationToken.None).GetAwaiter().GetResult();
-        if (profile == null) {
-            if (ShouldBootstrapMissingProfile(options, name)) {
-                return true;
+        foreach (var candidateName in ServiceProfilePresets.GetStoredProfileLookupCandidates(name)) {
+            var storedProfile = store.GetAsync(candidateName, CancellationToken.None).GetAwaiter().GetResult();
+            if (storedProfile == null) {
+                continue;
             }
-            error = $"Profile not found: {name}";
-            return false;
+
+            options.ApplyProfile(storedProfile);
+            options.ProfileName = candidateName;
+            return true;
         }
-        options.ApplyProfile(profile);
-        return true;
+
+        if (ServiceProfilePresets.TryResolve(name, out var builtInPresetName, out var builtInPresetProfile)) {
+            options.ApplyProfile(builtInPresetProfile);
+            options.ProfileName = builtInPresetName;
+            return true;
+        }
+
+        if (ShouldBootstrapMissingProfile(options, name)) {
+            return true;
+        }
+
+        error = $"Profile not found: {name}";
+        return false;
     }
 
     private static bool ShouldBootstrapMissingProfile(ServiceOptions options, string profileName) {

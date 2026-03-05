@@ -241,6 +241,54 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_LoadsSavedProfileNamedPluginOnly_BeforeBuiltInPreset() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            SeedProfile(
+                dbPath,
+                "plugin-only",
+                allowMutatingParallel: false,
+                model: "saved-plugin-model",
+                enableBuiltInPackLoading: true,
+                enableDefaultPluginPaths: false);
+            var options = ParseHostOptions(new[] { "--state-db", dbPath, "--profile", "plugin-only" }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin-only", ReadStringProperty(options!, "ProfileName"));
+            Assert.Equal("saved-plugin-model", ReadStringProperty(options!, "Model"));
+            Assert.True(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
+            Assert.False(ReadBoolProperty(options!, "EnableDefaultPluginPaths"));
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Parse_LoadsSavedProfileNamedPluginOnlyAlias_BeforeBuiltInPresetAlias() {
+        var dbPath = CreateTempProfileDbPath();
+        try {
+            SeedProfile(
+                dbPath,
+                "plugin_only",
+                allowMutatingParallel: false,
+                model: "saved-plugin-alias-model",
+                enableBuiltInPackLoading: true,
+                enableDefaultPluginPaths: false);
+            var options = ParseHostOptions(new[] { "--state-db", dbPath, "--profile", "plugin_only" }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal("plugin_only", ReadStringProperty(options!, "ProfileName"));
+            Assert.Equal("saved-plugin-alias-model", ReadStringProperty(options!, "Model"));
+            Assert.True(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
+            Assert.False(ReadBoolProperty(options!, "EnableDefaultPluginPaths"));
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
     public void Parse_NormalizesBuiltInPluginOnlyPresetAlias() {
         var dbPath = CreateTempProfileDbPath();
         try {
@@ -452,11 +500,19 @@ public sealed class HostOptionsProfileBootstrapTests {
         return hostProgramType!;
     }
 
-    private static void SeedProfile(string dbPath, string profileName, bool allowMutatingParallel) {
+    private static void SeedProfile(
+        string dbPath,
+        string profileName,
+        bool allowMutatingParallel,
+        string model = "profile-model",
+        bool enableBuiltInPackLoading = true,
+        bool enableDefaultPluginPaths = true) {
         using var store = new SqliteServiceProfileStore(dbPath);
         var profile = new ServiceProfile {
-            Model = "profile-model",
-            AllowMutatingParallelToolCalls = allowMutatingParallel
+            Model = model,
+            AllowMutatingParallelToolCalls = allowMutatingParallel,
+            EnableBuiltInPackLoading = enableBuiltInPackLoading,
+            EnableDefaultPluginPaths = enableDefaultPluginPaths
         };
         store.UpsertAsync(profileName, profile, CancellationToken.None).GetAwaiter().GetResult();
     }

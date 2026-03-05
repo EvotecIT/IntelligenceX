@@ -293,9 +293,6 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
                 }
-                options.ProfileName = ServiceProfilePresets.TryGetCanonicalName(value, out var canonicalProfileName)
-                    ? canonicalProfileName
-                    : value;
                 continue;
             }
             if (arg is "--save-profile") {

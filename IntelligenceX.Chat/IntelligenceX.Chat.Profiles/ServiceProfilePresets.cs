@@ -13,9 +13,10 @@ internal static class ServiceProfilePresets {
     private static readonly string[] BuiltInPresetNames = new[] {
         PluginOnly
     };
+    private static readonly IReadOnlyList<string> BuiltInPresetNamesView = Array.AsReadOnly(BuiltInPresetNames);
 
     internal static IReadOnlyList<string> GetBuiltInPresetNames() {
-        return BuiltInPresetNames;
+        return BuiltInPresetNamesView;
     }
 
     internal static bool TryGetCanonicalName(string? name, out string canonicalName) {
@@ -47,6 +48,20 @@ internal static class ServiceProfilePresets {
             RequireExplicitRoutingMetadata = true
         };
         return true;
+    }
+
+    internal static IReadOnlyList<string> GetStoredProfileLookupCandidates(string? requestedName) {
+        var trimmed = (requestedName ?? string.Empty).Trim();
+        if (trimmed.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        if (!TryGetCanonicalName(trimmed, out var canonicalName)
+            || string.Equals(trimmed, canonicalName, StringComparison.Ordinal)) {
+            return new[] { trimmed };
+        }
+
+        return new[] { trimmed, canonicalName };
     }
 
     internal static string[] MergeBuiltInPresetNames(IEnumerable<string>? storedNames) {
