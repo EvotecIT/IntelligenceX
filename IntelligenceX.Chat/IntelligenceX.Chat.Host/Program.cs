@@ -565,6 +565,9 @@ internal static partial class Program {
         Console.WriteLine("  --powershell-allow-write  Allow read_write intent in IX.PowerShell tools (default: off).");
         Console.WriteLine("  --no-built-in-packs    Disable built-in pack loading (plugin-only mode).");
         Console.WriteLine("  --built-in-packs       Enable built-in pack loading (default: on).");
+        Console.WriteLine("  --built-in-tool-assembly <NAME> Additional built-in tool assembly name to include (repeatable).");
+        Console.WriteLine("  --no-default-built-in-tool-assemblies Disable built-in discovery from Chat's default assembly allowlist.");
+        Console.WriteLine("  --default-built-in-tool-assemblies Re-enable built-in discovery from Chat's default assembly allowlist.");
         Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);

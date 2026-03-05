@@ -67,6 +67,8 @@ internal static partial class Program {
         public int AdMaxResults { get; set; } = 1000;
         public bool PowerShellAllowWrite { get; set; }
         public bool EnableBuiltInPackLoading { get; set; } = true;
+        public bool UseDefaultBuiltInToolAssemblyNames { get; set; } = true;
+        public List<string> BuiltInToolAssemblyNames { get; } = new();
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
         public List<string> DisabledPackIds { get; } = new();
@@ -84,6 +86,7 @@ internal static partial class Program {
 
         ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
         IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
+        IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolAssemblyNames => BuiltInToolAssemblyNames;
         IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
         IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
         IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
@@ -311,6 +314,18 @@ internal static partial class Program {
                     case "--built-in-packs":
                         options.EnableBuiltInPackLoading = true;
                         break;
+                    case "--built-in-tool-assembly":
+                        if (!TryGetValue(args, ref i, out var builtInAssemblyName, out error)) {
+                            return options;
+                        }
+                        options.BuiltInToolAssemblyNames.Add(builtInAssemblyName);
+                        break;
+                    case "--no-default-built-in-tool-assemblies":
+                        options.UseDefaultBuiltInToolAssemblyNames = false;
+                        break;
+                    case "--default-built-in-tool-assemblies":
+                        options.UseDefaultBuiltInToolAssemblyNames = true;
+                        break;
                     case "--plugin-path":
                         if (!TryGetValue(args, ref i, out var pluginPath, out error)) {
                             return options;
@@ -518,6 +533,11 @@ internal static partial class Program {
             AdMaxResults = profile.AdMaxResults;
             PowerShellAllowWrite = profile.PowerShellAllowWrite;
             EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading;
+            UseDefaultBuiltInToolAssemblyNames = profile.UseDefaultBuiltInToolAssemblyNames;
+            BuiltInToolAssemblyNames.Clear();
+            if (profile.BuiltInToolAssemblyNames is { Count: > 0 }) {
+                BuiltInToolAssemblyNames.AddRange(profile.BuiltInToolAssemblyNames);
+            }
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
             PluginPaths.Clear();
             if (profile.PluginPaths is { Count: > 0 }) {
@@ -598,6 +618,7 @@ internal static partial class Program {
                 AdMaxResults = AdMaxResults,
                 PowerShellAllowWrite = PowerShellAllowWrite,
                 EnableBuiltInPackLoading = EnableBuiltInPackLoading,
+                UseDefaultBuiltInToolAssemblyNames = UseDefaultBuiltInToolAssemblyNames,
                 EnableDefaultPluginPaths = EnableDefaultPluginPaths,
                 WriteGovernanceMode = WriteGovernanceMode,
                 RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,
@@ -613,6 +634,9 @@ internal static partial class Program {
 
             if (AllowedRoots.Count > 0) {
                 clone.AllowedRoots.AddRange(AllowedRoots);
+            }
+            if (BuiltInToolAssemblyNames.Count > 0) {
+                clone.BuiltInToolAssemblyNames.AddRange(BuiltInToolAssemblyNames);
             }
             if (PluginPaths.Count > 0) {
                 clone.PluginPaths.AddRange(PluginPaths);
@@ -669,6 +693,7 @@ internal static partial class Program {
             AdMaxResults = source.AdMaxResults;
             PowerShellAllowWrite = source.PowerShellAllowWrite;
             EnableBuiltInPackLoading = source.EnableBuiltInPackLoading;
+            UseDefaultBuiltInToolAssemblyNames = source.UseDefaultBuiltInToolAssemblyNames;
             EnableDefaultPluginPaths = source.EnableDefaultPluginPaths;
             WriteGovernanceMode = source.WriteGovernanceMode;
             RequireWriteGovernanceRuntime = source.RequireWriteGovernanceRuntime;
@@ -684,6 +709,11 @@ internal static partial class Program {
             AllowedRoots.Clear();
             if (source.AllowedRoots.Count > 0) {
                 AllowedRoots.AddRange(source.AllowedRoots);
+            }
+
+            BuiltInToolAssemblyNames.Clear();
+            if (source.BuiltInToolAssemblyNames.Count > 0) {
+                BuiltInToolAssemblyNames.AddRange(source.BuiltInToolAssemblyNames);
             }
 
             PluginPaths.Clear();

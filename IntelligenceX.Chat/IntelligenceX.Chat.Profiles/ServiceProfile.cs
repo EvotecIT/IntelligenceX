@@ -43,6 +43,8 @@ internal sealed class ServiceProfile {
     public int AdMaxResults { get; set; } = 1000;
     public bool PowerShellAllowWrite { get; set; }
     public bool EnableBuiltInPackLoading { get; set; } = true;
+    public bool UseDefaultBuiltInToolAssemblyNames { get; set; } = true;
+    public List<string> BuiltInToolAssemblyNames { get; set; } = new();
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; set; } = new();
     public List<string> DisabledPackIds { get; set; } = new();

@@ -119,6 +119,27 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void ApplyProfile_PropagatesBuiltInAssemblyDiscoverySettings() {
+        var options = CreateHostOptionsInstance();
+        Assert.NotNull(options);
+
+        var replOptionsType = options!.GetType();
+        var applyProfile = replOptionsType.GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(applyProfile);
+
+        var profile = new ServiceProfile {
+            UseDefaultBuiltInToolAssemblyNames = false,
+            BuiltInToolAssemblyNames = new List<string> { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" }
+        };
+
+        applyProfile!.Invoke(options, new object?[] { profile });
+        Assert.False(ReadBoolProperty(options, "UseDefaultBuiltInToolAssemblyNames"));
+        var assemblyNames = ReadStringListProperty(options, "BuiltInToolAssemblyNames");
+        Assert.Contains("IntelligenceX.Tools.System", assemblyNames);
+        Assert.Contains("IntelligenceX.Tools.EventLog", assemblyNames);
+    }
+
+    [Fact]
     public void Parse_ProfileDefaultMutatingParallelTrue_IsAppliedWithoutCliOverride() {
         var dbPath = CreateTempProfileDbPath();
         try {
@@ -201,6 +222,24 @@ public sealed class HostOptionsProfileBootstrapTests {
         Assert.NotNull(options);
         Assert.True(string.IsNullOrWhiteSpace(error), error);
         Assert.False(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
+    }
+
+    [Fact]
+    public void Parse_BuiltInToolAssemblyFlags_AreApplied() {
+        var options = ParseHostOptions(
+            new[] {
+                "--no-default-built-in-tool-assemblies",
+                "--built-in-tool-assembly", "IntelligenceX.Tools.System",
+                "--built-in-tool-assembly", "IntelligenceX.Tools.EventLog"
+            },
+            out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.False(ReadBoolProperty(options!, "UseDefaultBuiltInToolAssemblyNames"));
+        var assemblyNames = ReadStringListProperty(options, "BuiltInToolAssemblyNames");
+        Assert.Contains("IntelligenceX.Tools.System", assemblyNames);
+        Assert.Contains("IntelligenceX.Tools.EventLog", assemblyNames);
     }
 
     [Fact]

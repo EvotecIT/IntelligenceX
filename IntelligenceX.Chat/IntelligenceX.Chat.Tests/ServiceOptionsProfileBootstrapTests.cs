@@ -273,6 +273,20 @@ public sealed class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_Applies_BuiltInToolAssemblyDiscoveryOverrides() {
+        var options = ServiceOptions.Parse(new[] {
+            "--no-default-built-in-tool-assemblies",
+            "--built-in-tool-assembly", "IntelligenceX.Tools.System",
+            "--built-in-tool-assembly", "IntelligenceX.Tools.EventLog"
+        }, out var error);
+
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.False(options.UseDefaultBuiltInToolAssemblyNames);
+        Assert.Contains("IntelligenceX.Tools.System", options.BuiltInToolAssemblyNames);
+        Assert.Contains("IntelligenceX.Tools.EventLog", options.BuiltInToolAssemblyNames);
+    }
+
+    [Fact]
     public void Parse_AcceptsMaxToolRoundsUpperBoundary() {
         var options = ServiceOptions.Parse(
             new[] { "--max-tool-rounds", ChatRequestOptionLimits.MaxToolRounds.ToString() },
@@ -439,6 +453,9 @@ public sealed class ServiceOptionsProfileBootstrapTests {
                 "--save-profile", "runtime",
                 "--disable-pack-id", "custom_plugin_pack",
                 "--enable-pack-id", "powershell",
+                "--no-default-built-in-tool-assemblies",
+                "--built-in-tool-assembly", "IntelligenceX.Tools.System",
+                "--built-in-tool-assembly", "IntelligenceX.Tools.EventLog",
                 "--allow-mutating-parallel-tools",
                 "--write-governance-mode", "yolo",
                 "--no-require-write-governance-runtime",
@@ -476,6 +493,9 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.DoesNotContain("powershell", loaded.DisabledPackIds);
             Assert.Contains("custom_plugin_pack", loaded.DisabledPackIds);
             Assert.Contains("powershell", loaded.EnabledPackIds);
+            Assert.False(loaded.UseDefaultBuiltInToolAssemblyNames);
+            Assert.Contains("IntelligenceX.Tools.System", loaded.BuiltInToolAssemblyNames);
+            Assert.Contains("IntelligenceX.Tools.EventLog", loaded.BuiltInToolAssemblyNames);
         } finally {
             TryDelete(dbPath);
         }

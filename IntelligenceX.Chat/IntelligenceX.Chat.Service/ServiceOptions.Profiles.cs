@@ -54,6 +54,11 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         AdMaxResults = profile.AdMaxResults;
         PowerShellAllowWrite = profile.PowerShellAllowWrite;
         EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading;
+        UseDefaultBuiltInToolAssemblyNames = profile.UseDefaultBuiltInToolAssemblyNames;
+        BuiltInToolAssemblyNames.Clear();
+        if (profile.BuiltInToolAssemblyNames is { Count: > 0 }) {
+            BuiltInToolAssemblyNames.AddRange(profile.BuiltInToolAssemblyNames);
+        }
         EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths;
         PluginPaths.Clear();
         if (profile.PluginPaths != null && profile.PluginPaths.Count > 0) {
@@ -125,6 +130,8 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             AdMaxResults = AdMaxResults,
             PowerShellAllowWrite = PowerShellAllowWrite,
             EnableBuiltInPackLoading = EnableBuiltInPackLoading,
+            UseDefaultBuiltInToolAssemblyNames = UseDefaultBuiltInToolAssemblyNames,
+            BuiltInToolAssemblyNames = new List<string>(BuiltInToolAssemblyNames),
             EnableDefaultPluginPaths = EnableDefaultPluginPaths,
             PluginPaths = new List<string>(PluginPaths),
             DisabledPackIds = new List<string>(DisabledPackIds),
