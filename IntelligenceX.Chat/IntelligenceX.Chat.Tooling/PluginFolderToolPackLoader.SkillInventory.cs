@@ -39,12 +39,15 @@ internal static partial class PluginFolderToolPackLoader {
     }
 
     private static string[] ResolvePluginSkillIds(string rootPath, PluginManifest? manifest) {
-        return ResolvePluginSkillIds(rootPath, manifest, onWarning: null);
+        return ResolvePluginSkillIds(ResolvePluginSkillDirectories(rootPath, manifest), onWarning: null);
     }
 
     private static string[] ResolvePluginSkillIds(string rootPath, PluginManifest? manifest, Action<string>? onWarning) {
-        var skillDirectories = ResolvePluginSkillDirectories(rootPath, manifest);
-        if (skillDirectories.Length == 0) {
+        return ResolvePluginSkillIds(ResolvePluginSkillDirectories(rootPath, manifest), onWarning);
+    }
+
+    private static string[] ResolvePluginSkillIds(IReadOnlyList<string> skillDirectories, Action<string>? onWarning) {
+        if (skillDirectories.Count == 0) {
             return Array.Empty<string>();
         }
 
@@ -54,9 +57,11 @@ internal static partial class PluginFolderToolPackLoader {
                 continue;
             }
 
-            IEnumerable<string> skillFiles;
+            string[] skillFiles;
             try {
-                skillFiles = Directory.EnumerateFiles(skillDirectory, SkillManifestFileName, SearchOption.AllDirectories);
+                skillFiles = Directory
+                    .EnumerateFiles(skillDirectory, SkillManifestFileName, SearchOption.AllDirectories)
+                    .ToArray();
             } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) {
                 onWarning?.Invoke(
                     $"[plugin] skill_inventory_scan_failed path='{skillDirectory}' error='{ex.GetType().Name}: {ex.Message}'");

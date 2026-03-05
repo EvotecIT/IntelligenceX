@@ -145,7 +145,7 @@ internal sealed partial class ChatServiceSession {
                     PackIds = NormalizeDistinctStrings(plugin.PackIds ?? Array.Empty<string>(), maxItems: 0),
                     RootPath = string.IsNullOrWhiteSpace(plugin.RootPath) ? null : plugin.RootPath.Trim(),
                     SkillDirectories = NormalizeDistinctStrings(plugin.SkillDirectories ?? Array.Empty<string>(), maxItems: 0),
-                    SkillIds = NormalizeCapabilitySnapshotSkills(plugin.SkillIds ?? Array.Empty<string>())
+                    SkillIds = NormalizeSkillInventoryValues(plugin.SkillIds ?? Array.Empty<string>(), maxItems: 0)
                 });
             }
         }

@@ -786,6 +786,7 @@ internal static partial class PluginFolderToolPackLoader {
         if (sourceKind.Length == 0) {
             sourceKind = ToolPackBootstrap.PackSourceOpenSource;
         }
+        var skillDirectories = ResolvePluginSkillDirectories(rootPath, manifest);
 
         return new ToolPluginAvailabilityInfo {
             Id = normalizedPluginId.Length == 0 ? pluginId : normalizedPluginId,
@@ -799,8 +800,8 @@ internal static partial class PluginFolderToolPackLoader {
             IsDangerous = (manifest?.IsDangerous ?? false) || (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).Any(static pack => pack.IsDangerous),
             PackIds = normalizedPackIds,
             RootPath = string.IsNullOrWhiteSpace(rootPath) ? null : rootPath,
-            SkillDirectories = ResolvePluginSkillDirectories(rootPath, manifest),
-            SkillIds = ResolvePluginSkillIds(rootPath, manifest, onWarning)
+            SkillDirectories = skillDirectories,
+            SkillIds = ResolvePluginSkillIds(skillDirectories, onWarning)
         };
     }
 

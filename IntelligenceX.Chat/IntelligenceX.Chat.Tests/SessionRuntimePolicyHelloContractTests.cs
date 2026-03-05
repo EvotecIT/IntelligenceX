@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Linq;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
@@ -197,6 +198,9 @@ public sealed class SessionRuntimePolicyHelloContractTests {
 
     [Fact]
     public void BuildSessionPolicy_PrefersResolvedPluginSkillIdsInCapabilitySnapshot() {
+        var skillIds = Enumerable.Range(1, 10)
+            .Select(index => $"inventory-skill-{index:00}")
+            .ToArray();
         var policy = ChatServiceSession.BuildSessionPolicy(
             new ServiceOptions(),
             new[] {
@@ -216,7 +220,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                     DefaultEnabled = true,
                     Enabled = true,
                     PackIds = new[] { "plugin-loader-test" },
-                    SkillIds = new[] { "inventory-test", "network-recon" }
+                    SkillIds = skillIds
                 }
             },
             Array.Empty<string>(),
@@ -254,7 +258,8 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                 }
             });
 
-        Assert.Equal(new[] { "inventory-test", "network-recon" }, policy.CapabilitySnapshot!.Skills);
-        Assert.Equal(new[] { "inventory-test", "network-recon" }, policy.Plugins[0].SkillIds);
+        Assert.Equal(8, policy.CapabilitySnapshot!.Skills.Length);
+        Assert.Equal(skillIds.Take(8).ToArray(), policy.CapabilitySnapshot.Skills);
+        Assert.Equal(skillIds, policy.Plugins[0].SkillIds);
     }
 }

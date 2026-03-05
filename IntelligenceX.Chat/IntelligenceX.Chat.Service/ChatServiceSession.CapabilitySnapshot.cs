@@ -145,11 +145,15 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string[] NormalizeCapabilitySnapshotSkills(IEnumerable<string> skills) {
+        return NormalizeSkillInventoryValues(skills, MaxCapabilitySnapshotSkills);
+    }
+
+    private static string[] NormalizeSkillInventoryValues(IEnumerable<string> skills, int maxItems) {
         return NormalizeDistinctStrings(
             (skills ?? Array.Empty<string>())
             .Select(static skill => NormalizeSkillSnapshotValue(skill))
             .Where(static skill => skill.Length > 0),
-            MaxCapabilitySnapshotSkills);
+            maxItems);
     }
 
     private static string[] NormalizeCapabilitySnapshotHealthyToolNames(IEnumerable<string> healthyToolNames) {
