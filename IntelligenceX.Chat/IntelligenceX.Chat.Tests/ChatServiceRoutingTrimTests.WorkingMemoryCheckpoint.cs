@@ -25,6 +25,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 recentEvidenceSnippets: new[] { "ad_replication_summary: replication failures were concentrated on DC02." },
                 enabledPackIds: new[] { "adplayground", "eventlog" },
                 routingFamilies: new[] { "ad_domain", "public_domain" },
+                skills: new[] { "ad_domain.scope_hosts", "public_domain.query_whois" },
                 healthyToolNames: new[] { "ad_replication_summary", "eventlog_live_query" });
 
             var session2 = new ChatServiceSession(
@@ -44,6 +45,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.Contains("ix:capability-snapshot:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("enabled_packs:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("routing_families:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("skills: ad_domain.scope_hosts, public_domain.query_whois", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("healthy_tools:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("follow_up: run now", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
         } finally {
