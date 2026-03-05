@@ -78,15 +78,15 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
-    public void EnumerateToolAssemblyNamesForDiscovery_StaysWithinKnownBuiltInAssemblyAllowlist() {
+    public void EnumerateToolAssemblyNamesForDiscovery_StaysWithinRuntimeDiscoveredDefaultBuiltInAssemblySet() {
         var method = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
-        var knownNamesField = typeof(ToolPackBootstrap).GetField(
-            "KnownBuiltInToolAssemblyNames",
+        var defaultDiscoveryMethod = typeof(ToolPackBootstrap).GetMethod(
+            "DiscoverDefaultBuiltInAssemblyNames",
             BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(knownNamesField);
+        Assert.NotNull(defaultDiscoveryMethod);
 
         var options = new ToolPackBootstrapOptions();
         var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(method!.Invoke(null, new object[] { options }));
@@ -96,9 +96,9 @@ public sealed class ToolPackBootstrapMetadataTests {
             .ToArray();
         Assert.NotEmpty(discoveredNames);
 
-        var knownBuiltInAssemblyNames = Assert.IsAssignableFrom<string[]>(knownNamesField!.GetValue(null));
+        var discoveredDefaultAssemblyNames = Assert.IsAssignableFrom<IEnumerable<string>>(defaultDiscoveryMethod!.Invoke(null, new object?[] { null }));
         var allowlist = new HashSet<string>(
-            knownBuiltInAssemblyNames.Where(static name => !string.IsNullOrWhiteSpace(name)),
+            discoveredDefaultAssemblyNames.Where(static name => !string.IsNullOrWhiteSpace(name)),
             StringComparer.OrdinalIgnoreCase);
         Assert.NotEmpty(allowlist);
 
