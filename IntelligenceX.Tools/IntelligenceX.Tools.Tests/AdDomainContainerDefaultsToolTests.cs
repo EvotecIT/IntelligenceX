@@ -31,12 +31,12 @@ public sealed class AdDomainContainerDefaultsToolTests {
     }
 
     [Fact]
-    public void BindRequestContract_WhenChangedOnlyTypeInvalid_UsesDefaultFalse() {
+    public void BindRequestContract_WhenChangedOnlyProvidedAsString_ParsesCompatibly() {
         var binding = AdDomainContainerDefaultsTool.BindRequestContract(new JsonObject()
             .Add("changed_only", "true"));
         Assert.True(binding.IsValid);
 
         var request = Assert.IsType<AdDomainContainerDefaultsTool.DomainContainerDefaultsBindingContract>(binding.Request);
-        Assert.False(request.ChangedOnly);
+        Assert.True(request.ChangedOnly);
     }
 }

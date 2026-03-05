@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,7 +83,7 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
             ToolRequestBindingResult<DomainContainerDefaultsRequest>.Success(new DomainContainerDefaultsRequest(
                 DomainName: reader.OptionalString("domain_name"),
                 ForestName: reader.OptionalString("forest_name"),
-                ChangedOnly: reader.Boolean("changed_only"))));
+                ChangedOnly: ReadBooleanCompat(arguments, "changed_only"))));
     }
 
     internal static ToolRequestBindingResult<DomainContainerDefaultsBindingContract> BindRequestContract(JsonObject? arguments) {
@@ -173,5 +174,35 @@ public sealed class AdDomainContainerDefaultsTool : ActiveDirectoryToolBase, ITo
                 meta.Add("error_count", errors.Count);
                 AddDomainAndForestAndMaxResultsMeta(meta, domainName, forestName, maxResults);
             }));
+    }
+
+    private static bool ReadBooleanCompat(JsonObject? arguments, string key, bool defaultValue = false) {
+        if (arguments is null || string.IsNullOrWhiteSpace(key)) {
+            return defaultValue;
+        }
+
+        if (!arguments.TryGetValue(key, out var value) || value is null) {
+            return defaultValue;
+        }
+
+        if (value.Kind == JsonValueKind.Boolean) {
+            return value.AsBoolean(defaultValue);
+        }
+
+        var raw = value.AsString();
+        if (string.IsNullOrWhiteSpace(raw)) {
+            return defaultValue;
+        }
+
+        var normalized = raw.Trim();
+        if (bool.TryParse(normalized, out var parsed)) {
+            return parsed;
+        }
+
+        if (long.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numeric)) {
+            return numeric != 0;
+        }
+
+        return defaultValue;
     }
 }
