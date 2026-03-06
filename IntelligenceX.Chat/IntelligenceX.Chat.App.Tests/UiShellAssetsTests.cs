@@ -43,6 +43,7 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function resolveHeaderStatusChipFromStructuredStartupContext()", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStatusChipFallbackStatus()", script, StringComparison.Ordinal);
         Assert.Contains("return { text: \"Ready\", tone: \"warn\" };", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ready (tool packs syncing in background)", script, StringComparison.Ordinal);
         Assert.Contains("hasExplicitUnauthenticatedProbeSnapshot: false", script, StringComparison.Ordinal);
         Assert.Contains("normalizeBool(state.hasExplicitUnauthenticatedProbeSnapshot)", script, StringComparison.Ordinal);
         Assert.Contains("var STARTUP_HEADER_STAGE_TOTAL = 4;", script, StringComparison.Ordinal);
@@ -88,6 +89,7 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("Runtime lifecycle: \" + state.statusTimeline.join(\" > \")", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var startupPhaseTimeline = byId(\"optStartupPhaseTimeline\");", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var startupDiagnosticsState = byId(\"optStartupDiagnosticsState\");", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("Refresh Account", coreScript, StringComparison.Ordinal);
         Assert.Contains("appendStartupDiagKv(\"bootstrap cache\", cacheText);", toolsScript, StringComparison.Ordinal);
         Assert.Contains("appendStartupDiagKv(\"metadata recovery\", metadataRecoveryParts.join(\" | \"));", toolsScript, StringComparison.Ordinal);
         Assert.Contains("Metadata recovery rerun is queued.", toolsScript, StringComparison.Ordinal);

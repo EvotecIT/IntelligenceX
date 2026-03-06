@@ -1159,7 +1159,7 @@
       resetStartupHeaderPhaseTracker();
       if (metadataRowActive || (normalizeBool(state.options && state.options.toolsLoading) && !suppressMetadataFromDiagnostics)) {
         return {
-          text: "Ready (tool packs syncing in background)",
+          text: "Ready",
           tone: "ok",
           startupSummary: startupModel.summary,
           startupStageLabel: "Working state",
@@ -1875,7 +1875,7 @@
     signIn.hidden = !isNativeTransport;
     signIn.disabled = loginInProgress;
     if (authenticated) {
-      signIn.textContent = loginInProgress ? "Signing In..." : "Sign In Again";
+      signIn.textContent = loginInProgress ? "Signing In..." : "Refresh Account";
       signIn.setAttribute("data-cmd", "relogin");
     } else {
       signIn.textContent = loginInProgress
