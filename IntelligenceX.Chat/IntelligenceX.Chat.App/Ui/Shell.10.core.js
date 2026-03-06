@@ -1707,7 +1707,7 @@
     }
   }
 
-  function buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus) {
+  function buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus, runtimeSummary) {
     var lines = [];
     var normalizedDisplay = normalizeStatusTimelineEntry(displayValue);
     var normalizedRaw = normalizeStatusTimelineEntry(rawValue);
@@ -1716,6 +1716,10 @@
     }
     if (normalizedRaw && normalizedRaw !== normalizedDisplay) {
       lines.push("Detail: " + normalizedRaw);
+    }
+    var normalizedRuntimeSummary = normalizeStatusTimelineEntry(runtimeSummary);
+    if (normalizedRuntimeSummary) {
+      lines.push("Runtime: " + normalizedRuntimeSummary);
     }
     if (Array.isArray(state.statusTimeline) && state.statusTimeline.length > 0) {
       lines.push("Runtime lifecycle: " + state.statusTimeline.join(" > "));
@@ -1826,18 +1830,17 @@
       startupHeaderStatus = fallbackStatus;
     }
     appendStatusTimelineEntry(rawValue || value);
-    var shouldAppendRuntime = value.indexOf("|") < 0;
     var displayValue = value;
-
-    if (shouldAppendRuntime && (normalizedTone === "ok" || normalizedTone.length === 0)) {
-      var lowerForAppend = value.toLowerCase();
-      if (lowerForAppend.indexOf("ready") >= 0 || lowerForAppend.indexOf("connected") >= 0) {
-        displayValue = value + " - " + resolveStatusRuntimeSummary();
+    var runtimeSummary = "";
+    if (normalizedTone === "ok" || normalizedTone.length === 0) {
+      var lowerForSummary = value.toLowerCase();
+      if (lowerForSummary.indexOf("ready") >= 0 || lowerForSummary.indexOf("connected") >= 0) {
+        runtimeSummary = resolveStatusRuntimeSummary();
       }
     }
 
     statusEl.textContent = displayValue;
-    statusEl.title = buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus);
+    statusEl.title = buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus, runtimeSummary);
     applyStatusChipStartupProgress(statusEl, startupHeaderStatus);
     var lower = displayValue.toLowerCase();
     statusEl.classList.remove("ok", "warn", "bad");

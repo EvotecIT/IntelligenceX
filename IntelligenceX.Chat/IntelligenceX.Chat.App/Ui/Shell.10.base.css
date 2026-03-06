@@ -114,6 +114,8 @@ body {
 .title {
   display: flex;
   align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
   height: calc(var(--ix-titlebar-height) - 2px);
   font-size: min(var(--ix-title-font-size), calc(var(--ix-titlebar-height) - 10px));
   line-height: 1;
@@ -140,8 +142,8 @@ body {
   min-height: 28px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
+  justify-content: flex-start;
+  text-align: left;
   font-weight: 600;
   box-sizing: border-box;
   position: relative;
