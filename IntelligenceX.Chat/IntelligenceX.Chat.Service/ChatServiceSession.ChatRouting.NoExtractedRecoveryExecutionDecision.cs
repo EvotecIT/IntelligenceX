@@ -169,6 +169,7 @@ internal sealed partial class ChatServiceSession {
         StreamWriter writer,
         ChatRequest request,
         string threadId,
+        bool continuationFollowUpTurn,
         int round,
         int maxRounds,
         bool parallelTools,
@@ -211,6 +212,7 @@ internal sealed partial class ChatServiceSession {
                         writer,
                         request,
                         threadId,
+                        continuationFollowUpTurn,
                         round,
                         maxRounds,
                         parallelTools,
@@ -239,6 +241,7 @@ internal sealed partial class ChatServiceSession {
         StreamWriter writer,
         ChatRequest request,
         string threadId,
+        bool continuationFollowUpTurn,
         int round,
         int maxRounds,
         bool parallelTools,
@@ -258,7 +261,7 @@ internal sealed partial class ChatServiceSession {
         NoExtractedRecoveryExecutionDecision decision) {
         var toolCall = decision.ToolCall ?? throw new InvalidOperationException("Host replay decision requires a tool call.");
         Trace.WriteLine(
-            $"[{ResolveRecoveryExecutionTraceLabel(decision.Kind)}] outcome=execute reason={decision.Reason} tool={toolCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+            $"[{ResolveRecoveryExecutionTraceLabel(decision.Kind)}] outcome=execute reason={decision.Reason} continuation={continuationFollowUpTurn} tool={toolCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
 
         toolRounds++;
         var hostRoundNumber = round + 1;
