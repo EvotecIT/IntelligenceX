@@ -1,4 +1,6 @@
 using IntelligenceX.Chat.App;
+using System.Collections;
+using System.Reflection;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -32,5 +34,26 @@ public sealed class ChatMarkdownOptionsTests {
         first.Mermaid.Enabled = false;
 
         Assert.True(second.Mermaid.Enabled);
+    }
+
+    /// <summary>
+    /// Ensures OfficeIMO fenced code block extensions are registered when the referenced renderer exposes the API.
+    /// </summary>
+    [Fact]
+    public void Create_RegistersIxFenceExtensions_WhenSupported() {
+        var options = ChatMarkdownOptions.Create();
+        var property = options.GetType().GetProperty("FencedCodeBlockRenderers", BindingFlags.Instance | BindingFlags.Public);
+        if (property?.GetValue(options) is not IEnumerable renderers) {
+            return;
+        }
+
+        var names = renderers
+            .Cast<object>()
+            .Select(renderer => renderer.GetType().GetProperty("Name", BindingFlags.Instance | BindingFlags.Public)?.GetValue(renderer) as string)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToArray();
+
+        Assert.Contains("IX chart", names);
+        Assert.Contains("IX network", names);
     }
 }
