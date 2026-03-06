@@ -329,7 +329,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static ToolCall BuildHostPackPreflightCall(string toolName, string role) {
-        var callId = HostPackPreflightCallIdPrefix + role + "_" + Guid.NewGuid().ToString("N");
+        var callId = BuildHostGeneratedToolCallId(HostPackPreflightCallIdPrefix.TrimEnd('_'), role);
         var arguments = new JsonObject(StringComparer.Ordinal);
         var serializedArguments = JsonLite.Serialize(arguments);
         var raw = new JsonObject(StringComparer.Ordinal)

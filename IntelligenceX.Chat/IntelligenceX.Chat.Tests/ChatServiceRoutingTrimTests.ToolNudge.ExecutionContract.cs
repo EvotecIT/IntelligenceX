@@ -173,6 +173,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(toolCall.Arguments!.GetBoolean("include_trusts", defaultValue: true));
         Assert.Equal(250, toolCall.Arguments.GetInt64("max_domains"));
         Assert.Equal("contoso.com", toolCall.Arguments.GetString("domain_name"));
+        Assert.True(toolCall.CallId.Length <= 64, $"Expected provider-safe call_id length, observed {toolCall.CallId.Length}: {toolCall.CallId}");
         Assert.Equal("structured_next_action_readonly_autorun", Assert.IsType<string>(args[6]));
     }
 
@@ -650,4 +651,3 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(Assert.IsType<bool>(result));
     }
 }
-

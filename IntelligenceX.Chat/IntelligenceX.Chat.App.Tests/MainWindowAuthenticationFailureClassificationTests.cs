@@ -38,6 +38,8 @@ public sealed class MainWindowAuthenticationFailureClassificationTests {
     [Theory]
     [InlineData("Usage limit reached. Retry later.")]
     [InlineData("Timed out waiting for service pipe.")]
+    [InlineData("Invalid 'input[7].call_id': string too long. Expected a string with maximum length 64, but got a string with length 73 instead.")]
+    [InlineData("Couldn't start chat because tool bootstrap failed: Method not found: 'Void IntelligenceX.Tools.ToolDefinition..ctor(...)'.")]
     [InlineData("")]
     public void IsAuthenticationRequiredError_ReturnsFalse_ForNonAuthFailures(string message) {
         var ex = new InvalidOperationException(message);

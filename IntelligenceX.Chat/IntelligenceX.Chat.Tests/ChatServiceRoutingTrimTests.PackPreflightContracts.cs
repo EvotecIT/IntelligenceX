@@ -70,6 +70,34 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("customx_pack_probe", preflightCalls[0].Name);
     }
 
+    [Fact]
+    public void BuildHostPackPreflightCalls_UsesProviderSafeCallIds() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_discover_scope",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleEnvironmentDiscover)));
+        registry.Register(new PreflightStubTool(
+            "customx_health_scan",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational)));
+        SetSessionRegistry(session, registry);
+
+        var extractedCalls = new List<ToolCall> {
+            new("call_operational_3", "customx_health_scan", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-3", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        Assert.NotEmpty(preflightCalls);
+        foreach (var preflightCall in preflightCalls) {
+            Assert.True(preflightCall.CallId.Length <= 64, $"Expected provider-safe call_id length, observed {preflightCall.CallId.Length}: {preflightCall.CallId}");
+        }
+    }
+
     private static ToolRoutingContract CreateRoutingContract(string packId, string role) {
         return new ToolRoutingContract {
             IsRoutingAware = true,

@@ -131,13 +131,44 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (tokenCount <= FollowUpShapeShortTokenLimit && normalized.Length <= FollowUpShapeShortCharLimit) {
+        if (tokenCount <= FollowUpShapeShortTokenLimit
+            && normalized.Length <= FollowUpShapeShortCharLimit
+            && IsCompactContinuationShapeCandidate(normalized, tokenCount)) {
             return true;
         }
 
         return tokenCount <= FollowUpQuestionMaxTokens
                && normalized.Length <= maxQuestionChars
                && ContainsQuestionSignal(normalized);
+    }
+
+    private static bool IsCompactContinuationShapeCandidate(string normalized, int tokenCount) {
+        var value = (normalized ?? string.Empty).Trim();
+        if (value.Length == 0 || tokenCount <= 0) {
+            return false;
+        }
+
+        if (TryParseOrdinalSelection(value, out var ordinal) && ordinal > 0) {
+            return true;
+        }
+
+        var compact = NormalizeCompactToken(value.AsSpan());
+        if (compact.Length == 0) {
+            return false;
+        }
+
+        var containsNonAscii = false;
+        for (var i = 0; i < compact.Length; i++) {
+            if (compact[i] > 127) {
+                containsNonAscii = true;
+                break;
+            }
+        }
+
+        var minCompactLength = tokenCount == 1
+            ? (containsNonAscii ? 2 : 7)
+            : (containsNonAscii ? 2 : 4);
+        return compact.Length >= minCompactLength;
     }
 
     private static bool LooksLikeCompactFollowUp(string userRequest) {

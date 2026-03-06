@@ -820,6 +820,12 @@ internal sealed partial class ChatServiceSession {
             normalized = normalized.Substring(0, 600);
         }
 
+        ClearPendingActionsContext(normalizedThreadId);
+        RemoveStructuredNextActionCarryover(normalizedThreadId);
+        if (!TryResolveDomainIntentFamilyFromUserSignals(normalized, _registry.GetDefinitions(), out _)) {
+            ClearPreferredDomainIntentFamily(normalizedThreadId);
+        }
+
         var seenUtcTicks = DateTime.UtcNow.Ticks;
         lock (_toolRoutingContextLock) {
             _lastUserIntentByThreadId[normalizedThreadId] = normalized;

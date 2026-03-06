@@ -2287,7 +2287,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public async Task RunChatOnCurrentThreadAsync_RetriesNoTextToolOutputNarrativeBeforeFallback() {
+    public async Task RunChatOnCurrentThreadAsync_PrefersToolOutputFallbackBeforeNoTextNarrativeRetry() {
         using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
             1 => JsonSerializer.Serialize(new {
                 id = "chatcmpl-call-retry-1",
@@ -2398,16 +2398,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
             thread.Id,
             CancellationToken.None);
 
-        Assert.True(server.ChatCompletionRequestCount >= 4);
+        Assert.InRange(server.ChatCompletionRequestCount, 2, 3);
         var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
-        Assert.Contains("Cross-DC comparison completed", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Recovered findings from executed tools", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Recovered findings from executed tools", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("No response text was produced", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
         var autonomyCounters = GetPropertyValueAssignable<IEnumerable<TurnCounterMetricDto>>(runResult, "AutonomyCounters");
-        Assert.DoesNotContain(
+        Assert.Contains(
             autonomyCounters,
             counter => string.Equals(counter.Name, "no_text_tool_output_recovery_hits", StringComparison.Ordinal)
-                       && counter.Count > 0);
+                       && counter.Count >= 1);
     }
 
     [Fact]

@@ -428,7 +428,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var serializedArguments = JsonLite.Serialize(normalizedArguments);
-        var callId = "host_next_action_" + Guid.NewGuid().ToString("N");
+        var callId = BuildHostGeneratedToolCallId("host_next_action");
         var raw = new JsonObject()
             .Add("type", "tool_call")
             .Add("call_id", callId)
