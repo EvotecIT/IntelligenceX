@@ -332,4 +332,22 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.DoesNotContain("Mode: ambiguous_scope_target", markdown);
         Assert.DoesNotContain("`evotec.xyz`", markdown);
     }
+
+    /// <summary>
+    /// Ensures quoted emails with trailing separators still avoid ambiguous domain-scope mode.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_DoesNotTreatQuotedEmailWithSeparatorsAsAmbiguousScopeTarget() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "Please check \"user@evotec.xyz\"; thanks",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.DoesNotContain("Mode: ambiguous_scope_target", markdown);
+        Assert.DoesNotContain("`evotec.xyz`", markdown);
+    }
 }

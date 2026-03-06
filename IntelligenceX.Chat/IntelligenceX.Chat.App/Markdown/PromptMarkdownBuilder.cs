@@ -402,7 +402,10 @@ internal static class PromptMarkdownBuilder {
                 return true;
             }
 
-            if (char.IsWhiteSpace(ch) || char.IsPunctuation(ch)) {
+            // Skip only common wrappers/separators around a token; other punctuation should
+            // stop the scan so we do not jump across unrelated segments when looking for '@'.
+            if (char.IsWhiteSpace(ch)
+                || ch is '"' or '\'' or '(' or ')' or '[' or ']' or '{' or '}' or '<' or '>' or ',' or ';') {
                 continue;
             }
 
