@@ -90,6 +90,48 @@
     }
   }
 
+  function getOfficeImoVisualHash(element, fallbackAttribute) {
+    if (!element || typeof element.getAttribute !== "function") {
+      return "";
+    }
+
+    return String(
+      element.getAttribute("data-omd-visual-hash")
+      || element.getAttribute(fallbackAttribute || "")
+      || "").trim();
+  }
+
+  function getOfficeImoVisualSource(element, cachedAttribute, fallbackConfigAttribute) {
+    if (!element || typeof element.getAttribute !== "function") {
+      return "";
+    }
+
+    var source = String(element.getAttribute(cachedAttribute || "") || "").trim();
+    if (!source) {
+      source = decodeBase64Utf8Value(element.getAttribute("data-omd-config-b64"));
+    }
+    if (!source) {
+      source = decodeBase64Utf8Value(element.getAttribute(fallbackConfigAttribute || ""));
+    }
+    return normalizeText(source);
+  }
+
+  function getOfficeImoVisualKind(element, fallbackKind) {
+    var raw = "";
+    if (element && typeof element.getAttribute === "function") {
+      raw = String(element.getAttribute("data-omd-visual-kind") || "").trim();
+    }
+
+    var normalized = normalizeVisualType(raw || fallbackKind || "");
+    if (normalized === "chart") {
+      return "ix-chart";
+    }
+    if (normalized === "network" || normalized === "visnetwork") {
+      return "ix-network";
+    }
+    return normalized;
+  }
+
   function ensureVisualNotice(anchor, text) {
     if (!anchor || !anchor.parentElement) {
       return;
@@ -1065,11 +1107,7 @@
       return;
     }
 
-    var source = String(canvas.getAttribute("data-ix-chart-source") || "").trim();
-    if (!source) {
-      source = decodeBase64Utf8Value(canvas.getAttribute("data-chart-config-b64"));
-    }
-    source = normalizeText(source);
+    var source = getOfficeImoVisualSource(canvas, "data-ix-chart-source", "data-chart-config-b64");
     if (source) {
       canvas.setAttribute("data-ix-chart-source", source);
     }
@@ -1112,7 +1150,7 @@
       canvas.removeAttribute("data-ix-chart-invalid");
       canvas.setAttribute("data-chart-rendered", "1");
       clearVisualNotice(canvas);
-      ensureVisualActionBar(canvas, "ix-chart");
+      ensureVisualActionBar(canvas, getOfficeImoVisualKind(canvas, "ix-chart"));
     } catch (_) {
       markChartInvalid(canvas, "render failed");
     } finally {
@@ -1179,7 +1217,7 @@
       }
 
       if (!host.dataset.ixNetworkBlockId) {
-        host.dataset.ixNetworkBlockId = host.getAttribute("data-network-hash")
+        host.dataset.ixNetworkBlockId = getOfficeImoVisualHash(host, "data-network-hash")
           || ("omd-network-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000)));
       }
 
@@ -1760,11 +1798,7 @@
       return;
     }
 
-    var source = String(host.getAttribute("data-ix-network-source") || "").trim();
-    if (!source) {
-      source = decodeBase64Utf8Value(host.getAttribute("data-network-config-b64"));
-    }
-    source = normalizeText(source);
+    var source = getOfficeImoVisualSource(host, "data-ix-network-source", "data-network-config-b64");
     if (source) {
       host.setAttribute("data-ix-network-source", source);
     }
@@ -1828,7 +1862,7 @@
       host.removeAttribute("data-ix-network-invalid");
       host.setAttribute("data-network-rendered", "1");
       clearVisualNotice(host);
-      ensureVisualActionBar(host, "ix-network");
+      ensureVisualActionBar(host, getOfficeImoVisualKind(host, "ix-network"));
     } catch (_) {
       markNetworkInvalid(host, "render failed");
     } finally {
@@ -1965,7 +1999,7 @@
       }
 
       if (!canvas.dataset.ixChartBlockId) {
-        canvas.dataset.ixChartBlockId = canvas.getAttribute("data-chart-hash")
+        canvas.dataset.ixChartBlockId = getOfficeImoVisualHash(canvas, "data-chart-hash")
           || ("omd-chart-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000)));
       }
 
@@ -2703,20 +2737,14 @@
       return;
     }
 
-    var normalizedKind = normalizeVisualType(kind);
+    var normalizedKind = getOfficeImoVisualKind(pre, kind);
     var source = "";
     if (normalizedKind === "mermaid") {
       source = String(pre.getAttribute("data-ix-mermaid-source") || "").trim();
     } else if (normalizedKind === "ix-chart") {
-      source = String(pre.getAttribute("data-ix-chart-source") || "").trim();
-      if (!source) {
-        source = decodeBase64Utf8Value(pre.getAttribute("data-chart-config-b64"));
-      }
+      source = getOfficeImoVisualSource(pre, "data-ix-chart-source", "data-chart-config-b64");
     } else if (normalizedKind === "ix-network") {
-      source = String(pre.getAttribute("data-ix-network-source") || "").trim();
-      if (!source) {
-        source = decodeBase64Utf8Value(pre.getAttribute("data-network-config-b64"));
-      }
+      source = getOfficeImoVisualSource(pre, "data-ix-network-source", "data-network-config-b64");
     }
     if (!source) {
       source = normalizeText(pre.textContent || "");

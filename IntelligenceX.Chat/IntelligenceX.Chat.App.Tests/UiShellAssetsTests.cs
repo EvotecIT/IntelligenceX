@@ -386,6 +386,11 @@ public sealed class UiShellAssetsTests {
             "renderIxNetworkBlock",
             "renderOfficeImoChartBlock",
             "renderOfficeImoNetworkBlock",
+            "getOfficeImoVisualHash",
+            "getOfficeImoVisualSource",
+            "getOfficeImoVisualKind",
+            "data-omd-visual-kind",
+            "data-omd-config-b64",
             "ixRenderTranscriptVisuals(transcript)",
             "ixDisposeTranscriptVisuals(transcript)");
     }
