@@ -54,7 +54,7 @@ public sealed class TranscriptHtmlFormatterTests {
 
         Assert.Contains("Chart preview:", html, StringComparison.Ordinal);
         Assert.True(
-            html.Contains("class=\"omd-chart\"", StringComparison.Ordinal)
+            html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal)
             || html.Contains("language-ix-chart", StringComparison.Ordinal),
             "Expected native OfficeIMO chart HTML or the legacy ix-chart fenced block.");
     }
@@ -78,7 +78,7 @@ public sealed class TranscriptHtmlFormatterTests {
 
         Assert.Contains("Relationship network:", html, StringComparison.Ordinal);
         Assert.True(
-            html.Contains("class=\"omd-network\"", StringComparison.Ordinal)
+            html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal)
             || html.Contains("language-ix-network", StringComparison.Ordinal),
             "Expected native OfficeIMO network HTML or the legacy ix-network fenced block.");
     }

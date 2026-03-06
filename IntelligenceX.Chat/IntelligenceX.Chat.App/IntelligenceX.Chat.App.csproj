@@ -23,20 +23,25 @@
     <DbaClientXProjectCandidate1>$(DbaClientXRepoRootCandidate1)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectCandidate1>
     <DbaClientXProjectCandidate2>$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectCandidate2>
 
-    <OfficeImoMarkdownRendererProjectOverride>$(OfficeImoRepoRoot)\OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectOverride>
+    <OfficeImoRepoRootForPaths Condition="'$(OfficeImoRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRoot)\\'))))</OfficeImoRepoRootForPaths>
+    <OfficeImoMarkdownRendererProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectOverride>
     <OfficeImoMarkdownRendererProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectCandidate1>
     <OfficeImoMarkdownRendererProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProjectCandidate2>
     <OfficeImoMarkdownRendererProject Condition="Exists('$(OfficeImoMarkdownRendererProjectOverride)')">$(OfficeImoMarkdownRendererProjectOverride)</OfficeImoMarkdownRendererProject>
     <OfficeImoMarkdownRendererProject Condition="'$(OfficeImoMarkdownRendererProject)' == '' and Exists('$(OfficeImoMarkdownRendererProjectCandidate1)')">$(OfficeImoMarkdownRendererProjectCandidate1)</OfficeImoMarkdownRendererProject>
     <OfficeImoMarkdownRendererProject Condition="'$(OfficeImoMarkdownRendererProject)' == '' and Exists('$(OfficeImoMarkdownRendererProjectCandidate2)')">$(OfficeImoMarkdownRendererProjectCandidate2)</OfficeImoMarkdownRendererProject>
 
+    <OfficeImoMarkdownRendererDllOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDllOverride>
     <OfficeImoMarkdownRendererDllCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDllCandidate1>
     <OfficeImoMarkdownRendererDllCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDllCandidate2>
+    <OfficeImoMarkdownDllOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Markdown\bin\$(Configuration)\net8.0\OfficeIMO.Markdown.dll</OfficeImoMarkdownDllOverride>
     <OfficeImoMarkdownDllCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Markdown\bin\$(Configuration)\net8.0\OfficeIMO.Markdown.dll</OfficeImoMarkdownDllCandidate1>
     <OfficeImoMarkdownDllCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Markdown\bin\$(Configuration)\net8.0\OfficeIMO.Markdown.dll</OfficeImoMarkdownDllCandidate2>
-    <OfficeImoMarkdownRendererDll Condition="Exists('$(OfficeImoMarkdownRendererDllCandidate1)')">$(OfficeImoMarkdownRendererDllCandidate1)</OfficeImoMarkdownRendererDll>
+    <OfficeImoMarkdownRendererDll Condition="Exists('$(OfficeImoMarkdownRendererDllOverride)')">$(OfficeImoMarkdownRendererDllOverride)</OfficeImoMarkdownRendererDll>
+    <OfficeImoMarkdownRendererDll Condition="'$(OfficeImoMarkdownRendererDll)' == '' and Exists('$(OfficeImoMarkdownRendererDllCandidate1)')">$(OfficeImoMarkdownRendererDllCandidate1)</OfficeImoMarkdownRendererDll>
     <OfficeImoMarkdownRendererDll Condition="'$(OfficeImoMarkdownRendererDll)' == '' and Exists('$(OfficeImoMarkdownRendererDllCandidate2)')">$(OfficeImoMarkdownRendererDllCandidate2)</OfficeImoMarkdownRendererDll>
-    <OfficeImoMarkdownDll Condition="Exists('$(OfficeImoMarkdownDllCandidate1)')">$(OfficeImoMarkdownDllCandidate1)</OfficeImoMarkdownDll>
+    <OfficeImoMarkdownDll Condition="Exists('$(OfficeImoMarkdownDllOverride)')">$(OfficeImoMarkdownDllOverride)</OfficeImoMarkdownDll>
+    <OfficeImoMarkdownDll Condition="'$(OfficeImoMarkdownDll)' == '' and Exists('$(OfficeImoMarkdownDllCandidate1)')">$(OfficeImoMarkdownDllCandidate1)</OfficeImoMarkdownDll>
     <OfficeImoMarkdownDll Condition="'$(OfficeImoMarkdownDll)' == '' and Exists('$(OfficeImoMarkdownDllCandidate2)')">$(OfficeImoMarkdownDllCandidate2)</OfficeImoMarkdownDll>
   </PropertyGroup>
 

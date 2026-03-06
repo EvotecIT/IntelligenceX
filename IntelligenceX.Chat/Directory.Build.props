@@ -4,7 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
+    <UseLocalOfficeImoCheckoutInput>$(UseLocalOfficeImoCheckout)</UseLocalOfficeImoCheckoutInput>
 
     <!-- Chat local-dev dependency roots: prefer sibling repos during development. -->
     <!-- root1: repo-root sibling layout (..\..\OfficeIMO from IntelligenceX.Chat) -->
@@ -20,6 +20,9 @@
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootCandidate2)</OfficeImoRepoRoot>
     <!-- fallback root for NuGet mode when no local checkout is present -->
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == ''">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
+    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckoutInput)' != ''">$(UseLocalOfficeImoCheckoutInput)</UseLocalOfficeImoCheckout>
+    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRoot)\\OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">true</UseLocalOfficeImoCheckout>
+    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
 
     <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>
     <DbaClientXRepoRootCandidate2>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)DbaClientX\\'))</DbaClientXRepoRootCandidate2>

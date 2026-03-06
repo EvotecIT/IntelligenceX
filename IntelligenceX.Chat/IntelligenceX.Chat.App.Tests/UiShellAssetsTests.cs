@@ -203,6 +203,23 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures OfficeIMO shared-visual helpers keep kind normalization and base64 guardrails aligned.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesOfficeImoSharedVisualGuardrails() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
+        var script = File.ReadAllText(scriptPath);
+
+        AssertContainsAll(
+            script,
+            "var predictedDecodedBytes = Math.max(0, Math.floor(text.length / 4) * 3 - padding);",
+            "if (predictedDecodedBytes > maxDecodedBytes) {",
+            "return normalizeVisualType(raw || fallbackKind || \"\");",
+            "source = getOfficeImoVisualSource(pre, \"data-ix-chart-source\", \"data-chart-config-b64\");",
+            "source = getOfficeImoVisualSource(pre, \"data-ix-network-source\", \"data-network-config-b64\");");
+    }
+
+    /// <summary>
     /// Ensures autonomy numeric inputs expose the full supported service range for long tool flows.
     /// </summary>
     [Fact]
@@ -386,6 +403,11 @@ public sealed class UiShellAssetsTests {
             "renderIxNetworkBlock",
             "renderOfficeImoChartBlock",
             "renderOfficeImoNetworkBlock",
+            "getOfficeImoVisualHash",
+            "getOfficeImoVisualSource",
+            "getOfficeImoVisualKind",
+            "data-omd-visual-kind",
+            "data-omd-config-b64",
             "ixRenderTranscriptVisuals(transcript)",
             "ixDisposeTranscriptVisuals(transcript)");
     }
