@@ -85,7 +85,12 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("startupDiagnostics: null", coreScript, StringComparison.Ordinal);
         Assert.Contains("function appendStatusTimelineEntry(value)", coreScript, StringComparison.Ordinal);
         Assert.Contains("function buildStartupPhaseTimelineModel()", coreScript, StringComparison.Ordinal);
+        Assert.Contains("function appendStatusChipBackgroundDetailLines(lines, normalizedRaw, startupHeaderStatus)", coreScript, StringComparison.Ordinal);
         Assert.Contains("statusEl.title = buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus);", coreScript, StringComparison.Ordinal);
+        Assert.Contains("Runtime lifecycle: \" + state.statusTimeline.join(\" > \")", coreScript, StringComparison.Ordinal);
+        Assert.Contains("Background: tool metadata sync is degraded.", coreScript, StringComparison.Ordinal);
+        Assert.Contains("Background: retrying tool metadata sync in background.", coreScript, StringComparison.Ordinal);
+        Assert.Contains("Background: tool pack metadata is still syncing.", coreScript, StringComparison.Ordinal);
         Assert.Contains("Runtime lifecycle: \" + state.statusTimeline.join(\" > \")", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var startupPhaseTimeline = byId(\"optStartupPhaseTimeline\");", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var startupDiagnosticsState = byId(\"optStartupDiagnosticsState\");", toolsScript, StringComparison.Ordinal);

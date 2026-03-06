@@ -1718,7 +1718,7 @@
       lines.push("Detail: " + normalizedRaw);
     }
     if (Array.isArray(state.statusTimeline) && state.statusTimeline.length > 0) {
-      lines.push("Lifecycle: " + state.statusTimeline.join(" > "));
+      lines.push("Runtime lifecycle: " + state.statusTimeline.join(" > "));
     }
     if (startupHeaderStatus && typeof startupHeaderStatus === "object") {
       var startupSummary = String(startupHeaderStatus.startupSummary || "").trim();
@@ -1742,7 +1742,34 @@
         }
       }
     }
+    appendStatusChipBackgroundDetailLines(lines, normalizedRaw, startupHeaderStatus);
     return lines.join("\n");
+  }
+
+  function appendStatusChipBackgroundDetailLines(lines, normalizedRaw, startupHeaderStatus) {
+    if (!Array.isArray(lines)) {
+      return;
+    }
+
+    var raw = String(normalizedRaw || "").trim().toLowerCase();
+    var startupSummary = startupHeaderStatus && typeof startupHeaderStatus === "object"
+      ? String(startupHeaderStatus.startupSummary || "").trim().toLowerCase()
+      : "";
+
+    if (raw.indexOf("tool metadata sync is degraded") >= 0) {
+      lines.push("Background: tool metadata sync is degraded.");
+      return;
+    }
+
+    if (raw.indexOf("retrying tool metadata sync in background") >= 0) {
+      lines.push("Background: retrying tool metadata sync in background.");
+      return;
+    }
+
+    if (raw.indexOf("loading tool packs in background") >= 0
+      || startupSummary.indexOf("syncing in background") >= 0) {
+      lines.push("Background: tool pack metadata is still syncing.");
+    }
   }
 
   function applyStatusChipStartupProgress(statusEl, startupHeaderStatus) {
