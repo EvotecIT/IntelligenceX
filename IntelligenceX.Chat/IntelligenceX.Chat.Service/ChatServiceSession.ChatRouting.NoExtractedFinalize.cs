@@ -222,84 +222,55 @@ internal sealed partial class ChatServiceSession {
                     }
                 }
 
-                if (!structuredNextActionRetryUsed
-                    && TryBuildStructuredNextActionRetryPrompt(
-                        toolDefinitions: structuredNextActionToolDefs,
-                        toolCalls: toolCalls,
-                        toolOutputs: toolOutputs,
-                        continuationFollowUpTurn: continuationFollowUpTurn,
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        out var structuredNextActionPrompt,
-                        out var structuredNextActionReason)) {
-                    structuredNextActionRetryUsed = true;
-                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
-                        usedContinuationSubset = false;
-                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
-                    }
-                    Trace.WriteLine(
-                        $"[structured-next-action] outcome=retry reason={structuredNextActionReason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
-                    var structuredRetryOptions = CopyChatOptions(options, newThreadOverride: false);
-                    if (hasStructuredNextAction
-                        && !string.IsNullOrWhiteSpace(structuredNextToolName)
-                        && toolDefs.Any(def => string.Equals(def.Name, structuredNextToolName, StringComparison.OrdinalIgnoreCase))) {
-                        structuredRetryOptions.ToolChoice = ToolChoice.Custom(structuredNextToolName);
-                    }
-                    turn = await RunModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            ChatInput.FromText(structuredNextActionPrompt),
-                            structuredRetryOptions,
-                            turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
-                            phaseMessage: "Continuing with tool-recommended next action.",
-                            heartbeatLabel: "Executing next action",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
-                }
-
-                var shouldAttemptToolProgressRecovery = ShouldAttemptToolProgressRecovery(
+                var finalizeContinuationDecision = ResolveNoExtractedFinalizeContinuationDecision(
+                    structuredNextActionRetryUsed: structuredNextActionRetryUsed,
+                    structuredNextActionToolDefs: structuredNextActionToolDefs,
+                    toolCalls: toolCalls,
+                    toolOutputs: toolOutputs,
                     continuationFollowUpTurn: continuationFollowUpTurn,
+                    userRequest: routedUserRequest,
                     assistantDraft: text,
+                    hasStructuredNextAction: hasStructuredNextAction,
+                    structuredNextToolName: structuredNextToolName,
+                    activeToolDefinitions: toolDefs,
                     toolsAvailable: fullToolDefs.Length > 0 || toolDefs.Count > 0,
-                    priorToolCalls: toolCalls.Count,
-                    priorToolOutputs: toolOutputs.Count,
                     assistantDraftToolCalls: extracted.Count,
-                    progressRecoveryAlreadyUsed: toolProgressRecoveryUsed,
-                    out var toolProgressRecoveryReason);
-                if (shouldAttemptToolProgressRecovery) {
-                    toolProgressRecoveryUsed = true;
-                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                    toolProgressRecoveryUsed: toolProgressRecoveryUsed);
+                if (finalizeContinuationDecision.Kind != NoExtractedFinalizeContinuationDecisionKind.None) {
+                    if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.StructuredNextActionRetry) {
+                        structuredNextActionRetryUsed = true;
+                    } else if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.ToolProgressRecovery) {
+                        toolProgressRecoveryUsed = true;
+                    }
+
+                    if (finalizeContinuationDecision.ExpandToFullToolAvailability
+                        && fullToolDefs.Length > 0
+                        && toolDefs.Count != fullToolDefs.Length) {
                         toolDefs = fullToolDefs;
                         options.Tools = fullToolDefs;
                         options.ToolChoice = ToolChoice.Auto;
                         usedContinuationSubset = false;
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
-                    Trace.WriteLine(
-                        $"[tool-progress-recovery] outcome=retry reason={toolProgressRecoveryReason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
-                    var progressRecoveryPrompt = BuildToolProgressRecoveryPrompt(
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        toolCalls: toolCalls);
-                    turn = await RunModelPhaseWithProgressAsync(
+
+                    if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.StructuredNextActionRetry) {
+                        Trace.WriteLine(
+                            $"[structured-next-action] outcome=retry reason={finalizeContinuationDecision.Reason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    } else {
+                        Trace.WriteLine(
+                            $"[tool-progress-recovery] outcome=retry reason={finalizeContinuationDecision.Reason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    }
+
+                    turn = await ApplyNoExtractedFinalizeContinuationDecisionAsync(
                             client,
                             writer,
-                            request.RequestId,
+                            request,
                             threadId,
-                            ChatInput.FromText(progressRecoveryPrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
+                            options,
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
-                            phaseMessage: "Continuing execution after blocker-style draft.",
-                            heartbeatLabel: "Recovering execution progress",
-                            heartbeatSeconds: modelHeartbeatSeconds)
+                            planExecuteReviewLoop,
+                            modelHeartbeatSeconds,
+                            finalizeContinuationDecision)
                         .ConfigureAwait(false);
                     return ContinueRound();
                 }
@@ -359,38 +330,6 @@ internal sealed partial class ChatServiceSession {
                         .ConfigureAwait(false);
                 }
 
-                if (!noResultWatchdogTriggered
-                    && planExecuteReviewLoop
-                    && ShouldAttemptResponseQualityReview(
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        executionContractApplies: executionContractApplies,
-                        hasToolActivity: hasToolActivity,
-                        reviewPassesUsed: reviewPassesUsed,
-                        maxReviewPasses: maxReviewPasses)) {
-                    reviewPassesUsed++;
-                    var reviewPrompt = BuildResponseQualityReviewPrompt(
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        hasToolActivity: hasToolActivity,
-                        reviewPassNumber: reviewPassesUsed,
-                        maxReviewPasses: maxReviewPasses);
-                    turn = await RunReviewOnlyModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            ChatInput.FromText(reviewPrompt),
-                            options,
-                            turnToken,
-                            phaseStatus: ChatStatusCodes.PhaseReview,
-                            phaseMessage: $"Reviewing response quality ({reviewPassesUsed}/{maxReviewPasses})...",
-                            heartbeatLabel: "Reviewing response",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
-                }
-
                 var proactiveDecision = ResolveProactiveFollowUpReviewDecision(
                     proactiveModeEnabled: proactiveModeEnabled,
                     hasToolActivity: hasToolActivity,
@@ -409,21 +348,34 @@ internal sealed partial class ChatServiceSession {
                     }
                 }
 
-                if (!noResultWatchdogTriggered && proactiveDecision.ShouldAttempt) {
-                    proactiveFollowUpUsed = true;
-                    var proactivePrompt = BuildProactiveFollowUpReviewPrompt(routedUserRequest, text, toolOutputs);
-                    turn = await RunReviewOnlyModelPhaseWithProgressAsync(
+                var finalizeReviewDecision = ResolveNoExtractedFinalizeReviewDecision(
+                    noResultWatchdogTriggered: noResultWatchdogTriggered,
+                    planExecuteReviewLoop: planExecuteReviewLoop,
+                    maxReviewPasses: maxReviewPasses,
+                    reviewPassesUsed: reviewPassesUsed,
+                    userRequest: routedUserRequest,
+                    assistantDraft: text,
+                    executionContractApplies: executionContractApplies,
+                    hasToolActivity: hasToolActivity,
+                    proactiveDecision: proactiveDecision,
+                    toolOutputs: toolOutputs);
+                if (finalizeReviewDecision.Kind != NoExtractedFinalizeReviewDecisionKind.None) {
+                    if (finalizeReviewDecision.Kind == NoExtractedFinalizeReviewDecisionKind.ResponseQualityReview) {
+                        reviewPassesUsed = finalizeReviewDecision.ReviewPassNumber;
+                    } else if (finalizeReviewDecision.Kind == NoExtractedFinalizeReviewDecisionKind.ProactiveFollowUpReview) {
+                        proactiveFollowUpUsed = true;
+                    }
+
+                    turn = await ApplyNoExtractedFinalizeReviewDecisionAsync(
                             client,
                             writer,
-                            request.RequestId,
+                            request,
                             threadId,
-                            ChatInput.FromText(proactivePrompt),
                             options,
                             turnToken,
-                            phaseStatus: ChatStatusCodes.PhaseReview,
-                            phaseMessage: "Generating proactive next checks and fixes...",
-                            heartbeatLabel: "Preparing proactive follow-up",
-                            heartbeatSeconds: modelHeartbeatSeconds)
+                            maxReviewPasses,
+                            modelHeartbeatSeconds,
+                            finalizeReviewDecision)
                         .ConfigureAwait(false);
                     return ContinueRound();
                 }
@@ -491,34 +443,6 @@ internal sealed partial class ChatServiceSession {
                     }
                 }
 
-                var shouldAttemptNoTextToolOutputDirectRetry = !noTextToolOutputDirectRetryUsed
-                                                                && planExecuteReviewLoop
-                                                                && !_options.Redact
-                                                                && hasSuccessfulToolOutput
-                                                                && toolOutputs.Count > 0
-                                                                && string.IsNullOrWhiteSpace(text);
-                if (shouldAttemptNoTextToolOutputDirectRetry) {
-                    noTextToolOutputDirectRetryUsed = true;
-                    var noTextToolOutputRetryPrompt = BuildNoTextToolOutputSynthesisPrompt(
-                        userRequest: routedUserRequest,
-                        toolCalls: toolCalls,
-                        toolOutputs: toolOutputs);
-                    turn = await RunReviewOnlyModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            ChatInput.FromText(noTextToolOutputRetryPrompt),
-                            CopyChatOptionsWithoutTools(options, newThreadOverride: false),
-                            turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
-                            phaseMessage: "Tool execution completed without narrative. Synthesizing findings...",
-                            heartbeatLabel: "Synthesizing findings",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
-                }
-
                 var textBeforeToolOutputFallback = text;
                 text = ResolveAssistantTextFromToolOutputsFallback(
                     assistantDraft: text,
@@ -528,32 +452,42 @@ internal sealed partial class ChatServiceSession {
                     noTextToolOutputRecoveryHitCount++;
                 }
 
-                if (string.IsNullOrWhiteSpace(text)) {
-                    var shouldAttemptLocalNoTextDirectRetry = !localNoTextDirectRetryUsed
-                                                             && isLocalCompatibleLoopback
-                                                             && toolDefs.Count > 0
-                                                             && toolCalls.Count == 0
-                                                             && toolOutputs.Count == 0;
-                    if (shouldAttemptLocalNoTextDirectRetry) {
+                var finalizeNoTextDecision = ResolveNoExtractedFinalizeNoTextDecision(
+                    noTextToolOutputDirectRetryUsed: noTextToolOutputDirectRetryUsed,
+                    planExecuteReviewLoop: planExecuteReviewLoop,
+                    redactEnabled: _options.Redact,
+                    hasSuccessfulToolOutput: hasSuccessfulToolOutput,
+                    toolCalls: toolCalls,
+                    toolOutputs: toolOutputs,
+                    assistantDraft: text,
+                    localNoTextDirectRetryUsed: localNoTextDirectRetryUsed,
+                    isLocalCompatibleLoopback: isLocalCompatibleLoopback,
+                    availableToolCount: toolDefs.Count,
+                    priorToolCalls: toolCalls.Count,
+                    userRequest: routedUserRequest);
+                if (finalizeNoTextDecision.Kind != NoExtractedFinalizeNoTextDecisionKind.None) {
+                    if (finalizeNoTextDecision.Kind == NoExtractedFinalizeNoTextDecisionKind.ToolOutputSynthesisRetry) {
+                        noTextToolOutputDirectRetryUsed = true;
+                    } else if (finalizeNoTextDecision.Kind == NoExtractedFinalizeNoTextDecisionKind.LocalDirectRetry) {
                         localNoTextDirectRetryUsed = true;
-                        var directRetryPrompt = BuildCompatibleRuntimeNoTextDirectRetryPrompt(routedUserRequest);
-                        turn = await RunModelPhaseWithProgressAsync(
-                                client,
-                                writer,
-                                request.RequestId,
-                                threadId,
-                                ChatInput.FromText(directRetryPrompt),
-                                CopyChatOptionsWithoutTools(options, newThreadOverride: false),
-                                turnToken,
-                                phaseStatus: ChatStatusCodes.PhaseReview,
-                                phaseMessage: controlPayloadDetected
-                                    ? "Retrying direct response after runtime control-payload artifact..."
-                                    : "Retrying response in direct mode (without tools)...",
-                                heartbeatLabel: "Retrying direct response",
-                                heartbeatSeconds: modelHeartbeatSeconds)
-                            .ConfigureAwait(false);
-                        return ContinueRound();
                     }
+
+                    turn = await ApplyNoExtractedFinalizeNoTextDecisionAsync(
+                            client,
+                            writer,
+                            request,
+                            threadId,
+                            options,
+                            turnToken,
+                            planExecuteReviewLoop,
+                            modelHeartbeatSeconds,
+                            controlPayloadDetected,
+                            finalizeNoTextDecision)
+                        .ConfigureAwait(false);
+                    return ContinueRound();
+                }
+
+                if (string.IsNullOrWhiteSpace(text)) {
 
                     text = BuildNoTextResponseFallbackText(
                         model: resolvedModel,
