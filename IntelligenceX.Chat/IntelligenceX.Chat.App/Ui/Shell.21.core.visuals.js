@@ -106,8 +106,12 @@
     }
 
     var source = String(element.getAttribute(cachedAttribute || "") || "").trim();
-    if (!source) {
-      source = decodeBase64Utf8Value(element.getAttribute("data-omd-config-b64"));
+    var sharedConfigB64 = String(element.getAttribute("data-omd-config-b64") || "").trim();
+    var hasContract = String(element.getAttribute("data-omd-visual-contract") || "").trim() === "v1";
+    var configEncoding = String(element.getAttribute("data-omd-config-encoding") || "").trim().toLowerCase();
+    var canDecodeSharedConfig = !!sharedConfigB64 && (!hasContract || !configEncoding || configEncoding === "base64-utf8");
+    if (!source && canDecodeSharedConfig) {
+      source = decodeBase64Utf8Value(sharedConfigB64);
     }
     if (!source) {
       source = decodeBase64Utf8Value(element.getAttribute(fallbackConfigAttribute || ""));
@@ -122,6 +126,52 @@
     }
 
     return normalizeVisualType(raw || fallbackKind || "");
+  }
+
+  function getOfficeImoVisualSelector(kind, legacySelector) {
+    var normalized = normalizeVisualType(kind || "");
+    var contractKind = normalized === "ix-chart"
+      ? "chart"
+      : (normalized === "ix-network" ? "network" : normalized);
+    var sharedSelector = contractKind
+      ? ".bubble .markdown-body .omd-visual[data-omd-visual-contract='v1'][data-omd-visual-kind='" + contractKind + "']"
+      : "";
+    if (!legacySelector) {
+      return sharedSelector;
+    }
+    if (!sharedSelector) {
+      return legacySelector;
+    }
+    return sharedSelector + ", " + legacySelector;
+  }
+
+  function collectOfficeImoVisualBlocks(root, kind, legacySelector, datasetKey, fallbackHashAttribute, fallbackPrefix) {
+    var selector = getOfficeImoVisualSelector(kind, legacySelector);
+    if (!selector) {
+      return [];
+    }
+
+    var nodes = root.querySelectorAll(selector);
+    if (!nodes || nodes.length === 0) {
+      return [];
+    }
+
+    var blocks = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (!node || !node.parentElement) {
+        continue;
+      }
+
+      if (!node.dataset[datasetKey]) {
+        node.dataset[datasetKey] = getOfficeImoVisualHash(node, fallbackHashAttribute)
+          || (fallbackPrefix + "-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000)));
+      }
+
+      blocks.push(node);
+    }
+
+    return blocks;
   }
 
   function ensureVisualNotice(anchor, text) {
@@ -191,6 +241,7 @@
       ".markdown-body pre[data-ix-chart-rendered='1'], " +
       ".markdown-body pre[data-ix-network-rendered='1'], " +
       ".markdown-body pre[data-ix-mermaid-rendered='1'], " +
+      ".markdown-body .omd-visual[data-omd-visual-rendered='true'], " +
       ".markdown-body canvas.omd-chart[data-chart-rendered='1'], " +
       ".markdown-body .omd-network[data-network-rendered='1'], " +
       ".markdown-body .ix-chart-host, " +
@@ -1000,6 +1051,7 @@
     pre._ixChartInstance = null;
     pre.removeAttribute("data-ix-chart-rendered");
     pre.removeAttribute("data-ix-chart-pending");
+    pre.removeAttribute("data-omd-visual-rendered");
     pre.removeAttribute("data-chart-rendered");
     pre.removeAttribute("data-chart-pending");
     pre.style.removeProperty("display");
@@ -1140,6 +1192,7 @@
       var instance = new window.Chart(context, chartConfig);
       canvas._ixChartInstance = instance;
       canvas.removeAttribute("data-ix-chart-invalid");
+      canvas.setAttribute("data-omd-visual-rendered", "true");
       canvas.setAttribute("data-chart-rendered", "1");
       clearVisualNotice(canvas);
       ensureVisualActionBar(canvas, getOfficeImoVisualKind(canvas, "ix-chart"));
@@ -1196,27 +1249,13 @@
   }
 
   function collectOfficeImoNetworkBlocks(root) {
-    var hosts = root.querySelectorAll(".bubble .markdown-body .omd-network");
-    if (!hosts || hosts.length === 0) {
-      return [];
-    }
-
-    var blocks = [];
-    for (var i = 0; i < hosts.length; i++) {
-      var host = hosts[i];
-      if (!host || !host.parentElement) {
-        continue;
-      }
-
-      if (!host.dataset.ixNetworkBlockId) {
-        host.dataset.ixNetworkBlockId = getOfficeImoVisualHash(host, "data-network-hash")
-          || ("omd-network-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000)));
-      }
-
-      blocks.push(host);
-    }
-
-    return blocks;
+    return collectOfficeImoVisualBlocks(
+      root,
+      "ix-network",
+      ".bubble .markdown-body .omd-network",
+      "ixNetworkBlockId",
+      "data-network-hash",
+      "omd-network");
   }
 
   function compareVisualBlockDocumentOrder(left, right) {
@@ -1669,6 +1708,7 @@
     pre._ixNetworkInstance = null;
     pre.removeAttribute("data-ix-network-rendered");
     pre.removeAttribute("data-ix-network-pending");
+    pre.removeAttribute("data-omd-visual-rendered");
     pre.removeAttribute("data-network-rendered");
     pre.removeAttribute("data-network-pending");
     pre.style.removeProperty("display");
@@ -1852,6 +1892,7 @@
       host._ixNetworkInstance = network;
       host._ixNetworkResizeCleanup = attachNetworkAutoFitObserver(network, canvas);
       host.removeAttribute("data-ix-network-invalid");
+      host.setAttribute("data-omd-visual-rendered", "true");
       host.setAttribute("data-network-rendered", "1");
       clearVisualNotice(host);
       ensureVisualActionBar(host, getOfficeImoVisualKind(host, "ix-network"));
@@ -1978,27 +2019,13 @@
   }
 
   function collectOfficeImoChartBlocks(root) {
-    var canvases = root.querySelectorAll(".bubble .markdown-body canvas.omd-chart");
-    if (!canvases || canvases.length === 0) {
-      return [];
-    }
-
-    var blocks = [];
-    for (var i = 0; i < canvases.length; i++) {
-      var canvas = canvases[i];
-      if (!canvas || !canvas.parentElement) {
-        continue;
-      }
-
-      if (!canvas.dataset.ixChartBlockId) {
-        canvas.dataset.ixChartBlockId = getOfficeImoVisualHash(canvas, "data-chart-hash")
-          || ("omd-chart-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000)));
-      }
-
-      blocks.push(canvas);
-    }
-
-    return blocks;
+    return collectOfficeImoVisualBlocks(
+      root,
+      "ix-chart",
+      ".bubble .markdown-body canvas.omd-chart",
+      "ixChartBlockId",
+      "data-chart-hash",
+      "omd-chart");
   }
 
   async function renderTranscriptCharts(root) {
@@ -2042,12 +2069,12 @@
       clearVisualMessageWideWhenEmpty(mermaidBlocks[m]);
     }
 
-    var chartBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-chart-rendered='1'], .bubble .markdown-body canvas.omd-chart[data-chart-rendered='1']");
+    var chartBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-chart-rendered='1'], .bubble .markdown-body .omd-visual[data-omd-visual-kind='chart'][data-omd-visual-rendered='true'], .bubble .markdown-body canvas.omd-chart[data-chart-rendered='1']");
     for (var i = 0; i < chartBlocks.length; i++) {
       disposeChartBlock(chartBlocks[i]);
     }
 
-    var networkBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-network-rendered='1'], .bubble .markdown-body .omd-network[data-network-rendered='1']");
+    var networkBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-network-rendered='1'], .bubble .markdown-body .omd-visual[data-omd-visual-kind='network'][data-omd-visual-rendered='true'], .bubble .markdown-body .omd-network[data-network-rendered='1']");
     for (var j = 0; j < networkBlocks.length; j++) {
       disposeNetworkBlock(networkBlocks[j]);
     }

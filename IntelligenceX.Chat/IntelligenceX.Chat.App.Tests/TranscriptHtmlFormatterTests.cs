@@ -57,6 +57,12 @@ public sealed class TranscriptHtmlFormatterTests {
             html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal)
             || html.Contains("language-ix-chart", StringComparison.Ordinal),
             "Expected native OfficeIMO chart HTML or the legacy ix-chart fenced block.");
+        if (html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal)) {
+            Assert.Contains("omd-visual", html, StringComparison.Ordinal);
+            Assert.Contains("omd-chart", html, StringComparison.Ordinal);
+            Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+            Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>
@@ -81,6 +87,12 @@ public sealed class TranscriptHtmlFormatterTests {
             html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal)
             || html.Contains("language-ix-network", StringComparison.Ordinal),
             "Expected native OfficeIMO network HTML or the legacy ix-network fenced block.");
+        if (html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal)) {
+            Assert.Contains("omd-visual", html, StringComparison.Ordinal);
+            Assert.Contains("omd-network", html, StringComparison.Ordinal);
+            Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+            Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>
