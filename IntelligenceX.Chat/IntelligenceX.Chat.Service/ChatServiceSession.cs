@@ -56,6 +56,8 @@ internal sealed partial class ChatServiceSession {
     private IReadOnlyList<IToolPack> _packs;
     private ToolPackAvailabilityInfo[] _packAvailability;
     private ToolPluginAvailabilityInfo[] _pluginAvailability;
+    private string[] _connectedRuntimeSkillInventory;
+    private bool _connectedRuntimeSkillInventoryHydrated;
     private string[] _startupWarnings;
     private SessionStartupBootstrapTelemetryDto? _startupBootstrap;
     private string[] _pluginSearchPaths;
@@ -126,6 +128,8 @@ internal sealed partial class ChatServiceSession {
         _packs = Array.Empty<IToolPack>();
         _packAvailability = Array.Empty<ToolPackAvailabilityInfo>();
         _pluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>();
+        _connectedRuntimeSkillInventory = Array.Empty<string>();
+        _connectedRuntimeSkillInventoryHydrated = false;
         _startupWarnings = Array.Empty<string>();
         _startupBootstrap = null;
         _pluginSearchPaths = Array.Empty<string>();
@@ -320,6 +324,7 @@ internal sealed partial class ChatServiceSession {
                 if (RequestRequiresConnectedClient(request)) {
                     try {
                         connectedClient = await GetOrConnectClientAsync().ConfigureAwait(false);
+                        await RefreshConnectedRuntimeSkillInventoryAsync(connectedClient, cancellationToken).ConfigureAwait(false);
                     } catch (Exception ex) {
                         await WriteAsync(writer, new ErrorMessage {
                             Kind = ChatServiceMessageKind.Response,
@@ -351,6 +356,7 @@ internal sealed partial class ChatServiceSession {
                                 _pluginSearchPaths,
                                 _runtimePolicyDiagnostics,
                                 _routingCatalogDiagnostics,
+                                connectedRuntimeSkills: _connectedRuntimeSkillInventory,
                                 healthyToolNames: helloCapabilitySnapshot.HealthyTools,
                                 remoteReachabilityMode: helloCapabilitySnapshot.RemoteReachabilityMode)
                         }, cancellationToken).ConfigureAwait(false);
@@ -421,6 +427,7 @@ internal sealed partial class ChatServiceSession {
                             if (setResult.ReconnectClient) {
                                 await DisposeClientAsync(client).ConfigureAwait(false);
                                 client = null;
+                                ResetConnectedRuntimeSkillInventory();
                                 ClearActiveThreadId();
                             } else if (setResult.ModelChanged && client is not null) {
                                 // Keep the internal thread model selection consistent with the active profile.
@@ -439,6 +446,7 @@ internal sealed partial class ChatServiceSession {
                             if (applyResult.ReconnectClient) {
                                 await DisposeClientAsync(client).ConfigureAwait(false);
                                 client = null;
+                                ResetConnectedRuntimeSkillInventory();
                                 ClearActiveThreadId();
                             } else if (applyResult.ModelChanged && client is not null) {
                                 // Keep the internal thread model selection consistent with runtime settings.
@@ -487,6 +495,7 @@ internal sealed partial class ChatServiceSession {
             await CancelActiveChatIfAnyAsync().ConfigureAwait(false);
             CancelLoginIfActive();
             await DisposeClientAsync(client).ConfigureAwait(false);
+            ResetConnectedRuntimeSkillInventory();
         }
     }
 

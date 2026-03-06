@@ -405,7 +405,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private string[] ResolveWorkingMemoryCapabilitySkills(IReadOnlyList<string> fallbackSkills) {
-        return ResolveCapabilitySnapshotSkills(_pluginAvailability, _routingCatalogDiagnostics, fallbackSkills);
+        return ResolveCapabilitySnapshotSkills(_pluginAvailability, _routingCatalogDiagnostics, _connectedRuntimeSkillInventory, fallbackSkills);
     }
 
     private static string BuildSkillSnapshotValue(string family, string actionId) {
