@@ -443,7 +443,8 @@ internal sealed partial class ChatServiceSession {
                     }
                 }
 
-                var finalizeNoTextDecision = ResolveNoExtractedFinalizeNoTextDecision(
+                var textBeforeToolOutputFallback = text;
+                var finalizeNoTextOutcome = ResolveNoExtractedFinalizeNoTextOutcome(
                     noTextToolOutputDirectRetryUsed: noTextToolOutputDirectRetryUsed,
                     planExecuteReviewLoop: planExecuteReviewLoop,
                     redactEnabled: _options.Redact,
@@ -456,6 +457,11 @@ internal sealed partial class ChatServiceSession {
                     availableToolCount: toolDefs.Count,
                     priorToolCalls: toolCalls.Count,
                     userRequest: routedUserRequest);
+                text = finalizeNoTextOutcome.AssistantDraft;
+                if (string.IsNullOrWhiteSpace(textBeforeToolOutputFallback) && !string.IsNullOrWhiteSpace(text)) {
+                    noTextToolOutputRecoveryHitCount++;
+                }
+                var finalizeNoTextDecision = finalizeNoTextOutcome.Decision;
                 if (finalizeNoTextDecision.Kind != NoExtractedFinalizeNoTextDecisionKind.None) {
                     if (finalizeNoTextDecision.Kind == NoExtractedFinalizeNoTextDecisionKind.ToolOutputSynthesisRetry) {
                         noTextToolOutputDirectRetryUsed = true;
@@ -476,15 +482,6 @@ internal sealed partial class ChatServiceSession {
                             finalizeNoTextDecision)
                         .ConfigureAwait(false);
                     return ContinueRound();
-                }
-
-                var textBeforeToolOutputFallback = text;
-                text = ResolveAssistantTextFromToolOutputsFallback(
-                    assistantDraft: text,
-                    toolCalls: toolCalls,
-                    toolOutputs: toolOutputs);
-                if (string.IsNullOrWhiteSpace(textBeforeToolOutputFallback) && !string.IsNullOrWhiteSpace(text)) {
-                    noTextToolOutputRecoveryHitCount++;
                 }
 
                 if (string.IsNullOrWhiteSpace(text)) {

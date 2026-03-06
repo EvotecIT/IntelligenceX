@@ -318,6 +318,39 @@ internal sealed partial class ChatServiceSession {
         return NoExtractedFinalizeNoTextDecision.None("no_no_text_recovery_selected");
     }
 
+    private static (string AssistantDraft, NoExtractedFinalizeNoTextDecision Decision) ResolveNoExtractedFinalizeNoTextOutcome(
+        bool noTextToolOutputDirectRetryUsed,
+        bool planExecuteReviewLoop,
+        bool redactEnabled,
+        bool hasSuccessfulToolOutput,
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs,
+        string assistantDraft,
+        bool localNoTextDirectRetryUsed,
+        bool isLocalCompatibleLoopback,
+        int availableToolCount,
+        int priorToolCalls,
+        string userRequest) {
+        var recoveredAssistantDraft = ResolveAssistantTextFromToolOutputsFallback(
+            assistantDraft: assistantDraft,
+            toolCalls: toolCalls,
+            toolOutputs: toolOutputs);
+        var decision = ResolveNoExtractedFinalizeNoTextDecision(
+            noTextToolOutputDirectRetryUsed: noTextToolOutputDirectRetryUsed,
+            planExecuteReviewLoop: planExecuteReviewLoop,
+            redactEnabled: redactEnabled,
+            hasSuccessfulToolOutput: hasSuccessfulToolOutput,
+            toolCalls: toolCalls,
+            toolOutputs: toolOutputs,
+            assistantDraft: recoveredAssistantDraft,
+            localNoTextDirectRetryUsed: localNoTextDirectRetryUsed,
+            isLocalCompatibleLoopback: isLocalCompatibleLoopback,
+            availableToolCount: availableToolCount,
+            priorToolCalls: priorToolCalls,
+            userRequest: userRequest);
+        return (recoveredAssistantDraft, decision);
+    }
+
     private async Task<TurnInfo> ApplyNoExtractedFinalizeNoTextDecisionAsync(
         IntelligenceXClient client,
         StreamWriter writer,
@@ -467,5 +500,46 @@ internal sealed partial class ChatServiceSession {
             priorToolCalls: priorToolCalls,
             userRequest: userRequest);
         return (decision.Kind.ToString(), decision.Reason);
+    }
+
+    internal static (string AssistantDraft, string Kind, string Reason) ResolveNoExtractedFinalizeNoTextOutcomeForTesting(
+        bool noTextToolOutputDirectRetryUsed,
+        bool planExecuteReviewLoop,
+        bool redactEnabled,
+        bool hasSuccessfulToolOutput,
+        string assistantDraft,
+        bool localNoTextDirectRetryUsed,
+        bool isLocalCompatibleLoopback,
+        int availableToolCount,
+        int priorToolCalls,
+        string userRequest) {
+        var toolCalls = new List<ToolCallDto> {
+            new() {
+                CallId = "call_1",
+                Name = "search_query"
+            }
+        };
+        var toolOutputs = new List<ToolOutputDto> {
+            new() {
+                CallId = "call_1",
+                Ok = hasSuccessfulToolOutput,
+                Output = "Found 3 relevant results."
+            }
+        };
+
+        var outcome = ResolveNoExtractedFinalizeNoTextOutcome(
+            noTextToolOutputDirectRetryUsed: noTextToolOutputDirectRetryUsed,
+            planExecuteReviewLoop: planExecuteReviewLoop,
+            redactEnabled: redactEnabled,
+            hasSuccessfulToolOutput: hasSuccessfulToolOutput,
+            toolCalls: toolCalls,
+            toolOutputs: toolOutputs,
+            assistantDraft: assistantDraft,
+            localNoTextDirectRetryUsed: localNoTextDirectRetryUsed,
+            isLocalCompatibleLoopback: isLocalCompatibleLoopback,
+            availableToolCount: availableToolCount,
+            priorToolCalls: priorToolCalls,
+            userRequest: userRequest);
+        return (outcome.AssistantDraft, outcome.Decision.Kind.ToString(), outcome.Decision.Reason);
     }
 }
