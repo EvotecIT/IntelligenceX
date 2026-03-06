@@ -170,7 +170,8 @@ function Get-PluginEntryType {
 
     $projectDir = Split-Path -Parent $ProjectPath
     $candidates = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
-    $sourceFiles = Get-ChildItem -Path $projectDir -Recurse -Filter '*.cs' -File -ErrorAction SilentlyContinue
+    $sourceFiles = Get-ChildItem -Path $projectDir -Recurse -Filter '*.cs' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '(\\|/)(bin|obj)(\\|/)' }
 
     foreach ($sourceFile in $sourceFiles) {
         $content = Get-Content -Path $sourceFile.FullName -Raw

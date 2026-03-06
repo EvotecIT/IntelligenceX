@@ -159,14 +159,20 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
     public async Task UpsertAndGet_PluginPaths_StripsAppManagedReleaseAndRuntimeRoots() {
         var dbPath = CreateTempDbPath();
         try {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var managedPluginCacheRoot = Path.Combine(localAppData, "IntelligenceX.Chat", "plugin-cache");
+            var managedServiceRuntimeRoot = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "service-runtime");
             using var store = new SqliteServiceProfileStore(dbPath);
             var profile = new ServiceProfile {
                 PluginPaths = new() {
                     @"C:\Support\GitHub\IntelligenceX\artifacts\Releases\20260224-093226\portable\IntelligenceX.Chat-20260224-093226-win-x64\plugins",
+                    managedServiceRuntimeRoot,
                     @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\Temp\IntelligenceX.Chat\service-runtime\v1-abc123\plugins",
-                    @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\IntelligenceX.Chat\plugin-cache\zip-v2-abc123",
+                    managedPluginCacheRoot,
+                    Path.Combine(managedPluginCacheRoot, "zip-v2-abc123"),
                     @"C:\Custom\Plugins",
-                    @" C:\Custom\Plugins "
+                    @" C:\Custom\Plugins ",
+                    @"D:\Shared\plugin-cache\plugins"
                 }
             };
 
@@ -174,7 +180,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             var loaded = await store.GetAsync("plugin-paths", CancellationToken.None);
 
             Assert.NotNull(loaded);
-            Assert.Equal(new[] { @"C:\Custom\Plugins" }, loaded!.PluginPaths);
+            Assert.Equal(new[] { @"C:\Custom\Plugins", @"D:\Shared\plugin-cache\plugins" }, loaded!.PluginPaths);
 
             var db = new SQLite();
             var persisted = QueryAsTable(db.Query(
@@ -183,8 +189,9 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
                 parameters: new Dictionary<string, object?> { ["@name"] = "plugin-paths" }));
 
             Assert.NotNull(persisted);
-            Assert.Single(persisted!.Rows.Cast<DataRow>());
+            Assert.Equal(2, persisted!.Rows.Count);
             Assert.Equal(@"C:\Custom\Plugins", persisted.Rows[0]["path"]?.ToString());
+            Assert.Equal(@"D:\Shared\plugin-cache\plugins", persisted.Rows[1]["path"]?.ToString());
         } finally {
             TryDelete(dbPath);
         }

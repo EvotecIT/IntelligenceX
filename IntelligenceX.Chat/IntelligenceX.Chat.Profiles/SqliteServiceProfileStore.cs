@@ -666,7 +666,7 @@ LIMIT 1;",
         profile.AllowedRoots = ReadOrderedList(trimmed, AllowedRootsTable);
         profile.BuiltInToolAssemblyNames = ReadOrderedList(trimmed, BuiltInToolAssemblyNamesTable);
         var storedPluginPaths = ReadOrderedList(trimmed, PluginPathsTable);
-        profile.PluginPaths = NormalizeStoredPluginPaths(storedPluginPaths);
+        profile.PluginPaths = ServiceProfilePluginPathPolicy.NormalizeStoredPluginPaths(storedPluginPaths);
         profile.DisabledPackIds = ReadOrderedList(trimmed, DisabledPackIdsTable);
         profile.EnabledPackIds = ReadOrderedList(trimmed, EnabledPackIdsTable);
 
@@ -691,7 +691,7 @@ LIMIT 1;",
             ? null
             : DpapiSecretProtector.ProtectString(profile.OpenAIBasicPassword!.Trim());
         var extraRequiredInsertColumns = ResolveRequiredInsertBackfillColumns();
-        var normalizedPluginPaths = NormalizeStoredPluginPaths(profile.PluginPaths);
+        var normalizedPluginPaths = ServiceProfilePluginPathPolicy.NormalizeStoredPluginPaths(profile.PluginPaths);
 
         var extraInsertColumnsSql = string.Empty;
         var extraInsertValuesSql = string.Empty;
