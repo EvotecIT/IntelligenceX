@@ -216,8 +216,8 @@ public sealed class UiShellAssetsTests {
             "if (predictedDecodedBytes > maxDecodedBytes) {",
             "return normalizeVisualType(raw || fallbackKind || \"\");",
             "var canDecodeSharedConfig = !!sharedConfigB64 && (!hasContract || !configEncoding || configEncoding === \"base64-utf8\");",
-            "source = getOfficeImoVisualSource(pre, \"data-ix-chart-source\", \"data-chart-config-b64\");",
-            "source = getOfficeImoVisualSource(pre, \"data-ix-network-source\", \"data-network-config-b64\");");
+            "return getOfficeImoVisualSource(element, entry.cachedSourceAttribute, entry.fallbackConfigAttribute);",
+            "state && typeof state.maxSourceChars === \"number\" && source.length > state.maxSourceChars");
     }
 
     /// <summary>
