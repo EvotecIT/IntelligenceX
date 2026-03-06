@@ -76,10 +76,18 @@ public sealed class ChatAppStateStoreQueuePersistenceTests {
 
             var conversation = Assert.Single(loaded!.Conversations);
             Assert.NotNull(conversation.PendingActions);
-            Assert.True(conversation.PendingActions.Count <= 6);
+            Assert.Equal(6, conversation.PendingActions.Count);
             Assert.Equal("Do you mean internal AD health or the public DNS/mail side?", conversation.PendingAssistantQuestionHint);
             Assert.All(conversation.PendingActions, item => Assert.False(string.IsNullOrWhiteSpace(item.Id)));
             Assert.All(conversation.PendingActions, item => Assert.False(string.IsNullOrWhiteSpace(item.Reply)));
+            Assert.Collection(
+                conversation.PendingActions,
+                item => Assert.Equal("act_6", item.Id),
+                item => Assert.Equal("act_7", item.Id),
+                item => Assert.Equal("act_8", item.Id),
+                item => Assert.Equal("act_9", item.Id),
+                item => Assert.Equal("act_10", item.Id),
+                item => Assert.Equal("act_11", item.Id));
         } finally {
             try {
                 Directory.Delete(tempRoot, recursive: true);

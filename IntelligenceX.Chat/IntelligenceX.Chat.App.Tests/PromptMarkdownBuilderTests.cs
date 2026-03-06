@@ -296,4 +296,22 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("`evotec.xyz`", markdown);
         Assert.Contains("Do not expose internal routing tokens", markdown, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Ensures email addresses do not accidentally trigger ambiguous domain-scope mode.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_DoesNotTreatEmailAddressAsAmbiguousScopeTarget() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "Please check user@evotec.xyz",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.DoesNotContain("Mode: ambiguous_scope_target", markdown);
+        Assert.DoesNotContain("`evotec.xyz`", markdown);
+    }
 }

@@ -108,7 +108,7 @@ internal sealed class ChatAppStateStore : IDisposable {
 
                 if (conversation.PendingActions is { Count: > MaxPersistedPendingActionsPerConversation }) {
                     conversation.PendingActions = conversation.PendingActions
-                        .Take(MaxPersistedPendingActionsPerConversation)
+                        .Skip(conversation.PendingActions.Count - MaxPersistedPendingActionsPerConversation)
                         .ToList();
                 }
             }

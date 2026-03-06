@@ -334,6 +334,7 @@ internal static class PromptMarkdownBuilder {
         var matches = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var tokenStart = -1;
+        var tokenTouchesEmailMarker = false;
         for (var i = 0; i <= normalized.Length; i++) {
             var tokenCharacter = false;
             if (i < normalized.Length) {
@@ -344,6 +345,7 @@ internal static class PromptMarkdownBuilder {
             if (tokenCharacter) {
                 if (tokenStart < 0) {
                     tokenStart = i;
+                    tokenTouchesEmailMarker = i > 0 && normalized[i - 1] == '@';
                 }
 
                 continue;
@@ -354,12 +356,15 @@ internal static class PromptMarkdownBuilder {
             }
 
             var candidate = normalized.Substring(tokenStart, i - tokenStart).Trim('.');
+            tokenTouchesEmailMarker = tokenTouchesEmailMarker || (i < normalized.Length && normalized[i] == '@');
             tokenStart = -1;
-            if (!IsLikelyDomainToken(candidate) || !seen.Add(candidate)) {
+            if (tokenTouchesEmailMarker || !IsLikelyDomainToken(candidate) || !seen.Add(candidate)) {
+                tokenTouchesEmailMarker = false;
                 continue;
             }
 
             matches.Add(candidate);
+            tokenTouchesEmailMarker = false;
             if (matches.Count > 1) {
                 return false;
             }
