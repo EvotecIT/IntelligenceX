@@ -38,7 +38,7 @@
     <IxToolsDomainDetectiveProjectMarker>DomainDetective\\DomainDetective.csproj</IxToolsDomainDetectiveProjectMarker>
 
     <!-- Public package fallbacks for CI/consumers when local engine sources are unavailable. -->
-    <MailozaurrNuGetVersion Condition="'$(MailozaurrNuGetVersion)'==''">2.0.5</MailozaurrNuGetVersion>
+    <MailozaurrNuGetVersion Condition="'$(MailozaurrNuGetVersion)'==''">2.0.6</MailozaurrNuGetVersion>
     <EventViewerXNuGetVersion Condition="'$(EventViewerXNuGetVersion)'==''">3.3.2</EventViewerXNuGetVersion>
     <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">0.1.7</OfficeImoReaderNuGetVersion>
     <DnsClientXNuGetVersion Condition="'$(DnsClientXNuGetVersion)'==''">1.0.7</DnsClientXNuGetVersion>
