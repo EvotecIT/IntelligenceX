@@ -106,10 +106,12 @@
     }
 
     var source = String(element.getAttribute(cachedAttribute || "") || "").trim();
+    var sharedConfigB64 = String(element.getAttribute("data-omd-config-b64") || "").trim();
     var hasContract = String(element.getAttribute("data-omd-visual-contract") || "").trim() === "v1";
     var configEncoding = String(element.getAttribute("data-omd-config-encoding") || "").trim().toLowerCase();
-    if (!source && hasContract && configEncoding === "base64-utf8") {
-      source = decodeBase64Utf8Value(element.getAttribute("data-omd-config-b64"));
+    var canDecodeSharedConfig = !!sharedConfigB64 && (!hasContract || !configEncoding || configEncoding === "base64-utf8");
+    if (!source && canDecodeSharedConfig) {
+      source = decodeBase64Utf8Value(sharedConfigB64);
     }
     if (!source) {
       source = decodeBase64Utf8Value(element.getAttribute(fallbackConfigAttribute || ""));
@@ -130,7 +132,7 @@
     var normalized = normalizeVisualType(kind || "");
     var contractKind = normalized === "ix-chart"
       ? "chart"
-      : ((normalized === "ix-network" || normalized === "visnetwork") ? "network" : normalized);
+      : (normalized === "ix-network" ? "network" : normalized);
     var sharedSelector = contractKind
       ? ".bubble .markdown-body .omd-visual[data-omd-visual-contract='v1'][data-omd-visual-kind='" + contractKind + "']"
       : "";

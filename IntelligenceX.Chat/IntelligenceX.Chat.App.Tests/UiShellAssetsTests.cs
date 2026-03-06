@@ -215,6 +215,7 @@ public sealed class UiShellAssetsTests {
             "var predictedDecodedBytes = Math.max(0, Math.floor(text.length / 4) * 3 - padding);",
             "if (predictedDecodedBytes > maxDecodedBytes) {",
             "return normalizeVisualType(raw || fallbackKind || \"\");",
+            "var canDecodeSharedConfig = !!sharedConfigB64 && (!hasContract || !configEncoding || configEncoding === \"base64-utf8\");",
             "source = getOfficeImoVisualSource(pre, \"data-ix-chart-source\", \"data-chart-config-b64\");",
             "source = getOfficeImoVisualSource(pre, \"data-ix-network-source\", \"data-network-config-b64\");");
     }
