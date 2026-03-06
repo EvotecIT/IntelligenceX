@@ -73,164 +73,63 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 var explicitToolReferenceInUserRequest = ExtractExplicitRequestedToolNames(userRequest).Length > 0;
-                if (!autoPendingActionReplayUsed
-                    && toolCalls.Count == 0
-                    && toolOutputs.Count == 0
-                    && !explicitToolReferenceInUserRequest
-                    && LooksLikeContinuationFollowUp(userRequest)
-                    && TryBuildSinglePendingActionSelectionPayload(text, out var autoSelectionPayload, out var autoActionId)) {
-                    autoPendingActionReplayUsed = true;
-                    routedUserRequest = autoSelectionPayload;
-                    executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
-
-                    turn = await RunModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            ChatInput.FromText(autoSelectionPayload),
-                            CopyChatOptions(options, newThreadOverride: false),
-                            turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseExecute : ChatStatusCodes.Thinking,
-                            phaseMessage: $"Executing follow-up action {autoActionId} directly.",
-                            heartbeatLabel: "Executing selected action",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
-                }
-
-                if (!hostStructuredNextActionReplayUsed
-                    && !explicitToolReferenceInUserRequest
-                    && ShouldAttemptCarryoverStructuredNextActionReplay(
-                        continuationFollowUpTurn: continuationFollowUpTurn,
-                        compactFollowUpTurn: compactFollowUpTurn,
-                        userRequest: userRequest,
-                        assistantDraft: text)
-                    && toolCalls.Count == 0
-                    && toolOutputs.Count == 0) {
-                    var carryoverHostHintInput = BuildCarryoverHostHintInput(userRequest, text);
-                    if (TryBuildCarryoverStructuredNextActionToolCallCore(
-                        threadId: threadId,
-                        replayDecisionUserRequest: userRequest,
-                        hostHintUserRequest: carryoverHostHintInput,
-                        toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
-                        mutatingToolHintsByName: mutatingToolHints,
-                        out var carryoverStructuredNextActionCall,
-                        out var carryoverStructuredNextActionReason)) {
+                var prePromptExecutionDecision = ResolveNoExtractedRecoveryPrePromptExecutionDecision(
+                    threadId: threadId,
+                    userRequest: userRequest,
+                    assistantDraft: text,
+                    toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
+                    mutatingToolHintsByName: mutatingToolHints,
+                    continuationFollowUpTurn: continuationFollowUpTurn,
+                    compactFollowUpTurn: compactFollowUpTurn,
+                    autoPendingActionReplayUsed: autoPendingActionReplayUsed,
+                    hostStructuredNextActionReplayUsed: hostStructuredNextActionReplayUsed,
+                    explicitToolReferenceInUserRequest: explicitToolReferenceInUserRequest,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count);
+                if (prePromptExecutionDecision.Kind != NoExtractedRecoveryExecutionDecisionKind.None) {
+                    if (prePromptExecutionDecision.Kind == NoExtractedRecoveryExecutionDecisionKind.AutoPendingActionReplay) {
+                        autoPendingActionReplayUsed = true;
+                        routedUserRequest = prePromptExecutionDecision.ReplayPayload;
+                        executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
+                    } else if (prePromptExecutionDecision.Kind == NoExtractedRecoveryExecutionDecisionKind.CarryoverStructuredNextActionReplay) {
                         hostStructuredNextActionReplayUsed = true;
                         RemoveStructuredNextActionCarryover(threadId);
-                        if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
-                            toolDefs = fullToolDefs;
-                            options.Tools = fullToolDefs;
-                            options.ToolChoice = ToolChoice.Auto;
-                            usedContinuationSubset = false;
-                            RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
-                        }
-
-                        Trace.WriteLine(
-                            $"[host-structured-next-action] outcome=execute reason={carryoverStructuredNextActionReason} continuation={continuationFollowUpTurn} tool={carryoverStructuredNextActionCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
-
-                        toolRounds++;
-                        var carryoverHostRoundNumber = round + 1;
-                        await WriteToolRoundStartedStatusAsync(
-                                writer,
-                                request.RequestId,
-                                threadId,
-                                carryoverHostRoundNumber,
-                                maxRounds,
-                                1,
-                                parallelTools,
-                                allowMutatingParallel)
-                            .ConfigureAwait(false);
-                        if (planExecuteReviewLoop) {
-                            await TryWriteStatusAsync(
-                                    writer,
-                                    request.RequestId,
-                                    threadId,
-                                    status: ChatStatusCodes.PhaseExecute,
-                                    message: $"Executing queued read-only follow-up action ({carryoverStructuredNextActionCall.Name})...")
-                                .ConfigureAwait(false);
-                        }
-
-                        await TryWriteStatusAsync(
-                                writer,
-                                request.RequestId,
-                                threadId,
-                                status: ChatStatusCodes.ToolCall,
-                                toolName: carryoverStructuredNextActionCall.Name,
-                                toolCallId: carryoverStructuredNextActionCall.CallId)
-                            .ConfigureAwait(false);
-                        toolCalls.Add(new ToolCallDto {
-                            CallId = carryoverStructuredNextActionCall.CallId,
-                            Name = carryoverStructuredNextActionCall.Name,
-                            ArgumentsJson = carryoverStructuredNextActionCall.Arguments is null
-                                ? "{}"
-                                : JsonLite.Serialize(carryoverStructuredNextActionCall.Arguments)
-                        });
-
-                        var carryoverHostCalls = new[] { carryoverStructuredNextActionCall };
-                        var carryoverHostOutputs = await ExecuteToolsAsync(
-                                writer,
-                                request.RequestId,
-                                threadId,
-                                carryoverHostCalls,
-                                parallel: false,
-                                allowMutatingParallel: allowMutatingParallel,
-                                mutatingToolHintsByName: mutatingToolHints,
-                                toolTimeoutSeconds: toolTimeoutSeconds,
-                                userRequest: routedUserRequest,
-                                cancellationToken: turnToken)
-                            .ConfigureAwait(false);
-                        var carryoverHostFailedCalls = CountFailedToolOutputs(carryoverHostOutputs);
-                        await WriteToolRoundCompletedStatusAsync(
-                                writer,
-                                request.RequestId,
-                                threadId,
-                                carryoverHostRoundNumber,
-                                maxRounds,
-                                carryoverHostOutputs.Count,
-                                carryoverHostFailedCalls)
-                            .ConfigureAwait(false);
-                        UpdateToolRoutingStats(carryoverHostCalls, carryoverHostOutputs);
-                        foreach (var output in carryoverHostOutputs) {
-                            if (WasProjectionFallbackApplied(output)) {
-                                projectionFallbackCount++;
-                            }
-
-                            toolOutputs.Add(new ToolOutputDto {
-                                CallId = output.CallId,
-                                Output = output.Output,
-                                Ok = output.Ok,
-                                ErrorCode = output.ErrorCode,
-                                Error = output.Error,
-                                Hints = output.Hints,
-                                IsTransient = output.IsTransient,
-                                SummaryMarkdown = output.SummaryMarkdown,
-                                MetaJson = output.MetaJson,
-                                RenderJson = output.RenderJson,
-                                FailureJson = output.FailureJson
-                            });
-                        }
-
-                        var carryoverHostNextInput = BuildHostReplayReviewInput(
-                            carryoverStructuredNextActionCall,
-                            carryoverHostOutputs,
-                            supportsSyntheticHostReplayItems);
-                        turn = await RunModelPhaseWithProgressAsync(
-                                client,
-                                writer,
-                                request.RequestId,
-                                threadId,
-                                carryoverHostNextInput,
-                                CopyChatOptions(options, newThreadOverride: false),
-                                turnToken,
-                                phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
-                                phaseMessage: "Reviewing queued follow-up action results...",
-                                heartbeatLabel: "Reviewing queued action",
-                                heartbeatSeconds: modelHeartbeatSeconds)
-                            .ConfigureAwait(false);
-                        return ContinueRound();
                     }
+
+                    if (prePromptExecutionDecision.ExpandToFullToolAvailability
+                        && fullToolDefs.Length > 0
+                        && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+
+                    (turn, toolRounds, projectionFallbackCount) = await ApplyNoExtractedRecoveryExecutionDecisionAsync(
+                            client,
+                            writer,
+                            request,
+                            threadId,
+                            round,
+                            maxRounds,
+                            parallelTools,
+                            allowMutatingParallel,
+                            planExecuteReviewLoop,
+                            modelHeartbeatSeconds,
+                            toolTimeoutSeconds,
+                            supportsSyntheticHostReplayItems,
+                            routedUserRequest,
+                            options,
+                            mutatingToolHints,
+                            toolCalls,
+                            toolOutputs,
+                            toolRounds,
+                            projectionFallbackCount,
+                            turnToken,
+                            prePromptExecutionDecision)
+                        .ConfigureAwait(false);
+                    return ContinueRound();
                 }
 
                 var shouldAttemptExecutionNudge = false;
@@ -426,18 +325,19 @@ internal sealed partial class ChatServiceSession {
                     return ContinueRound();
                 }
 
-                if (!hostDomainIntentBootstrapReplayUsed
-                    && !executionContractApplies
-                    && toolCalls.Count == 0
-                    && toolOutputs.Count == 0
-                    && TryBuildHostDomainIntentEnvironmentBootstrapCall(
-                        threadId: threadId,
-                        userRequest: routedUserRequest,
-                        toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
-                        out var hostDomainBootstrapCall,
-                        out var hostDomainBootstrapReason)) {
+                var postPromptExecutionDecision = ResolveNoExtractedRecoveryPostPromptExecutionDecision(
+                    threadId: threadId,
+                    userRequest: routedUserRequest,
+                    toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
+                    executionContractApplies: executionContractApplies,
+                    hostDomainIntentBootstrapReplayUsed: hostDomainIntentBootstrapReplayUsed,
+                    priorToolCalls: toolCalls.Count,
+                    priorToolOutputs: toolOutputs.Count);
+                if (postPromptExecutionDecision.Kind != NoExtractedRecoveryExecutionDecisionKind.None) {
                     hostDomainIntentBootstrapReplayUsed = true;
-                    if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
+                    if (postPromptExecutionDecision.ExpandToFullToolAvailability
+                        && fullToolDefs.Length > 0
+                        && toolDefs.Count != fullToolDefs.Length) {
                         toolDefs = fullToolDefs;
                         options.Tools = fullToolDefs;
                         options.ToolChoice = ToolChoice.Auto;
@@ -445,108 +345,28 @@ internal sealed partial class ChatServiceSession {
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
 
-                    Trace.WriteLine(
-                        $"[host-domain-bootstrap] outcome=execute reason={hostDomainBootstrapReason} continuation={continuationFollowUpTurn} tool={hostDomainBootstrapCall.Name} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
-
-                    toolRounds++;
-                    var hostDomainBootstrapRoundNumber = round + 1;
-                    await WriteToolRoundStartedStatusAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            hostDomainBootstrapRoundNumber,
-                            maxRounds,
-                            1,
-                            parallelTools,
-                            allowMutatingParallel)
-                        .ConfigureAwait(false);
-                    if (planExecuteReviewLoop) {
-                        await TryWriteStatusAsync(
-                                writer,
-                                request.RequestId,
-                                threadId,
-                                status: ChatStatusCodes.PhaseExecute,
-                                message: $"Executing domain-scope bootstrap ({hostDomainBootstrapCall.Name})...")
-                            .ConfigureAwait(false);
-                    }
-
-                    await TryWriteStatusAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            status: ChatStatusCodes.ToolCall,
-                            toolName: hostDomainBootstrapCall.Name,
-                            toolCallId: hostDomainBootstrapCall.CallId)
-                        .ConfigureAwait(false);
-                    toolCalls.Add(new ToolCallDto {
-                        CallId = hostDomainBootstrapCall.CallId,
-                        Name = hostDomainBootstrapCall.Name,
-                        ArgumentsJson = hostDomainBootstrapCall.Arguments is null
-                            ? "{}"
-                            : JsonLite.Serialize(hostDomainBootstrapCall.Arguments)
-                    });
-
-                    var hostDomainBootstrapCalls = new[] { hostDomainBootstrapCall };
-                    var hostDomainBootstrapOutputs = await ExecuteToolsAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            hostDomainBootstrapCalls,
-                            parallel: false,
-                            allowMutatingParallel: allowMutatingParallel,
-                            mutatingToolHintsByName: mutatingToolHints,
-                            toolTimeoutSeconds: toolTimeoutSeconds,
-                            userRequest: routedUserRequest,
-                            cancellationToken: turnToken)
-                        .ConfigureAwait(false);
-                    var hostDomainBootstrapFailedCalls = CountFailedToolOutputs(hostDomainBootstrapOutputs);
-                    await WriteToolRoundCompletedStatusAsync(
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            hostDomainBootstrapRoundNumber,
-                            maxRounds,
-                            hostDomainBootstrapOutputs.Count,
-                            hostDomainBootstrapFailedCalls)
-                        .ConfigureAwait(false);
-                    UpdateToolRoutingStats(hostDomainBootstrapCalls, hostDomainBootstrapOutputs);
-                    RememberSuccessfulPackPreflightCalls(threadId, hostDomainBootstrapCalls, hostDomainBootstrapOutputs);
-                    foreach (var output in hostDomainBootstrapOutputs) {
-                        if (WasProjectionFallbackApplied(output)) {
-                            projectionFallbackCount++;
-                        }
-
-                        toolOutputs.Add(new ToolOutputDto {
-                            CallId = output.CallId,
-                            Output = output.Output,
-                            Ok = output.Ok,
-                            ErrorCode = output.ErrorCode,
-                            Error = output.Error,
-                            Hints = output.Hints,
-                            IsTransient = output.IsTransient,
-                            SummaryMarkdown = output.SummaryMarkdown,
-                            MetaJson = output.MetaJson,
-                            RenderJson = output.RenderJson,
-                            FailureJson = output.FailureJson
-                        });
-                    }
-
-                    var hostDomainBootstrapNextInput = BuildHostReplayReviewInput(
-                        hostDomainBootstrapCall,
-                        hostDomainBootstrapOutputs,
-                        supportsSyntheticHostReplayItems);
-                    turn = await RunModelPhaseWithProgressAsync(
+                    (turn, toolRounds, projectionFallbackCount) = await ApplyNoExtractedRecoveryExecutionDecisionAsync(
                             client,
                             writer,
-                            request.RequestId,
+                            request,
                             threadId,
-                            hostDomainBootstrapNextInput,
-                            CopyChatOptions(options, newThreadOverride: false),
+                            round,
+                            maxRounds,
+                            parallelTools,
+                            allowMutatingParallel,
+                            planExecuteReviewLoop,
+                            modelHeartbeatSeconds,
+                            toolTimeoutSeconds,
+                            supportsSyntheticHostReplayItems,
+                            routedUserRequest,
+                            options,
+                            mutatingToolHints,
+                            toolCalls,
+                            toolOutputs,
+                            toolRounds,
+                            projectionFallbackCount,
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
-                            phaseMessage: "Reviewing domain-scope bootstrap results...",
-                            heartbeatLabel: "Reviewing domain bootstrap",
-                            heartbeatSeconds: modelHeartbeatSeconds)
+                            postPromptExecutionDecision)
                         .ConfigureAwait(false);
                     return ContinueRound();
                 }
