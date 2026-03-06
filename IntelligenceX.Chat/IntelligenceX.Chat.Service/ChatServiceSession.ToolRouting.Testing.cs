@@ -92,6 +92,19 @@ internal sealed partial class ChatServiceSession {
         RememberPendingActions(threadId, assistantReply);
     }
 
+    internal void RememberStructuredNextActionCarryoverForTesting(
+        string threadId,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        ArgumentNullException.ThrowIfNull(toolCalls);
+        ArgumentNullException.ThrowIfNull(toolOutputs);
+        RememberStructuredNextActionCarryover(threadId, toolDefinitions, toolCalls, toolOutputs, mutatingToolHintsByName);
+    }
+
     internal bool HasFreshPendingActionsContextForTesting(string threadId) {
         ArgumentNullException.ThrowIfNull(threadId);
         return HasFreshPendingActionsContext(threadId);
