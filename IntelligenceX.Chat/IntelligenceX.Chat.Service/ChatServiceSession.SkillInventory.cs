@@ -9,13 +9,15 @@ internal sealed partial class ChatServiceSession {
     private static string[] ResolveCapabilitySnapshotSkills(
         IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         ToolRoutingCatalogDiagnostics? routingCatalog,
+        IEnumerable<string>? connectedRuntimeSkills = null,
         IEnumerable<string>? fallbackSkills = null) {
-        var pluginSkillIds = NormalizeCapabilitySnapshotSkills(
+        var explicitSkillIds = NormalizeCapabilitySnapshotSkills(
             (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
             .Where(static plugin => plugin.Enabled)
-            .SelectMany(static plugin => plugin.SkillIds ?? Array.Empty<string>()));
-        if (pluginSkillIds.Length > 0) {
-            return pluginSkillIds;
+            .SelectMany(static plugin => plugin.SkillIds ?? Array.Empty<string>())
+            .Concat(connectedRuntimeSkills ?? Array.Empty<string>()));
+        if (explicitSkillIds.Length > 0) {
+            return explicitSkillIds;
         }
 
         var routingSkillIds = NormalizeCapabilitySnapshotSkills(

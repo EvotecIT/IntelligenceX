@@ -22,6 +22,7 @@ internal sealed partial class ChatServiceSession {
             _packAvailability,
             _pluginAvailability,
             _routingCatalogDiagnostics,
+            connectedRuntimeSkills: _connectedRuntimeSkillInventory,
             healthyToolNames: ResolveWorkingMemoryCapabilityHealthyToolNames(
                 Array.Empty<string>(),
                 Array.Empty<string>()),
@@ -33,6 +34,7 @@ internal sealed partial class ChatServiceSession {
         IEnumerable<ToolPackAvailabilityInfo> packAvailability,
         IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         ToolRoutingCatalogDiagnostics? routingCatalog,
+        IEnumerable<string>? connectedRuntimeSkills = null,
         IEnumerable<string>? healthyToolNames = null,
         string? remoteReachabilityMode = null) {
         ArgumentNullException.ThrowIfNull(options);
@@ -68,7 +70,7 @@ internal sealed partial class ChatServiceSession {
         var familyActions = MapCapabilityFamilyActions(routingCatalog);
         var routingFamilies = NormalizeCapabilitySnapshotRoutingFamilies(
             familyActions.Select(static summary => summary.Family));
-        var skills = ResolveCapabilitySnapshotSkills(pluginAvailability, routingCatalog);
+        var skills = ResolveCapabilitySnapshotSkills(pluginAvailability, routingCatalog, connectedRuntimeSkills);
         var healthyTools = NormalizeCapabilitySnapshotHealthyToolNames(healthyToolNames ?? Array.Empty<string>());
         var registeredTools = Math.Max(0, routingCatalog?.TotalTools ?? 0);
         var allowedRootCount = Math.Max(0, options.AllowedRoots.Count);

@@ -133,6 +133,54 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void RuntimeCapabilityHandshake_MergesConnectedRuntimeSkillsWithPluginInventoryBeforeRoutingFallback() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "plugin-loader-test",
+                    Name = "Plugin Loader Test",
+                    SourceKind = "open_source",
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 4,
+                RoutingAwareTools = 4,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 1,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "scope_hosts",
+                        ToolCount = 4
+                    }
+                }
+            },
+            pluginAvailability: new[] {
+                new ToolPluginAvailabilityInfo {
+                    Id = "plugin-loader-test",
+                    Name = "Plugin Loader Test",
+                    Origin = "plugin_folder",
+                    SourceKind = "open_source",
+                    DefaultEnabled = true,
+                    Enabled = true,
+                    PackIds = new[] { "plugin-loader-test" },
+                    SkillIds = new[] { "inventory-test", "network-recon" }
+                }
+            },
+            connectedRuntimeSkills: new[] { "repo-search", "task-runner" });
+
+        var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+
+        Assert.Equal(new[] { "inventory-test", "network-recon", "repo-search", "task-runner" }, snapshot.Skills);
+    }
+
+    [Fact]
     public void RuntimeCapabilityHandshake_BuildRuntimeCapabilitySnapshot_ProducesStructuredCapabilityArtifact() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var nowTicks = DateTime.UtcNow.Ticks;

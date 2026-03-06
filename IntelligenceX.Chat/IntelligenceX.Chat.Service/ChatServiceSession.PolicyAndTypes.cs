@@ -28,6 +28,7 @@ internal sealed partial class ChatServiceSession {
         IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         IReadOnlyList<string> startupWarnings, SessionStartupBootstrapTelemetryDto? startupBootstrap, IReadOnlyList<string> pluginSearchPaths,
         ToolRuntimePolicyDiagnostics runtimePolicy, ToolRoutingCatalogDiagnostics? routingCatalog = null,
+        IReadOnlyList<string>? connectedRuntimeSkills = null,
         IReadOnlyList<string>? healthyToolNames = null, string? remoteReachabilityMode = null) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
@@ -64,6 +65,7 @@ internal sealed partial class ChatServiceSession {
             packAvailability,
             pluginAvailability,
             routingCatalog,
+            connectedRuntimeSkills,
             healthyToolNames,
             remoteReachabilityMode);
 

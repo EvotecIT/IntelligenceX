@@ -43,12 +43,15 @@ internal sealed partial class ChatServiceSession {
     internal void SetCapabilitySnapshotContextForTesting(
         IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
         ToolRoutingCatalogDiagnostics routingCatalogDiagnostics,
-        IReadOnlyList<ToolPluginAvailabilityInfo>? pluginAvailability = null) {
+        IReadOnlyList<ToolPluginAvailabilityInfo>? pluginAvailability = null,
+        IReadOnlyList<string>? connectedRuntimeSkills = null) {
         ArgumentNullException.ThrowIfNull(packAvailability);
         ArgumentNullException.ThrowIfNull(routingCatalogDiagnostics);
 
         _packAvailability = packAvailability.ToArray();
         _pluginAvailability = pluginAvailability?.ToArray() ?? Array.Empty<ToolPluginAvailabilityInfo>();
+        _connectedRuntimeSkillInventory = NormalizeSkillInventoryValues(connectedRuntimeSkills ?? Array.Empty<string>(), maxItems: 0);
+        _connectedRuntimeSkillInventoryHydrated = _connectedRuntimeSkillInventory.Length > 0;
         _routingCatalogDiagnostics = routingCatalogDiagnostics;
     }
 
