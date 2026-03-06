@@ -126,6 +126,170 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
     }
 
     [Fact]
+    public async Task UpsertAndGet_PluginPaths_StripsAppManagedBundleLocations() {
+        var dbPath = CreateTempDbPath();
+        var customPluginPath = Path.Combine(Path.GetTempPath(), "ix-custom-plugin-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(customPluginPath);
+        try {
+            using var store = new SqliteServiceProfileStore(dbPath);
+            var profile = new ServiceProfile {
+                PluginPaths = new() {
+                    @"C:\Support\GitHub\IntelligenceX\artifacts\Releases\20260224-093226\portable\IntelligenceX.Chat-20260224-093226-win-x64\plugins",
+                    @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\Temp\IntelligenceX.Chat\service-runtime\v1-demo\plugins",
+                    @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\IntelligenceX.Chat\plugin-cache\zip-v2-deadbeef\plugins",
+                    customPluginPath
+                }
+            };
+
+            await store.UpsertAsync("plugin-paths", profile, CancellationToken.None);
+            var loaded = await store.GetAsync("plugin-paths", CancellationToken.None);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(new[] { customPluginPath }, loaded!.PluginPaths);
+        } finally {
+            if (Directory.Exists(customPluginPath)) {
+                Directory.Delete(customPluginPath, recursive: true);
+            }
+
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task UpsertAndGet_PluginPaths_StripsAppManagedReleaseAndRuntimeRoots() {
+        var dbPath = CreateTempDbPath();
+        try {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var managedPluginCacheRoot = Path.Combine(localAppData, "IntelligenceX.Chat", "plugin-cache");
+            var managedServiceRuntimeRoot = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat", "service-runtime");
+            using var store = new SqliteServiceProfileStore(dbPath);
+            var profile = new ServiceProfile {
+                PluginPaths = new() {
+                    @"C:\Support\GitHub\IntelligenceX\artifacts\Releases\20260224-093226\portable\IntelligenceX.Chat-20260224-093226-win-x64\plugins",
+                    managedServiceRuntimeRoot,
+                    @"C:\Users\przemyslaw.klys.EVOTEC\AppData\Local\Temp\IntelligenceX.Chat\service-runtime\v1-abc123\plugins",
+                    managedPluginCacheRoot,
+                    Path.Combine(managedPluginCacheRoot, "zip-v2-abc123"),
+                    @"C:\Custom\Plugins",
+                    @" C:\Custom\Plugins ",
+                    @"D:\Shared\plugin-cache\plugins"
+                }
+            };
+
+            await store.UpsertAsync("plugin-paths", profile, CancellationToken.None);
+            var loaded = await store.GetAsync("plugin-paths", CancellationToken.None);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(new[] { @"C:\Custom\Plugins", @"D:\Shared\plugin-cache\plugins" }, loaded!.PluginPaths);
+
+            var db = new SQLite();
+            var persisted = QueryAsTable(db.Query(
+                dbPath,
+                "SELECT path FROM ix_service_profile_plugin_paths WHERE profile_name = @name ORDER BY ord;",
+                parameters: new Dictionary<string, object?> { ["@name"] = "plugin-paths" }));
+
+            Assert.NotNull(persisted);
+            Assert.Equal(2, persisted!.Rows.Count);
+            Assert.Equal(@"C:\Custom\Plugins", persisted.Rows[0]["path"]?.ToString());
+            Assert.Equal(@"D:\Shared\plugin-cache\plugins", persisted.Rows[1]["path"]?.ToString());
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task GetAsync_MigratesStoredPluginPaths_WhenLegacyAppManagedRootsExist() {
+        var dbPath = CreateTempDbPath();
+        try {
+            using (var bootstrap = new SqliteServiceProfileStore(dbPath)) {
+                // Creates current schema/list tables.
+            }
+
+            var db = new SQLite();
+            db.ExecuteNonQuery(
+                dbPath,
+                """
+INSERT INTO ix_service_profiles (
+  name, model, transport_kind, openai_auth_mode, openai_streaming, openai_allow_insecure_http,
+  openai_allow_insecure_http_non_loopback, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls,
+  turn_timeout_seconds, tool_timeout_seconds, max_table_rows, max_sample, redact, ad_max_results,
+  powershell_allow_write, enable_built_in_pack_loading, use_default_built_in_tool_assembly_names,
+  enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink,
+  require_explicit_routing_metadata, write_audit_sink_mode, authentication_runtime_preset, require_authentication_runtime,
+  updated_utc
+) VALUES (
+  @name, @model, @transport_kind, @openai_auth_mode, @openai_streaming, @openai_allow_insecure_http,
+  @openai_allow_insecure_http_non_loopback, @max_tool_rounds, @parallel_tools, @allow_mutating_parallel_tool_calls,
+  @turn_timeout_seconds, @tool_timeout_seconds, @max_table_rows, @max_sample, @redact, @ad_max_results,
+  @powershell_allow_write, @enable_built_in_pack_loading, @use_default_built_in_tool_assembly_names,
+  @enable_default_plugin_paths, @write_governance_mode, @require_write_governance_runtime, @require_write_audit_sink,
+  @require_explicit_routing_metadata, @write_audit_sink_mode, @authentication_runtime_preset, @require_authentication_runtime,
+  @updated_utc
+);
+""",
+                parameters: new Dictionary<string, object?> {
+                    ["@name"] = "legacy-plugin-paths",
+                    ["@model"] = "legacy-model",
+                    ["@transport_kind"] = "native",
+                    ["@openai_auth_mode"] = "bearer",
+                    ["@openai_streaming"] = 1,
+                    ["@openai_allow_insecure_http"] = 0,
+                    ["@openai_allow_insecure_http_non_loopback"] = 0,
+                    ["@max_tool_rounds"] = 24,
+                    ["@parallel_tools"] = 1,
+                    ["@allow_mutating_parallel_tool_calls"] = 0,
+                    ["@turn_timeout_seconds"] = 0,
+                    ["@tool_timeout_seconds"] = 0,
+                    ["@max_table_rows"] = 0,
+                    ["@max_sample"] = 0,
+                    ["@redact"] = 0,
+                    ["@ad_max_results"] = 1000,
+                    ["@powershell_allow_write"] = 0,
+                    ["@enable_built_in_pack_loading"] = 1,
+                    ["@use_default_built_in_tool_assembly_names"] = 1,
+                    ["@enable_default_plugin_paths"] = 1,
+                    ["@write_governance_mode"] = "enforced",
+                    ["@require_write_governance_runtime"] = 1,
+                    ["@require_write_audit_sink"] = 0,
+                    ["@require_explicit_routing_metadata"] = 1,
+                    ["@write_audit_sink_mode"] = "none",
+                    ["@authentication_runtime_preset"] = "default",
+                    ["@require_authentication_runtime"] = 0,
+                    ["@updated_utc"] = DateTime.UtcNow.ToString("O")
+                });
+            db.ExecuteNonQuery(
+                dbPath,
+                """
+INSERT INTO ix_service_profile_plugin_paths (profile_name, ord, path) VALUES
+  (@name, 0, @release_path),
+  (@name, 1, @custom_path);
+""",
+                parameters: new Dictionary<string, object?> {
+                    ["@name"] = "legacy-plugin-paths",
+                    ["@release_path"] = @"C:\Support\GitHub\IntelligenceX\artifacts\Releases\20260222-182223\portable\IntelligenceX.Chat-20260222-182223-win-x64\plugins",
+                    ["@custom_path"] = @"D:\PluginDrop"
+                });
+
+            using var store = new SqliteServiceProfileStore(dbPath);
+            var loaded = await store.GetAsync("legacy-plugin-paths", CancellationToken.None);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(new[] { @"D:\PluginDrop" }, loaded!.PluginPaths);
+
+            var persisted = QueryAsTable(db.Query(
+                dbPath,
+                "SELECT path FROM ix_service_profile_plugin_paths WHERE profile_name = @name ORDER BY ord;",
+                parameters: new Dictionary<string, object?> { ["@name"] = "legacy-plugin-paths" }));
+
+            Assert.NotNull(persisted);
+            Assert.Single(persisted!.Rows.Cast<DataRow>());
+            Assert.Equal(@"D:\PluginDrop", persisted.Rows[0]["path"]?.ToString());
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
     public async Task EnsureSchema_MigratesLegacyPackToggleColumns_ToPackIdOverrideLists() {
         var dbPath = CreateTempDbPath();
         try {

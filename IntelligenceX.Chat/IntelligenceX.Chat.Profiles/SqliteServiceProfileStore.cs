@@ -665,9 +665,14 @@ LIMIT 1;",
 
         profile.AllowedRoots = ReadOrderedList(trimmed, AllowedRootsTable);
         profile.BuiltInToolAssemblyNames = ReadOrderedList(trimmed, BuiltInToolAssemblyNamesTable);
-        profile.PluginPaths = ReadOrderedList(trimmed, PluginPathsTable);
+        var storedPluginPaths = ReadOrderedList(trimmed, PluginPathsTable);
+        profile.PluginPaths = ServiceProfilePluginPathPolicy.NormalizeStoredPluginPaths(storedPluginPaths);
         profile.DisabledPackIds = ReadOrderedList(trimmed, DisabledPackIdsTable);
         profile.EnabledPackIds = ReadOrderedList(trimmed, EnabledPackIdsTable);
+
+        if (!SequenceEqualOrdinalIgnoreCase(storedPluginPaths, profile.PluginPaths)) {
+            ReplaceOrderedList(trimmed, PluginPathsTable, profile.PluginPaths);
+        }
 
         return Task.FromResult<ServiceProfile?>(profile);
     }
@@ -686,6 +691,7 @@ LIMIT 1;",
             ? null
             : DpapiSecretProtector.ProtectString(profile.OpenAIBasicPassword!.Trim());
         var extraRequiredInsertColumns = ResolveRequiredInsertBackfillColumns();
+        var normalizedPluginPaths = ServiceProfilePluginPathPolicy.NormalizeStoredPluginPaths(profile.PluginPaths);
 
         var extraInsertColumnsSql = string.Empty;
         var extraInsertValuesSql = string.Empty;
@@ -795,7 +801,7 @@ ON CONFLICT(name) DO UPDATE SET
 
             ReplaceOrderedList(trimmed, AllowedRootsTable, profile.AllowedRoots);
             ReplaceOrderedList(trimmed, BuiltInToolAssemblyNamesTable, profile.BuiltInToolAssemblyNames);
-            ReplaceOrderedList(trimmed, PluginPathsTable, profile.PluginPaths);
+            ReplaceOrderedList(trimmed, PluginPathsTable, normalizedPluginPaths);
             ReplaceOrderedList(trimmed, DisabledPackIdsTable, profile.DisabledPackIds);
             ReplaceOrderedList(trimmed, EnabledPackIdsTable, profile.EnabledPackIds);
 

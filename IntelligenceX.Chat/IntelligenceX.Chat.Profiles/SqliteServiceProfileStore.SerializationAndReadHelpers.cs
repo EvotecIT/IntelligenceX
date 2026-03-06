@@ -136,6 +136,25 @@ internal sealed partial class SqliteServiceProfileStore {
         return normalized.Length == 0 ? null : normalized;
     }
 
+    private static bool SequenceEqualOrdinalIgnoreCase(IReadOnlyList<string>? left, IReadOnlyList<string>? right) {
+        if (ReferenceEquals(left, right)) {
+            return true;
+        }
+
+        var leftCount = left?.Count ?? 0;
+        var rightCount = right?.Count ?? 0;
+        if (leftCount != rightCount) {
+            return false;
+        }
+
+        for (var i = 0; i < leftCount; i++) {
+            if (!string.Equals(left![i], right![i], StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
     private static byte[]? ReadBytes(DataRow row, string col) {
         if (!row.Table.Columns.Contains(col)) {
             return null;

@@ -453,30 +453,29 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string BuildServiceStageKey(string serviceSourceDir) {
-        var dll = Path.Combine(serviceSourceDir, "IntelligenceX.Chat.Service.dll");
-        var exe = Path.Combine(serviceSourceDir, "IntelligenceX.Chat.Service.exe");
-        var marker = File.Exists(dll) ? dll : exe;
+        var normalizedServiceSourceDir = Path.GetFullPath(serviceSourceDir);
+        var fingerprint = new StringBuilder(normalizedServiceSourceDir.Length + 256);
+        fingerprint.Append(normalizedServiceSourceDir.ToUpperInvariant());
 
-        long ticks = 0;
-        long length = 0;
         try {
-            var info = new FileInfo(marker);
-            ticks = info.Exists ? info.LastWriteTimeUtc.Ticks : 0;
-            length = info.Exists ? info.Length : 0;
+            foreach (var file in Directory.EnumerateFiles(normalizedServiceSourceDir, "*", SearchOption.AllDirectories)
+                         .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)) {
+                var relativePath = Path.GetRelativePath(normalizedServiceSourceDir, file);
+                var info = new FileInfo(file);
+
+                fingerprint.Append('|');
+                fingerprint.Append(relativePath.Replace(Path.DirectorySeparatorChar, '/').ToUpperInvariant());
+                fingerprint.Append('|');
+                fingerprint.Append(info.Exists ? info.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture) : "0");
+                fingerprint.Append('|');
+                fingerprint.Append(info.Exists ? info.Length.ToString(CultureInfo.InvariantCulture) : "0");
+            }
         } catch {
-            // Ignore and keep defaults.
+            // Fall back to hashing the normalized root path only.
         }
 
-        var fingerprint = Path.GetFullPath(serviceSourceDir).ToUpperInvariant()
-                         + "|"
-                         + Path.GetFileName(marker).ToUpperInvariant()
-                         + "|"
-                         + ticks.ToString(CultureInfo.InvariantCulture)
-                         + "|"
-                         + length.ToString(CultureInfo.InvariantCulture);
-
         using var sha = SHA256.Create();
-        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(fingerprint));
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(fingerprint.ToString()));
         var key = Convert.ToHexString(hash.AsSpan(0, 8));
         return "v1-" + key.ToLowerInvariant();
     }

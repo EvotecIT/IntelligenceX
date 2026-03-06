@@ -130,6 +130,23 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void DiscoverDefaultBuiltInAssemblyNames_UsesToolingAssemblyReferences_InsteadOfOutputFolderEnumeration() {
+        var defaultDiscoveryMethod = typeof(ToolPackBootstrap).GetMethod(
+            "DiscoverDefaultBuiltInAssemblyNames",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(defaultDiscoveryMethod);
+
+        var discoveredDefaultAssemblyNames = Assert.IsAssignableFrom<IEnumerable<string>>(defaultDiscoveryMethod!.Invoke(null, new object?[] { null }));
+        var discovered = new HashSet<string>(
+            discoveredDefaultAssemblyNames.Where(static name => !string.IsNullOrWhiteSpace(name)),
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Contains("IntelligenceX.Tools.System", discovered, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IntelligenceX.Tools.TestimoX", discovered, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("IntelligenceX.Tools.Common", discovered, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void EnumerateToolAssemblyNamesForDiscovery_UsesConfiguredAssemblyNames_WhenDefaultAllowlistIsDisabled() {
         var method = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",

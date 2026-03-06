@@ -62,7 +62,7 @@ internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
             PowerShellAllowWrite = profile.PowerShellAllowWrite,
             EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading,
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths,
-            PluginPaths = new List<string>(profile.PluginPaths ?? new List<string>()),
+            PluginPaths = ServiceProfilePluginPathPolicy.NormalizeStoredPluginPaths(profile.PluginPaths),
             DisabledPackIds = new List<string>(profile.DisabledPackIds ?? new List<string>()),
             EnabledPackIds = new List<string>(profile.EnabledPackIds ?? new List<string>()),
             WriteGovernanceMode = profile.WriteGovernanceMode,

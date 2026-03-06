@@ -364,6 +364,33 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public void BuildToolingBootstrapCacheKey_IncludesRuntimePluginPaths() {
+        var keyMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(keyMethod);
+
+        var runtimePolicyOptions = new ToolRuntimePolicyOptions();
+        var resolved = new ToolRuntimePolicyResolvedOptions {
+            Options = runtimePolicyOptions,
+            RequireSuccessfulSmtpProbeForSend = false,
+            SmtpProbeMaxAgeSeconds = 900
+        };
+
+        var first = new ServiceOptions();
+        first.RuntimePluginPaths.Add(@"C:\plugins\runtime-a");
+        var second = new ServiceOptions();
+        second.RuntimePluginPaths.Add(@"C:\plugins\runtime-b");
+
+        var firstKey = Assert.IsType<string>(keyMethod!.Invoke(null, new object?[] { first, runtimePolicyOptions, resolved }));
+        var secondKey = Assert.IsType<string>(keyMethod.Invoke(null, new object?[] { second, runtimePolicyOptions, resolved }));
+
+        Assert.Contains(@"plugin_paths=C:\plugins\runtime-a;", firstKey, StringComparison.Ordinal);
+        Assert.Contains(@"plugin_paths=C:\plugins\runtime-b;", secondKey, StringComparison.Ordinal);
+        Assert.NotEqual(firstKey, secondKey);
+    }
+
+    [Fact]
     public void SummarizeSlowPluginLoadWarnings_CompressesAndSortsTopEntries() {
         var method = typeof(ChatServiceSession).GetMethod(
             "SummarizeSlowPluginLoadWarnings",

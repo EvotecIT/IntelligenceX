@@ -162,6 +162,55 @@ function Remove-PluginSymbols {
     }
 }
 
+function Get-PluginEntryType {
+    param(
+        [Parameter(Mandatory)]
+        [string] $ProjectPath
+    )
+
+    $projectDir = Split-Path -Parent $ProjectPath
+    $candidates = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+    $sourceFiles = Get-ChildItem -Path $projectDir -Recurse -Filter '*.cs' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '(\\|/)(bin|obj)(\\|/)' }
+
+    foreach ($sourceFile in $sourceFiles) {
+        $content = Get-Content -Path $sourceFile.FullName -Raw
+        if ([string]::IsNullOrWhiteSpace($content)) {
+            continue
+        }
+
+        $namespaceMatch = [regex]::Match($content, '(?m)^\s*namespace\s+([A-Za-z_][A-Za-z0-9_.]*)\s*[;{]')
+        $namespaceName = if ($namespaceMatch.Success) { $namespaceMatch.Groups[1].Value.Trim() } else { '' }
+
+        $typeMatches = [regex]::Matches($content, '(?m)^\s*(?:public|internal|protected|private|sealed|abstract|partial|static|\s)*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^\r\n{]+)')
+        foreach ($typeMatch in $typeMatches) {
+            $className = $typeMatch.Groups[1].Value.Trim()
+            $inheritanceList = $typeMatch.Groups[2].Value
+            if ([string]::IsNullOrWhiteSpace($className) -or [string]::IsNullOrWhiteSpace($inheritanceList)) {
+                continue
+            }
+
+            if ($inheritanceList -notmatch '(^|[\s,])IToolPack($|[\s,])') {
+                continue
+            }
+
+            $fullTypeName = if ([string]::IsNullOrWhiteSpace($namespaceName)) {
+                $className
+            } else {
+                "$namespaceName.$className"
+            }
+            $null = $candidates.Add($fullTypeName)
+        }
+    }
+
+    if ($candidates.Count -ne 1) {
+        $candidateList = @($candidates) -join ', '
+        throw "Expected exactly one IToolPack implementation in '$ProjectPath', found $($candidates.Count): $candidateList"
+    }
+
+    return @($candidates)[0]
+}
+
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
@@ -221,6 +270,7 @@ foreach ($project in $selected) {
         $assemblyNameNode.InnerText.Trim()
     }
     $packageId = if ($null -eq $packageIdNode -or [string]::IsNullOrWhiteSpace($packageIdNode.InnerText)) { $assemblyName } else { $packageIdNode.InnerText.Trim() }
+    $entryType = Get-PluginEntryType -ProjectPath $projectPath
     $pluginDir = Join-Path $OutDir $packageId
 
     Write-Step "Publish plugin folder: $packageId ($resolvedFramework)"
@@ -255,6 +305,7 @@ foreach ($project in $selected) {
         packageId = $packageId
         sourceKind = $sourceKind
         entryAssembly = "$assemblyName.dll"
+        entryType = $entryType
         mode = $Mode
         framework = $resolvedFramework
     }

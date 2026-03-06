@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using DBAClientX;
@@ -123,6 +125,44 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(error));
             Assert.Equal("default", options.ProfileName);
             Assert.Equal("default", options.SaveProfileName);
+        } finally {
+            TryDelete(dbPath);
+        }
+    }
+
+    [Fact]
+    public void Parse_RuntimePluginPath_IsAvailableForCurrentRun_ButNotPersistedToProfile() {
+        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-" + Guid.NewGuid().ToString("N") + ".db");
+        var runtimePluginPath = Path.Combine(
+            Path.GetTempPath(),
+            "ix-chat-runtime-plugins",
+            Guid.NewGuid().ToString("N"),
+            "plugins");
+        try {
+            var options = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "default",
+                "--save-profile", "default",
+                "--plugin-path", runtimePluginPath
+            }, out var error);
+
+            Assert.NotNull(options);
+            Assert.True(string.IsNullOrWhiteSpace(error), error);
+            Assert.Equal(new[] { runtimePluginPath }, ((IToolPackRuntimeSettings)options!).PluginPaths);
+
+            var storedPluginPaths = ReadStoredPluginPaths(dbPath, "default");
+            Assert.Empty(storedPluginPaths);
+
+            var loaded = ServiceOptions.Parse(new[] {
+                "--pipe", "test.pipe",
+                "--state-db", dbPath,
+                "--profile", "default"
+            }, out var loadError);
+
+            Assert.NotNull(loaded);
+            Assert.True(string.IsNullOrWhiteSpace(loadError), loadError);
+            Assert.Empty(((IToolPackRuntimeSettings)loaded!).PluginPaths);
         } finally {
             TryDelete(dbPath);
         }
@@ -749,5 +789,34 @@ INSERT INTO ix_service_profiles (
                 ["@enable_default_plugin_paths"] = 1,
                 ["@updated_utc"] = DateTime.UtcNow.ToString("O")
             });
+    }
+
+    private static IReadOnlyList<string> ReadStoredPluginPaths(string dbPath, string profileName) {
+        var db = new SQLite();
+        var table = QueryAsTable(db.Query(
+            dbPath,
+            "SELECT path FROM ix_service_profile_plugin_paths WHERE profile_name = @name ORDER BY ord;",
+            parameters: new Dictionary<string, object?> { ["@name"] = profileName }));
+
+        if (table is null || table.Rows.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        return table.Rows
+            .Cast<DataRow>()
+            .Select(static row => row["path"]?.ToString())
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .Select(static path => path!)
+            .ToArray();
+    }
+
+    private static DataTable? QueryAsTable(object? queryResult) {
+        if (queryResult is DataTable table) {
+            return table;
+        }
+
+        return queryResult is DataSet dataSet && dataSet.Tables.Count > 0
+            ? dataSet.Tables[0]
+            : null;
     }
 }

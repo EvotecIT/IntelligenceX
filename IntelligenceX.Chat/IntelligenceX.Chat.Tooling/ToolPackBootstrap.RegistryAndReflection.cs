@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Text.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -196,25 +197,20 @@ public static partial class ToolPackBootstrap {
     }
 
     private static IReadOnlyList<string> DiscoverDefaultBuiltInAssemblyNames(Action<string>? onWarning) {
-        var bootstrapAssemblyPath = typeof(ToolPackBootstrap).Assembly.Location;
-        var searchRoot = Path.GetDirectoryName(bootstrapAssemblyPath ?? string.Empty);
-        if (string.IsNullOrWhiteSpace(searchRoot)) {
-            searchRoot = AppContext.BaseDirectory;
-        }
-
-        if (string.IsNullOrWhiteSpace(searchRoot) || !Directory.Exists(searchRoot)) {
-            return Array.Empty<string>();
-        }
-
         try {
             var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var assemblyPath in Directory.EnumerateFiles(searchRoot, "IntelligenceX.Tools.*.dll", SearchOption.TopDirectoryOnly)) {
-                var assemblySimpleName = (Path.GetFileNameWithoutExtension(assemblyPath) ?? string.Empty).Trim();
-                if (assemblySimpleName.Length == 0 || !IsBuiltInToolAssemblyName(assemblySimpleName)) {
-                    continue;
-                }
+            foreach (var depsFilePath in EnumerateDependencyContextFiles(typeof(ToolPackBootstrap).Assembly)) {
+                using var stream = File.OpenRead(depsFilePath);
+                using var document = JsonDocument.Parse(stream);
+                AddBuiltInToolAssemblyNamesFromDependencyContext(document.RootElement, discovered);
+            }
 
-                discovered.Add(assemblySimpleName);
+            if (discovered.Count == 0) {
+                Warn(
+                    onWarning,
+                    "[startup] built_in_pack_default_discovery_failed reason='dependency graph did not expose built-in tool assemblies.'",
+                    shouldWarn: true);
+                return Array.Empty<string>();
             }
 
             return discovered
@@ -229,6 +225,59 @@ public static partial class ToolPackBootstrap {
         }
     }
 
+    private static IEnumerable<string> EnumerateDependencyContextFiles(Assembly bootstrapAssembly) {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var appContextDepsFiles = AppContext.GetData("APP_CONTEXT_DEPS_FILES") as string;
+        if (!string.IsNullOrWhiteSpace(appContextDepsFiles)) {
+            var candidates = appContextDepsFiles.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var i = 0; i < candidates.Length; i++) {
+                var candidate = candidates[i];
+                if (File.Exists(candidate) && seen.Add(candidate)) {
+                    yield return candidate;
+                }
+            }
+        }
+
+        var bootstrapAssemblyPath = bootstrapAssembly.Location;
+        if (string.IsNullOrWhiteSpace(bootstrapAssemblyPath)) {
+            yield break;
+        }
+
+        var siblingDepsFile = Path.ChangeExtension(bootstrapAssemblyPath, ".deps.json");
+        if (!string.IsNullOrWhiteSpace(siblingDepsFile) && File.Exists(siblingDepsFile) && seen.Add(siblingDepsFile)) {
+            yield return siblingDepsFile;
+        }
+    }
+
+    private static void AddBuiltInToolAssemblyNamesFromDependencyContext(JsonElement root, HashSet<string> discovered) {
+        if (!root.TryGetProperty("targets", out var targetsElement)
+            || targetsElement.ValueKind != JsonValueKind.Object) {
+            return;
+        }
+
+        foreach (var targetProperty in targetsElement.EnumerateObject()) {
+            if (targetProperty.Value.ValueKind != JsonValueKind.Object) {
+                continue;
+            }
+
+            foreach (var libraryProperty in targetProperty.Value.EnumerateObject()) {
+                var libraryName = libraryProperty.Name;
+                var slashIndex = libraryName.IndexOf('/');
+                if (slashIndex <= 0) {
+                    continue;
+                }
+
+                var simpleName = libraryName.Substring(0, slashIndex).Trim();
+                if (!IsBuiltInToolAssemblyName(simpleName)) {
+                    continue;
+                }
+
+                discovered.Add(simpleName);
+            }
+        }
+    }
+
     private static bool IsBuiltInToolAssemblyName(string? assemblyName) {
         if (string.IsNullOrWhiteSpace(assemblyName)) {
             return false;
@@ -236,6 +285,10 @@ public static partial class ToolPackBootstrap {
 
         var normalized = assemblyName.Trim();
         if (!normalized.StartsWith("IntelligenceX.Tools.", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (string.Equals(normalized, "IntelligenceX.Tools.Common", StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 

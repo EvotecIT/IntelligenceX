@@ -979,7 +979,7 @@ internal sealed partial class ChatServiceSession {
         builder.Append("default_plugin_paths=").Append(options.EnableDefaultPluginPaths ? '1' : '0').Append(';');
         AppendStringList(builder, "allowed_roots", options.AllowedRoots);
         AppendStringList(builder, "built_in_tool_assemblies", options.BuiltInToolAssemblyNames);
-        AppendStringList(builder, "plugin_paths", options.PluginPaths);
+        AppendStringList(builder, "plugin_paths", options.GetEffectivePluginPaths());
         AppendStringList(builder, "enabled_packs", options.EnabledPackIds, normalizePackId: true);
         AppendStringList(builder, "disabled_packs", options.DisabledPackIds, normalizePackId: true);
         builder.Append("write_mode=").Append(runtimePolicyOptions.WriteGovernanceMode.ToString()).Append(';');
