@@ -55,6 +55,41 @@
       .trim();
   }
 
+  function decodeBase64Utf8Value(value) {
+    var text = String(value || "").trim();
+    if (!text) {
+      return "";
+    }
+
+    var padding = 0;
+    if (text.endsWith("==")) {
+      padding = 2;
+    } else if (text.endsWith("=")) {
+      padding = 1;
+    }
+
+    var predictedBytes = Math.floor((text.length * 3) / 4) - padding;
+    var maxDecodedBytes = Math.max(ixVisualChartState.maxSourceChars, ixVisualNetworkState.maxSourceChars) + 1024;
+    if (predictedBytes > maxDecodedBytes) {
+      return "";
+    }
+
+    try {
+      var bytes = Uint8Array.from(atob(text), function(ch) { return ch.charCodeAt(0); });
+      if (window.TextDecoder) {
+        return new TextDecoder("utf-8").decode(bytes);
+      }
+      var chunkSize = 8192;
+      var decoded = "";
+      for (var i = 0; i < bytes.length; i += chunkSize) {
+        decoded += String.fromCharCode.apply(null, Array.prototype.slice.call(bytes, i, i + chunkSize));
+      }
+      return decodeURIComponent(escape(decoded));
+    } catch (_) {
+      return "";
+    }
+  }
+
   function ensureVisualNotice(anchor, text) {
     if (!anchor || !anchor.parentElement) {
       return;
@@ -122,6 +157,8 @@
       ".markdown-body pre[data-ix-chart-rendered='1'], " +
       ".markdown-body pre[data-ix-network-rendered='1'], " +
       ".markdown-body pre[data-ix-mermaid-rendered='1'], " +
+      ".markdown-body canvas.omd-chart[data-chart-rendered='1'], " +
+      ".markdown-body .omd-network[data-network-rendered='1'], " +
       ".markdown-body .ix-chart-host, " +
       ".markdown-body .ix-network-host");
     if (!hasVisual) {
@@ -929,6 +966,8 @@
     pre._ixChartInstance = null;
     pre.removeAttribute("data-ix-chart-rendered");
     pre.removeAttribute("data-ix-chart-pending");
+    pre.removeAttribute("data-chart-rendered");
+    pre.removeAttribute("data-chart-pending");
     pre.style.removeProperty("display");
 
     var host = pre.nextElementSibling;
@@ -1021,6 +1060,66 @@
     }
   }
 
+  async function renderOfficeImoChartBlock(canvas) {
+    if (!canvas || canvas.getAttribute("data-chart-pending") === "1" || canvas.getAttribute("data-chart-rendered") === "1") {
+      return;
+    }
+
+    var source = String(canvas.getAttribute("data-ix-chart-source") || "").trim();
+    if (!source) {
+      source = decodeBase64Utf8Value(canvas.getAttribute("data-chart-config-b64"));
+    }
+    source = normalizeText(source);
+    if (source) {
+      canvas.setAttribute("data-ix-chart-source", source);
+    }
+
+    if (!source) {
+      markChartInvalid(canvas, "empty source");
+      return;
+    }
+    if (source.length > ixVisualChartState.maxSourceChars) {
+      markChartInvalid(canvas, "source too large");
+      return;
+    }
+
+    var parsedConfig;
+    try {
+      parsedConfig = JSON.parse(source);
+    } catch (_) {
+      markChartInvalid(canvas, "invalid JSON");
+      return;
+    }
+
+    var validation = validateIxChartConfig(parsedConfig);
+    if (!validation.ok) {
+      markChartInvalid(canvas, validation.reason || "schema validation failed");
+      return;
+    }
+
+    canvas.setAttribute("data-chart-pending", "1");
+    try {
+      disposeChartBlock(canvas);
+      var context = canvas.getContext && canvas.getContext("2d");
+      if (!context) {
+        throw new Error("canvas context unavailable");
+      }
+
+      var chartConfig = cloneVisualValue(validation.config) || validation.config;
+      chartConfig = applyChartThemeDefaults(chartConfig, "preserve_ui_theme");
+      var instance = new window.Chart(context, chartConfig);
+      canvas._ixChartInstance = instance;
+      canvas.removeAttribute("data-ix-chart-invalid");
+      canvas.setAttribute("data-chart-rendered", "1");
+      clearVisualNotice(canvas);
+      ensureVisualActionBar(canvas, "ix-chart");
+    } catch (_) {
+      markChartInvalid(canvas, "render failed");
+    } finally {
+      canvas.removeAttribute("data-chart-pending");
+    }
+  }
+
   function ensureNetworkReady() {
     if (window.vis && typeof window.vis.Network === "function") {
       return Promise.resolve(true);
@@ -1064,6 +1163,68 @@
       });
 
     return ixVisualNetworkState.loadPromise;
+  }
+
+  function collectOfficeImoNetworkBlocks(root) {
+    var hosts = root.querySelectorAll(".bubble .markdown-body .omd-network");
+    if (!hosts || hosts.length === 0) {
+      return [];
+    }
+
+    var blocks = [];
+    for (var i = 0; i < hosts.length; i++) {
+      var host = hosts[i];
+      if (!host || !host.parentElement) {
+        continue;
+      }
+
+      if (!host.dataset.ixNetworkBlockId) {
+        host.dataset.ixNetworkBlockId = host.getAttribute("data-network-hash")
+          || ("omd-network-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000)));
+      }
+
+      blocks.push(host);
+    }
+
+    return blocks;
+  }
+
+  function compareVisualBlockDocumentOrder(left, right) {
+    if (left === right) {
+      return 0;
+    }
+    if (!left || typeof left.compareDocumentPosition !== "function") {
+      return -1;
+    }
+    if (!right || typeof right.compareDocumentPosition !== "function") {
+      return 1;
+    }
+
+    var relation = left.compareDocumentPosition(right);
+    if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
+      return -1;
+    }
+    if (relation & Node.DOCUMENT_POSITION_PRECEDING) {
+      return 1;
+    }
+    return 0;
+  }
+
+  function buildOrderedVisualEntries(fenceBlocks, nativeBlocks) {
+    var entries = [];
+
+    for (var i = 0; i < fenceBlocks.length; i++) {
+      entries.push({ block: fenceBlocks[i], isNative: false });
+    }
+    for (var j = 0; j < nativeBlocks.length; j++) {
+      entries.push({ block: nativeBlocks[j], isNative: true });
+    }
+
+    entries.sort(function(left, right) {
+      return compareVisualBlockDocumentOrder(left.block, right.block);
+    });
+
+    return entries;
   }
 
   function sanitizeNetworkId(value) {
@@ -1478,11 +1639,19 @@
     pre._ixNetworkInstance = null;
     pre.removeAttribute("data-ix-network-rendered");
     pre.removeAttribute("data-ix-network-pending");
+    pre.removeAttribute("data-network-rendered");
+    pre.removeAttribute("data-network-pending");
     pre.style.removeProperty("display");
 
     var host = pre.nextElementSibling;
     if (host && host.classList && host.classList.contains("ix-network-host")) {
       host.remove();
+    }
+    if (pre.classList && pre.classList.contains("omd-network")) {
+      var nativeCanvas = pre.querySelector(".omd-network-canvas");
+      if (nativeCanvas) {
+        nativeCanvas.remove();
+      }
     }
     clearVisualMessageWideWhenEmpty(pre);
   }
@@ -1586,6 +1755,87 @@
     }
   }
 
+  async function renderOfficeImoNetworkBlock(host) {
+    if (!host || host.getAttribute("data-network-pending") === "1" || host.getAttribute("data-network-rendered") === "1") {
+      return;
+    }
+
+    var source = String(host.getAttribute("data-ix-network-source") || "").trim();
+    if (!source) {
+      source = decodeBase64Utf8Value(host.getAttribute("data-network-config-b64"));
+    }
+    source = normalizeText(source);
+    if (source) {
+      host.setAttribute("data-ix-network-source", source);
+    }
+
+    if (!source) {
+      markNetworkInvalid(host, "empty source");
+      return;
+    }
+    if (source.length > ixVisualNetworkState.maxSourceChars) {
+      markNetworkInvalid(host, "source too large");
+      return;
+    }
+
+    var parsedConfig;
+    try {
+      parsedConfig = JSON.parse(source);
+    } catch (_) {
+      markNetworkInvalid(host, "invalid JSON");
+      return;
+    }
+
+    var validation = validateIxNetworkConfig(parsedConfig);
+    if (!validation.ok) {
+      markNetworkInvalid(host, validation.reason || "schema validation failed");
+      return;
+    }
+
+    host.setAttribute("data-network-pending", "1");
+    try {
+      disposeNetworkBlock(host);
+
+      var canvas = document.createElement("div");
+      canvas.className = "omd-network-canvas";
+      host.appendChild(canvas);
+
+      var networkOptions = buildRuntimeNetworkOptions(
+        "preserve_ui_theme",
+        validation.config.options || {},
+        "inline");
+
+      var network = new window.vis.Network(
+        canvas,
+        {
+          nodes: validation.config.nodes,
+          edges: validation.config.edges
+        },
+        networkOptions);
+
+      stabilizeNetwork(network, 280);
+      safeNetworkFit(network, 120);
+      try {
+        network.once("stabilized", function() {
+          safeNetworkFit(network, 0);
+        });
+      } catch (_) {
+        // Ignore listener setup failures.
+      }
+
+      host._ixNetworkInstance = network;
+      host._ixNetworkResizeCleanup = attachNetworkAutoFitObserver(network, canvas);
+      host.removeAttribute("data-ix-network-invalid");
+      host.setAttribute("data-network-rendered", "1");
+      clearVisualNotice(host);
+      ensureVisualActionBar(host, "ix-network");
+    } catch (_) {
+      markNetworkInvalid(host, "render failed");
+    } finally {
+      host.removeAttribute("data-network-pending");
+    }
+  }
+
   function collectIxNetworkBlocks(root) {
     var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-ix-network, .bubble .markdown-body pre > code.language-visnetwork, .bubble .markdown-body pre > code.language-network");
     if (!codeNodes || codeNodes.length === 0) {
@@ -1617,26 +1867,32 @@
   }
 
   async function renderTranscriptNetworks(root) {
-    var blocks = collectIxNetworkBlocks(root);
-    if (blocks.length === 0) {
+    var fenceBlocks = collectIxNetworkBlocks(root);
+    var nativeBlocks = collectOfficeImoNetworkBlocks(root);
+    var entries = buildOrderedVisualEntries(fenceBlocks, nativeBlocks);
+    if (entries.length === 0) {
       return;
     }
 
     var maxBlocks = ixVisualNetworkState.maxBlocksPerMessage;
-    for (var i = maxBlocks; i < blocks.length; i++) {
-      markNetworkInvalid(blocks[i], "too many networks");
+    for (var i = maxBlocks; i < entries.length; i++) {
+      markNetworkInvalid(entries[i].block, "too many networks");
     }
 
     var ready = await ensureNetworkReady();
     if (!ready) {
-      for (var j = 0; j < Math.min(blocks.length, maxBlocks); j++) {
-        markNetworkInvalid(blocks[j], "renderer unavailable");
+      for (var j = 0; j < Math.min(entries.length, maxBlocks); j++) {
+        markNetworkInvalid(entries[j].block, "renderer unavailable");
       }
       return;
     }
 
-    for (var k = 0; k < Math.min(blocks.length, maxBlocks); k++) {
-      await renderIxNetworkBlock(blocks[k]);
+    for (var m = 0; m < Math.min(entries.length, maxBlocks); m++) {
+      if (entries[m].isNative) {
+        await renderOfficeImoNetworkBlock(entries[m].block);
+      } else {
+        await renderIxNetworkBlock(entries[m].block);
+      }
     }
   }
 
@@ -1695,27 +1951,57 @@
     return blocks;
   }
 
+  function collectOfficeImoChartBlocks(root) {
+    var canvases = root.querySelectorAll(".bubble .markdown-body canvas.omd-chart");
+    if (!canvases || canvases.length === 0) {
+      return [];
+    }
+
+    var blocks = [];
+    for (var i = 0; i < canvases.length; i++) {
+      var canvas = canvases[i];
+      if (!canvas || !canvas.parentElement) {
+        continue;
+      }
+
+      if (!canvas.dataset.ixChartBlockId) {
+        canvas.dataset.ixChartBlockId = canvas.getAttribute("data-chart-hash")
+          || ("omd-chart-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000)));
+      }
+
+      blocks.push(canvas);
+    }
+
+    return blocks;
+  }
+
   async function renderTranscriptCharts(root) {
-    var blocks = collectIxChartBlocks(root);
-    if (blocks.length === 0) {
+    var fenceBlocks = collectIxChartBlocks(root);
+    var nativeBlocks = collectOfficeImoChartBlocks(root);
+    var entries = buildOrderedVisualEntries(fenceBlocks, nativeBlocks);
+    if (entries.length === 0) {
       return;
     }
 
     var maxBlocks = ixVisualChartState.maxBlocksPerMessage;
-    for (var i = maxBlocks; i < blocks.length; i++) {
-      markChartInvalid(blocks[i], "too many charts");
+    for (var i = maxBlocks; i < entries.length; i++) {
+      markChartInvalid(entries[i].block, "too many charts");
     }
 
     var ready = await ensureChartReady();
     if (!ready) {
-      for (var j = 0; j < Math.min(blocks.length, maxBlocks); j++) {
-        markChartInvalid(blocks[j], "renderer unavailable");
+      for (var j = 0; j < Math.min(entries.length, maxBlocks); j++) {
+        markChartInvalid(entries[j].block, "renderer unavailable");
       }
       return;
     }
 
-    for (var k = 0; k < Math.min(blocks.length, maxBlocks); k++) {
-      await renderIxChartBlock(blocks[k]);
+    for (var m = 0; m < Math.min(entries.length, maxBlocks); m++) {
+      if (entries[m].isNative) {
+        await renderOfficeImoChartBlock(entries[m].block);
+      } else {
+        await renderIxChartBlock(entries[m].block);
+      }
     }
   }
 
@@ -1730,12 +2016,12 @@
       clearVisualMessageWideWhenEmpty(mermaidBlocks[m]);
     }
 
-    var chartBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-chart-rendered='1']");
+    var chartBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-chart-rendered='1'], .bubble .markdown-body canvas.omd-chart[data-chart-rendered='1']");
     for (var i = 0; i < chartBlocks.length; i++) {
       disposeChartBlock(chartBlocks[i]);
     }
 
-    var networkBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-network-rendered='1']");
+    var networkBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-network-rendered='1'], .bubble .markdown-body .omd-network[data-network-rendered='1']");
     for (var j = 0; j < networkBlocks.length; j++) {
       disposeNetworkBlock(networkBlocks[j]);
     }
@@ -2423,8 +2709,14 @@
       source = String(pre.getAttribute("data-ix-mermaid-source") || "").trim();
     } else if (normalizedKind === "ix-chart") {
       source = String(pre.getAttribute("data-ix-chart-source") || "").trim();
+      if (!source) {
+        source = decodeBase64Utf8Value(pre.getAttribute("data-chart-config-b64"));
+      }
     } else if (normalizedKind === "ix-network") {
       source = String(pre.getAttribute("data-ix-network-source") || "").trim();
+      if (!source) {
+        source = decodeBase64Utf8Value(pre.getAttribute("data-network-config-b64"));
+      }
     }
     if (!source) {
       source = normalizeText(pre.textContent || "");
