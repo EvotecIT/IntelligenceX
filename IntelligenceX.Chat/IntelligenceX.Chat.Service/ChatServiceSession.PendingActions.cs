@@ -73,8 +73,9 @@ internal sealed partial class ChatServiceSession {
             // selected naturally on the next user turn, even when the model omitted ix:action blocks.
             actions = ExtractFallbackChoicePendingActions(text);
             if (actions.Count == 0) {
-                // Don't clear existing pending actions on follow-up assistant messages that don't
-                // include actionable markers/options.
+                // The latest finalized assistant reply no longer exposes actionable choices, so
+                // older pending actions should not remain eligible for unrelated future turns.
+                ClearPendingActionsContext(normalizedThreadId);
                 return;
             }
 
@@ -114,6 +115,22 @@ internal sealed partial class ChatServiceSession {
         if (snapshotActions is not null && snapshotActions.Length > 0 && snapshotTicks > 0) {
             PersistPendingActionsSnapshot(normalizedThreadId, snapshotTicks, snapshotActions, callToActionTokens);
         }
+    }
+
+    private void ClearPendingActionsContext(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        lock (_toolRoutingContextLock) {
+            _pendingActionsByThreadId.Remove(normalizedThreadId);
+            _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+            _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
+            TrimWeightedRoutingContextsNoLock();
+        }
+
+        RemovePendingActionsSnapshot(normalizedThreadId);
     }
 
     private bool TryResolvePendingActionSelection(string threadId, string userRequest, out string resolvedRequest) {

@@ -180,7 +180,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         RememberCarryoverAutoReplay(normalizedThreadId, snapshot.ToolName, serializedArguments, normalizedArguments);
-        var callId = "host_carryover_next_action_" + Guid.NewGuid().ToString("N");
+        var callId = BuildHostGeneratedToolCallId("host_carryover_next_action");
         var raw = new JsonObject()
             .Add("type", "tool_call")
             .Add("call_id", callId)
@@ -379,6 +379,7 @@ internal sealed partial class ChatServiceSession {
 
         lock (_toolRoutingContextLock) {
             _structuredNextActionByThreadId.Remove(normalizedThreadId);
+            _structuredNextActionAutoReplayByThreadId.Remove(normalizedThreadId);
             TrimWeightedRoutingContextsNoLock();
         }
         RemoveStructuredNextActionSnapshot(normalizedThreadId);

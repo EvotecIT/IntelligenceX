@@ -1,0 +1,58 @@
+using IntelligenceX.Chat.Service;
+using Xunit;
+
+namespace IntelligenceX.Chat.Tests;
+
+public sealed partial class ChatServiceRoutingTrimTests {
+    [Fact]
+    public void ExpandContinuationUserRequest_FreshTopLevelGreetingDoesNotReusePriorIntent() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-fresh-top-level";
+
+        session.RememberUserIntentForTesting(threadId, "Please run AD LDAP and DNS MX checks together now.");
+
+        var expanded = session.ExpandContinuationUserRequestForTesting(threadId, "hello");
+
+        Assert.Equal("hello", expanded);
+    }
+
+    [Fact]
+    public void RememberUserIntentForTesting_FreshTopLevelIntentClearsStalePendingChoiceContexts() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-clear-stale-choice-context";
+
+        session.RememberPendingActionsForTesting(
+            threadId,
+            """
+            1. AD domain
+            2. Public domain
+            """);
+        session.RememberPendingDomainIntentClarificationRequestForTesting(threadId);
+        session.SetPreferredDomainIntentFamilyForTesting(threadId, "ad_domain");
+
+        session.RememberUserIntentForTesting(threadId, "hello");
+
+        Assert.False(session.HasFreshPendingActionsContextForTesting(threadId));
+        Assert.False(session.TryResolvePendingDomainIntentClarificationSelectionForTesting(threadId, "1", out _));
+        Assert.Null(session.GetPreferredDomainIntentFamilyForTesting(threadId));
+    }
+
+    [Theory]
+    [InlineData("hello", false, false)]
+    [InlineData("continue", false, true)]
+    [InlineData("go ahead", false, true)]
+    [InlineData("继续", false, true)]
+    public void ResolveFollowUpTurnClassification_UsesMoreConservativeCompactContinuationShape(
+        string userRequest,
+        bool expectedContinuationFollowUpTurn,
+        bool expectedCompactFollowUpTurn) {
+        var result = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
+            continuationContractDetected: false,
+            hasStructuredContinuationContext: true,
+            userRequest: userRequest,
+            routedUserRequest: userRequest);
+
+        Assert.Equal(expectedContinuationFollowUpTurn, result.ContinuationFollowUpTurn);
+        Assert.Equal(expectedCompactFollowUpTurn, result.CompactFollowUpTurn);
+    }
+}

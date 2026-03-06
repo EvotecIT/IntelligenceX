@@ -278,7 +278,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void RememberPendingActions_NoMarkerOrFallbackChoices_DoesNotClearExistingActionContext() {
+    public void RememberPendingActions_NoMarkerOrFallbackChoices_ClearsExistingActionContext() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var actionDraft = """
             [Action]
@@ -300,8 +300,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "/act act_001" });
         var expanded = Assert.IsType<string>(result);
 
-        using var doc = JsonDocument.Parse(expanded);
-        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+        Assert.Equal("/act act_001", expanded);
     }
 
     [Fact]

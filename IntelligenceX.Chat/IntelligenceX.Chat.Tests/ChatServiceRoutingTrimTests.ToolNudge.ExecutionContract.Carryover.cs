@@ -483,9 +483,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
             hostHintUserRequest: "go ahead",
             toolDefinitions: toolDefinitions,
             mutatingToolHintsByName: mutabilityHints,
-            toolCall: out _,
+            toolCall: out var firstToolCall,
             reason: out var firstReason);
         Assert.True(firstResult);
+        Assert.True(firstToolCall.CallId.Length <= 64, $"Expected provider-safe call_id length, observed {firstToolCall.CallId.Length}: {firstToolCall.CallId}");
         Assert.Equal("carryover_structured_next_action_readonly_autorun", firstReason);
 
         var assistantPinnedInput = ChatServiceSession.BuildCarryoverHostHintInputForTesting(
