@@ -253,14 +253,31 @@ internal sealed partial class ChatServiceSession {
         bool weightedToolRouting,
         bool executionContractApplies,
         bool usedContinuationSubset,
+        string userRequest,
         int selectedToolCount,
         int totalToolCount,
-        IReadOnlyList<ToolDefinition> selectedTools) {
+        IReadOnlyList<ToolDefinition> selectedTools,
+        IReadOnlyList<ToolDefinition>? availableDefinitions) {
         if (!weightedToolRouting || executionContractApplies || usedContinuationSubset) {
             return false;
         }
 
         if (selectedTools is null) {
+            return false;
+        }
+
+        var normalizedRequest = (userRequest ?? string.Empty).Trim();
+        if (normalizedRequest.Length == 0 || ShouldSkipWeightedRouting(normalizedRequest)) {
+            return false;
+        }
+
+        var requestAssessment = AssessDomainIntentRequest(normalizedRequest, availableDefinitions);
+        if (requestAssessment.HasResolvedFamily) {
+            return false;
+        }
+
+        if (!requestAssessment.HasConflictingSignals
+            && string.IsNullOrWhiteSpace(requestAssessment.AmbiguousDomainTarget)) {
             return false;
         }
 
@@ -327,13 +344,12 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        // If an explicit structured family selection is present, do not force clarification.
-        if (TryResolveDomainIntentFamilyFromUserSignals(userRequest, availableDefinitions, out _)) {
+        var requestAssessment = AssessDomainIntentRequest(userRequest, availableDefinitions);
+        if (requestAssessment.HasResolvedFamily) {
             return false;
         }
 
-        return HasConflictingDomainIntentSignals(userRequest, availableDefinitions)
-               || LooksLikeMixedDomainScopeRequest(userRequest);
+        return requestAssessment.HasConflictingSignals;
     }
 
     private static bool ShouldSuppressDomainIntentClarificationForCompactFollowUp(
@@ -929,6 +945,7 @@ internal sealed partial class ChatServiceSession {
 
     private static string BuildDomainIntentClarificationVisibleText() {
         return BuildDomainIntentClarificationVisibleText(
+            userRequest: null,
             new DomainIntentFamilyAvailability(
                 HasAd: true,
                 HasPublic: true,
@@ -938,11 +955,13 @@ internal sealed partial class ChatServiceSession {
 
     private static string BuildDomainIntentClarificationVisibleText(DomainIntentFamilyAvailability availability) {
         return BuildDomainIntentClarificationVisibleText(
+            userRequest: null,
             availability,
             BuildDefaultDomainIntentActionCatalog());
     }
 
     private static string BuildDomainIntentClarificationVisibleText(
+        string? userRequest,
         DomainIntentFamilyAvailability availability,
         DomainIntentActionCatalog actionCatalog) {
         var options = BuildDomainIntentFamilyOptions(availability, actionCatalog);
@@ -950,24 +969,55 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
+        var requestAssessment = AssessDomainIntentRequest(userRequest ?? string.Empty, availableDefinitions: null);
         var ordinalChoices = string.Join(" or ", options.Select(static option => option.Ordinal.ToString()));
-        var familyChoices = string.Join(" or ", options.Select(static option => option.Family));
-        var actionChoices = string.Join('|', options.Select(static option => $"/act {option.ActionId}"));
+        var replyExamples = string.Join(
+            " or ",
+            options.Select(static option => "\"" + BuildDomainIntentFamilyReplyExample(option.Family) + "\""));
+        var targetClause = string.IsNullOrWhiteSpace(requestAssessment.AmbiguousDomainTarget)
+            ? string.Empty
+            : $" for `{requestAssessment.AmbiguousDomainTarget}`";
 
         var sb = new StringBuilder();
-        sb.AppendLine("I need a quick scope choice before continuing.");
+        if (requestAssessment.HasConflictingSignals) {
+            sb.Append("I can check that");
+            sb.Append(targetClause);
+            sb.AppendLine(", but I need to know which side you mean:");
+        } else if (targetClause.Length > 0) {
+            sb.Append("I can check that");
+            sb.Append(targetClause);
+            sb.AppendLine(". I just need to know which side you want:");
+        } else {
+            sb.AppendLine("I can check that. I just need one quick scope choice so I run the right kind of checks:");
+        }
         sb.AppendLine();
         for (var i = 0; i < options.Count; i++) {
             var option = options[i];
             sb.Append(option.Ordinal).Append(". ").AppendLine(BuildDomainIntentFamilyChoiceDescription(option.Family));
         }
         sb.AppendLine();
-        sb.AppendLine("Reply with:");
-        sb.Append("- ").Append(ordinalChoices).AppendLine(" (Unicode digits supported),");
-        sb.Append("- ").Append(familyChoices).AppendLine(",");
-        sb.Append("- or ").Append(actionChoices).Append('.');
+        sb.Append("You can reply naturally, for example ").Append(replyExamples).AppendLine(".");
+        sb.Append("Numbers like ").Append(ordinalChoices).Append(" also work");
+        sb.AppendLine(" (Unicode digits supported).");
 
         return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildDomainIntentFamilyReplyExample(string family) {
+        if (string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)) {
+            return "AD";
+        }
+
+        if (string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)) {
+            return "public DNS";
+        }
+
+        var label = (family ?? string.Empty).Trim();
+        if (label.Length == 0) {
+            return "that scope";
+        }
+
+        return label.Replace('_', ' ');
     }
 
     private static string BuildDomainIntentFamilyChoiceDescription(string family) {

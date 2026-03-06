@@ -324,9 +324,11 @@ internal sealed partial class ChatServiceSession {
             weightedToolRouting: weightedToolRouting,
             executionContractApplies: executionContractApplies,
             usedContinuationSubset: usedContinuationSubset,
+            userRequest: domainIntentSignalRequest,
             selectedToolCount: routingSelectedToolCount,
             totalToolCount: routingTotalToolCount,
-            selectedTools: toolDefs);
+            selectedTools: toolDefs,
+            availableDefinitions: fullToolDefs);
         var hasPreferredDomainIntentFamily = TryGetCurrentDomainIntentFamily(threadId, out var preferredDomainIntentFamily);
         if (hasPreferredDomainIntentFamily
             && !IsDomainIntentFamilyAvailable(domainIntentFamilyAvailability, preferredDomainIntentFamily)) {
@@ -357,7 +359,7 @@ internal sealed partial class ChatServiceSession {
 
             var actionCatalog = ResolveDomainIntentActionCatalog(fullToolDefs);
             var clarificationText = BuildDomainIntentClarificationText(domainIntentFamilyAvailability, actionCatalog);
-            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentFamilyAvailability, actionCatalog);
+            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, domainIntentFamilyAvailability, actionCatalog);
             if (clarificationText.Length > 0 && clarificationVisibleText.Length > 0) {
                 RememberPendingDomainIntentClarificationRequest(threadId);
                 RememberPendingActions(threadId, clarificationText);

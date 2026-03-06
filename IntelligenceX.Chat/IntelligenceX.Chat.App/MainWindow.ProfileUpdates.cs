@@ -656,6 +656,13 @@ public sealed partial class MainWindow : Window {
         var onboardingInProgress = !_appState.OnboardingCompleted;
         IReadOnlyList<string> missingFields = onboardingInProgress ? BuildMissingOnboardingFields() : Array.Empty<string>();
         var localContextLines = BuildLocalContextFallbackLines(activeConversation, userText);
+        var conversationStyleLines = ConversationStyleGuidanceBuilder.BuildRecentUserStyleLines(activeConversation.Messages);
+        var continuationStateLines = ConversationStyleGuidanceBuilder.BuildContinuationStateLines(
+            activeConversation.Messages,
+            activeConversation.PendingActions,
+            activeConversation.PendingAssistantQuestionHint);
+        var recentAssistantAnswerWasSubstantive = ConversationStyleGuidanceBuilder.HasRecentSubstantiveAssistantAnswer(activeConversation.Messages);
+        var recentAssistantAskedQuestion = ConversationStyleGuidanceBuilder.HasRecentAssistantQuestion(activeConversation.Messages);
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
         var runtimeCapabilityLines = BuildRuntimeCapabilityContextLines();
         return PromptMarkdownBuilder.BuildServiceRequest(
@@ -667,6 +674,10 @@ public sealed partial class MainWindow : Window {
             includeLiveProfileUpdates: MightContainProfileUpdateCue(userText),
             executionBehaviorPrompt: PromptAssets.GetExecutionBehaviorPrompt(),
             localContextLines: localContextLines,
+            conversationStyleLines: conversationStyleLines,
+            continuationStateLines: continuationStateLines,
+            recentAssistantAnswerWasSubstantive: recentAssistantAnswerWasSubstantive,
+            recentAssistantAskedQuestion: recentAssistantAskedQuestion,
             persistentMemoryLines: memoryContextLines,
             persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
             runtimeCapabilityLines: runtimeCapabilityLines,

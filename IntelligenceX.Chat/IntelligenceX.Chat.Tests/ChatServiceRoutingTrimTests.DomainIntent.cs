@@ -47,8 +47,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 false,
                 false,
+                "check evotec.xyz",
                 selectedTools.Count,
                 24,
+                selectedTools,
                 selectedTools
             });
 
@@ -71,8 +73,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 false,
                 false,
+                "check evotec.xyz",
                 selectedTools.Count,
                 24,
+                selectedTools,
                 selectedTools
             });
 
@@ -95,8 +99,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 false,
                 false,
+                "check evotec.xyz",
                 selectedTools.Count,
                 24,
+                selectedTools,
                 selectedTools
             });
 
@@ -120,8 +126,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 false,
                 false,
+                "check evotec.xyz",
                 selectedTools.Count,
                 30,
+                selectedTools,
                 selectedTools
             });
 
@@ -142,8 +150,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 true,
                 false,
+                "check evotec.xyz",
                 selectedTools.Count,
                 20,
+                selectedTools,
                 selectedTools
             });
 
@@ -164,8 +174,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 false,
                 false,
+                "check evotec.xyz",
                 selectedTools.Count,
                 selectedTools.Count,
+                selectedTools,
                 selectedTools
             });
 
@@ -180,8 +192,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 false,
                 false,
+                "check evotec.xyz",
                 3,
                 20,
+                null,
                 null
             });
 
@@ -220,6 +234,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("[DomainIntent]", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ix:domain-intent", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("[Action]", clarification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildDomainIntentClarificationVisibleTextForTesting_IncludesAmbiguousTargetAndNaturalReplyExamples() {
+        var clarification = ChatServiceSession.BuildDomainIntentClarificationVisibleTextForTesting(
+            "Can you check evotec.xyz?",
+            hasAdFamily: true,
+            hasPublicFamily: true);
+
+        Assert.Contains("evotec.xyz", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"AD\"", clarification, StringComparison.Ordinal);
+        Assert.Contains("\"public DNS\"", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/act", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ad_domain", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
