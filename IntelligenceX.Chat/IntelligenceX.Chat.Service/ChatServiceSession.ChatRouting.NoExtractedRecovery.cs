@@ -313,32 +313,15 @@ internal sealed partial class ChatServiceSession {
                     shouldAttemptNudge: false,
                     reason: executionNudgeReason);
 
-                if (!suppressLocalToolRecoveryRetries
-                    && !toolReceiptCorrectionUsed
-                    && ShouldAttemptToolReceiptCorrection(
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        tools: toolDefs,
-                        priorToolCalls: toolCalls.Count,
-                        priorToolOutputs: toolOutputs.Count,
-                        assistantDraftToolCalls: extracted.Count)) {
-                    toolReceiptCorrectionUsed = true;
-                    var correctionPrompt = BuildToolReceiptCorrectionPrompt(routedUserRequest, text);
-                    turn = await RunModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            ChatInput.FromText(correctionPrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
-                            turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
-                            phaseMessage: "Re-planning to correct an inconsistent tool receipt in this turn.",
-                            heartbeatLabel: "Re-planning tool receipt",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
-                }
+                var shouldAttemptToolReceiptCorrection = !suppressLocalToolRecoveryRetries
+                                                        && !toolReceiptCorrectionUsed
+                                                        && ShouldAttemptToolReceiptCorrection(
+                                                            userRequest: routedUserRequest,
+                                                            assistantDraft: text,
+                                                            tools: toolDefs,
+                                                            priorToolCalls: toolCalls.Count,
+                                                            priorToolOutputs: toolOutputs.Count,
+                                                            assistantDraftToolCalls: extracted.Count);
 
                 var shouldAttemptWatchdog = false;
                 noToolExecutionWatchdogReason = "not_evaluated";
@@ -373,54 +356,7 @@ internal sealed partial class ChatServiceSession {
                     watchdogAlreadyUsed: noToolExecutionWatchdogUsed,
                     shouldRetry: shouldAttemptWatchdog,
                     reason: noToolExecutionWatchdogReason);
-                if (shouldAttemptWatchdog) {
-                    noToolExecutionWatchdogUsed = true;
-                    var watchdogPrompt = BuildNoToolExecutionWatchdogPrompt(routedUserRequest, text);
-                    turn = await RunModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            ChatInput.FromText(watchdogPrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
-                            turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
-                            phaseMessage: "Re-validating tool execution for this turn.",
-                            heartbeatLabel: "Re-validating execution",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
-                }
-
                 var hasToolActivity = toolCalls.Count > 0 || toolOutputs.Count > 0;
-                if (executionContractApplies
-                    && !hasToolActivity
-                    && !executionContractEscapeUsed
-                    && fullToolDefs.Length > 0) {
-                    executionContractEscapeUsed = true;
-                    toolDefs = fullToolDefs;
-                    options.Tools = fullToolDefs;
-                    options.ToolChoice = ToolChoice.Auto;
-                    usedContinuationSubset = false;
-                    RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
-
-                    var escapePrompt = BuildExecutionContractEscapePrompt(routedUserRequest, text);
-                    turn = await RunModelPhaseWithProgressAsync(
-                            client,
-                            writer,
-                            request.RequestId,
-                            threadId,
-                            ChatInput.FromText(escapePrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
-                            turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
-                            phaseMessage: "Selected action had no tool activity; retrying with full tool availability.",
-                            heartbeatLabel: "Re-planning with full tools",
-                            heartbeatSeconds: modelHeartbeatSeconds)
-                        .ConfigureAwait(false);
-                    return ContinueRound();
-                }
-
                 var shouldAttemptContinuationSubsetEscape = ShouldAttemptContinuationSubsetEscape(
                     executionContractApplies: executionContractApplies,
                     usedContinuationSubset: usedContinuationSubset,
@@ -428,28 +364,64 @@ internal sealed partial class ChatServiceSession {
                     toolsAvailable: fullToolDefs.Length > 0,
                     priorToolCalls: toolCalls.Count,
                     priorToolOutputs: toolOutputs.Count,
-                    out _);
-                if (!suppressLocalToolRecoveryRetries && shouldAttemptContinuationSubsetEscape) {
-                    continuationSubsetEscapeUsed = true;
-                    toolDefs = fullToolDefs;
-                    options.Tools = fullToolDefs;
-                    options.ToolChoice = ToolChoice.Auto;
-                    usedContinuationSubset = false;
-                    RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    out var continuationSubsetEscapeReason);
 
-                    var subsetEscapePrompt = BuildContinuationSubsetEscapePrompt(routedUserRequest, text);
-                    turn = await RunModelPhaseWithProgressAsync(
+                var promptRecoveryDecision = ResolveNoExtractedPromptRecoveryDecision(
+                    suppressLocalToolRecoveryRetries: suppressLocalToolRecoveryRetries,
+                    shouldAttemptExecutionNudge: shouldAttemptExecutionNudge,
+                    executionNudgeReason: executionNudgeReason,
+                    shouldAttemptToolReceiptCorrection: shouldAttemptToolReceiptCorrection,
+                    shouldAttemptWatchdog: shouldAttemptWatchdog,
+                    noToolExecutionWatchdogReason: noToolExecutionWatchdogReason,
+                    executionContractApplies: executionContractApplies,
+                    hasToolActivity: hasToolActivity,
+                    executionContractEscapeUsed: executionContractEscapeUsed,
+                    fullToolsAvailable: fullToolDefs.Length > 0,
+                    shouldAttemptContinuationSubsetEscape: shouldAttemptContinuationSubsetEscape,
+                    continuationSubsetEscapeReason: continuationSubsetEscapeReason);
+                if (promptRecoveryDecision.Kind != NoExtractedPromptRecoveryDecisionKind.None) {
+                    switch (promptRecoveryDecision.Kind) {
+                        case NoExtractedPromptRecoveryDecisionKind.ExecutionNudge:
+                            if (ShouldCountUnknownPendingActionEnvelopeNudge(promptRecoveryDecision.Reason)) {
+                                nudgeUnknownEnvelopeReplanCount++;
+                            }
+
+                            executionNudgeUsed = true;
+                            break;
+                        case NoExtractedPromptRecoveryDecisionKind.ToolReceiptCorrection:
+                            toolReceiptCorrectionUsed = true;
+                            break;
+                        case NoExtractedPromptRecoveryDecisionKind.ExecutionWatchdog:
+                            noToolExecutionWatchdogUsed = true;
+                            break;
+                        case NoExtractedPromptRecoveryDecisionKind.ExecutionContractEscape:
+                            executionContractEscapeUsed = true;
+                            break;
+                        case NoExtractedPromptRecoveryDecisionKind.ContinuationSubsetEscape:
+                            continuationSubsetEscapeUsed = true;
+                            break;
+                    }
+
+                    if (promptRecoveryDecision.ExpandToFullToolAvailability) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
+                    }
+
+                    turn = await ApplyNoExtractedPromptRecoveryDecisionAsync(
                             client,
                             writer,
-                            request.RequestId,
+                            request,
                             threadId,
-                            ChatInput.FromText(subsetEscapePrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
+                            options,
                             turnToken,
-                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
-                            phaseMessage: "Follow-up subset had no tool activity; retrying with full tool availability.",
-                            heartbeatLabel: "Expanding follow-up tools",
-                            heartbeatSeconds: modelHeartbeatSeconds)
+                            planExecuteReviewLoop,
+                            modelHeartbeatSeconds,
+                            routedUserRequest,
+                            text,
+                            promptRecoveryDecision)
                         .ConfigureAwait(false);
                     return ContinueRound();
                 }
