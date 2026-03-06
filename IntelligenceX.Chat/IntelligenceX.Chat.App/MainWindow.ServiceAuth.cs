@@ -97,6 +97,31 @@ public sealed partial class MainWindow : Window {
         return !requiresInteractiveSignIn || !preserveInteractiveAuthState;
     }
 
+    internal static bool ShouldResetEnsureLoginProbeCacheForAuthContextChange(
+        bool requiresInteractiveSignIn,
+        bool loginCompletedSuccessfully,
+        bool transportChanged,
+        bool runtimeExited) {
+        if (loginCompletedSuccessfully || transportChanged) {
+            return true;
+        }
+
+        return requiresInteractiveSignIn && runtimeExited;
+    }
+
+    internal static bool ShouldExposeExplicitUnauthenticatedEnsureLoginProbeSnapshot(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool probeCacheHasValue,
+        bool probeCachedIsAuthenticated) {
+        return requiresInteractiveSignIn
+               && !isAuthenticated
+               && !loginInProgress
+               && probeCacheHasValue
+               && !probeCachedIsAuthenticated;
+    }
+
     private void ResetEnsureLoginProbeCache() {
         _ensureLoginProbeCacheHasValue = false;
         _ensureLoginProbeCachedIsAuthenticated = false;
@@ -141,7 +166,12 @@ public sealed partial class MainWindow : Window {
     }
 
     private bool HasExplicitUnauthenticatedEnsureLoginProbeSnapshot() {
-        return _ensureLoginProbeCacheHasValue && !_ensureLoginProbeCachedIsAuthenticated;
+        return ShouldExposeExplicitUnauthenticatedEnsureLoginProbeSnapshot(
+            requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+            isAuthenticated: _isAuthenticated,
+            loginInProgress: _loginInProgress,
+            probeCacheHasValue: _ensureLoginProbeCacheHasValue,
+            probeCachedIsAuthenticated: _ensureLoginProbeCachedIsAuthenticated);
     }
 
     private async Task<EnsureLoginProbeSnapshot> ProbeEnsureLoginAsync(TimeSpan timeout, bool requireFreshProbe) {
@@ -219,6 +249,7 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        ResetEnsureLoginProbeCache();
         _isAuthenticated = true;
         _authenticatedAccountId = null;
         _loginInProgress = false;

@@ -166,6 +166,13 @@ public sealed partial class MainWindow {
                     _isAuthenticated = false;
                     _authenticatedAccountId = null;
                     _loginInProgress = false;
+                    if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
+                            requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                            loginCompletedSuccessfully: false,
+                            transportChanged: false,
+                            runtimeExited: true)) {
+                        ResetEnsureLoginProbeCache();
+                    }
                     _ = SetStatusAsync(SessionStatus.Disconnected());
                     EnsureAutoReconnectLoop();
                 });

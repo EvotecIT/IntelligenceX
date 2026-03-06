@@ -155,6 +155,13 @@ public sealed partial class MainWindow : Window {
                     _loginInProgress = false;
                     _autoSignInAttempted = true;
                     _isAuthenticated = done.Ok;
+                    if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
+                            requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                            loginCompletedSuccessfully: done.Ok,
+                            transportChanged: false,
+                            runtimeExited: false)) {
+                        ResetEnsureLoginProbeCache();
+                    }
                     if (!done.Ok) {
                         _authenticatedAccountId = null;
                         Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
