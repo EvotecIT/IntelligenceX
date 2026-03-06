@@ -39,6 +39,62 @@
     visNetworkCssUrl: "https://ixchat.local/vendor/vis-network/vis-network.min.css"
   };
   var ixVisualActionBarState = typeof WeakMap === "function" ? new WeakMap() : new Map();
+  var ixNativeVisualRegistry = {
+    chart: {
+      type: "ix-chart",
+      contractKind: "chart",
+      legacySelector: ".bubble .markdown-body canvas.omd-chart",
+      renderedSelector: ".bubble .markdown-body .omd-visual[data-omd-visual-kind='chart'][data-omd-visual-rendered='true'], .bubble .markdown-body canvas.omd-chart[data-chart-rendered='1']",
+      messageWideSelector: ".markdown-body pre[data-ix-chart-rendered='1'], .markdown-body .omd-visual[data-omd-visual-kind='chart'][data-omd-visual-rendered='true'], .markdown-body canvas.omd-chart[data-chart-rendered='1'], .markdown-body .ix-chart-host",
+      datasetKey: "ixChartBlockId",
+      fallbackHashAttribute: "data-chart-hash",
+      fallbackPrefix: "omd-chart",
+      cachedSourceAttribute: "data-ix-chart-source",
+      fallbackConfigAttribute: "data-chart-config-b64",
+      overflowReason: "too many charts",
+      unavailableReason: "renderer unavailable",
+      getState: function() { return ixVisualChartState; },
+      ensureReady: ensureChartReady,
+      markInvalid: markChartInvalid,
+      renderNative: renderOfficeImoChartBlock,
+      renderVisualView: renderChartInVisualView,
+      renderExport: renderChartForExport,
+      dispose: disposeChartBlock,
+      resolveDocxRenderSize: function(width) {
+        return {
+          width: normalizeVisualRenderDimension(width, ixVisualExportState.chartWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
+          height: normalizeVisualRenderDimension(Math.round(width * 0.63), 480, 220, 1600)
+        };
+      }
+    },
+    network: {
+      type: "ix-network",
+      contractKind: "network",
+      legacySelector: ".bubble .markdown-body .omd-network",
+      renderedSelector: ".bubble .markdown-body .omd-visual[data-omd-visual-kind='network'][data-omd-visual-rendered='true'], .bubble .markdown-body .omd-network[data-network-rendered='1']",
+      messageWideSelector: ".markdown-body pre[data-ix-network-rendered='1'], .markdown-body .omd-visual[data-omd-visual-kind='network'][data-omd-visual-rendered='true'], .markdown-body .omd-network[data-network-rendered='1'], .markdown-body .ix-network-host",
+      datasetKey: "ixNetworkBlockId",
+      fallbackHashAttribute: "data-network-hash",
+      fallbackPrefix: "omd-network",
+      cachedSourceAttribute: "data-ix-network-source",
+      fallbackConfigAttribute: "data-network-config-b64",
+      overflowReason: "too many networks",
+      unavailableReason: "renderer unavailable",
+      getState: function() { return ixVisualNetworkState; },
+      ensureReady: ensureNetworkReady,
+      markInvalid: markNetworkInvalid,
+      renderNative: renderOfficeImoNetworkBlock,
+      renderVisualView: renderNetworkInVisualView,
+      renderExport: renderNetworkForExport,
+      dispose: disposeNetworkBlock,
+      resolveDocxRenderSize: function(width) {
+        return {
+          width: normalizeVisualRenderDimension(width, ixVisualExportState.networkWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
+          height: normalizeVisualRenderDimension(Math.round(width * 0.62), 500, 240, 1700)
+        };
+      }
+    }
+  };
 
   function isPlainObject(value) {
     return !!value && typeof value === "object" && !Array.isArray(value);
@@ -89,6 +145,17 @@
     }
   }
 
+  function getNativeVisualRegistryEntry(kind) {
+    var normalized = normalizeVisualType(kind || "");
+    if (normalized === "ix-chart") {
+      return ixNativeVisualRegistry.chart;
+    }
+    if (normalized === "ix-network") {
+      return ixNativeVisualRegistry.network;
+    }
+    return null;
+  }
+
   function getOfficeImoVisualHash(element, fallbackAttribute) {
     if (!element || typeof element.getAttribute !== "function") {
       return "";
@@ -126,6 +193,15 @@
     }
 
     return normalizeVisualType(raw || fallbackKind || "");
+  }
+
+  function getOfficeImoVisualSourceByKind(element, kind) {
+    var entry = getNativeVisualRegistryEntry(kind);
+    if (!entry) {
+      return "";
+    }
+
+    return getOfficeImoVisualSource(element, entry.cachedSourceAttribute, entry.fallbackConfigAttribute);
   }
 
   function getOfficeImoVisualSelector(kind, legacySelector) {
@@ -172,6 +248,21 @@
     }
 
     return blocks;
+  }
+
+  function collectRegisteredOfficeImoVisualBlocks(root, kind) {
+    var entry = getNativeVisualRegistryEntry(kind);
+    if (!entry) {
+      return [];
+    }
+
+    return collectOfficeImoVisualBlocks(
+      root,
+      entry.type,
+      entry.legacySelector,
+      entry.datasetKey,
+      entry.fallbackHashAttribute,
+      entry.fallbackPrefix);
   }
 
   function ensureVisualNotice(anchor, text) {
@@ -237,15 +328,18 @@
       return;
     }
 
-    var hasVisual = msg.querySelector(
-      ".markdown-body pre[data-ix-chart-rendered='1'], " +
-      ".markdown-body pre[data-ix-network-rendered='1'], " +
-      ".markdown-body pre[data-ix-mermaid-rendered='1'], " +
-      ".markdown-body .omd-visual[data-omd-visual-rendered='true'], " +
-      ".markdown-body canvas.omd-chart[data-chart-rendered='1'], " +
-      ".markdown-body .omd-network[data-network-rendered='1'], " +
-      ".markdown-body .ix-chart-host, " +
-      ".markdown-body .ix-network-host");
+    var selectors = [
+      ".markdown-body pre[data-ix-mermaid-rendered='1']"
+    ];
+    var registryKeys = Object.keys(ixNativeVisualRegistry);
+    for (var i = 0; i < registryKeys.length; i++) {
+      var entry = ixNativeVisualRegistry[registryKeys[i]];
+      if (entry && entry.messageWideSelector) {
+        selectors.push(entry.messageWideSelector);
+      }
+    }
+
+    var hasVisual = msg.querySelector(selectors.join(", "));
     if (!hasVisual) {
       msg.classList.remove("ix-msg-has-visual");
     }
@@ -1151,7 +1245,7 @@
       return;
     }
 
-    var source = getOfficeImoVisualSource(canvas, "data-ix-chart-source", "data-chart-config-b64");
+    var source = getOfficeImoVisualSourceByKind(canvas, "ix-chart");
     if (source) {
       canvas.setAttribute("data-ix-chart-source", source);
     }
@@ -1249,51 +1343,7 @@
   }
 
   function collectOfficeImoNetworkBlocks(root) {
-    return collectOfficeImoVisualBlocks(
-      root,
-      "ix-network",
-      ".bubble .markdown-body .omd-network",
-      "ixNetworkBlockId",
-      "data-network-hash",
-      "omd-network");
-  }
-
-  function compareVisualBlockDocumentOrder(left, right) {
-    if (left === right) {
-      return 0;
-    }
-    if (!left || typeof left.compareDocumentPosition !== "function") {
-      return -1;
-    }
-    if (!right || typeof right.compareDocumentPosition !== "function") {
-      return 1;
-    }
-
-    var relation = left.compareDocumentPosition(right);
-    if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
-      return -1;
-    }
-    if (relation & Node.DOCUMENT_POSITION_PRECEDING) {
-      return 1;
-    }
-    return 0;
-  }
-
-  function buildOrderedVisualEntries(fenceBlocks, nativeBlocks) {
-    var entries = [];
-
-    for (var i = 0; i < fenceBlocks.length; i++) {
-      entries.push({ block: fenceBlocks[i], isNative: false });
-    }
-    for (var j = 0; j < nativeBlocks.length; j++) {
-      entries.push({ block: nativeBlocks[j], isNative: true });
-    }
-
-    entries.sort(function(left, right) {
-      return compareVisualBlockDocumentOrder(left.block, right.block);
-    });
-
-    return entries;
+    return collectRegisteredOfficeImoVisualBlocks(root, "ix-network");
   }
 
   function sanitizeNetworkId(value) {
@@ -1830,7 +1880,7 @@
       return;
     }
 
-    var source = getOfficeImoVisualSource(host, "data-ix-network-source", "data-network-config-b64");
+    var source = getOfficeImoVisualSourceByKind(host, "ix-network");
     if (source) {
       host.setAttribute("data-ix-network-source", source);
     }
@@ -1933,34 +1983,46 @@
     return blocks;
   }
 
-  async function renderTranscriptNetworks(root) {
-    var fenceBlocks = collectIxNetworkBlocks(root);
-    var nativeBlocks = collectOfficeImoNetworkBlocks(root);
+  async function renderTranscriptVisualKind(root, kind, collectFenceBlocks, renderFenceBlock) {
+    var entry = getNativeVisualRegistryEntry(kind);
+    if (!entry) {
+      return;
+    }
+
+    var fenceBlocks = collectFenceBlocks(root);
+    var nativeBlocks = collectRegisteredOfficeImoVisualBlocks(root, entry.type);
     var entries = buildOrderedVisualEntries(fenceBlocks, nativeBlocks);
     if (entries.length === 0) {
       return;
     }
 
-    var maxBlocks = ixVisualNetworkState.maxBlocksPerMessage;
+    var state = entry.getState();
+    var maxBlocks = state && typeof state.maxBlocksPerMessage === "number"
+      ? state.maxBlocksPerMessage
+      : 0;
     for (var i = maxBlocks; i < entries.length; i++) {
-      markNetworkInvalid(entries[i].block, "too many networks");
+      entry.markInvalid(entries[i].block, entry.overflowReason);
     }
 
-    var ready = await ensureNetworkReady();
+    var ready = await entry.ensureReady();
     if (!ready) {
       for (var j = 0; j < Math.min(entries.length, maxBlocks); j++) {
-        markNetworkInvalid(entries[j].block, "renderer unavailable");
+        entry.markInvalid(entries[j].block, entry.unavailableReason);
       }
       return;
     }
 
     for (var m = 0; m < Math.min(entries.length, maxBlocks); m++) {
       if (entries[m].isNative) {
-        await renderOfficeImoNetworkBlock(entries[m].block);
+        await entry.renderNative(entries[m].block);
       } else {
-        await renderIxNetworkBlock(entries[m].block);
+        await renderFenceBlock(entries[m].block);
       }
     }
+  }
+
+  async function renderTranscriptNetworks(root) {
+    await renderTranscriptVisualKind(root, "ix-network", collectIxNetworkBlocks, renderIxNetworkBlock);
   }
 
   async function renderTranscriptMermaid(root) {
@@ -2019,43 +2081,11 @@
   }
 
   function collectOfficeImoChartBlocks(root) {
-    return collectOfficeImoVisualBlocks(
-      root,
-      "ix-chart",
-      ".bubble .markdown-body canvas.omd-chart",
-      "ixChartBlockId",
-      "data-chart-hash",
-      "omd-chart");
+    return collectRegisteredOfficeImoVisualBlocks(root, "ix-chart");
   }
 
   async function renderTranscriptCharts(root) {
-    var fenceBlocks = collectIxChartBlocks(root);
-    var nativeBlocks = collectOfficeImoChartBlocks(root);
-    var entries = buildOrderedVisualEntries(fenceBlocks, nativeBlocks);
-    if (entries.length === 0) {
-      return;
-    }
-
-    var maxBlocks = ixVisualChartState.maxBlocksPerMessage;
-    for (var i = maxBlocks; i < entries.length; i++) {
-      markChartInvalid(entries[i].block, "too many charts");
-    }
-
-    var ready = await ensureChartReady();
-    if (!ready) {
-      for (var j = 0; j < Math.min(entries.length, maxBlocks); j++) {
-        markChartInvalid(entries[j].block, "renderer unavailable");
-      }
-      return;
-    }
-
-    for (var m = 0; m < Math.min(entries.length, maxBlocks); m++) {
-      if (entries[m].isNative) {
-        await renderOfficeImoChartBlock(entries[m].block);
-      } else {
-        await renderIxChartBlock(entries[m].block);
-      }
-    }
+    await renderTranscriptVisualKind(root, "ix-chart", collectIxChartBlocks, renderIxChartBlock);
   }
 
   function disposeTranscriptVisuals(root) {
@@ -2069,14 +2099,18 @@
       clearVisualMessageWideWhenEmpty(mermaidBlocks[m]);
     }
 
-    var chartBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-chart-rendered='1'], .bubble .markdown-body .omd-visual[data-omd-visual-kind='chart'][data-omd-visual-rendered='true'], .bubble .markdown-body canvas.omd-chart[data-chart-rendered='1']");
-    for (var i = 0; i < chartBlocks.length; i++) {
-      disposeChartBlock(chartBlocks[i]);
-    }
+    var registryKeys = Object.keys(ixNativeVisualRegistry);
+    for (var i = 0; i < registryKeys.length; i++) {
+      var entry = ixNativeVisualRegistry[registryKeys[i]];
+      if (!entry || !entry.renderedSelector) {
+        continue;
+      }
 
-    var networkBlocks = root.querySelectorAll(".bubble .markdown-body pre[data-ix-network-rendered='1'], .bubble .markdown-body .omd-visual[data-omd-visual-kind='network'][data-omd-visual-rendered='true'], .bubble .markdown-body .omd-network[data-network-rendered='1']");
-    for (var j = 0; j < networkBlocks.length; j++) {
-      disposeNetworkBlock(networkBlocks[j]);
+      var renderedBlocks = root.querySelectorAll(
+        ".bubble .markdown-body pre[data-" + entry.type + "-rendered='1'], " + entry.renderedSelector);
+      for (var j = 0; j < renderedBlocks.length; j++) {
+        entry.dispose(renderedBlocks[j]);
+      }
     }
   }
 
@@ -2218,17 +2252,9 @@
   function resolveDocxRenderSize(visualType, docxVisualMaxWidthPx) {
     var normalizedType = normalizeVisualType(visualType);
     var width = normalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx);
-    if (normalizedType === "ix-chart") {
-      return {
-        width: normalizeVisualRenderDimension(width, ixVisualExportState.chartWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
-        height: normalizeVisualRenderDimension(Math.round(width * 0.63), 480, 220, 1600)
-      };
-    }
-    if (normalizedType === "ix-network") {
-      return {
-        width: normalizeVisualRenderDimension(width, ixVisualExportState.networkWidth, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
-        height: normalizeVisualRenderDimension(Math.round(width * 0.62), 500, 240, 1700)
-      };
+    var entry = getNativeVisualRegistryEntry(normalizedType);
+    if (entry && typeof entry.resolveDocxRenderSize === "function") {
+      return entry.resolveDocxRenderSize(width);
     }
     return {
       width: normalizeVisualRenderDimension(width, exportDocxVisualMaxWidthContract.defaultPx, exportDocxVisualMaxWidthContract.minPx, exportDocxVisualMaxWidthContract.maxPx),
@@ -2665,12 +2691,11 @@
     }
 
     try {
+      var entry = getNativeVisualRegistryEntry(type);
       if (type === "mermaid") {
         await renderMermaidInVisualView(source);
-      } else if (type === "ix-chart") {
-        await renderChartInVisualView(source);
-      } else if (type === "ix-network") {
-        await renderNetworkInVisualView(source);
+      } else if (entry && typeof entry.renderVisualView === "function") {
+        await entry.renderVisualView(source);
       } else {
         setVisualViewFeedback("Unsupported visual type.", "bad", 0);
         return;
@@ -2760,10 +2785,8 @@
     var source = "";
     if (normalizedKind === "mermaid") {
       source = String(pre.getAttribute("data-ix-mermaid-source") || "").trim();
-    } else if (normalizedKind === "ix-chart") {
-      source = getOfficeImoVisualSource(pre, "data-ix-chart-source", "data-chart-config-b64");
-    } else if (normalizedKind === "ix-network") {
-      source = getOfficeImoVisualSource(pre, "data-ix-network-source", "data-network-config-b64");
+    } else {
+      source = getOfficeImoVisualSourceByKind(pre, normalizedKind);
     }
     if (!source) {
       source = normalizeText(pre.textContent || "");
@@ -2840,6 +2863,16 @@
     var visualType = normalizeVisualType(type);
     var exportFormat = normalizeVisualExportFormat(format, visualType);
     var themeMode = getVisualExportPreferences().visualThemeMode;
+    var entry = getNativeVisualRegistryEntry(visualType);
+    if (entry && typeof source === "string") {
+      var state = entry.getState ? entry.getState() : null;
+      if (state && typeof state.maxSourceChars === "number" && source.length > state.maxSourceChars) {
+        return {
+          payload: null,
+          error: resolveVisualExportBuildFailureMessage(visualType, exportFormat)
+        };
+      }
+    }
 
     if (exportFormat === "svg") {
       if (visualType !== "mermaid") {
@@ -2862,7 +2895,9 @@
       };
     }
 
-    var rendered = await renderVisualFenceForExport(visualType, source, "panel", themeMode);
+    var rendered = entry && typeof entry.renderExport === "function"
+      ? await entry.renderExport(source, "panel", themeMode)
+      : await renderVisualFenceForExport(visualType, source, "panel", themeMode);
     if (!rendered) {
       var panelFallback = tryCaptureVisualViewCanvasPayload(visualType);
       if (panelFallback && panelFallback.dataBase64) {

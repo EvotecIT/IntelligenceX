@@ -216,8 +216,8 @@ public sealed class UiShellAssetsTests {
             "if (predictedDecodedBytes > maxDecodedBytes) {",
             "return normalizeVisualType(raw || fallbackKind || \"\");",
             "var canDecodeSharedConfig = !!sharedConfigB64 && (!hasContract || !configEncoding || configEncoding === \"base64-utf8\");",
-            "source = getOfficeImoVisualSource(pre, \"data-ix-chart-source\", \"data-chart-config-b64\");",
-            "source = getOfficeImoVisualSource(pre, \"data-ix-network-source\", \"data-network-config-b64\");");
+            "return getOfficeImoVisualSource(element, entry.cachedSourceAttribute, entry.fallbackConfigAttribute);",
+            "state && typeof state.maxSourceChars === \"number\" && source.length > state.maxSourceChars");
     }
 
     /// <summary>
@@ -404,11 +404,16 @@ public sealed class UiShellAssetsTests {
             "renderIxNetworkBlock",
             "renderOfficeImoChartBlock",
             "renderOfficeImoNetworkBlock",
+            "ixNativeVisualRegistry",
+            "getNativeVisualRegistryEntry",
             "getOfficeImoVisualHash",
             "getOfficeImoVisualSource",
+            "getOfficeImoVisualSourceByKind",
             "getOfficeImoVisualKind",
             "getOfficeImoVisualSelector",
             "collectOfficeImoVisualBlocks",
+            "collectRegisteredOfficeImoVisualBlocks",
+            "renderTranscriptVisualKind",
             "data-omd-visual-kind",
             "data-omd-visual-contract",
             "data-omd-config-encoding",
