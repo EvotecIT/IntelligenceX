@@ -12,7 +12,8 @@
     <Nullable>enable</Nullable>
 
     <!-- Local-dev discovery: OfficeIMO repo is a sibling checkout next to IntelligenceX. -->
-    <OfficeImoReaderProjectOverride>$(OfficeImoRepoRoot)\OfficeIMO.Reader\OfficeIMO.Reader.csproj</OfficeImoReaderProjectOverride>
+    <OfficeImoRepoRootForPaths Condition="'$(OfficeImoRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRoot)\\'))))</OfficeImoRepoRootForPaths>
+    <OfficeImoReaderProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Reader\OfficeIMO.Reader.csproj</OfficeImoReaderProjectOverride>
     <OfficeImoReaderProjectFallback>$([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)OfficeIMO\OfficeIMO.Reader\OfficeIMO.Reader.csproj'))</OfficeImoReaderProjectFallback>
     <OfficeImoReaderProject Condition="Exists('$(OfficeImoReaderProjectOverride)')">$(OfficeImoReaderProjectOverride)</OfficeImoReaderProject>
     <OfficeImoReaderProject Condition="'$(OfficeImoReaderProject)' == '' and Exists('$(OfficeImoReaderProjectFallback)')">$(OfficeImoReaderProjectFallback)</OfficeImoReaderProject>

@@ -45,7 +45,6 @@
     <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
     <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))))</OfficeImoRepoRootInputNormalized>
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>
-    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(IxToolsSiblingsRoot)OfficeIMO\\OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)OfficeIMO\\'))))</OfficeImoRepoRoot>
   </PropertyGroup>
 
   <!-- Normalize caller-provided roots first. -->
@@ -91,6 +90,9 @@
   </PropertyGroup>
   <PropertyGroup Condition="Exists('$(IxToolsSiblingsRoot4)TestimoX\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)TestimoX-master\\ADPlayground\\ADPlayground.csproj') OR Exists('$(IxToolsSiblingsRoot4)PSEventViewer\\Sources\\EventViewerX\\EventViewerX.csproj') OR Exists('$(IxToolsSiblingsRoot4)Mailozaurr\\Sources\\Mailozaurr\\Mailozaurr.csproj') OR Exists('$(IxToolsSiblingsRoot4)DnsClientX\\DnsClientX\\DnsClientX.csproj') OR Exists('$(IxToolsSiblingsRoot4)DomainDetective\\DomainDetective\\DomainDetective.csproj')">
     <IxToolsSiblingsRoot>$(IxToolsSiblingsRoot4)</IxToolsSiblingsRoot>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(IxToolsSiblingsRoot)OfficeIMO\\OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">
+    <OfficeImoRepoRoot>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(IxToolsSiblingsRoot)OfficeIMO\\'))))</OfficeImoRepoRoot>
   </PropertyGroup>
 
   <!-- Prefer canonical repo names first, then legacy -master fallback. -->

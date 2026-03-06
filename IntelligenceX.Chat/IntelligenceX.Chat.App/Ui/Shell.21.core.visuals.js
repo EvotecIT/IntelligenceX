@@ -67,10 +67,9 @@
     } else if (text.endsWith("=")) {
       padding = 1;
     }
-
-    var predictedBytes = Math.floor((text.length * 3) / 4) - padding;
+    var predictedDecodedBytes = Math.max(0, Math.floor(text.length / 4) * 3 - padding);
     var maxDecodedBytes = Math.max(ixVisualChartState.maxSourceChars, ixVisualNetworkState.maxSourceChars) + 1024;
-    if (predictedBytes > maxDecodedBytes) {
+    if (predictedDecodedBytes > maxDecodedBytes) {
       return "";
     }
 
@@ -122,14 +121,7 @@
       raw = String(element.getAttribute("data-omd-visual-kind") || "").trim();
     }
 
-    var normalized = normalizeVisualType(raw || fallbackKind || "");
-    if (normalized === "chart") {
-      return "ix-chart";
-    }
-    if (normalized === "network" || normalized === "visnetwork") {
-      return "ix-network";
-    }
-    return normalized;
+    return normalizeVisualType(raw || fallbackKind || "");
   }
 
   function ensureVisualNotice(anchor, text) {
