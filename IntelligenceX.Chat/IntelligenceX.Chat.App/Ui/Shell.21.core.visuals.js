@@ -61,12 +61,30 @@
       return "";
     }
 
+    var padding = 0;
+    if (text.endsWith("==")) {
+      padding = 2;
+    } else if (text.endsWith("=")) {
+      padding = 1;
+    }
+
+    var predictedBytes = Math.floor((text.length * 3) / 4) - padding;
+    var maxDecodedBytes = Math.max(ixVisualChartState.maxSourceChars, ixVisualNetworkState.maxSourceChars) + 1024;
+    if (predictedBytes > maxDecodedBytes) {
+      return "";
+    }
+
     try {
       var bytes = Uint8Array.from(atob(text), function(ch) { return ch.charCodeAt(0); });
       if (window.TextDecoder) {
         return new TextDecoder("utf-8").decode(bytes);
       }
-      return decodeURIComponent(escape(String.fromCharCode.apply(null, Array.from(bytes))));
+      var chunkSize = 8192;
+      var decoded = "";
+      for (var i = 0; i < bytes.length; i += chunkSize) {
+        decoded += String.fromCharCode.apply(null, Array.prototype.slice.call(bytes, i, i + chunkSize));
+      }
+      return decodeURIComponent(escape(decoded));
     } catch (_) {
       return "";
     }
@@ -1171,6 +1189,44 @@
     return blocks;
   }
 
+  function compareVisualBlockDocumentOrder(left, right) {
+    if (left === right) {
+      return 0;
+    }
+    if (!left || typeof left.compareDocumentPosition !== "function") {
+      return -1;
+    }
+    if (!right || typeof right.compareDocumentPosition !== "function") {
+      return 1;
+    }
+
+    var relation = left.compareDocumentPosition(right);
+    if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
+      return -1;
+    }
+    if (relation & Node.DOCUMENT_POSITION_PRECEDING) {
+      return 1;
+    }
+    return 0;
+  }
+
+  function buildOrderedVisualEntries(fenceBlocks, nativeBlocks) {
+    var entries = [];
+
+    for (var i = 0; i < fenceBlocks.length; i++) {
+      entries.push({ block: fenceBlocks[i], isNative: false });
+    }
+    for (var j = 0; j < nativeBlocks.length; j++) {
+      entries.push({ block: nativeBlocks[j], isNative: true });
+    }
+
+    entries.sort(function(left, right) {
+      return compareVisualBlockDocumentOrder(left.block, right.block);
+    });
+
+    return entries;
+  }
+
   function sanitizeNetworkId(value) {
     if (isFiniteNumber(value)) {
       return value;
@@ -1813,37 +1869,30 @@
   async function renderTranscriptNetworks(root) {
     var fenceBlocks = collectIxNetworkBlocks(root);
     var nativeBlocks = collectOfficeImoNetworkBlocks(root);
-    var totalBlocks = fenceBlocks.length + nativeBlocks.length;
-    if (totalBlocks === 0) {
+    var entries = buildOrderedVisualEntries(fenceBlocks, nativeBlocks);
+    if (entries.length === 0) {
       return;
     }
 
     var maxBlocks = ixVisualNetworkState.maxBlocksPerMessage;
-    for (var i = maxBlocks; i < totalBlocks; i++) {
-      var overflowBlock = i < fenceBlocks.length
-        ? fenceBlocks[i]
-        : nativeBlocks[i - fenceBlocks.length];
-      markNetworkInvalid(overflowBlock, "too many networks");
+    for (var i = maxBlocks; i < entries.length; i++) {
+      markNetworkInvalid(entries[i].block, "too many networks");
     }
 
     var ready = await ensureNetworkReady();
     if (!ready) {
-      for (var j = 0; j < Math.min(fenceBlocks.length, maxBlocks); j++) {
-        markNetworkInvalid(fenceBlocks[j], "renderer unavailable");
-      }
-      for (var k = 0; k < Math.min(nativeBlocks.length, Math.max(0, maxBlocks - fenceBlocks.length)); k++) {
-        markNetworkInvalid(nativeBlocks[k], "renderer unavailable");
+      for (var j = 0; j < Math.min(entries.length, maxBlocks); j++) {
+        markNetworkInvalid(entries[j].block, "renderer unavailable");
       }
       return;
     }
 
-    for (var m = 0; m < Math.min(fenceBlocks.length, maxBlocks); m++) {
-      await renderIxNetworkBlock(fenceBlocks[m]);
-    }
-
-    var remainingNativeBudget = Math.max(0, maxBlocks - fenceBlocks.length);
-    for (var n = 0; n < Math.min(nativeBlocks.length, remainingNativeBudget); n++) {
-      await renderOfficeImoNetworkBlock(nativeBlocks[n]);
+    for (var m = 0; m < Math.min(entries.length, maxBlocks); m++) {
+      if (entries[m].isNative) {
+        await renderOfficeImoNetworkBlock(entries[m].block);
+      } else {
+        await renderIxNetworkBlock(entries[m].block);
+      }
     }
   }
 
@@ -1929,37 +1978,30 @@
   async function renderTranscriptCharts(root) {
     var fenceBlocks = collectIxChartBlocks(root);
     var nativeBlocks = collectOfficeImoChartBlocks(root);
-    var totalBlocks = fenceBlocks.length + nativeBlocks.length;
-    if (totalBlocks === 0) {
+    var entries = buildOrderedVisualEntries(fenceBlocks, nativeBlocks);
+    if (entries.length === 0) {
       return;
     }
 
     var maxBlocks = ixVisualChartState.maxBlocksPerMessage;
-    for (var i = maxBlocks; i < totalBlocks; i++) {
-      var overflowBlock = i < fenceBlocks.length
-        ? fenceBlocks[i]
-        : nativeBlocks[i - fenceBlocks.length];
-      markChartInvalid(overflowBlock, "too many charts");
+    for (var i = maxBlocks; i < entries.length; i++) {
+      markChartInvalid(entries[i].block, "too many charts");
     }
 
     var ready = await ensureChartReady();
     if (!ready) {
-      for (var j = 0; j < Math.min(fenceBlocks.length, maxBlocks); j++) {
-        markChartInvalid(fenceBlocks[j], "renderer unavailable");
-      }
-      for (var k = 0; k < Math.min(nativeBlocks.length, Math.max(0, maxBlocks - fenceBlocks.length)); k++) {
-        markChartInvalid(nativeBlocks[k], "renderer unavailable");
+      for (var j = 0; j < Math.min(entries.length, maxBlocks); j++) {
+        markChartInvalid(entries[j].block, "renderer unavailable");
       }
       return;
     }
 
-    for (var m = 0; m < Math.min(fenceBlocks.length, maxBlocks); m++) {
-      await renderIxChartBlock(fenceBlocks[m]);
-    }
-
-    var remainingNativeBudget = Math.max(0, maxBlocks - fenceBlocks.length);
-    for (var n = 0; n < Math.min(nativeBlocks.length, remainingNativeBudget); n++) {
-      await renderOfficeImoChartBlock(nativeBlocks[n]);
+    for (var m = 0; m < Math.min(entries.length, maxBlocks); m++) {
+      if (entries[m].isNative) {
+        await renderOfficeImoChartBlock(entries[m].block);
+      } else {
+        await renderIxChartBlock(entries[m].block);
+      }
     }
   }
 
