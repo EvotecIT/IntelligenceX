@@ -373,8 +373,8 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        turn.Conversation.PendingActions = Array.Empty<AssistantPendingAction>();
-        turn.Conversation.PendingAssistantQuestionHint = null;
+        // Preserve the last successful continuation cues across transient failures so
+        // compact retries can still answer the assistant's most recent pending question.
 
         var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
         if (completion is not null) {
