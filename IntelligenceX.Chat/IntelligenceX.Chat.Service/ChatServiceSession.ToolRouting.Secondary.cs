@@ -711,6 +711,15 @@ internal sealed partial class ChatServiceSession {
 
         var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 6);
         var compactLength = NormalizeCompactToken(normalized.AsSpan()).Length;
+        if (!LooksLikeContinuationFollowUp(normalized)
+            && tokenCount > 0
+            && tokenCount <= 3
+            && normalized.Length <= FollowUpShapeShortCharLimit
+            && !HasConflictingDomainIntentSignals(normalized)
+            && !LooksLikeMixedDomainScopeRequest(normalized)) {
+            return true;
+        }
+
         if (tokenCount > 0
             && tokenCount <= 2
             && normalized.Length <= FollowUpShapeShortCharLimit

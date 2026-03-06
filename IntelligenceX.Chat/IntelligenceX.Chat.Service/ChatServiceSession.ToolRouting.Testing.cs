@@ -315,6 +315,16 @@ internal sealed partial class ChatServiceSession {
         return BuildDomainIntentClarificationVisibleText(new DomainIntentFamilyAvailability(HasAd: hasAdFamily, HasPublic: hasPublicFamily));
     }
 
+    internal static string BuildDomainIntentClarificationVisibleTextForTesting(
+        string userRequest,
+        bool hasAdFamily,
+        bool hasPublicFamily) {
+        return BuildDomainIntentClarificationVisibleText(
+            userRequest,
+            new DomainIntentFamilyAvailability(HasAd: hasAdFamily, HasPublic: hasPublicFamily),
+            BuildDefaultDomainIntentActionCatalog());
+    }
+
     internal IReadOnlyCollection<string> GetTrackedToolRoutingStatNamesForTesting() {
         lock (_toolRoutingStatsLock) {
             return _toolRoutingStats.Keys.ToArray();

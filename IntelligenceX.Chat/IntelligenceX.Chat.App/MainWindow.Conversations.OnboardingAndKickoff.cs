@@ -133,8 +133,10 @@ public sealed partial class MainWindow : Window {
             if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
                 _threadId = result.ThreadId;
             }
-            var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
-            await AddAssistantMessageAsync(conversation, assistantText, kickoffModelLabel).ConfigureAwait(false);
+            var normalizedAssistantTurn = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
+            conversation.PendingActions = normalizedAssistantTurn.PendingActions;
+            conversation.PendingAssistantQuestionHint = normalizedAssistantTurn.PendingAssistantQuestionHint;
+            await AddAssistantMessageAsync(conversation, normalizedAssistantTurn.VisibleText, kickoffModelLabel).ConfigureAwait(false);
             conversation.UpdatedUtc = DateTime.UtcNow;
             conversation.Title = ComputeConversationTitle(conversation.Title, conversation.Messages);
             await PersistAppStateAsync().ConfigureAwait(false);

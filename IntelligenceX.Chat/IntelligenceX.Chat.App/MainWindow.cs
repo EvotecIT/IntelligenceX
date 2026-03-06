@@ -536,6 +536,8 @@ public sealed partial class MainWindow : Window {
         public string? ModelLabel { get; set; }
         public string? ModelOverride { get; set; }
         public List<(string Role, string Text, DateTime Time, string? Model)> Messages { get; } = new();
+        public IReadOnlyList<AssistantPendingAction> PendingActions { get; set; } = Array.Empty<AssistantPendingAction>();
+        public string? PendingAssistantQuestionHint { get; set; }
         public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     }
 

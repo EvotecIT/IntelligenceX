@@ -169,38 +169,7 @@ public sealed partial class MainWindow : Window {
     }
 
     private static bool LooksLikeContextDependentFollowUp(string? userText) {
-        var text = (userText ?? string.Empty).Trim();
-        if (text.Length == 0) {
-            return false;
-        }
-
-        if (text.Contains('\n', StringComparison.Ordinal) || text.Length > 96) {
-            return false;
-        }
-
-        var tokenCount = 0;
-        var inToken = false;
-        for (var i = 0; i < text.Length; i++) {
-            var ch = text[i];
-            if (char.IsLetterOrDigit(ch)) {
-                if (!inToken) {
-                    tokenCount++;
-                    inToken = true;
-                }
-            } else {
-                inToken = false;
-            }
-        }
-
-        if (tokenCount == 0) {
-            return false;
-        }
-
-        if (tokenCount <= 6 && text.Length <= 64) {
-            return true;
-        }
-
-        return tokenCount <= 8 && text.Contains('?', StringComparison.Ordinal);
+        return ConversationTurnShapeClassifier.LooksLikeContextDependentFollowUp(userText);
     }
 
     private static string CompactMessageForContext(string text) {

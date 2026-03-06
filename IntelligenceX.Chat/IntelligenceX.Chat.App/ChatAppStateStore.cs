@@ -19,6 +19,7 @@ internal sealed class ChatAppStateStore : IDisposable {
     private const int MaxPersistedFavoriteEntries = 100;
     private const int MaxPersistedRecentEntries = 100;
     private const int MaxPersistedQueuedTurns = 24;
+    private const int MaxPersistedPendingActionsPerConversation = 6;
 
     private readonly string _dbPath;
     private readonly JsonSerializerOptions _json;
@@ -102,6 +103,12 @@ internal sealed class ChatAppStateStore : IDisposable {
                 if (conversation.Messages is { Count: > MaxPersistedMessages }) {
                     conversation.Messages = conversation.Messages
                         .Skip(conversation.Messages.Count - MaxPersistedMessages)
+                        .ToList();
+                }
+
+                if (conversation.PendingActions is { Count: > MaxPersistedPendingActionsPerConversation }) {
+                    conversation.PendingActions = conversation.PendingActions
+                        .Skip(conversation.PendingActions.Count - MaxPersistedPendingActionsPerConversation)
                         .ToList();
                 }
             }
@@ -278,8 +285,17 @@ internal sealed class ChatConversationState {
     public string? RuntimeLabel { get; set; }
     public string? ModelLabel { get; set; }
     public string? ModelOverride { get; set; }
+    public string? PendingAssistantQuestionHint { get; set; }
     public List<ChatMessageState> Messages { get; set; } = new();
+    public List<ChatPendingActionState> PendingActions { get; set; } = new();
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+internal sealed class ChatPendingActionState {
+    public string Id { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Request { get; set; } = string.Empty;
+    public string Reply { get; set; } = string.Empty;
 }
 
 internal sealed class ChatQueuedTurnState {

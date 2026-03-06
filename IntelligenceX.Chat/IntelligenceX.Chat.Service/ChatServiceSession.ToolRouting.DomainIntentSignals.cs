@@ -25,6 +25,12 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private readonly record struct DomainIntentRequestAssessment(
+        bool HasResolvedFamily,
+        string Family,
+        bool HasConflictingSignals,
+        string AmbiguousDomainTarget);
+
     private static bool TryResolveDomainIntentFamilyFromUserSignals(string userRequest, out string family) {
         return TryResolveDomainIntentFamilyFromUserSignals(userRequest, availableDefinitions: null, out family);
     }
@@ -182,6 +188,45 @@ internal sealed partial class ChatServiceSession {
 
     private static bool TryNormalizeDomainIntentFamily(string? value, out string family) {
         return ToolSelectionMetadata.TryNormalizeDomainIntentFamily(value, out family);
+    }
+
+    private static DomainIntentRequestAssessment AssessDomainIntentRequest(
+        string userRequest,
+        IReadOnlyList<ToolDefinition>? availableDefinitions) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return new DomainIntentRequestAssessment(
+                HasResolvedFamily: false,
+                Family: string.Empty,
+                HasConflictingSignals: false,
+                AmbiguousDomainTarget: string.Empty);
+        }
+
+        if (TryResolveDomainIntentFamilyFromUserSignals(normalized, availableDefinitions, out var family)) {
+            return new DomainIntentRequestAssessment(
+                HasResolvedFamily: true,
+                Family: family,
+                HasConflictingSignals: false,
+                AmbiguousDomainTarget: string.Empty);
+        }
+
+        var conflictingSignals = HasConflictingDomainIntentSignals(normalized, availableDefinitions)
+                                 || LooksLikeMixedDomainScopeRequest(normalized);
+        if (conflictingSignals) {
+            return new DomainIntentRequestAssessment(
+                HasResolvedFamily: false,
+                Family: string.Empty,
+                HasConflictingSignals: true,
+                AmbiguousDomainTarget: string.Empty);
+        }
+
+        var domains = ExtractDomainLikeTokens(normalized);
+        var ambiguousDomainTarget = domains.Count == 1 ? domains[0] : string.Empty;
+        return new DomainIntentRequestAssessment(
+            HasResolvedFamily: false,
+            Family: string.Empty,
+            HasConflictingSignals: false,
+            AmbiguousDomainTarget: ambiguousDomainTarget);
     }
 
     private static bool TryParseDomainIntentFamilyFromTechnicalSignals(
@@ -751,9 +796,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!TryResolveDomainIntentFamilyFromUserSignals(userRequest, _registry.GetDefinitions(), out var inferredFamily)) {
+        var assessment = AssessDomainIntentRequest(userRequest, _registry.GetDefinitions());
+        if (!assessment.HasResolvedFamily) {
             return false;
         }
+        var inferredFamily = assessment.Family;
 
         if (selectedTools is { Count: > 0 }
             && TryFilterToolsByDomainIntentFamily(selectedTools, inferredFamily, out var selectedFiltered, out removedCount)) {

@@ -230,6 +230,31 @@ public sealed partial class MainWindow : Window {
         return result;
     }
 
+    private static List<ChatPendingActionState> BuildPendingActionStateSnapshot(IReadOnlyList<AssistantPendingAction> actions) {
+        if (actions is not { Count: > 0 }) {
+            return new List<ChatPendingActionState>();
+        }
+
+        var result = new List<ChatPendingActionState>(actions.Count);
+        for (var i = 0; i < actions.Count; i++) {
+            var action = actions[i];
+            var id = (action.Id ?? string.Empty).Trim();
+            var reply = (action.Reply ?? string.Empty).Trim();
+            if (id.Length == 0 || reply.Length == 0) {
+                continue;
+            }
+
+            result.Add(new ChatPendingActionState {
+                Id = id,
+                Title = (action.Title ?? string.Empty).Trim(),
+                Request = (action.Request ?? string.Empty).Trim(),
+                Reply = reply
+            });
+        }
+
+        return result;
+    }
+
     private List<ChatConversationState> BuildConversationStateSnapshot() {
         if (_conversations.Count == 0) {
             return new List<ChatConversationState>();
@@ -281,7 +306,9 @@ public sealed partial class MainWindow : Window {
                 RuntimeLabel = string.IsNullOrWhiteSpace(conversation.RuntimeLabel) ? null : conversation.RuntimeLabel.Trim(),
                 ModelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
                 ModelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),
+                PendingAssistantQuestionHint = string.IsNullOrWhiteSpace(conversation.PendingAssistantQuestionHint) ? null : conversation.PendingAssistantQuestionHint.Trim(),
                 Messages = BuildMessageStateSnapshot(conversation.Messages),
+                PendingActions = BuildPendingActionStateSnapshot(conversation.PendingActions),
                 UpdatedUtc = updatedUtc
             });
         }

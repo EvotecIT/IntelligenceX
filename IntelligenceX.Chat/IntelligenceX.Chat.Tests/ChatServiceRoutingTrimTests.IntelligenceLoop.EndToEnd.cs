@@ -3839,7 +3839,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
         Assert.Null(resultMessage.Tools);
-        Assert.Contains("I need a quick scope choice before continuing.", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("I can check that", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("which side", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("1.", resultMessage.Text, StringComparison.Ordinal);
         Assert.Contains("2.", resultMessage.Text, StringComparison.Ordinal);
         Assert.Contains("AD domain", resultMessage.Text, StringComparison.OrdinalIgnoreCase);

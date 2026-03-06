@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window {
                     RuntimeLabel = string.IsNullOrWhiteSpace(stored.RuntimeLabel) ? null : stored.RuntimeLabel.Trim(),
                     ModelLabel = string.IsNullOrWhiteSpace(stored.ModelLabel) ? null : stored.ModelLabel.Trim(),
                     ModelOverride = string.IsNullOrWhiteSpace(stored.ModelOverride) ? null : stored.ModelOverride.Trim(),
+                    PendingAssistantQuestionHint = string.IsNullOrWhiteSpace(stored.PendingAssistantQuestionHint) ? null : stored.PendingAssistantQuestionHint.Trim(),
                     UpdatedUtc = EnsureUtc(stored.UpdatedUtc)
                 };
                 if (IsSystemConversation(conversation)) {
@@ -81,6 +82,26 @@ public sealed partial class MainWindow : Window {
                         var messageModel = string.IsNullOrWhiteSpace(message.Model) ? null : message.Model.Trim();
                         conversation.Messages.Add((message.Role ?? "System", repairedText, local, messageModel));
                     }
+                }
+
+                if (stored.PendingActions is { Count: > 0 }) {
+                    var restoredPendingActions = new List<AssistantPendingAction>(stored.PendingActions.Count);
+                    for (var i = 0; i < stored.PendingActions.Count; i++) {
+                        var pendingAction = stored.PendingActions[i];
+                        var id = (pendingAction.Id ?? string.Empty).Trim();
+                        var reply = (pendingAction.Reply ?? string.Empty).Trim();
+                        if (id.Length == 0 || reply.Length == 0) {
+                            continue;
+                        }
+
+                        restoredPendingActions.Add(new AssistantPendingAction(
+                            id,
+                            (pendingAction.Title ?? string.Empty).Trim(),
+                            (pendingAction.Request ?? string.Empty).Trim(),
+                            reply));
+                    }
+
+                    conversation.PendingActions = restoredPendingActions;
                 }
 
                 if (conversation.UpdatedUtc == default && conversation.Messages.Count > 0) {
@@ -369,6 +390,8 @@ public sealed partial class MainWindow : Window {
         if (nonSystemConversationCount <= 1) {
             var isActiveConversation = string.Equals(_activeConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase);
             conversation.Messages.Clear();
+            conversation.PendingActions = Array.Empty<AssistantPendingAction>();
+            conversation.PendingAssistantQuestionHint = null;
             ClearConversationAssistantVisualState(conversation.Id);
             conversation.Title = DefaultConversationTitle;
             conversation.ThreadId = null;

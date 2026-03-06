@@ -318,7 +318,10 @@ public sealed partial class MainWindow : Window {
             _threadId = result.ThreadId;
         }
 
-        var assistantText = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
+        var normalizedAssistantTurn = await ApplyAssistantProfileUpdateAsync(result.Text).ConfigureAwait(false);
+        var assistantText = normalizedAssistantTurn.VisibleText;
+        conversation.PendingActions = normalizedAssistantTurn.PendingActions;
+        conversation.PendingAssistantQuestionHint = normalizedAssistantTurn.PendingAssistantQuestionHint;
         assistantText = CollapseRepeatedExecutionContractBlockers(conversation, assistantText);
         _ = TryGetLastAssistantText(conversation, out var latestAssistantText);
         var activeTurnReceivedDelta = _assistantStreamingState.HasReceivedDelta();
@@ -369,6 +372,9 @@ public sealed partial class MainWindow : Window {
         if (!TryFinalizeActiveTurnAssistantState(turn.Conversation, succeeded: false)) {
             return;
         }
+
+        // Preserve the last successful continuation cues across transient failures so
+        // compact retries can still answer the assistant's most recent pending question.
 
         var completion = CompleteTurnLatencyTracking(turn.RequestId, DateTime.UtcNow);
         if (completion is not null) {

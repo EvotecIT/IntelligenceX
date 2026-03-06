@@ -44,6 +44,8 @@ public sealed class PromptAssetsTests {
 
         Assert.Contains("Start the conversation naturally in 1-2 short sentences.", markdown);
         Assert.Contains("Do not use rigid onboarding scripts.", markdown);
+        Assert.Contains("greet them back naturally instead of front-loading scope questions", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Match the user's tone and energy level", markdown, System.StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -56,5 +58,26 @@ public sealed class PromptAssetsTests {
         Assert.Contains("[Persistent memory protocol]", markdown);
         Assert.Contains("```ix_memory", markdown);
         Assert.Contains("\"upserts\"", markdown);
+    }
+
+    /// <summary>
+    /// Ensures execution-behavior guidance reinforces natural conversation over protocol leakage.
+    /// </summary>
+    [Fact]
+    public void GetExecutionBehaviorPrompt_ReturnsNaturalConversationGuidance() {
+        var markdown = PromptAssets.GetExecutionBehaviorPrompt();
+
+        Assert.Contains("respond like a real person first", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("continue naturally", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("recent pacing, directness, and energy level", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Match response shape to the user", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not append generic follow-up suggestions by default", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("end cleanly instead of forcing a follow-up", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Avoid generic closing filler", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("possible acknowledgement or light close", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("likely answer or confirmation", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pending question, clarification, or structured follow-up action", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ask one short human clarification", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Never expose internal routing tokens", markdown, System.StringComparison.OrdinalIgnoreCase);
     }
 }

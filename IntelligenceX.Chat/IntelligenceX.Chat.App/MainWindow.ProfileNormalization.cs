@@ -27,9 +27,12 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
-    private async Task<string> ApplyAssistantProfileUpdateAsync(string? assistantText) {
+    private sealed record NormalizedAssistantTurn(string VisibleText, IReadOnlyList<AssistantPendingAction> PendingActions, string? PendingAssistantQuestionHint);
+
+    private async Task<NormalizedAssistantTurn> ApplyAssistantProfileUpdateAsync(string? assistantText) {
         var normalized = (assistantText ?? string.Empty).Trim();
         var cleanedText = normalized;
+        IReadOnlyList<AssistantPendingAction> pendingActions = Array.Empty<AssistantPendingAction>();
         var profileChanged = false;
         if (OnboardingModelProtocol.TryExtractLastProfileUpdate(cleanedText, out var profileUpdate, out var profileCleanedText)) {
             profileChanged = await ApplyProfileUpdateAsync(profileUpdate, autoCompleteOnboardingForProfileScope: false).ConfigureAwait(false);
@@ -42,15 +45,18 @@ public sealed partial class MainWindow : Window {
             cleanedText = memoryCleanedText;
         }
 
-        if (ActionModelProtocol.TryStripAndExtractPendingActions(cleanedText, out var pendingActions, out var actionCleanedText)) {
+        if (ActionModelProtocol.TryStripAndExtractPendingActions(cleanedText, out var extractedPendingActions, out var actionCleanedText)) {
+            pendingActions = extractedPendingActions;
             cleanedText = ActionModelProtocol.MergeVisibleTextWithPendingActions(actionCleanedText, pendingActions);
         }
 
+        var pendingAssistantQuestionHint = ConversationStyleGuidanceBuilder.BuildAssistantQuestionHint(cleanedText);
+
         if (!string.IsNullOrWhiteSpace(cleanedText)) {
-            return cleanedText;
+            return new NormalizedAssistantTurn(cleanedText, pendingActions, pendingAssistantQuestionHint);
         }
 
-        return profileChanged || memoryChanged ? "Got it." : normalized;
+        return new NormalizedAssistantTurn(profileChanged || memoryChanged ? "Got it." : normalized, pendingActions, pendingAssistantQuestionHint);
     }
 
     private static string? NormalizeProfileValue(string? value) {
