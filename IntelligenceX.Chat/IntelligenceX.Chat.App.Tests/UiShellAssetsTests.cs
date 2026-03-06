@@ -406,7 +406,12 @@ public sealed class UiShellAssetsTests {
             "getOfficeImoVisualHash",
             "getOfficeImoVisualSource",
             "getOfficeImoVisualKind",
+            "getOfficeImoVisualSelector",
+            "collectOfficeImoVisualBlocks",
             "data-omd-visual-kind",
+            "data-omd-visual-contract",
+            "data-omd-config-encoding",
+            "data-omd-visual-rendered",
             "data-omd-config-b64",
             "ixRenderTranscriptVisuals(transcript)",
             "ixDisposeTranscriptVisuals(transcript)");
