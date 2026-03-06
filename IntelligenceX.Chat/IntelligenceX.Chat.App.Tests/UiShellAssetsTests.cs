@@ -86,7 +86,9 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function appendStatusTimelineEntry(value)", coreScript, StringComparison.Ordinal);
         Assert.Contains("function buildStartupPhaseTimelineModel()", coreScript, StringComparison.Ordinal);
         Assert.Contains("function appendStatusChipBackgroundDetailLines(lines, normalizedRaw, startupHeaderStatus)", coreScript, StringComparison.Ordinal);
-        Assert.Contains("statusEl.title = buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus);", coreScript, StringComparison.Ordinal);
+        Assert.Contains("statusEl.title = buildStatusChipTitle(displayValue, rawValue, startupHeaderStatus, runtimeSummary);", coreScript, StringComparison.Ordinal);
+        Assert.Contains("lines.push(\"Runtime: \" + normalizedRuntimeSummary);", coreScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("displayValue = value + \" - \" + resolveStatusRuntimeSummary();", coreScript, StringComparison.Ordinal);
         Assert.Contains("Runtime lifecycle: \" + state.statusTimeline.join(\" > \")", coreScript, StringComparison.Ordinal);
         Assert.Contains("Background: tool metadata sync is degraded.", coreScript, StringComparison.Ordinal);
         Assert.Contains("Background: retrying tool metadata sync in background.", coreScript, StringComparison.Ordinal);
@@ -95,6 +97,8 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("var startupPhaseTimeline = byId(\"optStartupPhaseTimeline\");", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var startupDiagnosticsState = byId(\"optStartupDiagnosticsState\");", toolsScript, StringComparison.Ordinal);
         Assert.Contains("Refresh Account", coreScript, StringComparison.Ordinal);
+        Assert.Contains("justify-content: flex-start;", baseCss, StringComparison.Ordinal);
+        Assert.Contains("text-align: left;", baseCss, StringComparison.Ordinal);
         Assert.Contains("appendStartupDiagKv(\"bootstrap cache\", cacheText);", toolsScript, StringComparison.Ordinal);
         Assert.Contains("appendStartupDiagKv(\"metadata recovery\", metadataRecoveryParts.join(\" | \"));", toolsScript, StringComparison.Ordinal);
         Assert.Contains("Metadata recovery rerun is queued.", toolsScript, StringComparison.Ordinal);
