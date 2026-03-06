@@ -428,7 +428,10 @@ public static partial class ToolPackBootstrap {
             [PackOptionKeyGlobal] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
                 ["AllowedRoots"] = options.AllowedRoots?.ToArray() ?? Array.Empty<string>(),
                 ["RunAsProfilePath"] = options.RunAsProfilePath,
-                ["AuthenticationProfilePath"] = options.AuthenticationProfilePath
+                ["AuthenticationProfilePath"] = options.AuthenticationProfilePath,
+                ["AuthenticationProbeStore"] = options.AuthenticationProbeStore,
+                ["RequireSuccessfulSmtpProbeForSend"] = options.RequireSuccessfulSmtpProbeForSend,
+                ["SmtpProbeMaxAgeSeconds"] = options.SmtpProbeMaxAgeSeconds
             },
             [PackOptionKeyActiveDirectory] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
                 ["DomainController"] = options.AdDomainController,

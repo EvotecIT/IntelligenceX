@@ -278,6 +278,7 @@ public sealed partial class MainWindow : Window {
 
         var effectiveAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
         var effectiveLoginInProgress = RequiresInteractiveSignInForCurrentTransport() && _loginInProgress;
+        var hasExplicitUnauthenticatedProbeSnapshot = HasExplicitUnauthenticatedEnsureLoginProbeSnapshot();
         var queuedPromptCount = GetQueuedPromptAfterLoginCount();
         var queuedTurnCount = GetQueuedTurnCount();
         var json = JsonSerializer.Serialize(new {
@@ -291,6 +292,7 @@ public sealed partial class MainWindow : Window {
             authenticated = effectiveAuthenticated,
             accountId = _authenticatedAccountId ?? string.Empty,
             loginInProgress = effectiveLoginInProgress,
+            hasExplicitUnauthenticatedProbeSnapshot,
             sending = _isSending || _turnStartupInProgress,
             cancelable = _isSending && !string.IsNullOrWhiteSpace(_activeTurnRequestId),
             cancelRequested = _isSending && !string.IsNullOrWhiteSpace(_cancelRequestedTurnRequestId),
@@ -366,6 +368,7 @@ public sealed partial class MainWindow : Window {
     private string BuildStatusDrivenSessionStamp() {
         var effectiveAuthenticated = IsEffectivelyAuthenticatedForCurrentTransport();
         var effectiveLoginInProgress = RequiresInteractiveSignInForCurrentTransport() && _loginInProgress;
+        var hasExplicitUnauthenticatedProbeSnapshot = HasExplicitUnauthenticatedEnsureLoginProbeSnapshot();
         var queuedPromptCount = GetQueuedPromptAfterLoginCount();
         var queuedTurnCount = GetQueuedTurnCount();
         var sending = _isSending || _turnStartupInProgress;
@@ -379,6 +382,7 @@ public sealed partial class MainWindow : Window {
             effectiveAuthenticated ? "1" : "0",
             _authenticatedAccountId ?? string.Empty,
             effectiveLoginInProgress ? "1" : "0",
+            hasExplicitUnauthenticatedProbeSnapshot ? "1" : "0",
             queuedPromptCount.ToString(CultureInfo.InvariantCulture),
             queuedTurnCount.ToString(CultureInfo.InvariantCulture),
             sending ? "1" : "0",

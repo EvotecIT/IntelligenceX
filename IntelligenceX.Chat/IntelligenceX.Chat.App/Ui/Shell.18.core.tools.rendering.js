@@ -193,6 +193,9 @@
     if (typeof nextState.loginInProgress === "boolean") {
       state.loginInProgress = nextState.loginInProgress;
     }
+    if (typeof nextState.hasExplicitUnauthenticatedProbeSnapshot === "boolean") {
+      state.hasExplicitUnauthenticatedProbeSnapshot = nextState.hasExplicitUnauthenticatedProbeSnapshot;
+    }
     if (typeof nextState.sending === "boolean") {
       state.sending = nextState.sending;
     }

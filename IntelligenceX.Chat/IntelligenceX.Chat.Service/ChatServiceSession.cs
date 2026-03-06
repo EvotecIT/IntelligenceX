@@ -501,13 +501,14 @@ internal sealed partial class ChatServiceSession {
 
     internal static bool ShouldBypassToolingBootstrapWaitForListTools(
         bool isListToolsRequest,
+        bool startupToolingBootstrapCompleted,
         bool startupToolingBootstrapCompletedSuccessfully,
         bool hasCachedToolCatalog) {
-        if (!isListToolsRequest || !startupToolingBootstrapCompletedSuccessfully) {
+        if (!isListToolsRequest || !hasCachedToolCatalog) {
             return false;
         }
 
-        return hasCachedToolCatalog;
+        return !startupToolingBootstrapCompleted || startupToolingBootstrapCompletedSuccessfully;
     }
 
     internal static bool ShouldBypassToolingBootstrapWaitForRecoveryRequests(
@@ -529,6 +530,7 @@ internal sealed partial class ChatServiceSession {
 
         return ShouldBypassToolingBootstrapWaitForListTools(
             isListToolsRequest: request is ListToolsRequest,
+            startupToolingBootstrapCompleted: startupToolingBootstrapTask.IsCompleted,
             startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully,
             hasCachedToolCatalog: TryGetCachedToolCatalogForListTools(out _));
     }

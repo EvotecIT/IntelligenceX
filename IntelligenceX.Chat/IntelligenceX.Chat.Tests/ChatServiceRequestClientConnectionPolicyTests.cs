@@ -88,17 +88,20 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
     }
 
     [Theory]
-    [InlineData(true, true, true, true)]
-    [InlineData(true, false, true, false)]
-    [InlineData(true, true, false, false)]
-    [InlineData(false, true, true, false)]
+    [InlineData(true, false, false, true, true)]
+    [InlineData(true, true, true, true, true)]
+    [InlineData(true, true, false, true, false)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(false, false, false, true, false)]
     public void ShouldBypassToolingBootstrapWaitForListTools_ReturnsExpectedValue(
         bool isListToolsRequest,
+        bool startupToolingBootstrapCompleted,
         bool startupToolingBootstrapCompletedSuccessfully,
         bool hasCachedToolCatalog,
         bool expected) {
         var shouldBypass = ChatServiceSession.ShouldBypassToolingBootstrapWaitForListTools(
             isListToolsRequest: isListToolsRequest,
+            startupToolingBootstrapCompleted: startupToolingBootstrapCompleted,
             startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapCompletedSuccessfully,
             hasCachedToolCatalog: hasCachedToolCatalog);
 
@@ -106,7 +109,7 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
     }
 
     [Theory]
-    [InlineData(true, false)]
+    [InlineData(true, true)]
     [InlineData(false, true)]
     public void ShouldUseCachedToolCatalogFallbackForListTools_ReturnsExpectedValue(
         bool startupToolingBootstrapInProgress,

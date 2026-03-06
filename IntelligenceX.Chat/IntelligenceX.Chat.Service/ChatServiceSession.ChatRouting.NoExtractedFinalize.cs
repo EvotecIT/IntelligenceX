@@ -443,15 +443,6 @@ internal sealed partial class ChatServiceSession {
                     }
                 }
 
-                var textBeforeToolOutputFallback = text;
-                text = ResolveAssistantTextFromToolOutputsFallback(
-                    assistantDraft: text,
-                    toolCalls: toolCalls,
-                    toolOutputs: toolOutputs);
-                if (string.IsNullOrWhiteSpace(textBeforeToolOutputFallback) && !string.IsNullOrWhiteSpace(text)) {
-                    noTextToolOutputRecoveryHitCount++;
-                }
-
                 var finalizeNoTextDecision = ResolveNoExtractedFinalizeNoTextDecision(
                     noTextToolOutputDirectRetryUsed: noTextToolOutputDirectRetryUsed,
                     planExecuteReviewLoop: planExecuteReviewLoop,
@@ -485,6 +476,15 @@ internal sealed partial class ChatServiceSession {
                             finalizeNoTextDecision)
                         .ConfigureAwait(false);
                     return ContinueRound();
+                }
+
+                var textBeforeToolOutputFallback = text;
+                text = ResolveAssistantTextFromToolOutputsFallback(
+                    assistantDraft: text,
+                    toolCalls: toolCalls,
+                    toolOutputs: toolOutputs);
+                if (string.IsNullOrWhiteSpace(textBeforeToolOutputFallback) && !string.IsNullOrWhiteSpace(text)) {
+                    noTextToolOutputRecoveryHitCount++;
                 }
 
                 if (string.IsNullOrWhiteSpace(text)) {

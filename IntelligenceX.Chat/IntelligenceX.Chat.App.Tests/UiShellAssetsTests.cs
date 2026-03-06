@@ -42,8 +42,7 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function parseStartupStatusContext(value)", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStatusChipFromStructuredStartupContext()", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStatusChipFallbackStatus()", script, StringComparison.Ordinal);
-        Assert.Contains("Ready (tool metadata degraded)", script, StringComparison.Ordinal);
-        Assert.Contains("Ready (retrying tool metadata sync)", script, StringComparison.Ordinal);
+        Assert.Contains("return { text: \"Ready\", tone: \"warn\" };", script, StringComparison.Ordinal);
         Assert.Contains("var STARTUP_HEADER_STAGE_TOTAL = 4;", script, StringComparison.Ordinal);
         Assert.Contains("var STARTUP_HEADER_TIMEOUT_AFTER_MS = 45000;", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStartupProgressStatus(rawStatus)", script, StringComparison.Ordinal);
@@ -53,7 +52,9 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function isStartupAuthVerificationStillRelevant(rawStatus, connected, requiresInteractiveSignIn, authenticated, loginInProgress, authGateActive)", script, StringComparison.Ordinal);
         Assert.Contains("metadataResult === \"failed\" || metadataResult === \"success\"", script, StringComparison.Ordinal);
         Assert.Contains("function isStaleStartupStatusContextCandidate(rawStatus, context, connected, toolsLoading, loginInProgress)", script, StringComparison.Ordinal);
-        Assert.Contains("Ready (tool packs syncing in background)", script, StringComparison.Ordinal);
+        Assert.Contains("Checking sign-in", script, StringComparison.Ordinal);
+        Assert.Contains("Loading tools", script, StringComparison.Ordinal);
+        Assert.Contains("Sign in required", script, StringComparison.Ordinal);
         Assert.Contains("function buildStartupProgressSnapshot(rows, activeKey, rawStatus, elapsedMs, loginInProgress)", script, StringComparison.Ordinal);
         Assert.Contains("function applyStatusChipStartupProgress(statusEl, startupHeaderStatus)", script, StringComparison.Ordinal);
         Assert.Contains("lower.indexOf(\"usage limit\") >= 0", script, StringComparison.Ordinal);
