@@ -1,5 +1,4 @@
 using IntelligenceX.Chat.App;
-using System.Collections;
 using System.Reflection;
 using Xunit;
 
@@ -13,11 +12,11 @@ public sealed class ChatMarkdownOptionsTests {
     /// Ensures strict minimal safety defaults remain in place while Mermaid is enabled.
     /// </summary>
     [Fact]
-    public void Create_EnablesMermaidAndKeepsMinimalStrictGuards() {
+    public void Create_EnablesVisualsAndKeepsMinimalStrictGuards() {
         var options = ChatMarkdownOptions.Create();
 
         Assert.True(options.Mermaid.Enabled);
-        Assert.False(options.Chart.Enabled);
+        Assert.True(options.Chart.Enabled);
         Assert.False(options.Math.Enabled);
         Assert.False(options.EnableCodeCopyButtons);
         Assert.False(options.EnableTableCopyButtons);
@@ -37,23 +36,18 @@ public sealed class ChatMarkdownOptionsTests {
     }
 
     /// <summary>
-    /// Ensures OfficeIMO fenced code block extensions are registered when the referenced renderer exposes the API.
+    /// Ensures optional vis-network support is enabled when the referenced OfficeIMO renderer exposes it.
     /// </summary>
     [Fact]
-    public void Create_RegistersIxFenceExtensions_WhenSupported() {
+    public void Create_EnablesOptionalNetworkSupport_WhenSupported() {
         var options = ChatMarkdownOptions.Create();
-        var property = options.GetType().GetProperty("FencedCodeBlockRenderers", BindingFlags.Instance | BindingFlags.Public);
-        if (property?.GetValue(options) is not IEnumerable renderers) {
+        var property = options.GetType().GetProperty("Network", BindingFlags.Instance | BindingFlags.Public);
+        var networkOptions = property?.GetValue(options);
+        var enabledProperty = networkOptions?.GetType().GetProperty("Enabled", BindingFlags.Instance | BindingFlags.Public);
+        if (enabledProperty?.PropertyType != typeof(bool)) {
             return;
         }
 
-        var names = renderers
-            .Cast<object>()
-            .Select(renderer => renderer.GetType().GetProperty("Name", BindingFlags.Instance | BindingFlags.Public)?.GetValue(renderer) as string)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToArray();
-
-        Assert.Contains("IX chart", names);
-        Assert.Contains("IX network", names);
+        Assert.True((bool)(enabledProperty.GetValue(networkOptions) ?? false));
     }
 }
