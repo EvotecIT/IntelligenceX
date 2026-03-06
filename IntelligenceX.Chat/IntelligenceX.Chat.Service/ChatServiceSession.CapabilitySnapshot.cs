@@ -68,8 +68,7 @@ internal sealed partial class ChatServiceSession {
         var familyActions = MapCapabilityFamilyActions(routingCatalog);
         var routingFamilies = NormalizeCapabilitySnapshotRoutingFamilies(
             familyActions.Select(static summary => summary.Family));
-        var skills = NormalizeCapabilitySnapshotSkills(
-            familyActions.Select(static summary => BuildSkillSnapshotValue(summary.Family, summary.ActionId)));
+        var skills = ResolveCapabilitySnapshotSkills(pluginAvailability, routingCatalog);
         var healthyTools = NormalizeCapabilitySnapshotHealthyToolNames(healthyToolNames ?? Array.Empty<string>());
         var registeredTools = Math.Max(0, routingCatalog?.TotalTools ?? 0);
         var allowedRootCount = Math.Max(0, options.AllowedRoots.Count);
@@ -146,11 +145,15 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string[] NormalizeCapabilitySnapshotSkills(IEnumerable<string> skills) {
+        return NormalizeSkillInventoryValues(skills, MaxCapabilitySnapshotSkills);
+    }
+
+    private static string[] NormalizeSkillInventoryValues(IEnumerable<string> skills, int maxItems) {
         return NormalizeDistinctStrings(
             (skills ?? Array.Empty<string>())
             .Select(static skill => NormalizeSkillSnapshotValue(skill))
             .Where(static skill => skill.Length > 0),
-            MaxCapabilitySnapshotSkills);
+            maxItems);
     }
 
     private static string[] NormalizeCapabilitySnapshotHealthyToolNames(IEnumerable<string> healthyToolNames) {

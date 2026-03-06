@@ -42,11 +42,13 @@ internal sealed partial class ChatServiceSession {
 
     internal void SetCapabilitySnapshotContextForTesting(
         IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
-        ToolRoutingCatalogDiagnostics routingCatalogDiagnostics) {
+        ToolRoutingCatalogDiagnostics routingCatalogDiagnostics,
+        IReadOnlyList<ToolPluginAvailabilityInfo>? pluginAvailability = null) {
         ArgumentNullException.ThrowIfNull(packAvailability);
         ArgumentNullException.ThrowIfNull(routingCatalogDiagnostics);
 
         _packAvailability = packAvailability.ToArray();
+        _pluginAvailability = pluginAvailability?.ToArray() ?? Array.Empty<ToolPluginAvailabilityInfo>();
         _routingCatalogDiagnostics = routingCatalogDiagnostics;
     }
 

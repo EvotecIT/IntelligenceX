@@ -681,7 +681,8 @@ public static partial class ToolPackBootstrap {
             DisabledReason = normalizedReason,
             IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
             PackIds = normalizedPackId.Length == 0 ? Array.Empty<string>() : new[] { normalizedPackId },
-            SkillDirectories = Array.Empty<string>()
+            SkillDirectories = Array.Empty<string>(),
+            SkillIds = Array.Empty<string>()
         };
     }
 
@@ -716,6 +717,12 @@ public static partial class ToolPackBootstrap {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var normalizedSkillIds = (availability.SkillIds ?? Array.Empty<string>())
+            .Select(static skillId => (skillId ?? string.Empty).Trim())
+            .Where(static skillId => skillId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static skillId => skillId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         var normalizedReason = availability.Enabled ? null : NormalizeDisabledReason(availability.DisabledReason);
 
         availabilityById[normalizedPluginId] = availability with {
@@ -723,6 +730,7 @@ public static partial class ToolPackBootstrap {
             Name = normalizedName,
             PackIds = normalizedPackIds,
             SkillDirectories = normalizedSkillDirectories,
+            SkillIds = normalizedSkillIds,
             DisabledReason = normalizedReason
         };
     }

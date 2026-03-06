@@ -405,21 +405,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private string[] ResolveWorkingMemoryCapabilitySkills(IReadOnlyList<string> fallbackSkills) {
-        var skills = _routingCatalogDiagnostics.FamilyActions
-            .Where(static summary =>
-                !string.IsNullOrWhiteSpace(summary.Family)
-                && !string.IsNullOrWhiteSpace(summary.ActionId))
-            .OrderByDescending(static summary => Math.Max(0, summary.ToolCount))
-            .ThenBy(static summary => summary.Family, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static summary => summary.ActionId, StringComparer.OrdinalIgnoreCase)
-            .Select(static summary => BuildSkillSnapshotValue(summary.Family, summary.ActionId))
-            .Where(static skill => skill.Length > 0);
-        var normalized = NormalizeCapabilitySnapshotSkills(skills);
-        if (normalized.Length > 0) {
-            return normalized;
-        }
-
-        return NormalizeCapabilitySnapshotSkills(fallbackSkills ?? Array.Empty<string>());
+        return ResolveCapabilitySnapshotSkills(_pluginAvailability, _routingCatalogDiagnostics, fallbackSkills);
     }
 
     private static string BuildSkillSnapshotValue(string family, string actionId) {
