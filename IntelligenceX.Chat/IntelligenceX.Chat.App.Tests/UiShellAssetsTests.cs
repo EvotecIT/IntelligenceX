@@ -43,6 +43,8 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function resolveHeaderStatusChipFromStructuredStartupContext()", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStatusChipFallbackStatus()", script, StringComparison.Ordinal);
         Assert.Contains("return { text: \"Ready\", tone: \"warn\" };", script, StringComparison.Ordinal);
+        Assert.Contains("hasExplicitUnauthenticatedProbeSnapshot: false", script, StringComparison.Ordinal);
+        Assert.Contains("normalizeBool(state.hasExplicitUnauthenticatedProbeSnapshot)", script, StringComparison.Ordinal);
         Assert.Contains("var STARTUP_HEADER_STAGE_TOTAL = 4;", script, StringComparison.Ordinal);
         Assert.Contains("var STARTUP_HEADER_TIMEOUT_AFTER_MS = 45000;", script, StringComparison.Ordinal);
         Assert.Contains("function resolveHeaderStartupProgressStatus(rawStatus)", script, StringComparison.Ordinal);
@@ -93,7 +95,12 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("Syncing tool packs in background...", toolsScript, StringComparison.Ordinal);
         Assert.Contains("if (Array.isArray(nextState.statusTimeline)) {", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.hasExplicitUnauthenticatedProbeSnapshot = nextState.hasExplicitUnauthenticatedProbeSnapshot;", renderingScript, StringComparison.Ordinal);
         Assert.Contains(".status-chip.status-chip-progress {", baseCss, StringComparison.Ordinal);
+        Assert.Contains("width: clamp(152px, 18vw, 188px);", baseCss, StringComparison.Ordinal);
+        Assert.Contains("flex: 0 0 clamp(152px, 18vw, 188px);", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".status-chip-routing {", baseCss, StringComparison.Ordinal);
+        Assert.Contains("width: auto;", baseCss, StringComparison.Ordinal);
         Assert.Contains("--ix-startup-progress", baseCss, StringComparison.Ordinal);
     }
 
