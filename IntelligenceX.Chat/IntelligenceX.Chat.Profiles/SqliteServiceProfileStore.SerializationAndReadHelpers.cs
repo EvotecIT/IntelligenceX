@@ -136,6 +136,73 @@ internal sealed partial class SqliteServiceProfileStore {
         return normalized.Length == 0 ? null : normalized;
     }
 
+    private static List<string> NormalizeStoredPluginPaths(List<string>? values) {
+        var normalized = new List<string>();
+        if (values is null || values.Count == 0) {
+            return normalized;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var candidate = NormalizeOptionalPath(values[i]);
+            if (candidate is null || IsAppManagedPluginPath(candidate) || !seen.Add(candidate)) {
+                continue;
+            }
+
+            normalized.Add(candidate);
+        }
+
+        return normalized;
+    }
+
+    private static bool SequenceEqualOrdinalIgnoreCase(IReadOnlyList<string>? left, IReadOnlyList<string>? right) {
+        if (ReferenceEquals(left, right)) {
+            return true;
+        }
+
+        var leftCount = left?.Count ?? 0;
+        var rightCount = right?.Count ?? 0;
+        if (leftCount != rightCount) {
+            return false;
+        }
+
+        for (var i = 0; i < leftCount; i++) {
+            if (!string.Equals(left![i], right![i], StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsAppManagedPluginPath(string path) {
+        var normalized = NormalizeOptionalPath(path);
+        if (normalized is null) {
+            return false;
+        }
+
+        var comparisonPath = TryGetFullPath(normalized) ?? normalized;
+        if (comparisonPath.IndexOf($"{Path.DirectorySeparatorChar}plugin-cache{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        if (comparisonPath.IndexOf($"{Path.DirectorySeparatorChar}service-runtime{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        return comparisonPath.IndexOf(
+                   $"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}Releases{Path.DirectorySeparatorChar}",
+                   StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string? TryGetFullPath(string path) {
+        try {
+            return Path.GetFullPath(path);
+        } catch {
+            return null;
+        }
+    }
+
     private static byte[]? ReadBytes(DataRow row, string col) {
         if (!row.Table.Columns.Contains(col)) {
             return null;

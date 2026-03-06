@@ -671,6 +671,23 @@ public sealed class PluginFolderLoaderTests {
     }
 
     [Fact]
+    public void GetPluginSearchPaths_SkipsPluginArchiveCacheRoots() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var cacheRoot = Path.Combine(tempRoot, "plugin-cache");
+        var cacheChild = Path.Combine(cacheRoot, "zip-v1-legacy");
+
+        var paths = ToolPackBootstrap.GetPluginSearchPaths(new ToolPackBootstrapOptions {
+            EnableDefaultPluginPaths = false,
+            PluginPaths = new[] { pluginRoot, cacheRoot, cacheChild },
+            PluginArchiveCacheRoot = cacheRoot
+        });
+
+        Assert.Single(paths);
+        Assert.Equal(Path.GetFullPath(pluginRoot), paths[0], ignoreCase: true);
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacks_SkipsPlugin_WhenManifestEntryAssemblyIsAbsolutePath() {
         var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
         var pluginRoot = Path.Combine(tempRoot, "plugins");

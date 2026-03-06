@@ -16,6 +16,7 @@ internal static partial class PluginFolderToolPackLoader {
     private const string TestAssemblyFileName = "IntelligenceX.Chat.Tests.dll";
     private const int SupportedSchemaVersion = 1;
     private const int PluginArchiveCacheMaxEntries = 128;
+    private const string PluginArchiveCacheKeyPrefix = "zip-v2-";
     private static readonly TimeSpan PluginArchiveLockTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan PluginArchiveCleanupLockTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan PluginArchiveCacheMaxAge = TimeSpan.FromDays(30);
@@ -28,6 +29,7 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var roots = new List<PluginSearchRoot>();
+        var cacheRoot = NormalizePath(ResolvePluginArchiveCacheRoot(options));
 
         if (options.EnableDefaultPluginPaths) {
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -57,6 +59,10 @@ internal static partial class PluginFolderToolPackLoader {
         foreach (var root in roots) {
             var fullPath = NormalizePath(root.Path);
             if (string.IsNullOrWhiteSpace(fullPath)) {
+                continue;
+            }
+
+            if (IsPluginArchiveCachePath(fullPath, cacheRoot)) {
                 continue;
             }
 
@@ -381,10 +387,17 @@ internal static partial class PluginFolderToolPackLoader {
 
             var now = DateTime.UtcNow;
             var entries = Directory
-                .EnumerateDirectories(cacheRoot, "zip-v1-*", SearchOption.TopDirectoryOnly)
+                .EnumerateDirectories(cacheRoot, "zip-v*", SearchOption.TopDirectoryOnly)
                 .Select(static path => new DirectoryInfo(path))
                 .OrderByDescending(static entry => entry.LastWriteTimeUtc)
                 .ToList();
+
+            foreach (var entry in entries.ToArray()) {
+                if (!entry.Name.StartsWith(PluginArchiveCacheKeyPrefix, StringComparison.OrdinalIgnoreCase)
+                    && TryDeleteCacheEntry(entry)) {
+                    entries.Remove(entry);
+                }
+            }
 
             foreach (var entry in entries.ToArray()) {
                 if (!IsLikelyTestCacheEntry(entry)) {
@@ -524,10 +537,25 @@ internal static partial class PluginFolderToolPackLoader {
                         + info.LastWriteTimeUtc.Ticks.ToString();
             using var sha = SHA256.Create();
             var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(stamp));
-            return "zip-v1-" + Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant();
+            return PluginArchiveCacheKeyPrefix + Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant();
         } catch {
             return string.Empty;
         }
+    }
+
+    private static bool IsPluginArchiveCachePath(string candidatePath, string? cacheRoot) {
+        if (string.IsNullOrWhiteSpace(candidatePath) || string.IsNullOrWhiteSpace(cacheRoot)) {
+            return false;
+        }
+
+        var normalizedCandidate = candidatePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalizedCacheRoot = cacheRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(normalizedCandidate, normalizedCacheRoot, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        var cacheRootPrefix = normalizedCacheRoot + Path.DirectorySeparatorChar;
+        return normalizedCandidate.StartsWith(cacheRootPrefix, StringComparison.OrdinalIgnoreCase);
     }
 
     internal readonly record struct PluginSearchRoot(string Path, bool IsExplicit);

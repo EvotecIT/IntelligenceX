@@ -61,6 +61,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public List<string> BuiltInToolAssemblyNames { get; } = new();
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
+    internal List<string> RuntimePluginPaths { get; } = new();
     public List<string> DisabledPackIds { get; } = new();
     public List<string> EnabledPackIds { get; } = new();
     public ToolWriteGovernanceMode WriteGovernanceMode { get; set; } = ToolWriteGovernanceMode.Enforced;
@@ -77,7 +78,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
     IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
     IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolAssemblyNames => BuiltInToolAssemblyNames;
-    IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
+    IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => GetEffectivePluginPaths();
     IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
     IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
 
@@ -465,7 +466,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
                 }
-                options.PluginPaths.Add(value!);
+                options.RuntimePluginPaths.Add(value!);
                 continue;
             }
             if (arg is "--no-default-plugin-paths") {
@@ -550,6 +551,29 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         return options;
     }
 
+    internal IReadOnlyList<string> GetEffectivePluginPaths() {
+        if (PluginPaths.Count == 0 && RuntimePluginPaths.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var effective = new List<string>(PluginPaths.Count + RuntimePluginPaths.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AppendDistinctPluginPaths(effective, seen, PluginPaths);
+        AppendDistinctPluginPaths(effective, seen, RuntimePluginPaths);
+        return effective;
+    }
+
+    private static void AppendDistinctPluginPaths(List<string> destination, HashSet<string> seen, IReadOnlyList<string> source) {
+        for (var i = 0; i < source.Count; i++) {
+            var candidate = (source[i] ?? string.Empty).Trim();
+            if (candidate.Length == 0 || !seen.Add(candidate)) {
+                continue;
+            }
+
+            destination.Add(candidate);
+        }
+    }
+
     public static void WriteHelp() {
         Console.WriteLine("Usage:");
         Console.WriteLine("  IntelligenceX.Chat.Service [options]");
@@ -601,7 +625,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --built-in-tool-assembly <NAME> Additional built-in tool assembly name to include (repeatable).");
         Console.WriteLine("  --no-default-built-in-tool-assemblies Disable built-in discovery from Chat's default assembly allowlist.");
         Console.WriteLine("  --default-built-in-tool-assemblies Re-enable built-in discovery from Chat's default assembly allowlist.");
-        Console.WriteLine("  --plugin-path <PATH>    Additional folder-based plugin path (repeatable).");
+        Console.WriteLine("  --plugin-path <PATH>    Runtime-only folder-based plugin path (repeatable; not persisted to profiles).");
         Console.WriteLine("  --no-default-plugin-paths Disable default plugin paths (%LOCALAPPDATA% and app ./plugins).");
         ToolRuntimePolicyBootstrap.WriteRuntimePolicyCliHelp(Console.WriteLine);
         Console.WriteLine("  --max-table-rows <N>    Max rows to show in table-like output (0 = no limit; default: 0).");

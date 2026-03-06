@@ -7,7 +7,6 @@ using Xunit;
 namespace IntelligenceX.UnitTests;
 
 public sealed class ToolDefinitionTagOrderingTests {
-
     [Fact]
     public void CreateAliasDefinition_ShouldReturnStableTags_ForDifferentOverrideInputOrdering() {
         var canonical = ToolSelectionMetadata.Enrich(

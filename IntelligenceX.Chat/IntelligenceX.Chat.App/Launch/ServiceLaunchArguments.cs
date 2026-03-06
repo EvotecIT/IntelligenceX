@@ -39,7 +39,7 @@ internal static class ServiceLaunchArguments {
     /// <param name="detachedServiceMode">Whether service is detached from app lifetime.</param>
     /// <param name="parentProcessId">Parent process id used for exit-on-disconnect mode.</param>
     /// <param name="profileOptions">Optional profile/runtime overrides passed to the service process.</param>
-    /// <param name="additionalPluginPaths">Optional additional plugin roots passed as repeatable --plugin-path args.</param>
+    /// <param name="additionalPluginPaths">Optional runtime-managed plugin roots passed as repeatable --plugin-path args.</param>
     /// <returns>Ordered argument vector.</returns>
     public static IReadOnlyList<string> Build(
         string pipeName,

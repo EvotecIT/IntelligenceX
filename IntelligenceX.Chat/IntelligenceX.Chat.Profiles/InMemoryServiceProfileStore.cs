@@ -62,7 +62,7 @@ internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
             PowerShellAllowWrite = profile.PowerShellAllowWrite,
             EnableBuiltInPackLoading = profile.EnableBuiltInPackLoading,
             EnableDefaultPluginPaths = profile.EnableDefaultPluginPaths,
-            PluginPaths = new List<string>(profile.PluginPaths ?? new List<string>()),
+            PluginPaths = NormalizeStoredPluginPaths(profile.PluginPaths),
             DisabledPackIds = new List<string>(profile.DisabledPackIds ?? new List<string>()),
             EnabledPackIds = new List<string>(profile.EnabledPackIds ?? new List<string>()),
             WriteGovernanceMode = profile.WriteGovernanceMode,
@@ -79,5 +79,46 @@ internal sealed class InMemoryServiceProfileStore : IServiceProfileStore {
             MaxSample = profile.MaxSample,
             Redact = profile.Redact
         };
+    }
+    private static List<string> NormalizeStoredPluginPaths(IReadOnlyList<string>? values) {
+        var normalized = new List<string>();
+        if (values is null || values.Count == 0) {
+            return normalized;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var candidate = (values[i] ?? string.Empty).Trim();
+            if (candidate.Length == 0 || IsAppManagedPluginPath(candidate) || !seen.Add(candidate)) {
+                continue;
+            }
+
+            normalized.Add(candidate);
+        }
+
+        return normalized;
+    }
+
+    private static bool IsAppManagedPluginPath(string path) {
+        var comparisonPath = TryGetFullPath(path) ?? path;
+        if (comparisonPath.IndexOf($"{Path.DirectorySeparatorChar}plugin-cache{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        if (comparisonPath.IndexOf($"{Path.DirectorySeparatorChar}service-runtime{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        return comparisonPath.IndexOf(
+                   $"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}Releases{Path.DirectorySeparatorChar}",
+                   StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string? TryGetFullPath(string path) {
+        try {
+            return Path.GetFullPath(path);
+        } catch {
+            return null;
+        }
     }
 }
