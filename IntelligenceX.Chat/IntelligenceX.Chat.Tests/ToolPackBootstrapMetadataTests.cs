@@ -76,8 +76,11 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.True(globalBag!.TryGetValue("AllowedRoots", out var allowedRootsValue));
         var allowedRootsBag = Assert.IsAssignableFrom<IEnumerable<string>>(allowedRootsValue);
         Assert.Equal(new[] { "C:/allowed-a", "C:/allowed-b" }, allowedRootsBag);
-        Assert.Equal("C:/temp/runas.json", globalBag["RunAsProfilePath"]);
-        Assert.Equal("C:/temp/auth.json", globalBag["AuthenticationProfilePath"]);
+        Assert.Equal(runtimePolicyContext.Options.RunAsProfilePath, globalBag["RunAsProfilePath"]);
+        Assert.Equal(runtimePolicyContext.Options.AuthenticationProfilePath, globalBag["AuthenticationProfilePath"]);
+        Assert.Same(runtimePolicyContext.AuthenticationProbeStore, globalBag["AuthenticationProbeStore"]);
+        Assert.True(Assert.IsType<bool>(globalBag["RequireSuccessfulSmtpProbeForSend"]));
+        Assert.Equal(600, Assert.IsType<int>(globalBag["SmtpProbeMaxAgeSeconds"]));
 
         Assert.True(options.PackRuntimeOptionBag.TryGetValue("active_directory", out var adBag));
         Assert.NotNull(adBag);

@@ -183,4 +183,23 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("LocalDirectRetry", result.Kind);
         Assert.Equal("local_no_text_direct_retry", result.Reason);
     }
+
+    [Fact]
+    public void ResolveNoExtractedFinalizeNoTextOutcomeForTesting_PrefersLocalToolOutputFallbackBeforeRetryDecision() {
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextOutcomeForTesting(
+            noTextToolOutputDirectRetryUsed: false,
+            planExecuteReviewLoop: true,
+            redactEnabled: false,
+            hasSuccessfulToolOutput: true,
+            assistantDraft: string.Empty,
+            localNoTextDirectRetryUsed: false,
+            isLocalCompatibleLoopback: true,
+            availableToolCount: 2,
+            priorToolCalls: 1,
+            userRequest: "Summarize the tool result.");
+
+        Assert.Contains("Recovered findings from executed tools", result.AssistantDraft, StringComparison.Ordinal);
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("no_no_text_recovery_selected", result.Reason);
+    }
 }

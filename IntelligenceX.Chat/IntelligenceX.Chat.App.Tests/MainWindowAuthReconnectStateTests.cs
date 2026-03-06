@@ -80,4 +80,55 @@ public sealed class MainWindowAuthReconnectStateTests {
 
         Assert.Equal(expected, result);
     }
+
+    /// <summary>
+    /// Invalidates cached ensure-login probe state when authoritative auth context changes.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, false, false, true)]
+    [InlineData(true, false, true, false, true)]
+    [InlineData(true, false, false, true, true)]
+    [InlineData(false, false, false, true, false)]
+    [InlineData(true, false, false, false, false)]
+    public void ShouldResetEnsureLoginProbeCacheForAuthContextChange_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool loginCompletedSuccessfully,
+        bool transportChanged,
+        bool runtimeExited,
+        bool expected) {
+        var result = MainWindow.ShouldResetEnsureLoginProbeCacheForAuthContextChange(
+            requiresInteractiveSignIn: requiresInteractiveSignIn,
+            loginCompletedSuccessfully: loginCompletedSuccessfully,
+            transportChanged: transportChanged,
+            runtimeExited: runtimeExited);
+
+        Assert.Equal(expected, result);
+    }
+
+    /// <summary>
+    /// Exposes explicit unauthenticated probe state only while it remains relevant to native auth UX.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false, true, false, true)]
+    [InlineData(true, true, false, true, false, false)]
+    [InlineData(true, false, true, true, false, false)]
+    [InlineData(false, false, false, true, false, false)]
+    [InlineData(true, false, false, false, false, false)]
+    [InlineData(true, false, false, true, true, false)]
+    public void ShouldExposeExplicitUnauthenticatedEnsureLoginProbeSnapshot_ReturnsExpectedValue(
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool probeCacheHasValue,
+        bool probeCachedIsAuthenticated,
+        bool expected) {
+        var result = MainWindow.ShouldExposeExplicitUnauthenticatedEnsureLoginProbeSnapshot(
+            requiresInteractiveSignIn: requiresInteractiveSignIn,
+            isAuthenticated: isAuthenticated,
+            loginInProgress: loginInProgress,
+            probeCacheHasValue: probeCacheHasValue,
+            probeCachedIsAuthenticated: probeCachedIsAuthenticated);
+
+        Assert.Equal(expected, result);
+    }
 }

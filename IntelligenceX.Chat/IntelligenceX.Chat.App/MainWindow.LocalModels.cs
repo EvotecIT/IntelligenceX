@@ -354,6 +354,14 @@ public sealed partial class MainWindow : Window {
         _localProviderReasoningSummary = normalizedReasoningSummary;
         _localProviderTextVerbosity = normalizedTextVerbosity;
         _localProviderTemperature = normalizedTemperature;
+        if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
+                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport()
+                                           || string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase),
+                loginCompletedSuccessfully: false,
+                transportChanged: transportChanged,
+                runtimeExited: false)) {
+            ResetEnsureLoginProbeCache();
+        }
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
         } else if (transportChanged && !string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {

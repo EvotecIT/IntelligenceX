@@ -444,15 +444,7 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 var textBeforeToolOutputFallback = text;
-                text = ResolveAssistantTextFromToolOutputsFallback(
-                    assistantDraft: text,
-                    toolCalls: toolCalls,
-                    toolOutputs: toolOutputs);
-                if (string.IsNullOrWhiteSpace(textBeforeToolOutputFallback) && !string.IsNullOrWhiteSpace(text)) {
-                    noTextToolOutputRecoveryHitCount++;
-                }
-
-                var finalizeNoTextDecision = ResolveNoExtractedFinalizeNoTextDecision(
+                var finalizeNoTextOutcome = ResolveNoExtractedFinalizeNoTextOutcome(
                     noTextToolOutputDirectRetryUsed: noTextToolOutputDirectRetryUsed,
                     planExecuteReviewLoop: planExecuteReviewLoop,
                     redactEnabled: _options.Redact,
@@ -465,6 +457,11 @@ internal sealed partial class ChatServiceSession {
                     availableToolCount: toolDefs.Count,
                     priorToolCalls: toolCalls.Count,
                     userRequest: routedUserRequest);
+                text = finalizeNoTextOutcome.AssistantDraft;
+                if (string.IsNullOrWhiteSpace(textBeforeToolOutputFallback) && !string.IsNullOrWhiteSpace(text)) {
+                    noTextToolOutputRecoveryHitCount++;
+                }
+                var finalizeNoTextDecision = finalizeNoTextOutcome.Decision;
                 if (finalizeNoTextDecision.Kind != NoExtractedFinalizeNoTextDecisionKind.None) {
                     if (finalizeNoTextDecision.Kind == NoExtractedFinalizeNoTextDecisionKind.ToolOutputSynthesisRetry) {
                         noTextToolOutputDirectRetryUsed = true;

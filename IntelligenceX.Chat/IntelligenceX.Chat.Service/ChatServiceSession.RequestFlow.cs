@@ -66,7 +66,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static bool ShouldUseCachedToolCatalogFallbackForListTools(bool startupToolingBootstrapInProgress) {
-        return !startupToolingBootstrapInProgress;
+        return true;
     }
 
     private bool TryGetCachedToolCatalogForListTools(out ToolDefinitionDto[] tools) {

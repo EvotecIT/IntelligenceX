@@ -143,16 +143,23 @@ body {
   justify-content: center;
   text-align: center;
   font-weight: 600;
+  box-sizing: border-box;
   position: relative;
   white-space: nowrap;
-  min-width: 116px;
+  min-width: 152px;
+  width: clamp(152px, 18vw, 188px);
+  max-width: clamp(152px, 18vw, 188px);
+  flex: 0 0 clamp(152px, 18vw, 188px);
   margin-right: 2px;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-chip-routing {
   min-width: 108px;
+  width: auto;
   max-width: 220px;
+  flex: 0 1 auto;
   padding: 4px 10px 4px 18px;
   font-size: 11px;
   margin-right: 0;

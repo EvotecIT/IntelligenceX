@@ -52,6 +52,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        text = StripRejectedContinuationContractBlock(text);
         return NormalizeRoutingUserText(text);
     }
 
@@ -361,6 +362,102 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
+    }
+
+    private static string StripRejectedContinuationContractBlock(string text) {
+        var normalizedText = (text ?? string.Empty).Trim();
+        if (normalizedText.Length == 0
+            || normalizedText.IndexOf(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return normalizedText;
+        }
+
+        var lines = normalizedText
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n');
+        if (lines.Length == 0) {
+            return normalizedText;
+        }
+
+        var sawNonWrapperPrefix = false;
+        var wrapperBlockStart = -1;
+        for (var i = 0; i < lines.Length; i++) {
+            var trimmed = lines[i].AsSpan().Trim();
+            if (trimmed.IsEmpty) {
+                continue;
+            }
+
+            var normalizedLine = NormalizeContinuationContractLine(trimmed);
+            if (normalizedLine.IsEmpty) {
+                continue;
+            }
+
+            if (normalizedLine.Equals(ContinuationContractMarker, StringComparison.OrdinalIgnoreCase)) {
+                if (!sawNonWrapperPrefix) {
+                    return normalizedText;
+                }
+
+                var blockStart = wrapperBlockStart >= 0 ? wrapperBlockStart : i;
+                var blockEnd = ResolveRejectedContinuationContractBlockEnd(lines, i);
+                if (blockEnd <= blockStart) {
+                    return normalizedText;
+                }
+
+                var keptLines = new List<string>(lines.Length - (blockEnd - blockStart));
+                for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++) {
+                    if (lineIndex < blockStart || lineIndex >= blockEnd) {
+                        keptLines.Add(lines[lineIndex]);
+                    }
+                }
+
+                return string.Join("\n", keptLines).Trim();
+            }
+
+            if (IsContinuationContractWrapperLine(normalizedLine)) {
+                if (sawNonWrapperPrefix && wrapperBlockStart < 0) {
+                    wrapperBlockStart = i;
+                }
+                continue;
+            }
+
+            sawNonWrapperPrefix = true;
+            wrapperBlockStart = -1;
+        }
+
+        return normalizedText;
+    }
+
+    private static int ResolveRejectedContinuationContractBlockEnd(string[] lines, int markerIndex) {
+        var blockEnd = markerIndex + 1;
+        for (var i = markerIndex + 1; i < lines.Length; i++) {
+            var trimmed = lines[i].AsSpan().Trim();
+            if (trimmed.IsEmpty) {
+                blockEnd = i + 1;
+                continue;
+            }
+
+            var normalizedLine = NormalizeContinuationContractLine(trimmed);
+            if (normalizedLine.IsEmpty) {
+                blockEnd = i + 1;
+                continue;
+            }
+
+            if (IsContinuationContractWrapperLine(normalizedLine)
+                || IsContinuationContractStructuredFieldLine(normalizedLine)) {
+                blockEnd = i + 1;
+                continue;
+            }
+
+            break;
+        }
+
+        return blockEnd;
+    }
+
+    private static bool IsContinuationContractStructuredFieldLine(ReadOnlySpan<char> line) {
+        return line.StartsWith("enabled", StringComparison.OrdinalIgnoreCase)
+               || line.StartsWith("intent_anchor", StringComparison.OrdinalIgnoreCase)
+               || line.StartsWith("follow_up", StringComparison.OrdinalIgnoreCase);
     }
 
     private static ReadOnlySpan<char> NormalizeContinuationContractLine(ReadOnlySpan<char> line) {

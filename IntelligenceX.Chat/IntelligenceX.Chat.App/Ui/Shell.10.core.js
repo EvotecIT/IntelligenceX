@@ -59,6 +59,7 @@
     authenticated: false,
     accountId: "",
     loginInProgress: false,
+    hasExplicitUnauthenticatedProbeSnapshot: false,
     sending: false,
     cancelable: false,
     cancelRequested: false,
@@ -701,7 +702,10 @@
       return true;
     }
 
-    return requiresInteractiveSignIn && connected && !authenticated;
+    return requiresInteractiveSignIn
+      && connected
+      && !authenticated
+      && normalizeBool(state.hasExplicitUnauthenticatedProbeSnapshot);
   }
 
   function isStartupAuthVerificationStillRelevant(rawStatus, connected, requiresInteractiveSignIn, authenticated, loginInProgress, authGateActive) {
@@ -713,7 +717,10 @@
       return true;
     }
 
-    return requiresInteractiveSignIn && connected && !authenticated;
+    return requiresInteractiveSignIn
+      && connected
+      && !authenticated
+      && !normalizeBool(state.hasExplicitUnauthenticatedProbeSnapshot);
   }
 
   function isStartupDiagnosticsPhaseResultKnown(value) {
@@ -1152,7 +1159,7 @@
       resetStartupHeaderPhaseTracker();
       if (metadataRowActive || (normalizeBool(state.options && state.options.toolsLoading) && !suppressMetadataFromDiagnostics)) {
         return {
-          text: "Ready (tool packs syncing in background)",
+          text: "Ready",
           tone: "ok",
           startupSummary: startupModel.summary,
           startupStageLabel: "Working state",
@@ -1200,30 +1207,25 @@
     var elapsedLabel = formatStartupHeaderElapsed(elapsedMs);
     var progressSnapshot = buildStartupProgressSnapshot(rows, activeKey, rawStatus, elapsedMs, normalizeBool(state.loginInProgress));
     var progressPercent = Math.max(0, Math.min(100, Math.round(progressSnapshot.progressPercent || 0)));
-    var progressLabel = progressPercent + "%";
     var lowerRawStatus = String(rawStatus || "").toLowerCase();
-    var text = "Startup " + stageIndex + "/" + STARTUP_HEADER_STAGE_TOTAL + ": " + stageLabel;
+    var text = "Starting runtime";
     var tone = "warn";
 
     if (activeKey === "startup_connect") {
-      text = "Startup 1/4: Starting runtime";
+      text = "Starting runtime";
       if (lowerRawStatus.indexOf("retry") >= 0) {
-        text += " (retrying)";
+        text = "Starting runtime";
       }
     } else if (activeKey === "startup_auth_wait") {
       if (isStartupAuthVerificationStatusText(rawStatus)) {
-        text = "Startup 2/4: Checking sign-in state";
+        text = "Checking sign-in";
       } else {
-        text = "Startup 2/4: Sign in required";
-      }
-      if (!isStartupAuthVerificationStatusText(rawStatus) && normalizeBool(state.loginInProgress)) {
-        text += " (browser open)";
+        text = "Sign in required";
       }
     } else if (activeKey === "startup_metadata_sync") {
-      var packProgress = extractStartupToolPackProgress(rawStatus);
-      text = "Startup 3/4: Loading tool packs" + (packProgress ? " " + packProgress : "");
+      text = "Loading tools";
     } else if (activeKey === "startup_ready") {
-      text = "Startup 4/4: Finalizing runtime";
+      text = "Finalizing";
     }
 
     if (activeKey === "startup_metadata_sync"
@@ -1231,7 +1233,7 @@
       && !normalizeBool(state.loginInProgress)
       && elapsedMs >= STARTUP_HEADER_METADATA_BACKGROUND_AFTER_MS) {
       return {
-        text: "Ready (tool packs syncing in background)",
+        text: "Ready",
         tone: "ok",
         startupSummary: startupModel.summary,
         startupStageLabel: "Working state",
@@ -1245,15 +1247,8 @@
     if (activeKey !== "startup_auth_wait") {
       if (elapsedMs >= STARTUP_HEADER_TIMEOUT_AFTER_MS) {
         tone = "bad";
-        text = "Startup timeout: " + stageLabel + " (" + elapsedLabel + ", " + progressLabel + ")";
-      } else if (elapsedMs >= STARTUP_HEADER_WARN_AFTER_MS) {
-        text += " (" + elapsedLabel + ")";
+        text = "Startup delayed";
       }
-    } else if (elapsedMs >= STARTUP_HEADER_WARN_AFTER_MS) {
-      text += " (" + elapsedLabel + ")";
-    }
-    if (text.indexOf(progressLabel) < 0) {
-      text += " " + progressLabel;
     }
 
     return {
@@ -1276,6 +1271,7 @@
     var requiresInteractiveSignIn = requiresInteractiveSignInForStartup();
     var toolsLoading = normalizeBool(state.options && state.options.toolsLoading);
     var loginInProgress = normalizeBool(state.loginInProgress);
+    var hasExplicitUnauthenticatedProbeSnapshot = normalizeBool(state.hasExplicitUnauthenticatedProbeSnapshot);
     var authGateActive = isStartupAuthGateActiveFromDiagnostics();
     var signInWaitRelevant = isStartupSignInWaitStillRelevant(
       rawStatus,
@@ -1303,6 +1299,7 @@
       || (requiresInteractiveSignIn
         && connected
         && !authenticated
+        && hasExplicitUnauthenticatedProbeSnapshot
         && String(rawStatus).toLowerCase().indexOf("sign in to continue") === 0);
 
     var activePhase = context ? context.phase : "";
@@ -1331,7 +1328,7 @@
     var metadataActive = activePhase === "startup_metadata_sync"
       || (effectiveToolsLoading && connected && !waitingForSignIn);
     var connectDone = connected || seenConnect || activePhase === "startup_auth_wait" || metadataActive;
-    var authDone = authenticated || !requiresInteractiveSignIn;
+    var authDone = authenticated || !requiresInteractiveSignIn || (connected && !hasExplicitUnauthenticatedProbeSnapshot && !authGateActive);
     var metadataDone = !metadataActive && !effectiveToolsLoading && (seenMetadata || connectDone);
     var metadataBackgroundFallback = false;
     if (metadataActive
@@ -1496,6 +1493,7 @@
     var requiresInteractiveSignIn = requiresInteractiveSignInForStartup();
     var authenticated = normalizeBool(state.authenticated);
     var loginInProgress = normalizeBool(state.loginInProgress);
+    var hasExplicitUnauthenticatedProbeSnapshot = normalizeBool(state.hasExplicitUnauthenticatedProbeSnapshot);
     var authGateActive = isStartupAuthGateActiveFromDiagnostics();
     var signInWaitRelevant = isStartupSignInWaitStillRelevant(
       rawStatus,
@@ -1514,49 +1512,35 @@
 
     if (context.phase === "startup_auth_wait") {
       if (authVerificationPending) {
-        return { text: "Checking sign-in state", tone: "warn" };
+        return { text: "Checking sign-in", tone: "warn" };
       }
 
       if (!authGateActive && !loginInProgress && !signInWaitRelevant) {
         return null;
       }
 
-      if (context.cause === "auth_wait") {
-        return { text: "Sign in to continue loading tool packs", tone: "warn" };
+      if (!hasExplicitUnauthenticatedProbeSnapshot && !loginInProgress && !authGateActive) {
+        return { text: "Checking sign-in", tone: "warn" };
       }
 
-      return { text: "Sign in to continue", tone: "warn" };
+      return { text: "Sign in required", tone: "warn" };
     }
 
     if (context.phase === "startup_metadata_sync") {
       // Some startup paths still emit metadata-sync phase while authentication is pending.
       // Show the explicit sign-in action instead of a misleading generic loading state.
       if (signInWaitRelevant) {
-        return { text: "Sign in to continue loading tool packs", tone: "warn" };
-      }
-
-      var packProgress = rawStatus.match(/tool packs?\s+(\d+)\s*\/\s*(\d+)/i);
-      if (packProgress) {
-        return { text: "Loading tool packs " + packProgress[1] + "/" + packProgress[2], tone: "warn" };
-      }
-
-      var elapsed = rawStatus.match(/(\d+(?:\.\d+)?s|\d+ms)\s+elapsed/i);
-      if (elapsed) {
-        return { text: "Loading tool packs (" + elapsed[1] + ")", tone: "warn" };
+        return { text: "Sign in required", tone: "warn" };
       }
 
       if (context.cause === "metadata_retry") {
-        return { text: "Loading tool packs (retrying metadata sync)", tone: "warn" };
+        return { text: "Loading tools", tone: "warn" };
       }
 
-      return { text: "Loading tool packs", tone: "warn" };
+      return { text: "Loading tools", tone: "warn" };
     }
 
     if (context.phase === "startup_connect") {
-      if (context.cause === "pipe_retry") {
-        return { text: "Starting runtime (retrying connection)", tone: "warn" };
-      }
-
       return { text: "Starting runtime", tone: "warn" };
     }
 
@@ -1577,19 +1561,22 @@
     if (normalizeBool(state.connected)) {
       var rawStatus = String(state.status || "").toLowerCase();
       if (rawStatus.indexOf("tool metadata sync is degraded") >= 0) {
-        return { text: "Ready (tool metadata degraded)", tone: "warn" };
+        return { text: "Ready", tone: "warn" };
       }
       if (rawStatus.indexOf("retrying tool metadata sync in background") >= 0) {
-        return { text: "Ready (retrying tool metadata sync)", tone: "warn" };
+        return { text: "Ready", tone: "warn" };
       }
 
       if (normalizeBool(state.authenticated)) {
         return { text: "Ready", tone: "ok" };
       }
-      return { text: "Sign in to continue", tone: "warn" };
+      if (normalizeBool(state.hasExplicitUnauthenticatedProbeSnapshot) || normalizeBool(state.loginInProgress)) {
+        return { text: "Sign in required", tone: "warn" };
+      }
+      return { text: "Ready", tone: "ok" };
     }
 
-    return { text: "Starting runtime...", tone: "warn" };
+    return { text: "Starting runtime", tone: "warn" };
   }
 
   function buildRoutingStatusChipModel() {
@@ -1731,7 +1718,7 @@
       lines.push("Detail: " + normalizedRaw);
     }
     if (Array.isArray(state.statusTimeline) && state.statusTimeline.length > 0) {
-      lines.push("Lifecycle: " + state.statusTimeline.join(" > "));
+      lines.push("Runtime lifecycle: " + state.statusTimeline.join(" > "));
     }
     if (startupHeaderStatus && typeof startupHeaderStatus === "object") {
       var startupSummary = String(startupHeaderStatus.startupSummary || "").trim();
@@ -1755,7 +1742,34 @@
         }
       }
     }
+    appendStatusChipBackgroundDetailLines(lines, normalizedRaw, startupHeaderStatus);
     return lines.join("\n");
+  }
+
+  function appendStatusChipBackgroundDetailLines(lines, normalizedRaw, startupHeaderStatus) {
+    if (!Array.isArray(lines)) {
+      return;
+    }
+
+    var raw = String(normalizedRaw || "").trim().toLowerCase();
+    var startupSummary = startupHeaderStatus && typeof startupHeaderStatus === "object"
+      ? String(startupHeaderStatus.startupSummary || "").trim().toLowerCase()
+      : "";
+
+    if (raw.indexOf("tool metadata sync is degraded") >= 0) {
+      lines.push("Background: tool metadata sync is degraded.");
+      return;
+    }
+
+    if (raw.indexOf("retrying tool metadata sync in background") >= 0) {
+      lines.push("Background: retrying tool metadata sync in background.");
+      return;
+    }
+
+    if (raw.indexOf("loading tool packs in background") >= 0
+      || startupSummary.indexOf("syncing in background") >= 0) {
+      lines.push("Background: tool pack metadata is still syncing.");
+    }
   }
 
   function applyStatusChipStartupProgress(statusEl, startupHeaderStatus) {
@@ -1888,7 +1902,7 @@
     signIn.hidden = !isNativeTransport;
     signIn.disabled = loginInProgress;
     if (authenticated) {
-      signIn.textContent = loginInProgress ? "Signing In..." : "Sign In Again";
+      signIn.textContent = loginInProgress ? "Signing In..." : "Refresh Account";
       signIn.setAttribute("data-cmd", "relogin");
     } else {
       signIn.textContent = loginInProgress

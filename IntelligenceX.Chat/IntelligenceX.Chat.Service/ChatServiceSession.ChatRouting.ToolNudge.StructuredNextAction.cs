@@ -193,6 +193,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (CountLetterDigitTokens(request, maxTokens: 4) >= 2) {
+            return false;
+        }
+
         var requestTokens = ExtractMeaningfulTokensForContext(request, maxTokens: 4);
         return requestTokens.Count <= 1;
     }
