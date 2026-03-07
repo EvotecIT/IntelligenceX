@@ -141,4 +141,28 @@ public sealed class MainWindowPromptContextGatingTests {
         Assert.Contains(result!, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(result!, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// Ensures broader runtime self-report questions keep the richer runtime handshake path instead of the compact one.
+    /// </summary>
+    [Fact]
+    public void ShouldUseCompactRuntimeCapabilityContext_ReturnsFalseForBroaderRuntimeQuestion() {
+        var result = MainWindow.ShouldUseCompactRuntimeCapabilityContext(
+            assistantRuntimeIntrospectionQuestion: true,
+            compactAssistantRuntimeIntrospectionQuestion: false);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures genuinely compact runtime self-report questions still use the compact runtime handshake path.
+    /// </summary>
+    [Fact]
+    public void ShouldUseCompactRuntimeCapabilityContext_ReturnsTrueForCompactRuntimeQuestion() {
+        var result = MainWindow.ShouldUseCompactRuntimeCapabilityContext(
+            assistantRuntimeIntrospectionQuestion: true,
+            compactAssistantRuntimeIntrospectionQuestion: true);
+
+        Assert.True(result);
+    }
 }

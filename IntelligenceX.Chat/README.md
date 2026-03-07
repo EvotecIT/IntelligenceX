@@ -132,6 +132,7 @@ Included conversation-style scenario seeds:
 - `IntelligenceX.Chat/scenarios/chat-natural-opener-capability-4-turn.json`
 - `IntelligenceX.Chat/scenarios/chat-persona-dark-humor-4-turn.json`
 - `IntelligenceX.Chat/scenarios/chat-blunt-persona-close-4-turn.json`
+- `IntelligenceX.Chat/scenarios/chat-runtime-introspection-broad-3-turn.json`
 - `IntelligenceX.Chat/scenarios/chat-runtime-introspection-natural-3-turn.json`
 
 Run the conversation-style scenario suite locally:

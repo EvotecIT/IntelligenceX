@@ -12,6 +12,7 @@ public sealed partial class MainWindow {
         var effectiveName = GetEffectiveUserName();
         var onboardingInProgress = !_appState.OnboardingCompleted;
         var assistantCapabilityQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
+        var compactAssistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
         var assistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
         var includeOnboardingContext = ShouldIncludeAmbientOnboardingContext(
             userText,
@@ -37,7 +38,9 @@ public sealed partial class MainWindow {
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion);
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
-            ? BuildRuntimeCapabilityContextLines(compactSelfReport: true)
+            ? BuildRuntimeCapabilityContextLines(ShouldUseCompactRuntimeCapabilityContext(
+                assistantRuntimeIntrospectionQuestion,
+                compactAssistantRuntimeIntrospectionQuestion))
             : null;
         var proactiveExecutionEnabled = ResolveProactiveExecutionGuidanceMode(
             _proactiveModeEnabled,
@@ -100,6 +103,12 @@ public sealed partial class MainWindow {
         }
 
         return null;
+    }
+
+    internal static bool ShouldUseCompactRuntimeCapabilityContext(
+        bool assistantRuntimeIntrospectionQuestion,
+        bool compactAssistantRuntimeIntrospectionQuestion) {
+        return assistantRuntimeIntrospectionQuestion && compactAssistantRuntimeIntrospectionQuestion;
     }
 
     internal static bool ShouldIncludeAmbientOnboardingContext(
