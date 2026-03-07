@@ -172,10 +172,13 @@ jobs:
         var content = File.ReadAllText(workflowPath);
 
         AssertContainsText(content, "workflow_dispatch:", "reusable workflow defines workflow_dispatch");
-        AssertContainsText(content, "inputs: &review_inputs", "reusable workflow anchors shared inputs");
-        AssertContainsText(content, "openai_model:", "reusable workflow defines openai_model input");
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
-        AssertContainsText(content, "inputs: *review_inputs", "reusable workflow reuses dispatch inputs for workflow_call");
+        AssertEqual(2, CountOccurrences(content, "openai_model:"),
+            "reusable workflow defines openai_model for dispatch and workflow_call");
+        AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
+            "reusable workflow should avoid YAML anchors in workflow schema");
+        AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
+            "reusable workflow should avoid YAML aliases in workflow schema");
     }
 
     private static void TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough() {

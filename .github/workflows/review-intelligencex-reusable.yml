@@ -2,7 +2,190 @@ name: IntelligenceX Review
 
 on:
   workflow_dispatch:
-    inputs: &review_inputs
+    inputs:
+      runs_on:
+        description: 'JSON array of runner labels'
+        required: false
+        default: '["ubuntu-latest"]'
+        type: string
+      repo:
+        description: 'Repository (owner/name) for workflow_dispatch or external calls'
+        required: false
+        default: ''
+        type: string
+      pr_number:
+        description: 'Pull request number for workflow_dispatch or external calls'
+        required: false
+        default: ''
+        type: string
+      reviewer_source:
+        description: 'Reviewer source: source or release'
+        required: false
+        default: 'source'
+        type: string
+      provider:
+        description: 'Review provider: openai or copilot'
+        required: false
+        default: 'openai'
+        type: string
+      model:
+        description: 'Model id (provider-specific)'
+        required: false
+        default: 'gpt-5.4'
+        type: string
+      openai_model:
+        description: 'OpenAI model id (overrides model when provider=openai)'
+        required: false
+        default: ''
+        type: string
+      copilot_model:
+        description: 'Copilot model id (overrides model when provider=copilot)'
+        required: false
+        default: ''
+        type: string
+      openai_transport:
+        description: 'OpenAI transport: native or appserver'
+        required: false
+        default: 'native'
+        type: string
+      openai_account_id:
+        description: 'Override OpenAI account id for this run'
+        required: false
+        default: ''
+        type: string
+      openai_account_ids:
+        description: 'Override ordered OpenAI account ids (CSV) for this run'
+        required: false
+        default: ''
+        type: string
+      openai_account_rotation:
+        description: 'Override OpenAI account rotation (first-available|round-robin|sticky) for this run'
+        required: false
+        default: ''
+        type: string
+      openai_account_failover:
+        description: 'Override OpenAI account failover (true|false) for this run'
+        required: false
+        default: ''
+        type: string
+      usage_budget_guard:
+        description: 'Override usage budget guard (true|false) for this run'
+        required: false
+        default: ''
+        type: string
+      usage_budget_allow_credits:
+        description: 'Override credits budget allowance (true|false) for this run'
+        required: false
+        default: ''
+        type: string
+      usage_budget_allow_weekly_limit:
+        description: 'Override weekly-limit budget allowance (true|false) for this run'
+        required: false
+        default: ''
+        type: string
+      review_config_path:
+        description: 'Path to reviewer.json (overrides default .intelligencex/reviewer.json)'
+        required: false
+        default: '.intelligencex/reviewer.json'
+        type: string
+      mode:
+        description: 'Review mode (summary, hybrid, inline, etc.)'
+        required: false
+        default: 'hybrid'
+        type: string
+      length:
+        description: 'Review length: short, medium, long'
+        required: false
+        default: 'medium'
+        type: string
+      style:
+        description: 'Review style preset: direct, friendly, funny, colorful, formal'
+        required: false
+        default: 'direct'
+        type: string
+      max_files:
+        description: 'Max files to review'
+        required: false
+        default: 30
+        type: number
+      max_patch_chars:
+        description: 'Max patch chars per file'
+        required: false
+        default: 20000
+        type: number
+      include_issue_comments:
+        description: 'Include PR issue comments in prompt'
+        required: false
+        default: true
+        type: boolean
+      include_review_comments:
+        description: 'Include PR review comments in prompt'
+        required: false
+        default: true
+        type: boolean
+      include_related_prs:
+        description: 'Include related PRs in prompt'
+        required: false
+        default: true
+        type: boolean
+      progress_updates:
+        description: 'Enable progress updates'
+        required: false
+        default: true
+        type: boolean
+      diagnostics:
+        description: 'Enable reviewer diagnostics'
+        required: false
+        default: false
+        type: boolean
+      preflight:
+        description: 'Run health check before review'
+        required: false
+        default: false
+        type: boolean
+      preflight_timeout_seconds:
+        description: 'Preflight timeout in seconds'
+        required: false
+        default: 15
+        type: number
+      cleanup_enabled:
+        description: 'Enable cleanup for PR/issue metadata'
+        required: false
+        default: false
+        type: boolean
+      cleanup_mode:
+        description: 'Cleanup mode: comment, edit, hybrid'
+        required: false
+        default: 'comment'
+        type: string
+      cleanup_scope:
+        description: 'Cleanup scope: pr, issue, both'
+        required: false
+        default: 'pr'
+        type: string
+      cleanup_require_label:
+        description: 'Require label to trigger cleanup (optional)'
+        required: false
+        default: ''
+        type: string
+      cleanup_min_confidence:
+        description: 'Minimum confidence for auto-edit (0-1)'
+        required: false
+        default: 0.85
+        type: number
+      cleanup_allowed_edits:
+        description: 'Comma-separated allowed edits'
+        required: false
+        default: 'formatting,grammar,title,sections'
+        type: string
+      cleanup_post_edit_comment:
+        description: 'Post comment after auto-edit'
+        required: false
+        default: true
+        type: boolean
+
+  workflow_call:
+    inputs:
       runs_on:
         description: 'JSON array of runner labels'
         required: false
@@ -422,8 +605,6 @@ on:
         default: false
         type: boolean
 
-  workflow_call:
-    inputs: *review_inputs
     secrets:
       INTELLIGENCEX_AUTH_B64:
         required: false
