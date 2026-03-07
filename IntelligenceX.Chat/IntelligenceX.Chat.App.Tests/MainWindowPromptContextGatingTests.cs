@@ -209,11 +209,11 @@ public sealed class MainWindowPromptContextGatingTests {
     public void ShouldUseThinServiceRequestEnvelope_ReturnsTrueForMetaTurnsWithoutOnboardingOrProfileUpdates(
         bool assistantCapabilityQuestion,
         bool assistantRuntimeIntrospectionQuestion) {
+        _ = assistantCapabilityQuestion;
+        _ = assistantRuntimeIntrospectionQuestion;
         var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext: false,
-            includeLiveProfileUpdates: false,
-            assistantCapabilityQuestion: assistantCapabilityQuestion,
-            assistantRuntimeIntrospectionQuestion: assistantRuntimeIntrospectionQuestion);
+            includeLiveProfileUpdates: false);
 
         Assert.True(result);
     }
@@ -225,9 +225,7 @@ public sealed class MainWindowPromptContextGatingTests {
     public void ShouldUseThinServiceRequestEnvelope_ReturnsFalseWhenAmbientOnboardingContextIsIncluded() {
         var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext: true,
-            includeLiveProfileUpdates: false,
-            assistantCapabilityQuestion: false,
-            assistantRuntimeIntrospectionQuestion: false);
+            includeLiveProfileUpdates: false);
 
         Assert.False(result);
     }
@@ -239,9 +237,7 @@ public sealed class MainWindowPromptContextGatingTests {
     public void ShouldUseThinServiceRequestEnvelope_ReturnsFalseWhenLiveProfileUpdatesAreIncluded() {
         var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext: false,
-            includeLiveProfileUpdates: true,
-            assistantCapabilityQuestion: false,
-            assistantRuntimeIntrospectionQuestion: false);
+            includeLiveProfileUpdates: true);
 
         Assert.False(result);
     }

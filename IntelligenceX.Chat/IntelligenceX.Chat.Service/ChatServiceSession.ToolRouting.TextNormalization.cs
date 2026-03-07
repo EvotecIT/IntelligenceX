@@ -25,6 +25,22 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private static readonly string[] KnownStructuredRequestSectionHeaders = {
+        "[Conversation mode]",
+        "[Continuation state]",
+        "[Conversation style]",
+        "[Capability answer style]",
+        "[Persona guidance]",
+        "[Session profile context]",
+        "[Onboarding context]",
+        "[Live profile updates]",
+        "[Capability self-knowledge]",
+        "[Runtime capability handshake]",
+        "[Proactive execution mode]",
+        "[Persistent memory]",
+        "[Local transcript context fallback]"
+    };
+
     private static int ResolveMaxCandidateToolsLimit(int? requestedLimit, int totalToolCount) {
         var candidate = requestedLimit.GetValueOrDefault(0);
         if (candidate <= 0) {
@@ -104,7 +120,7 @@ internal sealed partial class ChatServiceSession {
         while (lineStart < content.Length) {
             ReadOnlySpan<char> line;
             lineStart = ReadNextLine(content, lineStart, out line);
-            if (LooksLikeStructuredSectionHeader(line)) {
+            if (LooksLikeKnownStructuredRequestSectionHeader(line)) {
                 break;
             }
 
@@ -116,6 +132,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         return body.ToString().Trim();
+    }
+
+    private static bool LooksLikeKnownStructuredRequestSectionHeader(ReadOnlySpan<char> line) {
+        var trimmed = line.Trim();
+        if (trimmed.IsEmpty || !LooksLikeStructuredSectionHeader(trimmed)) {
+            return false;
+        }
+
+        for (var i = 0; i < KnownStructuredRequestSectionHeaders.Length; i++) {
+            if (trimmed.Equals(KnownStructuredRequestSectionHeaders[i], StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeRoutingUserText(string text) {

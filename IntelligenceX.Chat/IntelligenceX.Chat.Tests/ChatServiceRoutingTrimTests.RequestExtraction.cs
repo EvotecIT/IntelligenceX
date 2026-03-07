@@ -118,4 +118,25 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("Pokaz tabele i diagram replikacji.", text);
     }
 
+    [Fact]
+    public void ExtractPrimaryUserRequest_DoesNotTruncateStandaloneBracketedContentInsideUserRequestBody() {
+        var input = """
+            User request:
+            Show the replication matrix exactly like this:
+            [Replication topology]
+            AD0 -> AD1
+
+            [Session profile context]
+            - Assistant persona: sharp operator
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("Show the replication matrix exactly like this:", text, StringComparison.Ordinal);
+        Assert.Contains("[Replication topology]", text, StringComparison.Ordinal);
+        Assert.Contains("AD0 -> AD1", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Session profile context]", text, StringComparison.Ordinal);
+    }
+
 }

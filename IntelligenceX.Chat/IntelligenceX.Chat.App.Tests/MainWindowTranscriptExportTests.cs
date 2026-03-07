@@ -68,7 +68,54 @@ public sealed class MainWindowTranscriptExportTests {
         var text = MainWindow.BuildTranscriptExportFailureNoticeText(result);
 
         Assert.Equal(
-            @"Transcript export failed during markdown fallback write: disk full (fallback path: C:\exports\transcript.md).",
+            @"Transcript export failed during markdown fallback write: disk full (attempted fallback path: C:\exports\transcript.md).",
             text);
+    }
+
+    /// <summary>
+    /// Ensures retrying DOCX without materialized visuals promotes the retry failure stage instead of leaving it as a generic DOCX write.
+    /// </summary>
+    [Fact]
+    public void ResolveTranscriptExportResultAfterMaterializedDocxRetry_PromotesRetryFailureStage() {
+        var materializedFailure = TranscriptExportResult.Failed(
+            ExportPreferencesContract.FormatDocx,
+            @"C:\exports\transcript.docx",
+            new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "materialized write failed"));
+        var retryFailure = TranscriptExportResult.Failed(
+            ExportPreferencesContract.FormatDocx,
+            @"C:\exports\transcript.docx",
+            new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "retry write failed"));
+
+        var result = MainWindow.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retryFailure);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(TranscriptExportStage.DocxWriteWithoutMaterializedVisuals, result.Failure?.Stage);
+        Assert.Contains("retry write failed", result.Failure?.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures markdown fallback after the retry attributes its cause to the non-materialized DOCX retry, not the original materialized attempt.
+    /// </summary>
+    [Fact]
+    public void ResolveTranscriptExportResultAfterMaterializedDocxRetry_PromotesRetryFallbackCauseStage() {
+        var materializedFailure = TranscriptExportResult.Failed(
+            ExportPreferencesContract.FormatDocx,
+            @"C:\exports\transcript.docx",
+            new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "materialized write failed"));
+        var retrySuccessWithMarkdownFallback = TranscriptExportResult.SuccessWithFallback(
+            ExportPreferencesContract.FormatDocx,
+            ExportPreferencesContract.FormatMarkdown,
+            @"C:\exports\transcript.md",
+            new TranscriptExportFallback(
+                TranscriptExportFallbackKind.Markdown,
+                @"C:\exports\transcript.md",
+                new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "retry write failed")));
+
+        var result = MainWindow.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, retrySuccessWithMarkdownFallback);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(TranscriptExportFallbackKind.Markdown, result.Fallback?.Kind);
+        Assert.Equal(TranscriptExportStage.DocxWriteWithoutMaterializedVisuals, result.Fallback?.Cause.Stage);
+        Assert.Contains("retry write failed", result.Fallback?.Cause.Message, StringComparison.Ordinal);
     }
 }
