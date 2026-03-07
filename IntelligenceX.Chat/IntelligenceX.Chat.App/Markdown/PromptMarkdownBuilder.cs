@@ -147,6 +147,7 @@ internal static class PromptMarkdownBuilder {
                     .Bullet("Answer the runtime or tooling question directly in short human terms instead of sounding like a diagnostics screen.")
                     .Bullet("Lead with the active model, runtime, or relevant tooling the user asked about, then stop unless they want more detail.")
                     .Bullet("If the user adds qualifiers like DNS or AD, mention only the relevant tooling for that scope instead of dumping the full inventory.")
+                    .Bullet("Do not enumerate internal pack names, tool families, or long capability lists unless the user explicitly asks for names or a breakdown.")
                     .Bullet("For compact meta-questions, prefer one or two short sentences over bullet inventories unless the user explicitly asks for a breakdown.")
                     .Bullet("Prefer one short paragraph by default; use lists only if the user explicitly asks for a breakdown.")
                     .Bullet("Do not run live checks, probes, or environment discovery just to answer a self-report question.");

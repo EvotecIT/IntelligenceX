@@ -31,11 +31,11 @@ public sealed partial class MainWindow {
         var recentAssistantAnswerWasSubstantive = ConversationStyleGuidanceBuilder.HasRecentSubstantiveAssistantAnswer(activeConversation.Messages);
         var recentAssistantAskedQuestion = ConversationStyleGuidanceBuilder.HasRecentAssistantQuestion(activeConversation.Messages);
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
-        var capabilitySelfKnowledgeLines = assistantCapabilityQuestion || assistantRuntimeIntrospectionQuestion
-            ? BuildCapabilitySelfKnowledgeLines(runtimeIntrospectionMode: assistantRuntimeIntrospectionQuestion)
+        var capabilitySelfKnowledgeLines = assistantCapabilityQuestion
+            ? BuildCapabilitySelfKnowledgeLines(runtimeIntrospectionMode: false)
             : null;
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
-            ? BuildRuntimeCapabilityContextLines()
+            ? BuildRuntimeCapabilityContextLines(compactSelfReport: true)
             : null;
         var proactiveExecutionEnabled = ResolveProactiveExecutionGuidanceMode(
             _proactiveModeEnabled,

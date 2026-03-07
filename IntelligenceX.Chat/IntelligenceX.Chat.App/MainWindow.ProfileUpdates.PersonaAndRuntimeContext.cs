@@ -46,7 +46,7 @@ public sealed partial class MainWindow {
         return lines.Count == 0 ? Array.Empty<string>() : lines;
     }
 
-    private IReadOnlyList<string> BuildRuntimeCapabilityContextLines() {
+    private IReadOnlyList<string> BuildRuntimeCapabilityContextLines(bool compactSelfReport = false) {
         var lines = new List<string>();
         var options = BuildChatRequestOptions();
         var selectedModel = options?.Model;
@@ -59,11 +59,6 @@ public sealed partial class MainWindow {
                 : "native";
         var modelLabel = string.IsNullOrWhiteSpace(selectedModel) ? "(provider default)" : selectedModel.Trim();
         lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
-        lines.Add("Reasoning effort: " + (string.IsNullOrWhiteSpace(_localProviderReasoningEffort) ? "provider default" : _localProviderReasoningEffort)
-                  + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
-                  + ", verbosity: " + (string.IsNullOrWhiteSpace(_localProviderTextVerbosity) ? "provider default" : _localProviderTextVerbosity)
-                  + ", temperature: " + (_localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default"));
-        lines.Add("Reasoning controls support: " + DescribeLocalProviderReasoningSupport(_localProviderTransport, _localProviderBaseUrl));
         lines.Add("Tool availability for this turn: "
                   + DescribeTurnToolAvailability(
                       _localProviderTransport,
@@ -73,31 +68,40 @@ public sealed partial class MainWindow {
                       knownToolCount,
                       enabledTools,
                       disabledTools));
-        lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
-                  + ", disabled " + disabledTools.ToString(CultureInfo.InvariantCulture));
-        AppendWriteToolCapabilityContextLines(lines);
-        if (options is not null) {
-            lines.Add("Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
-                      + " (" + (options.ParallelToolMode ?? ParallelToolModeAuto) + ")");
-            lines.Add("Max tool rounds: " + options.MaxToolRounds.ToString(CultureInfo.InvariantCulture));
-            lines.Add("Turn timeout: " + (options.TurnTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default")
-                      + "s; tool timeout: " + (options.ToolTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
-            lines.Add("Plan/execute/review loop: "
-                      + (options.PlanExecuteReviewLoop.HasValue ? (options.PlanExecuteReviewLoop.Value ? "enabled" : "disabled") : "default")
-                      + "; max review passes: "
-                      + (options.MaxReviewPasses?.ToString(CultureInfo.InvariantCulture) ?? "default")
-                      + "; model heartbeat: "
-                      + (options.ModelHeartbeatSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+        if (!compactSelfReport) {
+            lines.Add("Reasoning effort: " + (string.IsNullOrWhiteSpace(_localProviderReasoningEffort) ? "provider default" : _localProviderReasoningEffort)
+                      + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
+                      + ", verbosity: " + (string.IsNullOrWhiteSpace(_localProviderTextVerbosity) ? "provider default" : _localProviderTextVerbosity)
+                      + ", temperature: " + (_localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default"));
+            lines.Add("Reasoning controls support: " + DescribeLocalProviderReasoningSupport(_localProviderTransport, _localProviderBaseUrl));
+            lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
+                      + ", disabled " + disabledTools.ToString(CultureInfo.InvariantCulture));
+            AppendWriteToolCapabilityContextLines(lines);
+            if (options is not null) {
+                lines.Add("Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
+                          + " (" + (options.ParallelToolMode ?? ParallelToolModeAuto) + ")");
+                lines.Add("Max tool rounds: " + options.MaxToolRounds.ToString(CultureInfo.InvariantCulture));
+                lines.Add("Turn timeout: " + (options.TurnTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default")
+                          + "s; tool timeout: " + (options.ToolTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+                lines.Add("Plan/execute/review loop: "
+                          + (options.PlanExecuteReviewLoop.HasValue ? (options.PlanExecuteReviewLoop.Value ? "enabled" : "disabled") : "default")
+                          + "; max review passes: "
+                          + (options.MaxReviewPasses?.ToString(CultureInfo.InvariantCulture) ?? "default")
+                          + "; model heartbeat: "
+                          + (options.ModelHeartbeatSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+            }
+
+            var queuedTurns = GetQueuedTurnCount();
+            if (queuedTurns > 0) {
+                lines.Add("Queued follow-up turns: " + queuedTurns.ToString(CultureInfo.InvariantCulture));
+            }
+            lines.Add("Queued turn auto-dispatch: " + (_queueAutoDispatchEnabled ? "enabled" : "paused"));
+            lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
         }
 
-        var queuedTurns = GetQueuedTurnCount();
-        if (queuedTurns > 0) {
-            lines.Add("Queued follow-up turns: " + queuedTurns.ToString(CultureInfo.InvariantCulture));
-        }
-        lines.Add("Queued turn auto-dispatch: " + (_queueAutoDispatchEnabled ? "enabled" : "paused"));
-
-        lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
-        lines.Add("Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
+        lines.Add(compactSelfReport
+            ? "Assistant rule: answer with only the active model/runtime and the relevant tooling scope; avoid naming internal packs or long tool lists unless the user explicitly asks for them."
+            : "Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
         return lines;
     }
 
