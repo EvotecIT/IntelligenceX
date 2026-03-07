@@ -35,6 +35,10 @@ public sealed partial class MainWindow {
         }
 
         if (runtimeIntrospectionMode) {
+            if (enabledPackNames.Count == 0) {
+                lines.Add("If tooling details are still sparse, answer with only confirmed runtime or model facts and say the rest is still loading.");
+            }
+
             lines.Add("For runtime self-report, mention only the live tooling or capability areas that are relevant to the user's scope.");
             lines.Add("Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake.");
         } else {

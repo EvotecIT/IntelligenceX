@@ -129,6 +129,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures dotted scope qualifiers do not block runtime introspection when the user is still asking about model/tooling.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForDomainQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model/tools for ad.evotec.xyz?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures regular troubleshooting questions do not trigger runtime introspection handling.
     /// </summary>
     [Fact]

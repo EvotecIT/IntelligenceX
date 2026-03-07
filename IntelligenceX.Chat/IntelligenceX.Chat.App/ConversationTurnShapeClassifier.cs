@@ -160,8 +160,7 @@ internal static class ConversationTurnShapeClassifier {
         if (text.Length == 0
             || text.Length > RuntimeQuestionLengthLimit
             || !ContainsQuestionSignal(text)
-            || ContainsBlockedRuntimeMetaPunctuation(text)
-            || ContainsLikelyDomainLikeToken(text)) {
+            || ContainsBlockedRuntimeMetaPunctuation(text)) {
             return false;
         }
 

@@ -9,6 +9,7 @@
       "name": "Compact runtime self-awareness ask",
       "user": "What model/tools for DNS/AD?",
       "assert_contains_any": ["model", "runtime", "tool", "tools", "tooling"],
+      "assert_matches_regex": ["(?is)^(?=.*\\b(model|runtime)\\b)(?=.*\\btool(?:s|ing)?\\b).+$"],
       "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "pack ids", "/act "],
       "forbid_tools": ["*"]
     },

@@ -87,6 +87,25 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
     }
 
     /// <summary>
+    /// Ensures runtime-introspection mode stays informative even when pack metadata has not loaded yet.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_RuntimeIntrospectionMode_AddsSparseMetadataFallback() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false
+            },
+            runtimeIntrospectionMode: true);
+
+        Assert.Contains(lines, line => line.Contains("still sparse", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("runtime or model facts", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Ensures operational status lines are prioritized ahead of category/example filler so budgeting cannot hide them later.
     /// </summary>
     [Fact]
