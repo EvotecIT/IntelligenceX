@@ -58,16 +58,30 @@ public sealed partial class MainWindow {
                 ? "copilot-cli"
                 : "native";
         var modelLabel = string.IsNullOrWhiteSpace(selectedModel) ? "(provider default)" : selectedModel.Trim();
-        lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
-        lines.Add("Tool availability for this turn: "
-                  + DescribeTurnToolAvailability(
-                      _localProviderTransport,
-                      _localProviderBaseUrl,
-                      selectedModel,
-                      _availableModels,
-                      knownToolCount,
-                      enabledTools,
-                      disabledTools));
+        if (compactSelfReport) {
+            lines.Add("Active runtime for this turn: " + transportLabel + ", model " + modelLabel + ".");
+            lines.Add("Tooling status for this turn: "
+                      + DescribeCompactTurnToolAvailability(
+                          _localProviderTransport,
+                          _localProviderBaseUrl,
+                          selectedModel,
+                          _availableModels,
+                          knownToolCount,
+                          enabledTools,
+                          disabledTools));
+        } else {
+            lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
+            lines.Add("Tool availability for this turn: "
+                      + DescribeTurnToolAvailability(
+                          _localProviderTransport,
+                          _localProviderBaseUrl,
+                          selectedModel,
+                          _availableModels,
+                          knownToolCount,
+                          enabledTools,
+                          disabledTools));
+        }
+
         if (!compactSelfReport) {
             lines.Add("Reasoning effort: " + (string.IsNullOrWhiteSpace(_localProviderReasoningEffort) ? "provider default" : _localProviderReasoningEffort)
                       + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
@@ -99,9 +113,9 @@ public sealed partial class MainWindow {
             lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
         }
 
-        lines.Add(compactSelfReport
-            ? "Assistant rule: answer with only the active model/runtime and the relevant tooling scope; avoid naming internal packs or long tool lists unless the user explicitly asks for them."
-            : "Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
+        if (!compactSelfReport) {
+            lines.Add("Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
+        }
         return lines;
     }
 
@@ -219,6 +233,34 @@ public sealed partial class MainWindow {
         }
 
         return "unavailable (model '" + normalizedModel + "' does not advertise tool_use capability).";
+    }
+
+    internal static string DescribeCompactTurnToolAvailability(
+        string? transport,
+        string? baseUrl,
+        string? selectedModel,
+        IReadOnlyList<ModelInfoDto>? availableModels,
+        int knownToolCount,
+        int enabledTools,
+        int disabledTools) {
+        var detailed = DescribeTurnToolAvailability(
+            transport,
+            baseUrl,
+            selectedModel,
+            availableModels,
+            knownToolCount,
+            enabledTools,
+            disabledTools);
+
+        if (detailed.StartsWith("available", StringComparison.OrdinalIgnoreCase)) {
+            return "available.";
+        }
+
+        if (detailed.StartsWith("unavailable", StringComparison.OrdinalIgnoreCase)) {
+            return "unavailable.";
+        }
+
+        return "unknown.";
     }
 
     private static ModelInfoDto? FindCatalogModel(IReadOnlyList<ModelInfoDto>? availableModels, string model) {

@@ -23,6 +23,7 @@ internal static class PromptMarkdownBuilder {
         string AmbiguousTarget,
         bool RequiresEnvelope) {
         internal bool IsAssistantCapabilityQuestion => string.Equals(Id, "assistant_capability_question", StringComparison.Ordinal);
+        internal bool IsCompactAssistantRuntimeIntrospectionQuestion => string.Equals(Id, "assistant_runtime_introspection_compact", StringComparison.Ordinal);
         internal bool IsAssistantRuntimeIntrospectionQuestion => string.Equals(Id, "assistant_runtime_introspection_question", StringComparison.Ordinal);
         internal bool IsLowContextShortTurn => string.Equals(Id, "low_context_short_turn", StringComparison.Ordinal);
         internal bool IsCompactAnswerToRecentQuestion => string.Equals(Id, "compact_answer_to_recent_question", StringComparison.Ordinal);
@@ -102,7 +103,8 @@ internal static class PromptMarkdownBuilder {
         IReadOnlyList<string>? trimmedCapabilitySelfKnowledgeLines;
         IReadOnlyList<string>? trimmedRuntimeCapabilityLines;
         if (runtimeCapabilityLines is { Count: > 0 }) {
-            trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, MaxRuntimeCapabilityLines, ref remainingSupplementalLineBudget);
+            var runtimeLineBudget = conversationTurnMode.IsCompactAssistantRuntimeIntrospectionQuestion ? 2 : MaxRuntimeCapabilityLines;
+            trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, runtimeLineBudget, ref remainingSupplementalLineBudget);
             trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, maxLines: 3, ref remainingSupplementalLineBudget);
         } else {
             trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, MaxCapabilitySelfKnowledgeLines, ref remainingSupplementalLineBudget);
@@ -142,6 +144,13 @@ internal static class PromptMarkdownBuilder {
                     .Bullet("Describe how you can help in concise, practical terms before waiting for the actual task.")
                     .Bullet("Do not run live checks, inventory probes, or environment discovery just to prove capability unless the user explicitly asks for verification.")
                     .Bullet("Do not dump low-level runtime details, exhaustive tool lists, or capability snapshots unless the user is explicitly asking about model/runtime/tooling details.");
+            } else if (conversationTurnMode.IsCompactAssistantRuntimeIntrospectionQuestion) {
+                markdown
+                    .Bullet("Answer the runtime or tooling question directly in one or two short human sentences.")
+                    .Bullet("Do not use headings, bullet lists, inventories, or preambles like 'For this chat runtime' unless the user explicitly asks for a breakdown.")
+                    .Bullet("Name only the active model/runtime and the relevant tooling scope the user asked about, then stop.")
+                    .Bullet("If the user adds qualifiers like DNS or AD, mention the relevant tooling in plain language instead of naming internal packs or long tool lists.")
+                    .Bullet("Do not run live checks, probes, or environment discovery just to answer a self-report question.");
             } else if (conversationTurnMode.IsAssistantRuntimeIntrospectionQuestion) {
                 markdown
                     .Bullet("Answer the runtime or tooling question directly in short human terms instead of sounding like a diagnostics screen.")
@@ -387,6 +396,10 @@ internal static class PromptMarkdownBuilder {
 
         if (ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(normalized)) {
             return new ConversationTurnMode("assistant_capability_question", string.Empty, RequiresEnvelope: true);
+        }
+
+        if (ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(normalized)) {
+            return new ConversationTurnMode("assistant_runtime_introspection_compact", string.Empty, RequiresEnvelope: true);
         }
 
         if (ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(normalized)) {

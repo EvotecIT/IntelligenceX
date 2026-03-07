@@ -14,6 +14,8 @@ internal static class ConversationTurnShapeClassifier {
     private const int CapabilityQuestionTokenLimit = 12;
     private const int RuntimeQuestionLengthLimit = 120;
     private const int RuntimeQuestionTokenLimit = 18;
+    private const int CompactRuntimeQuestionLengthLimit = 72;
+    private const int CompactRuntimeQuestionTokenLimit = 7;
     private const int GenericQuestionLongLetterTokenLength = 10;
     private const int LowContextShortTurnTokenLimit = 3;
     private const int LowContextShortTurnLengthLimit = 24;
@@ -182,6 +184,24 @@ internal static class ConversationTurnShapeClassifier {
         // Allow uppercase acronyms here only so those meta-questions are not
         // misclassified as concrete operational tasks.
         return LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms: true);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when a runtime self-report ask is compact enough that the reply
+    /// should stay to one or two short sentences rather than a broader inventory-style answer.
+    /// </summary>
+    internal static bool LooksLikeCompactAssistantRuntimeIntrospectionQuestion(string? userText) {
+        var text = (userText ?? string.Empty).Trim();
+        if (!LooksLikeAssistantRuntimeIntrospectionQuestion(text)) {
+            return false;
+        }
+
+        if (text.Length > CompactRuntimeQuestionLengthLimit) {
+            return false;
+        }
+
+        var tokens = CollectLetterDigitTokens(text, CompactRuntimeQuestionTokenLimit + 1);
+        return tokens.Count > 0 && tokens.Count <= CompactRuntimeQuestionTokenLimit;
     }
 
     private static bool ContainsDigit(string text) {

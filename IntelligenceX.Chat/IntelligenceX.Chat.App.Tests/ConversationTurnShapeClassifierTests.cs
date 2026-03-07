@@ -139,6 +139,26 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures compact runtime self-report asks can be tightened into a shorter answer mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsTrueForCompactQualifiedAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures broader runtime inventory asks keep the normal runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsFalseForBroaderRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion("What model and tools are you using right now?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures regular troubleshooting questions do not trigger runtime introspection handling.
     /// </summary>
     [Fact]

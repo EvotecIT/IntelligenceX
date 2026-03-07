@@ -221,11 +221,10 @@ public sealed class PromptMarkdownBuilderTests {
             executionBehaviorPrompt: string.Empty);
 
         Assert.Contains("[Conversation mode]", markdown);
-        Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
-        Assert.Contains("Answer the runtime or tooling question directly in short human terms", markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Do not enumerate internal pack names", markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("one or two short sentences", markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Prefer one short paragraph by default", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Mode: assistant_runtime_introspection_compact", markdown);
+        Assert.Contains("one or two short human sentences", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not use headings, bullet lists, inventories", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mention the relevant tooling in plain language", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not run live checks", markdown, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -256,6 +255,31 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("[Runtime capability handshake]", markdown);
         Assert.Contains("exact runtime/model/tool limits belong in the runtime capability handshake", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("invite the task", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime self-report turns keep only the tight runtime lines instead of the broader handshake payload.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_UsesCompactRuntimeHandshakeBudgetForCompactRuntimeAsk() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model/tools for DNS/AD?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            runtimeCapabilityLines: new[] {
+                "runtime-1",
+                "runtime-2",
+                "runtime-3"
+            });
+
+        Assert.Contains("Mode: assistant_runtime_introspection_compact", markdown);
+        Assert.Contains("runtime-1", markdown, StringComparison.Ordinal);
+        Assert.Contains("runtime-2", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("runtime-3", markdown, StringComparison.Ordinal);
     }
 
     /// <summary>
