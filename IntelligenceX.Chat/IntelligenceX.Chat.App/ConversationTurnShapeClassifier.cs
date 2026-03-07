@@ -160,6 +160,7 @@ internal static class ConversationTurnShapeClassifier {
         var text = (userText ?? string.Empty).Trim();
         if (text.Length == 0
             || text.Length > RuntimeQuestionLengthLimit
+            || !ContainsQuestionSignal(text)
             || ContainsLikelyTechnicalPunctuation(text)) {
             return false;
         }

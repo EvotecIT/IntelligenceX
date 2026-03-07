@@ -1,3 +1,4 @@
+using System;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App;
 using Xunit;
@@ -21,7 +22,8 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
             AllowMutatingParallelToolCalls = false,
             Packs = new[] {
                 new ToolPackInfoDto { Id = "adplayground", Name = "Active Directory", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
-                new ToolPackInfoDto { Id = "eventlog", Name = "Event Viewer", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                new ToolPackInfoDto { Id = "eventlog", Name = "Event Viewer", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                new ToolPackInfoDto { Id = "dnsclientx", Name = "DnsClientX", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
             },
             CapabilitySnapshot = new SessionCapabilitySnapshotDto {
                 RegisteredTools = 12,
@@ -31,8 +33,7 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
                 ToolingAvailable = true,
                 AllowedRootCount = 1,
                 FamilyActions = new[] {
-                    new SessionRoutingFamilyActionSummaryDto { Family = "ad_domain", ActionId = "act_ad", ToolCount = 5 },
-                    new SessionRoutingFamilyActionSummaryDto { Family = "public_domain", ActionId = "act_public", ToolCount = 3 }
+                    new SessionRoutingFamilyActionSummaryDto { Family = "ad_domain", ActionId = "act_ad", ToolCount = 5 }
                 },
                 HealthyTools = new[] { "ad_search", "eventlog_live_query" },
                 RemoteReachabilityMode = "remote_capable"
@@ -46,6 +47,39 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.Contains(lines, line => line.Contains("remote-capable", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("few practical examples", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures runtime-introspection mode avoids generic capability-answer tail guidance.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_RuntimeIntrospectionMode_UsesModeSpecificTailGuidance() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 1,
+                    PluginCount = 1,
+                    EnabledPluginCount = 1,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 1,
+                    HealthyTools = Array.Empty<string>(),
+                    RemoteReachabilityMode = "local_only",
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+                }
+            },
+            runtimeIntrospectionMode: true);
+
+        Assert.Contains(lines, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

@@ -207,6 +207,34 @@ public sealed class PromptMarkdownBuilderTests {
     }
 
     /// <summary>
+    /// Ensures runtime introspection can keep capability self-knowledge concise while deferring exact limits to runtime handshake lines.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_RuntimeHandshakeTakesPriorityOverGenericCapabilityTail() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilitySelfKnowledgeLines: new[] {
+                "Active working areas in this session: Active Directory, Event Viewer.",
+                "Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake."
+            },
+            runtimeCapabilityLines: new[] {
+                "Runtime transport: native, active model for this turn: gpt-5.3-codex",
+                "Tool availability for this turn: available (enabled tools: 20, disabled: 0)."
+            });
+
+        Assert.Contains("[Capability self-knowledge]", markdown);
+        Assert.Contains("[Runtime capability handshake]", markdown);
+        Assert.Contains("exact runtime/model/tool limits belong in the runtime capability handshake", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("invite the task", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures persona-derived guidance can sharpen how the selected persona affects delivery.
     /// </summary>
     [Fact]
@@ -228,6 +256,50 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("meaningfully affect phrasing", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("reduce user effort", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Light humor is allowed", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures low-priority supplemental sections are trimmed when prompt context grows too large.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_TrimsLowPrioritySupplementalSectionsUnderBudgetPressure() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: "Przemek",
+            effectivePersona: "helpful assistant with concise outputs",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            localContextLines: new[] {
+                "Assistant: local-1", "Assistant: local-2", "Assistant: local-3", "Assistant: local-4", "Assistant: local-5"
+            },
+            conversationStyleLines: new[] {
+                "style-1", "style-2", "style-3", "style-4", "style-5"
+            },
+            capabilityAnswerStyleLines: new[] {
+                "cap-style-1", "cap-style-2", "cap-style-3", "cap-style-4"
+            },
+            personaGuidanceLines: new[] {
+                "persona-1", "persona-2", "persona-3", "persona-4", "persona-5"
+            },
+            continuationStateLines: new[] {
+                "continuation-1", "continuation-2", "continuation-3", "continuation-4", "continuation-5"
+            },
+            persistentMemoryLines: new[] {
+                "memory-1", "memory-2", "memory-3", "memory-4", "memory-5"
+            },
+            capabilitySelfKnowledgeLines: new[] {
+                "self-1", "self-2", "self-3", "self-4", "self-5"
+            },
+            runtimeCapabilityLines: new[] {
+                "runtime-1", "runtime-2", "runtime-3", "runtime-4", "runtime-5", "runtime-6", "runtime-7", "runtime-8", "runtime-9"
+            });
+
+        Assert.Contains("continuation-1", markdown, StringComparison.Ordinal);
+        Assert.Contains("runtime-1", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("local-5", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("memory-5", markdown, StringComparison.Ordinal);
     }
 
     /// <summary>

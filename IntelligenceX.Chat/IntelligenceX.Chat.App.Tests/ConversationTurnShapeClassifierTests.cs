@@ -46,4 +46,14 @@ public sealed class ConversationTurnShapeClassifierTests {
 
         Assert.False(result);
     }
+
+    /// <summary>
+    /// Ensures declarative runtime-cue text does not accidentally trigger runtime introspection handling.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForDeclarativeRuntimeCueText() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("This model is wrong for the job");
+
+        Assert.False(result);
+    }
 }
