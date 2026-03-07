@@ -1,4 +1,5 @@
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.Abstractions.Policy;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -104,5 +105,40 @@ public sealed class MainWindowPromptContextGatingTests {
             recentAssistantAskedQuestion: false);
 
         Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures runtime self-report turns still receive runtime-mode capability self-knowledge guidance.
+    /// </summary>
+    [Fact]
+    public void SelectCapabilitySelfKnowledgeLines_ReturnsRuntimeModeLinesForRuntimeQuestion() {
+        var result = MainWindow.SelectCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 1,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 1,
+                    HealthyTools = Array.Empty<string>(),
+                    RemoteReachabilityMode = "local_only",
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+                }
+            },
+            assistantCapabilityQuestion: false,
+            assistantRuntimeIntrospectionQuestion: true);
+
+        Assert.NotNull(result);
+        Assert.Contains(result!, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result!, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App.Markdown;
 
 namespace IntelligenceX.Chat.App;
@@ -31,9 +32,10 @@ public sealed partial class MainWindow {
         var recentAssistantAnswerWasSubstantive = ConversationStyleGuidanceBuilder.HasRecentSubstantiveAssistantAnswer(activeConversation.Messages);
         var recentAssistantAskedQuestion = ConversationStyleGuidanceBuilder.HasRecentAssistantQuestion(activeConversation.Messages);
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
-        var capabilitySelfKnowledgeLines = assistantCapabilityQuestion
-            ? BuildCapabilitySelfKnowledgeLines(runtimeIntrospectionMode: false)
-            : null;
+        var capabilitySelfKnowledgeLines = SelectCapabilitySelfKnowledgeLines(
+            _sessionPolicy,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion);
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
             ? BuildRuntimeCapabilityContextLines(compactSelfReport: true)
             : null;
@@ -83,6 +85,21 @@ public sealed partial class MainWindow {
             recentAssistantAskedQuestion)
             ? true
             : null;
+    }
+
+    internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
+        SessionPolicyDto? sessionPolicy,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion) {
+        if (assistantCapabilityQuestion) {
+            return BuildCapabilitySelfKnowledgeLines(sessionPolicy, runtimeIntrospectionMode: false);
+        }
+
+        if (assistantRuntimeIntrospectionQuestion) {
+            return BuildCapabilitySelfKnowledgeLines(sessionPolicy, runtimeIntrospectionMode: true);
+        }
+
+        return null;
     }
 
     internal static bool ShouldIncludeAmbientOnboardingContext(
