@@ -167,6 +167,17 @@ jobs:
         AssertContainsText(content, "model: gpt-5.4", "workflow template default model updated");
     }
 
+    private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {
+        var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-reusable.yml");
+        var content = File.ReadAllText(workflowPath);
+
+        AssertContainsText(content, "workflow_dispatch:", "reusable workflow defines workflow_dispatch");
+        AssertContainsText(content, "inputs: &review_inputs", "reusable workflow anchors shared inputs");
+        AssertContainsText(content, "openai_model:", "reusable workflow defines openai_model input");
+        AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
+        AssertContainsText(content, "inputs: *review_inputs", "reusable workflow reuses dispatch inputs for workflow_call");
+    }
+
     private static void TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough() {
         var seed = """
 name: IntelligenceX Review

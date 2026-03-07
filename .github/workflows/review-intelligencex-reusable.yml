@@ -1,8 +1,8 @@
 name: IntelligenceX Review
 
 on:
-  workflow_call:
-    inputs:
+  workflow_dispatch:
+    inputs: &review_inputs
       runs_on:
         description: 'JSON array of runner labels'
         required: false
@@ -422,6 +422,8 @@ on:
         default: false
         type: boolean
 
+  workflow_call:
+    inputs: *review_inputs
     secrets:
       INTELLIGENCEX_AUTH_B64:
         required: false

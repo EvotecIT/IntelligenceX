@@ -194,6 +194,8 @@ internal static partial class Program {
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
         failed += Run("Setup workflow template includes OpenAI model pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiModelPassThrough);
+        failed += Run("Reusable review workflow dispatch includes OpenAI model input",
+            TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput);
         failed += Run("Setup workflow template explicit-secrets includes diagnostics and preflight pass-through",
             TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough);
         failed += Run("Setup workflow template non-explicit secrets uses inherit mode",
