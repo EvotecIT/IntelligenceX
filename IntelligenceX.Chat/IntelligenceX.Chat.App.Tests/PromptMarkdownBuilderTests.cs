@@ -191,7 +191,7 @@ public sealed class PromptMarkdownBuilderTests {
             includeLiveProfileUpdates: false,
             executionBehaviorPrompt: string.Empty,
             capabilitySelfKnowledgeLines: new[] {
-                "Active working areas in this session: Active Directory, Event Viewer.",
+                "Areas you can help with here include Active Directory, Event Viewer.",
                 "You can help with Active Directory checks such as users, groups, LDAP lookups, and replication-related investigation.",
                 "Concrete examples you can mention: check AD replication health, find users/groups/computers, or review group membership and LDAP data.",
                 "For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.",
@@ -220,7 +220,7 @@ public sealed class PromptMarkdownBuilderTests {
             includeLiveProfileUpdates: false,
             executionBehaviorPrompt: string.Empty,
             capabilitySelfKnowledgeLines: new[] {
-                "Active working areas in this session: Active Directory, Event Viewer.",
+                "Areas you can help with here include Active Directory, Event Viewer.",
                 "Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake."
             },
             runtimeCapabilityLines: new[] {
@@ -525,5 +525,38 @@ public sealed class PromptMarkdownBuilderTests {
 
         Assert.DoesNotContain("Mode: ambiguous_scope_target", markdown);
         Assert.DoesNotContain("`evotec.xyz`", markdown);
+    }
+
+    /// <summary>
+    /// Ensures supplemental-section budgeting skips blank lines and preserves section priority order under a tight shared budget.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PrioritizesSupplementalSectionsWhenBudgetSkipsEmptyLines() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            continuationStateLines: new[] { "", "cont-1", " ", "cont-2", "cont-3", "cont-4" },
+            conversationStyleLines: new[] { "", "style-1", "style-2", "", "style-3", "style-4" },
+            capabilityAnswerStyleLines: new[] { "", "cap-style-1", "cap-style-2", "cap-style-3" },
+            personaGuidanceLines: new[] { "", "persona-1", "persona-2", "", "persona-3", "persona-4" },
+            capabilitySelfKnowledgeLines: new[] { "", "cap-1", "cap-2", "cap-3", "cap-4", "cap-5", "cap-6" },
+            persistentMemoryLines: new[] { "", "memory-1", "memory-2", "memory-3", "memory-4" },
+            localContextLines: new[] { "local-1", "local-2", "local-3", "local-4" });
+
+        Assert.Contains("cont-1", markdown);
+        Assert.Contains("cont-4", markdown);
+        Assert.Contains("style-4", markdown);
+        Assert.Contains("cap-style-3", markdown);
+        Assert.Contains("persona-4", markdown);
+        Assert.Contains("cap-6", markdown);
+        Assert.Contains("memory-1", markdown);
+        Assert.Contains("memory-3", markdown);
+        Assert.DoesNotContain("memory-4", markdown);
+        Assert.DoesNotContain("local-1", markdown);
     }
 }

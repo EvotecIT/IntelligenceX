@@ -44,6 +44,7 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.Contains(lines, line => line.Contains("Active Directory checks", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("public-domain signals", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("live session tools", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("Recently healthy tool count", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("remote-capable", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("few practical examples", StringComparison.OrdinalIgnoreCase));

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.App;
@@ -18,7 +17,7 @@ public sealed partial class MainWindow {
         var enabledPackIds = BuildEnabledPackIds(sessionPolicy);
         var enabledPackNames = BuildEnabledPackDisplayNames(sessionPolicy);
         if (enabledPackNames.Count > 0) {
-            lines.Add("Active working areas in this session: " + string.Join(", ", enabledPackNames) + ".");
+            lines.Add("Areas you can help with here include " + string.Join(", ", enabledPackNames) + ".");
         }
 
         var capabilityCategories = BuildCapabilityCategorySummaries(enabledPackIds);
@@ -33,17 +32,13 @@ public sealed partial class MainWindow {
 
         if (snapshot is not null) {
             if (snapshot.ToolingAvailable) {
-                lines.Add("You can actively use live session tools here when the user asks for checks, investigation, or data gathering.");
+                lines.Add("You can actively use live session tools when the user wants checks, investigation, or data gathering.");
             } else {
                 lines.Add("Tooling is not currently available in this session, so answers should stay conversational and reasoning-based.");
             }
 
-            if (snapshot.HealthyTools.Length > 0) {
-                lines.Add("Recently healthy tool count: " + snapshot.HealthyTools.Length.ToString(CultureInfo.InvariantCulture) + ".");
-            }
-
             if (!string.IsNullOrWhiteSpace(snapshot.RemoteReachabilityMode)) {
-                lines.Add("Current reachability posture: " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
+                lines.Add("Remote reachability right now is " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
             }
         } else if (enabledPackNames.Count == 0) {
             lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");

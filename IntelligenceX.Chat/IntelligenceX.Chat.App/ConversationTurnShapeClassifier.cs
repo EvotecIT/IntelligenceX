@@ -14,6 +14,7 @@ internal static class ConversationTurnShapeClassifier {
     private const int CapabilityQuestionTokenLimit = 12;
     private const int RuntimeQuestionLengthLimit = 120;
     private const int RuntimeQuestionTokenLimit = 18;
+    private const int GenericQuestionLongLetterTokenLength = 10;
     private const int LowContextShortTurnTokenLimit = 3;
     private const int LowContextShortTurnLengthLimit = 24;
     private const int LowContextShortTurnMaxLetterTokenLength = 7;
@@ -30,8 +31,6 @@ internal static class ConversationTurnShapeClassifier {
         "packs",
         "plugin",
         "plugins",
-        "capability",
-        "capabilities",
         "transport"
     };
 
@@ -273,7 +272,7 @@ internal static class ConversationTurnShapeClassifier {
         var longLetterTokens = 0;
         for (var i = 0; i < tokens.Count; i++) {
             var token = tokens[i];
-            if (token.Length >= 8 && IsAllLetters(token)) {
+            if (token.Length >= GenericQuestionLongLetterTokenLength && IsAllLetters(token)) {
                 longLetterTokens++;
                 if (longLetterTokens >= 2) {
                     return false;
@@ -281,11 +280,20 @@ internal static class ConversationTurnShapeClassifier {
             }
         }
 
+        if (LooksLikeConcreteQuestionLead(tokens)) {
+            return false;
+        }
+
         if (tokens.Count <= 3) {
             return HasTrailingShortToken(tokens, trailingTokenWindow: tokens.Count, maxTokenLength: 2);
         }
 
-        return HasTrailingShortToken(tokens, trailingTokenWindow: 2, maxTokenLength: 3);
+        if (tokens.Count <= 5) {
+            return HasTrailingShortToken(tokens, trailingTokenWindow: 2, maxTokenLength: 3);
+        }
+
+        return HasTrailingShortToken(tokens, trailingTokenWindow: 2, maxTokenLength: 3)
+               || HasTrailingShortToken(tokens, trailingTokenWindow: 3, maxTokenLength: 3);
     }
 
     private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) {
@@ -345,6 +353,30 @@ internal static class ConversationTurnShapeClassifier {
         for (var i = Math.Max(0, tokens.Count - trailingTokenWindow); i < tokens.Count; i++) {
             if (tokens[i].Length > 0 && tokens[i].Length <= maxTokenLength) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeConcreteQuestionLead(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (tokens.Count < 4
+            || tokens[0].Length == 0
+            || tokens[0].Length > 3
+            || tokens[1].Length == 0
+            || tokens[1].Length > 3) {
+            return false;
+        }
+
+        var concreteTailTokens = 0;
+        for (var i = 2; i < tokens.Count; i++) {
+            if (tokens[i].Length >= 4) {
+                concreteTailTokens++;
+                if (concreteTailTokens >= 2) {
+                    return true;
+                }
             }
         }
 

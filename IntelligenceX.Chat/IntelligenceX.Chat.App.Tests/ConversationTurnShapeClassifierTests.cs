@@ -18,6 +18,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures broader capability asks still work when the trailing tokens are not tiny filler words.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsTrueForBroadCapabilityAskWithoutShortTail() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("What capabilities do you have available?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures broad non-English capability asks can still enter capability-question mode.
     /// </summary>
     [Fact]
@@ -43,6 +53,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     [Fact]
     public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForShortConcreteTaskAsk() {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Can you check logs?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures relaxed broad-question gating does not widen short concrete asks with filler words into capability mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForConcreteTaskAskWithArticle() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Can you check the event logs?");
 
         Assert.False(result);
     }
