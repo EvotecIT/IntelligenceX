@@ -14,7 +14,6 @@ public sealed partial class MainWindow {
         bool runtimeIntrospectionMode = false) {
         var lines = new List<string>();
         var snapshot = sessionPolicy?.CapabilitySnapshot;
-        var enabledPackIds = BuildEnabledPackIds(sessionPolicy);
         var enabledPackNames = BuildEnabledPackDisplayNames(sessionPolicy);
         if (enabledPackNames.Count > 0) {
             lines.Add("Areas you can help with here include " + string.Join(", ", enabledPackNames) + ".");
@@ -42,16 +41,7 @@ public sealed partial class MainWindow {
             lines.Add("For runtime self-report, mention only the live tooling or capability areas that are relevant to the user's scope.");
             lines.Add("Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake.");
         } else {
-            var capabilityCategories = BuildCapabilityCategorySummaries(enabledPackIds);
-            for (var i = 0; i < capabilityCategories.Count; i++) {
-                lines.Add(capabilityCategories[i]);
-            }
-
-            var exampleLines = BuildCapabilityExampleLines(enabledPackIds);
-            for (var i = 0; i < exampleLines.Count; i++) {
-                lines.Add(exampleLines[i]);
-            }
-
+            AddGenericCapabilityGuidance(lines, enabledPackNames);
             lines.Add("For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.");
             lines.Add("When asked what you can do, answer with useful examples and invite the task instead of listing internal identifiers or protocol details.");
         }
@@ -86,98 +76,25 @@ public sealed partial class MainWindow {
         return names;
     }
 
-    private static HashSet<string> BuildEnabledPackIds(SessionPolicyDto? sessionPolicy) {
-        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var packs = sessionPolicy?.Packs;
-        if (packs is not { Length: > 0 }) {
-            return ids;
+    private static void AddGenericCapabilityGuidance(List<string> lines, IReadOnlyList<string> enabledPackNames) {
+        ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(enabledPackNames);
+
+        if (enabledPackNames.Count == 0) {
+            lines.Add("Keep capability claims narrow until the session policy finishes loading and you can name the enabled areas confidently.");
+            lines.Add("Concrete examples you can mention: only tasks that are clearly confirmed by the current session policy or recent runtime evidence.");
+            return;
         }
 
-        for (var i = 0; i < packs.Length; i++) {
-            var pack = packs[i];
-            if (!pack.Enabled) {
-                continue;
-            }
+        lines.Add("Use the enabled capability areas above as the source of truth for what is live in this session.");
+        lines.Add("Concrete examples you can mention: a few practical tasks grounded in the enabled areas above, phrased in the user's language and scope.");
 
-            var normalizedId = NormalizePackId(pack.Id);
-            if (normalizedId.Length == 0) {
-                normalizedId = NormalizePackId(pack.Name);
-            }
-
-            if (normalizedId.Length > 0) {
-                ids.Add(normalizedId);
-            }
+        if (enabledPackNames.Count == 1) {
+            lines.Add("If you need a concrete anchor, start from the single enabled area above instead of inventing broader capability claims.");
+            return;
         }
 
-        return ids;
-    }
-
-    private static List<string> BuildCapabilityCategorySummaries(ISet<string> enabledPackIds) {
-        ArgumentNullException.ThrowIfNull(enabledPackIds);
-
-        var lines = new List<string>();
-        if (HasPackCapability(enabledPackIds, "ad", "adplayground", "active_directory")) {
-            lines.Add("You can help with Active Directory checks such as users, groups, LDAP lookups, and domain-controller or replication-related investigation when those tools are enabled.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "eventlog", "event_viewer")) {
-            lines.Add("You can inspect Windows event logs and correlate system evidence when the session has Event Log tooling available.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "dnsclientx", "domaindetective", "public_domain")) {
-            lines.Add("You can investigate public-domain signals such as DNS and mail configuration when the relevant tooling is enabled.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "system")) {
-            lines.Add("You can inspect local system posture such as services, scheduled tasks, installed updates, and host-level inventory when those tools are enabled.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "fs", "filesystem", "officeimo")) {
-            lines.Add("You can inspect allowed filesystem content and extract evidence from common document formats when those tools are enabled.");
-        }
-
-        return lines;
-    }
-
-    private static List<string> BuildCapabilityExampleLines(ISet<string> enabledPackIds) {
-        ArgumentNullException.ThrowIfNull(enabledPackIds);
-
-        var lines = new List<string>();
-        if (HasPackCapability(enabledPackIds, "ad", "adplayground", "active_directory")) {
-            lines.Add("Concrete examples you can mention: check AD replication health, find users/groups/computers, or review group membership and LDAP data.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "eventlog", "event_viewer")) {
-            lines.Add("Concrete examples you can mention: inspect Windows event logs, summarize recurring errors, or correlate recent failures on this machine or a reachable target.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "dnsclientx", "domaindetective", "public_domain")) {
-            lines.Add("Concrete examples you can mention: inspect public DNS, check MX/SPF/DMARC, or review mail-related public-domain signals.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "system")) {
-            lines.Add("Concrete examples you can mention: inspect local host inventory, services, scheduled tasks, or security posture on the current machine.");
-        }
-
-        if (HasPackCapability(enabledPackIds, "fs", "filesystem", "officeimo")) {
-            lines.Add("Concrete examples you can mention: search allowed files and folders, inspect configuration artifacts, or extract useful content from documents.");
-        }
-
-        return lines;
-    }
-
-    private static bool HasPackCapability(ISet<string> enabledPackIds, params string[] expectedIds) {
-        ArgumentNullException.ThrowIfNull(enabledPackIds);
-        ArgumentNullException.ThrowIfNull(expectedIds);
-
-        for (var i = 0; i < expectedIds.Length; i++) {
-            var expected = NormalizePackId(expectedIds[i]);
-            if (expected.Length > 0 && enabledPackIds.Contains(expected)) {
-                return true;
-            }
-        }
-
-        return false;
+        lines.Add("Prefer the enabled areas that best match the user's request instead of listing every area in the session.");
     }
 
     private static string DescribeReachabilityMode(string? mode) {

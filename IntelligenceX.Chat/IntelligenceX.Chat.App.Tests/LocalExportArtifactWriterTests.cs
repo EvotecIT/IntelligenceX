@@ -96,17 +96,96 @@ public sealed class LocalExportArtifactWriterTests {
         var root = CreateTempDirectory();
         try {
             var markdownPath = Path.Combine(root, "transcript.md");
-            LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
+            var markdownResult = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
+            Assert.True(markdownResult.Succeeded);
+            Assert.Equal(TranscriptExportOutcomeKind.Succeeded, markdownResult.OutcomeKind);
+            Assert.Equal(ExportPreferencesContract.FormatMarkdown, markdownResult.ActualFormat);
+            Assert.Equal(markdownPath, markdownResult.OutputPath);
             Assert.True(File.Exists(markdownPath));
             Assert.Contains("# Transcript", File.ReadAllText(markdownPath));
 
             var docxPath = Path.Combine(root, "transcript.docx");
-            LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            var docxResult = LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
+            Assert.True(docxResult.Succeeded);
+            Assert.Equal(TranscriptExportOutcomeKind.Succeeded, docxResult.OutcomeKind);
+            Assert.Equal(ExportPreferencesContract.FormatDocx, docxResult.ActualFormat);
+            Assert.Equal(docxPath, docxResult.OutputPath);
             Assert.True(File.Exists(docxPath));
             using var docx = WordDocument.Load(docxPath, readOnly: true);
             var bodyText = string.Join("\n", docx.Paragraphs.Select(p => p.Text));
             Assert.Contains("Transcript", bodyText);
             Assert.Contains("item 1", bodyText);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures requested DOCX transcript export falls back to markdown with typed result metadata when the DOCX writer fails.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_FallsBackToMarkdown_WhenDocxWriterFails() {
+        const string markdown = """
+            # Transcript
+            hello
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var requestedDocxPath = Path.Combine(root, "transcript.docx");
+            var result = LocalExportArtifactWriter.ExportTranscript(
+                ExportPreferencesContract.FormatDocx,
+                "transcript",
+                markdown,
+                requestedDocxPath,
+                additionalAllowedImageDirectories: null,
+                docxVisualMaxWidthPx: null,
+                allowMarkdownFallback: true,
+                markdownWriter: static (path, text) => File.WriteAllText(path, text),
+                docxWriter: static (_, _, _, _, _) => throw new InvalidOperationException("docx write boom"));
+
+            var fallbackPath = Path.Combine(root, "transcript.md");
+            Assert.True(result.Succeeded);
+            Assert.Equal(TranscriptExportOutcomeKind.SucceededWithFallback, result.OutcomeKind);
+            Assert.Equal(ExportPreferencesContract.FormatDocx, result.RequestedFormat);
+            Assert.Equal(ExportPreferencesContract.FormatMarkdown, result.ActualFormat);
+            Assert.Equal(fallbackPath, result.OutputPath);
+            Assert.Equal(TranscriptExportFallbackKind.Markdown, result.Fallback?.Kind);
+            Assert.Equal(fallbackPath, result.Fallback?.OutputPath);
+            Assert.Equal(TranscriptExportStage.DocxWrite, result.Fallback?.Cause.Stage);
+            Assert.Contains("docx write boom", result.Fallback?.Cause.Message, StringComparison.Ordinal);
+            Assert.True(File.Exists(fallbackPath));
+            Assert.False(File.Exists(requestedDocxPath));
+            Assert.Contains("# Transcript", File.ReadAllText(fallbackPath));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures the typed result stays failed when DOCX export is retried later and markdown fallback is intentionally disabled.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_ReturnsFailedResult_WhenFallbackIsDisabled() {
+        var root = CreateTempDirectory();
+        try {
+            var requestedDocxPath = Path.Combine(root, "transcript.docx");
+            var result = LocalExportArtifactWriter.ExportTranscript(
+                ExportPreferencesContract.FormatDocx,
+                "transcript",
+                "# Transcript",
+                requestedDocxPath,
+                additionalAllowedImageDirectories: null,
+                docxVisualMaxWidthPx: null,
+                allowMarkdownFallback: false,
+                markdownWriter: static (_, _) => throw new InvalidOperationException("markdown fallback should not run"),
+                docxWriter: static (_, _, _, _, _) => throw new InvalidOperationException("docx write boom"));
+
+            Assert.False(result.Succeeded);
+            Assert.Equal(TranscriptExportOutcomeKind.Failed, result.OutcomeKind);
+            Assert.Equal(TranscriptExportStage.DocxWrite, result.Failure?.Stage);
+            Assert.Contains("docx write boom", result.Failure?.Message, StringComparison.Ordinal);
+            Assert.Null(result.Fallback);
         } finally {
             Directory.Delete(root, recursive: true);
         }

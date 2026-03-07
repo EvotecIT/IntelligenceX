@@ -165,4 +165,84 @@ public sealed class MainWindowPromptContextGatingTests {
 
         Assert.True(result);
     }
+
+    /// <summary>
+    /// Ensures ordinary operational turns do not keep live profile-update scaffolding enabled.
+    /// </summary>
+    [Fact]
+    public void ShouldIncludeLiveProfileUpdates_ReturnsFalseWhenNoProfileFieldsArePresent() {
+        var result = MainWindow.ShouldIncludeLiveProfileUpdates(
+            hasUserNameUpdate: false,
+            hasAssistantPersonaUpdate: false,
+            hasThemePresetUpdate: false);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures actual name/persona/theme updates still opt into the live profile-update guidance path.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public void ShouldIncludeLiveProfileUpdates_ReturnsTrueWhenAnyProfileFieldIsPresent(
+        bool hasUserNameUpdate,
+        bool hasAssistantPersonaUpdate,
+        bool hasThemePresetUpdate) {
+        var result = MainWindow.ShouldIncludeLiveProfileUpdates(
+            hasUserNameUpdate,
+            hasAssistantPersonaUpdate,
+            hasThemePresetUpdate);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures explicit capability/runtime meta turns still use the thin request path when no onboarding
+    /// or live profile update guidance is actually needed.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void ShouldUseThinServiceRequestEnvelope_ReturnsTrueForMetaTurnsWithoutOnboardingOrProfileUpdates(
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion) {
+        var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
+            includeOnboardingContext: false,
+            includeLiveProfileUpdates: false,
+            assistantCapabilityQuestion: assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion: assistantRuntimeIntrospectionQuestion);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures unfinished onboarding still opts into the fuller request envelope even after the thin-path cleanup.
+    /// </summary>
+    [Fact]
+    public void ShouldUseThinServiceRequestEnvelope_ReturnsFalseWhenAmbientOnboardingContextIsIncluded() {
+        var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
+            includeOnboardingContext: true,
+            includeLiveProfileUpdates: false,
+            assistantCapabilityQuestion: false,
+            assistantRuntimeIntrospectionQuestion: false);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures actual name/persona/theme updates still opt into the fuller request envelope.
+    /// </summary>
+    [Fact]
+    public void ShouldUseThinServiceRequestEnvelope_ReturnsFalseWhenLiveProfileUpdatesAreIncluded() {
+        var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
+            includeOnboardingContext: false,
+            includeLiveProfileUpdates: true,
+            assistantCapabilityQuestion: false,
+            assistantRuntimeIntrospectionQuestion: false);
+
+        Assert.False(result);
+    }
 }

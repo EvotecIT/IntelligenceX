@@ -86,4 +86,36 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("run now", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ExtractPrimaryUserRequest_StopsAtNextStructuredSectionWhenUserRequestAppearsFirst() {
+        var input = """
+            User request:
+            Check replication health and show a table.
+
+            [Session profile context]
+            - Assistant persona: sharp operator
+            """;
+
+        var result = ExtractPrimaryUserRequestMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal("Check replication health and show a table.", text);
+    }
+
+    [Fact]
+    public void ExtractIntentUserText_StopsAtNextStructuredSectionWhenUserRequestAppearsFirst() {
+        var input = """
+            User request:
+            Pokaz tabele i diagram replikacji.
+
+            [Persistent memory]
+            - Prefers concise answers.
+            """;
+
+        var result = ExtractIntentUserTextMethod.Invoke(null, new object?[] { input });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Equal("Pokaz tabele i diagram replikacji.", text);
+    }
+
 }

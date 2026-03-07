@@ -336,7 +336,19 @@ internal sealed partial class ChatServiceSession {
                     proactiveFollowUpUsed: proactiveFollowUpUsed,
                     continuationFollowUpTurn: continuationFollowUpTurn,
                     compactFollowUpTurn: compactFollowUpTurn,
+                    userRequest: routedUserRequest,
                     assistantDraft: text);
+                var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+                var turnExecutionIntent = ResolveTurnExecutionIntent(
+                    userRequest: routedUserRequest,
+                    continuationFollowUpTurn: continuationFollowUpTurn,
+                    compactFollowUpTurn: compactFollowUpTurn,
+                    hasPendingActionContext: false,
+                    hasToolActivity: hasToolActivity,
+                    startupBootstrapCompleted: startupToolingBootstrapTask?.IsCompleted ?? true,
+                    startupBootstrapCompletedSuccessfully: startupToolingBootstrapTask?.IsCompletedSuccessfully ?? true,
+                    hasCachedToolCatalog: TryGetCachedToolCatalogForListTools(out _),
+                    servingPersistedPreview: _servingPersistedToolingBootstrapPreview);
                 if (!proactiveDecision.ShouldAttempt
                     && string.Equals(proactiveDecision.Reason, "skip_pending_mutating_actions", StringComparison.OrdinalIgnoreCase)) {
                     proactiveSkipMutatingCount++;
@@ -353,6 +365,7 @@ internal sealed partial class ChatServiceSession {
                     planExecuteReviewLoop: planExecuteReviewLoop,
                     maxReviewPasses: maxReviewPasses,
                     reviewPassesUsed: reviewPassesUsed,
+                    turnExecutionIntent: turnExecutionIntent,
                     userRequest: routedUserRequest,
                     assistantDraft: text,
                     executionContractApplies: executionContractApplies,

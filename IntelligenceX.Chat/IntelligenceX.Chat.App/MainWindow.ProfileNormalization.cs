@@ -294,20 +294,17 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task SaveProfileAsync(string userName, string persona, string theme) {
-        _appState.UserName = string.IsNullOrWhiteSpace(userName) ? null : userName.Trim();
-        _appState.AssistantPersona = NormalizeAssistantPersonaValue(persona);
-        _sessionUserNameOverride = null;
-        _sessionAssistantPersonaOverride = null;
+        var update = new OnboardingProfileUpdate {
+            Scope = ProfileUpdateScope.Profile,
+            HasUserName = true,
+            UserName = userName,
+            HasAssistantPersona = true,
+            AssistantPersona = persona,
+            HasThemePreset = !string.IsNullOrWhiteSpace(theme),
+            ThemePreset = theme
+        };
 
-        var normalizedTheme = NormalizeTheme(theme) ?? "default";
-        _sessionThemeOverride = null;
-        _themePreset = normalizedTheme;
-        _appState.ThemePreset = normalizedTheme;
-        _appState.OnboardingCompleted = true;
-
-        await ApplyThemeFromStateAsync().ConfigureAwait(false);
-        await PublishOptionsStateAsync().ConfigureAwait(false);
-        await PersistAppStateAsync().ConfigureAwait(false);
+        _ = await ApplyProfileUpdateAsync(update, autoCompleteOnboardingForProfileScope: true).ConfigureAwait(false);
     }
 
     private async Task RestartOnboardingAsync() {

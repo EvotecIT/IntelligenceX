@@ -10,7 +10,7 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class MainWindowCapabilitySelfKnowledgeTests {
     /// <summary>
-    /// Ensures capability self-knowledge summarizes enabled packs and key routing families in human terms.
+    /// Ensures capability self-knowledge summarizes enabled capability areas without hardcoded pack-family rewrites.
     /// </summary>
     [Fact]
     public void BuildCapabilitySelfKnowledgeLines_SummarizesEnabledCapabilities() {
@@ -41,8 +41,8 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         });
 
         Assert.Contains(lines, line => line.Contains("Active Directory", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, line => line.Contains("Active Directory checks", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, line => line.Contains("public-domain signals", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("source of truth", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("enabled areas above", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("live session tools", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(lines, line => line.Contains("Recently healthy tool count", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("remote-capable", StringComparison.OrdinalIgnoreCase));
@@ -82,12 +82,12 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.Contains(lines, line => line.Contains("only the live tooling or capability areas", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(lines, line => line.Contains("Active Directory checks", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("source of truth", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(lines, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
-    /// Ensures the richer category/example lines are still present on normal capability answers.
+    /// Ensures the richer generic guidance lines are still present on normal capability answers.
     /// </summary>
     [Fact]
     public void BuildCapabilitySelfKnowledgeLines_NonRuntimeMode_KeepsCategoryAndExampleGuidance() {
@@ -116,8 +116,9 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
             },
             runtimeIntrospectionMode: false);
 
-        Assert.Contains(lines, line => line.Contains("Active Directory checks", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("source of truth", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("best match the user's request", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
     }
 

@@ -67,6 +67,7 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
             Name: "CN=Conn-01",
             Site: "Default-First-Site-Name",
             SourceServer: "DC01",
+            SourceSite: "Branch-Site-Name",
             DestinationServer: "DC02",
             Transport: ActiveDirectoryTransportType.Rpc,
             Enabled: true,

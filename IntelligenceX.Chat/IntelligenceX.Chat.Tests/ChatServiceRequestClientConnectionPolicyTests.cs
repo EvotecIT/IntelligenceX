@@ -88,7 +88,7 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
     }
 
     [Theory]
-    [InlineData(true, false, false, true, true)]
+    [InlineData(true, false, false, true, false)]
     [InlineData(true, true, true, true, true)]
     [InlineData(true, true, false, true, false)]
     [InlineData(true, false, false, false, false)]

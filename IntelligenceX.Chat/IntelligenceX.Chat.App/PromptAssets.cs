@@ -76,6 +76,7 @@ internal static class PromptAssets {
                        ```
 
                        - Include only keys you are setting in that turn.
+                       - When you set onboardingComplete=true for a saved preference handoff, use scope="profile" unless the user explicitly wants a temporary session-only trial.
                        - Set onboardingComplete=true once user confirms defaults or all profile preferences are known.
                        """;
         }

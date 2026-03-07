@@ -415,6 +415,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolOutputDto>? toolOutputs) {
         var requestText = TrimForPrompt(userRequest, 520);
         var draftText = TrimForPrompt(assistantDraft, 1800);
+        var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
         var visualPolicy = ResolveProactiveVisualizationPolicy(userRequest, assistantDraft, toolOutputs);
         var allowNewVisualsText = visualPolicy.AllowNewVisuals ? "true" : "false";
         var draftHasVisualsText = visualPolicy.DraftHasVisuals ? "true" : "false";
@@ -441,6 +442,9 @@ internal sealed partial class ChatServiceSession {
             : $"- If allow_new_visuals is false, do not introduce new {supportedVisualBlocks} blocks in this proactive rewrite.";
         var preferredVisualRequirementLine = visualPolicy.AllowNewVisuals && hasSpecificPreferredVisualType
             ? "- If preferred_visual is set, prefer that visual format for any newly introduced visual block unless another supported format is clearly better."
+            : string.Empty;
+        var requestedArtifactRequirementLine = requestedArtifactIntent.RequiresArtifact
+            ? BuildRequestedArtifactRequirementLine(requestedArtifactIntent)
             : string.Empty;
         return $$"""
             [Proactive follow-up review]
@@ -471,6 +475,7 @@ internal sealed partial class ChatServiceSession {
             - Use visuals only when they materially improve clarity over plain markdown.
             {{visualRequirementLine}}
             {{preferredVisualRequirementLine}}
+            {{requestedArtifactRequirementLine}}
             - Preserve existing visual blocks when they are already present and still accurate.
             - When listing checks/fixes, make each item actionable and specific.
             - Include "why it matters" context when the impact is not obvious, but do not force that label on every line.
@@ -488,12 +493,13 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolOutputDto>? toolOutputs) {
         var requestHasProactiveVisualizationMarker = ContainsProactiveVisualizationMarker(userRequest);
         var requestHasVisualContractSignal = ContainsVisualContractSignal(userRequest);
+        var requestHasVisualRequestSignal = TryResolvePreferredVisualTypeFromVisualRequestSignal(userRequest, out _);
         var hasStructuredOverrides = TryReadProactiveVisualizationOverridesFromRequestText(userRequest, out var hasAllowNewVisualsOverride,
             out var allowNewVisualsFromOverride, out var hasPreferredVisualOverride, out var preferredVisualType,
             out var hasMaxNewVisualsOverride, out var maxNewVisualsOverride);
         var inferredPreferredVisualTypeFromRequest = string.Empty;
         var hasInferredPreferredVisualTypeFromRequest = !hasPreferredVisualOverride
-                                                        && TryResolvePreferredVisualTypeFromVisualContractSignal(userRequest, out inferredPreferredVisualTypeFromRequest);
+                                                        && TryResolvePreferredVisualTypeFromVisualRequestSignal(userRequest, out inferredPreferredVisualTypeFromRequest);
         var hasPreferredVisualDirectiveFromRequest = hasPreferredVisualOverride || hasInferredPreferredVisualTypeFromRequest;
         var effectivePreferredVisualType = hasPreferredVisualOverride
             ? preferredVisualType
@@ -505,7 +511,7 @@ internal sealed partial class ChatServiceSession {
         var preferredVisualPriority = 0;
         var hasExplicitAutoPreferredVisualOverride = hasPreferredVisualOverride
             && string.Equals(preferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
-        var requestHasVisualContract = requestHasProactiveVisualizationMarker || requestHasVisualContractSignal || hasStructuredOverrides;
+        var requestHasVisualContract = requestHasProactiveVisualizationMarker || requestHasVisualContractSignal || requestHasVisualRequestSignal || hasStructuredOverrides;
         var hasSpecificPreferredVisualTypeFromRequest = hasPreferredVisualDirectiveFromRequest
             && !string.Equals(effectivePreferredVisualType, "auto", StringComparison.OrdinalIgnoreCase);
         var baseAllowNewVisuals = hasAllowNewVisualsOverride
@@ -516,7 +522,7 @@ internal sealed partial class ChatServiceSession {
                 ? true
             : hasMaxNewVisualsOverride
                     ? maxNewVisualsOverride > 0
-                    : requestHasVisualContractSignal;
+                    : requestHasVisualRequestSignal;
         var hasInferredPreferredVisualTypeFromToolOutputs = false;
         if (baseAllowNewVisuals
             && requestHasVisualContract
@@ -567,6 +573,22 @@ internal sealed partial class ChatServiceSession {
             PreferredVisualPriority: preferredVisualPriority,
             HasMaxNewVisualsOverride: hasMaxNewVisualsOverride,
             MaxNewVisuals: maxNewVisuals);
+    }
+
+    private static string BuildRequestedArtifactRequirementLine(RequestedArtifactIntent requestedArtifactIntent) {
+        if (!requestedArtifactIntent.RequiresArtifact) {
+            return string.Empty;
+        }
+
+        if (requestedArtifactIntent.WantsTable && requestedArtifactIntent.WantsVisual) {
+            return "- The user explicitly asked for both a compact table and a visual. Produce both when current evidence supports them; otherwise say clearly which artifact is unsupported and why instead of ignoring the request.";
+        }
+
+        if (requestedArtifactIntent.WantsTable) {
+            return "- The user explicitly asked for a compact table. Include it when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request.";
+        }
+
+        return "- The user explicitly asked for a visual artifact. Include a supported visual block when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request.";
     }
 
     private static bool TryResolvePreferredVisualTypeFromToolOutputs(

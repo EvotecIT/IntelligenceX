@@ -629,16 +629,27 @@ public sealed partial class MainWindow : Window {
     }
 
     private List<string> BuildMissingOnboardingFields() {
+        return BuildMissingOnboardingFields(
+            GetEffectiveUserName(),
+            GetEffectiveAssistantPersona(),
+            GetEffectiveThemePreset(),
+            _appState.OnboardingCompleted);
+    }
+
+    internal static List<string> BuildMissingOnboardingFields(
+        string? effectiveUserName,
+        string? effectiveAssistantPersona,
+        string? effectiveThemePreset,
+        bool onboardingCompleted) {
         var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(GetEffectiveUserName())) {
+        if (string.IsNullOrWhiteSpace(effectiveUserName)) {
             missing.Add("userName");
         }
-        if (string.IsNullOrWhiteSpace(GetEffectiveAssistantPersona())) {
+        if (string.IsNullOrWhiteSpace(effectiveAssistantPersona)) {
             missing.Add("assistantPersona");
         }
-        var effectiveTheme = GetEffectiveThemePreset();
-        if (string.IsNullOrWhiteSpace(effectiveTheme)
-            || (!_appState.OnboardingCompleted && string.Equals(effectiveTheme, "default", StringComparison.OrdinalIgnoreCase))) {
+        if (string.IsNullOrWhiteSpace(effectiveThemePreset)
+            || (!onboardingCompleted && string.Equals(effectiveThemePreset, "default", StringComparison.OrdinalIgnoreCase))) {
             missing.Add("themePreset");
         }
         return missing;

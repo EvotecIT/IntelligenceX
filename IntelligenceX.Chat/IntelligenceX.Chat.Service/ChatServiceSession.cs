@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using JsonValueKind = System.Text.Json.JsonValueKind;
@@ -62,6 +61,7 @@ internal sealed partial class ChatServiceSession {
     private SessionStartupBootstrapTelemetryDto? _startupBootstrap;
     private string[] _pluginSearchPaths;
     private ToolDefinitionDto[] _cachedToolDefinitions;
+    private bool _servingPersistedToolingBootstrapPreview;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
@@ -113,9 +113,6 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, ChatRun> _chatRunsByRequestId = new(StringComparer.Ordinal);
     private Task? _chatRunPumpTask;
     private string? _activeThreadId;
-    private static readonly Regex UserRequestSectionRegex =
-        new(@"\bUser request:\s*(?<value>[\s\S]+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-
     public ChatServiceSession(ServiceOptions options, Stream stream, ChatServiceToolingBootstrapCache? toolingBootstrapCache = null) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _toolingBootstrapCache = toolingBootstrapCache;
@@ -134,6 +131,7 @@ internal sealed partial class ChatServiceSession {
         _startupBootstrap = null;
         _pluginSearchPaths = Array.Empty<string>();
         _cachedToolDefinitions = Array.Empty<ToolDefinitionDto>();
+        _servingPersistedToolingBootstrapPreview = false;
         _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
         _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>());
         UpdatePackMetadataIndexes(Array.Empty<ToolPackDescriptor>());
@@ -172,6 +170,29 @@ internal sealed partial class ChatServiceSession {
                 _packDescriptionsById[normalizedPackId] = description;
             }
             _packSourceKindsById[normalizedPackId] = MapSourceKind(descriptor.SourceKind, descriptorId);
+        }
+    }
+
+    private void UpdatePackMetadataIndexesFromAvailability(IReadOnlyList<ToolPackAvailabilityInfo> packAvailability) {
+        _packDisplayNamesById.Clear();
+        _packDescriptionsById.Clear();
+        _packSourceKindsById.Clear();
+
+        for (var i = 0; i < packAvailability.Count; i++) {
+            var pack = packAvailability[i];
+            var descriptorId = (pack.Id ?? string.Empty).Trim();
+            var normalizedPackId = NormalizePackId(descriptorId);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(pack.Id, pack.Name);
+            var description = (pack.Description ?? string.Empty).Trim();
+            if (description.Length > 0) {
+                _packDescriptionsById[normalizedPackId] = description;
+            }
+
+            _packSourceKindsById[normalizedPackId] = MapSourceKind(pack.SourceKind, descriptorId);
         }
     }
 
@@ -504,11 +525,14 @@ internal sealed partial class ChatServiceSession {
         bool startupToolingBootstrapCompleted,
         bool startupToolingBootstrapCompletedSuccessfully,
         bool hasCachedToolCatalog) {
-        if (!isListToolsRequest || !hasCachedToolCatalog) {
+        if (!isListToolsRequest
+            || !startupToolingBootstrapCompleted
+            || !startupToolingBootstrapCompletedSuccessfully
+            || !hasCachedToolCatalog) {
             return false;
         }
 
-        return !startupToolingBootstrapCompleted || startupToolingBootstrapCompletedSuccessfully;
+        return true;
     }
 
     internal static bool ShouldBypassToolingBootstrapWaitForRecoveryRequests(

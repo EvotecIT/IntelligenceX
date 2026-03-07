@@ -27,7 +27,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> GlobalExecutionLanes = new();
     private static readonly TimeSpan SessionQueueWaitHeartbeatInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan GlobalLaneWaitHeartbeatInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan GlobalLaneWaitHeartbeatInterval = TimeSpan.FromSeconds(3);
 
     internal static int ResolveSessionExecutionQueueLimit(int configuredLimit) {
         return configuredLimit < 0 ? 0 : configuredLimit;
