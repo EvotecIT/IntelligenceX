@@ -223,6 +223,7 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("[Conversation mode]", markdown);
         Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
         Assert.Contains("Answer the runtime or tooling question directly in short human terms", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("one or two short sentences", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Prefer one short paragraph by default", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not run live checks", markdown, StringComparison.OrdinalIgnoreCase);
     }

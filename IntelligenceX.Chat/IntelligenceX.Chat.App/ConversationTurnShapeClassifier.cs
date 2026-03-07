@@ -178,6 +178,9 @@ internal static class ConversationTurnShapeClassifier {
             return !LooksLikeConcreteQuestionLead(tokens);
         }
 
+        // Runtime self-report asks often carry enterprise qualifiers like DNS/AD.
+        // Allow uppercase acronyms here only so those meta-questions are not
+        // misclassified as concrete operational tasks.
         return LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms: true);
     }
 
@@ -278,6 +281,15 @@ internal static class ConversationTurnShapeClassifier {
         return longest;
     }
 
+    /// <summary>
+    /// Returns <see langword="true"/> when the question is broad/generic enough for conversational capability or runtime routing.
+    /// </summary>
+    /// <param name="text">Original user text.</param>
+    /// <param name="tokens">Letter/digit tokens extracted from the text.</param>
+    /// <param name="allowUppercaseAcronyms">
+    /// Allows enterprise qualifiers like DNS/AD when the caller already knows the question is meta/self-report oriented.
+    /// Do not enable this for general task routing.
+    /// </param>
     internal static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens, bool allowUppercaseAcronyms = false) {
         ArgumentNullException.ThrowIfNull(tokens);
 
