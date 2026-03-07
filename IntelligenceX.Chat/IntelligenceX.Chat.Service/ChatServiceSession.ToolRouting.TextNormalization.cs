@@ -12,6 +12,7 @@ using JsonValueKind = System.Text.Json.JsonValueKind;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
@@ -104,7 +105,7 @@ internal sealed partial class ChatServiceSession {
         while (lineStart < content.Length) {
             ReadOnlySpan<char> line;
             lineStart = ReadNextLine(content, lineStart, out line);
-            if (LooksLikeStructuredSectionHeader(line)) {
+            if (LooksLikeKnownStructuredRequestSectionHeader(line)) {
                 break;
             }
 
@@ -116,6 +117,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         return body.ToString().Trim();
+    }
+
+    private static bool LooksLikeKnownStructuredRequestSectionHeader(ReadOnlySpan<char> line) {
+        var trimmed = line.Trim();
+        if (trimmed.IsEmpty || !LooksLikeStructuredSectionHeader(trimmed)) {
+            return false;
+        }
+
+        for (var i = 0; i < PromptEnvelopeSections.KnownStructuredRequestSectionHeaders.Count; i++) {
+            if (trimmed.Equals(PromptEnvelopeSections.KnownStructuredRequestSectionHeaders[i], StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeRoutingUserText(string text) {

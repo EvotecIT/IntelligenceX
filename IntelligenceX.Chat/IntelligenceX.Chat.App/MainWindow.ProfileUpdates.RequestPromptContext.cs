@@ -27,9 +27,7 @@ public sealed partial class MainWindow {
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
         var shouldUseThinRequestEnvelope = ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext,
-            includeLiveProfileUpdates,
-            assistantCapabilityQuestion,
-            assistantRuntimeIntrospectionQuestion);
+            includeLiveProfileUpdates);
 
         if (shouldUseThinRequestEnvelope) {
             return PromptMarkdownBuilder.BuildThinServiceRequest(
@@ -140,11 +138,7 @@ public sealed partial class MainWindow {
 
     internal static bool ShouldUseThinServiceRequestEnvelope(
         bool includeOnboardingContext,
-        bool includeLiveProfileUpdates,
-        bool assistantCapabilityQuestion,
-        bool assistantRuntimeIntrospectionQuestion) {
-        _ = assistantCapabilityQuestion;
-        _ = assistantRuntimeIntrospectionQuestion;
+        bool includeLiveProfileUpdates) {
         return !includeOnboardingContext && !includeLiveProfileUpdates;
     }
 

@@ -202,18 +202,11 @@ public sealed class MainWindowPromptContextGatingTests {
     /// Ensures explicit capability/runtime meta turns still use the thin request path when no onboarding
     /// or live profile update guidance is actually needed.
     /// </summary>
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public void ShouldUseThinServiceRequestEnvelope_ReturnsTrueForMetaTurnsWithoutOnboardingOrProfileUpdates(
-        bool assistantCapabilityQuestion,
-        bool assistantRuntimeIntrospectionQuestion) {
+    [Fact]
+    public void ShouldUseThinServiceRequestEnvelope_ReturnsTrueForMetaTurnsWithoutOnboardingOrProfileUpdates() {
         var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext: false,
-            includeLiveProfileUpdates: false,
-            assistantCapabilityQuestion: assistantCapabilityQuestion,
-            assistantRuntimeIntrospectionQuestion: assistantRuntimeIntrospectionQuestion);
+            includeLiveProfileUpdates: false);
 
         Assert.True(result);
     }
@@ -225,9 +218,7 @@ public sealed class MainWindowPromptContextGatingTests {
     public void ShouldUseThinServiceRequestEnvelope_ReturnsFalseWhenAmbientOnboardingContextIsIncluded() {
         var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext: true,
-            includeLiveProfileUpdates: false,
-            assistantCapabilityQuestion: false,
-            assistantRuntimeIntrospectionQuestion: false);
+            includeLiveProfileUpdates: false);
 
         Assert.False(result);
     }
@@ -239,9 +230,7 @@ public sealed class MainWindowPromptContextGatingTests {
     public void ShouldUseThinServiceRequestEnvelope_ReturnsFalseWhenLiveProfileUpdatesAreIncluded() {
         var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext: false,
-            includeLiveProfileUpdates: true,
-            assistantCapabilityQuestion: false,
-            assistantRuntimeIntrospectionQuestion: false);
+            includeLiveProfileUpdates: true);
 
         Assert.False(result);
     }
