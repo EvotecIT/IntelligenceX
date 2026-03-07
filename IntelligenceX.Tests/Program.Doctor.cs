@@ -21,7 +21,7 @@ internal static partial class Program {
   "review": {
     "provider": "openai",
     "openaiTransport": "native",
-    "model": "gpt-5.3-codex"
+    "model": "gpt-5.4"
   }
 }
 """);
@@ -53,7 +53,7 @@ internal static partial class Program {
   "review": {
     "provider": "openai",
     "openaiTransport": "native",
-    "model": "gpt-5.3-codex"
+    "model": "gpt-5.4"
   }
 }
 """);

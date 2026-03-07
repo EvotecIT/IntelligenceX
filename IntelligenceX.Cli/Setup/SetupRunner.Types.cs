@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
 
 namespace IntelligenceX.Cli.Setup;
@@ -22,7 +23,7 @@ internal static partial class SetupRunner {
         public string? ActionsRef { get; set; } = DefaultActionsRef;
         public string? RunsOn { get; set; } = DefaultRunsOn;
         public string? Provider { get; set; } = "openai";
-        public string? OpenAIModel { get; set; } = "gpt-5.3-codex";
+        public string? OpenAIModel { get; set; } = OpenAIModelCatalog.DefaultModel;
         public string? OpenAITransport { get; set; } = "native";
         public string? OpenAIAccountId { get; set; }
         public bool OpenAIAccountIdSet { get; set; }
@@ -407,7 +408,7 @@ internal static partial class SetupRunner {
         public string? ReviewerReleaseAsset { get; set; }
         public string? ReviewerReleaseUrl { get; set; }
         public string Provider { get; set; } = "openai";
-        public string Model { get; set; } = "gpt-5.3-codex";
+        public string Model { get; set; } = OpenAIModelCatalog.DefaultModel;
         public string OpenAITransport { get; set; } = "native";
         public bool IncludeIssueComments { get; set; } = true;
         public bool IncludeReviewComments { get; set; } = true;
@@ -436,7 +437,7 @@ internal static partial class SetupRunner {
                 ReviewerReleaseAsset = options.ReviewerReleaseAsset,
                 ReviewerReleaseUrl = options.ReviewerReleaseUrl,
                 Provider = options.Provider ?? "openai",
-                Model = options.OpenAIModel ?? "gpt-5.3-codex",
+                Model = options.OpenAIModel ?? OpenAIModelCatalog.DefaultModel,
                 OpenAITransport = options.OpenAITransport ?? "native",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
@@ -460,7 +461,7 @@ internal static partial class SetupRunner {
     private sealed class ConfigSettings {
         public string Provider { get; set; } = "openai";
         public string OpenAITransport { get; set; } = "native";
-        public string OpenAIModel { get; set; } = "gpt-5.3-codex";
+        public string OpenAIModel { get; set; } = OpenAIModelCatalog.DefaultModel;
         public string? OpenAIAccountId { get; set; }
         public bool OpenAIAccountIdsSet { get; set; }
         public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
@@ -501,7 +502,7 @@ internal static partial class SetupRunner {
             var settings = new ConfigSettings {
                 Provider = options.Provider ?? "openai",
                 OpenAITransport = options.OpenAITransport ?? "native",
-                OpenAIModel = options.OpenAIModel ?? "gpt-5.3-codex",
+                OpenAIModel = options.OpenAIModel ?? OpenAIModelCatalog.DefaultModel,
                 OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
                 OpenAIAccountIdsSet = options.OpenAIAccountIdsSet,
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),

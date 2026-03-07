@@ -27,7 +27,7 @@ public sealed class CopilotCliTransportLifecycleTests {
         await Assert.ThrowsAsync<ObjectDisposedException>(() => transport.LoginChatGptAsync(
             null, null, false, TimeSpan.FromSeconds(1), CancellationToken.None));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => transport.StartThreadAsync(
-            "gpt-5.3-codex", null, null, null, CancellationToken.None));
+            "gpt-5.4", null, null, null, CancellationToken.None));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => transport.StartTurnAsync(
             "thread-1", ChatInput.FromText("hello"), null, null, null, null, CancellationToken.None));
     }
@@ -78,7 +78,7 @@ public sealed class CopilotCliTransportLifecycleTests {
             });
 
         var session = CreateSession("session-1");
-        AddThreadState(transport, "thread-1", "gpt-5.3-codex", session);
+        AddThreadState(transport, "thread-1", "gpt-5.4", session);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var turn = await transport.StartTurnAsync("thread-1", ChatInput.FromText("hello"), null, null, null, null, cts.Token);

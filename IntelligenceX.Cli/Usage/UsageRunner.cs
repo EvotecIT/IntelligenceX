@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.Usage;
@@ -213,7 +214,7 @@ internal static class UsageRunner {
         IReadOnlyList<ChatGptCreditUsageEvent> events) {
         var buckets = new Dictionary<string, SurfaceUsageBucket>(StringComparer.OrdinalIgnoreCase);
         foreach (var evt in events) {
-            var key = ClassifySurface(evt.ProductSurface);
+            var key = ClassifySurface(evt);
             if (!buckets.TryGetValue(key, out var bucket)) {
                 bucket = new SurfaceUsageBucket();
                 buckets[key] = bucket;
@@ -230,18 +231,8 @@ internal static class UsageRunner {
             .ToArray();
     }
 
-    private static string ClassifySurface(string? surface) {
-        if (string.IsNullOrWhiteSpace(surface)) {
-            return "unknown";
-        }
-        var value = surface.Trim().ToLowerInvariant();
-        if (value.Contains("spark", StringComparison.Ordinal)) {
-            return "spark";
-        }
-        if (value.Contains("codex", StringComparison.Ordinal)) {
-            return "codex";
-        }
-        return value;
+    private static string ClassifySurface(ChatGptCreditUsageEvent evt) {
+        return OpenAIModelCatalog.ClassifyProductSurface(evt.ProductSurface, evt.ProcessingTier);
     }
 
     private static string FormatWindow(ChatGptRateLimitWindow window) {

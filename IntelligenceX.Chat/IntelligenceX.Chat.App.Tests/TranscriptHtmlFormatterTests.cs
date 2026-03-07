@@ -149,7 +149,7 @@ public sealed class TranscriptHtmlFormatterTests {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
-            ("Assistant", "Running checks...", now, "gpt-5.3-codex")
+            ("Assistant", "Running checks...", now, "gpt-5.4")
         };
         var html = TranscriptHtmlFormatter.Format(
             messages,
@@ -181,7 +181,7 @@ public sealed class TranscriptHtmlFormatterTests {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 23, 7, 41, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
-            ("Assistant", "Running cross-DC checks...", now, "gpt-5.3-codex")
+            ("Assistant", "Running cross-DC checks...", now, "gpt-5.4")
         };
         var html = TranscriptHtmlFormatter.Format(
             messages,
@@ -209,7 +209,7 @@ public sealed class TranscriptHtmlFormatterTests {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
-            ("Assistant", "Running checks...", now, "gpt-5.3-codex")
+            ("Assistant", "Running checks...", now, "gpt-5.4")
         };
         var html = TranscriptHtmlFormatter.Format(
             messages,
@@ -236,8 +236,8 @@ public sealed class TranscriptHtmlFormatterTests {
         var now = new DateTime(2026, 2, 23, 19, 12, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("User", "Run check", now, null),
-            ("Assistant", "Running checks...", now.AddSeconds(1), "gpt-5.3-codex"),
-            ("Assistant", "Done.", now.AddSeconds(2), "gpt-5.3-codex")
+            ("Assistant", "Running checks...", now.AddSeconds(1), "gpt-5.4"),
+            ("Assistant", "Done.", now.AddSeconds(2), "gpt-5.4")
         };
         var html = TranscriptHtmlFormatter.Format(
             messages,
@@ -266,8 +266,8 @@ public sealed class TranscriptHtmlFormatterTests {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 23, 22, 5, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
-            ("Assistant", "draft-one", now, "gpt-5.3-codex"),
-            ("Assistant", "draft-two", now.AddSeconds(1), "gpt-5.3-codex")
+            ("Assistant", "draft-one", now, "gpt-5.4"),
+            ("Assistant", "draft-two", now.AddSeconds(1), "gpt-5.4")
         };
         var html = TranscriptHtmlFormatter.Format(
             messages,
@@ -299,7 +299,7 @@ public sealed class TranscriptHtmlFormatterTests {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 23, 21, 6, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
-            ("Assistant", "Status snapshot.", now, "gpt-5.3-codex")
+            ("Assistant", "Status snapshot.", now, "gpt-5.4")
         };
         var html = TranscriptHtmlFormatter.Format(
             messages,
@@ -329,7 +329,7 @@ public sealed class TranscriptHtmlFormatterTests {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         var now = new DateTime(2026, 2, 23, 21, 12, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
-            ("Assistant", "Status snapshot.", now, "gpt-5.3-codex")
+            ("Assistant", "Status snapshot.", now, "gpt-5.4")
         };
         var html = TranscriptHtmlFormatter.Format(
             messages,

@@ -54,7 +54,7 @@ public sealed partial class MainWindow : Window {
     private const string SystemConversationId = "chat-system";
     private const string SystemConversationTitle = "System";
     private const string DefaultConversationTitle = "New Chat";
-    private const string DefaultLocalModel = "gpt-5.3-codex";
+    private const string DefaultLocalModel = "gpt-5.4";
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
     private const string TransportCopilotCli = "copilot-cli";

@@ -13,7 +13,7 @@ namespace IntelligenceX.OpenAI;
 /// <code>
 /// var options = new IntelligenceXClientOptions {
 ///     TransportKind = OpenAITransportKind.Native,
-///     DefaultModel = "gpt-5.3-codex"
+///     DefaultModel = OpenAIModelCatalog.DefaultModel
 /// };
 /// </code>
 /// </example>
@@ -49,7 +49,7 @@ public sealed class IntelligenceXClientOptions {
     /// <summary>
     /// Default model name used for requests when none is provided.
     /// </summary>
-    public string DefaultModel { get; set; } = "gpt-5.3-codex";
+    public string DefaultModel { get; set; } = OpenAIModelCatalog.DefaultModel;
     /// <summary>
     /// Default working directory for file operations.
     /// </summary>

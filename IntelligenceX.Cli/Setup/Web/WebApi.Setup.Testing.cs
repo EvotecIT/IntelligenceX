@@ -32,6 +32,16 @@ internal sealed partial class WebApi {
         return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
     }
 
+    internal static string[] BuildSetupArgsForOpenAiModelTests(string? openAiModel) {
+        var request = new SetupRequest {
+            Repo = "owner/repo",
+            GitHubToken = "token",
+            Provider = "openai",
+            OpenAIModel = openAiModel
+        };
+        return BuildSetupArgsForRepo(request, routeDryRun: false, "owner/repo");
+    }
+
     internal static string[] BuildSetupArgsForAnalysisRunStrictTests(
         bool? analysisEnabled,
         bool? analysisRunStrict,

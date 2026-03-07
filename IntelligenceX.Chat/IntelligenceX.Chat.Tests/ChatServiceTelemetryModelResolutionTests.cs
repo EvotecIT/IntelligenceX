@@ -7,21 +7,21 @@ public sealed class ChatServiceTelemetryModelResolutionTests {
     [Fact]
     public void ResolveEffectiveTurnModelForTelemetry_UsesResolvedModel_WhenAvailable() {
         var model = ChatServiceSession.ResolveEffectiveTurnModelForTelemetry(
-            resolvedModel: "gpt-5.3-codex-spark",
-            requestedModel: "gpt-5.3-codex",
+            resolvedModel: "gpt-5.4-spark",
+            requestedModel: "gpt-5.4",
             runtimeDefaultModel: "gpt-5.3");
 
-        Assert.Equal("gpt-5.3-codex-spark", model);
+        Assert.Equal("gpt-5.4-spark", model);
     }
 
     [Fact]
     public void ResolveEffectiveTurnModelForTelemetry_FallsBackToRequestedModel() {
         var model = ChatServiceSession.ResolveEffectiveTurnModelForTelemetry(
             resolvedModel: " ",
-            requestedModel: "  gpt-5.3-codex  ",
+            requestedModel: "  gpt-5.4  ",
             runtimeDefaultModel: "gpt-5.3");
 
-        Assert.Equal("gpt-5.3-codex", model);
+        Assert.Equal("gpt-5.4", model);
     }
 
     [Fact]

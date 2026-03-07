@@ -27,6 +27,7 @@ internal sealed partial class WebApi {
             ConfigJson = request.ConfigJson,
             ConfigPath = request.ConfigPath,
             Provider = request.Provider,
+            OpenAIModel = request.OpenAIModel,
             OpenAIAccountId = request.OpenAIAccountId,
             OpenAIAccountIds = request.OpenAIAccountIds,
             OpenAIAccountRotation = request.OpenAIAccountRotation,

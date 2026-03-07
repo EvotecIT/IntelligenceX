@@ -64,10 +64,10 @@ public sealed class CmdletInvokeIntelligenceXChat : IntelligenceXCmdlet {
     public SwitchParameter Dsl { get; set; }
 
     /// <summary>
-    /// <para type="description">Model identifier. Defaults to gpt-5.3-codex.</para>
+    /// <para type="description">Model identifier. Defaults to gpt-5.4.</para>
     /// </summary>
     [Parameter]
-    public string Model { get; set; } = "gpt-5.3-codex";
+    public string Model { get; set; } = "gpt-5.4";
 
     /// <summary>
     /// <para type="description">Login method: ChatGpt, ApiKey, or None.</para>

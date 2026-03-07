@@ -217,6 +217,20 @@ internal static partial class Program {
         }, args, "setup args openai account routing primary only");
     }
 
+    private static void TestSetupArgsIncludeOpenAiModel() {
+        var plan = new SetupPlan("owner/repo") {
+            Provider = "openai",
+            OpenAIModel = "gpt-5.4/fast"
+        };
+
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--provider", "openai",
+            "--openai-model", "gpt-5.4/fast"
+        }, args, "setup args openai model");
+    }
+
     private static void TestSetupConfigRejectsInvalidOpenAiAccountRotation() {
         AssertThrows<InvalidOperationException>(() =>
             SetupRunner.BuildReviewerConfigJson(new[] {
@@ -507,7 +521,7 @@ internal static partial class Program {
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.3-codex"
+    "model": "gpt-5.4"
   }
 }
 """;

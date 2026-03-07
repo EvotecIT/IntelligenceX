@@ -22,7 +22,7 @@ public sealed class ChatServiceRuntimeReconnectPolicyTests {
         public bool Streaming { get; set; } = true;
         public bool InsecureHttp { get; set; } = false;
         public bool InsecureHttpNonLoopback { get; set; } = false;
-        public string? Model { get; set; } = "gpt-5.3-codex";
+        public string? Model { get; set; } = "gpt-5.4";
 
         public RuntimeClientSettings Clone() {
             return new RuntimeClientSettings {
@@ -57,7 +57,7 @@ public sealed class ChatServiceRuntimeReconnectPolicyTests {
     /// </summary>
     [Fact]
     public void ResolveRuntimeClientReconfigureDecision_ModelOnlyChange_DoesNotReconnect() {
-        var decision = ResolveDecision(current: settings => settings.Model = "gpt-5.3-codex-spark");
+        var decision = ResolveDecision(current: settings => settings.Model = "gpt-5.4-spark");
 
         Assert.False(decision.ReconnectClient);
         Assert.True(decision.ModelChanged);
@@ -69,8 +69,8 @@ public sealed class ChatServiceRuntimeReconnectPolicyTests {
     [Fact]
     public void ResolveRuntimeClientReconfigureDecision_ModelWhitespaceOnly_DoesNotReconnect() {
         var decision = ResolveDecision(
-            previous: settings => settings.Model = "gpt-5.3-codex",
-            current: settings => settings.Model = "  gpt-5.3-codex  ");
+            previous: settings => settings.Model = "gpt-5.4",
+            current: settings => settings.Model = "  gpt-5.4  ");
 
         Assert.False(decision.ReconnectClient);
         Assert.False(decision.ModelChanged);

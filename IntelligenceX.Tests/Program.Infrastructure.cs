@@ -9,7 +9,7 @@ internal static partial class Program {
         if (ctor is null) {
             throw new InvalidOperationException("IntelligenceXClient constructor not found.");
         }
-        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.3-codex", null, null, null });
+        return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.4", null, null, null });
     }
 
     private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn) {

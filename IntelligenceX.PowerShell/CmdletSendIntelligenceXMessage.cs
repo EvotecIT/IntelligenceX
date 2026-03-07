@@ -17,7 +17,7 @@ namespace IntelligenceX.PowerShell;
 /// </example>
 /// <example>
 ///  <para>Send a message with a temporary model override</para>
-///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Summarize changes." -Model "gpt-5.3-codex"</code>
+///  <code>Send-IntelligenceXMessage -ThreadId $thread.id -Text "Summarize changes." -Model "gpt-5.4"</code>
 /// </example>
 /// <example>
 ///  <para>Send a message with a workspace sandbox</para>

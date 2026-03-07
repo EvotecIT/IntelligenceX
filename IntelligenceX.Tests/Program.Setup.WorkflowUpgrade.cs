@@ -36,7 +36,7 @@ jobs:
     uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
-      model: gpt-5.3-codex
+      model: gpt-5.4
       preflight_timeout_seconds: 15
   __IX_END__
   custom_post:

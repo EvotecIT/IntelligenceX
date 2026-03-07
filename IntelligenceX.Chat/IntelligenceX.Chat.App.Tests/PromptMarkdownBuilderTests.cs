@@ -224,7 +224,7 @@ public sealed class PromptMarkdownBuilderTests {
                 "Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake."
             },
             runtimeCapabilityLines: new[] {
-                "Runtime transport: native, active model for this turn: gpt-5.3-codex",
+                "Runtime transport: native, active model for this turn: gpt-5.4",
                 "Tool availability for this turn: available (enabled tools: 20, disabled: 0)."
             });
 

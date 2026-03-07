@@ -20,6 +20,7 @@ internal sealed class SetupPlan {
     public string? AuthB64 { get; init; }
     public string? AuthB64Path { get; init; }
     public string? Provider { get; init; }
+    public string? OpenAIModel { get; init; }
     public string? OpenAIAccountId { get; init; }
     public string? OpenAIAccountIds { get; init; }
     public string? OpenAIAccountRotation { get; init; }

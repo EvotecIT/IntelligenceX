@@ -418,11 +418,13 @@ public sealed class ChatGptCreditUsageEvent {
     /// Initializes a new credit usage event.
     /// </summary>
     public ChatGptCreditUsageEvent(string? date, string? productSurface, double? creditAmount, string? usageId, JsonObject raw,
-        JsonObject? additional) {
+        JsonObject? additional, string? processingTier = null, string? model = null) {
         Date = date;
         ProductSurface = productSurface;
         CreditAmount = creditAmount;
         UsageId = usageId;
+        ProcessingTier = processingTier;
+        Model = model;
         Raw = raw;
         Additional = additional;
     }
@@ -444,6 +446,14 @@ public sealed class ChatGptCreditUsageEvent {
     /// </summary>
     public string? UsageId { get; }
     /// <summary>
+    /// Gets the processing tier when present (for example priority/fast).
+    /// </summary>
+    public string? ProcessingTier { get; }
+    /// <summary>
+    /// Gets the model identifier when present.
+    /// </summary>
+    public string? Model { get; }
+    /// <summary>
     /// Gets the raw JSON object.
     /// </summary>
     public JsonObject Raw { get; }
@@ -462,8 +472,15 @@ public sealed class ChatGptCreditUsageEvent {
         var surface = obj.GetString("product_surface") ?? obj.GetString("productSurface");
         var creditAmount = obj.GetDouble("credit_amount") ?? obj.GetDouble("creditAmount");
         var usageId = obj.GetString("usage_id") ?? obj.GetString("usageId");
-        var additional = obj.ExtractAdditional("date", "product_surface", "productSurface", "credit_amount", "creditAmount", "usage_id", "usageId");
-        return new ChatGptCreditUsageEvent(date, surface, creditAmount, usageId, obj, additional);
+        var processingTier = obj.GetString("processing_tier")
+                             ?? obj.GetString("processingTier")
+                             ?? obj.GetString("service_tier")
+                             ?? obj.GetString("serviceTier");
+        var model = obj.GetString("model");
+        var additional = obj.ExtractAdditional(
+            "date", "product_surface", "productSurface", "credit_amount", "creditAmount", "usage_id", "usageId",
+            "processing_tier", "processingTier", "service_tier", "serviceTier", "model");
+        return new ChatGptCreditUsageEvent(date, surface, creditAmount, usageId, obj, additional, processingTier, model);
     }
 
     /// <summary>
@@ -485,6 +502,12 @@ public sealed class ChatGptCreditUsageEvent {
         }
         if (!string.IsNullOrWhiteSpace(UsageId)) {
             obj.Add("usage_id", UsageId);
+        }
+        if (!string.IsNullOrWhiteSpace(ProcessingTier)) {
+            obj.Add("processing_tier", ProcessingTier);
+        }
+        if (!string.IsNullOrWhiteSpace(Model)) {
+            obj.Add("model", Model);
         }
         return obj;
     }

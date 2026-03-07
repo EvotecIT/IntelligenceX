@@ -268,12 +268,7 @@ internal sealed partial class OpenAINativeTransport {
     }
 
     private static string NormalizeModelId(string? model, string fallback) {
-        var value = string.IsNullOrWhiteSpace(model) ? fallback : model!;
-        if (string.IsNullOrWhiteSpace(value)) {
-            return "gpt-5.1";
-        }
-        var slash = value.LastIndexOf('/');
-        return slash >= 0 && slash + 1 < value.Length ? value.Substring(slash + 1) : value;
+        return OpenAIModelCatalog.NormalizeModelId(model, fallback);
     }
 
     private static List<JsonObject> BuildCanonicalRequestMessages(IReadOnlyList<JsonObject> historyMessages,

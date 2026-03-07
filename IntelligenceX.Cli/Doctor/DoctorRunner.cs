@@ -25,7 +25,7 @@ internal static class DoctorRunner {
 
     private sealed class ReviewConfig {
         public string Provider { get; set; } = "openai";
-        public string Model { get; set; } = "gpt-5.3-codex";
+        public string Model { get; set; } = OpenAIModelCatalog.DefaultModel;
         public OpenAITransportKind Transport { get; set; } = OpenAITransportKind.Native;
         public string? OpenAiAccountId { get; set; }
     }

@@ -11,7 +11,7 @@ namespace IntelligenceX.PowerShell;
 /// Use <c>Get-IntelligenceXConfig</c> to verify the effective result and layer origin.</para>
 /// <example>
 ///  <para>Set the model used by default</para>
-///  <code>Set-IntelligenceXConfigValue -Key "model" -Value "gpt-5.3-codex"</code>
+///  <code>Set-IntelligenceXConfigValue -Key "model" -Value "gpt-5.4"</code>
 /// </example>
 /// <example>
 ///  <para>Set a boolean or numeric value</para>

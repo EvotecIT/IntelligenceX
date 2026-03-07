@@ -167,7 +167,7 @@ internal static partial class Program {
         AssertNotNull(stateType, "native thread state type");
         var createMethod = stateType!.GetMethod("Create", BindingFlags.Public | BindingFlags.Static);
         AssertNotNull(createMethod, "native thread state create");
-        var state = createMethod!.Invoke(null, new object?[] { "gpt-5.3-codex", null });
+        var state = createMethod!.Invoke(null, new object?[] { "gpt-5.4", null });
         AssertNotNull(state, "native thread state instance");
 
         var addUsageMethod = stateType.GetMethod("AddUsage", BindingFlags.Public | BindingFlags.Instance);
@@ -289,7 +289,7 @@ internal static partial class Program {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("echo"));
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.3-codex" };
+        var options = new ChatOptions { Model = "gpt-5.4" };
 
         AssertThrows<InvalidOperationException>(() =>
                 ToolRunner.RunAsync(client, input, options, registry,
@@ -302,7 +302,7 @@ internal static partial class Program {
         using var client = CreateToolRunnerClient(BuildToolCallTurn(("call_2", "missing_tool")));
         var registry = new ToolRegistry();
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.3-codex" };
+        var options = new ChatOptions { Model = "gpt-5.4" };
 
         AssertThrows<InvalidOperationException>(() =>
                 ToolRunner.RunAsync(client, input, options, registry,
@@ -322,7 +322,7 @@ internal static partial class Program {
         registry.Register(new GateTool("tool_b", startGate, releaseGate, () => Interlocked.Increment(ref started), 2));
 
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.3-codex", ParallelToolCalls = true };
+        var options = new ChatOptions { Model = "gpt-5.4", ParallelToolCalls = true };
 
         var runnerTask = ToolRunner.RunAsync(client, input, options, registry,
             new ToolRunnerOptions { MaxRounds = 1, ParallelToolCalls = true });
@@ -359,7 +359,7 @@ internal static partial class Program {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("echo"));
         var input = ChatInput.FromText("Run tools");
-        var options = new ChatOptions { Model = "gpt-5.3-codex" };
+        var options = new ChatOptions { Model = "gpt-5.4" };
 
         var result = ToolRunner.RunAsync(
                 client,
@@ -588,6 +588,31 @@ internal static partial class Program {
         AssertNotNull(second, "surface summary second bucket");
         AssertEqual("spark", second!.GetString("surface"), "surface summary second surface");
         AssertEqual(1L, second.GetInt64("events"), "surface summary second event count");
+    }
+
+    private static void TestUsageSurfaceSummaryJsonBucketsIncludeFastTier() {
+        var cliAssembly = typeof(global::IntelligenceX.Cli.Program).Assembly;
+        var runnerType = cliAssembly.GetType("IntelligenceX.Cli.Usage.UsageRunner", throwOnError: true);
+        AssertNotNull(runnerType, "UsageRunner type fast");
+        var method = runnerType!.GetMethod("BuildSurfaceSummaryJsonArray", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "BuildSurfaceSummaryJsonArray method fast");
+
+        var events = new[] {
+            new ChatGptCreditUsageEvent("2026-03-07", "codex-cli", 1.5, "u-fast", new JsonObject(), null, processingTier: "priority")
+        };
+        var result = method!.Invoke(null, new object[] { events }) as JsonArray;
+        AssertNotNull(result, "surface summary json fast");
+        var bucket = result![0].AsObject();
+        AssertNotNull(bucket, "surface summary fast bucket");
+        AssertEqual("codex-fast", bucket!.GetString("surface"), "surface summary fast surface");
+        AssertEqual(1.5, bucket.GetDouble("credits"), "surface summary fast credits");
+    }
+
+    private static void TestOpenAiModelCatalogNormalizesFastModeSuffix() {
+        AssertEqual("gpt-5.4/fast", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.4/fast"),
+            "openai model normalize fast suffix");
+        AssertEqual("gpt-5.4", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.4"),
+            "openai model normalize provider prefix");
     }
 #endif
 
