@@ -10,6 +10,10 @@ internal static class ConversationTurnShapeClassifier {
     private const int FollowUpCompactLengthLimit = 64;
     private const int FollowUpCompactTokenLimit = 6;
     private const int FollowUpQuestionTokenLimit = 8;
+    private const int CapabilityQuestionLengthLimit = 96;
+    private const int CapabilityQuestionTokenLimit = 12;
+    private const int RuntimeQuestionLengthLimit = 120;
+    private const int RuntimeQuestionTokenLimit = 18;
     private const int LowContextShortTurnTokenLimit = 3;
     private const int LowContextShortTurnLengthLimit = 24;
     private const int LowContextShortTurnMaxLetterTokenLength = 7;
@@ -17,6 +21,26 @@ internal static class ConversationTurnShapeClassifier {
     private const int SubstantiveAssistantTokenFloor = 18;
     private const int SubstantiveAssistantLengthFloor = 120;
     private const int SubstantiveAssistantSentenceFloor = 2;
+    private static readonly string[] AssistantCapabilityQuestionPhrases = {
+        "what can you do",
+        "what do you do",
+        "how can you help",
+        "what can you help with",
+        "what are you able to do"
+    };
+    private static readonly string[] AssistantRuntimeCueWords = {
+        "model",
+        "runtime",
+        "tool",
+        "tools",
+        "pack",
+        "packs",
+        "plugin",
+        "plugins",
+        "capability",
+        "capabilities",
+        "transport"
+    };
 
     /// <summary>
     /// Returns <see langword="true"/> when the text looks like a compact follow-up that depends on prior context.
@@ -98,6 +122,62 @@ internal static class ConversationTurnShapeClassifier {
     /// <param name="text">Assistant text to classify.</param>
     internal static bool LooksLikeAssistantQuestion(string? text) {
         return ContainsQuestionSignal(text);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the user appears to be asking, in human terms, what the assistant can help with.
+    /// This is used only for lightweight prompt shaping so the model answers naturally instead of running live demos.
+    /// </summary>
+    internal static bool LooksLikeAssistantCapabilityQuestion(string? userText) {
+        var text = (userText ?? string.Empty).Trim();
+        if (text.Length == 0
+            || text.Length > CapabilityQuestionLengthLimit
+            || ContainsDigit(text)
+            || ContainsLikelyTechnicalPunctuation(text)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(text, CapabilityQuestionTokenLimit + 1);
+        if (tokenCount == 0 || tokenCount > CapabilityQuestionTokenLimit) {
+            return false;
+        }
+
+        var normalized = NormalizeForIntentMatch(text);
+        for (var i = 0; i < AssistantCapabilityQuestionPhrases.Length; i++) {
+            if (normalized.Contains(AssistantCapabilityQuestionPhrases[i], StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the user is explicitly asking about the active runtime, model, or tool inventory.
+    /// This keeps detailed runtime self-reporting opt-in instead of always-on.
+    /// </summary>
+    internal static bool LooksLikeAssistantRuntimeIntrospectionQuestion(string? userText) {
+        var text = (userText ?? string.Empty).Trim();
+        if (text.Length == 0
+            || text.Length > RuntimeQuestionLengthLimit
+            || ContainsLikelyTechnicalPunctuation(text)) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(text, RuntimeQuestionTokenLimit + 1);
+        if (tokenCount == 0 || tokenCount > RuntimeQuestionTokenLimit) {
+            return false;
+        }
+
+        var normalized = NormalizeForIntentMatch(text);
+        for (var i = 0; i < AssistantRuntimeCueWords.Length; i++) {
+            var cue = AssistantRuntimeCueWords[i];
+            if (ContainsWholeWord(normalized, cue)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ContainsDigit(string text) {
@@ -183,5 +263,36 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         return longest;
+    }
+
+    private static string NormalizeForIntentMatch(string text) {
+        var normalized = (text ?? string.Empty).Trim().ToLowerInvariant();
+        return string.Join(' ', normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static bool ContainsWholeWord(string text, string word) {
+        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(word)) {
+            return false;
+        }
+
+        var expected = word.Trim();
+        var searchIndex = 0;
+        while (searchIndex < text.Length) {
+            var matchIndex = text.IndexOf(expected, searchIndex, StringComparison.Ordinal);
+            if (matchIndex < 0) {
+                return false;
+            }
+
+            var beforeOk = matchIndex == 0 || !char.IsLetterOrDigit(text[matchIndex - 1]);
+            var afterIndex = matchIndex + expected.Length;
+            var afterOk = afterIndex >= text.Length || !char.IsLetterOrDigit(text[afterIndex]);
+            if (beforeOk && afterOk) {
+                return true;
+            }
+
+            searchIndex = afterIndex;
+        }
+
+        return false;
     }
 }

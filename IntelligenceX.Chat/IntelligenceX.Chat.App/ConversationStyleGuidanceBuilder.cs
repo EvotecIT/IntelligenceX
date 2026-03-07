@@ -24,27 +24,27 @@ internal static class ConversationStyleGuidanceBuilder {
     internal static IReadOnlyList<string> BuildRecentUserStyleLines(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages) {
         ArgumentNullException.ThrowIfNull(messages);
 
-        var recentUserTurns = new List<string>(MaxRecentUserTurns);
-        for (var i = messages.Count - 1; i >= 0 && recentUserTurns.Count < MaxRecentUserTurns; i--) {
-            var message = messages[i];
-            if (!string.Equals(message.Role, "User", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var text = (message.Text ?? string.Empty).Trim();
-            if (text.Length == 0) {
-                continue;
-            }
-
-            recentUserTurns.Add(text);
-        }
-
+        var recentUserTurns = CollectRecentUserTurns(messages);
         if (recentUserTurns.Count == 0) {
             return Array.Empty<string>();
         }
 
-        recentUserTurns.Reverse();
         return BuildRecentUserStyleLinesFromTexts(recentUserTurns);
+    }
+
+    /// <summary>
+    /// Builds compact answer-shape guidance specifically for explicit capability questions.
+    /// </summary>
+    /// <param name="messages">Recent transcript messages.</param>
+    internal static IReadOnlyList<string> BuildCapabilityAnswerStyleLines(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages) {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        var recentUserTurns = CollectRecentUserTurns(messages);
+        if (recentUserTurns.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        return BuildCapabilityAnswerStyleLinesFromTexts(recentUserTurns);
     }
 
     /// <summary>
@@ -199,6 +199,73 @@ internal static class ConversationStyleGuidanceBuilder {
         }
 
         return lines.Count == 0 ? Array.Empty<string>() : lines;
+    }
+
+    private static IReadOnlyList<string> BuildCapabilityAnswerStyleLinesFromTexts(IReadOnlyList<string> recentUserTurns) {
+        var totalLength = 0;
+        var totalTokens = 0;
+        var terseTurns = 0;
+        var detailedTurns = 0;
+
+        for (var i = 0; i < recentUserTurns.Count; i++) {
+            var text = recentUserTurns[i];
+            totalLength += text.Length;
+
+            var tokenCount = CountLetterDigitTokens(text, maxTokens: 64);
+            totalTokens += tokenCount;
+
+            if (tokenCount <= TerseTurnTokenLimit && text.Length <= TerseTurnLengthLimit) {
+                terseTurns++;
+            }
+
+            if (tokenCount >= DetailedTurnTokenFloor
+                || text.Length >= DetailedTurnLengthFloor
+                || CountSentenceLikeBreaks(text) >= MultiSentenceFloor) {
+                detailedTurns++;
+            }
+        }
+
+        var averageLength = totalLength / recentUserTurns.Count;
+        var averageTokens = totalTokens / recentUserTurns.Count;
+        var lines = new List<string>(3);
+
+        if (terseTurns >= Math.Max(2, recentUserTurns.Count - 1)
+            || (averageTokens <= TerseTurnTokenLimit && averageLength <= TerseTurnLengthLimit)) {
+            lines.Add("For capability questions, answer with 2-3 concrete examples and one short invitation.");
+            lines.Add("Keep it to one short paragraph or a tight bullet list.");
+            lines.Add("Do not turn capability answers into environment inventories, tool catalogs, or self-validation demos.");
+        } else if (detailedTurns >= Math.Max(1, recentUserTurns.Count / 2)
+                   || averageTokens >= DetailedTurnTokenFloor
+                   || averageLength >= DetailedTurnLengthFloor) {
+            lines.Add("For capability questions, answer with 3-5 concrete examples and a little rationale about how you would help.");
+            lines.Add("Keep it practical and grounded in live session capability, but avoid exhaustive inventories.");
+            lines.Add("You may spend a bit more space showing how you would approach the work when that helps the user choose.");
+        } else {
+            lines.Add("For capability questions, answer with a few concrete examples and one natural invitation to continue.");
+            lines.Add("Keep it practical, grounded, and non-exhaustive.");
+        }
+
+        return lines;
+    }
+
+    private static List<string> CollectRecentUserTurns(IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages) {
+        var recentUserTurns = new List<string>(MaxRecentUserTurns);
+        for (var i = messages.Count - 1; i >= 0 && recentUserTurns.Count < MaxRecentUserTurns; i--) {
+            var message = messages[i];
+            if (!string.Equals(message.Role, "User", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var text = (message.Text ?? string.Empty).Trim();
+            if (text.Length == 0) {
+                continue;
+            }
+
+            recentUserTurns.Add(text);
+        }
+
+        recentUserTurns.Reverse();
+        return recentUserTurns;
     }
 
     private static bool ContainsEmphasisSignal(string text) {

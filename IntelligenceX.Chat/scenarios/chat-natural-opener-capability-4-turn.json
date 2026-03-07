@@ -1,0 +1,37 @@
+{
+  "name": "chat-natural-opener-capability-4-turn",
+  "tags": ["chat", "persona", "capability", "natural", "strict", "live", "no-tools"],
+  "defaults": {
+    "assert_clean_completion": true
+  },
+  "turns": [
+    {
+      "name": "Natural greeting",
+      "user": "Hello Mr",
+      "assert_contains_any": ["hello", "hi", "hey"],
+      "assert_not_contains": ["AD domain", "Public domain", "Reply with:", "/act ", "scope choice", "wizard", "onboarding"],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Capability question without a demo",
+      "user": "What can you do for me today?",
+      "assert_contains_any": ["AD", "DNS", "logs", "files", "troubleshoot", "investigate"],
+      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Short and human",
+      "user": "Keep it short and human.",
+      "assert_contains_any": ["help", "check", "look into", "dig into", "investigate"],
+      "assert_not_contains": ["Active working areas in this session", "Runtime capability handshake", "tool catalogs", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "One paragraph only",
+      "user": "No lists. One paragraph.",
+      "assert_matches_regex": ["(?s)^(?!.*\\r?\\n[-*] )(?!.*\\r?\\n1\\.)(?!.*\\r?\\n2\\.).{1,1200}$"],
+      "assert_not_contains": ["Active working areas in this session", "Runtime capability handshake", "/act "],
+      "forbid_tools": ["*"]
+    }
+  ]
+}

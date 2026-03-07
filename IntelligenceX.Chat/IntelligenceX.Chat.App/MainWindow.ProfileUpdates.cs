@@ -654,9 +654,20 @@ public sealed partial class MainWindow : Window {
         var effectivePersona = GetEffectiveAssistantPersona();
         var effectiveName = GetEffectiveUserName();
         var onboardingInProgress = !_appState.OnboardingCompleted;
-        IReadOnlyList<string> missingFields = onboardingInProgress ? BuildMissingOnboardingFields() : Array.Empty<string>();
+        var assistantCapabilityQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
+        var assistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+        var includeOnboardingContext = ShouldIncludeAmbientOnboardingContext(
+            userText,
+            onboardingInProgress,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion);
+        IReadOnlyList<string> missingFields = includeOnboardingContext ? BuildMissingOnboardingFields() : Array.Empty<string>();
         var localContextLines = BuildLocalContextFallbackLines(activeConversation, userText);
         var conversationStyleLines = ConversationStyleGuidanceBuilder.BuildRecentUserStyleLines(activeConversation.Messages);
+        var capabilityAnswerStyleLines = assistantCapabilityQuestion
+            ? ConversationStyleGuidanceBuilder.BuildCapabilityAnswerStyleLines(activeConversation.Messages)
+            : null;
+        var personaGuidanceLines = BuildPersonaGuidanceLines(effectivePersona);
         var continuationStateLines = ConversationStyleGuidanceBuilder.BuildContinuationStateLines(
             activeConversation.Messages,
             activeConversation.PendingActions,
@@ -664,24 +675,167 @@ public sealed partial class MainWindow : Window {
         var recentAssistantAnswerWasSubstantive = ConversationStyleGuidanceBuilder.HasRecentSubstantiveAssistantAnswer(activeConversation.Messages);
         var recentAssistantAskedQuestion = ConversationStyleGuidanceBuilder.HasRecentAssistantQuestion(activeConversation.Messages);
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
-        var runtimeCapabilityLines = BuildRuntimeCapabilityContextLines();
+        var capabilitySelfKnowledgeLines = assistantCapabilityQuestion || assistantRuntimeIntrospectionQuestion
+            ? BuildCapabilitySelfKnowledgeLines()
+            : null;
+        var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
+            ? BuildRuntimeCapabilityContextLines()
+            : null;
+        bool? proactiveExecutionEnabled = null;
+        if (_proactiveModeEnabled
+            && ShouldIncludeProactiveExecutionMode(
+                userText,
+                assistantCapabilityQuestion,
+                assistantRuntimeIntrospectionQuestion,
+                recentAssistantAskedQuestion)) {
+            proactiveExecutionEnabled = true;
+        }
+
         return PromptMarkdownBuilder.BuildServiceRequest(
             userText: userText,
             effectiveName: effectiveName,
             effectivePersona: effectivePersona,
-            onboardingInProgress: onboardingInProgress,
+            onboardingInProgress: includeOnboardingContext,
             missingOnboardingFields: missingFields,
             includeLiveProfileUpdates: MightContainProfileUpdateCue(userText),
             executionBehaviorPrompt: PromptAssets.GetExecutionBehaviorPrompt(),
             localContextLines: localContextLines,
             conversationStyleLines: conversationStyleLines,
+            capabilityAnswerStyleLines: capabilityAnswerStyleLines,
+            personaGuidanceLines: personaGuidanceLines,
             continuationStateLines: continuationStateLines,
             recentAssistantAnswerWasSubstantive: recentAssistantAnswerWasSubstantive,
             recentAssistantAskedQuestion: recentAssistantAskedQuestion,
             persistentMemoryLines: memoryContextLines,
             persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
+            capabilitySelfKnowledgeLines: capabilitySelfKnowledgeLines,
             runtimeCapabilityLines: runtimeCapabilityLines,
-            proactiveExecutionEnabled: _proactiveModeEnabled);
+            proactiveExecutionEnabled: proactiveExecutionEnabled);
+    }
+
+    internal static bool ShouldIncludeAmbientOnboardingContext(
+        string? userText,
+        bool onboardingInProgress,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion) {
+        if (!onboardingInProgress) {
+            return false;
+        }
+
+        var normalized = (userText ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (assistantCapabilityQuestion || assistantRuntimeIntrospectionQuestion) {
+            return false;
+        }
+
+        return ConversationTurnShapeClassifier.LooksLikeLowContextShortTurn(normalized);
+    }
+
+    internal static bool ShouldIncludeProactiveExecutionMode(
+        string? userText,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion,
+        bool recentAssistantAskedQuestion) {
+        var normalized = (userText ?? string.Empty).Trim();
+        if (normalized.Length == 0
+            || assistantCapabilityQuestion
+            || assistantRuntimeIntrospectionQuestion
+            || ConversationTurnShapeClassifier.LooksLikeLowContextShortTurn(normalized)) {
+            return false;
+        }
+
+        if (recentAssistantAskedQuestion && ConversationTurnShapeClassifier.LooksLikeContextDependentFollowUp(normalized)) {
+            return true;
+        }
+
+        return !ConversationTurnShapeClassifier.ContainsQuestionSignal(normalized);
+    }
+
+    internal IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines() {
+        return BuildCapabilitySelfKnowledgeLines(_sessionPolicy);
+    }
+
+    internal static IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(SessionPolicyDto? sessionPolicy) {
+        var lines = new List<string>();
+        var snapshot = sessionPolicy?.CapabilitySnapshot;
+        var enabledPackNames = BuildEnabledPackDisplayNames(sessionPolicy);
+        if (enabledPackNames.Count > 0) {
+            lines.Add("Active working areas in this session: " + string.Join(", ", enabledPackNames) + ".");
+        }
+
+        var capabilityCategories = BuildCapabilityCategorySummaries(snapshot);
+        for (var i = 0; i < capabilityCategories.Count; i++) {
+            lines.Add(capabilityCategories[i]);
+        }
+
+        var exampleLines = BuildCapabilityExampleLines(snapshot, enabledPackNames);
+        for (var i = 0; i < exampleLines.Count; i++) {
+            lines.Add(exampleLines[i]);
+        }
+
+        if (snapshot is not null) {
+            if (snapshot.ToolingAvailable) {
+                lines.Add("You can actively use live session tools here when the user asks for checks, investigation, or data gathering.");
+            } else {
+                lines.Add("Tooling is not currently available in this session, so answers should stay conversational and reasoning-based.");
+            }
+
+            if (snapshot.HealthyTools.Length > 0) {
+                lines.Add("Recently healthy tool count: " + snapshot.HealthyTools.Length.ToString(CultureInfo.InvariantCulture) + ".");
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.RemoteReachabilityMode)) {
+                lines.Add("Current reachability posture: " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
+            }
+        } else if (enabledPackNames.Count == 0) {
+            lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
+        }
+
+        lines.Add("For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.");
+        lines.Add("When asked what you can do, answer with useful examples and invite the task instead of listing internal pack ids or protocol details.");
+        return lines;
+    }
+
+    internal static IReadOnlyList<string> BuildPersonaGuidanceLines(string? personaText) {
+        var normalized = (personaText ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var lines = new List<string>();
+        var role = NormalizePersonaRole(normalized, normalized);
+        if (!string.IsNullOrWhiteSpace(role)) {
+            lines.Add("Preferred role framing: " + role + ".");
+        }
+
+        var traits = CollectPersonaTraits(normalized);
+        for (var i = 0; i < traits.Count; i++) {
+            var trait = (traits[i] ?? string.Empty).Trim();
+            if (trait.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(trait, "helpful guidance", StringComparison.OrdinalIgnoreCase)) {
+                lines.Add("Be proactively useful: reduce user effort, infer sensible next steps, and avoid making the user micromanage the conversation.");
+            } else if (string.Equals(trait, "friendly tone", StringComparison.OrdinalIgnoreCase)) {
+                lines.Add("Sound warm and human instead of dry, stiff, or corporate.");
+            } else if (string.Equals(trait, "light humor", StringComparison.OrdinalIgnoreCase)) {
+                lines.Add("Light humor is allowed when it fits naturally. Keep it subtle, optional, and secondary to usefulness.");
+            } else if (string.Equals(trait, "concise outputs", StringComparison.OrdinalIgnoreCase)) {
+                lines.Add("Prefer compact phrasing and shorter answers by default unless the user clearly wants depth.");
+            } else if (string.Equals(trait, "pragmatic guidance", StringComparison.OrdinalIgnoreCase)) {
+                lines.Add("Favor concrete next steps, practical judgments, and real-world usefulness over abstract theory.");
+            } else if (string.Equals(trait, "clear explanations", StringComparison.OrdinalIgnoreCase)) {
+                lines.Add("When explanation helps, make it clear and easy to follow instead of compressed or jargon-heavy.");
+            } else if (string.Equals(trait, "optimistic tone", StringComparison.OrdinalIgnoreCase)) {
+                lines.Add("Keep the tone constructive and steady without sounding fake, evasive, or over-cheerful.");
+            }
+        }
+
+        return lines.Count == 0 ? Array.Empty<string>() : lines;
     }
 
     private IReadOnlyList<string> BuildRuntimeCapabilityContextLines() {
@@ -871,6 +1025,120 @@ public sealed partial class MainWindow : Window {
         }
 
         return null;
+    }
+
+    private static List<string> BuildEnabledPackDisplayNames(SessionPolicyDto? sessionPolicy) {
+        var names = new List<string>();
+        var packs = sessionPolicy?.Packs;
+        if (packs is not { Length: > 0 }) {
+            return names;
+        }
+
+        for (var i = 0; i < packs.Length; i++) {
+            var pack = packs[i];
+            if (!pack.Enabled) {
+                continue;
+            }
+
+            var displayName = (pack.Name ?? string.Empty).Trim();
+            if (displayName.Length == 0) {
+                displayName = NormalizePackId(pack.Id);
+            }
+
+            if (displayName.Length > 0 && !ContainsIgnoreCase(names, displayName)) {
+                names.Add(displayName);
+            }
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
+
+    private static List<string> BuildCapabilityCategorySummaries(SessionCapabilitySnapshotDto? snapshot) {
+        var lines = new List<string>();
+        if (snapshot?.FamilyActions is not { Length: > 0 }) {
+            return lines;
+        }
+
+        if (HasCapabilityFamily(snapshot, "ad_domain")) {
+            lines.Add("You can help with Active Directory checks such as users, groups, LDAP lookups, and domain-controller or replication-related investigation when those tools are enabled.");
+        }
+
+        if (HasCapabilityFamily(snapshot, "eventlog")) {
+            lines.Add("You can inspect Windows event logs and correlate system evidence when the session has Event Log tooling available.");
+        }
+
+        if (HasCapabilityFamily(snapshot, "public_domain")) {
+            lines.Add("You can investigate public-domain signals such as DNS and mail configuration when the relevant tooling is enabled.");
+        }
+
+        return lines;
+    }
+
+    private static List<string> BuildCapabilityExampleLines(SessionCapabilitySnapshotDto? snapshot, IReadOnlyList<string> enabledPackNames) {
+        var lines = new List<string>();
+        if (snapshot is not null && HasCapabilityFamily(snapshot, "ad_domain")) {
+            lines.Add("Concrete examples you can mention: check AD replication health, find users/groups/computers, or review group membership and LDAP data.");
+        }
+
+        if (ContainsIgnoreCase(enabledPackNames, "Event Viewer")) {
+            lines.Add("Concrete examples you can mention: inspect Windows event logs, summarize recurring errors, or correlate recent failures on this machine or a reachable target.");
+        }
+
+        if (snapshot is not null && HasCapabilityFamily(snapshot, "public_domain")) {
+            lines.Add("Concrete examples you can mention: inspect public DNS, check MX/SPF/DMARC, or review mail-related public-domain signals.");
+        }
+
+        if (ContainsIgnoreCase(enabledPackNames, "System")) {
+            lines.Add("Concrete examples you can mention: inspect local host inventory, services, scheduled tasks, or filesystem evidence under allowed roots.");
+        }
+
+        return lines;
+    }
+
+    private static bool HasCapabilityFamily(SessionCapabilitySnapshotDto snapshot, string family) {
+        var expected = (family ?? string.Empty).Trim();
+        if (expected.Length == 0 || snapshot.FamilyActions.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < snapshot.FamilyActions.Length; i++) {
+            var entry = snapshot.FamilyActions[i];
+            if (string.Equals((entry.Family ?? string.Empty).Trim(), expected, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string DescribeReachabilityMode(string? mode) {
+        var normalized = (mode ?? string.Empty).Trim();
+        if (normalized.Equals("remote_capable", StringComparison.OrdinalIgnoreCase)) {
+            return "remote-capable";
+        }
+
+        if (normalized.Equals("local_only", StringComparison.OrdinalIgnoreCase)) {
+            return "local-only";
+        }
+
+        return normalized.Length == 0 ? "unknown" : normalized;
+    }
+
+    private static bool ContainsIgnoreCase(IReadOnlyList<string> values, string candidate) {
+        ArgumentNullException.ThrowIfNull(values);
+        var normalizedCandidate = (candidate ?? string.Empty).Trim();
+        if (normalizedCandidate.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < values.Count; i++) {
+            if (string.Equals((values[i] ?? string.Empty).Trim(), normalizedCandidate, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 }

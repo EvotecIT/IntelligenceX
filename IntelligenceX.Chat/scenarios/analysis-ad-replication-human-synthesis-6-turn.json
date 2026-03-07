@@ -1,0 +1,56 @@
+{
+  "name": "analysis-ad-replication-human-synthesis-6-turn",
+  "tags": ["analysis", "ad", "replication", "eventlog", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Discover AD scope",
+      "user": "Discover the current AD scope for this run and identify which DCs are reachable for live checks.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Replication baseline",
+      "user": "Run a replication baseline across those DCs and identify the most impacted hosts first.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_replication_*", "ad_monitoring_probe_run"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Plain English translation",
+      "user": "Translate the replication findings into plain English for an admin skimming fast. Include the impacted DCs and the strongest evidence, but do not dump raw tool wording.",
+      "assert_contains_any": ["replication", "DC", "evidence", "healthy", "failing", "issue"],
+      "assert_not_contains": ["jsonrpc", "call_id", "ix:action:v1", "tool_call", "tool_output"]
+    },
+    {
+      "name": "Cross-tool correlation",
+      "user": "Correlate those replication findings with related Directory Service or System event evidence in the same timeframe, and explain the likely story.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_named_events_*"],
+      "assert_contains_any": ["evidence", "likely", "because", "confidence"],
+      "assert_not_contains": ["jsonrpc", "call_id", "ix:action:v1"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Confirmed versus suspected",
+      "user": "Separate confirmed findings from hypotheses, give confidence for each, and say what one missing check would reduce uncertainty fastest.",
+      "assert_contains": ["confidence"],
+      "assert_contains_any": ["confirmed", "hypothesis", "suspected", "uncertainty"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Next step and verify loop",
+      "user": "Give one short prioritized next-step plan and one short verify-after-fix loop.",
+      "assert_contains_any": ["next", "verify", "1.", "- "],
+      "assert_no_questions": true
+    }
+  ]
+}
