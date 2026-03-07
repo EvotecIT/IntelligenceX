@@ -118,4 +118,32 @@ public sealed class MainWindowTranscriptExportTests {
         Assert.Equal(TranscriptExportStage.DocxWriteWithoutMaterializedVisuals, result.Fallback?.Cause.Stage);
         Assert.Contains("retry write failed", result.Fallback?.Cause.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures the final failed result preserves the retry fallback path while promoting both retry stages consistently.
+    /// </summary>
+    [Fact]
+    public void ResolveTranscriptExportResultAfterMaterializedDocxRetry_PromotesFailedRetryWithFallbackStages() {
+        var materializedFailure = TranscriptExportResult.Failed(
+            ExportPreferencesContract.FormatDocx,
+            @"C:\exports\transcript.docx",
+            new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "materialized write failed"));
+        var failedRetryWithFallback = TranscriptExportResult.Failed(
+            ExportPreferencesContract.FormatDocx,
+            @"C:\exports\transcript.docx",
+            new TranscriptExportFailure(TranscriptExportStage.MarkdownFallbackWrite, "markdown fallback failed"),
+            new TranscriptExportFallback(
+                TranscriptExportFallbackKind.Markdown,
+                @"C:\exports\transcript.md",
+                new TranscriptExportFailure(TranscriptExportStage.DocxWrite, "retry write failed")));
+
+        var result = MainWindow.ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedFailure, failedRetryWithFallback);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(TranscriptExportStage.MarkdownFallbackWrite, result.Failure?.Stage);
+        Assert.Equal(TranscriptExportFallbackKind.Markdown, result.Fallback?.Kind);
+        Assert.Equal(@"C:\exports\transcript.md", result.Fallback?.OutputPath);
+        Assert.Equal(TranscriptExportStage.DocxWriteWithoutMaterializedVisuals, result.Fallback?.Cause.Stage);
+        Assert.Contains("retry write failed", result.Fallback?.Cause.Message, StringComparison.Ordinal);
+    }
 }

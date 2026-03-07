@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.App;
 
 namespace IntelligenceX.Chat.App.Markdown;
@@ -73,7 +74,7 @@ internal static class PromptMarkdownBuilder {
         if (hasName || hasPersona) {
             markdown
                 .BlankLine()
-                .Paragraph("[Session profile context]");
+                .Paragraph(PromptEnvelopeSections.SessionProfileContext);
             if (hasName) {
                 markdown.Bullet("User name: " + effectiveName!.Trim());
             }
@@ -94,7 +95,7 @@ internal static class PromptMarkdownBuilder {
         if (trimmedPersistentMemoryLines is { Count: > 0 }) {
             markdown
                 .BlankLine()
-                .Paragraph("[Persistent memory]");
+                .Paragraph(PromptEnvelopeSections.PersistentMemory);
             for (var i = 0; i < trimmedPersistentMemoryLines.Count; i++) {
                 markdown.Bullet(trimmedPersistentMemoryLines[i]);
             }
@@ -193,7 +194,7 @@ internal static class PromptMarkdownBuilder {
 
         if (conversationTurnMode.RequiresEnvelope) {
             markdown
-                .Paragraph("[Conversation mode]")
+                .Paragraph(PromptEnvelopeSections.ConversationMode)
                 .Bullet("Mode: " + conversationTurnMode.Id);
             if (conversationTurnMode.IsAssistantCapabilityQuestion) {
                 markdown
@@ -253,7 +254,7 @@ internal static class PromptMarkdownBuilder {
 
         if (trimmedContinuationStateLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Continuation state]")
+                .Paragraph(PromptEnvelopeSections.ContinuationState)
                 .Bullet("Use this to continue the live thread naturally instead of resetting context.")
                 .BlankLine();
 
@@ -269,7 +270,7 @@ internal static class PromptMarkdownBuilder {
 
         if (trimmedConversationStyleLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Conversation style]")
+                .Paragraph(PromptEnvelopeSections.ConversationStyle)
                 .Bullet("Blend the selected persona with the user's recent style; mirror pacing, directness, and response shape without losing competence.")
                 .BlankLine();
 
@@ -285,7 +286,7 @@ internal static class PromptMarkdownBuilder {
 
         if (trimmedCapabilityAnswerStyleLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Capability answer style]")
+                .Paragraph(PromptEnvelopeSections.CapabilityAnswerStyle)
                 .Bullet("Use this to shape capability answers so they fit the user's pacing instead of defaulting to one canned answer style.")
                 .BlankLine();
 
@@ -301,7 +302,7 @@ internal static class PromptMarkdownBuilder {
 
         if (trimmedPersonaGuidanceLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Persona guidance]")
+                .Paragraph(PromptEnvelopeSections.PersonaGuidance)
                 .Bullet("Let the selected persona meaningfully affect phrasing and interaction style instead of collapsing back to a generic assistant voice.")
                 .BlankLine();
 
@@ -316,7 +317,7 @@ internal static class PromptMarkdownBuilder {
         }
 
         if (hasName || hasPersona) {
-            markdown.Paragraph("[Session profile context]");
+            markdown.Paragraph(PromptEnvelopeSections.SessionProfileContext);
             if (hasName) {
                 markdown.Bullet("User name: " + effectiveName!.Trim());
             }
@@ -332,7 +333,7 @@ internal static class PromptMarkdownBuilder {
 
         if (onboardingInProgress) {
             markdown
-                .Paragraph("[Onboarding context]")
+                .Paragraph(PromptEnvelopeSections.OnboardingContext)
                 .Bullet("Profile setup is still in progress.")
                 .Raw(OnboardingModelProtocol.BuildGuidanceText(missingOnboardingFields))
                 .BlankLine();
@@ -340,14 +341,14 @@ internal static class PromptMarkdownBuilder {
 
         if (includeLiveProfileUpdates) {
             markdown
-                .Paragraph("[Live profile updates]")
+                .Paragraph(PromptEnvelopeSections.LiveProfileUpdates)
                 .Raw(OnboardingModelProtocol.BuildLiveUpdateGuidanceText())
                 .BlankLine();
         }
 
         if (trimmedCapabilitySelfKnowledgeLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Capability self-knowledge]")
+                .Paragraph(PromptEnvelopeSections.CapabilitySelfKnowledge)
                 .Bullet("Use this to answer capability questions in human terms without falling back to raw runtime telemetry.")
                 .BlankLine();
 
@@ -363,7 +364,7 @@ internal static class PromptMarkdownBuilder {
 
         if (trimmedRuntimeCapabilityLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Runtime capability handshake]")
+                .Paragraph(PromptEnvelopeSections.RuntimeCapabilityHandshake)
                 .Bullet("Treat these as the live runtime/tool limits for this turn.")
                 .BlankLine();
 
@@ -383,7 +384,7 @@ internal static class PromptMarkdownBuilder {
 
         if (proactiveExecutionEnabled.HasValue) {
             markdown
-                .Paragraph("[Proactive execution mode]")
+                .Paragraph(PromptEnvelopeSections.ProactiveExecutionMode)
                 .Raw("ix:proactive-mode:v1");
             if (proactiveExecutionEnabled.Value) {
                 markdown
@@ -405,7 +406,7 @@ internal static class PromptMarkdownBuilder {
 
         if (trimmedPersistentMemoryLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Persistent memory]")
+                .Paragraph(PromptEnvelopeSections.PersistentMemory)
                 .Bullet("Use these as durable hints when relevant for this request.")
                 .BlankLine();
 
@@ -421,7 +422,7 @@ internal static class PromptMarkdownBuilder {
 
         if (trimmedLocalContextLines is { Count: > 0 }) {
             markdown
-                .Paragraph("[Local transcript context fallback]")
+                .Paragraph(PromptEnvelopeSections.LocalTranscriptContextFallback)
                 .Bullet("Use this only as supplementary context for this turn.")
                 .BlankLine();
 

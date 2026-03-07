@@ -12,6 +12,7 @@ using JsonValueKind = System.Text.Json.JsonValueKind;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
@@ -25,24 +26,6 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    // Keep this list aligned with the bracketed section labels emitted by PromptMarkdownBuilder.
-    // Thin-envelope request parsing is correctness-sensitive and should stop only on known app-generated sections.
-    private static readonly string[] KnownStructuredRequestSectionHeaders = {
-        "[Conversation mode]",
-        "[Continuation state]",
-        "[Conversation style]",
-        "[Capability answer style]",
-        "[Persona guidance]",
-        "[Session profile context]",
-        "[Onboarding context]",
-        "[Live profile updates]",
-        "[Capability self-knowledge]",
-        "[Runtime capability handshake]",
-        "[Proactive execution mode]",
-        "[Persistent memory]",
-        "[Local transcript context fallback]"
-    };
-
     private static int ResolveMaxCandidateToolsLimit(int? requestedLimit, int totalToolCount) {
         var candidate = requestedLimit.GetValueOrDefault(0);
         if (candidate <= 0) {
@@ -142,8 +125,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        for (var i = 0; i < KnownStructuredRequestSectionHeaders.Length; i++) {
-            if (trimmed.Equals(KnownStructuredRequestSectionHeaders[i], StringComparison.OrdinalIgnoreCase)) {
+        for (var i = 0; i < PromptEnvelopeSections.KnownStructuredRequestSectionHeaders.Count; i++) {
+            if (trimmed.Equals(PromptEnvelopeSections.KnownStructuredRequestSectionHeaders[i], StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
         }
