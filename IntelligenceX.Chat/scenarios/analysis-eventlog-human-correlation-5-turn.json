@@ -1,0 +1,46 @@
+{
+  "name": "analysis-eventlog-human-correlation-5-turn",
+  "tags": ["analysis", "eventlog", "correlation", "strict", "live"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Live event summary",
+      "user": "Pick one reachable Windows host or DC in this session and pull a compact reboot plus authentication-failure summary for the last 24 hours.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["eventlog_*query*", "eventlog_*stats*", "eventlog_top_events"],
+      "forbid_tool_error_codes": ["invalid_argument", "schema_*"]
+    },
+    {
+      "name": "Plain English explanation",
+      "user": "Explain those findings in plain English for an admin reading fast. No raw tool wording.",
+      "assert_contains_any": ["reboot", "authentication", "failure", "event", "evidence"],
+      "assert_not_contains": ["jsonrpc", "call_id", "ix:action:v1", "tool_call", "tool_output"]
+    },
+    {
+      "name": "Likely story",
+      "user": "Correlate the reboot and authentication evidence into the most likely story, and mention what seems related versus coincidental.",
+      "assert_contains_any": ["likely", "related", "coincidental", "because", "evidence"],
+      "assert_not_contains": ["jsonrpc", "call_id", "ix:action:v1"]
+    },
+    {
+      "name": "Confidence and uncertainty",
+      "user": "Separate confirmed facts from best-guess hypotheses, include confidence, and name one missing check that would reduce uncertainty.",
+      "assert_contains": ["confidence"],
+      "assert_contains_any": ["confirmed", "hypothesis", "uncertainty", "missing check"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Blunt handoff",
+      "user": "Give me the blunt operator handoff in 4 bullets: issue, evidence, confidence, next step.",
+      "assert_contains_any": ["issue", "evidence", "confidence", "next"],
+      "assert_no_questions": true
+    }
+  ]
+}

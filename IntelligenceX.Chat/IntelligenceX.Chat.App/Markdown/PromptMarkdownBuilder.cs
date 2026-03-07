@@ -8,10 +8,21 @@ namespace IntelligenceX.Chat.App.Markdown;
 /// Builds markdown prompt envelopes sent to the service/model.
 /// </summary>
 internal static class PromptMarkdownBuilder {
+    private const int MaxSupplementalContextLines = 24;
+    private const int MaxContinuationStateLines = 4;
+    private const int MaxConversationStyleLines = 4;
+    private const int MaxCapabilityAnswerStyleLines = 3;
+    private const int MaxPersonaGuidanceLines = 4;
+    private const int MaxCapabilitySelfKnowledgeLines = 6;
+    private const int MaxRuntimeCapabilityLines = 8;
+    private const int MaxPersistentMemoryLines = 4;
+    private const int MaxLocalContextLines = 4;
+
     private readonly record struct ConversationTurnMode(
         string Id,
         string AmbiguousTarget,
         bool RequiresEnvelope) {
+        internal bool IsAssistantCapabilityQuestion => string.Equals(Id, "assistant_capability_question", StringComparison.Ordinal);
         internal bool IsLowContextShortTurn => string.Equals(Id, "low_context_short_turn", StringComparison.Ordinal);
         internal bool IsCompactAnswerToRecentQuestion => string.Equals(Id, "compact_answer_to_recent_question", StringComparison.Ordinal);
         internal bool IsLightPostAnswerReply => string.Equals(Id, "light_post_answer_reply", StringComparison.Ordinal);
@@ -44,11 +55,14 @@ internal static class PromptMarkdownBuilder {
     /// <param name="executionBehaviorPrompt">Execution behavior prompt fragment.</param>
     /// <param name="localContextLines">Optional compact local context fallback lines.</param>
     /// <param name="conversationStyleLines">Optional recent conversation style guidance lines.</param>
+    /// <param name="capabilityAnswerStyleLines">Optional answer-shape guidance for explicit capability questions.</param>
+    /// <param name="personaGuidanceLines">Optional guidance distilled from the selected persona.</param>
     /// <param name="continuationStateLines">Optional continuation-state guidance from the latest assistant turn.</param>
     /// <param name="recentAssistantAnswerWasSubstantive">Whether the latest assistant answer appears substantive enough to support acknowledgement-style replies.</param>
     /// <param name="recentAssistantAskedQuestion">Whether the latest assistant turn appears to ask the user a question.</param>
     /// <param name="persistentMemoryLines">Optional persistent memory facts.</param>
     /// <param name="persistentMemoryPrompt">Optional persistent memory protocol guidance.</param>
+    /// <param name="capabilitySelfKnowledgeLines">Optional human-facing capability self-knowledge lines.</param>
     /// <param name="runtimeCapabilityLines">Optional runtime capability handshake lines.</param>
     /// <param name="proactiveExecutionEnabled">Optional proactive execution mode guidance.</param>
     /// <returns>Request text to send to service/model.</returns>
@@ -62,11 +76,14 @@ internal static class PromptMarkdownBuilder {
         string executionBehaviorPrompt,
         IReadOnlyList<string>? localContextLines = null,
         IReadOnlyList<string>? conversationStyleLines = null,
+        IReadOnlyList<string>? capabilityAnswerStyleLines = null,
+        IReadOnlyList<string>? personaGuidanceLines = null,
         IReadOnlyList<string>? continuationStateLines = null,
         bool recentAssistantAnswerWasSubstantive = false,
         bool recentAssistantAskedQuestion = false,
         IReadOnlyList<string>? persistentMemoryLines = null,
         string? persistentMemoryPrompt = null,
+        IReadOnlyList<string>? capabilitySelfKnowledgeLines = null,
         IReadOnlyList<string>? runtimeCapabilityLines = null,
         bool? proactiveExecutionEnabled = null) {
         var hasName = !string.IsNullOrWhiteSpace(effectiveName);
@@ -76,14 +93,34 @@ internal static class PromptMarkdownBuilder {
             localContextLines,
             recentAssistantAnswerWasSubstantive,
             recentAssistantAskedQuestion);
+        var remainingSupplementalLineBudget = MaxSupplementalContextLines;
+        var trimmedContinuationStateLines = TakeBudget(continuationStateLines, MaxContinuationStateLines, ref remainingSupplementalLineBudget);
+        var trimmedConversationStyleLines = TakeBudget(conversationStyleLines, MaxConversationStyleLines, ref remainingSupplementalLineBudget);
+        var trimmedCapabilityAnswerStyleLines = TakeBudget(capabilityAnswerStyleLines, MaxCapabilityAnswerStyleLines, ref remainingSupplementalLineBudget);
+        var trimmedPersonaGuidanceLines = TakeBudget(personaGuidanceLines, MaxPersonaGuidanceLines, ref remainingSupplementalLineBudget);
+        IReadOnlyList<string>? trimmedCapabilitySelfKnowledgeLines;
+        IReadOnlyList<string>? trimmedRuntimeCapabilityLines;
+        if (runtimeCapabilityLines is { Count: > 0 }) {
+            trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, MaxRuntimeCapabilityLines, ref remainingSupplementalLineBudget);
+            trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, maxLines: 3, ref remainingSupplementalLineBudget);
+        } else {
+            trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, MaxCapabilitySelfKnowledgeLines, ref remainingSupplementalLineBudget);
+            trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, MaxRuntimeCapabilityLines, ref remainingSupplementalLineBudget);
+        }
+
+        var trimmedPersistentMemoryLines = TakeBudget(persistentMemoryLines, MaxPersistentMemoryLines, ref remainingSupplementalLineBudget);
+        var trimmedLocalContextLines = TakeBudget(localContextLines, MaxLocalContextLines, ref remainingSupplementalLineBudget);
         var hasSupplementalContext = includeLiveProfileUpdates
                                      || !string.IsNullOrWhiteSpace(executionBehaviorPrompt)
                                      || !string.IsNullOrWhiteSpace(persistentMemoryPrompt)
-                                     || (localContextLines is { Count: > 0 })
-                                     || (conversationStyleLines is { Count: > 0 })
-                                     || (continuationStateLines is { Count: > 0 })
-                                     || (persistentMemoryLines is { Count: > 0 })
-                                     || (runtimeCapabilityLines is { Count: > 0 })
+                                     || (trimmedLocalContextLines is { Count: > 0 })
+                                     || (trimmedConversationStyleLines is { Count: > 0 })
+                                     || (trimmedCapabilityAnswerStyleLines is { Count: > 0 })
+                                     || (trimmedPersonaGuidanceLines is { Count: > 0 })
+                                     || (trimmedContinuationStateLines is { Count: > 0 })
+                                     || (trimmedPersistentMemoryLines is { Count: > 0 })
+                                     || (trimmedCapabilitySelfKnowledgeLines is { Count: > 0 })
+                                     || (trimmedRuntimeCapabilityLines is { Count: > 0 })
                                      || proactiveExecutionEnabled.HasValue
                                      || conversationTurnMode.RequiresEnvelope;
 
@@ -97,7 +134,14 @@ internal static class PromptMarkdownBuilder {
             markdown
                 .Paragraph("[Conversation mode]")
                 .Bullet("Mode: " + conversationTurnMode.Id);
-            if (conversationTurnMode.IsLowContextShortTurn) {
+            if (conversationTurnMode.IsAssistantCapabilityQuestion) {
+                markdown
+                    .Bullet("Answer naturally in human terms instead of sounding like a product walkthrough or tool host.")
+                    .Bullet("Prefer a few concrete examples of help you can provide right now instead of broad capability taxonomies.")
+                    .Bullet("Describe how you can help in concise, practical terms before waiting for the actual task.")
+                    .Bullet("Do not run live checks, inventory probes, or environment discovery just to prove capability unless the user explicitly asks for verification.")
+                    .Bullet("Do not dump low-level runtime details, exhaustive tool lists, or capability snapshots unless the user is explicitly asking about model/runtime/tooling details.");
+            } else if (conversationTurnMode.IsLowContextShortTurn) {
                 markdown
                     .Bullet("Respond like a real person first; do not front-load menus, onboarding, or scope taxonomies.")
                     .Bullet("If this is just a greeting or light opener, greet back naturally and wait for the concrete task.")
@@ -130,14 +174,14 @@ internal static class PromptMarkdownBuilder {
             markdown.BlankLine();
         }
 
-        if (continuationStateLines is { Count: > 0 }) {
+        if (trimmedContinuationStateLines is { Count: > 0 }) {
             markdown
                 .Paragraph("[Continuation state]")
                 .Bullet("Use this to continue the live thread naturally instead of resetting context.")
                 .BlankLine();
 
-            for (var i = 0; i < continuationStateLines.Count; i++) {
-                var line = continuationStateLines[i];
+            for (var i = 0; i < trimmedContinuationStateLines.Count; i++) {
+                var line = trimmedContinuationStateLines[i];
                 if (!string.IsNullOrWhiteSpace(line)) {
                     markdown.Bullet(line.Trim());
                 }
@@ -146,14 +190,46 @@ internal static class PromptMarkdownBuilder {
             markdown.BlankLine();
         }
 
-        if (conversationStyleLines is { Count: > 0 }) {
+        if (trimmedConversationStyleLines is { Count: > 0 }) {
             markdown
                 .Paragraph("[Conversation style]")
                 .Bullet("Blend the selected persona with the user's recent style; mirror pacing, directness, and response shape without losing competence.")
                 .BlankLine();
 
-            for (var i = 0; i < conversationStyleLines.Count; i++) {
-                var line = conversationStyleLines[i];
+            for (var i = 0; i < trimmedConversationStyleLines.Count; i++) {
+                var line = trimmedConversationStyleLines[i];
+                if (!string.IsNullOrWhiteSpace(line)) {
+                    markdown.Bullet(line.Trim());
+                }
+            }
+
+            markdown.BlankLine();
+        }
+
+        if (trimmedCapabilityAnswerStyleLines is { Count: > 0 }) {
+            markdown
+                .Paragraph("[Capability answer style]")
+                .Bullet("Use this to shape capability answers so they fit the user's pacing instead of defaulting to one canned answer style.")
+                .BlankLine();
+
+            for (var i = 0; i < trimmedCapabilityAnswerStyleLines.Count; i++) {
+                var line = trimmedCapabilityAnswerStyleLines[i];
+                if (!string.IsNullOrWhiteSpace(line)) {
+                    markdown.Bullet(line.Trim());
+                }
+            }
+
+            markdown.BlankLine();
+        }
+
+        if (trimmedPersonaGuidanceLines is { Count: > 0 }) {
+            markdown
+                .Paragraph("[Persona guidance]")
+                .Bullet("Let the selected persona meaningfully affect phrasing and interaction style instead of collapsing back to a generic assistant voice.")
+                .BlankLine();
+
+            for (var i = 0; i < trimmedPersonaGuidanceLines.Count; i++) {
+                var line = trimmedPersonaGuidanceLines[i];
                 if (!string.IsNullOrWhiteSpace(line)) {
                     markdown.Bullet(line.Trim());
                 }
@@ -171,8 +247,8 @@ internal static class PromptMarkdownBuilder {
                 markdown.Bullet("Assistant persona: " + effectivePersona!.Trim());
             }
             markdown
-                .Bullet("Apply this persona/tone while remaining precise and operational.")
-                .Bullet("If the user's style is sharper, warmer, or more terse than the persona, adapt the delivery while preserving the persona's core role.")
+                .Bullet("Treat this persona as the preferred voice and working style for the assistant unless the user overrides it in the conversation.")
+                .Bullet("If the user's style is sharper, warmer, more terse, or more playful than the persona, adapt the delivery while preserving the persona's core intent.")
                 .Bullet("Keep responses natural and conversational; avoid robotic template phrasing.")
                 .BlankLine();
         }
@@ -192,14 +268,30 @@ internal static class PromptMarkdownBuilder {
                 .BlankLine();
         }
 
-        if (runtimeCapabilityLines is { Count: > 0 }) {
+        if (trimmedCapabilitySelfKnowledgeLines is { Count: > 0 }) {
+            markdown
+                .Paragraph("[Capability self-knowledge]")
+                .Bullet("Use this to answer capability questions in human terms without falling back to raw runtime telemetry.")
+                .BlankLine();
+
+            for (var i = 0; i < trimmedCapabilitySelfKnowledgeLines.Count; i++) {
+                var line = trimmedCapabilitySelfKnowledgeLines[i];
+                if (!string.IsNullOrWhiteSpace(line)) {
+                    markdown.Bullet(line.Trim());
+                }
+            }
+
+            markdown.BlankLine();
+        }
+
+        if (trimmedRuntimeCapabilityLines is { Count: > 0 }) {
             markdown
                 .Paragraph("[Runtime capability handshake]")
                 .Bullet("Treat these as the live runtime/tool limits for this turn.")
                 .BlankLine();
 
-            for (var i = 0; i < runtimeCapabilityLines.Count; i++) {
-                var line = runtimeCapabilityLines[i];
+            for (var i = 0; i < trimmedRuntimeCapabilityLines.Count; i++) {
+                var line = trimmedRuntimeCapabilityLines[i];
                 if (!string.IsNullOrWhiteSpace(line)) {
                     markdown.Bullet(line.Trim());
                 }
@@ -234,14 +326,14 @@ internal static class PromptMarkdownBuilder {
             markdown.Raw(persistentMemoryPrompt.Trim()).BlankLine();
         }
 
-        if (persistentMemoryLines is { Count: > 0 }) {
+        if (trimmedPersistentMemoryLines is { Count: > 0 }) {
             markdown
                 .Paragraph("[Persistent memory]")
                 .Bullet("Use these as durable hints when relevant for this request.")
                 .BlankLine();
 
-            for (var i = 0; i < persistentMemoryLines.Count; i++) {
-                var line = persistentMemoryLines[i];
+            for (var i = 0; i < trimmedPersistentMemoryLines.Count; i++) {
+                var line = trimmedPersistentMemoryLines[i];
                 if (!string.IsNullOrWhiteSpace(line)) {
                     markdown.Bullet(line.Trim());
                 }
@@ -250,14 +342,14 @@ internal static class PromptMarkdownBuilder {
             markdown.BlankLine();
         }
 
-        if (localContextLines is { Count: > 0 }) {
+        if (trimmedLocalContextLines is { Count: > 0 }) {
             markdown
                 .Paragraph("[Local transcript context fallback]")
                 .Bullet("Use this only as supplementary context for this turn.")
                 .BlankLine();
 
-            for (var i = 0; i < localContextLines.Count; i++) {
-                var line = localContextLines[i];
+            for (var i = 0; i < trimmedLocalContextLines.Count; i++) {
+                var line = trimmedLocalContextLines[i];
                 if (!string.IsNullOrWhiteSpace(line)) {
                     markdown.Bullet(line.Trim());
                 }
@@ -281,6 +373,10 @@ internal static class PromptMarkdownBuilder {
         var normalized = (userText ?? string.Empty).Trim();
         if (normalized.Length == 0) {
             return new ConversationTurnMode("direct_task", string.Empty, RequiresEnvelope: false);
+        }
+
+        if (ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(normalized)) {
+            return new ConversationTurnMode("assistant_capability_question", string.Empty, RequiresEnvelope: true);
         }
 
         if (TryExtractSingleDomainLikeToken(normalized, out var ambiguousTarget)) {
@@ -322,6 +418,34 @@ internal static class PromptMarkdownBuilder {
         }
 
         return false;
+    }
+
+    private static IReadOnlyList<string>? TakeBudget(IReadOnlyList<string>? lines, int maxLines, ref int remainingBudget) {
+        if (lines is not { Count: > 0 } || maxLines <= 0 || remainingBudget <= 0) {
+            return null;
+        }
+
+        var cappedCount = Math.Min(Math.Min(lines.Count, maxLines), remainingBudget);
+        if (cappedCount <= 0) {
+            return null;
+        }
+
+        var result = new List<string>(cappedCount);
+        for (var i = 0; i < lines.Count && result.Count < cappedCount; i++) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0) {
+                continue;
+            }
+
+            result.Add(line);
+        }
+
+        if (result.Count == 0) {
+            return null;
+        }
+
+        remainingBudget -= result.Count;
+        return result;
     }
 
     private static bool TryExtractSingleDomainLikeToken(string text, out string domain) {

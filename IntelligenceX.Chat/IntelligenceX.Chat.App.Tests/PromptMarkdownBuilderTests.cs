@@ -21,6 +21,7 @@ public sealed class PromptMarkdownBuilderTests {
             missingOnboardingFields: new[] { "themePreset" },
             includeLiveProfileUpdates: true,
             executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.",
+            personaGuidanceLines: new[] { "Prefer compact phrasing and shorter answers by default unless the user clearly wants depth." },
             runtimeCapabilityLines: new[] { "Parallel tool execution: enabled", "Max tool rounds: 24" },
             proactiveExecutionEnabled: true,
             conversationStyleLines: new[] { "Recent user style is terse and direct." },
@@ -29,9 +30,11 @@ public sealed class PromptMarkdownBuilderTests {
 
         Assert.Contains("[Conversation style]", markdown);
         Assert.Contains("Recent user style is terse and direct.", markdown);
+        Assert.Contains("[Persona guidance]", markdown);
         Assert.Contains("[Session profile context]", markdown);
         Assert.Contains("- User name: Przemek", markdown);
         Assert.Contains("- Assistant persona: security analyst with concise outputs", markdown);
+        Assert.Contains("preferred voice and working style", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("[Onboarding context]", markdown);
         Assert.Contains("[Live profile updates]", markdown);
         Assert.Contains("[Runtime capability handshake]", markdown);
@@ -124,6 +127,208 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("brief natural close is enough", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Avoid generic closing filler", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("User request:", markdown);
+    }
+
+    /// <summary>
+    /// Ensures capability questions stay conversational instead of turning into runtime/tool demos.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesConversationModeForAssistantCapabilityQuestion() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.Contains("[Conversation mode]", markdown);
+        Assert.Contains("Mode: assistant_capability_question", markdown);
+        Assert.Contains("Answer naturally in human terms", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("few concrete examples", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not run live checks", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not dump low-level runtime details", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures capability-answer style guidance can be embedded separately from general conversation style.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesCapabilityAnswerStyleSection() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: "helpful assistant with a bit of dark humour",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilityAnswerStyleLines: new[] {
+                "For capability questions, answer with 2-3 concrete examples and one short invitation.",
+                "Keep it to one short paragraph or a tight bullet list.",
+                "Do not turn capability answers into environment inventories, exhaustive tool lists, or self-validation demos."
+            });
+
+        Assert.Contains("[Capability answer style]", markdown);
+        Assert.Contains("fit the user's pacing", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2-3 concrete examples", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("one short paragraph", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("self-validation demos", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures human-facing capability self-knowledge can be embedded separately from raw runtime telemetry.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesCapabilitySelfKnowledgeSection() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: "helpful assistant with a bit of dark humour",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilitySelfKnowledgeLines: new[] {
+                "Areas you can help with here include Active Directory, Event Viewer.",
+                "You can help with Active Directory checks such as users, groups, LDAP lookups, and replication-related investigation.",
+                "Concrete examples you can mention: check AD replication health, find users/groups/computers, or review group membership and LDAP data.",
+                "For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.",
+                "When asked what you can do, answer with useful examples and invite the task instead of listing internal identifiers or protocol details."
+            });
+
+        Assert.Contains("[Capability self-knowledge]", markdown);
+        Assert.Contains("human terms", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Active Directory, Event Viewer", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Concrete examples you can mention", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("few practical examples", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("invite the task", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures runtime introspection can keep capability self-knowledge concise while deferring exact limits to runtime handshake lines.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_RuntimeHandshakeTakesPriorityOverGenericCapabilityTail() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilitySelfKnowledgeLines: new[] {
+                "Areas you can help with here include Active Directory, Event Viewer.",
+                "Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake."
+            },
+            runtimeCapabilityLines: new[] {
+                "Runtime transport: native, active model for this turn: gpt-5.3-codex",
+                "Tool availability for this turn: available (enabled tools: 20, disabled: 0)."
+            });
+
+        Assert.Contains("[Capability self-knowledge]", markdown);
+        Assert.Contains("[Runtime capability handshake]", markdown);
+        Assert.Contains("exact runtime/model/tool limits belong in the runtime capability handshake", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("invite the task", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures persona-derived guidance can sharpen how the selected persona affects delivery.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesPersonaGuidanceSection() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: "helpful assistant with a bit of dark humour",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            personaGuidanceLines: new[] {
+                "Be proactively useful: reduce user effort, infer sensible next steps, and avoid making the user micromanage the conversation.",
+                "Light humor is allowed when it fits naturally. Keep it subtle, optional, and secondary to usefulness."
+            });
+
+        Assert.Contains("[Persona guidance]", markdown);
+        Assert.Contains("meaningfully affect phrasing", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reduce user effort", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Light humor is allowed", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures low-priority supplemental sections are trimmed when prompt context grows too large.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_TrimsLowPrioritySupplementalSectionsUnderBudgetPressure() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: "Przemek",
+            effectivePersona: "helpful assistant with concise outputs",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            localContextLines: new[] {
+                "Assistant: local-1", "Assistant: local-2", "Assistant: local-3", "Assistant: local-4", "Assistant: local-5"
+            },
+            conversationStyleLines: new[] {
+                "style-1", "style-2", "style-3", "style-4", "style-5"
+            },
+            capabilityAnswerStyleLines: new[] {
+                "cap-style-1", "cap-style-2", "cap-style-3", "cap-style-4"
+            },
+            personaGuidanceLines: new[] {
+                "persona-1", "persona-2", "persona-3", "persona-4", "persona-5"
+            },
+            continuationStateLines: new[] {
+                "continuation-1", "continuation-2", "continuation-3", "continuation-4", "continuation-5"
+            },
+            persistentMemoryLines: new[] {
+                "memory-1", "memory-2", "memory-3", "memory-4", "memory-5"
+            },
+            capabilitySelfKnowledgeLines: new[] {
+                "self-1", "self-2", "self-3", "self-4", "self-5"
+            },
+            runtimeCapabilityLines: new[] {
+                "runtime-1", "runtime-2", "runtime-3", "runtime-4", "runtime-5", "runtime-6", "runtime-7", "runtime-8", "runtime-9"
+            });
+
+        Assert.Contains("continuation-1", markdown, StringComparison.Ordinal);
+        Assert.Contains("runtime-1", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("local-5", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("memory-5", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures capability self-knowledge trimming preserves negative tooling and reachability status under budget pressure.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PreservesCapabilityStatusLinesUnderBudgetPressure() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilitySelfKnowledgeLines: new[] {
+                "Areas you can help with here include Active Directory, Event Viewer, DnsClientX, System.",
+                "Tooling is not currently available in this session, so answers should stay conversational and reasoning-based.",
+                "Remote reachability right now is local-only.",
+                "You can help with Active Directory checks such as users, groups, LDAP lookups, and domain-controller or replication-related investigation when those tools are enabled.",
+                "You can inspect Windows event logs and correlate system evidence when the session has Event Log tooling available.",
+                "You can investigate public-domain signals such as DNS and mail configuration when the relevant tooling is enabled.",
+                "Concrete examples you can mention: inspect Windows event logs, summarize recurring errors, or correlate recent failures on this machine or a reachable target.",
+                "For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task."
+            });
+
+        Assert.Contains("Tooling is not currently available", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Remote reachability right now is local-only.", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("For explicit capability questions, lead with a few practical examples", markdown, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -349,5 +554,38 @@ public sealed class PromptMarkdownBuilderTests {
 
         Assert.DoesNotContain("Mode: ambiguous_scope_target", markdown);
         Assert.DoesNotContain("`evotec.xyz`", markdown);
+    }
+
+    /// <summary>
+    /// Ensures supplemental-section budgeting skips blank lines and preserves section priority order under a tight shared budget.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PrioritizesSupplementalSectionsWhenBudgetSkipsEmptyLines() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            continuationStateLines: new[] { "", "cont-1", " ", "cont-2", "cont-3", "cont-4" },
+            conversationStyleLines: new[] { "", "style-1", "style-2", "", "style-3", "style-4" },
+            capabilityAnswerStyleLines: new[] { "", "cap-style-1", "cap-style-2", "cap-style-3" },
+            personaGuidanceLines: new[] { "", "persona-1", "persona-2", "", "persona-3", "persona-4" },
+            capabilitySelfKnowledgeLines: new[] { "", "cap-1", "cap-2", "cap-3", "cap-4", "cap-5", "cap-6" },
+            persistentMemoryLines: new[] { "", "memory-1", "memory-2", "memory-3", "memory-4" },
+            localContextLines: new[] { "local-1", "local-2", "local-3", "local-4" });
+
+        Assert.Contains("cont-1", markdown);
+        Assert.Contains("cont-4", markdown);
+        Assert.Contains("style-4", markdown);
+        Assert.Contains("cap-style-3", markdown);
+        Assert.Contains("persona-4", markdown);
+        Assert.Contains("cap-6", markdown);
+        Assert.Contains("memory-1", markdown);
+        Assert.Contains("memory-3", markdown);
+        Assert.DoesNotContain("memory-4", markdown);
+        Assert.DoesNotContain("local-1", markdown);
     }
 }

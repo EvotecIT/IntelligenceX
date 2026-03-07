@@ -79,5 +79,9 @@ public sealed class PromptAssetsTests {
         Assert.Contains("pending question, clarification, or structured follow-up action", markdown, System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ask one short human clarification", markdown, System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Never expose internal routing tokens", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Translate findings into plain human terms", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("actively correlate them into one coherent story", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Separate confirmed findings from hypotheses", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("propose practical next steps grounded in the evidence", markdown, System.StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -128,6 +128,33 @@ Included AD scenario seeds:
 - `IntelligenceX.Chat/scenarios/ad-transport-recovery-no-duplicate-replay-10-turn.json`
 - `IntelligenceX.Chat/scenarios/ad-user-last-logon-przemyslaw-10-turn.json`
 
+Included conversation-style scenario seeds:
+- `IntelligenceX.Chat/scenarios/chat-natural-opener-capability-4-turn.json`
+- `IntelligenceX.Chat/scenarios/chat-persona-dark-humor-4-turn.json`
+- `IntelligenceX.Chat/scenarios/chat-blunt-persona-close-4-turn.json`
+
+Run the conversation-style scenario suite locally:
+
+```powershell
+pwsh .\Build\Run-ChatScenarioSuite.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -Filter "chat-*.json" `
+  -OutDir .\artifacts\chat-scenarios-style
+```
+
+Included analysis-style scenario seeds:
+- `IntelligenceX.Chat/scenarios/analysis-ad-replication-human-synthesis-6-turn.json`
+- `IntelligenceX.Chat/scenarios/analysis-eventlog-human-correlation-5-turn.json`
+
+Run the analysis-style scenario suite locally:
+
+```powershell
+pwsh .\Build\Run-ChatScenarioSuite.ps1 `
+  -ScenarioDir .\IntelligenceX.Chat\scenarios `
+  -Filter "analysis-*.json" `
+  -OutDir .\artifacts\chat-scenarios-analysis
+```
+
 Batch run all built-in AD scenarios locally:
 
 ```powershell

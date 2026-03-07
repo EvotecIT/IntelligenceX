@@ -1,0 +1,36 @@
+{
+  "name": "chat-blunt-persona-close-4-turn",
+  "tags": ["chat", "persona", "capability", "direct", "natural", "strict", "live", "no-tools"],
+  "defaults": {
+    "assert_clean_completion": true
+  },
+  "turns": [
+    {
+      "name": "Set blunt persona",
+      "user": "Talk to me like a blunt sysadmin, not a cheerful bot.",
+      "assert_not_contains": ["Reply with:", "/act ", "AD domain", "Public domain", "wizard", "onboarding"],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Blunt capability answer",
+      "user": "What can you do?",
+      "assert_contains_any": ["AD", "DNS", "logs", "files", "troubleshoot", "investigate"],
+      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "let me know if you'd like", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Still sounds like a person",
+      "user": "Good. Now answer like a person: can you actually help, or are you another dashboard with opinions?",
+      "assert_contains_any": ["help", "check", "look into", "dig into", "investigate", "yes"],
+      "assert_not_contains": ["Active working areas in this session", "Runtime capability handshake", "pack ids", "/act ", "\n1.", "\n2."],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Compact close",
+      "user": "fine",
+      "assert_matches_regex": ["(?s)^.{1,180}$"],
+      "assert_not_contains": ["Reply with:", "/act ", "AD domain", "Public domain", "Runtime capability handshake"],
+      "forbid_tools": ["*"]
+    }
+  ]
+}

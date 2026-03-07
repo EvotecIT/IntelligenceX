@@ -1,0 +1,37 @@
+{
+  "name": "chat-persona-dark-humor-4-turn",
+  "tags": ["chat", "persona", "capability", "humor", "natural", "strict", "live", "no-tools"],
+  "defaults": {
+    "assert_clean_completion": true
+  },
+  "turns": [
+    {
+      "name": "Set session persona",
+      "user": "For this session, be helpful, concise, and use a bit of dark humour when it fits.",
+      "assert_not_contains": ["Reply with:", "/act ", "AD domain", "Public domain", "wizard", "setup wizard"],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Short greeting in persona",
+      "user": "Say hi again in one short line.",
+      "assert_contains_any": ["hello", "hi", "hey"],
+      "assert_matches_regex": ["(?s)^.{1,140}$"],
+      "assert_not_contains": ["Active working areas in this session", "Runtime capability handshake", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Capability answer respects persona",
+      "user": "What can you do for me today?",
+      "assert_contains_any": ["AD", "DNS", "logs", "files", "troubleshoot", "investigate"],
+      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Drier and shorter follow-up",
+      "user": "Make that drier and shorter.",
+      "assert_matches_regex": ["(?s)^.{1,260}$"],
+      "assert_not_contains": ["\n- ", "\n1.", "Active working areas in this session", "Runtime capability handshake", "/act "],
+      "forbid_tools": ["*"]
+    }
+  ]
+}

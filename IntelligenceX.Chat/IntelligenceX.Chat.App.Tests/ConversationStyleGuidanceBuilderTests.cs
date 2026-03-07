@@ -58,6 +58,40 @@ public sealed class ConversationStyleGuidanceBuilderTests {
     }
 
     /// <summary>
+    /// Ensures terse recent user turns produce compact capability-answer guidance.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilityAnswerStyleLines_ReturnsCompactGuidanceForTerseTurns() {
+        var lines = ConversationStyleGuidanceBuilder.BuildCapabilityAnswerStyleLines(new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("User", "What can you do?", DateTime.UtcNow, null),
+            ("Assistant", "I can help with a lot.", DateTime.UtcNow, null),
+            ("User", "Keep it short.", DateTime.UtcNow, null)
+        });
+
+        Assert.Contains(lines, line => line.Contains("2-3 concrete examples", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("one short invitation", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("one short paragraph", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("self-validation demos", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures detailed recent user turns allow slightly richer capability answers without becoming exhaustive.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilityAnswerStyleLines_ReturnsRicherGuidanceForDetailedTurns() {
+        var lines = ConversationStyleGuidanceBuilder.BuildCapabilityAnswerStyleLines(new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("User", "What can you help me with in this environment, and how would you usually approach troubleshooting versus data gathering?", DateTime.UtcNow, null),
+            ("Assistant", "I can help with several things.", DateTime.UtcNow, null),
+            ("User", "I want a practical answer, but enough detail that I can see how you would work rather than just a short list.", DateTime.UtcNow, null)
+        });
+
+        Assert.Contains(lines, line => line.Contains("3-5 concrete examples", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("little rationale", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("avoid exhaustive inventories", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("approach the work", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Ensures long assistant answers are treated as substantive for acknowledgement-style follow-ups.
     /// </summary>
     [Fact]

@@ -1,0 +1,150 @@
+using IntelligenceX.Chat.App;
+using Xunit;
+
+namespace IntelligenceX.Chat.App.Tests;
+
+/// <summary>
+/// Tests for language-light turn-shape detection used by prompt gating.
+/// </summary>
+public sealed class ConversationTurnShapeClassifierTests {
+    /// <summary>
+    /// Ensures natural "what can you do" asks are recognized as assistant-capability questions.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsTrueForNaturalCapabilityAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("What can you do for me today?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures broader capability asks still work when the trailing tokens are not tiny filler words.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsTrueForBroadCapabilityAskWithoutShortTail() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("What capabilities do you have available?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures broad non-English capability asks can still enter capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsTrueForNonEnglishCapabilityAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Co mozesz zrobic dla mnie?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures single-token non-segmented-script capability asks still enter capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsTrueForSingleTokenNonSegmentedCapabilityAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("\u4f60\u80fd\u505a\u4ec0\u4e48\uff1f");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures concrete operational asks are not mistaken for assistant-capability questions.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForConcreteOperationalAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Can you check AD replication health?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures short concrete asks are not widened into generic capability questions.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForShortConcreteTaskAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Can you check logs?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures relaxed broad-question gating does not widen short concrete asks with filler words into capability mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForConcreteTaskAskWithArticle() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Can you check the event logs?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures ordinary short generic questions do not drift into capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForShortGenericQuestion() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("What is this?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures the shared broad-question helper rejects very short generic questions at the exact boundary.
+    /// </summary>
+    [Fact]
+    public void LooksLikeBroadGenericQuestionShape_ReturnsFalseForThreeTokenGenericQuestion() {
+        var tokens = new[] { "What", "is", "this" };
+        var result = ConversationTurnShapeClassifier.LooksLikeBroadGenericQuestionShape("What is this?", tokens);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures explicit model/tool self-report asks are recognized as runtime introspection questions.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForRuntimeSelfReportAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model and tools are you using right now?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures explicit single-cue runtime questions still enter runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForSingleCueRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model are you using?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures regular troubleshooting questions do not trigger runtime introspection handling.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForRegularTaskQuestion() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("Which DC is failing replication?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures declarative runtime-cue text does not accidentally trigger runtime introspection handling.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForDeclarativeRuntimeCueText() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("This model is wrong for the job");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures concrete task turns that mention tool words do not trigger runtime self-report mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForOperationalToolTaskQuestion() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("Can you use the event viewer tool to check errors?");
+
+        Assert.False(result);
+    }
+}
