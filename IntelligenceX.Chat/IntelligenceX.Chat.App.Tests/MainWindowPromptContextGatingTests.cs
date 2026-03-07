@@ -202,15 +202,8 @@ public sealed class MainWindowPromptContextGatingTests {
     /// Ensures explicit capability/runtime meta turns still use the thin request path when no onboarding
     /// or live profile update guidance is actually needed.
     /// </summary>
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public void ShouldUseThinServiceRequestEnvelope_ReturnsTrueForMetaTurnsWithoutOnboardingOrProfileUpdates(
-        bool assistantCapabilityQuestion,
-        bool assistantRuntimeIntrospectionQuestion) {
-        _ = assistantCapabilityQuestion;
-        _ = assistantRuntimeIntrospectionQuestion;
+    [Fact]
+    public void ShouldUseThinServiceRequestEnvelope_ReturnsTrueForMetaTurnsWithoutOnboardingOrProfileUpdates() {
         var result = MainWindow.ShouldUseThinServiceRequestEnvelope(
             includeOnboardingContext: false,
             includeLiveProfileUpdates: false);

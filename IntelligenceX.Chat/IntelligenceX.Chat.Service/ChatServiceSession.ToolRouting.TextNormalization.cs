@@ -25,6 +25,8 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    // Keep this list aligned with the bracketed section labels emitted by PromptMarkdownBuilder.
+    // Thin-envelope request parsing is correctness-sensitive and should stop only on known app-generated sections.
     private static readonly string[] KnownStructuredRequestSectionHeaders = {
         "[Conversation mode]",
         "[Continuation state]",

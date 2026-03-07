@@ -274,18 +274,26 @@ public sealed partial class MainWindow : Window {
     }
 
     private static TranscriptExportFailure PromoteDocxRetryFailureStage(TranscriptExportFailure failure) {
-        return failure.Stage == TranscriptExportStage.DocxWrite
-            ? new TranscriptExportFailure(TranscriptExportStage.DocxWriteWithoutMaterializedVisuals, failure.Message)
+        var remappedStage = RemapDocxRetryStage(failure.Stage);
+        return remappedStage != failure.Stage
+            ? new TranscriptExportFailure(remappedStage, failure.Message)
             : failure;
     }
 
     private static TranscriptExportFallback PromoteDocxRetryFallbackStage(TranscriptExportFallback fallback) {
-        return fallback.Cause.Stage == TranscriptExportStage.DocxWrite
+        var remappedCauseStage = RemapDocxRetryStage(fallback.Cause.Stage);
+        return remappedCauseStage != fallback.Cause.Stage
             ? new TranscriptExportFallback(
                 fallback.Kind,
                 fallback.OutputPath,
-                new TranscriptExportFailure(TranscriptExportStage.DocxWriteWithoutMaterializedVisuals, fallback.Cause.Message))
+                new TranscriptExportFailure(remappedCauseStage, fallback.Cause.Message))
             : fallback;
+    }
+
+    private static TranscriptExportStage RemapDocxRetryStage(TranscriptExportStage stage) {
+        return stage == TranscriptExportStage.DocxWrite
+            ? TranscriptExportStage.DocxWriteWithoutMaterializedVisuals
+            : stage;
     }
 
     private static string EnsureAppIcon() {
