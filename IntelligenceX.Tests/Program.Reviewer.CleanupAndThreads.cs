@@ -426,7 +426,7 @@ internal static partial class Program {
         };
 
         CallAutoResolveStaleThreads(github, fallbackGithub, threads, settings);
-        AssertEqual(1, primaryResolveAttempts, "stale auto-resolve primary resolve attempts");
+        AssertEqual(0, primaryResolveAttempts, "stale auto-resolve primary resolve attempts");
         AssertEqual(1, fallbackResolveAttempts, "stale auto-resolve fallback resolve attempts");
     }
 
@@ -659,6 +659,16 @@ internal static partial class Program {
             new InvalidOperationException("fallback failed"));
         AssertContainsText(message, "primary: primary failed", "thread resolve error includes primary");
         AssertContainsText(message, "fallback: fallback failed", "thread resolve error includes fallback");
+    }
+
+    private static void TestAutoResolvePermissionNoteMentionsWorkflowPermissions() {
+        var emptyMessage = CallBuildAutoResolvePermissionNote(0);
+        AssertEqual(string.Empty, emptyMessage, "auto-resolve permission note omitted when no failures");
+
+        var message = CallBuildAutoResolvePermissionNote(1);
+        AssertContainsText(message, "Workflow permissions", "auto-resolve permission note mentions workflow permissions");
+        AssertContainsText(message, "Read and write permissions", "auto-resolve permission note mentions read/write");
+        AssertContainsText(message, "Pull requests: Read & write", "auto-resolve permission note mentions app pull-request scope");
     }
 
     private static bool TryGetResolveThreadIdFromGraphQlPayload(string body, out string? threadId) {

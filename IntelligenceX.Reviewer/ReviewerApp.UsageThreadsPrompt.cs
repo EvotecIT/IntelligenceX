@@ -66,6 +66,7 @@ public static partial class ReviewerApp {
         var kept = new List<ThreadAssessment>();
         var failed = new List<ThreadAssessment>();
         var evidenceRejected = 0;
+        var permissionDeniedCount = 0;
         var resolveAttempts = 0;
         var sweepResolved = 0;
         foreach (var assessment in assessments) {
@@ -107,6 +108,9 @@ public static partial class ReviewerApp {
                 continue;
             }
             var error = result.Error ?? "unknown error";
+            if (result.PermissionDenied) {
+                permissionDeniedCount++;
+            }
             var failedAssessment = new ThreadAssessment(assessment.Id, "keep", $"{assessment.Reason} (resolve failed: {error})",
                 assessment.Evidence);
             failed.Add(failedAssessment);
@@ -156,6 +160,10 @@ public static partial class ReviewerApp {
             $"missing_ids {missingIdCount}, duplicate_ids {duplicateIdCount}).";
         if (commentPosted) {
             summary += " Triage comment posted.";
+        }
+        var permissionNote = BuildAutoResolvePermissionNote(permissionDeniedCount);
+        if (!string.IsNullOrWhiteSpace(permissionNote)) {
+            summary += Environment.NewLine + permissionNote;
         }
         var fallbackSummary = BuildFallbackTriageSummary(resolved, kept);
         return new ThreadTriageResult(summary, triageBody, fallbackSummary);
@@ -580,7 +588,6 @@ public static partial class ReviewerApp {
     }
 
 }
-
 
 
 

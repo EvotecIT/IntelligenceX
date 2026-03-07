@@ -41,6 +41,8 @@ internal static partial class Program {
         failed += Run("Resolve thread payload parser rejects invalid JSON", TestResolveThreadPayloadParserRejectsInvalidJson);
         failed += Run("Thread resolve integration forbidden detection", TestThreadResolveIntegrationForbiddenDetection);
         failed += Run("Thread resolve error formatting includes fallback", TestThreadResolveErrorFormattingIncludesFallback);
+        failed += Run("Auto-resolve permission note mentions workflow permissions",
+            TestAutoResolvePermissionNoteMentionsWorkflowPermissions);
         failed += Run("Auto-resolve missing inline gate empty set", TestAutoResolveMissingInlineGateAllowsEmptySet);
         failed += Run("Auto-resolve missing inline gate null set", TestAutoResolveMissingInlineGateRejectsNull);
         failed += Run("Auto-resolve missing inline gate empty mapped keys", TestAutoResolveMissingInlineGateRejectsEmptyWhenInlineCommentsPresent);

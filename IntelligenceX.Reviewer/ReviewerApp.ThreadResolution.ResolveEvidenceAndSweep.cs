@@ -233,40 +233,44 @@ public static partial class ReviewerApp {
         return string.IsNullOrWhiteSpace(reason) ? suffix : $"{reason} {suffix}";
     }
 
-    private static async Task<(bool Resolved, string? Error)> TryResolveThreadAsync(GitHubClient github,
+    private static async Task<(bool Resolved, string? Error, bool PermissionDenied)> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
+        var preferredGithub = fallbackGithub ?? github;
+        var secondaryGithub = ReferenceEquals(preferredGithub, github) ? fallbackGithub : github;
         Exception? primaryError;
         try {
-            await github.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
-            return (true, null);
+            await preferredGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+            return (true, null, false);
         } catch (Exception ex) {
             primaryError = ex;
         }
 
         Exception? fallbackError = null;
-        if (fallbackGithub is not null) {
-            // Intentionally attempt fallback for any primary failure:
-            // this avoids leaving addressed threads unresolved when primary token behavior differs from
-            // GITHUB_TOKEN (permissions, intermittent auth, or environment-specific app scopes).
+        if (secondaryGithub is not null) {
+            // Intentionally attempt the secondary client for any primary failure:
+            // this avoids leaving addressed threads unresolved when token behavior differs between the
+            // standard Actions token and a GitHub App installation token.
             try {
-                await fallbackGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
-                return (true, null);
+                await secondaryGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
+                return (true, null, false);
             } catch (Exception ex) {
                 fallbackError = ex;
             }
         }
 
-        var confirmedResolved = await TryConfirmThreadResolvedAsync(fallbackGithub ?? github, github, threadId, cancellationToken)
+        var confirmedResolved = await TryConfirmThreadResolvedAsync(preferredGithub, secondaryGithub, threadId, cancellationToken)
             .ConfigureAwait(false);
         if (confirmedResolved) {
-            return (true, null);
+            return (true, null, false);
         }
 
-        if (IsIntegrationForbidden(primaryError) || (fallbackError is not null && IsIntegrationForbidden(fallbackError))) {
+        var permissionDenied = IsIntegrationForbidden(primaryError) ||
+                               (fallbackError is not null && IsIntegrationForbidden(fallbackError));
+        if (permissionDenied) {
             LogIntegrationForbiddenHint();
         }
 
-        return (false, BuildThreadResolveError(primaryError, fallbackError));
+        return (false, BuildThreadResolveError(primaryError, fallbackError), permissionDenied);
     }
 
     private static async Task<bool> TryConfirmThreadResolvedAsync(GitHubClient preferredGithub,
@@ -308,6 +312,9 @@ public static partial class ReviewerApp {
 
     internal static string BuildThreadResolveErrorForTests(Exception primaryError, Exception? fallbackError) =>
         BuildThreadResolveError(primaryError, fallbackError);
+
+    internal static string BuildAutoResolvePermissionNoteForTests(int permissionDeniedCount) =>
+        BuildAutoResolvePermissionNote(permissionDeniedCount);
 
     private static bool IsIntegrationForbidden(Exception ex) {
         if (HasIntegrationForbiddenToken(ex.Message)) {
@@ -376,11 +383,25 @@ public static partial class ReviewerApp {
             "Hint: Re-authorize or reinstall the GitHub App after permission changes.",
             "Hint: Confirm the app installation includes this repository.",
             "Hint: Ensure the app has Pull requests: Read & write (and Issues: write if needed).",
+            "Hint: In repo Settings -> Actions -> General, set Workflow permissions to Read and write permissions.",
             "Hint: Verify INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY point to the intended app.",
             "Hint: To bypass the app token, remove INTELLIGENCEX_GITHUB_APP_ID/INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY to use GITHUB_TOKEN.",
             "Hint: GITHUB_TOKEN is provided automatically in GitHub Actions; outside Actions set a PAT in GITHUB_TOKEN."
         };
         Console.Error.WriteLine(string.Join(Environment.NewLine, lines));
+    }
+
+    private static string BuildAutoResolvePermissionNote(int permissionDeniedCount) {
+        if (permissionDeniedCount <= 0) {
+            return string.Empty;
+        }
+
+        var threadLabel = permissionDeniedCount == 1 ? "thread" : "threads";
+        return $"Auto-resolve permissions: {permissionDeniedCount} addressed {threadLabel} could not be closed automatically because GitHub denied the integration token."
+               + Environment.NewLine
+               + "Check repo Settings -> Actions -> General -> Workflow permissions and set GITHUB_TOKEN to Read and write permissions."
+               + Environment.NewLine
+               + "Also confirm the IntelligenceX Review GitHub App has Pull requests: Read & write and is installed on this repository.";
     }
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {
