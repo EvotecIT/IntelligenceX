@@ -48,41 +48,6 @@ on:
         required: false
         default: 'native'
         type: string
-      openai_account_id:
-        description: 'Override OpenAI account id for this run'
-        required: false
-        default: ''
-        type: string
-      openai_account_ids:
-        description: 'Override ordered OpenAI account ids (CSV) for this run'
-        required: false
-        default: ''
-        type: string
-      openai_account_rotation:
-        description: 'Override OpenAI account rotation (first-available|round-robin|sticky) for this run'
-        required: false
-        default: ''
-        type: string
-      openai_account_failover:
-        description: 'Override OpenAI account failover (true|false) for this run'
-        required: false
-        default: ''
-        type: string
-      usage_budget_guard:
-        description: 'Override usage budget guard (true|false) for this run'
-        required: false
-        default: ''
-        type: string
-      usage_budget_allow_credits:
-        description: 'Override credits budget allowance (true|false) for this run'
-        required: false
-        default: ''
-        type: string
-      usage_budget_allow_weekly_limit:
-        description: 'Override weekly-limit budget allowance (true|false) for this run'
-        required: false
-        default: ''
-        type: string
       review_config_path:
         description: 'Path to reviewer.json (overrides default .intelligencex/reviewer.json)'
         required: false
@@ -163,26 +128,6 @@ on:
         required: false
         default: 'pr'
         type: string
-      cleanup_require_label:
-        description: 'Require label to trigger cleanup (optional)'
-        required: false
-        default: ''
-        type: string
-      cleanup_min_confidence:
-        description: 'Minimum confidence for auto-edit (0-1)'
-        required: false
-        default: 0.85
-        type: number
-      cleanup_allowed_edits:
-        description: 'Comma-separated allowed edits'
-        required: false
-        default: 'formatting,grammar,title,sections'
-        type: string
-      cleanup_post_edit_comment:
-        description: 'Post comment after auto-edit'
-        required: false
-        default: true
-        type: boolean
 
   workflow_call:
     inputs:
