@@ -27,6 +27,8 @@ internal static partial class Program {
         failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);
         failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
+        failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);
+        failed += Run("OpenAI model catalog normalizes fast mode suffix", TestOpenAiModelCatalogNormalizesFastModeSuffix);
         failed += Run("CLI auth sync-codex help options", TestCliAuthSyncCodexHelpSupportsOptions);
         failed += Run("CLI auth sync-codex missing provider value shows help", TestCliAuthSyncCodexMissingProviderValueShowsHelp);
         failed += Run("CLI models help routes", TestCliModelsHelpRoutes);
@@ -104,6 +106,7 @@ internal static partial class Program {
         failed += Run("Setup args include OpenAI account routing", TestSetupArgsIncludeOpenAiAccountRouting);
         failed += Run("Setup args include OpenAI account routing with primary only",
             TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);
+        failed += Run("Setup args include OpenAI model", TestSetupArgsIncludeOpenAiModel);
         failed += Run("Setup args include review loop policy and strictness",
             TestSetupArgsIncludeReviewLoopPolicyAndStrictness);
         failed += Run("Setup args reject review vision path without vision policy",
@@ -189,6 +192,10 @@ internal static partial class Program {
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
         failed += Run("Setup workflow template includes OpenAI account routing pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
+        failed += Run("Setup workflow template includes OpenAI model pass-through",
+            TestSetupWorkflowTemplateIncludesOpenAiModelPassThrough);
+        failed += Run("Reusable review workflow dispatch includes OpenAI model input",
+            TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput);
         failed += Run("Setup workflow template explicit-secrets includes diagnostics and preflight pass-through",
             TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough);
         failed += Run("Setup workflow template non-explicit secrets uses inherit mode",
@@ -238,6 +245,7 @@ internal static partial class Program {
         failed += Run("Web setup args propagate OpenAI account routing", TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRouting);
         failed += Run("Web setup args propagate OpenAI account routing with primary only",
             TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRoutingWithPrimaryOnly);
+        failed += Run("Web setup args propagate OpenAI model", TestWebSetupBuildSetupArgsPropagatesOpenAiModel);
         failed += Run("Web setup args propagate analysis run strict", TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict);
         failed += Run("Web setup args propagate review config tweaks",
             TestWebSetupBuildSetupArgsPropagatesReviewConfigTweaks);

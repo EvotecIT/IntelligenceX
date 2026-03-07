@@ -104,11 +104,9 @@ internal sealed class AppServerTransport : IOpenAITransport {
     }
 
     private static string NormalizeModel(string? model) {
-        if (string.IsNullOrWhiteSpace(model)) {
-            return string.Empty;
-        }
-        var slash = model!.IndexOf('/');
-        return slash > -1 && slash + 1 < model.Length ? model.Substring(slash + 1) : model;
+        return string.IsNullOrWhiteSpace(model)
+            ? string.Empty
+            : OpenAIModelCatalog.NormalizeModelId(model);
     }
 
     private static JsonArray NormalizeAndFilterReplayInputItems(JsonArray items) {

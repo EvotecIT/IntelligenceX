@@ -13,6 +13,10 @@ on:
         description: 'Pull request number for manual runs'
         required: false
         default: ''
+      openai_model:
+        description: 'Optional OpenAI model override for manual runs'
+        required: false
+        default: ''
       openai_account_id:
         description: 'Override OpenAI account id for this run'
         required: false

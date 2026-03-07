@@ -116,7 +116,7 @@ internal sealed partial class ReviewSettings {
     public IReadOnlyList<string> Focus { get; set; } = Array.Empty<string>();
     public string? Persona { get; set; }
     public string? Notes { get; set; }
-    public string Model { get; set; } = "gpt-5.3-codex";
+    public string Model { get; set; } = OpenAIModelCatalog.DefaultModel;
     public ReasoningEffort? ReasoningEffort { get; set; }
     public ReasoningSummary? ReasoningSummary { get; set; }
     public bool ReviewUsageSummary { get; set; }

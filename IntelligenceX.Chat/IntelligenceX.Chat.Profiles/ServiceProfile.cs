@@ -9,7 +9,7 @@ namespace IntelligenceX.Chat.Profiles;
 /// Serializable session profile (config preset) for the chat service.
 /// </summary>
 internal sealed class ServiceProfile {
-    public string Model { get; set; } = "gpt-5.3-codex";
+    public string Model { get; set; } = "gpt-5.4";
 
     // Provider transport selection and transport-specific settings.
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;

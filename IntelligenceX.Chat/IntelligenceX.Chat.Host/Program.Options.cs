@@ -25,7 +25,7 @@ internal static partial class Program {
     private const int MaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
 
     private sealed class ReplOptions : IToolRuntimePolicySettings, IToolPackRuntimeSettings {
-        public string Model { get; set; } = "gpt-5.3-codex";
+        public string Model { get; set; } = "gpt-5.4";
 
         public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
         public string? OpenAIBaseUrl { get; set; }

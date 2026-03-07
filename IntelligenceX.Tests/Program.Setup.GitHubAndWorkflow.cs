@@ -70,7 +70,7 @@ jobs:
     uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
-      model: gpt-5.3-codex
+      model: gpt-5.4
   __IX_END__
   custom_post:
     runs-on: ubuntu-latest
@@ -114,7 +114,7 @@ jobs:
     uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
-      model: gpt-5.3-codex
+      model: gpt-5.4
 """;
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
@@ -143,6 +143,44 @@ jobs:
             "workflow template usage budget weekly pass-through");
     }
 
+    private static void TestSetupWorkflowTemplateIncludesOpenAiModelPassThrough() {
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    with:
+      provider: openai
+      model: gpt-5.4
+""";
+
+        var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
+
+        AssertContainsText(content, "openai_model:", "workflow template openai model input");
+        AssertContainsText(content, "openai_model: ${{ inputs.openai_model }}",
+            "workflow template openai model pass-through");
+        AssertContainsText(content, "model: gpt-5.4", "workflow template default model updated");
+    }
+
+    private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {
+        var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-reusable.yml");
+        var content = File.ReadAllText(workflowPath);
+
+        AssertContainsText(content, "workflow_dispatch:", "reusable workflow defines workflow_dispatch");
+        AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
+        AssertEqual(2, CountOccurrences(content, "openai_model:"),
+            "reusable workflow defines openai_model for dispatch and workflow_call");
+        AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
+            "reusable workflow should avoid YAML anchors in workflow schema");
+        AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
+            "reusable workflow should avoid YAML aliases in workflow schema");
+    }
+
     private static void TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough() {
         var seed = """
 name: IntelligenceX Review
@@ -156,7 +194,7 @@ jobs:
     uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
-      model: gpt-5.3-codex
+      model: gpt-5.4
 """;
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(new[] {
@@ -184,7 +222,7 @@ jobs:
     uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
     with:
       provider: openai
-      model: gpt-5.3-codex
+      model: gpt-5.4
 """;
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(new[] {

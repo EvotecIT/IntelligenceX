@@ -523,12 +523,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
 
         // Baseline fallback sequence for predictable behavior even when model discovery fails.
-        AddCandidate("gpt-5.3-codex");
-        AddCandidate("gpt-5.3");
-        AddCandidate("gpt-5.2-codex");
-        AddCandidate("gpt-5.2");
-        AddCandidate("gpt-5.1-codex");
-        AddCandidate("gpt-5.1");
+        foreach (var baseline in OpenAIModelCatalog.GetBaselineFallbackModels()) {
+            AddCandidate(baseline);
+        }
 
         // Dynamic discovery can expose account-specific variants (including spark-capable models).
         try {
@@ -540,7 +537,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             // Keep baseline candidates when discovery is unavailable.
         }
 
-        candidates.Sort((left, right) => CompareFallbackPriority(currentModel, left, right));
+        candidates.Sort((left, right) => OpenAIModelCatalog.CompareChatGptFallbackPriority(currentModel, left, right));
         return candidates;
     }
 
@@ -566,43 +563,6 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             }
         }
         return discovered;
-    }
-
-    private static int CompareFallbackPriority(string currentModel, string left, string right) {
-        var leftScore = GetFallbackScore(currentModel, left);
-        var rightScore = GetFallbackScore(currentModel, right);
-        if (leftScore != rightScore) {
-            return rightScore.CompareTo(leftScore);
-        }
-        return string.CompareOrdinal(left, right);
-    }
-
-    private static int GetFallbackScore(string currentModel, string candidate) {
-        var score = 0;
-        var normalized = candidate.ToLowerInvariant();
-        var current = currentModel.ToLowerInvariant();
-
-        if (normalized.IndexOf("codex", StringComparison.Ordinal) >= 0) {
-            score += 40;
-        }
-        if (normalized.IndexOf("gpt-5.3", StringComparison.Ordinal) >= 0) {
-            score += 35;
-        } else if (normalized.IndexOf("gpt-5.2", StringComparison.Ordinal) >= 0) {
-            score += 25;
-        } else if (normalized.IndexOf("gpt-5.1", StringComparison.Ordinal) >= 0) {
-            score += 15;
-        } else if (normalized.IndexOf("gpt-5", StringComparison.Ordinal) >= 0) {
-            score += 10;
-        }
-
-        var currentSpark = current.IndexOf("spark", StringComparison.Ordinal) >= 0;
-        var candidateSpark = normalized.IndexOf("spark", StringComparison.Ordinal) >= 0;
-        if (currentSpark == candidateSpark) {
-            score += 20;
-        } else if (!currentSpark && candidateSpark) {
-            score -= 10;
-        }
-        return score;
     }
 
 }

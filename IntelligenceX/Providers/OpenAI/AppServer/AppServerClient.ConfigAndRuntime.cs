@@ -123,7 +123,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// </remarks>
     /// <example>
     /// <code>
-    /// await client.WriteConfigValueAsync("model", JsonConversion.ToJsonValue("gpt-5.3-codex"), cancellationToken);
+    /// await client.WriteConfigValueAsync("model", JsonConversion.ToJsonValue("gpt-5.4"), cancellationToken);
     /// </code>
     /// </example>
     public Task WriteConfigValueAsync(string key, JsonValue value, CancellationToken cancellationToken = default) {
@@ -144,7 +144,7 @@ public sealed partial class AppServerClient : IDisposable {
     /// <example>
     /// <code>
     /// var entries = new[] {
-    ///     new ConfigEntry("model", JsonConversion.ToJsonValue("gpt-5.3-codex")),
+    ///     new ConfigEntry("model", JsonConversion.ToJsonValue("gpt-5.4")),
     ///     new ConfigEntry("approvalPolicy", JsonConversion.ToJsonValue("on-failure"))
     /// };
     /// await client.WriteConfigBatchAsync(entries, cancellationToken);

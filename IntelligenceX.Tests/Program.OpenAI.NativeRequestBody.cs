@@ -33,7 +33,7 @@ internal static partial class Program {
             PreviousResponseId = "prev_123"
         };
 
-        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.4", messages, "session", chatOptions, customParameters })!;
         var prev = body.GetString("previous_response_id");
         AssertEqual(true, prev is null, "previous_response_id is omitted");
     }
@@ -68,14 +68,14 @@ internal static partial class Program {
             ToolChoice = ToolChoice.Custom("missing_tool")
         };
 
-        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.4", messages, "session", chatOptions, customParameters })!;
         var tools = body.GetArray("tools");
         AssertNotNull(tools, "tools array");
         AssertEqual(2, tools!.Count, "duplicate tool names are de-duplicated");
         AssertEqual("auto", body.GetString("tool_choice") ?? string.Empty, "missing custom tool choice falls back to auto");
 
         chatOptions.ToolChoice = ToolChoice.Custom(" ad_domain_info ");
-        body = (JsonObject)method.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        body = (JsonObject)method.Invoke(transport, new object?[] { "gpt-5.4", messages, "session", chatOptions, customParameters })!;
         var toolChoice = body.GetObject("tool_choice");
         AssertNotNull(toolChoice, "tool_choice object");
         AssertEqual("custom", toolChoice!.GetString("type") ?? string.Empty, "custom choice type");
@@ -114,7 +114,7 @@ internal static partial class Program {
         };
 
         var chatOptions = new ChatOptions();
-        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.4", messages, "session", chatOptions, customParameters })!;
         var input = body.GetArray("input");
         AssertNotNull(input, "input array");
         AssertEqual(2, input!.Count, "input item count");
@@ -176,7 +176,7 @@ internal static partial class Program {
         };
 
         var chatOptions = new ChatOptions();
-        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.4", messages, "session", chatOptions, customParameters })!;
         var input = body.GetArray("input");
         AssertNotNull(input, "input array");
         AssertEqual(2, input!.Count, "only paired replay items are retained");
@@ -219,7 +219,7 @@ internal static partial class Program {
         };
 
         var chatOptions = new ChatOptions();
-        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.4", messages, "session", chatOptions, customParameters })!;
         var input = body.GetArray("input");
         AssertNotNull(input, "input array");
         AssertEqual(2, input!.Count, "type-missing replay item count");
@@ -279,7 +279,7 @@ internal static partial class Program {
         };
 
         var chatOptions = new ChatOptions();
-        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.3-codex", messages, "session", chatOptions, customParameters })!;
+        var body = (JsonObject)method!.Invoke(transport, new object?[] { "gpt-5.4", messages, "session", chatOptions, customParameters })!;
         var input = body.GetArray("input");
         AssertNotNull(input, "input array");
         AssertEqual(3, input!.Count, "deduplicated input item count");

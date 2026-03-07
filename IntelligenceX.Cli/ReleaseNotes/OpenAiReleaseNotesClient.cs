@@ -42,7 +42,7 @@ internal static class OpenAiReleaseNotesClient {
     private static async Task<string> GenerateOnceAsync(string prompt, ReleaseNotesOptions options, CancellationToken cancellationToken) {
         var model = options.Model
                     ?? Environment.GetEnvironmentVariable("OPENAI_MODEL")
-                    ?? "gpt-5.3-codex";
+                    ?? OpenAIModelCatalog.DefaultModel;
         var transport = options.Transport
                         ?? ReleaseNotesOptions.ParseTransportValue(Environment.GetEnvironmentVariable("OPENAI_TRANSPORT"))
                         ?? OpenAITransportKind.AppServer;

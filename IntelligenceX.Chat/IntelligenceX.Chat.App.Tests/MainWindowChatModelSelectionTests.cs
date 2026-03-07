@@ -16,10 +16,10 @@ public sealed class MainWindowChatModelSelectionTests {
         var resolved = MainWindow.ResolveChatRequestModelOverride(
             "native",
             baseUrl: null,
-            configuredModel: "gpt-5.3-codex",
+            configuredModel: "gpt-5.4",
             availableModels: new[] { Model("google/gemma-3-4b", isDefault: true) });
 
-        Assert.Equal("gpt-5.3-codex", resolved);
+        Assert.Equal("gpt-5.4", resolved);
     }
 
     /// <summary>
@@ -30,7 +30,7 @@ public sealed class MainWindowChatModelSelectionTests {
         var resolved = MainWindow.ResolveChatRequestModelOverride(
             "compatible-http",
             "http://127.0.0.1:1234/v1",
-            "gpt-5.3-codex",
+            "gpt-5.4",
             new[] {
                 Model("openai/gpt-oss-20b"),
                 Model("google/gemma-3-4b", isDefault: true)
@@ -47,7 +47,7 @@ public sealed class MainWindowChatModelSelectionTests {
         var resolved = MainWindow.ResolveChatRequestModelOverride(
             "compatible-http",
             "http://127.0.0.1:1234/v1",
-            "gpt-5.3-codex",
+            "gpt-5.4",
             Array.Empty<ModelInfoDto>());
 
         Assert.Null(resolved);
@@ -145,7 +145,7 @@ public sealed class MainWindowChatModelSelectionTests {
         var description = MainWindow.DescribeTurnToolAvailability(
             "native",
             baseUrl: null,
-            selectedModel: "gpt-5.3-codex",
+            selectedModel: "gpt-5.4",
             availableModels: null,
             knownToolCount: 8,
             enabledTools: 0,

@@ -14,7 +14,7 @@ namespace IntelligenceX.PowerShell;
 /// Hashtable values are converted to JSON before sending.</para>
 /// <example>
 ///  <para>Set multiple values at once</para>
-///  <code>Set-IntelligenceXConfigBatch -Values @{ model = "gpt-5.3-codex"; approvalPolicy = "auto" }</code>
+///  <code>Set-IntelligenceXConfigBatch -Values @{ model = "gpt-5.4"; approvalPolicy = "auto" }</code>
 /// </example>
 /// <example>
 ///  <para>Include booleans and nested objects</para>
@@ -22,7 +22,7 @@ namespace IntelligenceX.PowerShell;
 /// </example>
 /// <example>
 ///  <para>Apply a batch, then inspect the effective config</para>
-///  <code>Set-IntelligenceXConfigBatch -Values @{ model = "gpt-5.3-codex"; approvalPolicy = "on-failure" }; (Get-IntelligenceXConfig).Config</code>
+///  <code>Set-IntelligenceXConfigBatch -Values @{ model = "gpt-5.4"; approvalPolicy = "on-failure" }; (Get-IntelligenceXConfig).Config</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Set, "IntelligenceXConfigBatch")]

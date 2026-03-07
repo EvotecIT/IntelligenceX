@@ -7,7 +7,7 @@ $login = Start-IntelligenceXChatGptLogin -Client $client
 Write-Host "Open this URL to login: $($login.AuthUrl)"
 Wait-IntelligenceXLogin -Client $client -LoginId $login.LoginId
 
-$thread = Start-IntelligenceXThread -Client $client -Model 'gpt-5.3-codex'
+$thread = Start-IntelligenceXThread -Client $client -Model 'gpt-5.4'
 Send-IntelligenceXMessage -Client $client -ThreadId $thread.Id -Text 'Hello from PowerShell.'
 
 Disconnect-IntelligenceX -Client $client

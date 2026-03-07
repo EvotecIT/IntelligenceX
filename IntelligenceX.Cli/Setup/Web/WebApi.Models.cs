@@ -91,6 +91,7 @@ internal sealed partial class WebApi {
         public string? AuthB64 { get; set; }
         public string? AuthB64Path { get; set; }
         public string? Provider { get; set; }
+        public string? OpenAIModel { get; set; }
         public string? OpenAIAccountId { get; set; }
         public string? OpenAIAccountIds { get; set; }
         public string? OpenAIAccountRotation { get; set; }

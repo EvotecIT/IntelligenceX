@@ -95,6 +95,10 @@ internal static class SetupArgsBuilder {
             args.Add("--provider");
             args.Add(plan.Provider);
         }
+        if (!string.IsNullOrWhiteSpace(plan.OpenAIModel)) {
+            args.Add("--openai-model");
+            args.Add(plan.OpenAIModel);
+        }
         if (!string.IsNullOrWhiteSpace(plan.OpenAIAccountId)) {
             args.Add("--openai-account-id");
             args.Add(plan.OpenAIAccountId);

@@ -164,6 +164,13 @@ internal static partial class Program {
         AssertEqual("false", args[failoverIndex + 1], "web setup args openai primary-only failover value");
     }
 
+    private static void TestWebSetupBuildSetupArgsPropagatesOpenAiModel() {
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForOpenAiModelTests("gpt-5.4/fast");
+        var modelIndex = Array.IndexOf(args, "--openai-model");
+        AssertEqual(true, modelIndex >= 0, "web setup args openai model flag");
+        AssertEqual("gpt-5.4/fast", args[modelIndex + 1], "web setup args openai model value");
+    }
+
     private static void TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict() {
         var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForAnalysisRunStrictTests(
             analysisEnabled: true,
