@@ -35,8 +35,7 @@ internal static class RuntimeSelfReportSupport {
         builder.AppendLine("- Mention tooling only if the user asked about tooling.");
         builder.AppendLine("- Do not use headings, bullet lists, inventories, or capability maps.");
         builder.AppendLine();
-        builder.AppendLine("User request:");
-        builder.Append(normalizedUserText);
+        builder.Append("user_request_literal: ").AppendLine(EscapePromptLiteral(normalizedUserText));
         return builder.ToString();
     }
 
@@ -77,5 +76,41 @@ internal static class RuntimeSelfReportSupport {
         return normalized.IndexOf("tool", StringComparison.OrdinalIgnoreCase) >= 0
                || normalized.IndexOf("pack", StringComparison.OrdinalIgnoreCase) >= 0
                || normalized.IndexOf("plugin", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string EscapePromptLiteral(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "\"\"";
+        }
+
+        var builder = new StringBuilder(normalized.Length + 8);
+        builder.Append('"');
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            switch (ch) {
+                case '\\':
+                    builder.Append(@"\\");
+                    break;
+                case '"':
+                    builder.Append("\\\"");
+                    break;
+                case '\r':
+                    builder.Append(@"\r");
+                    break;
+                case '\n':
+                    builder.Append(@"\n");
+                    break;
+                case '\t':
+                    builder.Append(@"\t");
+                    break;
+                default:
+                    builder.Append(char.IsControl(ch) ? ' ' : ch);
+                    break;
+            }
+        }
+
+        builder.Append('"');
+        return builder.ToString();
     }
 }

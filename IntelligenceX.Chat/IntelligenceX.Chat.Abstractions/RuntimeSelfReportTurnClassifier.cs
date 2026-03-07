@@ -88,7 +88,7 @@ public static class RuntimeSelfReportTurnClassifier {
         var normalized = (text ?? string.Empty).Trim();
         for (var i = 0; i < normalized.Length; i++) {
             var ch = normalized[i];
-            if (ch is ':' or '\\' or '@' or '_' or '`') {
+            if (ch is ':' or '\\' or '@') {
                 return true;
             }
         }

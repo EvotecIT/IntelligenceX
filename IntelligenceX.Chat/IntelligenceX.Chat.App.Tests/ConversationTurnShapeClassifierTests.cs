@@ -140,6 +140,26 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures compact runtime self-report asks remain valid when runtime cues use common underscore token styles.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForUnderscoreQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model_name are you using?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime self-report asks remain valid when runtime cues are wrapped in inline backticks.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForBacktickQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What `model` are you using?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures compact runtime self-report asks can be tightened into a shorter answer mode.
     /// </summary>
     [Fact]
@@ -219,6 +239,8 @@ public sealed class ConversationTurnShapeClassifierTests {
     [Theory]
     [InlineData("What model/tools for DNS/AD?")]
     [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("What model_name are you using?")]
+    [InlineData("What `model` are you using?")]
     [InlineData("What model are you using?")]
     [InlineData("Can you use the DNS/AD tool output to check replication errors?")]
     [InlineData("This model is wrong for the job")]
