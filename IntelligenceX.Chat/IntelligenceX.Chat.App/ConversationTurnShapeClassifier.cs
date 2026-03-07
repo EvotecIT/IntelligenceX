@@ -144,6 +144,10 @@ internal static class ConversationTurnShapeClassifier {
             return LooksLikeSingleNonSegmentedQuestionToken(tokens[0]);
         }
 
+        if (tokens.Count <= 3) {
+            return false;
+        }
+
         return LooksLikeBroadGenericQuestionShape(text, tokens);
     }
 

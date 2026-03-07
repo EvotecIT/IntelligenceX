@@ -37,15 +37,12 @@ public sealed partial class MainWindow {
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
             ? BuildRuntimeCapabilityContextLines()
             : null;
-        bool? proactiveExecutionEnabled = null;
-        if (_proactiveModeEnabled
-            && ShouldIncludeProactiveExecutionMode(
-                userText,
-                assistantCapabilityQuestion,
-                assistantRuntimeIntrospectionQuestion,
-                recentAssistantAskedQuestion)) {
-            proactiveExecutionEnabled = true;
-        }
+        var proactiveExecutionEnabled = ResolveProactiveExecutionGuidanceMode(
+            _proactiveModeEnabled,
+            userText,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion,
+            recentAssistantAskedQuestion);
 
         return PromptMarkdownBuilder.BuildServiceRequest(
             userText: userText,
@@ -67,6 +64,25 @@ public sealed partial class MainWindow {
             capabilitySelfKnowledgeLines: capabilitySelfKnowledgeLines,
             runtimeCapabilityLines: runtimeCapabilityLines,
             proactiveExecutionEnabled: proactiveExecutionEnabled);
+    }
+
+    internal static bool? ResolveProactiveExecutionGuidanceMode(
+        bool proactiveModeEnabled,
+        string? userText,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion,
+        bool recentAssistantAskedQuestion) {
+        if (!proactiveModeEnabled) {
+            return false;
+        }
+
+        return ShouldIncludeProactiveExecutionMode(
+            userText,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion,
+            recentAssistantAskedQuestion)
+            ? true
+            : null;
     }
 
     internal static bool ShouldIncludeAmbientOnboardingContext(

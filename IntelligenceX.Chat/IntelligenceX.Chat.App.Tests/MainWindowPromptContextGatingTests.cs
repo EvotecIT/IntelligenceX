@@ -90,4 +90,19 @@ public sealed class MainWindowPromptContextGatingTests {
 
         Assert.True(result);
     }
+
+    /// <summary>
+    /// Ensures opt-out sessions still emit explicit disabled proactive-mode guidance.
+    /// </summary>
+    [Fact]
+    public void ResolveProactiveExecutionGuidanceMode_ReturnsFalseWhenProactiveModeIsDisabled() {
+        var result = MainWindow.ResolveProactiveExecutionGuidanceMode(
+            proactiveModeEnabled: false,
+            userText: "Check AD replication health across the remaining DCs.",
+            assistantCapabilityQuestion: false,
+            assistantRuntimeIntrospectionQuestion: false,
+            recentAssistantAskedQuestion: false);
+
+        Assert.False(result);
+    }
 }

@@ -78,6 +78,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures ordinary short generic questions do not drift into capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForShortGenericQuestion() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("What is this?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures explicit model/tool self-report asks are recognized as runtime introspection questions.
     /// </summary>
     [Fact]
