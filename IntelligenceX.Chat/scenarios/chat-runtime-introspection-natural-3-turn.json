@@ -8,9 +8,9 @@
     {
       "name": "Compact runtime self-awareness ask",
       "user": "What model/tools for DNS/AD?",
-      "assert_contains_any": ["model", "runtime", "tool", "tools", "tooling"],
+      "assert_contains_any": ["model", "runtime", "tool", "tools", "tooling", "gpt-5.3-codex"],
       "assert_matches_regex": ["(?is)^(?=.*\\b(model|runtime)\\b)(?=.*\\btool(?:s|ing)?\\b).+$", "(?s)^(?!.*\\r?\\n[-*] )(?!.*\\r?\\n1\\.)(?!.*\\r?\\n2\\.).{1,550}$"],
-      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "pack ids", "/act ", "For this chat runtime:"],
+      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "pack ids", "/act ", "For this chat runtime:", "IntelligenceX runtime model"],
       "forbid_tools": ["*"]
     },
     {
