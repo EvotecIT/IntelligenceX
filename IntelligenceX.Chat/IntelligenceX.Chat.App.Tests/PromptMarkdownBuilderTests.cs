@@ -207,6 +207,27 @@ public sealed class PromptMarkdownBuilderTests {
     }
 
     /// <summary>
+    /// Ensures runtime self-report questions receive a dedicated conversation mode so the answer stays short and human.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesConversationModeForRuntimeIntrospectionQuestion() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model/tools for DNS/AD?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.Contains("[Conversation mode]", markdown);
+        Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
+        Assert.Contains("Answer the runtime or tooling question directly in short human terms", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Prefer one short paragraph by default", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not run live checks", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures runtime introspection can keep capability self-knowledge concise while deferring exact limits to runtime handshake lines.
     /// </summary>
     [Fact]
@@ -229,6 +250,7 @@ public sealed class PromptMarkdownBuilderTests {
             });
 
         Assert.Contains("[Capability self-knowledge]", markdown);
+        Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
         Assert.Contains("[Runtime capability handshake]", markdown);
         Assert.Contains("exact runtime/model/tool limits belong in the runtime capability handshake", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("invite the task", markdown, StringComparison.OrdinalIgnoreCase);

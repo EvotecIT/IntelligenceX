@@ -160,7 +160,8 @@ internal static class ConversationTurnShapeClassifier {
         if (text.Length == 0
             || text.Length > RuntimeQuestionLengthLimit
             || !ContainsQuestionSignal(text)
-            || ContainsLikelyTechnicalPunctuation(text)) {
+            || ContainsBlockedRuntimeMetaPunctuation(text)
+            || ContainsLikelyDomainLikeToken(text)) {
             return false;
         }
 
@@ -169,12 +170,16 @@ internal static class ConversationTurnShapeClassifier {
             return false;
         }
 
-        if (!LooksLikeBroadGenericQuestionShape(text, tokens)) {
+        var runtimeCueMatches = CountRuntimeCueMatches(tokens);
+        if (runtimeCueMatches == 0) {
             return false;
         }
 
-        var runtimeCueMatches = CountRuntimeCueMatches(tokens);
-        return runtimeCueMatches > 0;
+        if (tokens.Count <= 3) {
+            return !LooksLikeConcreteQuestionLead(tokens);
+        }
+
+        return LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms: true);
     }
 
     private static bool ContainsDigit(string text) {
@@ -193,6 +198,18 @@ internal static class ConversationTurnShapeClassifier {
         for (var i = 0; i < normalized.Length; i++) {
             var ch = normalized[i];
             if (ch is ':' or '/' or '\\' or '@' or '_' or '`') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsBlockedRuntimeMetaPunctuation(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (ch is ':' or '\\' or '@' or '_' or '`') {
                 return true;
             }
         }
@@ -262,10 +279,10 @@ internal static class ConversationTurnShapeClassifier {
         return longest;
     }
 
-    internal static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens) {
+    internal static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens, bool allowUppercaseAcronyms = false) {
         ArgumentNullException.ThrowIfNull(tokens);
 
-        if (tokens.Count == 0 || ContainsUppercaseAcronymToken(text)) {
+        if (tokens.Count == 0 || (!allowUppercaseAcronyms && ContainsUppercaseAcronymToken(text))) {
             return false;
         }
 

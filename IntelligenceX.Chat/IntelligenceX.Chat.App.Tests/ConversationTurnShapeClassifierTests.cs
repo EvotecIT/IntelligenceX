@@ -119,6 +119,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures compact enterprise-style runtime asks with slashes and acronyms still enter runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForSlashQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures regular troubleshooting questions do not trigger runtime introspection handling.
     /// </summary>
     [Fact]
@@ -146,5 +156,29 @@ public sealed class ConversationTurnShapeClassifierTests {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("Can you use the event viewer tool to check errors?");
 
         Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures troubleshooting requests with slash-qualified technical scope are not widened into runtime self-report mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForOperationalSlashQualifiedTaskQuestion() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("Can you use the DNS/AD tool output to check replication errors?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures the shared broad-question helper can stay generic for runtime inventory asks when acronym qualifiers are allowed.
+    /// </summary>
+    [Fact]
+    public void LooksLikeBroadGenericQuestionShape_ReturnsTrueForAcronymQualifiedQuestionWhenAllowed() {
+        var tokens = new[] { "What", "model", "tools", "for", "DNS", "AD" };
+        var result = ConversationTurnShapeClassifier.LooksLikeBroadGenericQuestionShape(
+            "What model/tools for DNS/AD?",
+            tokens,
+            allowUppercaseAcronyms: true);
+
+        Assert.True(result);
     }
 }

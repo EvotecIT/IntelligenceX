@@ -34,19 +34,20 @@ public sealed partial class MainWindow {
             lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
         }
 
-        var capabilityCategories = BuildCapabilityCategorySummaries(enabledPackIds);
-        for (var i = 0; i < capabilityCategories.Count; i++) {
-            lines.Add(capabilityCategories[i]);
-        }
-
-        var exampleLines = BuildCapabilityExampleLines(enabledPackIds);
-        for (var i = 0; i < exampleLines.Count; i++) {
-            lines.Add(exampleLines[i]);
-        }
-
         if (runtimeIntrospectionMode) {
+            lines.Add("For runtime self-report, mention only the live tooling or capability areas that are relevant to the user's scope.");
             lines.Add("Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake.");
         } else {
+            var capabilityCategories = BuildCapabilityCategorySummaries(enabledPackIds);
+            for (var i = 0; i < capabilityCategories.Count; i++) {
+                lines.Add(capabilityCategories[i]);
+            }
+
+            var exampleLines = BuildCapabilityExampleLines(enabledPackIds);
+            for (var i = 0; i < exampleLines.Count; i++) {
+                lines.Add(exampleLines[i]);
+            }
+
             lines.Add("For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.");
             lines.Add("When asked what you can do, answer with useful examples and invite the task instead of listing internal identifiers or protocol details.");
         }

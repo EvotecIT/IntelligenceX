@@ -23,6 +23,7 @@ internal static class PromptMarkdownBuilder {
         string AmbiguousTarget,
         bool RequiresEnvelope) {
         internal bool IsAssistantCapabilityQuestion => string.Equals(Id, "assistant_capability_question", StringComparison.Ordinal);
+        internal bool IsAssistantRuntimeIntrospectionQuestion => string.Equals(Id, "assistant_runtime_introspection_question", StringComparison.Ordinal);
         internal bool IsLowContextShortTurn => string.Equals(Id, "low_context_short_turn", StringComparison.Ordinal);
         internal bool IsCompactAnswerToRecentQuestion => string.Equals(Id, "compact_answer_to_recent_question", StringComparison.Ordinal);
         internal bool IsLightPostAnswerReply => string.Equals(Id, "light_post_answer_reply", StringComparison.Ordinal);
@@ -141,6 +142,13 @@ internal static class PromptMarkdownBuilder {
                     .Bullet("Describe how you can help in concise, practical terms before waiting for the actual task.")
                     .Bullet("Do not run live checks, inventory probes, or environment discovery just to prove capability unless the user explicitly asks for verification.")
                     .Bullet("Do not dump low-level runtime details, exhaustive tool lists, or capability snapshots unless the user is explicitly asking about model/runtime/tooling details.");
+            } else if (conversationTurnMode.IsAssistantRuntimeIntrospectionQuestion) {
+                markdown
+                    .Bullet("Answer the runtime or tooling question directly in short human terms instead of sounding like a diagnostics screen.")
+                    .Bullet("Lead with the active model, runtime, or relevant tooling the user asked about, then stop unless they want more detail.")
+                    .Bullet("If the user adds qualifiers like DNS or AD, mention only the relevant tooling for that scope instead of dumping the full inventory.")
+                    .Bullet("Prefer one short paragraph by default; use lists only if the user explicitly asks for a breakdown.")
+                    .Bullet("Do not run live checks, probes, or environment discovery just to answer a self-report question.");
             } else if (conversationTurnMode.IsLowContextShortTurn) {
                 markdown
                     .Bullet("Respond like a real person first; do not front-load menus, onboarding, or scope taxonomies.")
@@ -377,6 +385,10 @@ internal static class PromptMarkdownBuilder {
 
         if (ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(normalized)) {
             return new ConversationTurnMode("assistant_capability_question", string.Empty, RequiresEnvelope: true);
+        }
+
+        if (ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(normalized)) {
+            return new ConversationTurnMode("assistant_runtime_introspection_question", string.Empty, RequiresEnvelope: true);
         }
 
         if (TryExtractSingleDomainLikeToken(normalized, out var ambiguousTarget)) {

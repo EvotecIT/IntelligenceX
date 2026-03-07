@@ -1,0 +1,30 @@
+{
+  "name": "chat-runtime-introspection-natural-3-turn",
+  "tags": ["chat", "runtime", "persona", "natural", "strict", "live", "no-tools"],
+  "defaults": {
+    "assert_clean_completion": true
+  },
+  "turns": [
+    {
+      "name": "Compact runtime self-awareness ask",
+      "user": "What model/tools for DNS/AD?",
+      "assert_contains_any": ["model", "runtime", "tool", "tools", "tooling"],
+      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Keep it short and human",
+      "user": "Short answer. No lists.",
+      "assert_matches_regex": ["(?s)^(?!.*\\r?\\n[-*] )(?!.*\\r?\\n1\\.)(?!.*\\r?\\n2\\.).{1,700}$"],
+      "assert_not_contains": ["Runtime capability handshake", "tool catalogs", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Return to the job naturally",
+      "user": "Back to work then.",
+      "assert_contains_any": ["tell me", "show me", "check", "look into", "dig into", "investigate"],
+      "assert_not_contains": ["Reply with:", "Runtime capability handshake", "/act "],
+      "forbid_tools": ["*"]
+    }
+  ]
+}
