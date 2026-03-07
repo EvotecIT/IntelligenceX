@@ -252,15 +252,52 @@ public sealed partial class MainWindow {
             enabledTools,
             disabledTools);
 
+        return MapCompactToolAvailabilityStatus(detailed);
+    }
+
+    private static string MapCompactToolAvailabilityStatus(string? detailedStatus) {
+        var detailed = (detailedStatus ?? string.Empty).Trim();
+        if (detailed.Length == 0) {
+            return "unknown:unspecified.";
+        }
+
         if (detailed.StartsWith("available", StringComparison.OrdinalIgnoreCase)) {
-            return "available.";
+            if (detailed.IndexOf("provider runtime may enforce additional limits", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "available:provider_runtime_limits.";
+            }
+
+            if (detailed.IndexOf("advertises tool_use", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "available:model_tool_use.";
+            }
+
+            return "available:enabled_tools.";
         }
 
         if (detailed.StartsWith("unavailable", StringComparison.OrdinalIgnoreCase)) {
-            return "unavailable.";
+            if (detailed.IndexOf("all tool packs are disabled", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "unavailable:tool_packs_disabled.";
+            }
+
+            if (detailed.IndexOf("does not advertise tool_use", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "unavailable:model_no_tool_use.";
+            }
+
+            return "unavailable:other.";
         }
 
-        return "unknown.";
+        if (detailed.IndexOf("tool catalog is still loading", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "unknown:catalog_loading.";
+        }
+
+        if (detailed.IndexOf("until a concrete model is selected", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "unknown:model_unselected.";
+        }
+
+        if (detailed.IndexOf("not present in discovered local catalog", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "unknown:model_not_in_catalog.";
+        }
+
+        return "unknown:other.";
     }
 
     private static ModelInfoDto? FindCatalogModel(IReadOnlyList<ModelInfoDto>? availableModels, string model) {

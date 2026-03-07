@@ -140,6 +140,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures compact runtime self-report asks remain valid when users include colon punctuation in a natural meta question.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForColonQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model: gpt-5?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures compact runtime self-report asks remain valid when runtime cues use common underscore token styles.
     /// </summary>
     [Fact]
@@ -239,6 +249,7 @@ public sealed class ConversationTurnShapeClassifierTests {
     [Theory]
     [InlineData("What model/tools for DNS/AD?")]
     [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("What model: gpt-5?")]
     [InlineData("What model_name are you using?")]
     [InlineData("What `model` are you using?")]
     [InlineData("What model are you using?")]

@@ -173,6 +173,57 @@ public sealed class MainWindowChatModelSelectionTests {
         Assert.Contains("catalog", description, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Ensures compact tool availability preserves a reason token when all tool packs are disabled.
+    /// </summary>
+    [Fact]
+    public void DescribeCompactTurnToolAvailability_ReportsDisabledReasonToken() {
+        var description = MainWindow.DescribeCompactTurnToolAvailability(
+            "native",
+            baseUrl: null,
+            selectedModel: "gpt-5.3-codex",
+            availableModels: null,
+            knownToolCount: 8,
+            enabledTools: 0,
+            disabledTools: 8);
+
+        Assert.Equal("unavailable:tool_packs_disabled.", description);
+    }
+
+    /// <summary>
+    /// Ensures compact tool availability preserves a reason token when the local model lacks tool_use support.
+    /// </summary>
+    [Fact]
+    public void DescribeCompactTurnToolAvailability_ReportsModelCapabilityReasonToken() {
+        var description = MainWindow.DescribeCompactTurnToolAvailability(
+            "compatible-http",
+            "http://127.0.0.1:1234/v1",
+            "openai/gpt-oss-20b",
+            new[] { Model("openai/gpt-oss-20b", capabilities: Array.Empty<string>()) },
+            knownToolCount: 4,
+            enabledTools: 4,
+            disabledTools: 0);
+
+        Assert.Equal("unavailable:model_no_tool_use.", description);
+    }
+
+    /// <summary>
+    /// Ensures compact tool availability preserves a reason token while the tool catalog is still loading.
+    /// </summary>
+    [Fact]
+    public void DescribeCompactTurnToolAvailability_ReportsCatalogLoadingReasonToken() {
+        var description = MainWindow.DescribeCompactTurnToolAvailability(
+            "compatible-http",
+            "http://127.0.0.1:1234/v1",
+            selectedModel: null,
+            availableModels: null,
+            knownToolCount: 0,
+            enabledTools: 0,
+            disabledTools: 0);
+
+        Assert.Equal("unknown:catalog_loading.", description);
+    }
+
     private static ModelInfoDto Model(string model, bool isDefault = false, string[]? capabilities = null) {
         return new ModelInfoDto {
             Id = model,
