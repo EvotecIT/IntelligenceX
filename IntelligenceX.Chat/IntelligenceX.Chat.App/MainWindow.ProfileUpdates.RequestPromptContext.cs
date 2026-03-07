@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App.Markdown;
 
 namespace IntelligenceX.Chat.App;
@@ -11,6 +12,7 @@ public sealed partial class MainWindow {
         var effectiveName = GetEffectiveUserName();
         var onboardingInProgress = !_appState.OnboardingCompleted;
         var assistantCapabilityQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
+        var compactAssistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
         var assistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
         var includeOnboardingContext = ShouldIncludeAmbientOnboardingContext(
             userText,
@@ -31,11 +33,14 @@ public sealed partial class MainWindow {
         var recentAssistantAnswerWasSubstantive = ConversationStyleGuidanceBuilder.HasRecentSubstantiveAssistantAnswer(activeConversation.Messages);
         var recentAssistantAskedQuestion = ConversationStyleGuidanceBuilder.HasRecentAssistantQuestion(activeConversation.Messages);
         var memoryContextLines = BuildPersistentMemoryContextLines(userText);
-        var capabilitySelfKnowledgeLines = assistantCapabilityQuestion || assistantRuntimeIntrospectionQuestion
-            ? BuildCapabilitySelfKnowledgeLines(runtimeIntrospectionMode: assistantRuntimeIntrospectionQuestion)
-            : null;
+        var capabilitySelfKnowledgeLines = SelectCapabilitySelfKnowledgeLines(
+            _sessionPolicy,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion);
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
-            ? BuildRuntimeCapabilityContextLines()
+            ? BuildRuntimeCapabilityContextLines(ShouldUseCompactRuntimeCapabilityContext(
+                assistantRuntimeIntrospectionQuestion,
+                compactAssistantRuntimeIntrospectionQuestion))
             : null;
         var proactiveExecutionEnabled = ResolveProactiveExecutionGuidanceMode(
             _proactiveModeEnabled,
@@ -83,6 +88,27 @@ public sealed partial class MainWindow {
             recentAssistantAskedQuestion)
             ? true
             : null;
+    }
+
+    internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
+        SessionPolicyDto? sessionPolicy,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion) {
+        if (assistantCapabilityQuestion) {
+            return BuildCapabilitySelfKnowledgeLines(sessionPolicy, runtimeIntrospectionMode: false);
+        }
+
+        if (assistantRuntimeIntrospectionQuestion) {
+            return BuildCapabilitySelfKnowledgeLines(sessionPolicy, runtimeIntrospectionMode: true);
+        }
+
+        return null;
+    }
+
+    internal static bool ShouldUseCompactRuntimeCapabilityContext(
+        bool assistantRuntimeIntrospectionQuestion,
+        bool compactAssistantRuntimeIntrospectionQuestion) {
+        return assistantRuntimeIntrospectionQuestion && compactAssistantRuntimeIntrospectionQuestion;
     }
 
     internal static bool ShouldIncludeAmbientOnboardingContext(

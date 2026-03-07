@@ -46,7 +46,7 @@ public sealed partial class MainWindow {
         return lines.Count == 0 ? Array.Empty<string>() : lines;
     }
 
-    private IReadOnlyList<string> BuildRuntimeCapabilityContextLines() {
+    private IReadOnlyList<string> BuildRuntimeCapabilityContextLines(bool compactSelfReport = false) {
         var lines = new List<string>();
         var options = BuildChatRequestOptions();
         var selectedModel = options?.Model;
@@ -58,46 +58,64 @@ public sealed partial class MainWindow {
                 ? "copilot-cli"
                 : "native";
         var modelLabel = string.IsNullOrWhiteSpace(selectedModel) ? "(provider default)" : selectedModel.Trim();
-        lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
-        lines.Add("Reasoning effort: " + (string.IsNullOrWhiteSpace(_localProviderReasoningEffort) ? "provider default" : _localProviderReasoningEffort)
-                  + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
-                  + ", verbosity: " + (string.IsNullOrWhiteSpace(_localProviderTextVerbosity) ? "provider default" : _localProviderTextVerbosity)
-                  + ", temperature: " + (_localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default"));
-        lines.Add("Reasoning controls support: " + DescribeLocalProviderReasoningSupport(_localProviderTransport, _localProviderBaseUrl));
-        lines.Add("Tool availability for this turn: "
-                  + DescribeTurnToolAvailability(
-                      _localProviderTransport,
-                      _localProviderBaseUrl,
-                      selectedModel,
-                      _availableModels,
-                      knownToolCount,
-                      enabledTools,
-                      disabledTools));
-        lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
-                  + ", disabled " + disabledTools.ToString(CultureInfo.InvariantCulture));
-        AppendWriteToolCapabilityContextLines(lines);
-        if (options is not null) {
-            lines.Add("Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
-                      + " (" + (options.ParallelToolMode ?? ParallelToolModeAuto) + ")");
-            lines.Add("Max tool rounds: " + options.MaxToolRounds.ToString(CultureInfo.InvariantCulture));
-            lines.Add("Turn timeout: " + (options.TurnTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default")
-                      + "s; tool timeout: " + (options.ToolTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
-            lines.Add("Plan/execute/review loop: "
-                      + (options.PlanExecuteReviewLoop.HasValue ? (options.PlanExecuteReviewLoop.Value ? "enabled" : "disabled") : "default")
-                      + "; max review passes: "
-                      + (options.MaxReviewPasses?.ToString(CultureInfo.InvariantCulture) ?? "default")
-                      + "; model heartbeat: "
-                      + (options.ModelHeartbeatSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+        if (compactSelfReport) {
+            lines.Add("Active runtime for this turn: " + transportLabel + ", model " + modelLabel + ".");
+            lines.Add("Tooling status for this turn: "
+                      + DescribeCompactTurnToolAvailability(
+                          _localProviderTransport,
+                          _localProviderBaseUrl,
+                          selectedModel,
+                          _availableModels,
+                          knownToolCount,
+                          enabledTools,
+                          disabledTools));
+        } else {
+            lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
+            lines.Add("Tool availability for this turn: "
+                      + DescribeTurnToolAvailability(
+                          _localProviderTransport,
+                          _localProviderBaseUrl,
+                          selectedModel,
+                          _availableModels,
+                          knownToolCount,
+                          enabledTools,
+                          disabledTools));
         }
 
-        var queuedTurns = GetQueuedTurnCount();
-        if (queuedTurns > 0) {
-            lines.Add("Queued follow-up turns: " + queuedTurns.ToString(CultureInfo.InvariantCulture));
-        }
-        lines.Add("Queued turn auto-dispatch: " + (_queueAutoDispatchEnabled ? "enabled" : "paused"));
+        if (!compactSelfReport) {
+            lines.Add("Reasoning effort: " + (string.IsNullOrWhiteSpace(_localProviderReasoningEffort) ? "provider default" : _localProviderReasoningEffort)
+                      + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
+                      + ", verbosity: " + (string.IsNullOrWhiteSpace(_localProviderTextVerbosity) ? "provider default" : _localProviderTextVerbosity)
+                      + ", temperature: " + (_localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default"));
+            lines.Add("Reasoning controls support: " + DescribeLocalProviderReasoningSupport(_localProviderTransport, _localProviderBaseUrl));
+            lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
+                      + ", disabled " + disabledTools.ToString(CultureInfo.InvariantCulture));
+            AppendWriteToolCapabilityContextLines(lines);
+            if (options is not null) {
+                lines.Add("Parallel tool execution: " + (options.ParallelTools ? "enabled" : "disabled")
+                          + " (" + (options.ParallelToolMode ?? ParallelToolModeAuto) + ")");
+                lines.Add("Max tool rounds: " + options.MaxToolRounds.ToString(CultureInfo.InvariantCulture));
+                lines.Add("Turn timeout: " + (options.TurnTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default")
+                          + "s; tool timeout: " + (options.ToolTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+                lines.Add("Plan/execute/review loop: "
+                          + (options.PlanExecuteReviewLoop.HasValue ? (options.PlanExecuteReviewLoop.Value ? "enabled" : "disabled") : "default")
+                          + "; max review passes: "
+                          + (options.MaxReviewPasses?.ToString(CultureInfo.InvariantCulture) ?? "default")
+                          + "; model heartbeat: "
+                          + (options.ModelHeartbeatSeconds?.ToString(CultureInfo.InvariantCulture) ?? "default") + "s");
+            }
 
-        lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
-        lines.Add("Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
+            var queuedTurns = GetQueuedTurnCount();
+            if (queuedTurns > 0) {
+                lines.Add("Queued follow-up turns: " + queuedTurns.ToString(CultureInfo.InvariantCulture));
+            }
+            lines.Add("Queued turn auto-dispatch: " + (_queueAutoDispatchEnabled ? "enabled" : "paused"));
+            lines.Add("Proactive execution mode: " + (_proactiveModeEnabled ? "enabled" : "disabled"));
+        }
+
+        if (!compactSelfReport) {
+            lines.Add("Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
+        }
         return lines;
     }
 
@@ -215,6 +233,71 @@ public sealed partial class MainWindow {
         }
 
         return "unavailable (model '" + normalizedModel + "' does not advertise tool_use capability).";
+    }
+
+    internal static string DescribeCompactTurnToolAvailability(
+        string? transport,
+        string? baseUrl,
+        string? selectedModel,
+        IReadOnlyList<ModelInfoDto>? availableModels,
+        int knownToolCount,
+        int enabledTools,
+        int disabledTools) {
+        var detailed = DescribeTurnToolAvailability(
+            transport,
+            baseUrl,
+            selectedModel,
+            availableModels,
+            knownToolCount,
+            enabledTools,
+            disabledTools);
+
+        return MapCompactToolAvailabilityStatus(detailed);
+    }
+
+    private static string MapCompactToolAvailabilityStatus(string? detailedStatus) {
+        var detailed = (detailedStatus ?? string.Empty).Trim();
+        if (detailed.Length == 0) {
+            return "unknown:unspecified.";
+        }
+
+        if (detailed.StartsWith("available", StringComparison.OrdinalIgnoreCase)) {
+            if (detailed.IndexOf("provider runtime may enforce additional limits", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "available:provider_runtime_limits.";
+            }
+
+            if (detailed.IndexOf("advertises tool_use", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "available:model_tool_use.";
+            }
+
+            return "available:enabled_tools.";
+        }
+
+        if (detailed.StartsWith("unavailable", StringComparison.OrdinalIgnoreCase)) {
+            if (detailed.IndexOf("all tool packs are disabled", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "unavailable:tool_packs_disabled.";
+            }
+
+            if (detailed.IndexOf("does not advertise tool_use", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "unavailable:model_no_tool_use.";
+            }
+
+            return "unavailable:other.";
+        }
+
+        if (detailed.IndexOf("tool catalog is still loading", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "unknown:catalog_loading.";
+        }
+
+        if (detailed.IndexOf("until a concrete model is selected", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "unknown:model_unselected.";
+        }
+
+        if (detailed.IndexOf("not present in discovered local catalog", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "unknown:model_not_in_catalog.";
+        }
+
+        return "unknown:other.";
     }
 
     private static ModelInfoDto? FindCatalogModel(IReadOnlyList<ModelInfoDto>? availableModels, string model) {

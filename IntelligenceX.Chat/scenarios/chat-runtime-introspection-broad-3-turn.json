@@ -1,0 +1,30 @@
+{
+  "name": "chat-runtime-introspection-broad-3-turn",
+  "tags": ["chat", "runtime", "persona", "natural", "strict", "live", "no-tools"],
+  "defaults": {
+    "assert_clean_completion": true
+  },
+  "turns": [
+    {
+      "name": "Broader runtime self-awareness ask",
+      "user": "What model and tools are you using right now?",
+      "assert_contains_any": ["model", "runtime", "tool", "tools", "tooling", "gpt-5.3-codex"],
+      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Keep it practical",
+      "user": "Keep it practical, not a brochure.",
+      "assert_matches_regex": ["(?s)^(?!.*\\r?\\n[-*] )(?!.*\\r?\\n1\\.)(?!.*\\r?\\n2\\.).{1,700}$"],
+      "assert_not_contains": ["Runtime capability handshake", "tool catalogs", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    },
+    {
+      "name": "Return to work naturally",
+      "user": "Fine. Back to the actual problem.",
+      "assert_contains_any": ["tell me", "show me", "check", "look into", "dig into", "investigate"],
+      "assert_not_contains": ["Reply with:", "Runtime capability handshake", "/act "],
+      "forbid_tools": ["*"]
+    }
+  ]
+}

@@ -15,7 +15,7 @@
       "name": "Blunt capability answer",
       "user": "What can you do?",
       "assert_contains_any": ["AD", "DNS", "logs", "files", "troubleshoot", "investigate"],
-      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "let me know if you'd like", "/act "],
+      "assert_not_contains": ["I ran live checks", "validated now", "Active working areas in this session", "Runtime capability handshake", "let me know if you'd like", "/act ", "\n- ", "\n1."],
       "forbid_tools": ["*"]
     },
     {

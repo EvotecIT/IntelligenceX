@@ -1,3 +1,4 @@
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -119,6 +120,76 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures compact enterprise-style runtime asks with slashes and acronyms still enter runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForSlashQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures dotted scope qualifiers do not block runtime introspection when the user is still asking about model/tooling.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForDomainQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model/tools for ad.evotec.xyz?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime self-report asks remain valid when users include colon punctuation in a natural meta question.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForColonQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model: gpt-5?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime self-report asks remain valid when runtime cues use common underscore token styles.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForUnderscoreQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model_name are you using?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime self-report asks remain valid when runtime cues are wrapped in inline backticks.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForBacktickQualifiedRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What `model` are you using?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime self-report asks can be tightened into a shorter answer mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsTrueForCompactQualifiedAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures broader runtime inventory asks keep the normal runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsFalseForBroaderRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion("What model and tools are you using right now?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures regular troubleshooting questions do not trigger runtime introspection handling.
     /// </summary>
     [Fact]
@@ -146,5 +217,63 @@ public sealed class ConversationTurnShapeClassifierTests {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("Can you use the event viewer tool to check errors?");
 
         Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures troubleshooting requests with slash-qualified technical scope are not widened into runtime self-report mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForOperationalSlashQualifiedTaskQuestion() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("Can you use the DNS/AD tool output to check replication errors?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures the shared broad-question helper can stay generic for runtime inventory asks when acronym qualifiers are allowed.
+    /// </summary>
+    [Fact]
+    public void LooksLikeBroadGenericQuestionShape_ReturnsTrueForAcronymQualifiedQuestionWhenAllowed() {
+        var tokens = new[] { "What", "model", "tools", "for", "DNS", "AD" };
+        var result = ConversationTurnShapeClassifier.LooksLikeBroadGenericQuestionShape(
+            "What model/tools for DNS/AD?",
+            tokens,
+            allowUppercaseAcronyms: true);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures app-side runtime introspection routing stays aligned with the shared classifier used by host and app.
+    /// </summary>
+    [Theory]
+    [InlineData("What model/tools for DNS/AD?")]
+    [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("What model: gpt-5?")]
+    [InlineData("What model_name are you using?")]
+    [InlineData("What `model` are you using?")]
+    [InlineData("What model are you using?")]
+    [InlineData("Can you use the DNS/AD tool output to check replication errors?")]
+    [InlineData("This model is wrong for the job")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_StaysAlignedWithSharedRuntimeClassifier(string userText) {
+        var appResult = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+        var sharedResult = RuntimeSelfReportTurnClassifier.LooksLikeRuntimeIntrospectionQuestion(userText);
+
+        Assert.Equal(sharedResult, appResult);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime introspection routing stays aligned with the shared classifier used by host and app.
+    /// </summary>
+    [Theory]
+    [InlineData("What model/tools for DNS/AD?")]
+    [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("What model and tools are you using right now?")]
+    [InlineData("Can you use the DNS/AD tool output to check replication errors?")]
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_StaysAlignedWithSharedRuntimeClassifier(string userText) {
+        var appResult = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
+        var sharedResult = RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
+
+        Assert.Equal(sharedResult, appResult);
     }
 }

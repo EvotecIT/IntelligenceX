@@ -121,8 +121,11 @@ internal static partial class Program {
             var noToolExecutionRetryCount = 0;
             var noTextToolOutputDirectRetryUsed = false;
 
-            var input = ChatInput.FromText(text);
             var toolDefs = _registry.GetDefinitions();
+            var inputText = RuntimeSelfReportSupport.LooksLikeCompactRuntimeSelfReportQuestion(text)
+                ? RuntimeSelfReportSupport.BuildCompactRuntimeSelfReportInput(text, _options.OpenAITransport, _options.Model, toolDefs)
+                : text;
+            var input = ChatInput.FromText(inputText);
             var chatOptions = new ChatOptions {
                 Model = _options.Model,
                 Instructions = _instructions,

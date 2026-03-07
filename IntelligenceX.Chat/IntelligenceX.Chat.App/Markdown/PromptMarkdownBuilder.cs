@@ -23,6 +23,8 @@ internal static class PromptMarkdownBuilder {
         string AmbiguousTarget,
         bool RequiresEnvelope) {
         internal bool IsAssistantCapabilityQuestion => string.Equals(Id, "assistant_capability_question", StringComparison.Ordinal);
+        internal bool IsCompactAssistantRuntimeIntrospectionQuestion => string.Equals(Id, "assistant_runtime_introspection_compact", StringComparison.Ordinal);
+        internal bool IsAssistantRuntimeIntrospectionQuestion => string.Equals(Id, "assistant_runtime_introspection_question", StringComparison.Ordinal);
         internal bool IsLowContextShortTurn => string.Equals(Id, "low_context_short_turn", StringComparison.Ordinal);
         internal bool IsCompactAnswerToRecentQuestion => string.Equals(Id, "compact_answer_to_recent_question", StringComparison.Ordinal);
         internal bool IsLightPostAnswerReply => string.Equals(Id, "light_post_answer_reply", StringComparison.Ordinal);
@@ -101,7 +103,8 @@ internal static class PromptMarkdownBuilder {
         IReadOnlyList<string>? trimmedCapabilitySelfKnowledgeLines;
         IReadOnlyList<string>? trimmedRuntimeCapabilityLines;
         if (runtimeCapabilityLines is { Count: > 0 }) {
-            trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, MaxRuntimeCapabilityLines, ref remainingSupplementalLineBudget);
+            var runtimeLineBudget = conversationTurnMode.IsCompactAssistantRuntimeIntrospectionQuestion ? 2 : MaxRuntimeCapabilityLines;
+            trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, runtimeLineBudget, ref remainingSupplementalLineBudget);
             trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, maxLines: 3, ref remainingSupplementalLineBudget);
         } else {
             trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, MaxCapabilitySelfKnowledgeLines, ref remainingSupplementalLineBudget);
@@ -141,6 +144,22 @@ internal static class PromptMarkdownBuilder {
                     .Bullet("Describe how you can help in concise, practical terms before waiting for the actual task.")
                     .Bullet("Do not run live checks, inventory probes, or environment discovery just to prove capability unless the user explicitly asks for verification.")
                     .Bullet("Do not dump low-level runtime details, exhaustive tool lists, or capability snapshots unless the user is explicitly asking about model/runtime/tooling details.");
+            } else if (conversationTurnMode.IsCompactAssistantRuntimeIntrospectionQuestion) {
+                markdown
+                    .Bullet("Answer the runtime or tooling question directly in one or two short human sentences.")
+                    .Bullet("Do not use headings, bullet lists, inventories, or preambles like 'For this chat runtime' unless the user explicitly asks for a breakdown.")
+                    .Bullet("Name only the active model/runtime and the relevant tooling scope the user asked about, then stop.")
+                    .Bullet("If the user adds qualifiers like DNS or AD, mention the relevant tooling in plain language instead of naming internal packs or long tool lists.")
+                    .Bullet("Do not run live checks, probes, or environment discovery just to answer a self-report question.");
+            } else if (conversationTurnMode.IsAssistantRuntimeIntrospectionQuestion) {
+                markdown
+                    .Bullet("Answer the runtime or tooling question directly in short human terms instead of sounding like a diagnostics screen.")
+                    .Bullet("Lead with the active model, runtime, or relevant tooling the user asked about, then stop unless they want more detail.")
+                    .Bullet("If the user adds qualifiers like DNS or AD, mention only the relevant tooling for that scope instead of dumping the full inventory.")
+                    .Bullet("Do not enumerate internal pack names, tool families, or long capability lists unless the user explicitly asks for names or a breakdown.")
+                    .Bullet("For compact meta-questions, prefer one or two short sentences over bullet inventories unless the user explicitly asks for a breakdown.")
+                    .Bullet("Prefer one short paragraph by default; use lists only if the user explicitly asks for a breakdown.")
+                    .Bullet("Do not run live checks, probes, or environment discovery just to answer a self-report question.");
             } else if (conversationTurnMode.IsLowContextShortTurn) {
                 markdown
                     .Bullet("Respond like a real person first; do not front-load menus, onboarding, or scope taxonomies.")
@@ -377,6 +396,14 @@ internal static class PromptMarkdownBuilder {
 
         if (ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(normalized)) {
             return new ConversationTurnMode("assistant_capability_question", string.Empty, RequiresEnvelope: true);
+        }
+
+        if (ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(normalized)) {
+            return new ConversationTurnMode("assistant_runtime_introspection_compact", string.Empty, RequiresEnvelope: true);
+        }
+
+        if (ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(normalized)) {
+            return new ConversationTurnMode("assistant_runtime_introspection_question", string.Empty, RequiresEnvelope: true);
         }
 
         if (TryExtractSingleDomainLikeToken(normalized, out var ambiguousTarget)) {

@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Chat.Abstractions;
 
 namespace IntelligenceX.Chat.App;
 
@@ -12,8 +13,6 @@ internal static class ConversationTurnShapeClassifier {
     private const int FollowUpQuestionTokenLimit = 8;
     private const int CapabilityQuestionLengthLimit = 96;
     private const int CapabilityQuestionTokenLimit = 12;
-    private const int RuntimeQuestionLengthLimit = 120;
-    private const int RuntimeQuestionTokenLimit = 18;
     private const int GenericQuestionLongLetterTokenLength = 10;
     private const int LowContextShortTurnTokenLimit = 3;
     private const int LowContextShortTurnLengthLimit = 24;
@@ -156,25 +155,15 @@ internal static class ConversationTurnShapeClassifier {
     /// This keeps detailed runtime self-reporting opt-in instead of always-on.
     /// </summary>
     internal static bool LooksLikeAssistantRuntimeIntrospectionQuestion(string? userText) {
-        var text = (userText ?? string.Empty).Trim();
-        if (text.Length == 0
-            || text.Length > RuntimeQuestionLengthLimit
-            || !ContainsQuestionSignal(text)
-            || ContainsLikelyTechnicalPunctuation(text)) {
-            return false;
-        }
+        return RuntimeSelfReportTurnClassifier.LooksLikeRuntimeIntrospectionQuestion(userText);
+    }
 
-        var tokens = CollectLetterDigitTokens(text, RuntimeQuestionTokenLimit + 1);
-        if (tokens.Count == 0 || tokens.Count > RuntimeQuestionTokenLimit) {
-            return false;
-        }
-
-        if (!LooksLikeBroadGenericQuestionShape(text, tokens)) {
-            return false;
-        }
-
-        var runtimeCueMatches = CountRuntimeCueMatches(tokens);
-        return runtimeCueMatches > 0;
+    /// <summary>
+    /// Returns <see langword="true"/> when a runtime self-report ask is compact enough that the reply
+    /// should stay to one or two short sentences rather than a broader inventory-style answer.
+    /// </summary>
+    internal static bool LooksLikeCompactAssistantRuntimeIntrospectionQuestion(string? userText) {
+        return RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
     }
 
     private static bool ContainsDigit(string text) {
@@ -262,38 +251,8 @@ internal static class ConversationTurnShapeClassifier {
         return longest;
     }
 
-    internal static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens) {
-        ArgumentNullException.ThrowIfNull(tokens);
-
-        if (tokens.Count == 0 || ContainsUppercaseAcronymToken(text)) {
-            return false;
-        }
-
-        var longLetterTokens = 0;
-        for (var i = 0; i < tokens.Count; i++) {
-            var token = tokens[i];
-            if (token.Length >= GenericQuestionLongLetterTokenLength && IsAllLetters(token)) {
-                longLetterTokens++;
-                if (longLetterTokens >= 2) {
-                    return false;
-                }
-            }
-        }
-
-        if (LooksLikeConcreteQuestionLead(tokens)) {
-            return false;
-        }
-
-        if (tokens.Count <= 3) {
-            return false;
-        }
-
-        if (tokens.Count <= 5) {
-            return HasTrailingShortToken(tokens, trailingTokenWindow: 2, maxTokenLength: 3);
-        }
-
-        return HasTrailingShortToken(tokens, trailingTokenWindow: 2, maxTokenLength: 3)
-               || HasTrailingShortToken(tokens, trailingTokenWindow: 3, maxTokenLength: 3);
+    internal static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens, bool allowUppercaseAcronyms = false) {
+        return RuntimeSelfReportTurnClassifier.LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms);
     }
 
     private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) {
@@ -343,22 +302,6 @@ internal static class ConversationTurnShapeClassifier {
         return tokens;
     }
 
-    private static bool HasTrailingShortToken(IReadOnlyList<string> tokens, int trailingTokenWindow, int maxTokenLength) {
-        ArgumentNullException.ThrowIfNull(tokens);
-
-        if (tokens.Count == 0 || trailingTokenWindow <= 0 || maxTokenLength <= 0) {
-            return false;
-        }
-
-        for (var i = Math.Max(0, tokens.Count - trailingTokenWindow); i < tokens.Count; i++) {
-            if (tokens[i].Length > 0 && tokens[i].Length <= maxTokenLength) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static bool LooksLikeSingleNonSegmentedQuestionToken(string token) {
         var normalized = (token ?? string.Empty).Trim();
         if (normalized.Length < 2) {
@@ -378,30 +321,6 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         return hasNonAsciiLetter;
-    }
-
-    private static bool LooksLikeConcreteQuestionLead(IReadOnlyList<string> tokens) {
-        ArgumentNullException.ThrowIfNull(tokens);
-
-        if (tokens.Count < 4
-            || tokens[0].Length == 0
-            || tokens[0].Length > 3
-            || tokens[1].Length == 0
-            || tokens[1].Length > 3) {
-            return false;
-        }
-
-        var concreteTailTokens = 0;
-        for (var i = 2; i < tokens.Count; i++) {
-            if (tokens[i].Length >= 4) {
-                concreteTailTokens++;
-                if (concreteTailTokens >= 2) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     private static bool ContainsUppercaseAcronymToken(string text) {
@@ -439,20 +358,5 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         return false;
-    }
-
-    private static bool IsAllLetters(string text) {
-        var normalized = (text ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < normalized.Length; i++) {
-            if (!char.IsLetter(normalized[i])) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

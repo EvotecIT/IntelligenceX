@@ -79,8 +79,65 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
             },
             runtimeIntrospectionMode: true);
 
+        Assert.Contains(lines, line => line.Contains("only the live tooling or capability areas", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("Active Directory checks", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(lines, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures the richer category/example lines are still present on normal capability answers.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_NonRuntimeMode_KeepsCategoryAndExampleGuidance() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto { Id = "adplayground", Name = "Active Directory", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                    new ToolPackInfoDto { Id = "dnsclientx", Name = "DnsClientX", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 2,
+                    EnabledPackCount = 2,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 1,
+                    HealthyTools = Array.Empty<string>(),
+                    RemoteReachabilityMode = "remote_capable",
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+                }
+            },
+            runtimeIntrospectionMode: false);
+
+        Assert.Contains(lines, line => line.Contains("Active Directory checks", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures runtime-introspection mode stays informative even when pack metadata has not loaded yet.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_RuntimeIntrospectionMode_AddsSparseMetadataFallback() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false
+            },
+            runtimeIntrospectionMode: true);
+
+        Assert.Contains(lines, line => line.Contains("still sparse", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("runtime or model facts", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

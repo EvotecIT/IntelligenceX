@@ -207,6 +207,28 @@ public sealed class PromptMarkdownBuilderTests {
     }
 
     /// <summary>
+    /// Ensures runtime self-report questions receive a dedicated conversation mode so the answer stays short and human.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesConversationModeForRuntimeIntrospectionQuestion() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model/tools for DNS/AD?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.Contains("[Conversation mode]", markdown);
+        Assert.Contains("Mode: assistant_runtime_introspection_compact", markdown);
+        Assert.Contains("one or two short human sentences", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not use headings, bullet lists, inventories", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mention the relevant tooling in plain language", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not run live checks", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures runtime introspection can keep capability self-knowledge concise while deferring exact limits to runtime handshake lines.
     /// </summary>
     [Fact]
@@ -229,9 +251,35 @@ public sealed class PromptMarkdownBuilderTests {
             });
 
         Assert.Contains("[Capability self-knowledge]", markdown);
+        Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
         Assert.Contains("[Runtime capability handshake]", markdown);
         Assert.Contains("exact runtime/model/tool limits belong in the runtime capability handshake", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("invite the task", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime self-report turns keep only the tight runtime lines instead of the broader handshake payload.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_UsesCompactRuntimeHandshakeBudgetForCompactRuntimeAsk() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model/tools for DNS/AD?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            runtimeCapabilityLines: new[] {
+                "runtime-1",
+                "runtime-2",
+                "runtime-3"
+            });
+
+        Assert.Contains("Mode: assistant_runtime_introspection_compact", markdown);
+        Assert.Contains("runtime-1", markdown, StringComparison.Ordinal);
+        Assert.Contains("runtime-2", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("runtime-3", markdown, StringComparison.Ordinal);
     }
 
     /// <summary>

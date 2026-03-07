@@ -71,6 +71,11 @@ public sealed class PromptAssetsTests {
         Assert.Contains("continue naturally", markdown, System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("recent pacing, directness, and energy level", markdown, System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Match response shape to the user", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("meta questions", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("1-2 short sentences", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("compress them into one plain sentence", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Preferred compact shape example", markdown, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("best tool by task", markdown, System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not append generic follow-up suggestions by default", markdown, System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("end cleanly instead of forcing a follow-up", markdown, System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Avoid generic closing filler", markdown, System.StringComparison.OrdinalIgnoreCase);
