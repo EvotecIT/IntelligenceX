@@ -132,12 +132,16 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         var tokens = CollectLetterDigitTokens(text, CapabilityQuestionTokenLimit + 1);
-        if (tokens.Count < 2 || tokens.Count > CapabilityQuestionTokenLimit) {
+        if (tokens.Count == 0 || tokens.Count > CapabilityQuestionTokenLimit) {
             return false;
         }
 
         if (ContainsUppercaseAcronymToken(text) || CountRuntimeCueMatches(tokens) > 0) {
             return false;
+        }
+
+        if (tokens.Count == 1) {
+            return LooksLikeSingleNonSegmentedQuestionToken(tokens[0]);
         }
 
         return LooksLikeBroadGenericQuestionShape(text, tokens);
@@ -166,15 +170,7 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         var runtimeCueMatches = CountRuntimeCueMatches(tokens);
-        if (runtimeCueMatches >= 2) {
-            return true;
-        }
-
-        if (runtimeCueMatches == 0 || tokens.Count > 3) {
-            return false;
-        }
-
-        return true;
+        return runtimeCueMatches > 0;
     }
 
     private static bool ContainsDigit(string text) {
@@ -357,6 +353,27 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         return false;
+    }
+
+    private static bool LooksLikeSingleNonSegmentedQuestionToken(string token) {
+        var normalized = (token ?? string.Empty).Trim();
+        if (normalized.Length < 2) {
+            return false;
+        }
+
+        var hasNonAsciiLetter = false;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (!char.IsLetter(ch)) {
+                return false;
+            }
+
+            if (ch > 127) {
+                hasNonAsciiLetter = true;
+            }
+        }
+
+        return hasNonAsciiLetter;
     }
 
     private static bool LooksLikeConcreteQuestionLead(IReadOnlyList<string> tokens) {

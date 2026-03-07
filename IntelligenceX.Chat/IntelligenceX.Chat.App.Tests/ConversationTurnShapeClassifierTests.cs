@@ -38,6 +38,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures single-token non-segmented-script capability asks still enter capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsTrueForSingleTokenNonSegmentedCapabilityAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("\u4f60\u80fd\u505a\u4ec0\u4e48\uff1f");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures concrete operational asks are not mistaken for assistant-capability questions.
     /// </summary>
     [Fact]
@@ -73,6 +83,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     [Fact]
     public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForRuntimeSelfReportAsk() {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model and tools are you using right now?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures explicit single-cue runtime questions still enter runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForSingleCueRuntimeAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model are you using?");
 
         Assert.True(result);
     }
