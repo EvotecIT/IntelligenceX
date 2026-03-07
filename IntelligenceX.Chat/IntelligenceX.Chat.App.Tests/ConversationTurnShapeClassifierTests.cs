@@ -88,6 +88,17 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures the shared broad-question helper rejects very short generic questions at the exact boundary.
+    /// </summary>
+    [Fact]
+    public void LooksLikeBroadGenericQuestionShape_ReturnsFalseForThreeTokenGenericQuestion() {
+        var tokens = new[] { "What", "is", "this" };
+        var result = ConversationTurnShapeClassifier.LooksLikeBroadGenericQuestionShape("What is this?", tokens);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures explicit model/tool self-report asks are recognized as runtime introspection questions.
     /// </summary>
     [Fact]

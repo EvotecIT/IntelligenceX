@@ -262,7 +262,7 @@ internal static class ConversationTurnShapeClassifier {
         return longest;
     }
 
-    private static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens) {
+    internal static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens) {
         ArgumentNullException.ThrowIfNull(tokens);
 
         if (tokens.Count == 0 || ContainsUppercaseAcronymToken(text)) {
@@ -285,7 +285,7 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         if (tokens.Count <= 3) {
-            return HasTrailingShortToken(tokens, trailingTokenWindow: tokens.Count, maxTokenLength: 2);
+            return false;
         }
 
         if (tokens.Count <= 5) {
