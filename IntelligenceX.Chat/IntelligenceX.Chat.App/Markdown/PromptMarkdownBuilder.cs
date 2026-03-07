@@ -140,7 +140,7 @@ internal static class PromptMarkdownBuilder {
                     .Bullet("Prefer a few concrete examples of help you can provide right now instead of broad capability taxonomies.")
                     .Bullet("Describe how you can help in concise, practical terms before waiting for the actual task.")
                     .Bullet("Do not run live checks, inventory probes, or environment discovery just to prove capability unless the user explicitly asks for verification.")
-                    .Bullet("Do not dump runtime metadata, tool catalogs, or capability snapshots unless the user is explicitly asking about model/runtime/tooling details.");
+                    .Bullet("Do not dump low-level runtime details, exhaustive tool lists, or capability snapshots unless the user is explicitly asking about model/runtime/tooling details.");
             } else if (conversationTurnMode.IsLowContextShortTurn) {
                 markdown
                     .Bullet("Respond like a real person first; do not front-load menus, onboarding, or scope taxonomies.")

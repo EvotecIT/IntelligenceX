@@ -53,7 +53,7 @@ public sealed partial class MainWindow {
             lines.Add("Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake.");
         } else {
             lines.Add("For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.");
-            lines.Add("When asked what you can do, answer with useful examples and invite the task instead of listing internal pack ids or protocol details.");
+            lines.Add("When asked what you can do, answer with useful examples and invite the task instead of listing internal identifiers or protocol details.");
         }
 
         return lines;

@@ -18,11 +18,31 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures broad non-English capability asks can still enter capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsTrueForNonEnglishCapabilityAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Co mozesz zrobic dla mnie?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures concrete operational asks are not mistaken for assistant-capability questions.
     /// </summary>
     [Fact]
     public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForConcreteOperationalAsk() {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Can you check AD replication health?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures short concrete asks are not widened into generic capability questions.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForShortConcreteTaskAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("Can you check logs?");
 
         Assert.False(result);
     }
@@ -53,6 +73,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     [Fact]
     public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForDeclarativeRuntimeCueText() {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("This model is wrong for the job");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures concrete task turns that mention tool words do not trigger runtime self-report mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForOperationalToolTaskQuestion() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("Can you use the event viewer tool to check errors?");
 
         Assert.False(result);
     }

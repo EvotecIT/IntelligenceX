@@ -148,7 +148,7 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("Answer naturally in human terms", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("few concrete examples", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not run live checks", markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Do not dump runtime metadata", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not dump low-level runtime details", markdown, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -167,7 +167,7 @@ public sealed class PromptMarkdownBuilderTests {
             capabilityAnswerStyleLines: new[] {
                 "For capability questions, answer with 2-3 concrete examples and one short invitation.",
                 "Keep it to one short paragraph or a tight bullet list.",
-                "Do not turn capability answers into environment inventories, tool catalogs, or self-validation demos."
+                "Do not turn capability answers into environment inventories, exhaustive tool lists, or self-validation demos."
             });
 
         Assert.Contains("[Capability answer style]", markdown);
@@ -195,7 +195,7 @@ public sealed class PromptMarkdownBuilderTests {
                 "You can help with Active Directory checks such as users, groups, LDAP lookups, and replication-related investigation.",
                 "Concrete examples you can mention: check AD replication health, find users/groups/computers, or review group membership and LDAP data.",
                 "For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.",
-                "When asked what you can do, answer with useful examples and invite the task instead of listing internal pack ids or protocol details."
+                "When asked what you can do, answer with useful examples and invite the task instead of listing internal identifiers or protocol details."
             });
 
         Assert.Contains("[Capability self-knowledge]", markdown);

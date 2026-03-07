@@ -21,13 +21,6 @@ internal static class ConversationTurnShapeClassifier {
     private const int SubstantiveAssistantTokenFloor = 18;
     private const int SubstantiveAssistantLengthFloor = 120;
     private const int SubstantiveAssistantSentenceFloor = 2;
-    private static readonly string[] AssistantCapabilityQuestionPhrases = {
-        "what can you do",
-        "what do you do",
-        "how can you help",
-        "what can you help with",
-        "what are you able to do"
-    };
     private static readonly string[] AssistantRuntimeCueWords = {
         "model",
         "runtime",
@@ -132,24 +125,23 @@ internal static class ConversationTurnShapeClassifier {
         var text = (userText ?? string.Empty).Trim();
         if (text.Length == 0
             || text.Length > CapabilityQuestionLengthLimit
+            || !ContainsQuestionSignal(text)
             || ContainsDigit(text)
-            || ContainsLikelyTechnicalPunctuation(text)) {
+            || ContainsLikelyTechnicalPunctuation(text)
+            || ContainsLikelyDomainLikeToken(text)) {
             return false;
         }
 
-        var tokenCount = CountLetterDigitTokens(text, CapabilityQuestionTokenLimit + 1);
-        if (tokenCount == 0 || tokenCount > CapabilityQuestionTokenLimit) {
+        var tokens = CollectLetterDigitTokens(text, CapabilityQuestionTokenLimit + 1);
+        if (tokens.Count < 2 || tokens.Count > CapabilityQuestionTokenLimit) {
             return false;
         }
 
-        var normalized = NormalizeForIntentMatch(text);
-        for (var i = 0; i < AssistantCapabilityQuestionPhrases.Length; i++) {
-            if (normalized.Contains(AssistantCapabilityQuestionPhrases[i], StringComparison.Ordinal)) {
-                return true;
-            }
+        if (ContainsUppercaseAcronymToken(text) || CountRuntimeCueMatches(tokens) > 0) {
+            return false;
         }
 
-        return false;
+        return LooksLikeBroadGenericQuestionShape(text, tokens);
     }
 
     /// <summary>
@@ -165,20 +157,25 @@ internal static class ConversationTurnShapeClassifier {
             return false;
         }
 
-        var tokenCount = CountLetterDigitTokens(text, RuntimeQuestionTokenLimit + 1);
-        if (tokenCount == 0 || tokenCount > RuntimeQuestionTokenLimit) {
+        var tokens = CollectLetterDigitTokens(text, RuntimeQuestionTokenLimit + 1);
+        if (tokens.Count == 0 || tokens.Count > RuntimeQuestionTokenLimit) {
             return false;
         }
 
-        var normalized = NormalizeForIntentMatch(text);
-        for (var i = 0; i < AssistantRuntimeCueWords.Length; i++) {
-            var cue = AssistantRuntimeCueWords[i];
-            if (ContainsWholeWord(normalized, cue)) {
-                return true;
-            }
+        if (!LooksLikeBroadGenericQuestionShape(text, tokens)) {
+            return false;
         }
 
-        return false;
+        var runtimeCueMatches = CountRuntimeCueMatches(tokens);
+        if (runtimeCueMatches >= 2) {
+            return true;
+        }
+
+        if (runtimeCueMatches == 0 || tokens.Count > 3) {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool ContainsDigit(string text) {
@@ -266,34 +263,143 @@ internal static class ConversationTurnShapeClassifier {
         return longest;
     }
 
-    private static string NormalizeForIntentMatch(string text) {
-        var normalized = (text ?? string.Empty).Trim().ToLowerInvariant();
-        return string.Join(' ', normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-    }
+    private static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
 
-    private static bool ContainsWholeWord(string text, string word) {
-        if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(word)) {
+        if (tokens.Count == 0 || ContainsUppercaseAcronymToken(text)) {
             return false;
         }
 
-        var expected = word.Trim();
-        var searchIndex = 0;
-        while (searchIndex < text.Length) {
-            var matchIndex = text.IndexOf(expected, searchIndex, StringComparison.Ordinal);
-            if (matchIndex < 0) {
-                return false;
+        var longLetterTokens = 0;
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = tokens[i];
+            if (token.Length >= 8 && IsAllLetters(token)) {
+                longLetterTokens++;
+                if (longLetterTokens >= 2) {
+                    return false;
+                }
             }
+        }
 
-            var beforeOk = matchIndex == 0 || !char.IsLetterOrDigit(text[matchIndex - 1]);
-            var afterIndex = matchIndex + expected.Length;
-            var afterOk = afterIndex >= text.Length || !char.IsLetterOrDigit(text[afterIndex]);
-            if (beforeOk && afterOk) {
+        if (tokens.Count <= 3) {
+            return HasTrailingShortToken(tokens, trailingTokenWindow: tokens.Count, maxTokenLength: 2);
+        }
+
+        return HasTrailingShortToken(tokens, trailingTokenWindow: 2, maxTokenLength: 3);
+    }
+
+    private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        var matches = 0;
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = tokens[i];
+            for (var j = 0; j < AssistantRuntimeCueWords.Length; j++) {
+                if (string.Equals(token, AssistantRuntimeCueWords[j], StringComparison.OrdinalIgnoreCase)) {
+                    matches++;
+                    break;
+                }
+            }
+        }
+
+        return matches;
+    }
+
+    private static List<string> CollectLetterDigitTokens(string text, int maxTokens) {
+        var normalized = (text ?? string.Empty).Trim();
+        var tokens = new List<string>(Math.Max(0, Math.Min(maxTokens, 8)));
+        if (normalized.Length == 0 || maxTokens <= 0) {
+            return tokens;
+        }
+
+        var start = -1;
+        for (var i = 0; i < normalized.Length; i++) {
+            if (char.IsLetterOrDigit(normalized[i])) {
+                if (start < 0) {
+                    start = i;
+                }
+            } else if (start >= 0) {
+                tokens.Add(normalized[start..i]);
+                if (tokens.Count >= maxTokens) {
+                    return tokens;
+                }
+
+                start = -1;
+            }
+        }
+
+        if (start >= 0 && tokens.Count < maxTokens) {
+            tokens.Add(normalized[start..]);
+        }
+
+        return tokens;
+    }
+
+    private static bool HasTrailingShortToken(IReadOnlyList<string> tokens, int trailingTokenWindow, int maxTokenLength) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (tokens.Count == 0 || trailingTokenWindow <= 0 || maxTokenLength <= 0) {
+            return false;
+        }
+
+        for (var i = Math.Max(0, tokens.Count - trailingTokenWindow); i < tokens.Count; i++) {
+            if (tokens[i].Length > 0 && tokens[i].Length <= maxTokenLength) {
                 return true;
             }
-
-            searchIndex = afterIndex;
         }
 
         return false;
+    }
+
+    private static bool ContainsUppercaseAcronymToken(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        var currentLength = 0;
+        var allUppercase = true;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetter(ch)) {
+                currentLength++;
+                allUppercase &= char.IsUpper(ch);
+            } else {
+                if (currentLength is >= 2 and <= 5 && allUppercase) {
+                    return true;
+                }
+
+                currentLength = 0;
+                allUppercase = true;
+            }
+        }
+
+        return currentLength is >= 2 and <= 5 && allUppercase;
+    }
+
+    private static bool ContainsLikelyDomainLikeToken(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        for (var i = 1; i < normalized.Length - 1; i++) {
+            if (normalized[i] != '.') {
+                continue;
+            }
+
+            if (char.IsLetterOrDigit(normalized[i - 1]) && char.IsLetterOrDigit(normalized[i + 1])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsAllLetters(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            if (!char.IsLetter(normalized[i])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

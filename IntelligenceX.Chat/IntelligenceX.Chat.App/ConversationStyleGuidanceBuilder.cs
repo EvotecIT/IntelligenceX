@@ -233,7 +233,7 @@ internal static class ConversationStyleGuidanceBuilder {
             || (averageTokens <= TerseTurnTokenLimit && averageLength <= TerseTurnLengthLimit)) {
             lines.Add("For capability questions, answer with 2-3 concrete examples and one short invitation.");
             lines.Add("Keep it to one short paragraph or a tight bullet list.");
-            lines.Add("Do not turn capability answers into environment inventories, tool catalogs, or self-validation demos.");
+            lines.Add("Do not turn capability answers into environment inventories, exhaustive tool lists, or self-validation demos.");
         } else if (detailedTurns >= Math.Max(1, recentUserTurns.Count / 2)
                    || averageTokens >= DetailedTurnTokenFloor
                    || averageLength >= DetailedTurnLengthFloor) {
