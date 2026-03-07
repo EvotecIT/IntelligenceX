@@ -269,6 +269,8 @@ internal static partial class Program {
         failed += Run("Todo pr-watch consolidation tracker skipped when clean", TestPrWatchConsolidationTrackerIssueSkippedWhenRollupClean);
         failed += Run("Todo pr-watch consolidation tracker publishes when ratios or buckets non-zero",
             TestPrWatchConsolidationTrackerIssuePublishesWhenRatiosOrBucketsNonZero);
+        failed += Run("Todo pr-watch consolidation tracker signals handle missing ratios",
+            TestPrWatchConsolidationTrackerSignalsHandleMissingRatios);
         failed += Run("Todo pr-watch monitor compose source tag appends action", TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent);
         failed += Run("Todo pr-watch monitor compose source tag skips empty action", TestPrWatchMonitorComposeSourceTagSkipsEmptyAction);
         failed += Run("Todo pr-watch monitor resolves event action from payload", TestPrWatchMonitorResolveEventActionFromPayload);

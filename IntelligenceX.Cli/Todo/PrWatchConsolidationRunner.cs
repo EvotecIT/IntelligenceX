@@ -60,6 +60,33 @@ internal static class PrWatchConsolidationRunner {
         List<string> Actions
     );
 
+    internal readonly record struct TrackerSignals(
+        int FailedTargets,
+        int StaleInfraBlocked,
+        int ReviewRequired,
+        int RetryBudgetExhausted,
+        double StaleOpenPrsRatioPct,
+        double ReviewRequiredRatioPct,
+        double RetryBudgetExhaustedRatioPct,
+        double NoProgressRatioPct
+    ) {
+        public bool HasActionableContent =>
+            FailedTargets > 0 ||
+            StaleInfraBlocked > 0 ||
+            ReviewRequired > 0 ||
+            RetryBudgetExhausted > 0 ||
+            StaleOpenPrsRatioPct > 0 ||
+            ReviewRequiredRatioPct > 0 ||
+            RetryBudgetExhaustedRatioPct > 0 ||
+            NoProgressRatioPct > 0;
+    }
+
+    internal readonly record struct TrackerIssueSyncPlan(
+        bool PublishTrackerIssue,
+        JsonObject? CanonicalIssue,
+        IReadOnlyList<JsonObject> IssuesToClose
+    );
+
     public static async Task<int> RunAsync(string[] args) {
         try {
             var options = ParseOptions(args);
@@ -435,6 +462,7 @@ internal static class PrWatchConsolidationRunner {
     }
 
     private static string BuildTrackerBody(Options options, JsonObject rollup, JsonObject metrics) {
+        var signals = ReadTrackerSignals(rollup, metrics);
         var builder = new StringBuilder();
         builder.AppendLine(TrackerMarker(options.Source));
         builder.AppendLine("# IX PR Babysit Rollup Tracker");
@@ -448,18 +476,19 @@ internal static class PrWatchConsolidationRunner {
         builder.AppendLine();
         builder.AppendLine("## Metrics");
         builder.AppendLine($"- Median time-to-unblock proxy (days): {FormatNullable(metrics["successMetrics"] as JsonObject, "medianTimeToUnblockProxyDays")}");
-        builder.AppendLine($"- Stale open PR ratio: {ReadNumberText(metrics["ratiosPct"] as JsonObject, "staleOpenPrs")}%");
-        builder.AppendLine($"- Review-required ratio: {ReadNumberText(metrics["ratiosPct"] as JsonObject, "reviewRequiredPrs")}%");
-        builder.AppendLine($"- No-progress ratio: {ReadNumberText(metrics["ratiosPct"] as JsonObject, "noProgressPrs")}%");
+        builder.AppendLine($"- Stale open PR ratio: {FormatRatio(signals.StaleOpenPrsRatioPct)}%");
+        builder.AppendLine($"- Review-required ratio: {FormatRatio(signals.ReviewRequiredRatioPct)}%");
+        builder.AppendLine($"- No-progress ratio: {FormatRatio(signals.NoProgressRatioPct)}%");
         builder.AppendLine();
         builder.AppendLine("## Buckets");
-        builder.AppendLine($"- Stale infra blockers: {(rollup["staleInfraBlocked"] as JsonArray)?.Count ?? 0}");
-        builder.AppendLine($"- Stuck review-required: {(rollup["reviewRequired"] as JsonArray)?.Count ?? 0}");
-        builder.AppendLine($"- Retry budget exhausted: {(rollup["retryBudgetExhausted"] as JsonArray)?.Count ?? 0}");
+        builder.AppendLine($"- Stale infra blockers: {signals.StaleInfraBlocked}");
+        builder.AppendLine($"- Stuck review-required: {signals.ReviewRequired}");
+        builder.AppendLine($"- Retry budget exhausted: {signals.RetryBudgetExhausted}");
         return builder.ToString();
     }
 
     private static string BuildSummary(Options options, JsonObject rollup, JsonObject metrics, string trackerIssueUrl) {
+        var signals = ReadTrackerSignals(rollup, metrics);
         var builder = new StringBuilder();
         builder.AppendLine("# IX PR Babysit Nightly Consolidation");
         builder.AppendLine();
@@ -475,15 +504,15 @@ internal static class PrWatchConsolidationRunner {
         builder.AppendLine($"- Failed targets: {(rollup["failedTargets"] as JsonArray)?.Count ?? 0}");
         builder.AppendLine();
         builder.AppendLine("## Buckets");
-        builder.AppendLine($"- Stale infra blockers: {(rollup["staleInfraBlocked"] as JsonArray)?.Count ?? 0}");
-        builder.AppendLine($"- Stuck review-required: {(rollup["reviewRequired"] as JsonArray)?.Count ?? 0}");
-        builder.AppendLine($"- Retry budget exhausted: {(rollup["retryBudgetExhausted"] as JsonArray)?.Count ?? 0}");
+        builder.AppendLine($"- Stale infra blockers: {signals.StaleInfraBlocked}");
+        builder.AppendLine($"- Stuck review-required: {signals.ReviewRequired}");
+        builder.AppendLine($"- Retry budget exhausted: {signals.RetryBudgetExhausted}");
         builder.AppendLine();
         builder.AppendLine("## Success metrics");
         builder.AppendLine($"- Median time-to-unblock proxy (days): {FormatNullable(metrics["successMetrics"] as JsonObject, "medianTimeToUnblockProxyDays")}");
-        builder.AppendLine($"- Stale open PR ratio: {ReadNumberText(metrics["ratiosPct"] as JsonObject, "staleOpenPrs")}%");
-        builder.AppendLine($"- Review-required ratio: {ReadNumberText(metrics["ratiosPct"] as JsonObject, "reviewRequiredPrs")}%");
-        builder.AppendLine($"- No-progress ratio: {ReadNumberText(metrics["ratiosPct"] as JsonObject, "noProgressPrs")}%");
+        builder.AppendLine($"- Stale open PR ratio: {FormatRatio(signals.StaleOpenPrsRatioPct)}%");
+        builder.AppendLine($"- Review-required ratio: {FormatRatio(signals.ReviewRequiredRatioPct)}%");
+        builder.AppendLine($"- No-progress ratio: {FormatRatio(signals.NoProgressRatioPct)}%");
         if (!string.IsNullOrWhiteSpace(trackerIssueUrl)) {
             builder.AppendLine();
             builder.AppendLine("## Tracker issue");
@@ -493,19 +522,22 @@ internal static class PrWatchConsolidationRunner {
     }
 
     private static async Task<string> SyncTrackerIssueAsync(Options options, JsonObject rollup, JsonObject metrics) {
-        var actionable = HasActionableTrackerContent(rollup, metrics);
-        var existing = await FindOpenTrackerIssueAsync(options).ConfigureAwait(false);
-        if (!actionable) {
-            if (existing is not null) {
-                await CloseTrackerIssueAsync(options, existing).ConfigureAwait(false);
-            }
+        var existing = await FindOpenTrackerIssuesAsync(options).ConfigureAwait(false);
+        var plan = BuildTrackerIssueSyncPlan(rollup, metrics, existing);
+        foreach (var issue in plan.IssuesToClose) {
+            var closeComment = plan.PublishTrackerIssue
+                ? "Closing automatically because a duplicate tracker issue exists for this source and the oldest open tracker remains the canonical sink."
+                : null;
+            await CloseTrackerIssueAsync(options, issue, closeComment).ConfigureAwait(false);
+        }
+        if (!plan.PublishTrackerIssue) {
             return string.Empty;
         }
 
-        return await UpsertTrackerIssueAsync(options, existing).ConfigureAwait(false);
+        return await UpsertTrackerIssueAsync(options, plan.CanonicalIssue).ConfigureAwait(false);
     }
 
-    private static async Task<JsonObject?> FindOpenTrackerIssueAsync(Options options) {
+    private static async Task<List<JsonObject>> FindOpenTrackerIssuesAsync(Options options) {
         var marker = TrackerMarker(options.Source);
         var (listCode, listOut, listErr) = await GhCli.RunAsync(
             "issue", "list",
@@ -520,7 +552,9 @@ internal static class PrWatchConsolidationRunner {
         var issues = JsonNode.Parse(listOut) as JsonArray ?? new JsonArray();
         return issues
             .OfType<JsonObject>()
-            .FirstOrDefault(issue => ReadString(issue, "body").Contains(marker, StringComparison.Ordinal));
+            .Where(issue => ReadString(issue, "body").Contains(marker, StringComparison.Ordinal))
+            .OrderBy(static issue => ReadInt(issue, "number"))
+            .ToList();
     }
 
     private static async Task<string> UpsertTrackerIssueAsync(Options options, JsonObject? existing) {
@@ -569,12 +603,14 @@ internal static class PrWatchConsolidationRunner {
         return issueUrl;
     }
 
-    private static async Task CloseTrackerIssueAsync(Options options, JsonObject existing) {
+    private static async Task CloseTrackerIssueAsync(Options options, JsonObject existing, string? comment = null) {
         var issueNumber = ReadInt(existing, "number");
-        var title = ReadString(existing, "title");
-        var comment = string.IsNullOrWhiteSpace(title)
-            ? "Closing automatically because the latest PR babysit rollup is clean and no longer needs a tracking issue."
-            : $"Closing automatically because the latest PR babysit rollup for '{title}' is clean and no longer needs a tracking issue.";
+        if (string.IsNullOrWhiteSpace(comment)) {
+            var title = ReadString(existing, "title");
+            comment = string.IsNullOrWhiteSpace(title)
+                ? "Closing automatically because the latest PR babysit rollup is clean and no longer needs a tracking issue."
+                : $"Closing automatically because the latest PR babysit rollup for '{title}' is clean and no longer needs a tracking issue.";
+        }
         var (closeCode, _, closeErr) = await GhCli.RunAsync(
             "issue", "close", issueNumber.ToString(CultureInfo.InvariantCulture),
             "--repo", options.Repo,
@@ -586,22 +622,56 @@ internal static class PrWatchConsolidationRunner {
     }
 
     internal static bool HasActionableTrackerContent(JsonObject rollup, JsonObject metrics) {
-        if ((rollup["failedTargets"] as JsonArray)?.Count > 0) {
-            return true;
-        }
-
-        if (((rollup["staleInfraBlocked"] as JsonArray)?.Count ?? 0) > 0 ||
-            ((rollup["reviewRequired"] as JsonArray)?.Count ?? 0) > 0 ||
-            ((rollup["retryBudgetExhausted"] as JsonArray)?.Count ?? 0) > 0) {
-            return true;
-        }
-
-        var ratios = metrics["ratiosPct"] as JsonObject;
-        return ReadDoubleNullable(ratios, "staleOpenPrs").GetValueOrDefault() > 0 ||
-               ReadDoubleNullable(ratios, "reviewRequiredPrs").GetValueOrDefault() > 0 ||
-               ReadDoubleNullable(ratios, "retryBudgetExhaustedPrs").GetValueOrDefault() > 0 ||
-               ReadDoubleNullable(ratios, "noProgressPrs").GetValueOrDefault() > 0;
+        return ReadTrackerSignals(rollup, metrics).HasActionableContent;
     }
+
+    internal static TrackerSignals ReadTrackerSignalsForTests(JsonObject rollup, JsonObject metrics) =>
+        ReadTrackerSignals(rollup, metrics);
+
+    internal static TrackerIssueSyncPlan BuildTrackerIssueSyncPlanForTests(JsonObject rollup, JsonObject metrics,
+        IReadOnlyList<JsonObject> matchingOpenIssues) =>
+        BuildTrackerIssueSyncPlan(rollup, metrics, matchingOpenIssues);
+
+    private static TrackerSignals ReadTrackerSignals(JsonObject rollup, JsonObject metrics) {
+        var ratios = metrics["ratiosPct"] as JsonObject;
+        return new TrackerSignals(
+            FailedTargets: (rollup["failedTargets"] as JsonArray)?.Count ?? 0,
+            StaleInfraBlocked: (rollup["staleInfraBlocked"] as JsonArray)?.Count ?? 0,
+            ReviewRequired: (rollup["reviewRequired"] as JsonArray)?.Count ?? 0,
+            RetryBudgetExhausted: (rollup["retryBudgetExhausted"] as JsonArray)?.Count ?? 0,
+            StaleOpenPrsRatioPct: ReadDoubleNullable(ratios, "staleOpenPrs").GetValueOrDefault(),
+            ReviewRequiredRatioPct: ReadDoubleNullable(ratios, "reviewRequiredPrs").GetValueOrDefault(),
+            RetryBudgetExhaustedRatioPct: ReadDoubleNullable(ratios, "retryBudgetExhaustedPrs").GetValueOrDefault(),
+            NoProgressRatioPct: ReadDoubleNullable(ratios, "noProgressPrs").GetValueOrDefault());
+    }
+
+    private static TrackerIssueSyncPlan BuildTrackerIssueSyncPlan(JsonObject rollup, JsonObject metrics,
+        IReadOnlyList<JsonObject> matchingOpenIssues) {
+        var orderedIssues = matchingOpenIssues
+            .OrderBy(static issue => ReadInt(issue, "number"))
+            .ToList();
+        var signals = ReadTrackerSignals(rollup, metrics);
+        if (!signals.HasActionableContent) {
+            return new TrackerIssueSyncPlan(
+                PublishTrackerIssue: false,
+                CanonicalIssue: null,
+                IssuesToClose: orderedIssues);
+        }
+
+        var canonicalIssue = orderedIssues.FirstOrDefault();
+        IReadOnlyList<JsonObject> duplicates;
+        if (canonicalIssue is null) {
+            duplicates = Array.Empty<JsonObject>();
+        } else {
+            duplicates = orderedIssues.Skip(1).ToList();
+        }
+        return new TrackerIssueSyncPlan(
+            PublishTrackerIssue: true,
+            CanonicalIssue: canonicalIssue,
+            IssuesToClose: duplicates);
+    }
+
+    private static string FormatRatio(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private static string TrackerMarker(string source) => $"<!-- intelligencex:pr-watch-rollup-tracker:{SanitizeSource(source)} -->";
     private static string SanitizeSource(string source) => string.IsNullOrWhiteSpace(source) ? "default" : new string(source.Select(static c => char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == '.' ? c : '-').ToArray()).Trim('-');
