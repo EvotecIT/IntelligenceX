@@ -143,7 +143,10 @@ public static class RuntimeSelfReportTurnClassifier {
         return tokens;
     }
 
-    private static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens, bool allowUppercaseAcronyms = false) {
+    /// <summary>
+    /// Shared broad-question shape helper used by both runtime and app-side conversational routing.
+    /// </summary>
+    public static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens, bool allowUppercaseAcronyms = false) {
         ArgumentNullException.ThrowIfNull(tokens);
 
         if (tokens.Count == 0 || (!allowUppercaseAcronyms && ContainsUppercaseAcronymToken(text))) {
