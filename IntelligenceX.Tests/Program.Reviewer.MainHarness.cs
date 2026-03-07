@@ -266,6 +266,9 @@ internal static partial class Program {
         failed += Run("Todo pr-watch consolidation source default keeps trimmed explicit source", TestPrWatchConsolidationResolveSourceWithDefaultKeepsTrimmedExplicitSource);
         failed += Run("Todo pr-watch consolidation source default uses event name when source empty", TestPrWatchConsolidationResolveSourceWithDefaultUsesEventNameWhenSourceEmpty);
         failed += Run("Todo pr-watch consolidation source default uses manual_cli when source and event name empty", TestPrWatchConsolidationResolveSourceWithDefaultUsesManualCliWhenSourceAndEventEmpty);
+        failed += Run("Todo pr-watch consolidation tracker skipped when clean", TestPrWatchConsolidationTrackerIssueSkippedWhenRollupClean);
+        failed += Run("Todo pr-watch consolidation tracker publishes when ratios or buckets non-zero",
+            TestPrWatchConsolidationTrackerIssuePublishesWhenRatiosOrBucketsNonZero);
         failed += Run("Todo pr-watch monitor compose source tag appends action", TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent);
         failed += Run("Todo pr-watch monitor compose source tag skips empty action", TestPrWatchMonitorComposeSourceTagSkipsEmptyAction);
         failed += Run("Todo pr-watch monitor resolves event action from payload", TestPrWatchMonitorResolveEventActionFromPayload);

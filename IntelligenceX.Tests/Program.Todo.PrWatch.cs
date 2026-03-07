@@ -275,6 +275,48 @@ internal static partial class Program {
         AssertEqual("manual_cli", source, "empty source and event name should fall back to manual_cli");
     }
 
+    private static void TestPrWatchConsolidationTrackerIssueSkippedWhenRollupClean() {
+        var rollup = new global::System.Text.Json.Nodes.JsonObject {
+            ["failedTargets"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["staleInfraBlocked"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["reviewRequired"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["retryBudgetExhausted"] = new global::System.Text.Json.Nodes.JsonArray()
+        };
+        var metrics = new global::System.Text.Json.Nodes.JsonObject {
+            ["ratiosPct"] = new global::System.Text.Json.Nodes.JsonObject {
+                ["staleOpenPrs"] = 0,
+                ["reviewRequiredPrs"] = 0,
+                ["retryBudgetExhaustedPrs"] = 0,
+                ["noProgressPrs"] = 0
+            }
+        };
+
+        var actionable = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.HasActionableTrackerContent(rollup, metrics);
+        AssertEqual(false, actionable, "clean rollup should not keep a tracker issue open");
+    }
+
+    private static void TestPrWatchConsolidationTrackerIssuePublishesWhenRatiosOrBucketsNonZero() {
+        var rollup = new global::System.Text.Json.Nodes.JsonObject {
+            ["failedTargets"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["staleInfraBlocked"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["reviewRequired"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["retryBudgetExhausted"] = new global::System.Text.Json.Nodes.JsonArray {
+                new global::System.Text.Json.Nodes.JsonObject { ["number"] = 123 }
+            }
+        };
+        var metrics = new global::System.Text.Json.Nodes.JsonObject {
+            ["ratiosPct"] = new global::System.Text.Json.Nodes.JsonObject {
+                ["staleOpenPrs"] = 0,
+                ["reviewRequiredPrs"] = 0,
+                ["retryBudgetExhaustedPrs"] = 0,
+                ["noProgressPrs"] = 4.5
+            }
+        };
+
+        var actionable = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.HasActionableTrackerContent(rollup, metrics);
+        AssertEqual(true, actionable, "non-zero buckets or ratios should keep tracker issue publishing enabled");
+    }
+
     private static void TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent() {
         var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag("pull_request_review", "submitted");
         AssertEqual("pull_request_review:submitted", source, "source tag should append action");

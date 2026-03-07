@@ -105,7 +105,7 @@ internal static class PrWatchConsolidationRunner {
 
             WriteText(options.TrackerPath, BuildTrackerBody(options, rollup, metrics));
             var trackerUrl = options.PublishTrackingIssue
-                ? await UpsertTrackerIssueAsync(options).ConfigureAwait(false)
+                ? await SyncTrackerIssueAsync(options, rollup, metrics).ConfigureAwait(false)
                 : string.Empty;
 
             var summary = BuildSummary(options, rollup, metrics, trackerUrl);
@@ -492,12 +492,21 @@ internal static class PrWatchConsolidationRunner {
         return builder.ToString();
     }
 
-    private static async Task<string> UpsertTrackerIssueAsync(Options options) {
-        var marker = TrackerMarker(options.Source);
-        var title = string.IsNullOrWhiteSpace(options.TrackerIssueTitle)
-            ? $"IX PR Babysit Rollup Tracker ({options.Source})"
-            : options.TrackerIssueTitle;
+    private static async Task<string> SyncTrackerIssueAsync(Options options, JsonObject rollup, JsonObject metrics) {
+        var actionable = HasActionableTrackerContent(rollup, metrics);
+        var existing = await FindOpenTrackerIssueAsync(options).ConfigureAwait(false);
+        if (!actionable) {
+            if (existing is not null) {
+                await CloseTrackerIssueAsync(options, existing).ConfigureAwait(false);
+            }
+            return string.Empty;
+        }
 
+        return await UpsertTrackerIssueAsync(options, existing).ConfigureAwait(false);
+    }
+
+    private static async Task<JsonObject?> FindOpenTrackerIssueAsync(Options options) {
+        var marker = TrackerMarker(options.Source);
         var (listCode, listOut, listErr) = await GhCli.RunAsync(
             "issue", "list",
             "--repo", options.Repo,
@@ -509,9 +518,15 @@ internal static class PrWatchConsolidationRunner {
         }
 
         var issues = JsonNode.Parse(listOut) as JsonArray ?? new JsonArray();
-        var existing = issues
+        return issues
             .OfType<JsonObject>()
             .FirstOrDefault(issue => ReadString(issue, "body").Contains(marker, StringComparison.Ordinal));
+    }
+
+    private static async Task<string> UpsertTrackerIssueAsync(Options options, JsonObject? existing) {
+        var title = string.IsNullOrWhiteSpace(options.TrackerIssueTitle)
+            ? $"IX PR Babysit Rollup Tracker ({options.Source})"
+            : options.TrackerIssueTitle;
 
         string issueUrl;
         int issueNumber;
@@ -552,6 +567,40 @@ internal static class PrWatchConsolidationRunner {
         }
 
         return issueUrl;
+    }
+
+    private static async Task CloseTrackerIssueAsync(Options options, JsonObject existing) {
+        var issueNumber = ReadInt(existing, "number");
+        var title = ReadString(existing, "title");
+        var comment = string.IsNullOrWhiteSpace(title)
+            ? "Closing automatically because the latest PR babysit rollup is clean and no longer needs a tracking issue."
+            : $"Closing automatically because the latest PR babysit rollup for '{title}' is clean and no longer needs a tracking issue.";
+        var (closeCode, _, closeErr) = await GhCli.RunAsync(
+            "issue", "close", issueNumber.ToString(CultureInfo.InvariantCulture),
+            "--repo", options.Repo,
+            "--reason", "completed",
+            "--comment", comment).ConfigureAwait(false);
+        if (closeCode != 0) {
+            throw new InvalidOperationException($"gh issue close failed: {closeErr.Trim()}");
+        }
+    }
+
+    internal static bool HasActionableTrackerContent(JsonObject rollup, JsonObject metrics) {
+        if ((rollup["failedTargets"] as JsonArray)?.Count > 0) {
+            return true;
+        }
+
+        if (((rollup["staleInfraBlocked"] as JsonArray)?.Count ?? 0) > 0 ||
+            ((rollup["reviewRequired"] as JsonArray)?.Count ?? 0) > 0 ||
+            ((rollup["retryBudgetExhausted"] as JsonArray)?.Count ?? 0) > 0) {
+            return true;
+        }
+
+        var ratios = metrics["ratiosPct"] as JsonObject;
+        return ReadDoubleNullable(ratios, "staleOpenPrs").GetValueOrDefault() > 0 ||
+               ReadDoubleNullable(ratios, "reviewRequiredPrs").GetValueOrDefault() > 0 ||
+               ReadDoubleNullable(ratios, "retryBudgetExhaustedPrs").GetValueOrDefault() > 0 ||
+               ReadDoubleNullable(ratios, "noProgressPrs").GetValueOrDefault() > 0;
     }
 
     private static string TrackerMarker(string source) => $"<!-- intelligencex:pr-watch-rollup-tracker:{SanitizeSource(source)} -->";
