@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Host;
 using IntelligenceX.Tools;
 using Xunit;
@@ -9,14 +10,14 @@ namespace IntelligenceX.Chat.Tests;
 public sealed class HostRuntimeSelfReportTests {
     [Fact]
     public void LooksLikeCompactRuntimeSelfReportQuestion_ReturnsTrueForCompactMetaAsk() {
-        var result = RuntimeSelfReportSupport.LooksLikeCompactRuntimeSelfReportQuestion("What model/tools for DNS/AD?");
+        var result = RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
 
         Assert.True(result);
     }
 
     [Fact]
     public void LooksLikeCompactRuntimeSelfReportQuestion_ReturnsFalseForConcreteOperationalAsk() {
-        var result = RuntimeSelfReportSupport.LooksLikeCompactRuntimeSelfReportQuestion("Can you use the DNS/AD tool output to check replication?");
+        var result = RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion("Can you use the DNS/AD tool output to check replication?");
 
         Assert.False(result);
     }

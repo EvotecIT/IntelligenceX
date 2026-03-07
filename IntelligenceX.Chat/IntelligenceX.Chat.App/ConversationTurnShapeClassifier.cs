@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Chat.Abstractions;
 
 namespace IntelligenceX.Chat.App;
 
@@ -12,10 +13,6 @@ internal static class ConversationTurnShapeClassifier {
     private const int FollowUpQuestionTokenLimit = 8;
     private const int CapabilityQuestionLengthLimit = 96;
     private const int CapabilityQuestionTokenLimit = 12;
-    private const int RuntimeQuestionLengthLimit = 120;
-    private const int RuntimeQuestionTokenLimit = 18;
-    private const int CompactRuntimeQuestionLengthLimit = 72;
-    private const int CompactRuntimeQuestionTokenLimit = 7;
     private const int GenericQuestionLongLetterTokenLength = 10;
     private const int LowContextShortTurnTokenLimit = 3;
     private const int LowContextShortTurnLengthLimit = 24;
@@ -158,32 +155,7 @@ internal static class ConversationTurnShapeClassifier {
     /// This keeps detailed runtime self-reporting opt-in instead of always-on.
     /// </summary>
     internal static bool LooksLikeAssistantRuntimeIntrospectionQuestion(string? userText) {
-        var text = (userText ?? string.Empty).Trim();
-        if (text.Length == 0
-            || text.Length > RuntimeQuestionLengthLimit
-            || !ContainsQuestionSignal(text)
-            || ContainsBlockedRuntimeMetaPunctuation(text)) {
-            return false;
-        }
-
-        var tokens = CollectLetterDigitTokens(text, RuntimeQuestionTokenLimit + 1);
-        if (tokens.Count == 0 || tokens.Count > RuntimeQuestionTokenLimit) {
-            return false;
-        }
-
-        var runtimeCueMatches = CountRuntimeCueMatches(tokens);
-        if (runtimeCueMatches == 0) {
-            return false;
-        }
-
-        if (tokens.Count <= 3) {
-            return !LooksLikeConcreteQuestionLead(tokens);
-        }
-
-        // Runtime self-report asks often carry enterprise qualifiers like DNS/AD.
-        // Allow uppercase acronyms here only so those meta-questions are not
-        // misclassified as concrete operational tasks.
-        return LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms: true);
+        return RuntimeSelfReportTurnClassifier.LooksLikeRuntimeIntrospectionQuestion(userText);
     }
 
     /// <summary>
@@ -191,17 +163,7 @@ internal static class ConversationTurnShapeClassifier {
     /// should stay to one or two short sentences rather than a broader inventory-style answer.
     /// </summary>
     internal static bool LooksLikeCompactAssistantRuntimeIntrospectionQuestion(string? userText) {
-        var text = (userText ?? string.Empty).Trim();
-        if (!LooksLikeAssistantRuntimeIntrospectionQuestion(text)) {
-            return false;
-        }
-
-        if (text.Length > CompactRuntimeQuestionLengthLimit) {
-            return false;
-        }
-
-        var tokens = CollectLetterDigitTokens(text, CompactRuntimeQuestionTokenLimit + 1);
-        return tokens.Count > 0 && tokens.Count <= CompactRuntimeQuestionTokenLimit;
+        return RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
     }
 
     private static bool ContainsDigit(string text) {
@@ -220,18 +182,6 @@ internal static class ConversationTurnShapeClassifier {
         for (var i = 0; i < normalized.Length; i++) {
             var ch = normalized[i];
             if (ch is ':' or '/' or '\\' or '@' or '_' or '`') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ContainsBlockedRuntimeMetaPunctuation(string text) {
-        var normalized = (text ?? string.Empty).Trim();
-        for (var i = 0; i < normalized.Length; i++) {
-            var ch = normalized[i];
-            if (ch is ':' or '\\' or '@' or '_' or '`') {
                 return true;
             }
         }
@@ -301,15 +251,6 @@ internal static class ConversationTurnShapeClassifier {
         return longest;
     }
 
-    /// <summary>
-    /// Returns <see langword="true"/> when the question is broad/generic enough for conversational capability or runtime routing.
-    /// </summary>
-    /// <param name="text">Original user text.</param>
-    /// <param name="tokens">Letter/digit tokens extracted from the text.</param>
-    /// <param name="allowUppercaseAcronyms">
-    /// Allows enterprise qualifiers like DNS/AD when the caller already knows the question is meta/self-report oriented.
-    /// Do not enable this for general task routing.
-    /// </param>
     internal static bool LooksLikeBroadGenericQuestionShape(string text, IReadOnlyList<string> tokens, bool allowUppercaseAcronyms = false) {
         ArgumentNullException.ThrowIfNull(tokens);
 

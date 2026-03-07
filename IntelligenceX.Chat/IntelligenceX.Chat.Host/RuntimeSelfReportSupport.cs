@@ -1,37 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.OpenAI;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Host;
 
 internal static class RuntimeSelfReportSupport {
-    private static readonly string[] RuntimeCueWords = {
-        "model",
-        "runtime",
-        "tool",
-        "tools",
-        "tooling",
-        "pack",
-        "packs",
-        "plugin",
-        "plugins",
-        "transport"
-    };
-
     internal static bool LooksLikeCompactRuntimeSelfReportQuestion(string? userText) {
-        var text = (userText ?? string.Empty).Trim();
-        if (text.Length == 0 || text.Length > 72 || !ContainsRuntimeSelfReportQuestionSignal(text)) {
-            return false;
-        }
-
-        var tokens = CollectLetterDigitTokens(text, maxTokens: 8);
-        if (tokens.Count == 0 || tokens.Count > 7) {
-            return false;
-        }
-
-        return CountRuntimeCueMatches(tokens) > 0 && !LooksLikeConcreteOperationalQuestion(tokens);
+        return RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
     }
 
     internal static string BuildCompactRuntimeSelfReportInput(
@@ -95,76 +73,9 @@ internal static class RuntimeSelfReportSupport {
     }
 
     private static bool ContainsToolingCue(string text) {
-        var tokens = CollectLetterDigitTokens(text, maxTokens: 12);
-        return CountRuntimeCueMatches(tokens) > 1;
-    }
-
-    private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) {
-        var matches = 0;
-        for (var i = 0; i < tokens.Count; i++) {
-            for (var j = 0; j < RuntimeCueWords.Length; j++) {
-                if (string.Equals(tokens[i], RuntimeCueWords[j], StringComparison.OrdinalIgnoreCase)) {
-                    matches++;
-                    break;
-                }
-            }
-        }
-
-        return matches;
-    }
-
-    private static bool LooksLikeConcreteOperationalQuestion(IReadOnlyList<string> tokens) {
-        if (tokens.Count < 4 || tokens[0].Length > 3 || tokens[1].Length > 3) {
-            return false;
-        }
-
-        var concreteTailTokens = 0;
-        for (var i = 2; i < tokens.Count; i++) {
-            if (tokens[i].Length >= 4) {
-                concreteTailTokens++;
-                if (concreteTailTokens >= 2) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ContainsRuntimeSelfReportQuestionSignal(string text) {
-        return text.IndexOf('?') >= 0
-               || text.IndexOf('？') >= 0
-               || text.IndexOf('¿') >= 0
-               || text.IndexOf('؟') >= 0;
-    }
-
-    private static List<string> CollectLetterDigitTokens(string text, int maxTokens) {
         var normalized = (text ?? string.Empty).Trim();
-        var tokens = new List<string>(Math.Max(0, Math.Min(maxTokens, 8)));
-        if (normalized.Length == 0 || maxTokens <= 0) {
-            return tokens;
-        }
-
-        var start = -1;
-        for (var i = 0; i < normalized.Length; i++) {
-            if (char.IsLetterOrDigit(normalized[i])) {
-                if (start < 0) {
-                    start = i;
-                }
-            } else if (start >= 0) {
-                tokens.Add(normalized[start..i]);
-                if (tokens.Count >= maxTokens) {
-                    return tokens;
-                }
-
-                start = -1;
-            }
-        }
-
-        if (start >= 0 && tokens.Count < maxTokens) {
-            tokens.Add(normalized[start..]);
-        }
-
-        return tokens;
+        return normalized.IndexOf("tool", StringComparison.OrdinalIgnoreCase) >= 0
+               || normalized.IndexOf("pack", StringComparison.OrdinalIgnoreCase) >= 0
+               || normalized.IndexOf("plugin", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 }

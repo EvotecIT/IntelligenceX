@@ -1,3 +1,4 @@
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -210,5 +211,36 @@ public sealed class ConversationTurnShapeClassifierTests {
             allowUppercaseAcronyms: true);
 
         Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures app-side runtime introspection routing stays aligned with the shared classifier used by host and app.
+    /// </summary>
+    [Theory]
+    [InlineData("What model/tools for DNS/AD?")]
+    [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("What model are you using?")]
+    [InlineData("Can you use the DNS/AD tool output to check replication errors?")]
+    [InlineData("This model is wrong for the job")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_StaysAlignedWithSharedRuntimeClassifier(string userText) {
+        var appResult = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+        var sharedResult = RuntimeSelfReportTurnClassifier.LooksLikeRuntimeIntrospectionQuestion(userText);
+
+        Assert.Equal(sharedResult, appResult);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime introspection routing stays aligned with the shared classifier used by host and app.
+    /// </summary>
+    [Theory]
+    [InlineData("What model/tools for DNS/AD?")]
+    [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("What model and tools are you using right now?")]
+    [InlineData("Can you use the DNS/AD tool output to check replication errors?")]
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_StaysAlignedWithSharedRuntimeClassifier(string userText) {
+        var appResult = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
+        var sharedResult = RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
+
+        Assert.Equal(sharedResult, appResult);
     }
 }

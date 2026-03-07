@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\IntelligenceX.Chat.Abstractions\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\IntelligenceX.Chat.Tooling\IntelligenceX.Chat.Tooling.csproj" />
     <ProjectReference Include="..\IntelligenceX.Chat.Profiles\IntelligenceX.Chat.Profiles.csproj" />
   </ItemGroup>
