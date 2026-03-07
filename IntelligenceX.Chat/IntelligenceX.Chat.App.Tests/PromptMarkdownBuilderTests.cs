@@ -303,6 +303,35 @@ public sealed class PromptMarkdownBuilderTests {
     }
 
     /// <summary>
+    /// Ensures capability self-knowledge trimming preserves negative tooling and reachability status under budget pressure.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PreservesCapabilityStatusLinesUnderBudgetPressure() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What can you do for me today?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilitySelfKnowledgeLines: new[] {
+                "Areas you can help with here include Active Directory, Event Viewer, DnsClientX, System.",
+                "Tooling is not currently available in this session, so answers should stay conversational and reasoning-based.",
+                "Remote reachability right now is local-only.",
+                "You can help with Active Directory checks such as users, groups, LDAP lookups, and domain-controller or replication-related investigation when those tools are enabled.",
+                "You can inspect Windows event logs and correlate system evidence when the session has Event Log tooling available.",
+                "You can investigate public-domain signals such as DNS and mail configuration when the relevant tooling is enabled.",
+                "Concrete examples you can mention: inspect Windows event logs, summarize recurring errors, or correlate recent failures on this machine or a reachable target.",
+                "For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task."
+            });
+
+        Assert.Contains("Tooling is not currently available", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Remote reachability right now is local-only.", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("For explicit capability questions, lead with a few practical examples", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures compact follow-ups with recent transcript context are treated as continuations.
     /// </summary>
     [Fact]

@@ -20,16 +20,6 @@ public sealed partial class MainWindow {
             lines.Add("Areas you can help with here include " + string.Join(", ", enabledPackNames) + ".");
         }
 
-        var capabilityCategories = BuildCapabilityCategorySummaries(enabledPackIds);
-        for (var i = 0; i < capabilityCategories.Count; i++) {
-            lines.Add(capabilityCategories[i]);
-        }
-
-        var exampleLines = BuildCapabilityExampleLines(enabledPackIds);
-        for (var i = 0; i < exampleLines.Count; i++) {
-            lines.Add(exampleLines[i]);
-        }
-
         if (snapshot is not null) {
             if (snapshot.ToolingAvailable) {
                 lines.Add("You can actively use live session tools when the user wants checks, investigation, or data gathering.");
@@ -42,6 +32,16 @@ public sealed partial class MainWindow {
             }
         } else if (enabledPackNames.Count == 0) {
             lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
+        }
+
+        var capabilityCategories = BuildCapabilityCategorySummaries(enabledPackIds);
+        for (var i = 0; i < capabilityCategories.Count; i++) {
+            lines.Add(capabilityCategories[i]);
+        }
+
+        var exampleLines = BuildCapabilityExampleLines(enabledPackIds);
+        for (var i = 0; i < exampleLines.Count; i++) {
+            lines.Add(exampleLines[i]);
         }
 
         if (runtimeIntrospectionMode) {

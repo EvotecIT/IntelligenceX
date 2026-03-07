@@ -84,6 +84,48 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
     }
 
     /// <summary>
+    /// Ensures operational status lines are prioritized ahead of category/example filler so budgeting cannot hide them later.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_PrioritizesToolingAndReachabilityStatus() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto { Id = "adplayground", Name = "Active Directory", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                    new ToolPackInfoDto { Id = "eventlog", Name = "Event Viewer", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                    new ToolPackInfoDto { Id = "dnsclientx", Name = "DnsClientX", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                    new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 12,
+                    EnabledPackCount = 4,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = false,
+                    AllowedRootCount = 1,
+                    HealthyTools = Array.Empty<string>(),
+                    RemoteReachabilityMode = "local_only",
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+                }
+            });
+
+        var toolingIndex = FindLineIndex(lines, "Tooling is not currently available");
+        var reachabilityIndex = FindLineIndex(lines, "Remote reachability right now is local-only.");
+        var exampleIndex = FindLineIndex(lines, "Concrete examples you can mention");
+
+        Assert.True(toolingIndex >= 0);
+        Assert.True(reachabilityIndex >= 0);
+        Assert.True(exampleIndex >= 0);
+        Assert.True(toolingIndex < exampleIndex);
+        Assert.True(reachabilityIndex < exampleIndex);
+    }
+
+    /// <summary>
     /// Ensures capability self-knowledge stays cautious when session policy/tooling data is not ready yet.
     /// </summary>
     [Fact]
@@ -92,5 +134,15 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
 
         Assert.Contains(lines, line => line.Contains("still loading", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("invite the task", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int FindLineIndex(IReadOnlyList<string> lines, string expectedFragment) {
+        for (var i = 0; i < lines.Count; i++) {
+            if (lines[i].Contains(expectedFragment, StringComparison.OrdinalIgnoreCase)) {
+                return i;
+            }
+        }
+
+        return -1;
     }
 }
