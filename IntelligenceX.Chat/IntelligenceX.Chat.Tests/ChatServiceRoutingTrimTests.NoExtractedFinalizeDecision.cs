@@ -147,6 +147,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveNoExtractedFinalizeReviewDecisionForTesting_RequiresRequestedArtifactEvenOnFollowUpTurn() {
+        var assistantDraft = """
+            Replication is healthy across all discovered controllers.
+            LDAP checks passed on the FQDN endpoints.
+            """;
+
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeReviewDecisionForTesting(
+            noResultWatchdogTriggered: false,
+            planExecuteReviewLoop: false,
+            maxReviewPasses: 1,
+            reviewPassesUsed: 0,
+            userRequest: "Could you show me a table and diagram for replication?",
+            assistantDraft: assistantDraft,
+            executionContractApplies: false,
+            hasToolActivity: true,
+            proactiveModeEnabled: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true);
+
+        Assert.Equal("ProactiveFollowUpReview", result.Kind);
+        Assert.Equal("allow_requested_artifact_missing", result.Reason);
+        Assert.Equal(0, result.ReviewPassNumber);
+    }
+
+    [Fact]
     public void ResolveNoExtractedFinalizeNoTextDecisionForTesting_SelectsToolOutputSynthesisRetry() {
         var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextDecisionForTesting(
             noTextToolOutputDirectRetryUsed: false,

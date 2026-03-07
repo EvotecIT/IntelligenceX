@@ -10,6 +10,11 @@ public sealed partial class MainWindow {
         var activeConversation = GetActiveConversation();
         var effectivePersona = GetEffectiveAssistantPersona();
         var effectiveName = GetEffectiveUserName();
+        var profileIntent = ParseUserProfileIntent(userText);
+        var includeLiveProfileUpdates = ShouldIncludeLiveProfileUpdates(
+            profileIntent.HasUserName,
+            profileIntent.HasAssistantPersona,
+            profileIntent.HasThemePreset);
         var onboardingInProgress = !_appState.OnboardingCompleted;
         var assistantCapabilityQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
         var compactAssistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
@@ -19,6 +24,22 @@ public sealed partial class MainWindow {
             onboardingInProgress,
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion);
+        var memoryContextLines = BuildPersistentMemoryContextLines(userText);
+        var shouldUseThinRequestEnvelope = ShouldUseThinServiceRequestEnvelope(
+            includeOnboardingContext,
+            includeLiveProfileUpdates,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion);
+
+        if (shouldUseThinRequestEnvelope) {
+            return PromptMarkdownBuilder.BuildThinServiceRequest(
+                userText: userText,
+                effectiveName: effectiveName,
+                effectivePersona: effectivePersona,
+                persistentMemoryLines: memoryContextLines,
+                persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty);
+        }
+
         IReadOnlyList<string> missingFields = includeOnboardingContext ? BuildMissingOnboardingFields() : Array.Empty<string>();
         var localContextLines = BuildLocalContextFallbackLines(activeConversation, userText);
         var conversationStyleLines = ConversationStyleGuidanceBuilder.BuildRecentUserStyleLines(activeConversation.Messages);
@@ -32,7 +53,6 @@ public sealed partial class MainWindow {
             activeConversation.PendingAssistantQuestionHint);
         var recentAssistantAnswerWasSubstantive = ConversationStyleGuidanceBuilder.HasRecentSubstantiveAssistantAnswer(activeConversation.Messages);
         var recentAssistantAskedQuestion = ConversationStyleGuidanceBuilder.HasRecentAssistantQuestion(activeConversation.Messages);
-        var memoryContextLines = BuildPersistentMemoryContextLines(userText);
         var capabilitySelfKnowledgeLines = SelectCapabilitySelfKnowledgeLines(
             _sessionPolicy,
             assistantCapabilityQuestion,
@@ -55,7 +75,7 @@ public sealed partial class MainWindow {
             effectivePersona: effectivePersona,
             onboardingInProgress: includeOnboardingContext,
             missingOnboardingFields: missingFields,
-            includeLiveProfileUpdates: MightContainProfileUpdateCue(userText),
+            includeLiveProfileUpdates: includeLiveProfileUpdates,
             executionBehaviorPrompt: PromptAssets.GetExecutionBehaviorPrompt(),
             localContextLines: localContextLines,
             conversationStyleLines: conversationStyleLines,
@@ -109,6 +129,23 @@ public sealed partial class MainWindow {
         bool assistantRuntimeIntrospectionQuestion,
         bool compactAssistantRuntimeIntrospectionQuestion) {
         return assistantRuntimeIntrospectionQuestion && compactAssistantRuntimeIntrospectionQuestion;
+    }
+
+    internal static bool ShouldIncludeLiveProfileUpdates(
+        bool hasUserNameUpdate,
+        bool hasAssistantPersonaUpdate,
+        bool hasThemePresetUpdate) {
+        return hasUserNameUpdate || hasAssistantPersonaUpdate || hasThemePresetUpdate;
+    }
+
+    internal static bool ShouldUseThinServiceRequestEnvelope(
+        bool includeOnboardingContext,
+        bool includeLiveProfileUpdates,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion) {
+        _ = assistantCapabilityQuestion;
+        _ = assistantRuntimeIntrospectionQuestion;
+        return !includeOnboardingContext && !includeLiveProfileUpdates;
     }
 
     internal static bool ShouldIncludeAmbientOnboardingContext(

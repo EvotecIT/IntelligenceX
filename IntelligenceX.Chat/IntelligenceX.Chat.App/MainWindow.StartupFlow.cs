@@ -1154,6 +1154,8 @@ public sealed partial class MainWindow : Window {
         _sessionAssistantPersonaOverride = null;
         _sessionThemeOverride = null;
 
+        _appState.UserName = NormalizeUserNameValue(_appState.UserName);
+        _appState.AssistantPersona = NormalizeAssistantPersonaValue(_appState.AssistantPersona);
         _themePreset = NormalizeTheme(_appState.ThemePreset) ?? "default";
         _appState.ThemePreset = _themePreset;
         _localProviderTransport = NormalizeLocalProviderTransport(_appState.LocalProviderTransport);
@@ -1194,6 +1196,14 @@ public sealed partial class MainWindow : Window {
         RestoreCachedModelCatalogFromAppState();
         _serviceProfileNames = Array.Empty<string>();
         _serviceActiveProfileName = null;
+        if (_appState.OnboardingCompleted
+            && BuildMissingOnboardingFields(
+                _appState.UserName,
+                _appState.AssistantPersona,
+                _appState.ThemePreset,
+                onboardingCompleted: true).Count > 0) {
+            _appState.OnboardingCompleted = false;
+        }
 
         if (!string.IsNullOrWhiteSpace(_appState.TimestampMode)) {
             _timestampMode = ResolveTimestampMode(_appState.TimestampMode);

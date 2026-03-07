@@ -870,6 +870,7 @@ internal sealed partial class ChatServiceSession {
         bool clearRoutingCaches,
         TimeSpan cacheHitElapsed) {
         _registry = snapshot.Registry;
+        _servingPersistedToolingBootstrapPreview = false;
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packs = snapshot.Packs;
         _packAvailability = snapshot.PackAvailability.ToArray();
@@ -930,6 +931,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void ApplyToolingBootstrapPersistedSnapshot(ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
+        _servingPersistedToolingBootstrapPreview = true;
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packAvailability = snapshot.PackAvailability.ToArray();
         _pluginAvailability = snapshot.PluginAvailability.ToArray();
@@ -937,6 +939,7 @@ internal sealed partial class ChatServiceSession {
         _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
         _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;
         _startupBootstrap = snapshot.StartupBootstrap;
+        UpdatePackMetadataIndexesFromAvailability(_packAvailability);
 
         var warnings = new List<string>(snapshot.StartupWarnings.Length + 1);
         warnings.AddRange(snapshot.StartupWarnings);

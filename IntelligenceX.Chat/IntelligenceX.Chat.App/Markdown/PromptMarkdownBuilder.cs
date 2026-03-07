@@ -46,6 +46,64 @@ internal static class PromptMarkdownBuilder {
     }
 
     /// <summary>
+    /// Builds a thin request envelope for normal operational turns where the service should own routing.
+    /// </summary>
+    public static string BuildThinServiceRequest(
+        string userText,
+        string? effectiveName = null,
+        string? effectivePersona = null,
+        IReadOnlyList<string>? persistentMemoryLines = null,
+        string? persistentMemoryPrompt = null) {
+        var request = (userText ?? string.Empty).Trim();
+        var hasName = !string.IsNullOrWhiteSpace(effectiveName);
+        var hasPersona = !string.IsNullOrWhiteSpace(effectivePersona);
+        var remainingBudget = MaxPersistentMemoryLines;
+        var trimmedPersistentMemoryLines = TakeBudget(persistentMemoryLines, MaxPersistentMemoryLines, ref remainingBudget);
+        var hasPersistentMemoryPrompt = !string.IsNullOrWhiteSpace(persistentMemoryPrompt);
+        var hasMetadata = hasName || hasPersona || hasPersistentMemoryPrompt || (trimmedPersistentMemoryLines is { Count: > 0 });
+
+        if (!hasMetadata) {
+            return request;
+        }
+
+        var markdown = new MarkdownComposer()
+            .Paragraph("User request:")
+            .Paragraph(request);
+
+        if (hasName || hasPersona) {
+            markdown
+                .BlankLine()
+                .Paragraph("[Session profile context]");
+            if (hasName) {
+                markdown.Bullet("User name: " + effectiveName!.Trim());
+            }
+
+            if (hasPersona) {
+                markdown.Bullet("Assistant persona: " + effectivePersona!.Trim());
+            }
+
+            markdown.Bullet("Use this only as stable session metadata. The user request above remains the primary task input for this turn.");
+        }
+
+        if (hasPersistentMemoryPrompt) {
+            markdown
+                .BlankLine()
+                .Raw(persistentMemoryPrompt!.Trim());
+        }
+
+        if (trimmedPersistentMemoryLines is { Count: > 0 }) {
+            markdown
+                .BlankLine()
+                .Paragraph("[Persistent memory]");
+            for (var i = 0; i < trimmedPersistentMemoryLines.Count; i++) {
+                markdown.Bullet(trimmedPersistentMemoryLines[i]);
+            }
+        }
+
+        return markdown.Build();
+    }
+
+    /// <summary>
     /// Builds a request envelope with profile/onboarding context for the model.
     /// </summary>
     /// <param name="userText">Raw user text.</param>

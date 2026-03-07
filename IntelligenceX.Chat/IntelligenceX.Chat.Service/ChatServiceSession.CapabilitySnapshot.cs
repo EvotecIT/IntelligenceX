@@ -198,7 +198,8 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("healthy_tools: " + string.Join(", ", snapshot.HealthyTools));
         }
 
-        runtimeIdentity.AppendLine("Treat this capability snapshot as the authoritative runtime tool context for this turn.");
+        runtimeIdentity.AppendLine("Use this snapshot only for routing and tool-availability decisions.");
+        runtimeIdentity.AppendLine("Do not narrate this snapshot to the user unless they explicitly ask about runtime, tooling, or bootstrap state.");
 
         runtimeIdentity.AppendLine();
         runtimeIdentity.AppendLine("[Skills snapshot]");
@@ -208,6 +209,7 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("skills: " + string.Join(", ", snapshot.Skills));
         }
 
-        runtimeIdentity.AppendLine("Treat this skills snapshot as the authoritative reusable skill inventory for this turn.");
+        runtimeIdentity.AppendLine("Use this skills snapshot only to decide reusable skill availability for this turn.");
+        runtimeIdentity.AppendLine("Do not narrate this skills inventory unless the user explicitly asks about it.");
     }
 }

@@ -337,6 +337,7 @@ internal sealed partial class ChatServiceSession {
         bool proactiveFollowUpUsed,
         bool continuationFollowUpTurn,
         bool compactFollowUpTurn,
+        string userRequest,
         string assistantDraft) {
         return ResolveProactiveFollowUpReviewDecision(
             proactiveModeEnabled,
@@ -344,6 +345,7 @@ internal sealed partial class ChatServiceSession {
             proactiveFollowUpUsed,
             continuationFollowUpTurn,
             compactFollowUpTurn,
+            userRequest,
             assistantDraft).ShouldAttempt;
     }
 
@@ -353,6 +355,7 @@ internal sealed partial class ChatServiceSession {
         bool proactiveFollowUpUsed,
         bool continuationFollowUpTurn,
         bool compactFollowUpTurn,
+        string userRequest,
         string assistantDraft) {
         if (!proactiveModeEnabled || !hasToolActivity || proactiveFollowUpUsed) {
             return new ProactiveFollowUpReviewDecision(
@@ -362,17 +365,6 @@ internal sealed partial class ChatServiceSession {
                     : !hasToolActivity
                         ? "skip_no_tool_activity"
                         : "skip_proactive_follow_up_already_used",
-                PendingReadOnlyCount: 0,
-                PendingUnknownCount: 0,
-                PendingMutatingCount: 0);
-        }
-
-        // Follow-up turns should stay concise and conversational. Extra proactive rewrite passes
-        // on continuation nudges can cause repetitive draft churn and accidental scope drift.
-        if (continuationFollowUpTurn || compactFollowUpTurn) {
-            return new ProactiveFollowUpReviewDecision(
-                ShouldAttempt: false,
-                Reason: "skip_follow_up_turn",
                 PendingReadOnlyCount: 0,
                 PendingUnknownCount: 0,
                 PendingMutatingCount: 0);
@@ -394,6 +386,27 @@ internal sealed partial class ChatServiceSession {
             return new ProactiveFollowUpReviewDecision(
                 ShouldAttempt: false,
                 Reason: "skip_proactive_or_review_marker_present",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
+        if (requestedArtifactIntent.RequiresArtifact && !IsRequestedArtifactSatisfied(requestedArtifactIntent, draft)) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_requested_artifact_missing",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        // Follow-up turns should stay concise and conversational. Extra proactive rewrite passes
+        // on continuation nudges can cause repetitive draft churn and accidental scope drift.
+        if (continuationFollowUpTurn || compactFollowUpTurn) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: false,
+                Reason: "skip_follow_up_turn",
                 PendingReadOnlyCount: 0,
                 PendingUnknownCount: 0,
                 PendingMutatingCount: 0);

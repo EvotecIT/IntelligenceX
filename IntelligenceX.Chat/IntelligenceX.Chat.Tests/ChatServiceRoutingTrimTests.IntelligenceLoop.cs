@@ -329,6 +329,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             proactiveFollowUpUsed,
             continuationFollowUpTurn,
             compactFollowUpTurn,
+            "Summarize replication health.",
             assistantDraft);
 
         Assert.Equal(expected, result);
@@ -361,6 +362,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             proactiveFollowUpUsed: false,
             continuationFollowUpTurn: false,
             compactFollowUpTurn: false,
+            userRequest: "Summarize replication health.",
             assistantDraft: draft);
 
         Assert.False(decision.ShouldAttempt);
@@ -391,6 +393,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             proactiveFollowUpUsed: false,
             continuationFollowUpTurn: false,
             compactFollowUpTurn: false,
+            userRequest: "Summarize replication health.",
             assistantDraft: draft);
 
         Assert.True(decision.ShouldAttempt);
@@ -702,12 +705,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForPlainKeywordMentions() {
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForPlainNaturalLanguageMentions() {
         var request = "Could you include a mermaid diagram if useful?";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
-        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: mermaid", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForMultilingualNaturalLanguageMentions() {
+        var request = "Pokaz to na wykresie topologii replikacji.";
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
+
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -829,12 +842,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_DoesNotEnableVisualsForMismatchedInlineBacktickDelimiters() {
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForNaturalLanguageRequestEvenWhenInlineBackticksAreMalformed() {
         var request = "Use ``visnetwork``` only when relationship mapping is required.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
-        Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

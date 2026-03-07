@@ -41,12 +41,6 @@ public sealed partial class MainWindow : Window {
     private static readonly char[] MemoryFactTrailingTrimChars =
         new[] { '.', '!', '?', ';', ':', '\u3002', '\uFF01', '\uFF1F', '\u061B', '\uFF1A', '\uFF61', '\uFE12', '\uFE56', '\uFE57' };
 
-    private static bool MightContainProfileUpdateCue(string text) {
-        // Keep live profile update guidance language-neutral by default:
-        // every non-empty user turn can include structured profile metadata.
-        return !string.IsNullOrWhiteSpace(text);
-    }
-
     private async Task ApplyUserProfileIntentAsync(string userText) {
         if (TryExtractMemoryIntent(userText, out var memoryFact)) {
             await AddMemoryFactAsync(memoryFact, weight: 3, tags: new[] { "user-intent" }).ConfigureAwait(false);
@@ -688,12 +682,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> ApplyProfileUpdateAsync(OnboardingProfileUpdate update, bool autoCompleteOnboardingForProfileScope) {
-        var scope = update.Scope == ProfileUpdateScope.Unspecified
-            ? ProfileUpdateScope.Session
-            : update.Scope;
+        var scope = ResolveEffectiveProfileUpdateScope(update);
         var persistProfile = scope == ProfileUpdateScope.Profile;
         var changed = false;
         var effectiveThemeBefore = GetEffectiveThemePreset();
+        var invalidThemeRequested = false;
 
         if (update.HasUserName) {
             var nextName = NormalizeUserNameValue(update.UserName);
@@ -731,6 +724,7 @@ public sealed partial class MainWindow : Window {
 
         if (update.HasThemePreset) {
             var normalizedTheme = NormalizeTheme(update.ThemePreset);
+            invalidThemeRequested = string.IsNullOrWhiteSpace(normalizedTheme) && !string.IsNullOrWhiteSpace(update.ThemePreset);
             if (!string.IsNullOrWhiteSpace(normalizedTheme)) {
                 if (persistProfile) {
                     if (!string.Equals(_appState.ThemePreset, normalizedTheme, StringComparison.OrdinalIgnoreCase)) {
@@ -752,14 +746,27 @@ public sealed partial class MainWindow : Window {
             }
         }
 
-        if (persistProfile && update.HasOnboardingCompleted && _appState.OnboardingCompleted != update.OnboardingCompleted) {
-            _appState.OnboardingCompleted = update.OnboardingCompleted;
+        var completionEligibleMissingFields = BuildMissingOnboardingFields(
+            GetEffectiveUserName(),
+            GetEffectiveAssistantPersona(),
+            GetEffectiveThemePreset(),
+            onboardingCompleted: false);
+
+        if (persistProfile && update.HasOnboardingCompleted) {
+            var nextOnboardingCompleted = update.OnboardingCompleted && completionEligibleMissingFields.Count == 0;
+            if (_appState.OnboardingCompleted != nextOnboardingCompleted) {
+                _appState.OnboardingCompleted = nextOnboardingCompleted;
+                changed = true;
+            }
+        }
+
+        if (persistProfile && autoCompleteOnboardingForProfileScope && !_appState.OnboardingCompleted && completionEligibleMissingFields.Count == 0) {
+            _appState.OnboardingCompleted = true;
             changed = true;
         }
 
-        if (persistProfile && autoCompleteOnboardingForProfileScope && !_appState.OnboardingCompleted && BuildMissingOnboardingFields().Count == 0) {
-            _appState.OnboardingCompleted = true;
-            changed = true;
+        if (invalidThemeRequested) {
+            AppendSystem("Ignored unsupported theme preset in profile update: " + update.ThemePreset!.Trim());
         }
 
         if (!changed) {
@@ -777,6 +784,21 @@ public sealed partial class MainWindow : Window {
         }
 
         return true;
+    }
+
+    internal static ProfileUpdateScope ResolveEffectiveProfileUpdateScope(OnboardingProfileUpdate update) {
+        ArgumentNullException.ThrowIfNull(update);
+
+        if (update.Scope != ProfileUpdateScope.Unspecified) {
+            return update.Scope;
+        }
+
+        var completesOnboardingWithProfileFields = update.HasOnboardingCompleted
+                                                  && update.OnboardingCompleted
+                                                  && (update.HasUserName || update.HasAssistantPersona || update.HasThemePreset);
+        return completesOnboardingWithProfileFields
+            ? ProfileUpdateScope.Profile
+            : ProfileUpdateScope.Session;
     }
 
 }

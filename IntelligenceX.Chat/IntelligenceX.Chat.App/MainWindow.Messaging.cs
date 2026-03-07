@@ -262,8 +262,7 @@ public sealed partial class MainWindow : Window {
                 case "apply_profile_update":
                     {
                         var update = new OnboardingProfileUpdate();
-                        var scope = ParseProfileUpdateScope(TryGetString(root, "scope"));
-                        update.Scope = scope == ProfileUpdateScope.Unspecified ? ProfileUpdateScope.Session : scope;
+                        update.Scope = ParseProfileUpdateScope(TryGetString(root, "scope"));
 
                         if (root.TryGetProperty("userName", out var userNameElement)) {
                             update.HasUserName = true;

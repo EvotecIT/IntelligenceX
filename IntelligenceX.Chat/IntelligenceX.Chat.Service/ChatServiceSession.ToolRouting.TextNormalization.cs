@@ -44,12 +44,8 @@ internal sealed partial class ChatServiceSession {
             return NormalizeRoutingUserText(continuationFollowUp);
         }
 
-        var match = UserRequestSectionRegex.Match(text);
-        if (match.Success && match.Groups.Count > 1) {
-            var value = match.Groups["value"].Value;
-            if (!string.IsNullOrWhiteSpace(value)) {
-                return value.Trim();
-            }
+        if (TryExtractStructuredUserRequestSection(text, out var structuredUserRequest)) {
+            return NormalizeRoutingUserText(structuredUserRequest);
         }
 
         text = StripRejectedContinuationContractBlock(text);
@@ -67,15 +63,59 @@ internal sealed partial class ChatServiceSession {
             return NormalizeIntentUserText(continuationIntentAnchor);
         }
 
-        var match = UserRequestSectionRegex.Match(text);
-        if (match.Success && match.Groups.Count > 1) {
-            var value = match.Groups["value"].Value;
-            if (!string.IsNullOrWhiteSpace(value)) {
-                text = value.Trim();
-            }
+        if (TryExtractStructuredUserRequestSection(text, out var structuredUserRequest)) {
+            text = structuredUserRequest;
         }
 
         return NormalizeIntentUserText(text);
+    }
+
+    private static bool TryExtractStructuredUserRequestSection(string text, out string userRequest) {
+        userRequest = string.Empty;
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var markerIndex = normalized.IndexOf("User request:", StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0) {
+            return false;
+        }
+
+        var afterMarker = normalized[(markerIndex + "User request:".Length)..];
+        var sectionValue = ExtractStructuredSectionBody(afterMarker);
+        if (sectionValue.Length == 0) {
+            return false;
+        }
+
+        userRequest = sectionValue;
+        return true;
+    }
+
+    private static string ExtractStructuredSectionBody(string sectionTail) {
+        var text = (sectionTail ?? string.Empty).TrimStart();
+        if (text.Length == 0) {
+            return string.Empty;
+        }
+
+        var body = new StringBuilder(text.Length);
+        var content = text.AsSpan();
+        var lineStart = 0;
+        while (lineStart < content.Length) {
+            ReadOnlySpan<char> line;
+            lineStart = ReadNextLine(content, lineStart, out line);
+            if (LooksLikeStructuredSectionHeader(line)) {
+                break;
+            }
+
+            if (body.Length > 0) {
+                body.AppendLine();
+            }
+
+            body.Append(line.ToString());
+        }
+
+        return body.ToString().Trim();
     }
 
     private static string NormalizeRoutingUserText(string text) {

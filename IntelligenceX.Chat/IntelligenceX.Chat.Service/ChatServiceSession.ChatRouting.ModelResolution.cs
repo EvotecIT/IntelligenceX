@@ -214,6 +214,18 @@ internal sealed partial class ChatServiceSession {
 
     private void AppendRuntimeCapabilityHandshake(StringBuilder runtimeIdentity) {
         AppendCapabilitySnapshotPromptBlock(runtimeIdentity, BuildRuntimeCapabilitySnapshot());
+        var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        var bootstrapState = _servingPersistedToolingBootstrapPreview
+            ? "persisted_preview"
+            : startupToolingBootstrapTask is { IsCompletedSuccessfully: true }
+                ? "ready"
+                : startupToolingBootstrapTask is { IsCompleted: true }
+                    ? "degraded"
+                    : "rebuilding";
+        runtimeIdentity.AppendLine("runtime_bootstrap_state: " + bootstrapState);
+        if (_servingPersistedToolingBootstrapPreview) {
+            runtimeIdentity.AppendLine("The current catalog is a persisted preview while live bootstrap is still rebuilding. Treat it as temporary and avoid presenting it as settled runtime state unless asked.");
+        }
     }
 
     private static string BuildCompatibleRuntimeNoTextDirectRetryPrompt(string userRequest) {

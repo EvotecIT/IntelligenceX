@@ -170,6 +170,7 @@ public sealed class ToolSerializationStressTests {
                 Name: $"CN=Conn-{i:000}",
                 Site: "Default-First-Site-Name",
                 SourceServer: $"DC{i:000}",
+                SourceSite: $"Site-{i % 8:00}",
                 DestinationServer: $"DC{i + 1:000}",
                 Transport: ActiveDirectoryTransportType.Rpc,
                 Enabled: true,

@@ -9,6 +9,39 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class PromptMarkdownBuilderTests {
     /// <summary>
+    /// Ensures thin service requests stay raw when the app has no metadata to add.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_ReturnsRawUserTextWhenNoMetadataExists() {
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest("Check replication health.");
+
+        Assert.Equal("Check replication health.", markdown);
+    }
+
+    /// <summary>
+    /// Ensures thin service requests lead with the user task before any session metadata.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_PutsUserRequestBeforeMetadata() {
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
+            userText: "Check replication health and show a table.",
+            effectiveName: "Przemek",
+            effectivePersona: "sharp operator",
+            persistentMemoryLines: new[] { "Prefers compact operational summaries." },
+            persistentMemoryPrompt: "[Persistent memory protocol]");
+
+        var userRequestIndex = markdown.IndexOf("User request:", StringComparison.Ordinal);
+        var profileIndex = markdown.IndexOf("[Session profile context]", StringComparison.Ordinal);
+        var memoryIndex = markdown.IndexOf("[Persistent memory]", StringComparison.Ordinal);
+
+        Assert.True(userRequestIndex >= 0);
+        Assert.True(profileIndex > userRequestIndex);
+        Assert.True(memoryIndex > profileIndex);
+        Assert.Contains("Check replication health and show a table.", markdown);
+        Assert.Contains("Use this only as stable session metadata", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures service request contains typed context sections when profile context is present.
     /// </summary>
     [Fact]

@@ -195,12 +195,21 @@ internal sealed partial class ChatServiceSession {
         bool planExecuteReviewLoop,
         int maxReviewPasses,
         int reviewPassesUsed,
+        TurnExecutionIntent turnExecutionIntent,
         string userRequest,
         string assistantDraft,
         bool executionContractApplies,
         bool hasToolActivity,
         ProactiveFollowUpReviewDecision proactiveDecision,
         IReadOnlyList<ToolOutputDto> toolOutputs) {
+        if (!noResultWatchdogTriggered
+            && turnExecutionIntent.RequestedArtifact.RequiresArtifact
+            && !IsRequestedArtifactSatisfied(turnExecutionIntent.RequestedArtifact, assistantDraft)) {
+            return NoExtractedFinalizeReviewDecision.ProactiveFollowUpReview(
+                "allow_requested_artifact_missing",
+                BuildProactiveFollowUpReviewPrompt(userRequest, assistantDraft, toolOutputs));
+        }
+
         if (!noResultWatchdogTriggered
             && planExecuteReviewLoop
             && ShouldAttemptResponseQualityReview(
@@ -444,18 +453,30 @@ internal sealed partial class ChatServiceSession {
         bool proactiveFollowUpUsed,
         bool continuationFollowUpTurn,
         bool compactFollowUpTurn) {
+        var turnExecutionIntent = ResolveTurnExecutionIntent(
+            userRequest: userRequest,
+            continuationFollowUpTurn: continuationFollowUpTurn,
+            compactFollowUpTurn: compactFollowUpTurn,
+            hasPendingActionContext: false,
+            hasToolActivity: hasToolActivity,
+            startupBootstrapCompleted: true,
+            startupBootstrapCompletedSuccessfully: true,
+            hasCachedToolCatalog: false,
+            servingPersistedPreview: false);
         var proactiveDecision = ResolveProactiveFollowUpReviewDecision(
             proactiveModeEnabled: proactiveModeEnabled,
             hasToolActivity: hasToolActivity,
             proactiveFollowUpUsed: proactiveFollowUpUsed,
             continuationFollowUpTurn: continuationFollowUpTurn,
             compactFollowUpTurn: compactFollowUpTurn,
+            userRequest: userRequest,
             assistantDraft: assistantDraft);
         var decision = ResolveNoExtractedFinalizeReviewDecision(
             noResultWatchdogTriggered: noResultWatchdogTriggered,
             planExecuteReviewLoop: planExecuteReviewLoop,
             maxReviewPasses: maxReviewPasses,
             reviewPassesUsed: reviewPassesUsed,
+            turnExecutionIntent: turnExecutionIntent,
             userRequest: userRequest,
             assistantDraft: assistantDraft,
             executionContractApplies: executionContractApplies,

@@ -11,6 +11,14 @@ namespace IntelligenceX.Chat.App;
 /// Local export writer used by the desktop app when service-side export tooling is unavailable.
 /// </summary>
 internal static class LocalExportArtifactWriter {
+    internal delegate void MarkdownTranscriptWriter(string outputPath, string markdown);
+    internal delegate void DocxTranscriptWriter(
+        string title,
+        string markdown,
+        string outputPath,
+        IReadOnlyList<string>? additionalAllowedImageDirectories,
+        int? docxVisualMaxWidthPx);
+
     public static bool TryReadRows(JsonElement rowsElement, out List<string[]> rows) {
         rows = new List<string[]>();
         if (rowsElement.ValueKind != JsonValueKind.Array) {
@@ -105,15 +113,86 @@ internal static class LocalExportArtifactWriter {
         }
     }
 
-    public static void ExportTranscript(string format, string title, string markdown, string outputPath) {
+    public static TranscriptExportResult ExportTranscript(
+        string format,
+        string title,
+        string markdown,
+        string outputPath,
+        IReadOnlyList<string>? additionalAllowedImageDirectories = null,
+        int? docxVisualMaxWidthPx = null,
+        bool allowMarkdownFallback = true) {
+        return ExportTranscript(
+            format,
+            title,
+            markdown,
+            outputPath,
+            additionalAllowedImageDirectories,
+            docxVisualMaxWidthPx,
+            allowMarkdownFallback,
+            static (path, text) => File.WriteAllText(path, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true)),
+            static (docxTitle, docxMarkdown, docxPath, allowedImageDirectories, maxWidthPx) =>
+                OfficeImoArtifactWriter.WriteDocxTranscript(docxTitle, docxMarkdown, docxPath, allowedImageDirectories, maxWidthPx));
+    }
+
+    internal static TranscriptExportResult ExportTranscript(
+        string format,
+        string title,
+        string markdown,
+        string outputPath,
+        IReadOnlyList<string>? additionalAllowedImageDirectories,
+        int? docxVisualMaxWidthPx,
+        bool allowMarkdownFallback,
+        MarkdownTranscriptWriter markdownWriter,
+        DocxTranscriptWriter docxWriter) {
         var normalizedFormat = (format ?? string.Empty).Trim().ToLowerInvariant();
+        var safeMarkdown = markdown ?? string.Empty;
         switch (normalizedFormat) {
             case ExportPreferencesContract.FormatMarkdown:
-                File.WriteAllText(outputPath, markdown ?? string.Empty, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-                break;
+                try {
+                    markdownWriter(outputPath, safeMarkdown);
+                    return TranscriptExportResult.Success(normalizedFormat, ExportPreferencesContract.FormatMarkdown, outputPath);
+                } catch (Exception ex) {
+                    return TranscriptExportResult.Failed(
+                        normalizedFormat,
+                        outputPath,
+                        new TranscriptExportFailure(TranscriptExportStage.MarkdownWrite, ex.Message));
+                }
             case ExportPreferencesContract.FormatDocx:
-                OfficeImoArtifactWriter.WriteDocxTranscript(title, markdown ?? string.Empty, outputPath);
-                break;
+                try {
+                    docxWriter(title, safeMarkdown, outputPath, additionalAllowedImageDirectories, docxVisualMaxWidthPx);
+                    return TranscriptExportResult.Success(normalizedFormat, ExportPreferencesContract.FormatDocx, outputPath);
+                } catch (Exception ex) {
+                    var docxFailure = new TranscriptExportFailure(TranscriptExportStage.DocxWrite, ex.Message);
+                    if (!allowMarkdownFallback) {
+                        return TranscriptExportResult.Failed(normalizedFormat, outputPath, docxFailure);
+                    }
+
+                    var fallbackPath = ResolveOutputPath(
+                        ExportPreferencesContract.FormatMarkdown,
+                        title,
+                        outputPath,
+                        defaultPrefix: "transcript");
+                    try {
+                        markdownWriter(fallbackPath, safeMarkdown);
+                        return TranscriptExportResult.SuccessWithFallback(
+                            normalizedFormat,
+                            ExportPreferencesContract.FormatMarkdown,
+                            fallbackPath,
+                            new TranscriptExportFallback(
+                                TranscriptExportFallbackKind.Markdown,
+                                fallbackPath,
+                                docxFailure));
+                    } catch (Exception fallbackEx) {
+                        return TranscriptExportResult.Failed(
+                            normalizedFormat,
+                            outputPath,
+                            new TranscriptExportFailure(TranscriptExportStage.MarkdownFallbackWrite, fallbackEx.Message),
+                            new TranscriptExportFallback(
+                                TranscriptExportFallbackKind.Markdown,
+                                fallbackPath,
+                                docxFailure));
+                    }
+                }
             default:
                 throw new InvalidOperationException("Unsupported transcript export format: " + normalizedFormat);
         }

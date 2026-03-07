@@ -58,6 +58,39 @@ internal sealed partial class ChatServiceSession {
     private static readonly string[] ProactiveVisualPromptFenceLanguages = BuildProactiveVisualPromptFenceLanguages();
     private static readonly string[] VisualContractFenceLanguages = BuildVisualContractFenceLanguages();
     private static readonly HashSet<string> VisualContractInlineTokenSignals = BuildVisualContractInlineTokenSignals();
+    private static readonly HashSet<string> NaturalLanguageDiagramArtifactTokens = BuildNormalizedTokenSet(
+        "diagram",
+        "diagrama",
+        "flowchart",
+        "topology",
+        "topologia",
+        "topologii",
+        "mermaid");
+    private static readonly HashSet<string> NaturalLanguageChartArtifactTokens = BuildNormalizedTokenSet(
+        "chart",
+        "plot",
+        "graf",
+        "gráfico",
+        "wykres",
+        "wykresie");
+    private static readonly HashSet<string> NaturalLanguageNetworkArtifactTokens = BuildNormalizedTokenSet(
+        "network",
+        "graph",
+        "node-link",
+        "nodelink",
+        "relacje",
+        "relations",
+        "relationship",
+        "relationships");
+    private static readonly HashSet<string> NaturalLanguageTableArtifactTokens = BuildNormalizedTokenSet(
+        "table",
+        "markdown-table",
+        "markdown_table",
+        "datatable",
+        "data-table",
+        "grid",
+        "tabela",
+        "tabla");
 
     private static IReadOnlyDictionary<string, string> BuildPreferredVisualTypeByToken() {
         var map = new Dictionary<string, string>(StringComparer.Ordinal) {
@@ -153,6 +186,19 @@ internal sealed partial class ChatServiceSession {
         }
 
         signals.Add(normalizedToken);
+    }
+
+    private static HashSet<string> BuildNormalizedTokenSet(params string[] values) {
+        var tokens = new HashSet<string>(StringComparer.Ordinal);
+        if (values is null || values.Length == 0) {
+            return tokens;
+        }
+
+        for (var i = 0; i < values.Length; i++) {
+            AddNormalizedInlineSignalToken(tokens, values[i]);
+        }
+
+        return tokens;
     }
 
     private static bool ContainsVisualContractSignal(string? text) {

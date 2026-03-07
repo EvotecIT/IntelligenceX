@@ -56,20 +56,62 @@ public sealed partial class MainWindow : Window {
                 : ExportPreferencesContract.FormatMarkdown;
             var filePath = LocalExportArtifactWriter.ResolveOutputPath(transcriptFormat, baseName, normalizedPath, defaultPrefix: "transcript");
 
-            if (string.Equals(transcriptFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)) {
-                using var runtimeMaterialization = await MaterializeTranscriptVisualsForDocxAsync(md, _exportDocxVisualMaxWidthPx).ConfigureAwait(false);
-                var exportMarkdown = runtimeMaterialization?.Markdown ?? md;
-                var allowedImageDirectories = runtimeMaterialization?.AllowedImageDirectories;
-                OfficeImoArtifactWriter.WriteDocxTranscript(baseName, exportMarkdown, filePath, allowedImageDirectories, _exportDocxVisualMaxWidthPx);
-            } else {
-                LocalExportArtifactWriter.ExportTranscript(transcriptFormat, baseName, md, filePath);
+            var result = await ExportTranscriptToPathAsync(baseName, md, transcriptFormat, filePath).ConfigureAwait(false);
+            if (!result.Succeeded) {
+                await SetStatusAsync(SessionStatus.ExportFailed()).ConfigureAwait(false);
+                AppendSystem(BuildTranscriptExportFailureNoticeText(result));
+                return;
             }
-            await UpdateLastExportDirectoryFromFilePathAsync(filePath).ConfigureAwait(false);
-            AppendSystem(SystemNotice.TranscriptExported(filePath));
+
+            await UpdateLastExportDirectoryFromFilePathAsync(result.OutputPath).ConfigureAwait(false);
+            AppendSystem(BuildTranscriptExportSuccessNoticeText(result));
         } catch (Exception ex) {
             await SetStatusAsync(SessionStatus.ExportFailed()).ConfigureAwait(false);
             AppendSystem("Transcript export failed: " + ex.Message);
         }
+    }
+
+    private async Task<TranscriptExportResult> ExportTranscriptToPathAsync(
+        string title,
+        string markdown,
+        string transcriptFormat,
+        string filePath) {
+        if (!string.Equals(transcriptFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)) {
+            return LocalExportArtifactWriter.ExportTranscript(transcriptFormat, title, markdown, filePath);
+        }
+
+        using var runtimeMaterialization = await MaterializeTranscriptVisualsForDocxAsync(markdown, _exportDocxVisualMaxWidthPx).ConfigureAwait(false);
+        if (runtimeMaterialization is null) {
+            return LocalExportArtifactWriter.ExportTranscript(
+                transcriptFormat,
+                title,
+                markdown,
+                filePath,
+                additionalAllowedImageDirectories: null,
+                docxVisualMaxWidthPx: _exportDocxVisualMaxWidthPx);
+        }
+
+        var materializedResult = LocalExportArtifactWriter.ExportTranscript(
+            transcriptFormat,
+            title,
+            runtimeMaterialization.Markdown,
+            filePath,
+            runtimeMaterialization.AllowedImageDirectories,
+            _exportDocxVisualMaxWidthPx,
+            allowMarkdownFallback: false);
+        if (materializedResult.Succeeded) {
+            return materializedResult;
+        }
+
+        var retryResult = LocalExportArtifactWriter.ExportTranscript(
+            transcriptFormat,
+            title,
+            markdown,
+            filePath,
+            additionalAllowedImageDirectories: null,
+            docxVisualMaxWidthPx: _exportDocxVisualMaxWidthPx,
+            allowMarkdownFallback: true);
+        return ResolveTranscriptExportResultAfterMaterializedDocxRetry(materializedResult, retryResult);
     }
 
     private void CopyTranscript() {
@@ -131,6 +173,104 @@ public sealed partial class MainWindow : Window {
 
     private static string BuildShellHtml() {
         return UiShellAssets.Load();
+    }
+
+    internal static TranscriptExportResult ResolveTranscriptExportResultAfterMaterializedDocxRetry(
+        TranscriptExportResult materializedAttemptResult,
+        TranscriptExportResult retryResult) {
+        if (materializedAttemptResult.Succeeded || materializedAttemptResult.Failure is not { } materializedFailure) {
+            return retryResult;
+        }
+
+        var promotedMaterializedFailure = new TranscriptExportFailure(
+            TranscriptExportStage.DocxWriteWithMaterializedVisuals,
+            materializedFailure.Message);
+        if (retryResult.Succeeded &&
+            string.Equals(retryResult.ActualFormat, ExportPreferencesContract.FormatDocx, StringComparison.OrdinalIgnoreCase)) {
+            return TranscriptExportResult.SuccessWithFallback(
+                ExportPreferencesContract.FormatDocx,
+                ExportPreferencesContract.FormatDocx,
+                retryResult.OutputPath,
+                new TranscriptExportFallback(
+                    TranscriptExportFallbackKind.DocxWithoutMaterializedVisuals,
+                    retryResult.OutputPath,
+                    promotedMaterializedFailure));
+        }
+
+        if (retryResult.Succeeded && retryResult.Fallback is { } retryFallback) {
+            return TranscriptExportResult.SuccessWithFallback(
+                ExportPreferencesContract.FormatDocx,
+                retryResult.ActualFormat,
+                retryResult.OutputPath,
+                new TranscriptExportFallback(
+                    retryFallback.Kind,
+                    retryResult.OutputPath,
+                    promotedMaterializedFailure));
+        }
+
+        return retryResult.Fallback is { } failedFallback
+            ? TranscriptExportResult.Failed(
+                ExportPreferencesContract.FormatDocx,
+                retryResult.OutputPath,
+                retryResult.Failure ?? promotedMaterializedFailure,
+                new TranscriptExportFallback(
+                    failedFallback.Kind,
+                    failedFallback.OutputPath,
+                    promotedMaterializedFailure))
+            : TranscriptExportResult.Failed(
+                ExportPreferencesContract.FormatDocx,
+                retryResult.OutputPath,
+                retryResult.Failure ?? promotedMaterializedFailure);
+    }
+
+    internal static string BuildTranscriptExportSuccessNoticeText(TranscriptExportResult result) {
+        if (!result.Succeeded) {
+            return BuildTranscriptExportFailureNoticeText(result);
+        }
+
+        if (!result.UsedFallback || result.Fallback is not { } fallback) {
+            return SystemNoticeFormatter.Format(SystemNotice.TranscriptExported(result.OutputPath));
+        }
+
+        return fallback.Kind switch {
+            TranscriptExportFallbackKind.DocxWithoutMaterializedVisuals =>
+                "Exported transcript: " + result.OutputPath + " (DOCX export retried without materialized visuals.)",
+            TranscriptExportFallbackKind.Markdown =>
+                "Exported transcript: " + result.OutputPath + " (DOCX export fell back to Markdown.)",
+            _ => SystemNoticeFormatter.Format(SystemNotice.TranscriptExported(result.OutputPath))
+        };
+    }
+
+    internal static string BuildTranscriptExportFailureNoticeText(TranscriptExportResult result) {
+        var failure = result.Failure;
+        var stage = DescribeTranscriptExportStage(failure?.Stage ?? TranscriptExportStage.None);
+        var message = (failure?.Message ?? "Unknown error.").Trim();
+        if (message.Length == 0) {
+            message = "Unknown error.";
+        }
+
+        if (result.Fallback is { } fallback) {
+            return "Transcript export failed during "
+                   + stage
+                   + ": "
+                   + message
+                   + " (fallback path: "
+                   + fallback.OutputPath
+                   + ").";
+        }
+
+        return "Transcript export failed during " + stage + ": " + message;
+    }
+
+    private static string DescribeTranscriptExportStage(TranscriptExportStage stage) {
+        return stage switch {
+            TranscriptExportStage.MarkdownWrite => "markdown write",
+            TranscriptExportStage.MarkdownFallbackWrite => "markdown fallback write",
+            TranscriptExportStage.DocxWrite => "DOCX write",
+            TranscriptExportStage.DocxWriteWithMaterializedVisuals => "DOCX write with materialized visuals",
+            TranscriptExportStage.DocxWriteWithoutMaterializedVisuals => "DOCX retry without materialized visuals",
+            _ => "export"
+        };
     }
 
     private static string EnsureAppIcon() {
