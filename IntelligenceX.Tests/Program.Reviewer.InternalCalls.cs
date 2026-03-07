@@ -145,5 +145,9 @@ internal static partial class Program {
     private static string CallBuildThreadResolveError(Exception primaryError, Exception? fallbackError) {
         return ReviewerApp.BuildThreadResolveErrorForTests(primaryError, fallbackError);
     }
+
+    private static string CallBuildAutoResolvePermissionNote(int permissionDeniedCount) {
+        return ReviewerApp.BuildAutoResolvePermissionNoteForTests(permissionDeniedCount);
+    }
 }
 #endif
