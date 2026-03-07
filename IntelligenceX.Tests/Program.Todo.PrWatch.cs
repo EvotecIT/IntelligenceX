@@ -275,6 +275,86 @@ internal static partial class Program {
         AssertEqual("manual_cli", source, "empty source and event name should fall back to manual_cli");
     }
 
+    private static void TestPrWatchConsolidationTrackerIssueSkippedWhenRollupClean() {
+        var rollup = new global::System.Text.Json.Nodes.JsonObject {
+            ["failedTargets"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["staleInfraBlocked"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["reviewRequired"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["retryBudgetExhausted"] = new global::System.Text.Json.Nodes.JsonArray()
+        };
+        var metrics = new global::System.Text.Json.Nodes.JsonObject {
+            ["ratiosPct"] = new global::System.Text.Json.Nodes.JsonObject {
+                ["staleOpenPrs"] = 0,
+                ["reviewRequiredPrs"] = 0,
+                ["retryBudgetExhaustedPrs"] = 0,
+                ["noProgressPrs"] = 0
+            }
+        };
+        var existing = new[] {
+            BuildTrackerIssue(798, "IX PR Babysit Rollup Tracker (schedule)")
+        };
+
+        var plan = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.BuildTrackerIssueSyncPlanForTests(rollup, metrics, existing);
+        AssertEqual(false, plan.PublishTrackerIssue, "clean rollup should not publish tracker issue");
+        AssertEqual(1, plan.IssuesToClose.Count, "clean rollup should close existing tracker issue");
+        AssertEqual(798, plan.IssuesToClose[0]["number"]?.GetValue<int>() ?? 0, "clean plan should close matching tracker issue");
+    }
+
+    private static void TestPrWatchConsolidationTrackerIssuePublishesWhenRatiosOrBucketsNonZero() {
+        var rollup = new global::System.Text.Json.Nodes.JsonObject {
+            ["failedTargets"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["staleInfraBlocked"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["reviewRequired"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["retryBudgetExhausted"] = new global::System.Text.Json.Nodes.JsonArray {
+                new global::System.Text.Json.Nodes.JsonObject { ["number"] = 123 }
+            }
+        };
+        var metrics = new global::System.Text.Json.Nodes.JsonObject {
+            ["ratiosPct"] = new global::System.Text.Json.Nodes.JsonObject {
+                ["staleOpenPrs"] = 0,
+                ["reviewRequiredPrs"] = 0,
+                ["retryBudgetExhaustedPrs"] = 0,
+                ["noProgressPrs"] = 4.5
+            }
+        };
+        var existing = new[] {
+            BuildTrackerIssue(12, "newer duplicate"),
+            BuildTrackerIssue(5, "canonical older"),
+            BuildTrackerIssue(9, "middle duplicate")
+        };
+
+        var plan = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.BuildTrackerIssueSyncPlanForTests(rollup, metrics, existing);
+        AssertEqual(true, plan.PublishTrackerIssue, "non-zero buckets or ratios should keep tracker issue publishing enabled");
+        AssertNotNull(plan.CanonicalIssue, "actionable tracker plan should keep canonical issue");
+        AssertEqual(5, plan.CanonicalIssue!["number"]?.GetValue<int>() ?? 0, "oldest matching issue should remain canonical");
+        AssertEqual(2, plan.IssuesToClose.Count, "actionable plan should reconcile duplicate tracker issues");
+    }
+
+    private static void TestPrWatchConsolidationTrackerSignalsHandleMissingRatios() {
+        var rollup = new global::System.Text.Json.Nodes.JsonObject {
+            ["failedTargets"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["staleInfraBlocked"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["reviewRequired"] = new global::System.Text.Json.Nodes.JsonArray(),
+            ["retryBudgetExhausted"] = new global::System.Text.Json.Nodes.JsonArray()
+        };
+        var metrics = new global::System.Text.Json.Nodes.JsonObject();
+
+        var signals = IntelligenceX.Cli.Todo.PrWatchConsolidationRunner.ReadTrackerSignalsForTests(rollup, metrics);
+        AssertEqual(0, signals.FailedTargets, "missing ratios should not affect failed target count");
+        AssertEqual(0d, signals.StaleOpenPrsRatioPct, "missing stale ratio should default to zero");
+        AssertEqual(0d, signals.NoProgressRatioPct, "missing no-progress ratio should default to zero");
+        AssertEqual(false, signals.HasActionableContent, "missing ratios with empty buckets should remain non-actionable");
+    }
+
+    private static global::System.Text.Json.Nodes.JsonObject BuildTrackerIssue(int number, string title) {
+        return new global::System.Text.Json.Nodes.JsonObject {
+            ["number"] = number,
+            ["title"] = title,
+            ["url"] = $"https://github.com/EvotecIT/IntelligenceX/issues/{number}",
+            ["body"] = $"<!-- intelligencex:pr-watch-rollup-tracker:schedule -->{Environment.NewLine}{title}"
+        };
+    }
+
     private static void TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent() {
         var source = IntelligenceX.Cli.Todo.PrWatchMonitorRunner.ComposeSourceTag("pull_request_review", "submitted");
         AssertEqual("pull_request_review:submitted", source, "source tag should append action");
