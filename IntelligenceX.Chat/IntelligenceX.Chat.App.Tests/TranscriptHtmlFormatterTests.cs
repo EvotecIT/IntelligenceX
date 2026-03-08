@@ -29,10 +29,50 @@ public sealed class TranscriptHtmlFormatterTests {
                           """, now)
         }, "HH:mm:ss", options);
 
-        Assert.Contains("class=\"mermaid\"", html, StringComparison.Ordinal);
-        Assert.Contains("data-mermaid-hash=", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("language-mermaid", html, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            html.Contains("class=\"mermaid\"", StringComparison.Ordinal)
+            || html.Contains("language-mermaid", StringComparison.OrdinalIgnoreCase),
+            "Expected native OfficeIMO mermaid HTML or a fenced language-mermaid fallback.");
+        if (html.Contains("class=\"mermaid\"", StringComparison.Ordinal)) {
+            Assert.Contains("data-mermaid-hash=", html, StringComparison.Ordinal);
+        }
         Assert.Contains("flowchart LR", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures transcript rendering preserves Mermaid upgrade compatibility for longer real-world diagram replies.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesMermaidUpgradeCompatibility_ForTranscriptStyleDiagramReply() {
+        var options = ChatMarkdownOptions.Create();
+        var now = new DateTime(2026, 3, 7, 23, 8, 26, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Replication map preview:
+                          ```mermaid
+                          flowchart LR
+                            subgraph D1["ad.evotec.xyz"]
+                              AD0["AD0.ad.evotec.xyz"]
+                              AD1["AD1.ad.evotec.xyz"]
+                            end
+                            subgraph D2["ad.evotec.pl"]
+                              DC1["DC1.ad.evotec.pl"]
+                            end
+                            AD0 --- AD1
+                            AD0 --- DC1
+                          ```
+
+                          Interpretation:
+                          topology and recent replication are healthy.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Replication map preview:", html, StringComparison.Ordinal);
+        Assert.Contains("flowchart LR", html, StringComparison.Ordinal);
+        Assert.True(
+            html.Contains("class=\"mermaid\"", StringComparison.Ordinal)
+            || html.Contains("language-mermaid", StringComparison.OrdinalIgnoreCase),
+            "Expected native OfficeIMO mermaid HTML or a fenced language-mermaid fallback.");
     }
 
     /// <summary>

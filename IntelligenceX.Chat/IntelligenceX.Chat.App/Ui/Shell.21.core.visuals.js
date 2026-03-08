@@ -31,6 +31,23 @@
     maxEdgeLabelChars: 120
   };
 
+  var ixVisualRuntimeDiagnostics = {
+    mermaid: {
+      script: { state: "idle", url: "", detail: "" },
+      ready: false
+    },
+    chart: {
+      script: { state: "idle", url: "", detail: "" },
+      ready: false
+    },
+    network: {
+      script: { state: "idle", url: "", detail: "" },
+      stylesheet: { state: "idle", url: "", detail: "" },
+      ready: false
+    }
+  };
+  var ixVisualMermaidBlockIdCounter = 1;
+
   // Local assets are mapped via WebView2 virtual host mapping in MainWindow.
   var ixVisualAssets = {
     mermaidUrl: "https://ixchat.local/vendor/mermaid/mermaid.min.js",
@@ -318,6 +335,29 @@
     }
   }
 
+  function recordVisualRuntimeAssetState(kind, asset, state, url, detail) {
+    if (!kind || !asset || !ixVisualRuntimeDiagnostics[kind] || !ixVisualRuntimeDiagnostics[kind][asset]) {
+      return;
+    }
+
+    var target = ixVisualRuntimeDiagnostics[kind][asset];
+    target.state = String(state || "idle");
+    target.url = String(url || "");
+    target.detail = String(detail || "");
+  }
+
+  function recordVisualRuntimeReady(kind, ready) {
+    if (!kind || !ixVisualRuntimeDiagnostics[kind]) {
+      return;
+    }
+
+    ixVisualRuntimeDiagnostics[kind].ready = ready === true;
+  }
+
+  window.ixGetVisualRuntimeDiagnostics = function() {
+    return JSON.parse(JSON.stringify(ixVisualRuntimeDiagnostics));
+  };
+
   function clearVisualMessageWideWhenEmpty(pre) {
     if (!pre || !pre.closest) {
       return;
@@ -416,7 +456,7 @@
     markVisualMessageWide(pre);
   }
 
-  function loadVisualScriptOnce(url, attrName, readyCheck) {
+  function loadVisualScriptOnce(url, attrName, readyCheck, diagnosticsKind, diagnosticsAsset) {
     var isReady = typeof readyCheck === "function"
       ? readyCheck
       : function() { return true; };
@@ -427,15 +467,25 @@
         return Promise.resolve(true);
       }
       if (existingState === "error") {
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "error", url, "existing_tag_error");
         return Promise.resolve(false);
       }
       if (existingState === "loaded") {
-        return Promise.resolve(isReady());
+        var ready = isReady();
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, ready ? "loaded" : "loaded_not_ready", url, ready ? "" : "ready_check_failed");
+        return Promise.resolve(ready);
       }
 
       return new Promise(function(resolve) {
-        existing.addEventListener("load", function() { resolve(isReady()); }, { once: true });
-        existing.addEventListener("error", function() { resolve(false); }, { once: true });
+        existing.addEventListener("load", function() {
+          var ready = isReady();
+          recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, ready ? "loaded" : "loaded_not_ready", url, ready ? "" : "ready_check_failed");
+          resolve(ready);
+        }, { once: true });
+        existing.addEventListener("error", function() {
+          recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "error", url, "load_event_error");
+          resolve(false);
+        }, { once: true });
       });
     }
 
@@ -445,32 +495,44 @@
       script.async = true;
       script.setAttribute(attrName, "1");
       script.setAttribute("data-ix-load-state", "loading");
+      recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "loading", url, "");
       script.addEventListener("load", function() {
         script.setAttribute("data-ix-load-state", "loaded");
-        resolve(isReady());
+        var ready = isReady();
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, ready ? "loaded" : "loaded_not_ready", url, ready ? "" : "ready_check_failed");
+        resolve(ready);
       }, { once: true });
       script.addEventListener("error", function() {
         script.setAttribute("data-ix-load-state", "error");
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "error", url, "load_event_error");
         resolve(false);
       }, { once: true });
       document.head.appendChild(script);
     });
   }
 
-  function loadVisualStylesheetOnce(url, attrName) {
+  function loadVisualStylesheetOnce(url, attrName, diagnosticsKind, diagnosticsAsset) {
     var existing = document.querySelector("link[" + attrName + "='1']");
     if (existing) {
       var existingState = existing.getAttribute("data-ix-load-state") || "";
       if (existingState === "error") {
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "error", url, "existing_tag_error");
         return Promise.resolve(false);
       }
       if (existingState === "loaded") {
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "loaded", url, "");
         return Promise.resolve(true);
       }
 
       return new Promise(function(resolve) {
-        existing.addEventListener("load", function() { resolve(true); }, { once: true });
-        existing.addEventListener("error", function() { resolve(false); }, { once: true });
+        existing.addEventListener("load", function() {
+          recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "loaded", url, "");
+          resolve(true);
+        }, { once: true });
+        existing.addEventListener("error", function() {
+          recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "error", url, "load_event_error");
+          resolve(false);
+        }, { once: true });
       });
     }
 
@@ -480,12 +542,15 @@
       link.href = url;
       link.setAttribute(attrName, "1");
       link.setAttribute("data-ix-load-state", "loading");
+      recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "loading", url, "");
       link.addEventListener("load", function() {
         link.setAttribute("data-ix-load-state", "loaded");
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "loaded", url, "");
         resolve(true);
       }, { once: true });
       link.addEventListener("error", function() {
         link.setAttribute("data-ix-load-state", "error");
+        recordVisualRuntimeAssetState(diagnosticsKind, diagnosticsAsset, "error", url, "load_event_error");
         resolve(false);
       }, { once: true });
       document.head.appendChild(link);
@@ -603,19 +668,24 @@
       "data-ix-mermaid-js",
       function() {
         return !!getMermaidRuntime();
-      })
+      },
+      "mermaid",
+      "script")
       .then(function(ok) {
         if (!ok || !getMermaidRuntime()) {
           ixVisualMermaidState.loadFailed = true;
+          recordVisualRuntimeReady("mermaid", false);
           return false;
         }
 
         ensureMermaidThemeInitialized("preserve_ui_theme", "ui");
+        recordVisualRuntimeReady("mermaid", true);
 
         return true;
       })
       .catch(function() {
         ixVisualMermaidState.loadFailed = true;
+        recordVisualRuntimeReady("mermaid", false);
         return false;
       })
       .finally(function() {
@@ -737,17 +807,22 @@
       "data-ix-chartjs-js",
       function() {
         return !!(window.Chart && typeof window.Chart === "function");
-      })
+      },
+      "chart",
+      "script")
       .then(function(ok) {
         if (!ok || !window.Chart || typeof window.Chart !== "function") {
           ixVisualChartState.loadFailed = true;
+          recordVisualRuntimeReady("chart", false);
           return false;
         }
 
+        recordVisualRuntimeReady("chart", true);
         return true;
       })
       .catch(function() {
         ixVisualChartState.loadFailed = true;
+        recordVisualRuntimeReady("chart", false);
         return false;
       })
       .finally(function() {
@@ -1341,26 +1416,34 @@
     }
 
     ixVisualNetworkState.loadPromise = Promise.all([
-      loadVisualStylesheetOnce(ixVisualAssets.visNetworkCssUrl, "data-ix-visnetwork-css"),
+      loadVisualStylesheetOnce(ixVisualAssets.visNetworkCssUrl, "data-ix-visnetwork-css", "network", "stylesheet"),
       loadVisualScriptOnce(
         ixVisualAssets.visNetworkJsUrl,
         "data-ix-visnetwork-js",
         function() {
           return !!(window.vis && typeof window.vis.Network === "function");
-        })
+        },
+        "network",
+        "script")
     ])
       .then(function(parts) {
         var cssOk = !!parts[0];
         var jsOk = !!parts[1];
-        var ready = cssOk && jsOk && window.vis && typeof window.vis.Network === "function";
+        var ready = jsOk && window.vis && typeof window.vis.Network === "function";
         if (!ready) {
           ixVisualNetworkState.loadFailed = true;
+          recordVisualRuntimeReady("network", false);
           return false;
         }
+        if (!cssOk) {
+          recordVisualRuntimeAssetState("network", "stylesheet", "loaded_optional_failed", ixVisualAssets.visNetworkCssUrl, "stylesheet_optional");
+        }
+        recordVisualRuntimeReady("network", true);
         return true;
       })
       .catch(function() {
         ixVisualNetworkState.loadFailed = true;
+        recordVisualRuntimeReady("network", false);
         return false;
       })
       .finally(function() {
@@ -2055,9 +2138,43 @@
     await renderTranscriptVisualKind(root, "ix-network", collectIxNetworkBlocks, renderIxNetworkBlock);
   }
 
+  function collectMermaidBlocks(root) {
+    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre.mermaid, .bubble .markdown-body pre.language-mermaid, .bubble .markdown-body pre > code.language-mermaid, .bubble .markdown-body pre > code.mermaid");
+    if (!codeNodes || codeNodes.length === 0) {
+      return [];
+    }
+
+    var seen = {};
+    var blocks = [];
+    for (var i = 0; i < codeNodes.length; i++) {
+      var current = codeNodes[i];
+      var pre = current.tagName && current.tagName.toLowerCase() === "pre"
+        ? current
+        : current.parentElement;
+      if (!pre || !pre.parentElement || pre.tagName.toLowerCase() !== "pre") {
+        continue;
+      }
+
+      var marker = pre.dataset.ixMermaidBlockId;
+      if (!marker) {
+        marker = "ix-mermaid-block-" + String(ixVisualMermaidBlockIdCounter++);
+        pre.dataset.ixMermaidBlockId = marker;
+      }
+
+      if (seen[marker]) {
+        continue;
+      }
+
+      seen[marker] = true;
+      blocks.push(pre);
+    }
+
+    return blocks;
+  }
+
   async function renderTranscriptMermaid(root) {
-    var blocks = root.querySelectorAll(".bubble .markdown-body pre.mermaid");
-    if (!blocks || blocks.length === 0) {
+    var blocks = collectMermaidBlocks(root);
+    if (blocks.length === 0) {
       return;
     }
 

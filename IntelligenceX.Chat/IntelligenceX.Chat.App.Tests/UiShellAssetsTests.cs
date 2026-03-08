@@ -260,6 +260,24 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures Mermaid transcript upgrades support both OfficeIMO-native blocks and plain fenced-code fallback shapes.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesMermaidFallbackSelectorsAndRuntimeDiagnostics() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
+        var script = File.ReadAllText(scriptPath);
+
+        AssertContainsAll(
+            script,
+            "window.ixGetVisualRuntimeDiagnostics = function() {",
+            "function recordVisualRuntimeAssetState(kind, asset, state, url, detail) {",
+            "function recordVisualRuntimeReady(kind, ready) {",
+            ".bubble .markdown-body pre > code.language-mermaid",
+            ".bubble .markdown-body pre.language-mermaid",
+            "var blocks = collectMermaidBlocks(root);");
+    }
+
+    /// <summary>
     /// Ensures autonomy numeric inputs expose the full supported service range for long tool flows.
     /// </summary>
     [Fact]
@@ -463,6 +481,28 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures Mermaid runtime resolution survives the vendor bundle shape and later visual phases
+    /// still run when an earlier renderer throws.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesMermaidRuntimeFallbackAndSafeTranscriptPhaseChaining() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
+        var script = File.ReadAllText(scriptPath);
+
+        AssertContainsAll(
+            script,
+            "function resolveMermaidRuntimeCandidate() {",
+            "function getMermaidRuntime() {",
+            "globalThis.__esbuild_esm_mermaid_nm",
+            "window.mermaid = runtime;",
+            "function runTranscriptVisualPhaseSafely(root, renderPhase) {",
+            "console.warn(\"transcript visual phase failed\", error);",
+            "return runTranscriptVisualPhaseSafely(root, renderTranscriptCharts)",
+            "return runTranscriptVisualPhaseSafely(root, renderTranscriptNetworks)",
+            "return runTranscriptVisualPhaseSafely(root, renderTranscriptMermaid)");
+    }
+
+    /// <summary>
     /// Ensures visual popout panel and export callbacks are present for Mermaid/Chart/Network large-view workflows.
     /// </summary>
     [Fact]
@@ -491,28 +531,6 @@ public sealed class UiShellAssetsTests {
             "export_visual_artifact",
             "visual_export_action",
             "open_visual_popout");
-    }
-
-    /// <summary>
-    /// Ensures Mermaid runtime resolution survives the vendor bundle shape and later visual phases
-    /// still run when an earlier renderer throws.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesMermaidRuntimeFallbackAndSafeTranscriptPhaseChaining() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
-        var script = File.ReadAllText(scriptPath);
-
-        AssertContainsAll(
-            script,
-            "function resolveMermaidRuntimeCandidate() {",
-            "function getMermaidRuntime() {",
-            "globalThis.__esbuild_esm_mermaid_nm",
-            "window.mermaid = runtime;",
-            "function runTranscriptVisualPhaseSafely(root, renderPhase) {",
-            "console.warn(\"transcript visual phase failed\", error);",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptCharts)",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptNetworks)",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptMermaid)");
     }
 
     /// <summary>
