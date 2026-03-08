@@ -154,7 +154,7 @@ internal static partial class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
 
     private static readonly Regex BrokenTwoLineStrongLeadInRegex = new(
-        @"^(?<indent>\s*)\*\*(?<label>[^*\r\n]+)$",
+        @"^(?<indent>\s*)\*\*(?<label>Result)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex TrailingDanglingStrongMetricTokenRegex = new(

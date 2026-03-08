@@ -148,4 +148,20 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
         Assert.True(repaired);
         Assert.Equal("**Result:** all 5 are healthy for directory access with recommended LDAPS endpoints.", fixedText);
     }
+
+    /// <summary>
+    /// Ensures legitimate multiline bold content is preserved instead of being rewritten as a label artifact.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_PreservesLegitimateMultiLineBoldContent() {
+        var clean = """
+                    **Keep
+                    this together**
+                    """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(clean, out var fixedText);
+
+        Assert.False(repaired);
+        Assert.Equal(clean, fixedText);
+    }
 }
