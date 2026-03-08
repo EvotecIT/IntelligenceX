@@ -624,7 +624,8 @@ pre:hover .code-copy-btn {
   max-height: none;
 }
 
-.ix-network-host {
+.ix-network-host,
+.omd-network {
   margin: 8px 0;
   padding: 8px;
   border-radius: var(--ix-radius-md);
@@ -633,14 +634,16 @@ pre:hover .code-copy-btn {
   min-height: clamp(300px, 44vh, 1080px);
 }
 
-.ix-network-host .ix-network-canvas {
+.ix-network-host .ix-network-canvas,
+.omd-network .omd-network-canvas {
   width: 100%;
   height: clamp(280px, 52vh, 1120px);
   border-radius: 10px;
   overflow: hidden;
 }
 
-.ix-network-host .vis-network:focus {
+.ix-network-host .vis-network:focus,
+.omd-network .vis-network:focus {
   outline: none;
 }
 
