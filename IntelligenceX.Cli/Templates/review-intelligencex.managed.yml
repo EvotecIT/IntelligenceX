@@ -1,11 +1,15 @@
 # INTELLIGENCEX:BEGIN
 review:
+  # Do not run secret-dependent review on any forked pull requests.
+  # Skip Dependabot PRs by default to avoid unnecessary LLM usage/budget burn.
+  # Maintainers can opt-in per PR by adding the `needs-ai-review` label.
+  if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && (github.event_name != 'pull_request' || (github.actor != 'dependabot[bot]' && github.actor != 'app/dependabot') || contains(github.event.pull_request.labels.*.name, 'needs-ai-review')) }}
   permissions:
     contents: read
     pull-requests: write
     issues: write
     id-token: write
-  uses: {{ActionsRepo}}/.github/workflows/review-intelligencex-reusable.yml@{{ActionsRef}}
+  uses: {{ReusableWorkflowRef}}
   with:
     runs_on: {{RunsOn}}
     reviewer_source: {{ReviewerSource}}

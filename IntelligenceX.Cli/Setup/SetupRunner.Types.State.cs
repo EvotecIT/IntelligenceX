@@ -37,6 +37,7 @@ internal static partial class SetupRunner {
     private sealed class WorkflowSnapshot {
         public string? ActionsRepo { get; set; }
         public string? ActionsRef { get; set; }
+        public bool UseLocalReusableWorkflow { get; set; }
         public string? RunsOn { get; set; }
         public string? ReviewerSource { get; set; }
         public string? ReviewerReleaseRepo { get; set; }
@@ -64,6 +65,7 @@ internal static partial class SetupRunner {
         public bool HasAny =>
             ActionsRepo is not null ||
             ActionsRef is not null ||
+            UseLocalReusableWorkflow ||
             RunsOn is not null ||
             ReviewerSource is not null ||
             ReviewerReleaseRepo is not null ||

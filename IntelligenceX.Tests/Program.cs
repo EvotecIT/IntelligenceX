@@ -188,6 +188,8 @@ internal static partial class Program {
             TestSetupOnboardingContractVerificationRejectsMissingAutodetectMetadata);
         failed += Run("Setup workflow upgrade preserves custom sections outside managed block",
             TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
+        failed += Run("Setup workflow upgrade preserves local reusable workflow reference",
+            TestSetupWorkflowUpgradePreservesLocalReusableWorkflowReference);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
         failed += Run("Setup workflow template includes OpenAI account routing pass-through",

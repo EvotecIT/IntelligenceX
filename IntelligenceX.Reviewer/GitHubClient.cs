@@ -111,7 +111,7 @@ internal sealed partial class GitHubClient : IDisposable {
         }
 
         var context = new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha,
-            labels, headRepoFullName, isFork, authorAssociation);
+            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null);
         _pullRequestCache[cacheKey] = context;
         return context;
     }

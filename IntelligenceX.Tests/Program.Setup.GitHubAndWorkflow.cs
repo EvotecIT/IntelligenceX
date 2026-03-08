@@ -86,6 +86,7 @@ jobs:
         AssertContainsText(content, "custom_pre:", "workflow upgrade keeps custom_pre");
         AssertContainsText(content, "custom_post:", "workflow upgrade keeps custom_post");
         AssertContainsText(content, "provider: copilot", "workflow upgrade updates managed provider");
+        AssertContainsText(content, "needs-ai-review", "workflow upgrade keeps safety gate");
         AssertContainsText(content, beginMarker, "workflow upgrade keeps managed begin marker");
         AssertContainsText(content, endMarker, "workflow upgrade keeps managed end marker");
         AssertEqual(1, CountOccurrences(content, beginMarker),
@@ -119,6 +120,7 @@ jobs:
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
 
+        AssertContainsText(content, "needs-ai-review", "workflow template includes safety gate");
         AssertContainsText(content, "openai_account_id:", "workflow template openai account id input");
         AssertContainsText(content, "openai_account_ids:", "workflow template openai account ids input");
         AssertContainsText(content, "openai_account_rotation:", "workflow template openai account rotation input");
@@ -161,6 +163,7 @@ jobs:
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
 
+        AssertContainsText(content, "needs-ai-review", "workflow template openai model includes safety gate");
         AssertContainsText(content, "openai_model:", "workflow template openai model input");
         AssertContainsText(content, "openai_model: ${{ inputs.openai_model }}",
             "workflow template openai model pass-through");

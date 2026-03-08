@@ -401,6 +401,7 @@ internal static partial class SetupRunner {
     private sealed class WorkflowSettings {
         public string ActionsRepo { get; set; } = DefaultActionsRepo;
         public string ActionsRef { get; set; } = DefaultActionsRef;
+        public bool UseLocalReusableWorkflow { get; set; }
         public string RunsOn { get; set; } = DefaultRunsOn;
         public string ReviewerSource { get; set; } = "release";
         public string ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
@@ -430,6 +431,7 @@ internal static partial class SetupRunner {
             return new WorkflowSettings {
                 ActionsRepo = NormalizeActionsRepo(options.ActionsRepo ?? DefaultActionsRepo),
                 ActionsRef = options.ActionsRef ?? DefaultActionsRef,
+                UseLocalReusableWorkflow = false,
                 RunsOn = options.RunsOn ?? DefaultRunsOn,
                 ReviewerSource = options.ReviewerSource ?? "release",
                 ReviewerReleaseRepo = options.ReviewerReleaseRepo ?? "EvotecIT/github-actions",

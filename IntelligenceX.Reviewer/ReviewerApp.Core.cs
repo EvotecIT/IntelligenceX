@@ -485,10 +485,18 @@ public static partial class ReviewerApp {
             }
 
             if (commentId.HasValue) {
-                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
-                    .ConfigureAwait(false);
-                summaryPosted = true;
-                Console.WriteLine("Updated review comment.");
+                try {
+                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, commentId.Value, commentBody, cancellationToken)
+                        .ConfigureAwait(false);
+                    summaryPosted = true;
+                    Console.WriteLine("Updated review comment.");
+                } catch (Exception ex) {
+                    Console.Error.WriteLine($"Failed to update review comment {commentId.Value}: {ex.Message}");
+                    await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
+                        .ConfigureAwait(false);
+                    summaryPosted = true;
+                    Console.WriteLine("Posted replacement review comment.");
+                }
             } else if (settings.CommentMode == ReviewCommentMode.Sticky) {
                 var shouldSearch = settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit;
                 IssueComment? existing = null;
@@ -499,11 +507,15 @@ public static partial class ReviewerApp {
                 var shouldOverwrite = settings.OverwriteSummary ||
                                       (settings.OverwriteSummaryOnNewCommit && IsSummaryOutdated(existing, context.HeadSha));
                 if (existing is not null && shouldOverwrite) {
-                    await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, cancellationToken)
-                        .ConfigureAwait(false);
-                    summaryPosted = true;
-                    Console.WriteLine("Updated existing review comment.");
-                    return 0;
+                    try {
+                        await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, commentBody, cancellationToken)
+                            .ConfigureAwait(false);
+                        summaryPosted = true;
+                        Console.WriteLine("Updated existing review comment.");
+                        return 0;
+                    } catch (Exception ex) {
+                        Console.Error.WriteLine($"Failed to update existing review comment {existing.Id}: {ex.Message}");
+                    }
                 }
                 await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, commentBody, cancellationToken)
                     .ConfigureAwait(false);

@@ -130,7 +130,7 @@ public static partial class ReviewerApp {
                 var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, settings.ReviewThreadsMax,
                         threadCommentFetchLimit, cancellationToken)
                     .ConfigureAwait(false);
-                threads = await HydratePartialThreadsForBotsOnlyAsync(github, threads, settings, cancellationToken)
+                threads = await HydratePartialThreadsForBotsOnlyAsync(github, fallbackGithub, threads, settings, cancellationToken)
                     .ConfigureAwait(false);
                 extras.ReviewThreads = threads;
                 if (settings.ReviewThreadsAutoResolveStale) {
@@ -345,7 +345,7 @@ public static partial class ReviewerApp {
         var maxComments = ResolveThreadCommentFetchLimit(settings);
         var threads = await codeHostReader.ListPullRequestReviewThreadsAsync(context, maxThreads, maxComments, cancellationToken)
             .ConfigureAwait(false);
-        threads = await HydratePartialThreadsForBotsOnlyAsync(github, threads, settings, cancellationToken)
+        threads = await HydratePartialThreadsForBotsOnlyAsync(github, fallbackGithub, threads, settings, cancellationToken)
             .ConfigureAwait(false);
 
         var resolved = 0;
@@ -483,7 +483,8 @@ public static partial class ReviewerApp {
     }
 
     private static async Task<IReadOnlyList<PullRequestReviewThread>> HydratePartialThreadsForBotsOnlyAsync(GitHubClient github,
-        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken) {
+        GitHubClient? fallbackGithub, IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings,
+        CancellationToken cancellationToken) {
         if (!settings.ReviewThreadsAutoResolveBotsOnly || threads.Count == 0) {
             return threads;
         }
@@ -497,11 +498,24 @@ public static partial class ReviewerApp {
             }
 
             PullRequestReviewThread? expanded = null;
+            var preferredGithub = fallbackGithub ?? github;
+            var secondaryGithub = ReferenceEquals(preferredGithub, github) ? fallbackGithub : github;
             try {
-                expanded = await github.GetPullRequestReviewThreadAsync(thread.Id, maxHydratedComments, cancellationToken)
+                expanded = await preferredGithub.GetPullRequestReviewThreadAsync(thread.Id, maxHydratedComments, cancellationToken)
                     .ConfigureAwait(false);
-            } catch (Exception ex) {
-                Console.Error.WriteLine($"Failed to hydrate review thread {thread.Id}: {ex.Message}");
+            } catch (Exception primaryEx) {
+                if (secondaryGithub is not null) {
+                    try {
+                        expanded = await secondaryGithub.GetPullRequestReviewThreadAsync(thread.Id, maxHydratedComments,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    } catch (Exception secondaryEx) {
+                        Console.Error.WriteLine(
+                            $"Failed to hydrate review thread {thread.Id}: primary={primaryEx.Message}; fallback={secondaryEx.Message}");
+                    }
+                } else {
+                    Console.Error.WriteLine($"Failed to hydrate review thread {thread.Id}: {primaryEx.Message}");
+                }
             }
 
             hydrated.Add(expanded ?? thread);

@@ -123,8 +123,9 @@ public static partial class ReviewerApp {
         }
 
         if (noMergeBlockers && settings.ReviewThreadsAutoResolveSweepNoBlockers && kept.Count > 0) {
+            var remainingResolveBudget = Math.Max(0, settings.ReviewThreadsAutoResolveMax - resolvedCount);
             var extraResolved = await TryResolveKeptBotThreadsAfterNoBlockersAsync(github, fallbackGithub, candidates, resolved, kept,
-                    settings, cancellationToken)
+                    settings, remainingResolveBudget, cancellationToken)
                 .ConfigureAwait(false);
             sweepResolved = extraResolved;
             resolvedCount += extraResolved;
@@ -576,7 +577,7 @@ public static partial class ReviewerApp {
             .ConfigureAwait(false);
         string? oldest = null;
         foreach (var comment in comments) {
-            if (!comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+            if (!IsOwnedSummaryComment(comment)) {
                 continue;
             }
             var commit = ExtractReviewedCommit(comment.Body);
@@ -588,7 +589,6 @@ public static partial class ReviewerApp {
     }
 
 }
-
 
 
 

@@ -174,8 +174,9 @@ public static partial class ReviewerApp {
         List<ThreadAssessment> resolved,
         List<ThreadAssessment> kept,
         ReviewSettings settings,
+        int maxAdditionalResolves,
         CancellationToken cancellationToken) {
-        if (kept.Count == 0) {
+        if (kept.Count == 0 || maxAdditionalResolves <= 0) {
             return 0;
         }
 
@@ -199,6 +200,9 @@ public static partial class ReviewerApp {
         var sweepResolvedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sweepResolved = 0;
         foreach (var item in kept) {
+            if (sweepResolved >= maxAdditionalResolves) {
+                break;
+            }
             var normalizedId = NormalizeThreadAssessmentId(item.Id);
             if (normalizedId.Length == 0 || resolvedIds.Contains(normalizedId) || sweepResolvedIds.Contains(normalizedId)) {
                 continue;

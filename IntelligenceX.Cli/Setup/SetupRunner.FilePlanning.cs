@@ -139,6 +139,9 @@ internal static partial class SetupRunner {
         }
 
         if (TryReadWorkflowSnapshot(existingManagedBlock, out var snapshot)) {
+            if (!options.ActionsRepoSet && !options.ActionsRefSet && snapshot.UseLocalReusableWorkflow) {
+                settings.UseLocalReusableWorkflow = true;
+            }
             if (!options.ActionsRepoSet && !string.IsNullOrWhiteSpace(snapshot.ActionsRepo)) {
                 settings.ActionsRepo = NormalizeActionsRepo(snapshot.ActionsRepo!);
             }

@@ -99,8 +99,9 @@ internal static partial class SetupRunner {
             ? ReadEmbeddedResource("review-intelligencex.managed.explicit.yml")
             : ReadEmbeddedResource("review-intelligencex.managed.yml");
         var tokens = new Dictionary<string, string> {
-            ["ActionsRepo"] = settings.ActionsRepo,
-            ["ActionsRef"] = settings.ActionsRef,
+            ["ReusableWorkflowRef"] = settings.UseLocalReusableWorkflow
+                ? "./.github/workflows/review-intelligencex-reusable.yml"
+                : $"{settings.ActionsRepo}/.github/workflows/review-intelligencex-reusable.yml@{settings.ActionsRef}",
             ["RunsOn"] = NormalizeRunsOn(settings.RunsOn),
             ["ReviewerSource"] = settings.ReviewerSource,
             ["ReviewerReleaseRepo"] = settings.ReviewerReleaseRepo,
@@ -216,10 +217,19 @@ internal static partial class SetupRunner {
 
     private static bool TryReadWorkflowSnapshot(string content, out WorkflowSnapshot snapshot) {
         snapshot = new WorkflowSnapshot();
-        var match = Regex.Match(content, @"^\s*uses:\s*([^\s@]+)@([^\s]+)\s*$", RegexOptions.Multiline);
-        if (match.Success) {
-            snapshot.ActionsRepo = NormalizeActionsRepo(match.Groups[1].Value.Trim());
-            snapshot.ActionsRef = match.Groups[2].Value.Trim();
+        var localMatch = Regex.Match(content,
+            @"^\s*uses:\s*(\./\.github/workflows/review-intelligencex-reusable\.yml)\s*$",
+            RegexOptions.Multiline | RegexOptions.IgnoreCase);
+        if (localMatch.Success) {
+            snapshot.UseLocalReusableWorkflow = true;
+        } else {
+            var remoteMatch = Regex.Match(content,
+                @"^\s*uses:\s*([^\s@]+/\.github/workflows/review-intelligencex-reusable\.yml)@([^\s]+)\s*$",
+                RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            if (remoteMatch.Success) {
+                snapshot.ActionsRepo = NormalizeActionsRepo(remoteMatch.Groups[1].Value.Trim());
+                snapshot.ActionsRef = remoteMatch.Groups[2].Value.Trim();
+            }
         }
 
         snapshot.RunsOn = ReadYamlScalar(content, "runs_on");

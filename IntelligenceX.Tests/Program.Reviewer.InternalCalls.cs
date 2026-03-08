@@ -78,6 +78,14 @@ internal static partial class Program {
             .GetResult();
     }
 
+    private static ReviewContextExtras CallBuildExtrasAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        PullRequestContext context, ReviewSettings settings, bool forceReviewThreads) {
+        return ReviewerApp.BuildExtrasForTestsAsync(github, fallbackGithub, context, settings, forceReviewThreads,
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+    }
+
     private static void CallAutoResolveMissingInlineThreads(GitHubClient github, PullRequestContext context,
         HashSet<string>? expectedKeys, ReviewSettings settings) {
         ReviewerApp.AutoResolveMissingInlineThreadsForTestsAsync(github, context, expectedKeys, settings, CancellationToken.None)
@@ -103,6 +111,16 @@ internal static partial class Program {
         IReadOnlyList<PullRequestReviewThread> threads, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
         string? diffNote) {
         return ReviewerApp.BuildThreadAssessmentPromptForTests(context, threads, files, settings, diffNote);
+    }
+
+    private static int CallTryResolveKeptBotThreadsAfterNoBlockers(GitHubClient github, GitHubClient? fallbackGithub,
+        IReadOnlyList<PullRequestReviewThread> candidates, List<ReviewerApp.ThreadAssessment> resolved,
+        List<ReviewerApp.ThreadAssessment> kept,
+        ReviewSettings settings, int maxAdditionalResolves) {
+        return ReviewerApp.TryResolveKeptBotThreadsAfterNoBlockersForTestsAsync(github, fallbackGithub, candidates, resolved, kept,
+                settings, maxAdditionalResolves, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
     }
 
     private static bool CallHasValidResolveEvidence(string evidence, PullRequestReviewThread thread,
@@ -148,6 +166,10 @@ internal static partial class Program {
 
     private static string CallBuildAutoResolvePermissionNote(int permissionDeniedCount) {
         return ReviewerApp.BuildAutoResolvePermissionNoteForTests(permissionDeniedCount);
+    }
+
+    private static bool CallIsOwnedSummaryComment(IssueComment comment) {
+        return ReviewerApp.IsOwnedSummaryCommentForTests(comment);
     }
 }
 #endif
