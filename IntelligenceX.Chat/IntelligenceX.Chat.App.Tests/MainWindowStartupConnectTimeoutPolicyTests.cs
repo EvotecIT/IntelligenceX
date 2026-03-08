@@ -975,4 +975,24 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
             authProbeMs.HasValue ? (long?)authProbeMs.Value : null);
         Assert.Equal(expected, summary);
     }
+
+    /// <summary>
+    /// Ensures startup dispatch prewarm emits a system notice only when sign-in is still required or auth remains inconclusive.
+    /// </summary>
+    [Theory]
+    [InlineData(false, null, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, null, true, true)]
+    public void ShouldAppendStartupDispatchPrewarmSummary_ReturnsExpectedValue(
+        bool authProbeAttempted,
+        bool? authProbeAuthenticated,
+        bool authProbeInconclusive,
+        bool expected) {
+        var shouldAppend = MainWindow.ShouldAppendStartupDispatchPrewarmSummary(
+            authProbeAttempted,
+            authProbeAuthenticated,
+            authProbeInconclusive);
+        Assert.Equal(expected, shouldAppend);
+    }
 }
