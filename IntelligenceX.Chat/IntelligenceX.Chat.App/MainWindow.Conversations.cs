@@ -72,7 +72,7 @@ public sealed partial class MainWindow : Window {
                             continue;
                         }
 
-                        var repairedText = RepairLegacyTranscriptText(message.Text, out var messageWasRepaired);
+                        var repairedText = NormalizePersistedTranscriptText(message.Role, message.Text, out var messageWasRepaired);
                         if (messageWasRepaired) {
                             message.Text = repairedText;
                             repaired = true;
@@ -133,7 +133,7 @@ public sealed partial class MainWindow : Window {
                         continue;
                     }
 
-                    var repairedText = RepairLegacyTranscriptText(message.Text, out var messageWasRepaired);
+                    var repairedText = NormalizePersistedTranscriptText(message.Role, message.Text, out var messageWasRepaired);
                     if (messageWasRepaired) {
                         message.Text = repairedText;
                         repaired = true;
@@ -163,14 +163,27 @@ public sealed partial class MainWindow : Window {
         return repaired;
     }
 
-    private static string RepairLegacyTranscriptText(string text, out bool repaired) {
+    private static string NormalizePersistedTranscriptText(string? role, string text, out bool repaired) {
         if (!TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(text, out var normalized)) {
+            normalized = text;
+        } else {
+            repaired = true;
+            return normalized;
+        }
+
+        if (string.Equals(role, "User", StringComparison.OrdinalIgnoreCase)) {
             repaired = false;
             return text;
         }
 
-        repaired = true;
-        return normalized;
+        var fullyNormalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        if (!string.Equals(fullyNormalized, text, StringComparison.Ordinal)) {
+            repaired = true;
+            return fullyNormalized;
+        }
+
+        repaired = false;
+        return text;
     }
 
     private string ResolveInitialConversationId(ChatAppState state) {

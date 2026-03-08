@@ -162,6 +162,13 @@ internal static partial class TranscriptMarkdownNormalizer {
                    + match.Groups["tail"].Value;
         });
 
+        repaired = MissingTrailingStrongMetricCloseRegex.Replace(repaired, static match => {
+            var value = match.Groups["value"].Value.Trim();
+            return value.Length == 0
+                ? match.Value
+                : match.Groups["prefix"].Value + "**" + value + "**" + match.Groups["tail"].Value;
+        });
+
         return true;
     }
 

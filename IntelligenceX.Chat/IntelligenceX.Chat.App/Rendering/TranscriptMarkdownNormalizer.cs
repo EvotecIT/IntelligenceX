@@ -165,6 +165,10 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"^(?<prefix>\s*(?:-\s+|\d+\.\s+)[^\r\n*]+?\s)\*\*(?<first>[^*\r\n]+)\*\*\*{2}(?<second>[^\s*\r\n][^*\r\n]*?)\*{2}(?<tail>\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex MissingTrailingStrongMetricCloseRegex = new(
+        @"^(?<prefix>\s*(?:-\s+|\d+\.\s+)[^\r\n*]+?\s)\*\*(?<value>[^\r\n*][^\r\n]*?)(?<!\*)\*(?<tail>\s*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex OrderedListLeadRegex = new(
         @"^\d+[.)]\s+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
