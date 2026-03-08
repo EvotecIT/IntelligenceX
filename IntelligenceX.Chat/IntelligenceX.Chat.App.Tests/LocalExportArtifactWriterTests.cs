@@ -144,6 +144,7 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.True(result.Succeeded);
             var written = File.ReadAllText(markdownPath);
             Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("#### ad_environment_discover", written, StringComparison.Ordinal);
             Assert.Contains("[Cached evidence fallback]", written, StringComparison.Ordinal);
             Assert.Contains("### Active Directory: Environment Discovery", written, StringComparison.Ordinal);
         } finally {
@@ -185,7 +186,42 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.True(result.Succeeded);
             Assert.NotNull(capturedMarkdown);
             Assert.DoesNotContain("ix:cached-tool-evidence:v1", capturedMarkdown, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("#### ad_environment_discover", capturedMarkdown, StringComparison.Ordinal);
             Assert.Contains("[Cached evidence fallback]", capturedMarkdown, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures export applies the same history repair to legacy cached-evidence heading wrappers and overwrapped strong spans.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Markdown_NormalizesLegacyHistoryArtifacts() {
+        const string markdown = """
+            # Transcript
+
+            [Cached evidence fallback]
+            ix:cached-tool-evidence:v1
+
+            Recent evidence:
+            - eventlog_top_events: ### Top 30 recent events (preview)
+
+            ### Forest replication health
+            - Overall health ****healthy****
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var markdownPath = Path.Combine(root, "transcript.md");
+            var result = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
+
+            Assert.True(result.Succeeded);
+            var written = File.ReadAllText(markdownPath);
+            Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("- eventlog_top_events:", written, StringComparison.Ordinal);
+            Assert.Contains("### Top 30 recent events (preview)", written, StringComparison.Ordinal);
+            Assert.Contains("- Overall health **healthy**", written, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.ExportArtifacts;
 
 namespace IntelligenceX.Chat.App;
@@ -203,8 +204,9 @@ internal static class LocalExportArtifactWriter {
             return string.Empty;
         }
 
+        var repaired = TranscriptMarkdownNormalizer.NormalizeForRendering(markdown);
         var newline = markdown.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var normalized = repaired.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
         var lines = normalized.Split('\n');
         var output = new List<string>(lines.Length);
         var previousWasBlank = false;
