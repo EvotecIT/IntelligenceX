@@ -95,4 +95,40 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
         Assert.DoesNotContain("Scope graph preview:\n\n    {", fixedText, StringComparison.Ordinal);
         Assert.Contains("\"nodes\": [", fixedText, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures stale standalone hash separator lines before headings are removed during legacy repair.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_RemovesStandaloneHashSeparatorBeforeHeading() {
+        var malformed = """
+                        #
+
+                        ### Forest Replication Status
+                        - Overall health ✅ Healthy****
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.DoesNotContain("\n#\n", fixedText, StringComparison.Ordinal);
+        Assert.Contains("### Forest Replication Status", fixedText, StringComparison.Ordinal);
+        Assert.Contains("**Healthy**", fixedText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures broken two-line strong labels are folded into one readable line during legacy repair.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_RepairsBrokenTwoLineStrongLabel() {
+        var malformed = """
+                        **Result
+                        all 5 are healthy for directory access** with recommended LDAPS endpoints.
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Equal("**Result:** all 5 are healthy for directory access with recommended LDAPS endpoints.", fixedText);
+    }
 }

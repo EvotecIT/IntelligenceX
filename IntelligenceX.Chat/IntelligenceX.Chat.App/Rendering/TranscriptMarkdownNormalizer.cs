@@ -146,6 +146,18 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"^(?<indent>\s*)####\s+(?<tool>[a-z0-9_.-]+)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Multiline);
 
+    private static readonly Regex StandaloneSingleHashSeparatorRegex = new(
+        @"^\s*#\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex BrokenTwoLineStrongLeadInRegex = new(
+        @"^(?<indent>\s*)\*\*(?<label>[^*\r\n]+)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TrailingDanglingStrongMetricTokenRegex = new(
+        @"(?<token>[\p{L}\p{N}_./:-]+)\*{4}(?<tail>\s*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex StandaloneHostLabelBulletRegex = new(
         @"^\s*-(?:\s*\*\*)?\s*[A-Z]{2,}\d+(?:\s*\*\*)?\s*:?\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -224,12 +236,15 @@ internal static partial class TranscriptMarkdownNormalizer {
         normalized = UpgradeLegacyVisualFences(normalized);
         normalized = UpgradeLegacyIndentedNetworkBlocks(normalized);
         normalized = NormalizeLegacyToolHeadingArtifacts(normalized);
+        normalized = RemoveStandaloneHashSeparatorsBeforeHeadings(normalized);
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans, out var tokenPrefix);
             var value = protectedInlineCode;
             value = ZeroWidthWhitespaceRegex.Replace(value, string.Empty);
+            value = RepairBrokenTwoLineStrongLeadIns(value);
             value = NormalizeWithOfficeImoInputNormalizer(value);
+            value = RemoveStandaloneHashSeparatorsBeforeHeadings(value);
             value = EmojiWordJoinRegex.Replace(value, "$1 ");
             value = NumberedChoiceJoinRegex.Replace(value, "$1 ");
             value = LetterToNumberedChoiceJoinRegex.Replace(value, " ");
@@ -293,6 +308,7 @@ internal static partial class TranscriptMarkdownNormalizer {
             value = MergeSplitHostLabelBullets(value);
             value = ExpandCollapsedMetricLines(value);
             value = ConvertLegacyMetricMarkdown(value);
+            value = RepairDanglingTrailingStrongMetricClosers(value);
             return RestoreInlineCodeSpans(value, codeSpans, tokenPrefix);
         });
     }
@@ -352,6 +368,8 @@ internal static partial class TranscriptMarkdownNormalizer {
                || text.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) >= 0
                || LegacyToolHeadingBulletRegex.IsMatch(text)
                || LegacyToolSlugHeadingRegex.IsMatch(text)
+               || text.Contains("#\n", StringComparison.Ordinal)
+               || text.Contains("**Result\n", StringComparison.Ordinal)
                || ContainsLegacyJsonVisualFenceCandidate(text);
     }
 
@@ -404,6 +422,35 @@ internal static partial class TranscriptMarkdownNormalizer {
         return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
     }
 
+    private static string RemoveStandaloneHashSeparatorsBeforeHeadings(string text) {
+        if (string.IsNullOrEmpty(text) || text.IndexOf('#', StringComparison.Ordinal) < 0) {
+            return text;
+        }
+
+        var hasCrLf = text.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var rewritten = new List<string>(lines.Length);
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            if (StandaloneSingleHashSeparatorRegex.IsMatch(current)) {
+                changed = true;
+                continue;
+            }
+
+            rewritten.Add(current);
+        }
+
+        if (!changed) {
+            return text;
+        }
+
+        var rebuilt = string.Join("\n", rewritten);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
     private static bool IsMarkdownHeadingLine(string line) {
         var trimmed = line.TrimStart();
         if (trimmed.Length < 4 || trimmed[0] != '#') {
@@ -430,6 +477,55 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         index = -1;
         return false;
+    }
+
+    private static string RepairBrokenTwoLineStrongLeadIns(string text) {
+        if (string.IsNullOrEmpty(text) || text.IndexOf("**", StringComparison.Ordinal) < 0) {
+            return text;
+        }
+
+        var hasCrLf = text.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var rewritten = new List<string>(lines.Length);
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            if (i + 1 < lines.Length) {
+                var currentMatch = BrokenTwoLineStrongLeadInRegex.Match(current);
+                if (currentMatch.Success) {
+                    var next = lines[i + 1] ?? string.Empty;
+                    var closingIndex = next.IndexOf("**", StringComparison.Ordinal);
+                    if (closingIndex > 0) {
+                        var label = currentMatch.Groups["label"].Value.Trim().TrimEnd(':');
+                        var body = next[..closingIndex].Trim();
+                        var tail = next[(closingIndex + 2)..].Trim();
+                        if (label.Length > 0
+                            && body.Length > 0
+                            && !StructuralMarkdownLineRegex.IsMatch(body)) {
+                            var merged = currentMatch.Groups["indent"].Value
+                                         + "**" + label + ":** "
+                                         + body
+                                         + (tail.Length == 0 ? string.Empty : " " + tail);
+                            rewritten.Add(merged);
+                            changed = true;
+                            i++;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            rewritten.Add(current);
+        }
+
+        if (!changed) {
+            return text;
+        }
+
+        var rebuilt = string.Join("\n", rewritten);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
     }
 
     private static string ExpandCollapsedMetricLines(string text) {
@@ -470,6 +566,48 @@ internal static partial class TranscriptMarkdownNormalizer {
                 var value = match.Groups["value"].Value.Trim();
                 return value.Length == 0 ? indent + label : indent + label + " **" + value + "**";
             });
+    }
+
+    private static string RepairDanglingTrailingStrongMetricClosers(string text) {
+        if (string.IsNullOrEmpty(text) || text.IndexOf("****", StringComparison.Ordinal) < 0) {
+            return text;
+        }
+
+        var hasCrLf = text.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            var trimmedStart = line.TrimStart();
+            if (!trimmedStart.StartsWith("- ", StringComparison.Ordinal)
+                && !Regex.IsMatch(trimmedStart, @"^\d+[.)]\s+", RegexOptions.CultureInvariant)) {
+                continue;
+            }
+
+            var repaired = TrailingDanglingStrongMetricTokenRegex.Replace(line, static match => {
+                var token = match.Groups["token"].Value.Trim();
+                if (token.Length == 0 || token.Contains("**", StringComparison.Ordinal)) {
+                    return match.Value;
+                }
+
+                return "**" + token + "**" + match.Groups["tail"].Value;
+            });
+            if (repaired.Equals(line, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            lines[i] = repaired;
+            changed = true;
+        }
+
+        if (!changed) {
+            return text;
+        }
+
+        var rebuilt = string.Join("\n", lines);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
     }
 
     private static string RepairWrappedSignalFlowLines(string text) {
