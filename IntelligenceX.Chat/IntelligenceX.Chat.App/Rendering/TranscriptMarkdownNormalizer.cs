@@ -572,7 +572,21 @@ internal static partial class TranscriptMarkdownNormalizer {
                 var indent = match.Groups["indent"].Value;
                 var label = match.Groups["label"].Value.Trim();
                 var value = match.Groups["value"].Value.Trim();
-                return value.Length == 0 ? indent + label : indent + label + " **" + value + "**";
+                if (value.Length == 0) {
+                    return indent + label;
+                }
+
+                // Already-valid markdown metric values should be preserved instead of being wrapped again,
+                // otherwise valid persisted text like `- **Overall health:** **healthy**` turns into
+                // overwrapped output such as `- Overall health ****healthy****`.
+                if (value.Contains("**", StringComparison.Ordinal)
+                    || value.Contains("`", StringComparison.Ordinal)
+                    || value.Contains("~~", StringComparison.Ordinal)
+                    || value.Contains("==", StringComparison.Ordinal)) {
+                    return indent + label + " " + value;
+                }
+
+                return indent + label + " **" + value + "**";
             });
     }
 

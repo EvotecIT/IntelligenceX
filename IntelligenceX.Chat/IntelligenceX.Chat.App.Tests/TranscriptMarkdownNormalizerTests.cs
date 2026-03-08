@@ -229,6 +229,43 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures valid bold metric bullets from live assistant output are not overwrapped during normalization.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesAlreadyValidBoldMetricValues() {
+        var text = """
+                   ### Forest replication health (checked now)
+                   - **Overall health:** **healthy**
+                   - **Replication edges:** 44 total
+                   - **Failed edges:** **0**
+                   - **Stale edges (>24h):** **0**
+                   - **Servers with failures:** **0**
+                   """;
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Contains("- Overall health **healthy**", normalized, StringComparison.Ordinal);
+        Assert.Contains("- Replication edges **44 total**", normalized, StringComparison.Ordinal);
+        Assert.Contains("- Failed edges **0**", normalized, StringComparison.Ordinal);
+        Assert.Contains("- Stale edges (>24h) **0**", normalized, StringComparison.Ordinal);
+        Assert.Contains("- Servers with failures **0**", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("****healthy", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("******0", normalized, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures metric values that already contain inline emphasis such as emoji plus bold status stay intact.
+    /// </summary>
+    [Fact]
+    public void NormalizeForRendering_PreservesMetricValuesThatAlreadyContainInlineEmphasis() {
+        var text = "- **Overall health:** ✅ **Healthy**";
+
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        Assert.Equal("- Overall health ✅ **Healthy**", normalized);
+    }
+
+    /// <summary>
     /// Ensures legacy repair strips internal cached-evidence transport markers from persisted transcript text.
     /// </summary>
     [Fact]
