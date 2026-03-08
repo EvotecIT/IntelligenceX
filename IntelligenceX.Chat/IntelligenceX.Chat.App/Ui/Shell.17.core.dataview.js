@@ -235,7 +235,8 @@
     }
 
     var prefs = getExportPreferences();
-    var formatLabel = getFormatLabel(prefs.defaultFormat);
+    var normalizedFormat = normalizeExportFormatForDataView(prefs && prefs.defaultFormat);
+    var formatLabel = getFormatLabel(normalizedFormat) || "Excel";
     btnDataViewQuickExport.textContent = "Quick " + formatLabel;
     btnDataViewQuickExport.title = "Export " + formatLabel + " using the default format and last folder when available.";
   }

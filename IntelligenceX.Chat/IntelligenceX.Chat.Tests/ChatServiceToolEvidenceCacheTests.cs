@@ -58,6 +58,43 @@ public sealed class ChatServiceToolEvidenceCacheTests {
     }
 
     [Fact]
+    public void ToolEvidenceCache_PreservesMultiLineMarkdownBlocksInFallback() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "ad_environment_discover",
+                ArgumentsJson = "{\"forest\":\"ad.evotec.xyz\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"ok\":true}",
+                SummaryMarkdown = "### Active Directory: Environment Discovery\n\n```json\n{\"ok\":true}\n```"
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-multiline",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-multiline",
+            "show latest ad environment discovery",
+            out var text);
+
+        Assert.True(built);
+        Assert.Contains("#### ad_environment_discover", text, StringComparison.Ordinal);
+        Assert.Contains("### Active Directory: Environment Discovery", text, StringComparison.Ordinal);
+        Assert.Contains("```json", text, StringComparison.Ordinal);
+        Assert.Contains("{\"ok\":true}", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ToolEvidenceCache_DoesNotStoreMutatingToolEvidence() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new[] {

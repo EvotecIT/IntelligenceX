@@ -141,6 +141,7 @@ public sealed class UiShellAssetsTests {
 
         Assert.Contains(">Quick Excel<", html, StringComparison.Ordinal);
         Assert.Contains("function updateDataViewQuickExportLabel()", dataviewScript, StringComparison.Ordinal);
+        Assert.Contains("var normalizedFormat = normalizeExportFormatForDataView(prefs && prefs.defaultFormat);", dataviewScript, StringComparison.Ordinal);
         Assert.Contains("btnDataViewQuickExport.textContent = \"Quick \" + formatLabel;", dataviewScript, StringComparison.Ordinal);
         Assert.Contains("btnDataViewQuickExport.title = \"Export \" + formatLabel + \" using the default format and last folder when available.\";", dataviewScript, StringComparison.Ordinal);
         Assert.Contains("if (typeof updateDataViewQuickExportLabel === \"function\") {", dataviewActionsScript, StringComparison.Ordinal);
