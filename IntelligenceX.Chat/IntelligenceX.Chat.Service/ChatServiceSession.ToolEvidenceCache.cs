@@ -248,7 +248,9 @@ internal sealed partial class ChatServiceSession {
             var snippet = entry.SummaryMarkdown.Length > 0
                 ? entry.SummaryMarkdown
                 : BuildToolEvidenceSnippet(entry.Output);
-            sb.Append("- ").Append(entry.ToolName).Append(": ").AppendLine(snippet);
+            sb.AppendLine();
+            sb.Append("#### ").AppendLine(entry.ToolName);
+            AppendMarkdownBlock(sb, snippet);
         }
 
         sb.AppendLine();
@@ -318,6 +320,19 @@ internal sealed partial class ChatServiceSession {
         }
 
         return normalized.Length == 0 ? "(no summary available)" : normalized;
+    }
+
+    private static void AppendMarkdownBlock(StringBuilder sb, string markdown) {
+        var normalized = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();
+        if (normalized.Length == 0) {
+            sb.AppendLine("(no summary available)");
+            return;
+        }
+
+        var lines = normalized.Split('\n', StringSplitOptions.None);
+        for (var i = 0; i < lines.Length; i++) {
+            sb.AppendLine(lines[i]);
+        }
     }
 
     private static string CompactToolEvidencePayload(string output) {
