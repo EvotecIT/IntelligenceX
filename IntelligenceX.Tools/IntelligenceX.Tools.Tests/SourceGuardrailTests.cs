@@ -372,6 +372,23 @@ public class SourceGuardrailTests {
     }
 
     [Fact]
+    public void RemoteCapableSystemDiskTools_ShouldExposeComputerNameAndPassThroughComputerXScope() {
+        var repoRoot = FindRepoRoot();
+        string[] filePaths = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemDisksListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemLogicalDisksListTool.cs")
+        };
+
+        foreach (var filePath in filePaths) {
+            var source = File.ReadAllText(filePath);
+            Assert.Contains("\"computer_name\"", source, StringComparison.Ordinal);
+            Assert.Contains("ResolveTargetComputerName(computerName)", source, StringComparison.Ordinal);
+            Assert.Contains("ComputerName = request.ComputerName", source, StringComparison.Ordinal);
+            Assert.Contains("AddComputerNameMeta(meta, request.Target);", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void Wave1AndAdReadOnlyWrappers_ShouldUseTypedPipelineAndResultV2() {
         var repoRoot = FindRepoRoot();
         string[] filePaths = {
