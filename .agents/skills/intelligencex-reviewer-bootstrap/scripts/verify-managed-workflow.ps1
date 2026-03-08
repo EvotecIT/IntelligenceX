@@ -24,8 +24,11 @@ if ($content -notmatch "(?m)^\s*# INTELLIGENCEX:END\s*$") {
 if ($content -notmatch "(?m)^\s*review:\s*$") {
     Fail "ERROR: missing review job in workflow"
 }
-if ($content -notmatch "(?m)^\s*uses:\s+.+review-intelligencex\.yml@") {
+if ($content -notmatch "(?m)^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-reusable\.yml|.+/\.github/workflows/review-intelligencex-reusable\.yml@.+)\s*$") {
     Fail "ERROR: missing reusable review workflow reference"
+}
+if ($content -notmatch "(?m)^\s*if:\s+\$\{\{.+needs-ai-review.+\}\}\s*$") {
+    Fail "ERROR: missing fork/dependabot safety gate in managed block"
 }
 if ($content -notmatch "(?m)^\s*provider:\s+") {
     Fail "ERROR: missing provider input in managed block"

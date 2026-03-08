@@ -155,8 +155,11 @@ if ($Mode -ne "update-secret") {
     if ($workflowContent -notmatch "(?m)^\s*# INTELLIGENCEX:END\s*$") {
         Fail "ERROR: generated workflow missing INTELLIGENCEX:END marker."
     }
-    if ($workflowContent -notmatch "(?m)^\s*uses:\s+.+review-intelligencex\.yml@") {
+    if ($workflowContent -notmatch "(?m)^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-reusable\.yml|.+/\.github/workflows/review-intelligencex-reusable\.yml@.+)\s*$") {
         Fail "ERROR: generated workflow missing reusable review workflow reference."
+    }
+    if ($workflowContent -notmatch "(?m)^\s*if:\s+\$\{\{.+needs-ai-review.+\}\}\s*$") {
+        Fail "ERROR: generated workflow missing fork/dependabot safety gate."
     }
 }
 

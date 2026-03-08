@@ -401,6 +401,7 @@ internal static partial class SetupRunner {
     private sealed class WorkflowSettings {
         public string ActionsRepo { get; set; } = DefaultActionsRepo;
         public string ActionsRef { get; set; } = DefaultActionsRef;
+        public bool UseLocalReusableWorkflow { get; set; }
         public string RunsOn { get; set; } = DefaultRunsOn;
         public string ReviewerSource { get; set; } = "release";
         public string ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
@@ -430,6 +431,7 @@ internal static partial class SetupRunner {
             return new WorkflowSettings {
                 ActionsRepo = NormalizeActionsRepo(options.ActionsRepo ?? DefaultActionsRepo),
                 ActionsRef = options.ActionsRef ?? DefaultActionsRef,
+                UseLocalReusableWorkflow = false,
                 RunsOn = options.RunsOn ?? DefaultRunsOn,
                 ReviewerSource = options.ReviewerSource ?? "release",
                 ReviewerReleaseRepo = options.ReviewerReleaseRepo ?? "EvotecIT/github-actions",
@@ -467,6 +469,8 @@ internal static partial class SetupRunner {
         public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
         public string OpenAIAccountRotation { get; set; } = "first-available";
         public bool OpenAIAccountFailover { get; set; } = true;
+        public bool SummaryStability { get; set; } = true;
+        public string ReviewDiffRange { get; set; } = "pr-base";
         public string? Intent { get; set; }
         public bool IntentSet { get; set; }
         public string? Strictness { get; set; }
@@ -484,6 +488,21 @@ internal static partial class SetupRunner {
         public string CommentMode { get; set; } = "sticky";
         public bool IncludeIssueComments { get; set; } = true;
         public bool IncludeReviewComments { get; set; } = true;
+        public bool IncludeReviewThreads { get; set; } = true;
+        public bool ReviewThreadsIncludeBots { get; set; } = true;
+        public int ReviewThreadsMax { get; set; } = 25;
+        public int ReviewThreadsMaxComments { get; set; } = 6;
+        public bool ReviewThreadsAutoResolveStale { get; set; } = true;
+        public string ReviewThreadsAutoResolveDiffRange { get; set; } = "pr-base";
+        public int ReviewThreadsAutoResolveMax { get; set; } = 25;
+        public bool ReviewThreadsAutoResolveSweepNoBlockers { get; set; } = true;
+        public bool ReviewThreadsAutoResolveAIReply { get; set; } = true;
+        public bool ReviewUsageSummary { get; set; } = true;
+        public int ReviewUsageSummaryCacheMinutes { get; set; } = 10;
+        public int ReviewUsageSummaryTimeoutSeconds { get; set; } = 10;
+        public bool ReviewUsageBudgetGuard { get; set; } = true;
+        public bool ReviewUsageBudgetAllowCredits { get; set; } = true;
+        public bool ReviewUsageBudgetAllowWeeklyLimit { get; set; } = true;
         public bool IncludeRelatedPullRequests { get; set; } = true;
         public bool ProgressUpdates { get; set; } = true;
         public bool Diagnostics { get; set; }
@@ -508,6 +527,8 @@ internal static partial class SetupRunner {
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),
                 OpenAIAccountRotation = NormalizeOpenAiAccountRotation(options.OpenAIAccountRotation, strict: true),
                 OpenAIAccountFailover = options.OpenAIAccountFailover,
+                SummaryStability = true,
+                ReviewDiffRange = "pr-base",
                 Intent = NormalizeOptionalValue(options.ReviewIntent),
                 IntentSet = options.ReviewIntentSet,
                 Strictness = NormalizeOptionalValue(options.ReviewStrictness),
@@ -525,6 +546,21 @@ internal static partial class SetupRunner {
                 CommentMode = options.ReviewCommentMode ?? "sticky",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
+                IncludeReviewThreads = true,
+                ReviewThreadsIncludeBots = true,
+                ReviewThreadsMax = 25,
+                ReviewThreadsMaxComments = 6,
+                ReviewThreadsAutoResolveStale = true,
+                ReviewThreadsAutoResolveDiffRange = "pr-base",
+                ReviewThreadsAutoResolveMax = 25,
+                ReviewThreadsAutoResolveSweepNoBlockers = true,
+                ReviewThreadsAutoResolveAIReply = true,
+                ReviewUsageSummary = true,
+                ReviewUsageSummaryCacheMinutes = 10,
+                ReviewUsageSummaryTimeoutSeconds = 10,
+                ReviewUsageBudgetGuard = true,
+                ReviewUsageBudgetAllowCredits = true,
+                ReviewUsageBudgetAllowWeeklyLimit = true,
                 IncludeRelatedPullRequests = options.IncludeRelatedPullRequests,
                 ProgressUpdates = options.ProgressUpdates,
                 Diagnostics = options.Diagnostics,

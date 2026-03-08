@@ -382,6 +382,62 @@ internal static partial class Program {
         AssertEqual(1, extras.ReviewThreads.Count, "triage-only forces thread load");
     }
 
+    private static void TestTriageThreadHydrationUsesFallbackClientWhenProvided() {
+        var primaryHydrationAttempts = 0;
+        var fallbackHydrationAttempts = 0;
+
+        using var primaryServer = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (request.Body.Contains("node(id:$id)", StringComparison.Ordinal)) {
+                primaryHydrationAttempts++;
+                return new HttpResponse("{\"errors\":[{\"message\":\"forbidden\"}]}", StatusCode: 403, StatusText: "Forbidden");
+            }
+            return new HttpResponse(BuildGraphQlThreadsResponse(
+                $"{ReviewFormatter.InlineMarker}\nInitial",
+                "src/Foo.cs",
+                10,
+                "intelligencex-review",
+                "thread1",
+                totalComments: 2));
+        });
+        using var fallbackServer = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (request.Body.Contains("node(id:$id)", StringComparison.Ordinal)) {
+                fallbackHydrationAttempts++;
+                return new HttpResponse(BuildGraphQlHydratedThreadResponse(
+                    "thread1",
+                    ($"{ReviewFormatter.InlineMarker}\nInitial", "src/Foo.cs", 10, "intelligencex-review"),
+                    ("Follow-up", "src/Foo.cs", 10, "intelligencex-review")));
+            }
+            return new HttpResponse("{\"data\":{}}");
+        });
+
+        using var github = new GitHubClient("token", primaryServer.BaseUri.ToString().TrimEnd('/'));
+        using var fallbackGithub = new GitHubClient("token", fallbackServer.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = true,
+            ReviewThreadsAutoResolveBotsOnly = true,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false,
+            ReviewThreadsMax = 5,
+            ReviewThreadsMaxComments = 1
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, fallbackGithub, context, settings, true);
+
+        AssertEqual(0, primaryHydrationAttempts, "primary hydration skipped when fallback client is preferred");
+        AssertEqual(1, fallbackHydrationAttempts, "fallback hydration attempted");
+        AssertEqual(2, extras.ReviewThreads[0].Comments.Count, "fallback hydration expands thread");
+    }
+
     private static void TestReviewThreadsDiffRangeNormalize() {
         AssertEqual("current", ReviewSettings.NormalizeDiffRange("current", "pr-base"), "diff current");
         AssertEqual("pr-base", ReviewSettings.NormalizeDiffRange("pr_base", "current"), "diff pr-base");

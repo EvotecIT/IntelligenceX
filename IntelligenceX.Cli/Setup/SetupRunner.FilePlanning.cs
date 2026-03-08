@@ -139,6 +139,9 @@ internal static partial class SetupRunner {
         }
 
         if (TryReadWorkflowSnapshot(existingManagedBlock, out var snapshot)) {
+            if (!options.ActionsRepoSet && !options.ActionsRefSet && snapshot.UseLocalReusableWorkflow) {
+                settings.UseLocalReusableWorkflow = true;
+            }
             if (!options.ActionsRepoSet && !string.IsNullOrWhiteSpace(snapshot.ActionsRepo)) {
                 settings.ActionsRepo = NormalizeActionsRepo(snapshot.ActionsRepo!);
             }
@@ -377,14 +380,31 @@ internal static partial class SetupRunner {
     private static string BuildConfigJson(ConfigSettings settings) {
         var root = new JsonObject {
             ["review"] = new JsonObject {
+                ["summaryStability"] = settings.SummaryStability,
                 ["provider"] = settings.Provider,
                 ["openaiTransport"] = settings.OpenAITransport,
                 ["model"] = settings.OpenAIModel,
                 ["profile"] = settings.Profile,
                 ["mode"] = settings.Mode,
                 ["commentMode"] = settings.CommentMode,
+                ["reviewDiffRange"] = settings.ReviewDiffRange,
                 ["includeIssueComments"] = settings.IncludeIssueComments,
                 ["includeReviewComments"] = settings.IncludeReviewComments,
+                ["includeReviewThreads"] = settings.IncludeReviewThreads,
+                ["reviewThreadsIncludeBots"] = settings.ReviewThreadsIncludeBots,
+                ["reviewThreadsMax"] = settings.ReviewThreadsMax,
+                ["reviewThreadsMaxComments"] = settings.ReviewThreadsMaxComments,
+                ["reviewThreadsAutoResolveStale"] = settings.ReviewThreadsAutoResolveStale,
+                ["reviewThreadsAutoResolveDiffRange"] = settings.ReviewThreadsAutoResolveDiffRange,
+                ["reviewThreadsAutoResolveMax"] = settings.ReviewThreadsAutoResolveMax,
+                ["reviewThreadsAutoResolveSweepNoBlockers"] = settings.ReviewThreadsAutoResolveSweepNoBlockers,
+                ["reviewThreadsAutoResolveAIReply"] = settings.ReviewThreadsAutoResolveAIReply,
+                ["reviewUsageSummary"] = settings.ReviewUsageSummary,
+                ["reviewUsageSummaryCacheMinutes"] = settings.ReviewUsageSummaryCacheMinutes,
+                ["reviewUsageSummaryTimeoutSeconds"] = settings.ReviewUsageSummaryTimeoutSeconds,
+                ["reviewUsageBudgetGuard"] = settings.ReviewUsageBudgetGuard,
+                ["reviewUsageBudgetAllowCredits"] = settings.ReviewUsageBudgetAllowCredits,
+                ["reviewUsageBudgetAllowWeeklyLimit"] = settings.ReviewUsageBudgetAllowWeeklyLimit,
                 ["includeRelatedPrs"] = settings.IncludeRelatedPullRequests,
                 ["progressUpdates"] = settings.ProgressUpdates,
                 ["diagnostics"] = settings.Diagnostics,

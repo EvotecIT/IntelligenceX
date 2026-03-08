@@ -145,6 +145,8 @@ internal static partial class Program {
         failed += Run("Setup config build honors analysis gate", TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig);
         failed += Run("Setup config build includes analysis run strict", TestSetupBuildConfigJsonIncludesAnalysisRunStrict);
         failed += Run("Setup config build includes OpenAI account routing", TestSetupBuildConfigJsonIncludesOpenAiAccountRouting);
+        failed += Run("Setup config build includes reviewer runtime policy defaults",
+            TestSetupBuildConfigJsonIncludesReviewerRuntimePolicyDefaults);
         failed += Run("Setup config normalizes OpenAI primary into account ids",
             TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds);
         failed += Run("Setup config build persists OpenAI routing with primary only",
@@ -167,7 +169,8 @@ internal static partial class Program {
             TestSetupBuildConfigJsonIncludesVisionInferenceFromFile);
         failed += Run("Setup config merge preserves review loop settings",
             TestSetupBuildConfigJsonMergePreservesReviewLoopSettings);
-        failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
+        failed += Run("Setup config merge refreshes managed reviewer defaults when enabling analysis",
+            TestSetupBuildConfigJsonMergeRefreshesManagedReviewerDefaultsWhenEnablingAnalysis);
         failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
         failed += Run("Setup autodetect missing workspace value fails", TestSetupAutodetectMissingWorkspaceValueFails);
@@ -188,6 +191,8 @@ internal static partial class Program {
             TestSetupOnboardingContractVerificationRejectsMissingAutodetectMetadata);
         failed += Run("Setup workflow upgrade preserves custom sections outside managed block",
             TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
+        failed += Run("Setup workflow upgrade preserves local reusable workflow reference",
+            TestSetupWorkflowUpgradePreservesLocalReusableWorkflowReference);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
         failed += Run("Setup workflow template includes OpenAI account routing pass-through",

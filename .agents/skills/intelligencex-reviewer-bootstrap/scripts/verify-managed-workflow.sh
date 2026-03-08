@@ -20,8 +20,12 @@ if ! rg -q '^\s*review:\s*$' "$WORKFLOW_PATH"; then
   echo "ERROR: missing review job in workflow" >&2
   exit 1
 fi
-if ! rg -q '^\s*uses:\s+.+review-intelligencex\.yml@' "$WORKFLOW_PATH"; then
+if ! rg -q '^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-reusable\.yml|.+/\.github/workflows/review-intelligencex-reusable\.yml@.+)\s*$' "$WORKFLOW_PATH"; then
   echo "ERROR: missing reusable review workflow reference" >&2
+  exit 1
+fi
+if ! rg -q '^\s*if:\s+\$\{\{.+needs-ai-review.+\}\}\s*$' "$WORKFLOW_PATH"; then
+  echo "ERROR: missing fork/dependabot safety gate in managed block" >&2
   exit 1
 fi
 if ! rg -q '^\s*provider:\s+' "$WORKFLOW_PATH"; then

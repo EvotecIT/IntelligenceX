@@ -44,6 +44,14 @@ public static partial class ReviewerApp {
         return BuildExtrasAsync(codeHostReader, github, null, context, settings, cancellationToken, forceReviewThreads);
     }
 
+    /// <summary>Test-only forwarder for review context extra loading with explicit fallback GitHub client.</summary>
+    internal static Task<ReviewContextExtras> BuildExtrasForTestsAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        PullRequestContext context, ReviewSettings settings, bool forceReviewThreads,
+        CancellationToken cancellationToken = default) {
+        var codeHostReader = new GitHubCodeHostReader(github);
+        return BuildExtrasAsync(codeHostReader, github, fallbackGithub, context, settings, cancellationToken, forceReviewThreads);
+    }
+
     /// <summary>Test-only forwarder for missing-inline thread auto-resolution.</summary>
     internal static Task AutoResolveMissingInlineThreadsForTestsAsync(GitHubClient github, PullRequestContext context,
         HashSet<string>? expectedKeys, ReviewSettings settings, CancellationToken cancellationToken = default) {
@@ -51,6 +59,9 @@ public static partial class ReviewerApp {
         return AutoResolveMissingInlineThreadsAsync(codeHostReader, github, null, context, expectedKeys, settings,
             cancellationToken);
     }
+
+    /// <summary>Test-only forwarder for summary ownership detection.</summary>
+    internal static bool IsOwnedSummaryCommentForTests(IssueComment comment) => IsOwnedSummaryComment(comment);
 
     /// <summary>Test-only forwarder for stale-thread auto-resolution.</summary>
     internal static Task AutoResolveStaleThreadsForTestsAsync(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
@@ -67,6 +78,14 @@ public static partial class ReviewerApp {
         IReadOnlyList<PullRequestReviewThread> threads, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
         string? diffNote) =>
         BuildThreadAssessmentPrompt(context, threads, files, settings, diffNote);
+
+    /// <summary>Test-only forwarder for no-blockers kept-thread sweep.</summary>
+    internal static Task<int> TryResolveKeptBotThreadsAfterNoBlockersForTestsAsync(GitHubClient github,
+        GitHubClient? fallbackGithub, IReadOnlyList<PullRequestReviewThread> candidates, List<ThreadAssessment> resolved,
+        List<ThreadAssessment> kept, ReviewSettings settings, int maxAdditionalResolves,
+        CancellationToken cancellationToken = default) =>
+        TryResolveKeptBotThreadsAfterNoBlockersAsync(github, fallbackGithub, candidates, resolved, kept, settings,
+            maxAdditionalResolves, cancellationToken);
 
     /// <summary>Test-only forwarder for resolve evidence validation.</summary>
     internal static bool HasValidResolveEvidenceForTests(string evidence, PullRequestReviewThread thread,

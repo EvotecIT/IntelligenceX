@@ -195,6 +195,22 @@ public static partial class ReviewerApp {
         return trimmed;
     }
 
+    private static bool IsTrustedSummaryAuthor(string? author) {
+        if (string.IsNullOrWhiteSpace(author)) {
+            return false;
+        }
+
+        var normalizedAuthor = NormalizeBotLogin(author);
+        return string.Equals(normalizedAuthor, "intelligencex-review", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(normalizedAuthor, "github-actions", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(normalizedAuthor, "app/intelligencex-review", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsOwnedSummaryComment(IssueComment comment) {
+        return comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase) &&
+               IsTrustedSummaryAuthor(comment.Author);
+    }
+
     private static async Task<HashSet<string>?> PostInlineCommentsAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
         PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
         IReadOnlyList<InlineReviewComment> inlineComments, CancellationToken cancellationToken) {
@@ -624,7 +640,7 @@ public static partial class ReviewerApp {
             var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
                 .ConfigureAwait(false);
             foreach (var comment in comments) {
-                if (comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase)) {
+                if (IsOwnedSummaryComment(comment)) {
                     return comment;
                 }
             }
@@ -705,9 +721,13 @@ public static partial class ReviewerApp {
         }
 
         if (existing is not null) {
-            await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, body, cancellationToken)
-                .ConfigureAwait(false);
-            return existing.Id;
+            try {
+                await github.UpdateIssueCommentAsync(context.Owner, context.Repo, existing.Id, body, cancellationToken)
+                    .ConfigureAwait(false);
+                return existing.Id;
+            } catch (Exception ex) {
+                Console.Error.WriteLine($"Failed to update existing summary comment {existing.Id}: {ex.Message}");
+            }
         }
 
         var created = await github.CreateIssueCommentAsync(context.Owner, context.Repo, context.Number, body, cancellationToken)

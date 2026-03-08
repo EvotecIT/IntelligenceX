@@ -15,6 +15,8 @@ internal static partial class Program {
         failed += Run("Review thread inline key", TestReviewThreadInlineKey);
         failed += Run("Review thread inline key bots only", TestReviewThreadInlineKeyBotsOnly);
         failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
+        failed += Run("GitHub event missing head repo fails closed", TestGitHubEventMissingHeadRepoFailsClosed);
+        failed += Run("Owned summary comment requires trusted author", TestOwnedSummaryCommentRequiresTrustedAuthor);
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
@@ -38,6 +40,7 @@ internal static partial class Program {
             TestAutoResolveMissingInlineBotsOnlySkipsHydratedNonBotThread);
         failed += Run("Auto-resolve missing inline shifted line window", TestAutoResolveMissingInlineSkipsShiftedLineWithinWindow);
         failed += Run("Auto-resolve missing inline signature match", TestAutoResolveMissingInlineSkipsSignatureMatchForRewordedBody);
+        failed += Run("No-blockers sweep respects resolve budget", TestNoBlockersSweepRespectsResolveBudget);
         failed += Run("Resolve thread payload parser rejects invalid JSON", TestResolveThreadPayloadParserRejectsInvalidJson);
         failed += Run("Thread resolve integration forbidden detection", TestThreadResolveIntegrationForbiddenDetection);
         failed += Run("Thread resolve error formatting includes fallback", TestThreadResolveErrorFormattingIncludesFallback);
@@ -551,6 +554,8 @@ internal static partial class Program {
         failed += Run("Review intent perf alias", TestReviewIntentPerfAlias);
         failed += Run("Review intent null settings", TestReviewIntentNullSettings);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
+        failed += Run("Triage thread hydration uses fallback client when provided",
+            TestTriageThreadHydrationUsesFallbackClientWhenProvided);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("Reviewer untrusted PR skips auth store write from env", TestReviewerUntrustedPrSkipsAuthStoreWriteFromEnv);
         failed += Run("Reviewer GitHub token resolver uses GH_TOKEN fallback", TestReviewerGitHubTokenResolverUsesGhTokenFallback);

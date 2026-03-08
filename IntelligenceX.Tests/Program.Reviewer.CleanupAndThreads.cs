@@ -162,6 +162,33 @@ internal static partial class Program {
         AssertEqual("CONTRIBUTOR", context.AuthorAssociation, "author association");
     }
 
+    private static void TestGitHubEventMissingHeadRepoFailsClosed() {
+        var root = new JsonObject()
+            .Add("repository", new JsonObject().Add("full_name", "base/repo"))
+            .Add("pull_request", new JsonObject()
+                .Add("title", "Test")
+                .Add("number", 1)
+                .Add("draft", false)
+                .Add("head", new JsonObject()
+                    .Add("sha", "head"))
+                .Add("base", new JsonObject()
+                    .Add("sha", "base")));
+
+        var context = GitHubEventParser.ParsePullRequest(root);
+        AssertEqual(false, context.HeadRepositoryKnown, "head repo metadata missing");
+        AssertEqual(true, context.IsFromFork, "missing head repo fails closed");
+    }
+
+    private static void TestOwnedSummaryCommentRequiresTrustedAuthor() {
+        var trusted = new IssueComment(1, $"{ReviewFormatter.SummaryMarker}\nSummary", "intelligencex-review[bot]");
+        var githubActions = new IssueComment(2, $"{ReviewFormatter.SummaryMarker}\nSummary", "github-actions");
+        var untrusted = new IssueComment(3, $"{ReviewFormatter.SummaryMarker}\nSummary", "alice");
+
+        AssertEqual(true, CallIsOwnedSummaryComment(trusted), "trusted summary comment");
+        AssertEqual(true, CallIsOwnedSummaryComment(githubActions), "github actions summary comment");
+        AssertEqual(false, CallIsOwnedSummaryComment(untrusted), "untrusted summary comment");
+    }
+
     private static void TestThreadAssessmentEvidenceParse() {
         const string json = "{\"threads\":[{\"id\":\"t1\",\"action\":\"resolve\",\"reason\":\"fixed\",\"evidence\":\"42: added guard\"}]}";
         var method = typeof(ReviewerApp).GetMethod("ParseThreadAssessments", BindingFlags.NonPublic | BindingFlags.Static);
@@ -631,6 +658,43 @@ internal static partial class Program {
         CallAutoResolveMissingInlineThreads(github, context, expected, settings);
         AssertEqual(0, resolved, "auto resolve missing inline signature skipped");
         AssertEqual(false, resolvePayloadObserved, "auto resolve missing inline signature no resolve payload");
+    }
+
+    private static void TestNoBlockersSweepRespectsResolveBudget() {
+        var resolvedPayloads = 0;
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (TryGetResolveThreadIdFromGraphQlPayload(request.Body, out _)) {
+                resolvedPayloads++;
+                return new HttpResponse("{\"data\":{\"resolveReviewThread\":{\"thread\":{\"id\":\"thread1\",\"isResolved\":true}}}}");
+            }
+            return new HttpResponse("{\"data\":{}}");
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings { ReviewThreadsAutoResolveBotsOnly = true };
+        var threads = new[] {
+            new PullRequestReviewThread("thread1", false, false, 1, new[] {
+                new PullRequestReviewThreadComment(1, null, $"{ReviewFormatter.InlineMarker}\nOne", "intelligencex-review", "src/A.cs", 10)
+            }),
+            new PullRequestReviewThread("thread2", false, false, 1, new[] {
+                new PullRequestReviewThreadComment(2, null, $"{ReviewFormatter.InlineMarker}\nTwo", "intelligencex-review", "src/B.cs", 20)
+            })
+        };
+        var resolved = new List<ReviewerApp.ThreadAssessment>();
+        var kept = new List<ReviewerApp.ThreadAssessment> {
+            new("thread1", "keep", "keep 1", string.Empty),
+            new("thread2", "keep", "keep 2", string.Empty)
+        };
+
+        var sweepResolved = CallTryResolveKeptBotThreadsAfterNoBlockers(github, null, threads, resolved, kept, settings, 1);
+
+        AssertEqual(1, sweepResolved, "sweep resolve count");
+        AssertEqual(1, resolvedPayloads, "sweep request count");
+        AssertEqual(1, resolved.Count, "resolved assessment count");
+        AssertEqual(1, kept.Count, "kept remaining count");
     }
 
     private static void TestResolveThreadPayloadParserRejectsInvalidJson() {

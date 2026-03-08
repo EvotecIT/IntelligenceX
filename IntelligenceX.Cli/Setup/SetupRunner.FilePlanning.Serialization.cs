@@ -44,6 +44,8 @@ internal static partial class SetupRunner {
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
+        review["summaryStability"] = settings.SummaryStability;
+        review["reviewDiffRange"] = settings.ReviewDiffRange;
         if (!string.IsNullOrWhiteSpace(settings.Intent)) {
             review["intent"] = settings.Intent;
         }
@@ -71,6 +73,21 @@ internal static partial class SetupRunner {
         review["commentMode"] = settings.CommentMode;
         review["includeIssueComments"] = settings.IncludeIssueComments;
         review["includeReviewComments"] = settings.IncludeReviewComments;
+        review["includeReviewThreads"] = settings.IncludeReviewThreads;
+        review["reviewThreadsIncludeBots"] = settings.ReviewThreadsIncludeBots;
+        review["reviewThreadsMax"] = settings.ReviewThreadsMax;
+        review["reviewThreadsMaxComments"] = settings.ReviewThreadsMaxComments;
+        review["reviewThreadsAutoResolveStale"] = settings.ReviewThreadsAutoResolveStale;
+        review["reviewThreadsAutoResolveDiffRange"] = settings.ReviewThreadsAutoResolveDiffRange;
+        review["reviewThreadsAutoResolveMax"] = settings.ReviewThreadsAutoResolveMax;
+        review["reviewThreadsAutoResolveSweepNoBlockers"] = settings.ReviewThreadsAutoResolveSweepNoBlockers;
+        review["reviewThreadsAutoResolveAIReply"] = settings.ReviewThreadsAutoResolveAIReply;
+        review["reviewUsageSummary"] = settings.ReviewUsageSummary;
+        review["reviewUsageSummaryCacheMinutes"] = settings.ReviewUsageSummaryCacheMinutes;
+        review["reviewUsageSummaryTimeoutSeconds"] = settings.ReviewUsageSummaryTimeoutSeconds;
+        review["reviewUsageBudgetGuard"] = settings.ReviewUsageBudgetGuard;
+        review["reviewUsageBudgetAllowCredits"] = settings.ReviewUsageBudgetAllowCredits;
+        review["reviewUsageBudgetAllowWeeklyLimit"] = settings.ReviewUsageBudgetAllowWeeklyLimit;
         review["includeRelatedPrs"] = settings.IncludeRelatedPullRequests;
         review["progressUpdates"] = settings.ProgressUpdates;
         review["diagnostics"] = settings.Diagnostics;
@@ -99,8 +116,9 @@ internal static partial class SetupRunner {
             ? ReadEmbeddedResource("review-intelligencex.managed.explicit.yml")
             : ReadEmbeddedResource("review-intelligencex.managed.yml");
         var tokens = new Dictionary<string, string> {
-            ["ActionsRepo"] = settings.ActionsRepo,
-            ["ActionsRef"] = settings.ActionsRef,
+            ["ReusableWorkflowRef"] = settings.UseLocalReusableWorkflow
+                ? "./.github/workflows/review-intelligencex-reusable.yml"
+                : $"{settings.ActionsRepo}/.github/workflows/review-intelligencex-reusable.yml@{settings.ActionsRef}",
             ["RunsOn"] = NormalizeRunsOn(settings.RunsOn),
             ["ReviewerSource"] = settings.ReviewerSource,
             ["ReviewerReleaseRepo"] = settings.ReviewerReleaseRepo,
@@ -216,10 +234,19 @@ internal static partial class SetupRunner {
 
     private static bool TryReadWorkflowSnapshot(string content, out WorkflowSnapshot snapshot) {
         snapshot = new WorkflowSnapshot();
-        var match = Regex.Match(content, @"^\s*uses:\s*([^\s@]+)@([^\s]+)\s*$", RegexOptions.Multiline);
-        if (match.Success) {
-            snapshot.ActionsRepo = NormalizeActionsRepo(match.Groups[1].Value.Trim());
-            snapshot.ActionsRef = match.Groups[2].Value.Trim();
+        var localMatch = Regex.Match(content,
+            @"^\s*uses:\s*(\./\.github/workflows/review-intelligencex-reusable\.yml)\s*$",
+            RegexOptions.Multiline | RegexOptions.IgnoreCase);
+        if (localMatch.Success) {
+            snapshot.UseLocalReusableWorkflow = true;
+        } else {
+            var remoteMatch = Regex.Match(content,
+                @"^\s*uses:\s*([^\s@]+/\.github/workflows/review-intelligencex-reusable\.yml)@([^\s]+)\s*$",
+                RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            if (remoteMatch.Success) {
+                snapshot.ActionsRepo = NormalizeActionsRepo(remoteMatch.Groups[1].Value.Trim());
+                snapshot.ActionsRef = remoteMatch.Groups[2].Value.Trim();
+            }
         }
 
         snapshot.RunsOn = ReadYamlScalar(content, "runs_on");
@@ -323,6 +350,8 @@ internal static partial class SetupRunner {
                 snapshot.OpenAIAccountFailover =
                     ReadJsonBool(review, "openaiAccountFailover") ??
                     ReadJsonBool(review, "openAiAccountFailover");
+                snapshot.SummaryStability = ReadJsonBool(review, "summaryStability");
+                snapshot.ReviewDiffRange = ReadJsonString(review, "reviewDiffRange");
                 snapshot.Intent = ReadJsonString(review, "intent");
                 snapshot.Strictness = ReadJsonString(review, "strictness");
                 snapshot.VisionPath = ReadJsonString(review, "visionPath");
@@ -334,6 +363,21 @@ internal static partial class SetupRunner {
                 snapshot.CommentMode = ReadJsonString(review, "commentMode");
                 snapshot.IncludeIssueComments = ReadJsonBool(review, "includeIssueComments");
                 snapshot.IncludeReviewComments = ReadJsonBool(review, "includeReviewComments");
+                snapshot.IncludeReviewThreads = ReadJsonBool(review, "includeReviewThreads");
+                snapshot.ReviewThreadsIncludeBots = ReadJsonBool(review, "reviewThreadsIncludeBots");
+                snapshot.ReviewThreadsMax = ReadJsonInt(review, "reviewThreadsMax");
+                snapshot.ReviewThreadsMaxComments = ReadJsonInt(review, "reviewThreadsMaxComments");
+                snapshot.ReviewThreadsAutoResolveStale = ReadJsonBool(review, "reviewThreadsAutoResolveStale");
+                snapshot.ReviewThreadsAutoResolveDiffRange = ReadJsonString(review, "reviewThreadsAutoResolveDiffRange");
+                snapshot.ReviewThreadsAutoResolveMax = ReadJsonInt(review, "reviewThreadsAutoResolveMax");
+                snapshot.ReviewThreadsAutoResolveSweepNoBlockers = ReadJsonBool(review, "reviewThreadsAutoResolveSweepNoBlockers");
+                snapshot.ReviewThreadsAutoResolveAIReply = ReadJsonBool(review, "reviewThreadsAutoResolveAIReply");
+                snapshot.ReviewUsageSummary = ReadJsonBool(review, "reviewUsageSummary");
+                snapshot.ReviewUsageSummaryCacheMinutes = ReadJsonInt(review, "reviewUsageSummaryCacheMinutes");
+                snapshot.ReviewUsageSummaryTimeoutSeconds = ReadJsonInt(review, "reviewUsageSummaryTimeoutSeconds");
+                snapshot.ReviewUsageBudgetGuard = ReadJsonBool(review, "reviewUsageBudgetGuard");
+                snapshot.ReviewUsageBudgetAllowCredits = ReadJsonBool(review, "reviewUsageBudgetAllowCredits");
+                snapshot.ReviewUsageBudgetAllowWeeklyLimit = ReadJsonBool(review, "reviewUsageBudgetAllowWeeklyLimit");
                 snapshot.IncludeRelatedPullRequests =
                     ReadJsonBool(review, "includeRelatedPrs") ??
                     ReadJsonBool(review, "includeRelatedPullRequests");

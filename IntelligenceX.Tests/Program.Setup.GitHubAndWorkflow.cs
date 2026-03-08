@@ -2,7 +2,7 @@ namespace IntelligenceX.Tests;
 
 internal static partial class Program {
     #if !NET472
-    private static void TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis() {
+    private static void TestSetupBuildConfigJsonMergeRefreshesManagedReviewerDefaultsWhenEnablingAnalysis() {
         var seed = """
 {
   "review": {
@@ -12,6 +12,10 @@ internal static partial class Program {
     "profile": "security",
     "mode": "summary",
     "commentMode": "sticky",
+    "reviewDiffRange": "first-review",
+    "includeReviewThreads": false,
+    "reviewThreadsAutoResolveAIReply": false,
+    "reviewUsageSummary": false,
     "includeIssueComments": false,
     "includeReviewComments": true,
     "includeRelatedPullRequests": false,
@@ -36,6 +40,12 @@ internal static partial class Program {
         AssertNotNull(review, "config json merge review");
         AssertEqual("keep-me", review!["customReviewFlag"]?.GetValue<string>(), "config json merge keeps custom review key");
         AssertEqual("security", review["profile"]?.GetValue<string>(), "config json merge keeps existing profile");
+        AssertEqual(true, review["summaryStability"]?.GetValue<bool>(), "config json merge refreshes summary stability");
+        AssertEqual("pr-base", review["reviewDiffRange"]?.GetValue<string>(), "config json merge refreshes diff range");
+        AssertEqual(true, review["includeReviewThreads"]?.GetValue<bool>(), "config json merge refreshes include review threads");
+        AssertEqual(true, review["reviewThreadsAutoResolveAIReply"]?.GetValue<bool>(),
+            "config json merge refreshes auto-resolve ai reply");
+        AssertEqual(true, review["reviewUsageSummary"]?.GetValue<bool>(), "config json merge refreshes usage summary");
 
         var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(analysis, "config json merge analysis object");
@@ -86,6 +96,7 @@ jobs:
         AssertContainsText(content, "custom_pre:", "workflow upgrade keeps custom_pre");
         AssertContainsText(content, "custom_post:", "workflow upgrade keeps custom_post");
         AssertContainsText(content, "provider: copilot", "workflow upgrade updates managed provider");
+        AssertContainsText(content, "needs-ai-review", "workflow upgrade keeps safety gate");
         AssertContainsText(content, beginMarker, "workflow upgrade keeps managed begin marker");
         AssertContainsText(content, endMarker, "workflow upgrade keeps managed end marker");
         AssertEqual(1, CountOccurrences(content, beginMarker),
@@ -119,6 +130,7 @@ jobs:
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
 
+        AssertContainsText(content, "needs-ai-review", "workflow template includes safety gate");
         AssertContainsText(content, "openai_account_id:", "workflow template openai account id input");
         AssertContainsText(content, "openai_account_ids:", "workflow template openai account ids input");
         AssertContainsText(content, "openai_account_rotation:", "workflow template openai account rotation input");
@@ -161,6 +173,7 @@ jobs:
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
 
+        AssertContainsText(content, "needs-ai-review", "workflow template openai model includes safety gate");
         AssertContainsText(content, "openai_model:", "workflow template openai model input");
         AssertContainsText(content, "openai_model: ${{ inputs.openai_model }}",
             "workflow template openai model pass-through");

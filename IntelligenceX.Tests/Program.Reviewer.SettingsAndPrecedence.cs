@@ -208,6 +208,20 @@ internal static partial class Program {
             var settings = ReviewSettings.Load();
             AssertEqual("security", settings.Profile, "setup config runtime profile");
             AssertEqual("summary", settings.Mode, "setup config runtime mode");
+            AssertEqual(true, settings.SummaryStability, "setup config runtime summary stability");
+            AssertEqual("pr-base", settings.ReviewDiffRange, "setup config runtime diff range");
+            AssertEqual(true, settings.IncludeReviewThreads, "setup config runtime include review threads");
+            AssertEqual(true, settings.ReviewThreadsIncludeBots, "setup config runtime include bot threads");
+            AssertEqual(25, settings.ReviewThreadsMax, "setup config runtime review threads max");
+            AssertEqual(true, settings.ReviewThreadsAutoResolveStale, "setup config runtime auto-resolve stale");
+            AssertEqual("pr-base", settings.ReviewThreadsAutoResolveDiffRange,
+                "setup config runtime auto-resolve diff range");
+            AssertEqual(25, settings.ReviewThreadsAutoResolveMax, "setup config runtime auto-resolve max");
+            AssertEqual(true, settings.ReviewThreadsAutoResolveSweepNoBlockers,
+                "setup config runtime auto-resolve sweep");
+            AssertEqual(true, settings.ReviewThreadsAutoResolveAIReply, "setup config runtime auto-resolve ai reply");
+            AssertEqual(true, settings.ReviewUsageSummary, "setup config runtime usage summary");
+            AssertEqual(true, settings.ReviewUsageBudgetGuard, "setup config runtime usage budget guard");
             AssertEqual(false, settings.IncludeRelatedPrs, "setup config runtime includeRelatedPrs");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);

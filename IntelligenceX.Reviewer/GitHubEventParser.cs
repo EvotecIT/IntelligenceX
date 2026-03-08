@@ -46,7 +46,7 @@ internal static class GitHubEventParser {
 
         var (owner, repo) = SplitRepo(repoFullName);
         return new PullRequestContext(repoFullName, owner, repo, number, title, body, draft, headSha, baseSha,
-            labels, headRepoFullName, isFork, authorAssociation);
+            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null);
     }
 
     private static (string owner, string repo) SplitRepo(string fullName) {

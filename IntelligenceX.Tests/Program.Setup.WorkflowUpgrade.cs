@@ -2,6 +2,38 @@ namespace IntelligenceX.Tests;
 
 #if !NET472
 internal static partial class Program {
+    private static void TestSetupWorkflowUpgradePreservesLocalReusableWorkflowReference() {
+        const string beginMarker = "# INTELLIGENCEX:BEGIN";
+        const string endMarker = "# INTELLIGENCEX:END";
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  __IX_BEGIN__
+  review:
+    uses: ./.github/workflows/review-intelligencex-reusable.yml
+    with:
+      provider: openai
+      model: gpt-5.4
+  __IX_END__
+""";
+        seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
+
+        var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(
+            new[] { "--provider", "copilot" },
+            seed);
+
+        AssertContainsText(upgraded, "uses: ./.github/workflows/review-intelligencex-reusable.yml",
+            "workflow upgrade preserves local reusable workflow reference");
+        AssertEqual(false, upgraded.Contains("review-intelligencex-reusable.yml@", StringComparison.Ordinal),
+            "workflow upgrade does not rewrite local reusable workflow to pinned remote reference");
+        AssertContainsText(upgraded, "needs-ai-review", "workflow upgrade adds safety gate to local workflow shape");
+    }
+
     private static void TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim() {
         const string beginMarker = "# INTELLIGENCEX:BEGIN";
         const string endMarker = "# INTELLIGENCEX:END";
