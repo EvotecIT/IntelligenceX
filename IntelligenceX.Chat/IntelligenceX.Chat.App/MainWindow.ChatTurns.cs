@@ -350,6 +350,7 @@ public sealed partial class MainWindow : Window {
         BindActiveTurnAssistantMessage(conversation);
         SetActiveTurnAssistantChannel(conversation, AssistantBubbleChannelKind.Final);
         SetActiveTurnAssistantProvisional(conversation, provisional: false, preferProvisionalEvents: false);
+        PromoteAuthenticatedStateFromFinalAssistantTurn();
         ApplyFinalAssistantTurnTimeline(conversation, result.TurnTimelineEvents);
         _assistantStreamingState.ClearReceivedDelta();
         if (result.Tools is not null && (result.Tools.Calls.Count > 0 || result.Tools.Outputs.Count > 0)) {

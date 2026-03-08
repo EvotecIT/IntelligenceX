@@ -58,6 +58,19 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures dangling strong-close repair does not rewrite ordinary non-bullet prose.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_DoesNotRewriteOrdinaryTrailingAsteriskProse() {
+        const string clean = "Literal marker code****";
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(clean, out var fixedText);
+
+        Assert.False(repaired);
+        Assert.Equal(clean, fixedText);
+    }
+
+    /// <summary>
     /// Ensures indented legacy network JSON blocks are upgraded into ix-network fenced visuals.
     /// </summary>
     [Fact]

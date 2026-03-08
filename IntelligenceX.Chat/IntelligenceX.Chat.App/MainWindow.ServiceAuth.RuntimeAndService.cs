@@ -129,7 +129,7 @@ public sealed partial class MainWindow : Window {
         }
     }
 
-    internal static bool ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput(
+    internal static bool ShouldPromoteAuthenticatedStateFromFinalAssistantTurn(
         bool requiresInteractiveSignIn,
         bool isConnected,
         bool isAuthenticated,
@@ -140,8 +140,8 @@ public sealed partial class MainWindow : Window {
                && !loginInProgress;
     }
 
-    private void PromoteAuthenticatedStateFromSuccessfulAssistantOutput() {
-        if (!ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput(
+    private void PromoteAuthenticatedStateFromFinalAssistantTurn() {
+        if (!ShouldPromoteAuthenticatedStateFromFinalAssistantTurn(
                 requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
                 isConnected: _isConnected,
                 isAuthenticated: _isAuthenticated,

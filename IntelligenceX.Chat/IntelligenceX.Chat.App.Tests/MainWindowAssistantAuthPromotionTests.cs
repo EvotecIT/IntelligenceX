@@ -10,8 +10,8 @@ public sealed class MainWindowAssistantAuthPromotionTests {
     /// Ensures a successful native-runtime assistant response can clear a stale unauthenticated badge.
     /// </summary>
     [Fact]
-    public void ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput_PromotesWhenNativeConnectedAndNotAuthenticated() {
-        var result = MainWindow.ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput(
+    public void ShouldPromoteAuthenticatedStateFromFinalAssistantTurn_PromotesWhenNativeConnectedAndNotAuthenticated() {
+        var result = MainWindow.ShouldPromoteAuthenticatedStateFromFinalAssistantTurn(
             requiresInteractiveSignIn: true,
             isConnected: true,
             isAuthenticated: false,
@@ -28,12 +28,12 @@ public sealed class MainWindowAssistantAuthPromotionTests {
     [InlineData(true, false, false, false)]
     [InlineData(true, true, true, false)]
     [InlineData(true, true, false, true)]
-    public void ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput_StaysFalseWhenPromotionWouldBeUnsafe(
+    public void ShouldPromoteAuthenticatedStateFromFinalAssistantTurn_StaysFalseWhenPromotionWouldBeUnsafe(
         bool requiresInteractiveSignIn,
         bool isConnected,
         bool isAuthenticated,
         bool loginInProgress) {
-        var result = MainWindow.ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput(
+        var result = MainWindow.ShouldPromoteAuthenticatedStateFromFinalAssistantTurn(
             requiresInteractiveSignIn,
             isConnected,
             isAuthenticated,

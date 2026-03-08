@@ -55,7 +55,7 @@ internal static partial class TranscriptMarkdownNormalizer {
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex DanglingTrailingStrongCloseRegex = new(
-        @"(?m)^(?<prefix>.*\s)(?<inner>[^\s*\r\n][^*\r\n]*?)\*{4}(?<tail>\s*)$",
+        @"(?m)^(?<prefix>\s*-\s+.*\s)(?<inner>[^\s*\r\n][^*\r\n]*?)\*{4}(?<tail>\s*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex LeadingWhitespaceInsideStrongOpenRegex = new(

@@ -234,7 +234,6 @@ public sealed partial class MainWindow : Window {
         BindActiveTurnAssistantMessage(conversation);
         SetActiveTurnAssistantChannel(conversation, AssistantBubbleChannelKind.DraftThinking);
         SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents);
-        PromoteAuthenticatedStateFromSuccessfulAssistantOutput();
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             QueueTranscriptRender(renderReason);
         }
@@ -263,7 +262,6 @@ public sealed partial class MainWindow : Window {
         // Interim snapshots are draft-by-definition and should stay visually distinct
         // from the finalized assistant response.
         SetActiveTurnAssistantProvisional(conversation, provisional: true, preferProvisionalEvents: false);
-        PromoteAuthenticatedStateFromSuccessfulAssistantOutput();
         if (string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
             QueueTranscriptRender("assistant_interim_result");
         }
