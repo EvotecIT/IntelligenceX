@@ -145,7 +145,7 @@ internal static class LocalExportArtifactWriter {
         MarkdownTranscriptWriter markdownWriter,
         DocxTranscriptWriter docxWriter) {
         var normalizedFormat = (format ?? string.Empty).Trim().ToLowerInvariant();
-        var safeMarkdown = markdown ?? string.Empty;
+        var safeMarkdown = NormalizeTranscriptMarkdownForExport(markdown ?? string.Empty);
         switch (normalizedFormat) {
             case ExportPreferencesContract.FormatMarkdown:
                 try {
@@ -196,6 +196,35 @@ internal static class LocalExportArtifactWriter {
             default:
                 throw new InvalidOperationException("Unsupported transcript export format: " + normalizedFormat);
         }
+    }
+
+    internal static string NormalizeTranscriptMarkdownForExport(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return string.Empty;
+        }
+
+        var newline = markdown.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var output = new List<string>(lines.Length);
+        var previousWasBlank = false;
+
+        foreach (var rawLine in lines) {
+            var line = rawLine ?? string.Empty;
+            if (line.Trim().Equals("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var isBlank = string.IsNullOrWhiteSpace(line);
+            if (isBlank && previousWasBlank) {
+                continue;
+            }
+
+            output.Add(line);
+            previousWasBlank = isBlank;
+        }
+
+        return string.Join(newline, output);
     }
 
     private static string ReadCellAsText(JsonElement cell) {
