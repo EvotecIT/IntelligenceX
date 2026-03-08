@@ -130,6 +130,10 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"\*\*Status:\s|-\*\*|-\*[A-Za-z]|:\*\*\S|^\s*-[A-Z]{2,}\d+\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
 
+    private static readonly Regex CachedToolEvidenceMarkerLineRegex = new(
+        @"(?m)^[ \t]*ix:cached-tool-evidence:v1[ \t]*(?:\r?\n)?",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
     private static readonly Regex StandaloneHostLabelBulletRegex = new(
         @"^\s*-(?:\s*\*\*)?\s*[A-Z]{2,}\d+(?:\s*\*\*)?\s*:?\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -203,6 +207,9 @@ internal static partial class TranscriptMarkdownNormalizer {
         if (normalized.Length == 0) {
             return string.Empty;
         }
+
+        normalized = StripInternalTransportMarkers(normalized);
+        normalized = UpgradeLegacyVisualFences(normalized);
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans, out var tokenPrefix);
@@ -287,6 +294,9 @@ internal static partial class TranscriptMarkdownNormalizer {
             return string.Empty;
         }
 
+        normalized = StripInternalTransportMarkers(normalized);
+        normalized = UpgradeLegacyVisualFences(normalized);
+
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var value = ZeroWidthWhitespaceRegex.Replace(segment, string.Empty);
             if (RequiresStreamingFullTypographyNormalization(value)) {
@@ -304,7 +314,7 @@ internal static partial class TranscriptMarkdownNormalizer {
 
     public static bool TryRepairLegacyTranscript(string? text, out string normalized) {
         normalized = text ?? string.Empty;
-        if (normalized.Length == 0 || !LegacyRepairSignalRegex.IsMatch(normalized)) {
+        if (normalized.Length == 0 || !RequiresLegacyTranscriptRepair(normalized)) {
             return false;
         }
 
@@ -315,6 +325,26 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         normalized = repaired;
         return true;
+    }
+
+    private static bool RequiresLegacyTranscriptRepair(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return false;
+        }
+
+        return LegacyRepairSignalRegex.IsMatch(text)
+               || text.Contains("****", StringComparison.Ordinal)
+               || text.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) >= 0
+               || ContainsLegacyJsonVisualFenceCandidate(text);
+    }
+
+    private static string StripInternalTransportMarkers(string text) {
+        if (string.IsNullOrEmpty(text)
+            || text.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) < 0) {
+            return text;
+        }
+
+        return CachedToolEvidenceMarkerLineRegex.Replace(text, string.Empty);
     }
 
     private static string ExpandCollapsedMetricLines(string text) {

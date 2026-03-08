@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.App.Conversation;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
@@ -69,6 +70,21 @@ public sealed partial class MainWindow : Window {
                + "ms).";
     }
 
+    internal static bool ShouldAppendStartupDispatchPrewarmSummary(
+        bool authProbeAttempted,
+        bool? authProbeAuthenticated,
+        bool authProbeInconclusive) {
+        if (!authProbeAttempted) {
+            return false;
+        }
+
+        if (authProbeInconclusive) {
+            return true;
+        }
+
+        return authProbeAuthenticated == false;
+    }
+
     private void QueueDeferredStartupDispatchPrewarm() {
         if (_shutdownRequested) {
             return;
@@ -116,13 +132,6 @@ public sealed partial class MainWindow : Window {
                     startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0,
                     startupMetadataSyncInProgress: Volatile.Read(ref _startupMetadataSyncInProgress) != 0);
                 if (!shouldProbeAuth) {
-                    await AppendSystemBestEffortAsync(
-                        BuildStartupDispatchPrewarmSummary(
-                            connectMs: connectMs,
-                            authProbeAttempted: false,
-                            authProbeAuthenticated: null,
-                            authProbeInconclusive: false,
-                            authProbeMs: null)).ConfigureAwait(false);
                     return;
                 }
 
@@ -132,6 +141,10 @@ public sealed partial class MainWindow : Window {
                 StartupLog.Write(
                     "StartupPhase.DispatchPrewarm auth_probe="
                     + authOutcome.ToString().ToLowerInvariant());
+                if (authOutcome is DispatchAuthenticationProbeOutcome.Authenticated or DispatchAuthenticationProbeOutcome.Unauthenticated) {
+                    await SetStatusAsync(SessionStatus.ForConnectedAuth(IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                }
+
                 if (authOutcome == DispatchAuthenticationProbeOutcome.Authenticated
                     && ShouldQueueDeferredStartupMetadataSyncAfterAuthenticationReady(
                         isConnected: _isConnected,
@@ -143,17 +156,24 @@ public sealed partial class MainWindow : Window {
                     QueueDeferredStartupConnectMetadataSync(requestRerunIfBusy: true);
                 }
 
-                await AppendSystemBestEffortAsync(
-                    BuildStartupDispatchPrewarmSummary(
-                        connectMs: connectMs,
+                var authProbeAuthenticated = authOutcome == DispatchAuthenticationProbeOutcome.Authenticated
+                    ? (bool?)true
+                    : authOutcome == DispatchAuthenticationProbeOutcome.Unauthenticated
+                        ? (bool?)false
+                        : null;
+                var authProbeInconclusive = authOutcome == DispatchAuthenticationProbeOutcome.Unknown;
+                if (ShouldAppendStartupDispatchPrewarmSummary(
                         authProbeAttempted: true,
-                        authProbeAuthenticated: authOutcome == DispatchAuthenticationProbeOutcome.Authenticated
-                            ? true
-                            : authOutcome == DispatchAuthenticationProbeOutcome.Unauthenticated
-                                ? false
-                                : null,
-                        authProbeInconclusive: authOutcome == DispatchAuthenticationProbeOutcome.Unknown,
-                        authProbeMs: authProbeMs)).ConfigureAwait(false);
+                        authProbeAuthenticated: authProbeAuthenticated,
+                        authProbeInconclusive: authProbeInconclusive)) {
+                    await AppendSystemBestEffortAsync(
+                        BuildStartupDispatchPrewarmSummary(
+                            connectMs: connectMs,
+                            authProbeAttempted: true,
+                            authProbeAuthenticated: authProbeAuthenticated,
+                            authProbeInconclusive: authProbeInconclusive,
+                            authProbeMs: authProbeMs)).ConfigureAwait(false);
+                }
             } catch (Exception ex) {
                 StartupLog.Write("StartupPhase.DispatchPrewarm failed: " + ex.Message);
                 await AppendSystemBestEffortAsync("Startup prewarm failed: " + ex.Message).ConfigureAwait(false);

@@ -136,6 +136,31 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures historical JSON-fenced network payloads are upgraded into the ix-network render path during transcript formatting.
+    /// </summary>
+    [Fact]
+    public void Format_UpgradesLegacyJsonNetworkFenceForHistoricalTranscriptMessages() {
+        var options = ChatMarkdownOptions.Create();
+        var now = new DateTime(2026, 3, 8, 18, 9, 19, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Scope graph preview:
+                          ```json
+                          {"nodes":[{"id":"forest_ad.evotec.xyz","label":"Forest: ad.evotec.xyz","type":"forest"},{"id":"domain_ad.evotec.xyz","label":"Domain: ad.evotec.xyz","type":"domain"}],"edges":[{"source":"forest_ad.evotec.xyz","target":"domain_ad.evotec.xyz","label":"contains"}]}
+                          ```
+                          Interpretation: topology preview only.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Scope graph preview:", html, StringComparison.Ordinal);
+        Assert.True(
+            html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal)
+            || html.Contains("language-ix-network", StringComparison.Ordinal),
+            "Expected upgraded legacy JSON network fence to flow through the ix-network render path.");
+        Assert.DoesNotContain("language-json", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures rows, role styling, continuation classes, and copy indexes are rendered.
     /// </summary>
     [Fact]

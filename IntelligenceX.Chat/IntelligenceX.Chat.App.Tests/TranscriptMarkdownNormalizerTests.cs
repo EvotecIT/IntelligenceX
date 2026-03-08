@@ -216,6 +216,52 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures legacy repair backfills overwrapped strong spans so old persisted chats can be saved cleanly on load.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_DetectsOverwrappedStrongArtifacts() {
+        var malformed = "- Overall health ****healthy****";
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Equal("- Overall health **healthy**", fixedText);
+    }
+
+    /// <summary>
+    /// Ensures legacy repair strips internal cached-evidence transport markers from persisted transcript text.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_StripsCachedEvidenceTransportMarker() {
+        var malformed = "[Cached evidence fallback]\nix:cached-tool-evidence:v1\n\nCached tool output reused.";
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", fixedText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[Cached evidence fallback]", fixedText);
+        Assert.Contains("Cached tool output reused.", fixedText);
+    }
+
+    /// <summary>
+    /// Ensures legacy JSON graph fences upgrade to ix-network so historical chats can hydrate with the current shell renderer.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_UpgradesLegacyJsonNetworkFence() {
+        var malformed = """
+                        ```json
+                        {"nodes":[{"id":"A","label":"Forest: ad.evotec.xyz"}],"edges":[{"source":"forest_ad.evotec.xyz","target":"domain_ad.evotec.xyz","label":"contains"}]}
+                        ```
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Contains("```ix-network", fixedText, StringComparison.Ordinal);
+        Assert.DoesNotContain("```json", fixedText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures normalization does not rewrite markdown artifacts inside fenced code blocks.
     /// </summary>
     [Fact]
