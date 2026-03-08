@@ -90,6 +90,7 @@ The user may confirm by replying with:
 - When results are naturally tabular, present a small table preview and state how to get more (narrow filters or paginate).
 - If the user asks for a specific format (table/JSON/CSV), comply.
 - If a session policy specifies response shaping limits (max table rows, max samples, redaction), you MUST follow them.
+- For metric-style bullets, prefer simple stable markdown such as `- Label: value` or `- Label **value**`; avoid nested or adjacent strong spans like `**label:** **value**` when plain markdown is sufficient.
 
 ## Visualization (Mermaid + Charts + Networks)
 When the user asks to *visualize*, *diagram*, *graph*, or *map relationships*:
