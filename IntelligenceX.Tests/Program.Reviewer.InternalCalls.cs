@@ -164,8 +164,14 @@ internal static partial class Program {
         return ReviewerApp.BuildThreadResolveErrorForTests(primaryError, fallbackError);
     }
 
-    private static string CallBuildAutoResolvePermissionNote(int permissionDeniedCount) {
-        return ReviewerApp.BuildAutoResolvePermissionNoteForTests(permissionDeniedCount);
+    private static string CallBuildAutoResolvePermissionNote(int permissionDeniedCount, params string[] credentialLabels) {
+        return ReviewerApp.BuildAutoResolvePermissionNoteForTests(permissionDeniedCount, credentialLabels);
+    }
+
+    private static string CallAppendConversationResolutionPermissionBlocker(string summaryBody, int deniedThreadCount,
+        bool? requiresConversationResolution, params string[] credentialLabels) {
+        return ReviewerApp.AppendConversationResolutionPermissionBlockerForTests(summaryBody,
+            AutoResolvePermissionDiagnostics.From(deniedThreadCount, credentialLabels), requiresConversationResolution);
     }
 
     private static bool CallIsOwnedSummaryComment(IssueComment comment) {

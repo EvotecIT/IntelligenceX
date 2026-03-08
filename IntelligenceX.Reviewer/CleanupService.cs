@@ -65,7 +65,8 @@ internal static class CleanupService {
                 .ConfigureAwait(false);
             return new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
                 newTitle, newBody, context.Draft, context.HeadSha, context.BaseSha, context.Labels,
-                context.HeadRepoFullName, context.IsFork, context.AuthorAssociation, context.HeadRepositoryKnown);
+                context.HeadRepoFullName, context.IsFork, context.AuthorAssociation, context.HeadRepositoryKnown,
+                context.BaseRefName);
         }
 
         if (cleanup.Mode == CleanupMode.Comment || cleanup.Mode == CleanupMode.Hybrid) {

@@ -157,6 +157,28 @@ internal static partial class Program {
             "merge blockers allow missing section match");
     }
 
+    private static void TestConversationResolutionPermissionBlockerSection() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "None.",
+            "## Critical Issues ⚠️ (if any)",
+            "None."
+        });
+
+        var merged = CallAppendConversationResolutionPermissionBlocker(body, 2, true, "GITHUB_TOKEN",
+            "INTELLIGENCEX_GITHUB_TOKEN");
+
+        AssertContainsText(merged, "requires resolved review conversations before merge",
+            "conversation resolution blocker rationale");
+        AssertContainsText(merged, "`GITHUB_TOKEN` and `INTELLIGENCEX_GITHUB_TOKEN`",
+            "conversation resolution blocker token labels");
+        AssertEqual(1, CountOccurrences(merged, "## Critical Issues ⚠️"), "conversation resolution blocker keeps one critical section");
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(merged), "conversation resolution blocker triggers merge blocker");
+
+        var notRequired = CallAppendConversationResolutionPermissionBlocker(body, 2, false, "GITHUB_TOKEN");
+        AssertEqual(body, notRequired, "conversation resolution blocker omitted when branch rule disabled");
+    }
+
     private static void TestReviewFormatterModelUsageSection() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
             "base", Array.Empty<string>(), "owner/repo", false, null);

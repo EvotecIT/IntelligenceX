@@ -21,7 +21,8 @@ internal sealed partial class GitHubClient : IDisposable {
     private readonly SemaphoreSlim _requestGate;
     private readonly int _maxConcurrency;
 
-    public GitHubClient(string token, string? baseUrl = null, int maxConcurrency = DefaultMaxConcurrency) {
+    public GitHubClient(string token, string? baseUrl = null, int maxConcurrency = DefaultMaxConcurrency,
+        string? credentialLabel = null) {
         _maxConcurrency = Math.Max(1, maxConcurrency);
         _requestGate = new SemaphoreSlim(_maxConcurrency, _maxConcurrency);
         _http = new HttpClient {
@@ -32,9 +33,11 @@ internal sealed partial class GitHubClient : IDisposable {
         // Bearer is compatible with GitHub App installation tokens and PATs.
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+        CredentialLabel = string.IsNullOrWhiteSpace(credentialLabel) ? "token" : credentialLabel.Trim();
     }
 
     internal int MaxConcurrency => _maxConcurrency;
+    internal string CredentialLabel { get; }
 
     public async Task<IReadOnlyList<PullRequestFile>> GetPullRequestFilesAsync(string owner, string repo, int number,
         CancellationToken cancellationToken) {
@@ -91,6 +94,7 @@ internal sealed partial class GitHubClient : IDisposable {
         var baseRef = obj.GetObject("base");
         var headSha = head?.GetString("sha");
         var baseSha = baseRef?.GetString("sha");
+        var baseRefName = baseRef?.GetString("ref");
         var repoFullName = baseRef?.GetObject("repo")?.GetString("full_name")
             ?? $"{owner}/{repo}";
         var headRepo = head?.GetObject("repo");
@@ -111,9 +115,32 @@ internal sealed partial class GitHubClient : IDisposable {
         }
 
         var context = new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha,
-            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null);
+            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null, baseRefName);
         _pullRequestCache[cacheKey] = context;
         return context;
+    }
+
+    public async Task<bool?> GetRequiredConversationResolutionAsync(string owner, string repo, string branch,
+        CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo) || string.IsNullOrWhiteSpace(branch)) {
+            return null;
+        }
+
+        var branchToken = Uri.EscapeDataString(branch);
+        var json = await GetJsonAsync($"/repos/{owner}/{repo}/branches/{branchToken}/protection", cancellationToken)
+            .ConfigureAwait(false);
+        return ParseRequiredConversationResolutionEnabled(json.AsObject());
+    }
+
+    internal static bool? ParseRequiredConversationResolutionEnabledForTests(JsonObject? obj) =>
+        ParseRequiredConversationResolutionEnabled(obj);
+
+    private static bool? ParseRequiredConversationResolutionEnabled(JsonObject? obj) {
+        var section = obj?.GetObject("required_conversation_resolution");
+        if (section is null) {
+            return null;
+        }
+        return section.GetBoolean("enabled");
     }
 
     public async Task<CompareFilesResult> GetCompareFilesAsync(string owner, string repo, string baseSha, string headSha,

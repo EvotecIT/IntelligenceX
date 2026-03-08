@@ -104,6 +104,7 @@ public static partial class ReviewerApp {
         bool inlineSupported = false;
         bool summaryPosted = false;
         long? commentId = null;
+        bool? requiresConversationResolution = null;
         var progress = new ReviewProgress { StatusLine = "Starting review." };
         try {
             var cancellationToken = cts.Token;
@@ -167,10 +168,11 @@ public static partial class ReviewerApp {
                 SecretsAudit.Record($"GitHub fallback token from {fallbackTokenSource}");
             }
 
-            using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency);
+            using var github = new GitHubClient(token, maxConcurrency: settings.GitHubMaxConcurrency, credentialLabel: tokenSource);
             using var fallbackGithub = string.IsNullOrWhiteSpace(fallbackToken)
                 ? null
-                : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency);
+                : new GitHubClient(fallbackToken, maxConcurrency: settings.GitHubMaxConcurrency,
+                    credentialLabel: fallbackTokenSource);
 
             // Prefer the standard GITHUB_TOKEN for read operations when available; some GitHub App tokens are
             // intentionally scoped for writes/comments and may not have full PR read access in all environments.
@@ -304,6 +306,10 @@ public static partial class ReviewerApp {
                 Console.WriteLine("Skipping pull request due to path filter.");
                 return 0;
             }
+
+            requiresConversationResolution = await TryGetRequiredConversationResolutionAsync(readGithub, context, settings,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             var (reviewFiles, diffNote) = await ResolveReviewFilesAsync(codeHostReader, context, settings, files, cancellationToken)
                 .ConfigureAwait(false);
@@ -465,8 +471,16 @@ public static partial class ReviewerApp {
                         settings.ReviewThreadsAutoResolveAIEmbedPlacement);
                 }
             }
+            var combinedPermissionDiagnostics = extras.StaleThreadAutoResolvePermissions.Merge(triageResult.PermissionDiagnostics);
+            var permissionNote = allowWrites
+                ? BuildAutoResolvePermissionNote(combinedPermissionDiagnostics.DeniedThreadCount,
+                    combinedPermissionDiagnostics.DeniedCredentialLabels)
+                : string.Empty;
+            summaryBody = AppendConversationResolutionPermissionBlocker(summaryBody, combinedPermissionDiagnostics,
+                requiresConversationResolution);
             var inlineSuppressed = inlineSupported && !inlineAllowed;
             var autoResolveSummary = allowWrites && settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
+            autoResolveSummary = CombineNotes(autoResolveSummary, permissionNote);
             if (allowWrites && settings.ReviewThreadsAutoResolveSummaryAlways && string.IsNullOrWhiteSpace(autoResolveSummary)) {
                 autoResolveSummary = triageResult.FallbackSummary;
             }
@@ -611,6 +625,24 @@ public static partial class ReviewerApp {
                !string.IsNullOrWhiteSpace(context.HeadSha) &&
                inlineKeys is not null &&
                (inlineCommentsCount == 0 || inlineKeys.Count > 0);
+    }
+
+    private static async Task<bool?> TryGetRequiredConversationResolutionAsync(GitHubClient github, PullRequestContext context,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(context.BaseRefName)) {
+            return null;
+        }
+
+        try {
+            return await github.GetRequiredConversationResolutionAsync(context.Owner, context.Repo, context.BaseRefName!,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (settings.Diagnostics) {
+                Console.Error.WriteLine($"Branch protection lookup failed for '{context.BaseRefName}': {ex.Message}");
+            }
+            return null;
+        }
     }
 
     private static string BuildAnalysisLoadFailureReason(Exception ex) {

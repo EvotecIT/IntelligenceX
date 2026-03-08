@@ -1,6 +1,9 @@
 namespace IntelligenceX.Reviewer;
 
 public static partial class ReviewerApp {
+    private readonly record struct ThreadResolveResult(bool Resolved, string? Error, bool PermissionDenied,
+        IReadOnlyList<string> PermissionDeniedCredentialLabels);
+
 
     private static List<ThreadAssessment> ParseThreadAssessments(string output) {
         var result = new List<ThreadAssessment>();
@@ -237,14 +240,14 @@ public static partial class ReviewerApp {
         return string.IsNullOrWhiteSpace(reason) ? suffix : $"{reason} {suffix}";
     }
 
-    private static async Task<(bool Resolved, string? Error, bool PermissionDenied)> TryResolveThreadAsync(GitHubClient github,
+    private static async Task<ThreadResolveResult> TryResolveThreadAsync(GitHubClient github,
         GitHubClient? fallbackGithub, string threadId, CancellationToken cancellationToken) {
         var preferredGithub = fallbackGithub ?? github;
         var secondaryGithub = ReferenceEquals(preferredGithub, github) ? fallbackGithub : github;
         Exception? primaryError;
         try {
             await preferredGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
-            return (true, null, false);
+            return new ThreadResolveResult(true, null, false, Array.Empty<string>());
         } catch (Exception ex) {
             primaryError = ex;
         }
@@ -256,7 +259,7 @@ public static partial class ReviewerApp {
             // standard Actions token and a GitHub App installation token.
             try {
                 await secondaryGithub.ResolveReviewThreadAsync(threadId, cancellationToken).ConfigureAwait(false);
-                return (true, null, false);
+                return new ThreadResolveResult(true, null, false, Array.Empty<string>());
             } catch (Exception ex) {
                 fallbackError = ex;
             }
@@ -265,16 +268,32 @@ public static partial class ReviewerApp {
         var confirmedResolved = await TryConfirmThreadResolvedAsync(preferredGithub, secondaryGithub, threadId, cancellationToken)
             .ConfigureAwait(false);
         if (confirmedResolved) {
-            return (true, null, false);
+            return new ThreadResolveResult(true, null, false, Array.Empty<string>());
         }
 
+        var permissionDeniedCredentialLabels = new List<string>(2);
+        AddPermissionDeniedCredentialLabel(permissionDeniedCredentialLabels, preferredGithub, primaryError);
+        if (secondaryGithub is not null) {
+            AddPermissionDeniedCredentialLabel(permissionDeniedCredentialLabels, secondaryGithub, fallbackError);
+        }
         var permissionDenied = IsIntegrationForbidden(primaryError) ||
                                (fallbackError is not null && IsIntegrationForbidden(fallbackError));
         if (permissionDenied) {
             LogIntegrationForbiddenHint();
         }
 
-        return (false, BuildThreadResolveError(primaryError, fallbackError), permissionDenied);
+        return new ThreadResolveResult(false, BuildThreadResolveError(primaryError, fallbackError), permissionDenied,
+            permissionDeniedCredentialLabels);
+    }
+
+    private static void AddPermissionDeniedCredentialLabel(List<string> labels, GitHubClient github, Exception? error) {
+        if (error is null || !IsIntegrationForbidden(error)) {
+            return;
+        }
+        if (labels.Contains(github.CredentialLabel, StringComparer.OrdinalIgnoreCase)) {
+            return;
+        }
+        labels.Add(github.CredentialLabel);
     }
 
     private static async Task<bool> TryConfirmThreadResolvedAsync(GitHubClient preferredGithub,
@@ -317,8 +336,8 @@ public static partial class ReviewerApp {
     internal static string BuildThreadResolveErrorForTests(Exception primaryError, Exception? fallbackError) =>
         BuildThreadResolveError(primaryError, fallbackError);
 
-    internal static string BuildAutoResolvePermissionNoteForTests(int permissionDeniedCount) =>
-        BuildAutoResolvePermissionNote(permissionDeniedCount);
+    internal static string BuildAutoResolvePermissionNoteForTests(int permissionDeniedCount, IReadOnlyList<string>? credentialLabels) =>
+        BuildAutoResolvePermissionNote(permissionDeniedCount, credentialLabels);
 
     private static bool IsIntegrationForbidden(Exception ex) {
         if (HasIntegrationForbiddenToken(ex.Message)) {
@@ -395,17 +414,36 @@ public static partial class ReviewerApp {
         Console.Error.WriteLine(string.Join(Environment.NewLine, lines));
     }
 
-    private static string BuildAutoResolvePermissionNote(int permissionDeniedCount) {
+    private static string BuildAutoResolvePermissionNote(int permissionDeniedCount, IReadOnlyList<string>? credentialLabels) {
         if (permissionDeniedCount <= 0) {
             return string.Empty;
         }
 
         var threadLabel = permissionDeniedCount == 1 ? "thread" : "threads";
-        return $"Auto-resolve permissions: {permissionDeniedCount} addressed {threadLabel} could not be closed automatically because GitHub denied the integration token."
+        var credentialLabel = FormatCredentialLabels(credentialLabels);
+        return $"Auto-resolve permissions: {permissionDeniedCount} addressed {threadLabel} could not be closed automatically because GitHub denied review-thread resolution for {credentialLabel}."
                + Environment.NewLine
                + "Check repo Settings -> Actions -> General -> Workflow permissions and set GITHUB_TOKEN to Read and write permissions."
                + Environment.NewLine
                + "Also confirm the IntelligenceX Review GitHub App has Pull requests: Read & write and is installed on this repository.";
+    }
+
+    private static string FormatCredentialLabels(IReadOnlyList<string>? credentialLabels) {
+        if (credentialLabels is null || credentialLabels.Count == 0) {
+            return "the integration token";
+        }
+        if (credentialLabels.Count == 1) {
+            return $"`{credentialLabels[0]}`";
+        }
+        if (credentialLabels.Count == 2) {
+            return $"`{credentialLabels[0]}` and `{credentialLabels[1]}`";
+        }
+
+        var formatted = new List<string>(credentialLabels.Count);
+        foreach (var label in credentialLabels) {
+            formatted.Add($"`{label}`");
+        }
+        return string.Join(", ", formatted.GetRange(0, formatted.Count - 1)) + $", and {formatted[^1]}";
     }
 
     private static bool ThreadHasOnlyBotComments(PullRequestReviewThread thread, ReviewSettings settings) {

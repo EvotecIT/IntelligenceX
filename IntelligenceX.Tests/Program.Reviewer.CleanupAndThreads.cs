@@ -729,10 +729,12 @@ internal static partial class Program {
         var emptyMessage = CallBuildAutoResolvePermissionNote(0);
         AssertEqual(string.Empty, emptyMessage, "auto-resolve permission note omitted when no failures");
 
-        var message = CallBuildAutoResolvePermissionNote(1);
+        var message = CallBuildAutoResolvePermissionNote(1, "GITHUB_TOKEN", "INTELLIGENCEX_GITHUB_TOKEN");
         AssertContainsText(message, "Workflow permissions", "auto-resolve permission note mentions workflow permissions");
         AssertContainsText(message, "Read and write permissions", "auto-resolve permission note mentions read/write");
         AssertContainsText(message, "Pull requests: Read & write", "auto-resolve permission note mentions app pull-request scope");
+        AssertContainsText(message, "`GITHUB_TOKEN` and `INTELLIGENCEX_GITHUB_TOKEN`",
+            "auto-resolve permission note includes token sources");
     }
 
     private static bool TryGetResolveThreadIdFromGraphQlPayload(string body, out string? threadId) {

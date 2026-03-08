@@ -511,10 +511,111 @@ public static partial class ReviewerApp {
         return sb.ToString().TrimEnd();
     }
 
-    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock, string FallbackSummary) {
-        public static ThreadTriageResult Empty => new(string.Empty, string.Empty, string.Empty);
+    private static string AppendConversationResolutionPermissionBlocker(string summaryBody,
+        AutoResolvePermissionDiagnostics diagnostics, bool? requiresConversationResolution) {
+        var blockerItem = BuildConversationResolutionPermissionBlockerItem(diagnostics, requiresConversationResolution);
+        if (string.IsNullOrWhiteSpace(blockerItem)) {
+            return summaryBody;
+        }
+
+        return AppendBulletToSection(summaryBody, "Critical Issues", "## Critical Issues ⚠️", blockerItem);
+    }
+
+    private static string BuildConversationResolutionPermissionBlockerItem(
+        AutoResolvePermissionDiagnostics diagnostics, bool? requiresConversationResolution) {
+        if (diagnostics is null || !diagnostics.HasFailures || requiresConversationResolution != true) {
+            return string.Empty;
+        }
+
+        var threadLabel = diagnostics.DeniedThreadCount == 1 ? "thread" : "threads";
+        var credentialLabel = FormatCredentialLabels(diagnostics.DeniedCredentialLabels);
+        return $"- GitHub denied automatic review-thread resolution for {diagnostics.DeniedThreadCount} addressed {threadLabel} using {credentialLabel}. This repository requires resolved review conversations before merge, so the PR can remain blocked until permissions are fixed or the threads are resolved manually.";
+    }
+
+    private static string AppendBulletToSection(string body, string sectionName, string sectionHeading, string bulletLine) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return $"{sectionHeading}\n{bulletLine}";
+        }
+
+        var normalized = body.Replace("\r\n", "\n");
+        var lines = normalized.Split('\n').ToList();
+        var headingIndex = -1;
+        for (var i = 0; i < lines.Count; i++) {
+            var trimmed = lines[i].Trim();
+            if (!trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+                continue;
+            }
+            if (!trimmed.Contains(sectionName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+            headingIndex = i;
+            break;
+        }
+
+        if (headingIndex < 0) {
+            return CombineNotes(body, $"{sectionHeading}\n{bulletLine}");
+        }
+
+        var nextHeadingIndex = lines.Count;
+        for (var i = headingIndex + 1; i < lines.Count; i++) {
+            if (lines[i].TrimStart().StartsWith("## ", StringComparison.Ordinal)) {
+                nextHeadingIndex = i;
+                break;
+            }
+        }
+
+        for (var i = headingIndex + 1; i < nextHeadingIndex; i++) {
+            if (string.Equals(lines[i].Trim(), bulletLine, StringComparison.Ordinal)) {
+                return body;
+            }
+        }
+
+        var sectionHasOnlyPlaceholders = true;
+        for (var i = headingIndex + 1; i < nextHeadingIndex; i++) {
+            if (!IsNonBlockingSectionLine(lines[i])) {
+                sectionHasOnlyPlaceholders = false;
+                break;
+            }
+        }
+
+        if (sectionHasOnlyPlaceholders) {
+            lines.RemoveRange(headingIndex + 1, nextHeadingIndex - headingIndex - 1);
+            lines.Insert(headingIndex + 1, bulletLine);
+        } else {
+            lines.Insert(nextHeadingIndex, bulletLine);
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static bool IsNonBlockingSectionLine(string line) {
+        var trimmed = line.Trim();
+        if (trimmed.Length == 0) {
+            return true;
+        }
+
+        if (string.Equals(trimmed, "(if any)", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (!trimmed.StartsWith("-", StringComparison.Ordinal)) {
+            return string.Equals(trimmed, "None.", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(trimmed, "None", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var value = trimmed.Substring(1).Trim();
+        if (value.StartsWith("[ ]", StringComparison.Ordinal) || value.StartsWith("[x]", StringComparison.OrdinalIgnoreCase)) {
+            value = value.Substring(3).Trim();
+        }
+        return string.Equals(value, "None.", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(value, "None", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock, string FallbackSummary,
+        AutoResolvePermissionDiagnostics PermissionDiagnostics) {
+        public static ThreadTriageResult Empty =>
+            new(string.Empty, string.Empty, string.Empty, AutoResolvePermissionDiagnostics.Empty);
     }
 
 
 }
-
