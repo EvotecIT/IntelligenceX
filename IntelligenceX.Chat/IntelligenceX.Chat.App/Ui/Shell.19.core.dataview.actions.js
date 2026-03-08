@@ -144,6 +144,8 @@
     if (dataViewTitle) {
       dataViewTitle.textContent = dataViewState.title;
     }
+    updateDataViewQuickExportLabel();
+    applyDataViewColumnMode(dataViewState.columnMode);
     setDataViewMeta(metaText || "");
     if (typeof updateDataViewQuickExportLabel === "function") {
       updateDataViewQuickExportLabel();
@@ -387,6 +389,13 @@
 
   if (btnDataViewQuickExport) {
     btnDataViewQuickExport.addEventListener("click", function() { exportDataView(""); });
+  }
+
+  if (btnDataViewToggleColumnMode) {
+    btnDataViewToggleColumnMode.addEventListener("click", function() {
+      var nextMode = dataViewState.columnMode === "expanded" ? "wrapped" : "expanded";
+      applyDataViewColumnMode(nextMode);
+    });
   }
 
   if (btnDataViewExportCsv) {
