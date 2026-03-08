@@ -760,6 +760,60 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures stale historical replication summaries do not surface literal separator headings or dangling strong markers.
+    /// </summary>
+    [Fact]
+    public void Format_RepairsHistoricalReplicationSummaryArtifacts() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 3, 8, 18, 6, 28, DateTimeKind.Local);
+        var text = """
+                   Nice—forest replication check is clean. No zombies escaped the tomb. 🧟‍♂️
+
+                   #
+
+                   ### Forest Replication Status
+                   - Overall health ✅ Healthy****
+                   - Replication edges 44 total
+                   - Failures 0
+                   """;
+        var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", text, now)
+        }, "HH:mm:ss", options);
+
+        Assert.DoesNotContain(
+            normalized.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'),
+            static line => string.Equals(line.Trim(), "#", StringComparison.Ordinal));
+        Assert.DoesNotContain(">#<", html, StringComparison.Ordinal);
+        Assert.Contains("Forest Replication Status", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>Healthy</strong>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Healthy****", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures broken two-line strong result labels are folded into one readable line before rendering.
+    /// </summary>
+    [Fact]
+    public void Format_RepairsBrokenTwoLineStrongResultLabelArtifacts() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 3, 8, 18, 8, 40, DateTimeKind.Local);
+        var text = """
+                   ## 2) LDAP/LDAPS check on all 5 servers
+                   **Result
+                   all 5 are healthy for directory access** with recommended LDAPS endpoints.
+                   """;
+
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", text, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<strong>Result:</strong>", html, StringComparison.Ordinal);
+        Assert.Contains("all 5 are healthy for directory access", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("**Result", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures split host-label bullets render as proper list items when label and sentence arrive on separate lines.
     /// </summary>
     [Fact]

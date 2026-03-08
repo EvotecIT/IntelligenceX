@@ -33,6 +33,9 @@ internal static class TranscriptHtmlFormatter {
     private static readonly Regex PreBlockRegex = new(
         @"<pre\b[\s\S]*?</pre>",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StandaloneHashParagraphBeforeHeadingRegex = new(
+        @"<p>\s*#\s*</p>\s*(?=<h[1-6]\b)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Backward-compatible overload for transcript entries without model metadata.
@@ -452,10 +455,19 @@ internal static class TranscriptHtmlFormatter {
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {
         try {
             var html = MarkdownRenderer.RenderBodyHtml(ExpandAdjacentOrderedListItems(text), markdownOptions);
+            html = RemoveStandaloneHashParagraphsBeforeHeadings(html);
             return EnsureInlineCodeHtml(html);
         } catch {
             return EnsureInlineCodeHtml("<article class='markdown-body'><p>" + WebUtility.HtmlEncode(text) + "</p></article>");
         }
+    }
+
+    private static string RemoveStandaloneHashParagraphsBeforeHeadings(string html) {
+        if (string.IsNullOrEmpty(html) || html.IndexOf("<p", StringComparison.OrdinalIgnoreCase) < 0) {
+            return html;
+        }
+
+        return StandaloneHashParagraphBeforeHeadingRegex.Replace(html, string.Empty);
     }
 
     private static string ExpandAdjacentOrderedListItems(string text) {
