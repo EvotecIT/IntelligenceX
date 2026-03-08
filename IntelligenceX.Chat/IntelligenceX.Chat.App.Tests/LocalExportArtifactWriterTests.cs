@@ -121,6 +121,77 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures markdown transcript export strips internal cached-evidence transport markers.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Markdown_StripsInternalCachedEvidenceMarkers() {
+        const string markdown = """
+            # Transcript
+
+            [Cached evidence fallback]
+            ix:cached-tool-evidence:v1
+
+            Recent evidence:
+            #### ad_environment_discover
+            ### Active Directory: Environment Discovery
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var markdownPath = Path.Combine(root, "transcript.md");
+            var result = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
+
+            Assert.True(result.Succeeded);
+            var written = File.ReadAllText(markdownPath);
+            Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("[Cached evidence fallback]", written, StringComparison.Ordinal);
+            Assert.Contains("### Active Directory: Environment Discovery", written, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures DOCX transcript export receives sanitized markdown without internal cached-evidence transport markers.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_SanitizesCachedEvidenceMarkersBeforeWriter() {
+        const string markdown = """
+            # Transcript
+
+            [Cached evidence fallback]
+            ix:cached-tool-evidence:v1
+
+            Recent evidence:
+            #### ad_environment_discover
+            ### Active Directory: Environment Discovery
+            """;
+
+        string? capturedMarkdown = null;
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript.docx");
+            var result = LocalExportArtifactWriter.ExportTranscript(
+                ExportPreferencesContract.FormatDocx,
+                "transcript",
+                markdown,
+                docxPath,
+                additionalAllowedImageDirectories: null,
+                docxVisualMaxWidthPx: null,
+                allowMarkdownFallback: false,
+                markdownWriter: static (_, _) => throw new InvalidOperationException("markdown fallback should not run"),
+                docxWriter: (_, docxMarkdown, _, _, _) => capturedMarkdown = docxMarkdown);
+
+            Assert.True(result.Succeeded);
+            Assert.NotNull(capturedMarkdown);
+            Assert.DoesNotContain("ix:cached-tool-evidence:v1", capturedMarkdown, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("[Cached evidence fallback]", capturedMarkdown, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Ensures requested DOCX transcript export falls back to markdown with typed result metadata when the DOCX writer fails.
     /// </summary>
     [Fact]
