@@ -595,6 +595,20 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures the live chat stylesheet gives OfficeIMO native network visuals the same visible sizing contract
+    /// as IX-owned network hosts so upgraded historical chats do not collapse to zero-height blocks.
+    /// </summary>
+    [Fact]
+    public void TranscriptRendering_IncludesNativeOfficeImoNetworkStyles() {
+        var cssPath = Path.Combine(UiDirectory, "Shell.20.chat.css");
+        var css = File.ReadAllText(cssPath);
+
+        Assert.Contains(".omd-network {", css, StringComparison.Ordinal);
+        Assert.Contains(".omd-network .omd-network-canvas {", css, StringComparison.Ordinal);
+        Assert.Contains(".omd-network .vis-network:focus {", css, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures runtime apply updates remain monotonic when options payloads arrive out of order.
     /// </summary>
     [Fact]
