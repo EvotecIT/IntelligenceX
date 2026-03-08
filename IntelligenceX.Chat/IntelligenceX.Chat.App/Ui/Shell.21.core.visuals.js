@@ -532,7 +532,8 @@
   }
 
   function ensureMermaidThemeInitialized(themeMode, renderProfile) {
-    if (!window.mermaid || typeof window.mermaid.initialize !== "function") {
+    var mermaidRuntime = getMermaidRuntime();
+    if (!mermaidRuntime || typeof mermaidRuntime.initialize !== "function") {
       return;
     }
 
@@ -546,7 +547,7 @@
       return;
     }
 
-    window.mermaid.initialize({
+    mermaidRuntime.initialize({
       startOnLoad: false,
       securityLevel: "strict",
       theme: "base",
@@ -559,8 +560,25 @@
     ixVisualMermaidState.lastThemeSignature = signature;
   }
 
-  function ensureMermaidReady() {
+  function getMermaidRuntime() {
     if (window.mermaid && typeof window.mermaid.render === "function") {
+      return window.mermaid;
+    }
+
+    if (typeof globalThis !== "undefined"
+      && globalThis.__esbuild_esm_mermaid_nm
+      && globalThis.__esbuild_esm_mermaid_nm.mermaid
+      && globalThis.__esbuild_esm_mermaid_nm.mermaid.default
+      && typeof globalThis.__esbuild_esm_mermaid_nm.mermaid.default.render === "function") {
+      window.mermaid = globalThis.__esbuild_esm_mermaid_nm.mermaid.default;
+      return window.mermaid;
+    }
+
+    return null;
+  }
+
+  function ensureMermaidReady() {
+    if (getMermaidRuntime()) {
       ensureMermaidThemeInitialized("preserve_ui_theme", "ui");
       return Promise.resolve(true);
     }
@@ -577,10 +595,10 @@
       ixVisualAssets.mermaidUrl,
       "data-ix-mermaid-js",
       function() {
-        return !!(window.mermaid && typeof window.mermaid.render === "function");
+        return !!getMermaidRuntime();
       })
       .then(function(ok) {
-        if (!ok || !window.mermaid || typeof window.mermaid.render !== "function") {
+        if (!ok || !getMermaidRuntime()) {
           ixVisualMermaidState.loadFailed = true;
           return false;
         }
@@ -646,10 +664,15 @@
 
     pre.setAttribute("data-ix-mermaid-pending", "1");
     try {
+      var mermaidRuntime = getMermaidRuntime();
+      if (!mermaidRuntime) {
+        throw new Error("renderer unavailable");
+      }
+
       ensureMermaidThemeInitialized("preserve_ui_theme", "ui");
 
-      if (typeof window.mermaid.parse === "function") {
-        var parseResult = window.mermaid.parse(source);
+      if (typeof mermaidRuntime.parse === "function") {
+        var parseResult = mermaidRuntime.parse(source);
         if (parseResult && typeof parseResult.then === "function") {
           await withVisualTimeout(parseResult, ixVisualMermaidState.renderTimeoutMs);
         }
@@ -657,7 +680,7 @@
 
       var renderId = "ix-mermaid-" + String(ixVisualMermaidState.nextRenderId++);
       var renderResult = await withVisualTimeout(
-        Promise.resolve(window.mermaid.render(renderId, source)),
+        Promise.resolve(mermaidRuntime.render(renderId, source)),
         ixVisualMermaidState.renderTimeoutMs);
 
       var svg = "";
@@ -2118,20 +2141,27 @@
     disposeTranscriptVisuals(root);
   };
 
+  function runTranscriptVisualPhaseSafely(root, renderPhase) {
+    return Promise.resolve()
+      .then(function() {
+        return renderPhase(root);
+      })
+      .catch(function() {
+        // Keep later visual phases running even if an earlier renderer fails.
+      });
+  }
+
   window.ixRenderTranscriptVisuals = function(root) {
     if (!root || !root.querySelectorAll) {
       return Promise.resolve();
     }
 
-    return renderTranscriptCharts(root)
+    return runTranscriptVisualPhaseSafely(root, renderTranscriptCharts)
       .then(function() {
-        return renderTranscriptNetworks(root);
+        return runTranscriptVisualPhaseSafely(root, renderTranscriptNetworks);
       })
       .then(function() {
-        return renderTranscriptMermaid(root);
-      })
-      .catch(function() {
-        // Keep transcript rendering resilient even when visual runtime fails.
+        return runTranscriptVisualPhaseSafely(root, renderTranscriptMermaid);
       });
   };
 
