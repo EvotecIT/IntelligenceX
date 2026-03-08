@@ -52,6 +52,8 @@ internal sealed class ChatAppStateStore : IDisposable {
         return Path.Combine(root, "IntelligenceX.Chat", "app-state.db");
     }
 
+    internal string DatabasePath => _dbPath;
+
     public Task<ChatAppState?> GetAsync(string profileName, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(profileName)) {

@@ -131,6 +131,9 @@ public sealed partial class MainWindow : Window {
                 case "debug_copy_startup_log":
                     CopyStartupLogToClipboard();
                     break;
+                case "debug_export_transcript_forensics":
+                    await ExportTranscriptForensicsAsync().ConfigureAwait(true);
+                    break;
                 case "debug_memory_recompute":
                     await ForceRecomputeMemoryCacheAsync().ConfigureAwait(true);
                     break;
