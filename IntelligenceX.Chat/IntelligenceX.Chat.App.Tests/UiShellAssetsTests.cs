@@ -484,10 +484,12 @@ public sealed class UiShellAssetsTests {
 
         AssertContainsAll(
             script,
+            "function resolveMermaidRuntimeCandidate() {",
             "function getMermaidRuntime() {",
             "globalThis.__esbuild_esm_mermaid_nm",
-            "window.mermaid = globalThis.__esbuild_esm_mermaid_nm.mermaid.default;",
+            "window.mermaid = runtime;",
             "function runTranscriptVisualPhaseSafely(root, renderPhase) {",
+            "console.warn(\"transcript visual phase failed\", error);",
             "return runTranscriptVisualPhaseSafely(root, renderTranscriptCharts)",
             "return runTranscriptVisualPhaseSafely(root, renderTranscriptNetworks)",
             "return runTranscriptVisualPhaseSafely(root, renderTranscriptMermaid)");

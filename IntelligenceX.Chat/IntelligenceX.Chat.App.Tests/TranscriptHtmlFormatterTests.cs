@@ -486,6 +486,23 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures hyphenated cached-evidence prefixes normalize into the structured cached callout path.
+    /// </summary>
+    [Fact]
+    public void Format_RendersHyphenatedCachedEvidenceFallbackPrefixAsCalloutCard() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 3, 8, 8, 12, 36, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "[cached-evidence-fallback]\nix:cached-tool-evidence:v1\n\nCached tool output reused.", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("bubble bubble-callout", html);
+        Assert.Contains("outcome-card outcome-neutral", html);
+        Assert.Contains("outcome-badge'>Cached</span>", html);
+        Assert.Contains("Cached tool output reused.", html);
+    }
+
+    /// <summary>
     /// Ensures transcript rendering normalizes common token-join artifacts before markdown conversion.
     /// </summary>
     [Fact]

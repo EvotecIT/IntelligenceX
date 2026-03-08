@@ -560,7 +560,7 @@
     ixVisualMermaidState.lastThemeSignature = signature;
   }
 
-  function getMermaidRuntime() {
+  function resolveMermaidRuntimeCandidate() {
     if (window.mermaid && typeof window.mermaid.render === "function") {
       return window.mermaid;
     }
@@ -570,11 +570,18 @@
       && globalThis.__esbuild_esm_mermaid_nm.mermaid
       && globalThis.__esbuild_esm_mermaid_nm.mermaid.default
       && typeof globalThis.__esbuild_esm_mermaid_nm.mermaid.default.render === "function") {
-      window.mermaid = globalThis.__esbuild_esm_mermaid_nm.mermaid.default;
-      return window.mermaid;
+      return globalThis.__esbuild_esm_mermaid_nm.mermaid.default;
     }
 
     return null;
+  }
+
+  function getMermaidRuntime() {
+    var runtime = resolveMermaidRuntimeCandidate();
+    if (runtime && window.mermaid !== runtime) {
+      window.mermaid = runtime;
+    }
+    return runtime;
   }
 
   function ensureMermaidReady() {
@@ -2146,8 +2153,10 @@
       .then(function() {
         return renderPhase(root);
       })
-      .catch(function() {
-        // Keep later visual phases running even if an earlier renderer fails.
+      .catch(function(error) {
+        if (typeof console !== "undefined" && console && typeof console.warn === "function") {
+          console.warn("transcript visual phase failed", error);
+        }
       });
   }
 
