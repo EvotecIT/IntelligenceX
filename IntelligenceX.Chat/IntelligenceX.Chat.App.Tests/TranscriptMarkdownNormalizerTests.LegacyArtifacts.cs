@@ -117,6 +117,23 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures ordinary standalone hash lines are preserved when they are not acting as heading-adjacent artifacts.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_PreservesStandaloneHashLineOutsideHeadingArtifactCase() {
+        var clean = """
+                    Inventory legend:
+                    #
+                    keep this line as-is
+                    """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(clean, out var fixedText);
+
+        Assert.False(repaired);
+        Assert.Equal(clean, fixedText);
+    }
+
+    /// <summary>
     /// Ensures broken two-line strong labels are folded into one readable line during legacy repair.
     /// </summary>
     [Fact]

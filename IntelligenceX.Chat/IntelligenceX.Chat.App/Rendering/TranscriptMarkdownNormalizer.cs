@@ -149,6 +149,9 @@ internal static partial class TranscriptMarkdownNormalizer {
     private static readonly Regex StandaloneSingleHashSeparatorRegex = new(
         @"^\s*#\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex StandaloneHashSeparatorBeforeHeadingSignalRegex = new(
+        @"(?ms)^\s*#\s*$\s*^(?:\s*#{2,6}\s+\S.*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
 
     private static readonly Regex BrokenTwoLineStrongLeadInRegex = new(
         @"^(?<indent>\s*)\*\*(?<label>[^*\r\n]+)$",
@@ -156,6 +159,9 @@ internal static partial class TranscriptMarkdownNormalizer {
 
     private static readonly Regex TrailingDanglingStrongMetricTokenRegex = new(
         @"(?<token>[\p{L}\p{N}_./:-]+)\*{4}(?<tail>\s*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex OrderedListLeadRegex = new(
+        @"^\d+[.)]\s+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex StandaloneHostLabelBulletRegex = new(
@@ -368,7 +374,7 @@ internal static partial class TranscriptMarkdownNormalizer {
                || text.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) >= 0
                || LegacyToolHeadingBulletRegex.IsMatch(text)
                || LegacyToolSlugHeadingRegex.IsMatch(text)
-               || text.Contains("#\n", StringComparison.Ordinal)
+               || StandaloneHashSeparatorBeforeHeadingSignalRegex.IsMatch(text)
                || text.Contains("**Result\n", StringComparison.Ordinal)
                || ContainsLegacyJsonVisualFenceCandidate(text);
     }
@@ -435,7 +441,9 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         for (var i = 0; i < lines.Length; i++) {
             var current = lines[i] ?? string.Empty;
-            if (StandaloneSingleHashSeparatorRegex.IsMatch(current)) {
+            if (StandaloneSingleHashSeparatorRegex.IsMatch(current)
+                && TryFindNextNonEmptyLine(lines, i + 1, out var nextIndex)
+                && IsMarkdownHeadingLine(lines[nextIndex] ?? string.Empty)) {
                 changed = true;
                 continue;
             }
@@ -582,7 +590,7 @@ internal static partial class TranscriptMarkdownNormalizer {
             var line = lines[i] ?? string.Empty;
             var trimmedStart = line.TrimStart();
             if (!trimmedStart.StartsWith("- ", StringComparison.Ordinal)
-                && !Regex.IsMatch(trimmedStart, @"^\d+[.)]\s+", RegexOptions.CultureInvariant)) {
+                && !OrderedListLeadRegex.IsMatch(trimmedStart)) {
                 continue;
             }
 
