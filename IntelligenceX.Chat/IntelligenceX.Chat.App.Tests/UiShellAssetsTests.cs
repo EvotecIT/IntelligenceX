@@ -561,6 +561,8 @@ public sealed class UiShellAssetsTests {
 
         AssertContainsAll(
             html,
+            "function compareVisualBlockDocumentOrder(left, right) {",
+            "function buildOrderedVisualEntries(fenceBlocks, nativeBlocks) {",
             "ensureMermaidThemeInitialized",
             "decodeBase64Utf8Value",
             "normalizeMermaidExportSvg",
