@@ -95,6 +95,72 @@ internal static partial class TranscriptMarkdownNormalizer {
         return output.ToString();
     }
 
+    private static string UpgradeLegacyIndentedNetworkBlocks(string input) {
+        if (string.IsNullOrEmpty(input)
+            || input.IndexOf("\"nodes\"", StringComparison.OrdinalIgnoreCase) < 0
+            || input.IndexOf("\"edges\"", StringComparison.OrdinalIgnoreCase) < 0) {
+            return input ?? string.Empty;
+        }
+
+        var hasCrLf = input.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var rewritten = new List<string>(lines.Length);
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            if (!IsLegacyIndentedCodeLine(current)) {
+                rewritten.Add(current);
+                continue;
+            }
+
+            var blockLines = new List<string>();
+            var rawLines = new List<string>();
+            var cursor = i;
+            while (cursor < lines.Length) {
+                var line = lines[cursor] ?? string.Empty;
+                if (!IsLegacyIndentedCodeLine(line) && !string.IsNullOrWhiteSpace(line)) {
+                    break;
+                }
+
+                rawLines.Add(line);
+                if (string.IsNullOrWhiteSpace(line)) {
+                    blockLines.Add(string.Empty);
+                } else {
+                    blockLines.Add(RemoveLegacyIndentedCodePrefix(line));
+                }
+
+                cursor++;
+            }
+
+            if (blockLines.Count == 0) {
+                rewritten.Add(current);
+                continue;
+            }
+
+            var candidate = string.Join("\n", blockLines);
+            if (!LooksLikeLegacyNetworkJson(candidate)) {
+                rewritten.AddRange(rawLines);
+                i = cursor - 1;
+                continue;
+            }
+
+            rewritten.Add("```ix-network");
+            rewritten.AddRange(blockLines);
+            rewritten.Add("```");
+            changed = true;
+            i = cursor - 1;
+        }
+
+        if (!changed) {
+            return input;
+        }
+
+        var rebuilt = string.Join("\n", rewritten);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
     private static bool ContainsLegacyJsonVisualFenceCandidate(string input) {
         if (string.IsNullOrEmpty(input)) {
             return false;
@@ -102,7 +168,52 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         return input.IndexOf("```json", StringComparison.OrdinalIgnoreCase) >= 0
                || input.IndexOf("```", StringComparison.Ordinal) >= 0 && input.IndexOf("\"nodes\"", StringComparison.OrdinalIgnoreCase) >= 0
-               && input.IndexOf("\"edges\"", StringComparison.OrdinalIgnoreCase) >= 0;
+               && input.IndexOf("\"edges\"", StringComparison.OrdinalIgnoreCase) >= 0
+               || ContainsLegacyIndentedNetworkBlockCandidate(input);
+    }
+
+    private static bool ContainsLegacyIndentedNetworkBlockCandidate(string input) {
+        return input.IndexOf("\"nodes\"", StringComparison.OrdinalIgnoreCase) >= 0
+               && input.IndexOf("\"edges\"", StringComparison.OrdinalIgnoreCase) >= 0
+               && (input.IndexOf("    {", StringComparison.Ordinal) >= 0
+                   || input.IndexOf("\t{", StringComparison.Ordinal) >= 0);
+    }
+
+    private static bool IsLegacyIndentedCodeLine(string line) {
+        if (string.IsNullOrEmpty(line)) {
+            return false;
+        }
+
+        return line.StartsWith("    ", StringComparison.Ordinal)
+               || line.StartsWith("\t", StringComparison.Ordinal);
+    }
+
+    private static string RemoveLegacyIndentedCodePrefix(string line) {
+        if (line.StartsWith("\t", StringComparison.Ordinal)) {
+            return line[1..];
+        }
+
+        return line.StartsWith("    ", StringComparison.Ordinal) ? line[4..] : line;
+    }
+
+    private static bool LooksLikeLegacyNetworkJson(string candidate) {
+        if (string.IsNullOrWhiteSpace(candidate)) {
+            return false;
+        }
+
+        try {
+            using var document = JsonDocument.Parse(candidate);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) {
+                return false;
+            }
+
+            return document.RootElement.TryGetProperty("nodes", out var nodes)
+                   && nodes.ValueKind == JsonValueKind.Array
+                   && document.RootElement.TryGetProperty("edges", out var edges)
+                   && edges.ValueKind == JsonValueKind.Array;
+        } catch (JsonException) {
+            return false;
+        }
     }
 
     private static string ApplyTransformOutsideFencedCodeBlocks(string input, Func<string, string> transform) {

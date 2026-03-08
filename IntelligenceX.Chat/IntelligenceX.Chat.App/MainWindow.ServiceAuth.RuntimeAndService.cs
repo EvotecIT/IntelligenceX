@@ -129,6 +129,46 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    internal static bool ShouldPromoteAuthenticatedStateFromFinalAssistantTurn(
+        bool requiresInteractiveSignIn,
+        bool isConnected,
+        bool isAuthenticated,
+        bool loginInProgress) {
+        return requiresInteractiveSignIn
+               && isConnected
+               && !isAuthenticated
+               && !loginInProgress;
+    }
+
+    internal static bool ShouldRefreshAuthenticationStateAfterConversationSwitch(
+        bool requiresInteractiveSignIn,
+        bool isConnected,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool hasExplicitUnauthenticatedProbeSnapshot) {
+        return requiresInteractiveSignIn
+               && isConnected
+               && !isAuthenticated
+               && !loginInProgress
+               && !hasExplicitUnauthenticatedProbeSnapshot;
+    }
+
+    private void PromoteAuthenticatedStateFromFinalAssistantTurn() {
+        if (!ShouldPromoteAuthenticatedStateFromFinalAssistantTurn(
+                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                isConnected: _isConnected,
+                isAuthenticated: _isAuthenticated,
+                loginInProgress: _loginInProgress)) {
+            return;
+        }
+
+        _isAuthenticated = true;
+        _loginInProgress = false;
+        ResetEnsureLoginProbeCache();
+        QueuePersistAppState();
+        _ = SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true));
+    }
+
     private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false, bool skipPreLoginAuthProbe = false) {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
@@ -321,4 +361,3 @@ public sealed partial class MainWindow : Window {
         }
     }
 }
-
