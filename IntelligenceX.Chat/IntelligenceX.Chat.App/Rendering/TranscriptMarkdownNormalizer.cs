@@ -374,7 +374,7 @@ internal static partial class TranscriptMarkdownNormalizer {
             var current = lines[i] ?? string.Empty;
             var bulletMatch = LegacyToolHeadingBulletRegex.Match(current);
             if (bulletMatch.Success) {
-                rewritten.Add(bulletMatch.Groups["indent"].Value + bulletMatch.Groups["heading"].Value.Trim());
+                rewritten.Add(bulletMatch.Groups["heading"].Value.Trim());
                 changed = true;
                 continue;
             }
@@ -382,8 +382,7 @@ internal static partial class TranscriptMarkdownNormalizer {
             var slugMatch = LegacyToolSlugHeadingRegex.Match(current);
             if (slugMatch.Success && TryFindNextNonEmptyLine(lines, i + 1, out var nextIndex)) {
                 var next = lines[nextIndex] ?? string.Empty;
-                if (next.TrimStart().StartsWith("### ", StringComparison.Ordinal)
-                    || next.TrimStart().StartsWith("## ", StringComparison.Ordinal)) {
+                if (IsMarkdownHeadingLine(next)) {
                     changed = true;
                     continue;
                 }
@@ -398,6 +397,22 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         var rebuilt = string.Join("\n", rewritten);
         return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
+    private static bool IsMarkdownHeadingLine(string line) {
+        var trimmed = line.TrimStart();
+        if (trimmed.Length < 4 || trimmed[0] != '#') {
+            return false;
+        }
+
+        var depth = 0;
+        while (depth < trimmed.Length && trimmed[depth] == '#') {
+            depth++;
+        }
+
+        return depth is >= 2 and <= 6
+               && depth < trimmed.Length
+               && char.IsWhiteSpace(trimmed[depth]);
     }
 
     private static bool TryFindNextNonEmptyLine(string[] lines, int startIndex, out int index) {
