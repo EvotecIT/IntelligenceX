@@ -21,7 +21,7 @@
     <!-- fallback root for NuGet mode when no local checkout is present -->
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == ''">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckoutInput)' != ''">$(UseLocalOfficeImoCheckoutInput)</UseLocalOfficeImoCheckout>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRoot)\\OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">true</UseLocalOfficeImoCheckout>
+    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRoot)' != '' and Exists('$(OfficeImoRepoRoot)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">true</UseLocalOfficeImoCheckout>
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
 
     <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>

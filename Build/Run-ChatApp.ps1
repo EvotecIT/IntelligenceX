@@ -35,6 +35,8 @@ function Stop-IfRunning {
 
 $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 $appProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
+$officeImoRoot = Join-Path (Split-Path $repoRoot -Parent) 'OfficeIMO'
+$resolvedOfficeImoRoot = $null
 
 if (-not (Test-Path $appProject)) {
     throw "Project not found: $appProject"
@@ -52,6 +54,16 @@ $dotnetArgs = @(
 if ($NoBuild) {
     $dotnetArgs += '--no-build'
 }
+
+if (Test-Path (Join-Path $officeImoRoot 'OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj')) {
+    $resolvedOfficeImoRoot = [System.IO.Path]::GetFullPath($officeImoRoot)
+    if (-not $resolvedOfficeImoRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $resolvedOfficeImoRoot += [System.IO.Path]::DirectorySeparatorChar
+    }
+    $dotnetArgs += "/p:UseLocalOfficeImoCheckout=true"
+    $dotnetArgs += "/p:OfficeImoRepoRoot=$resolvedOfficeImoRoot"
+}
+
 if ($IncludePrivateToolPacks) {
     $dotnetArgs += '/p:IncludePrivateToolPacks=true'
     if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
@@ -66,6 +78,11 @@ if ($IncludePrivateToolPacks) {
 Write-Header 'Run Chat App'
 Write-Step "Configuration: $Configuration"
 Write-Step "Project: $appProject"
+if ($resolvedOfficeImoRoot) {
+    Write-Step "OfficeIMO: local checkout ($resolvedOfficeImoRoot)"
+} else {
+    Write-Step 'OfficeIMO: package fallback'
+}
 
 Push-Location $repoRoot
 try {
