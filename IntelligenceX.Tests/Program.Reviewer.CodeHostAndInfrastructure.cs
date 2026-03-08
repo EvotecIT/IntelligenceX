@@ -170,6 +170,21 @@ internal static partial class Program {
         AssertEqual(2, client.MaxConcurrency, "github client concurrency");
     }
 
+    private static void TestGitHubRequiredConversationResolutionLookup() {
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/branches/master/protection") {
+                return new HttpResponse("{\"required_conversation_resolution\":{\"enabled\":true}}");
+            }
+            return null;
+        });
+
+        using var client = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var enabled = client.GetRequiredConversationResolutionAsync("owner", "repo", "master", CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        AssertEqual(true, enabled, "required conversation resolution lookup");
+    }
+
     private static void TestGitHubCodeHostReaderSmoke() {
         const string prJson = "{"
             + "\"title\":\"Reader test\",\"body\":\"Body\",\"draft\":false,\"number\":1,"
@@ -380,6 +395,47 @@ internal static partial class Program {
             Array.Empty<string>(), "owner/repo", false, null);
         var extras = CallBuildExtrasAsync(github, context, settings, true);
         AssertEqual(1, extras.ReviewThreads.Count, "triage-only forces thread load");
+    }
+
+    private static void TestBuildExtrasCapturesStaleAutoResolvePermissionFailures() {
+        using var server = new LocalHttpServer(request => {
+            if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+            if (request.Body.Contains("resolveReviewThread", StringComparison.Ordinal)) {
+                return new HttpResponse(
+                    "{\"data\":{\"resolveReviewThread\":null},\"errors\":[{\"type\":\"FORBIDDEN\",\"message\":\"Resource not accessible by integration\"}]}");
+            }
+            return new HttpResponse(BuildGraphQlThreadsResponse(
+                $"{ReviewFormatter.InlineMarker}\nInitial",
+                "src/Foo.cs",
+                10,
+                "intelligencex-review",
+                "thread1",
+                isResolved: false,
+                isOutdated: true));
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'), credentialLabel: "GITHUB_TOKEN");
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = true,
+            ReviewThreadsAutoResolveBotsOnly = true,
+            ReviewThreadsMax = 5,
+            ReviewThreadsMaxComments = 2
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null, baseRefName: "master");
+
+        var extras = CallBuildExtrasAsync(github, context, settings, true);
+
+        AssertEqual(1, extras.StaleThreadAutoResolvePermissions.DeniedThreadCount,
+            "stale auto-resolve permission denied count");
+        AssertEqual(true, extras.StaleThreadAutoResolvePermissions.DeniedCredentialLabels.Contains("GITHUB_TOKEN",
+            StringComparer.OrdinalIgnoreCase), "stale auto-resolve permission denied token");
     }
 
     private static void TestTriageThreadHydrationUsesFallbackClientWhenProvided() {

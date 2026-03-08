@@ -66,12 +66,17 @@ public static partial class ReviewerApp {
     /// <summary>Test-only forwarder for stale-thread auto-resolution.</summary>
     internal static Task AutoResolveStaleThreadsForTestsAsync(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
         ReviewSettings settings, CancellationToken cancellationToken = default) =>
-        AutoResolveStaleThreadsAsync(github, null, threads, settings, cancellationToken);
+        AutoResolveStaleThreadsForTestsCoreAsync(github, null, threads, settings, cancellationToken);
 
     /// <summary>Test-only forwarder for stale-thread auto-resolution with explicit fallback token client.</summary>
     internal static Task AutoResolveStaleThreadsForTestsAsync(GitHubClient github, GitHubClient? fallbackGithub,
         IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken = default) =>
-        AutoResolveStaleThreadsAsync(github, fallbackGithub, threads, settings, cancellationToken);
+        AutoResolveStaleThreadsForTestsCoreAsync(github, fallbackGithub, threads, settings, cancellationToken);
+
+    private static async Task AutoResolveStaleThreadsForTestsCoreAsync(GitHubClient github, GitHubClient? fallbackGithub,
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings, CancellationToken cancellationToken) {
+        await AutoResolveStaleThreadsAsync(github, fallbackGithub, threads, settings, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>Test-only forwarder for thread assessment prompt rendering.</summary>
     internal static string BuildThreadAssessmentPromptForTests(PullRequestContext context,
@@ -125,4 +130,8 @@ public static partial class ReviewerApp {
         var codeHostReader = new GitHubCodeHostReader(github);
         return ResolveDiffRangeFilesAsync(codeHostReader, context, range, currentFiles, settings, cancellationToken);
     }
+
+    internal static string BuildConversationResolutionPermissionBlockerForTests(
+        AutoResolvePermissionDiagnostics diagnostics, bool? requiresConversationResolution) =>
+        BuildConversationResolutionPermissionBlocker(diagnostics, requiresConversationResolution);
 }

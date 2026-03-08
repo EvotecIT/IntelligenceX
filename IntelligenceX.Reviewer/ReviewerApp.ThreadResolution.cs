@@ -511,10 +511,25 @@ public static partial class ReviewerApp {
         return sb.ToString().TrimEnd();
     }
 
-    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock, string FallbackSummary) {
-        public static ThreadTriageResult Empty => new(string.Empty, string.Empty, string.Empty);
+    private static string BuildConversationResolutionPermissionBlocker(
+        AutoResolvePermissionDiagnostics diagnostics, bool? requiresConversationResolution) {
+        if (diagnostics is null || !diagnostics.HasFailures || requiresConversationResolution != true) {
+            return string.Empty;
+        }
+
+        var threadLabel = diagnostics.DeniedThreadCount == 1 ? "thread" : "threads";
+        var credentialLabel = FormatCredentialLabels(diagnostics.DeniedCredentialLabels);
+        return string.Join("\n", new[] {
+            "## Critical Issues ⚠️",
+            $"- GitHub denied automatic review-thread resolution for {diagnostics.DeniedThreadCount} addressed {threadLabel} using {credentialLabel}. This repository requires resolved review conversations before merge, so the PR can remain blocked until permissions are fixed or the threads are resolved manually."
+        });
+    }
+
+    private readonly record struct ThreadTriageResult(string SummaryLine, string EmbeddedBlock, string FallbackSummary,
+        AutoResolvePermissionDiagnostics PermissionDiagnostics) {
+        public static ThreadTriageResult Empty =>
+            new(string.Empty, string.Empty, string.Empty, AutoResolvePermissionDiagnostics.Empty);
     }
 
 
 }
-

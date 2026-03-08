@@ -46,6 +46,8 @@ internal static partial class Program {
         failed += Run("Thread resolve error formatting includes fallback", TestThreadResolveErrorFormattingIncludesFallback);
         failed += Run("Auto-resolve permission note mentions workflow permissions",
             TestAutoResolvePermissionNoteMentionsWorkflowPermissions);
+        failed += Run("Conversation resolution permission blocker section",
+            TestConversationResolutionPermissionBlockerSection);
         failed += Run("Auto-resolve missing inline gate empty set", TestAutoResolveMissingInlineGateAllowsEmptySet);
         failed += Run("Auto-resolve missing inline gate null set", TestAutoResolveMissingInlineGateRejectsNull);
         failed += Run("Auto-resolve missing inline gate empty mapped keys", TestAutoResolveMissingInlineGateRejectsEmptyWhenInlineCommentsPresent);
@@ -554,6 +556,8 @@ internal static partial class Program {
         failed += Run("Review intent perf alias", TestReviewIntentPerfAlias);
         failed += Run("Review intent null settings", TestReviewIntentNullSettings);
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
+        failed += Run("Build extras captures stale auto-resolve permission failures",
+            TestBuildExtrasCapturesStaleAutoResolvePermissionFailures);
         failed += Run("Triage thread hydration uses fallback client when provided",
             TestTriageThreadHydrationUsesFallbackClientWhenProvided);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
@@ -563,6 +567,7 @@ internal static partial class Program {
         failed += Run("GitHub context cache", TestGitHubContextCache);
         failed += Run("GitHub concurrency env", TestGitHubConcurrencyEnv);
         failed += Run("GitHub client concurrency", TestGitHubClientConcurrency);
+        failed += Run("GitHub required conversation resolution lookup", TestGitHubRequiredConversationResolutionLookup);
         failed += Run("GitHub code host reader smoke", TestGitHubCodeHostReaderSmoke);
         failed += Run("GitHub compare truncation", TestGitHubCompareTruncation);
         failed += Run("Diff range compare truncation", TestDiffRangeCompareTruncation);

@@ -8,4 +8,5 @@ internal sealed class ReviewContextExtras {
     public string ReviewThreadsSection { get; set; } = string.Empty;
     public string RelatedPrsSection { get; set; } = string.Empty;
     public IReadOnlyList<PullRequestReviewThread> ReviewThreads { get; set; } = new List<PullRequestReviewThread>();
+    public AutoResolvePermissionDiagnostics StaleThreadAutoResolvePermissions { get; set; } = AutoResolvePermissionDiagnostics.Empty;
 }

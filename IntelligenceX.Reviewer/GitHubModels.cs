@@ -6,7 +6,7 @@ namespace IntelligenceX.Reviewer;
 internal sealed class PullRequestContext {
     public PullRequestContext(string repoFullName, string owner, string repo, int number, string title, string? body,
         bool draft, string? headSha, string? baseSha, IReadOnlyList<string> labels, string? headRepoFullName,
-        bool isFork, string? authorAssociation, bool headRepositoryKnown = true) {
+        bool isFork, string? authorAssociation, bool headRepositoryKnown = true, string? baseRefName = null) {
         RepoFullName = repoFullName;
         Owner = owner;
         Repo = repo;
@@ -21,6 +21,7 @@ internal sealed class PullRequestContext {
         IsFork = isFork;
         AuthorAssociation = authorAssociation;
         HeadRepositoryKnown = headRepositoryKnown;
+        BaseRefName = baseRefName;
     }
 
     public string RepoFullName { get; }
@@ -32,6 +33,7 @@ internal sealed class PullRequestContext {
     public bool Draft { get; }
     public string? HeadSha { get; }
     public string? BaseSha { get; }
+    public string? BaseRefName { get; }
     public IReadOnlyList<string> Labels { get; }
     public string? HeadRepoFullName { get; }
     public bool IsFork { get; }
