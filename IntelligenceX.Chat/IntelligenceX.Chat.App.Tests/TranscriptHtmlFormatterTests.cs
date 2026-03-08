@@ -461,7 +461,7 @@ public sealed class TranscriptHtmlFormatterTests {
 
         Assert.Contains("msg-row system", html);
         Assert.Contains("bubble bubble-callout", html);
-        Assert.Contains("outcome-card outcome-neutral", html);
+        Assert.Contains("outcome-card outcome-neutral outcome-kind-startup outcome-role-system", html);
         Assert.Contains("outcome-badge'>Startup</span>", html);
         Assert.Contains("Runtime tool bootstrap summary", html);
         Assert.Contains("Packs loaded", html);
@@ -479,9 +479,9 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("bubble bubble-callout", html);
-        Assert.Contains("outcome-card outcome-neutral", html);
+        Assert.Contains("outcome-card outcome-neutral outcome-kind-cached-evidence-fallback outcome-role-assistant", html);
         Assert.Contains("outcome-badge'>Cached</span>", html);
-        Assert.Contains("ix:cached-tool-evidence:v1", html);
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", html);
         Assert.Contains("Active Directory: Environment Discovery", html);
     }
 
@@ -497,8 +497,9 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("bubble bubble-callout", html);
-        Assert.Contains("outcome-card outcome-neutral", html);
+        Assert.Contains("outcome-card outcome-neutral outcome-kind-cached-evidence-fallback outcome-role-assistant", html);
         Assert.Contains("outcome-badge'>Cached</span>", html);
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", html);
         Assert.Contains("Cached tool output reused.", html);
     }
 

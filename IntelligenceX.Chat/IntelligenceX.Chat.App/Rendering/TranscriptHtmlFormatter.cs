@@ -19,7 +19,7 @@ internal static class TranscriptHtmlFormatter {
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
-        @"^\[(?<kind>[a-zA-Z0-9 _-]+)\]\s*(?<headline>[^\r\n]*)",
+        @"^\[(?<kind>[a-zA-Z0-9 _-]+)\](?:[ \t]+(?<headline>[^\r\n]*))?",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PendingActionLineRegex = new(
         @"^\s*(?<index>\d+)\.\s+(?<label>.+?)\s+\((?:`)?(?<command>/act\s+(?<id>[^\s)`]+))(?:`)?\)\s*$",
@@ -298,14 +298,18 @@ internal static class TranscriptHtmlFormatter {
         var headline = headlineRaw.Length == 0
             ? GetOutcomeDefaultTitle(normalizedKind, role)
             : headlineRaw;
-        var detail = raw[match.Length..].Trim();
+        var detail = SanitizeOutcomeDetail(normalizedKind, raw[match.Length..].Trim());
         var toneClass = GetAssistantOutcomeToneClass(normalizedKind);
         var badge = GetAssistantOutcomeBadge(normalizedKind);
         var iconSvg = GetAssistantOutcomeIconSvg(normalizedKind);
         var encoder = HtmlEncoder.Default;
+        var kindCssClass = "outcome-kind-" + normalizedKind.Replace('_', '-');
+        var roleCssClass = string.Equals(role, "System", StringComparison.OrdinalIgnoreCase)
+            ? "outcome-role-system"
+            : "outcome-role-assistant";
 
         var sb = new StringBuilder();
-        sb.Append("<section class='outcome-card ").Append(toneClass).Append("'>")
+        sb.Append("<section class='outcome-card ").Append(toneClass).Append(' ').Append(kindCssClass).Append(' ').Append(roleCssClass).Append("'>")
             .Append("<div class='outcome-head'>")
             .Append("<div class='outcome-main'>")
             .Append("<span class='outcome-icon' aria-hidden='true'>").Append(iconSvg).Append("</span>")
@@ -323,6 +327,31 @@ internal static class TranscriptHtmlFormatter {
         sb.Append("</section>");
         html = sb.ToString();
         return true;
+    }
+
+    private static string SanitizeOutcomeDetail(string kind, string detail) {
+        if (string.IsNullOrWhiteSpace(detail)) {
+            return string.Empty;
+        }
+
+        var normalized = detail.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
+            var lines = normalized.Split('\n');
+            var start = 0;
+            while (start < lines.Length && string.IsNullOrWhiteSpace(lines[start])) {
+                start++;
+            }
+
+            if (start < lines.Length && lines[start].Trim().Equals("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase)) {
+                start++;
+                while (start < lines.Length && string.IsNullOrWhiteSpace(lines[start])) {
+                    start++;
+                }
+                normalized = start >= lines.Length ? string.Empty : string.Join('\n', lines, start, lines.Length - start);
+            }
+        }
+
+        return normalized.Trim();
     }
 
     private static string NormalizeOutcomeKind(string kind) {

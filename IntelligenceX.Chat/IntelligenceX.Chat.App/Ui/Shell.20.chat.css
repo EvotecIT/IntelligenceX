@@ -288,6 +288,36 @@
   border: 1px solid rgba(168, 200, 232, 0.52);
 }
 
+.outcome-card.outcome-kind-startup {
+  border-color: rgba(112, 210, 255, 0.38);
+  background: linear-gradient(180deg, rgba(22, 57, 84, 0.95) 0%, rgba(16, 39, 61, 0.94) 100%);
+}
+
+.outcome-card.outcome-kind-startup .outcome-head {
+  background: linear-gradient(180deg, rgba(44, 110, 153, 0.26) 0%, rgba(22, 61, 95, 0.12) 100%);
+}
+
+.outcome-card.outcome-kind-startup .outcome-badge {
+  color: #d9f3ff;
+  background: rgba(90, 190, 255, 0.2);
+  border-color: rgba(90, 190, 255, 0.46);
+}
+
+.outcome-card.outcome-kind-cached-evidence-fallback {
+  border-color: rgba(154, 224, 203, 0.34);
+  background: linear-gradient(180deg, rgba(25, 62, 59, 0.95) 0%, rgba(17, 43, 42, 0.94) 100%);
+}
+
+.outcome-card.outcome-kind-cached-evidence-fallback .outcome-head {
+  background: linear-gradient(180deg, rgba(64, 132, 118, 0.24) 0%, rgba(28, 72, 66, 0.12) 100%);
+}
+
+.outcome-card.outcome-kind-cached-evidence-fallback .outcome-badge {
+  color: #dcfff2;
+  background: rgba(109, 221, 183, 0.18);
+  border-color: rgba(109, 221, 183, 0.42);
+}
+
 .bubble-meta {
   margin: 5px 2px 0;
   display: flex;
