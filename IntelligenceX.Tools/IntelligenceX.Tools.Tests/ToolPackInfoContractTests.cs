@@ -279,6 +279,9 @@ public class ToolPackInfoContractTests {
         Assert.Equal(JsonValueKind.Object, hostScope.ValueKind);
         Assert.Contains("ad_scope_discovery", ReadStringArray(hostScope.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_info", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_disks_list", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_logical_disks_list", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("computer_name", hostScope.GetProperty("field_mappings").ToString(), StringComparison.OrdinalIgnoreCase);
 
         var patchFollowUp = entityHandoffs
             .EnumerateArray()

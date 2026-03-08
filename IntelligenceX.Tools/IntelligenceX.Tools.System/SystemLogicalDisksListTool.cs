@@ -15,6 +15,8 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
     private sealed record LogicalDisksListRequest(
+        string? ComputerName,
+        string Target,
         string? NameContains,
         string? FileSystem,
         DriveType? DriveType,
@@ -50,6 +52,7 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
         "system_logical_disks_list",
         "List logical disks/volumes (read-only, capped).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("name_contains", ToolSchema.String("Optional case-insensitive filter against drive name/label.")),
                 ("file_system", ToolSchema.String("Optional case-insensitive exact file-system filter (for example NTFS).")),
                 ("drive_type", ToolSchema.String("Optional drive type filter.").Enum("any", "fixed", "removable", "network", "cdrom", "ram", "unknown", "no_root_directory")),
@@ -78,6 +81,7 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
 
     private ToolRequestBindingResult<LogicalDisksListRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
             var minSize = reader.OptionalInt64("min_size_bytes");
             if (minSize.HasValue && minSize.Value < 0) {
                 return ToolRequestBindingResult<LogicalDisksListRequest>.Failure(
@@ -101,6 +105,8 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
             }
 
             return ToolRequestBindingResult<LogicalDisksListRequest>.Success(new LogicalDisksListRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 NameContains: reader.OptionalString("name_contains"),
                 FileSystem: reader.OptionalString("file_system"),
                 DriveType: driveType,
@@ -115,6 +121,7 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
         var request = context.Request;
         if (!LogicalDiskInventoryQueryExecutor.TryExecute(
                 request: new LogicalDiskInventoryQueryRequest {
+                    ComputerName = request.ComputerName,
                     NameContains = request.NameContains,
                     FileSystem = request.FileSystem,
                     DriveType = request.DriveType,
@@ -139,6 +146,8 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
+                AddComputerNameMeta(meta, request.Target);
+                AddMaxResultsMeta(meta, request.MaxEntries);
                 if (!string.IsNullOrWhiteSpace(request.NameContains)) {
                     meta.Add("name_contains", request.NameContains);
                 }
@@ -154,6 +163,13 @@ public sealed class SystemLogicalDisksListTool : SystemToolBase, ITool {
                 if (request.MinFreeBytes.HasValue) {
                     meta.Add("min_free_bytes", request.MinFreeBytes.Value);
                 }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_logical_disks_list",
+                    targetComputer: request.Target,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
             });
         return Task.FromResult(response);
     }

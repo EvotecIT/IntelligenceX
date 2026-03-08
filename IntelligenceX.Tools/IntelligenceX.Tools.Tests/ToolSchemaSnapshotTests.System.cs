@@ -64,5 +64,17 @@ public partial class ToolSchemaSnapshotTests {
             new[] { "computer_name", "include_baseboard", "timeout_ms" },
             Array.Empty<string>()
         };
+
+        yield return new object[] {
+            "system_disks_list",
+            new[] { "computer_name", "model_contains", "interface_contains", "media_contains", "min_size_bytes", "max_entries", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_logical_disks_list",
+            new[] { "computer_name", "name_contains", "file_system", "drive_type", "min_size_bytes", "min_free_bytes", "max_entries", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
     }
 }

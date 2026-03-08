@@ -14,6 +14,8 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 public sealed class SystemDisksListTool : SystemToolBase, ITool {
     private sealed record DisksListRequest(
+        string? ComputerName,
+        string Target,
         string? ModelContains,
         string? InterfaceContains,
         string? MediaContains,
@@ -26,6 +28,7 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
         "system_disks_list",
         "List physical disks (read-only, capped).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("model_contains", ToolSchema.String("Optional case-insensitive model substring filter.")),
                 ("interface_contains", ToolSchema.String("Optional case-insensitive interface type substring filter.")),
                 ("media_contains", ToolSchema.String("Optional case-insensitive media type substring filter.")),
@@ -53,6 +56,7 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
 
     private ToolRequestBindingResult<DisksListRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
             var minSize = reader.OptionalInt64("min_size_bytes");
             if (minSize.HasValue && minSize.Value < 0) {
                 return ToolRequestBindingResult<DisksListRequest>.Failure(
@@ -60,6 +64,8 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
             }
 
             return ToolRequestBindingResult<DisksListRequest>.Success(new DisksListRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 ModelContains: reader.OptionalString("model_contains"),
                 InterfaceContains: reader.OptionalString("interface_contains"),
                 MediaContains: reader.OptionalString("media_contains"),
@@ -73,6 +79,7 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
         var request = context.Request;
         if (!DiskInventoryQueryExecutor.TryExecute(
                 request: new DiskInventoryQueryRequest {
+                    ComputerName = request.ComputerName,
                     ModelContains = request.ModelContains,
                     InterfaceContains = request.InterfaceContains,
                     MediaContains = request.MediaContains,
@@ -96,6 +103,8 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
+                AddComputerNameMeta(meta, request.Target);
+                AddMaxResultsMeta(meta, request.MaxEntries);
                 if (!string.IsNullOrWhiteSpace(request.ModelContains)) {
                     meta.Add("model_contains", request.ModelContains);
                 }
@@ -108,6 +117,13 @@ public sealed class SystemDisksListTool : SystemToolBase, ITool {
                 if (request.MinSizeBytes.HasValue) {
                     meta.Add("min_size_bytes", request.MinSizeBytes.Value);
                 }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_disks_list",
+                    targetComputer: request.Target,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
             });
         return Task.FromResult(response);
     }

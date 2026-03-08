@@ -57,6 +57,7 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                 "Use system_patch_details for monthly MSRC patch intelligence (CVE/KB/severity details, defaulting to current UTC month).",
                 "Use system_patch_compliance to correlate monthly MSRC KB coverage with installed updates and prioritize missing exploited CVEs.",
                 "Use AD/TestimoX/EventLog handoff evidence (computer/host identifiers) to drive focused ComputerX follow-up rather than broad host scans.",
+                "When a tool schema exposes computer_name, use it for remote host scope instead of assuming local-only execution.",
                 "Use optional projection arguments only when the user asks for specific columns or sorting."
             },
             flowSteps: new[] {
@@ -97,13 +98,13 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     summary: "Promote AD/EventLog host indicators into ComputerX remote host-scoping arguments.",
                     entityKinds: new[] { "computer", "host", "domain_controller" },
                     sourceTools: new[] { "ad_scope_discovery", "ad_domain_controller_facts", "ad_object_resolve", "eventlog_live_stats", "eventlog_named_events_query" },
-                    targetTools: new[] { "system_info", "system_process_list", "system_service_list", "system_ports_list", "system_security_options", "system_time_sync", "system_updates_installed" },
+                    targetTools: new[] { "system_info", "system_process_list", "system_service_list", "system_ports_list", "system_security_options", "system_time_sync", "system_updates_installed", "system_disks_list", "system_logical_disks_list" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("rows[].dns_host_name", "computer_name", "Prefer canonical FQDN/hostname values and deduplicate before fan-out."),
                         ToolPackGuidance.EntityFieldMapping("rows[].computer", "computer_name", "Normalize and deduplicate host aliases for remote ComputerX calls."),
                         ToolPackGuidance.EntityFieldMapping("rows[].host", "computer_name", "Map generic host indicators to ComputerX computer_name scope.")
                     },
-                    notes: "Use focused host batches from AD/EventLog evidence to reduce noisy host-wide diagnostics."),
+                    notes: "Use focused host batches from AD/EventLog evidence to reduce noisy host-wide diagnostics. Physical and logical disk inventory tools accept computer_name for the same remote host-scoping pattern."),
                 ToolPackGuidance.EntityHandoff(
                     id: "system_patch_findings_to_ad_eventlog_followup",
                     summary: "Route patch compliance findings into AD identity ownership and EventLog correlation workflows.",
