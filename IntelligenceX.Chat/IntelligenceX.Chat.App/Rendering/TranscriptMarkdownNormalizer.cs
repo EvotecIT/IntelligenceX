@@ -134,6 +134,14 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"(?m)^[ \t]*ix:cached-tool-evidence:v1[ \t]*(?:\r?\n)?",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
+    private static readonly Regex LegacyToolHeadingBulletRegex = new(
+        @"^(?<indent>\s*)-\s+(?<tool>[a-z0-9_.-]+):\s*(?<heading>#{2,6}\s+[^\r\n]+)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Multiline);
+
+    private static readonly Regex LegacyToolSlugHeadingRegex = new(
+        @"^(?<indent>\s*)####\s+(?<tool>[a-z0-9_.-]+)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Multiline);
+
     private static readonly Regex StandaloneHostLabelBulletRegex = new(
         @"^\s*-(?:\s*\*\*)?\s*[A-Z]{2,}\d+(?:\s*\*\*)?\s*:?\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -210,6 +218,7 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         normalized = StripInternalTransportMarkers(normalized);
         normalized = UpgradeLegacyVisualFences(normalized);
+        normalized = NormalizeLegacyToolHeadingArtifacts(normalized);
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans, out var tokenPrefix);
@@ -296,6 +305,7 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         normalized = StripInternalTransportMarkers(normalized);
         normalized = UpgradeLegacyVisualFences(normalized);
+        normalized = NormalizeLegacyToolHeadingArtifacts(normalized);
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var value = ZeroWidthWhitespaceRegex.Replace(segment, string.Empty);
@@ -335,6 +345,8 @@ internal static partial class TranscriptMarkdownNormalizer {
         return LegacyRepairSignalRegex.IsMatch(text)
                || text.Contains("****", StringComparison.Ordinal)
                || text.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) >= 0
+               || LegacyToolHeadingBulletRegex.IsMatch(text)
+               || LegacyToolSlugHeadingRegex.IsMatch(text)
                || ContainsLegacyJsonVisualFenceCandidate(text);
     }
 
@@ -345,6 +357,59 @@ internal static partial class TranscriptMarkdownNormalizer {
         }
 
         return CachedToolEvidenceMarkerLineRegex.Replace(text, string.Empty);
+    }
+
+    private static string NormalizeLegacyToolHeadingArtifacts(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return text;
+        }
+
+        var hasCrLf = text.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var rewritten = new List<string>(lines.Length);
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            var bulletMatch = LegacyToolHeadingBulletRegex.Match(current);
+            if (bulletMatch.Success) {
+                rewritten.Add(bulletMatch.Groups["indent"].Value + bulletMatch.Groups["heading"].Value.Trim());
+                changed = true;
+                continue;
+            }
+
+            var slugMatch = LegacyToolSlugHeadingRegex.Match(current);
+            if (slugMatch.Success && TryFindNextNonEmptyLine(lines, i + 1, out var nextIndex)) {
+                var next = lines[nextIndex] ?? string.Empty;
+                if (next.TrimStart().StartsWith("### ", StringComparison.Ordinal)
+                    || next.TrimStart().StartsWith("## ", StringComparison.Ordinal)) {
+                    changed = true;
+                    continue;
+                }
+            }
+
+            rewritten.Add(current);
+        }
+
+        if (!changed) {
+            return text;
+        }
+
+        var rebuilt = string.Join("\n", rewritten);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
+    private static bool TryFindNextNonEmptyLine(string[] lines, int startIndex, out int index) {
+        for (var i = startIndex; i < lines.Length; i++) {
+            if (!string.IsNullOrWhiteSpace(lines[i])) {
+                index = i;
+                return true;
+            }
+        }
+
+        index = -1;
+        return false;
     }
 
     private static string ExpandCollapsedMetricLines(string text) {

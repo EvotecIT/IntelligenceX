@@ -551,6 +551,21 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures historical cached-evidence tool slug bullet headings are normalized away during transcript rendering.
+    /// </summary>
+    [Fact]
+    public void Format_NormalizesLegacyCachedEvidenceToolHeadingBullets() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 3, 8, 8, 12, 36, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "[Cached evidence fallback]\nix:cached-tool-evidence:v1\n\nRecent evidence:\n- eventlog_top_events: ### Top 30 recent events (preview)", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Top 30 recent events (preview)", html);
+        Assert.DoesNotContain("eventlog_top_events:", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures hyphenated cached-evidence prefixes normalize into the structured cached callout path.
     /// </summary>
     [Fact]
