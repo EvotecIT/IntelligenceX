@@ -68,6 +68,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [InlineData("what does eventlog_evtx_query do?")]
     [InlineData("hello")]
     [InlineData("show me a table")]
+    [InlineData("please rerun eventlog_evtx_query for this host")]
     public void LooksLikeLiveRefreshFollowUp_DoesNotMisclassifyNonRefreshRequests(string userRequest) {
         Assert.False(ChatServiceSession.LooksLikeLiveRefreshFollowUpForTesting(userRequest));
     }

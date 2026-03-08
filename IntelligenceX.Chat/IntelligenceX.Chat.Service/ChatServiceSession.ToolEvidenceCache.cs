@@ -261,7 +261,8 @@ internal sealed partial class ChatServiceSession {
 
     private bool ShouldBypassCachedToolEvidenceFallback(string threadId, string userRequest) {
         return HasFreshThreadToolEvidence(threadId)
-               && LooksLikeLiveRefreshFollowUp(userRequest);
+               && (LooksLikeLiveRefreshFollowUp(userRequest)
+                   || LooksLikeExplicitLiveRefreshToolRequest(userRequest));
     }
 
     private bool HasFreshThreadToolEvidence(string threadId) {

@@ -214,9 +214,35 @@ internal sealed partial class ChatServiceSession {
         }
 
         var followUpShape = LooksLikeFollowUpShape(normalized, Math.Max(ContinuationFollowUpQuestionCharLimit, 128))
-                            || ContainsQuestionSignal(normalized)
-                            || ExtractExplicitRequestedToolNames(normalized).Length > 0;
+                            || ContainsQuestionSignal(normalized);
         if (!followUpShape) {
+            return false;
+        }
+
+        for (var i = 0; i < LiveRefreshFollowUpPhrases.Length; i++) {
+            if (ContainsPhraseWithBoundaries(normalized, LiveRefreshFollowUpPhrases[i])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikeExplicitLiveRefreshToolRequest(string userRequest) {
+        var normalized = NormalizeCompactText(userRequest);
+        if (normalized.Length == 0 || normalized.Length > 180) {
+            return false;
+        }
+
+        if (TryReadContinuationContractFromRequestText(normalized, out _, out _)
+            || LooksLikeActionSelectionPayload(normalized)
+            || TryParseExplicitActSelection(normalized, out _, out _)
+            || TryReadActionSelectionIntent(normalized, out _, out _)
+            || LooksLikeExplicitToolQuestionTurn(normalized)) {
+            return false;
+        }
+
+        if (ExtractExplicitRequestedToolNames(normalized).Length == 0) {
             return false;
         }
 
