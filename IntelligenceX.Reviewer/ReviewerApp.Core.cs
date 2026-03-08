@@ -476,8 +476,8 @@ public static partial class ReviewerApp {
                 ? BuildAutoResolvePermissionNote(combinedPermissionDiagnostics.DeniedThreadCount,
                     combinedPermissionDiagnostics.DeniedCredentialLabels)
                 : string.Empty;
-            summaryBody = CombineNotes(summaryBody,
-                BuildConversationResolutionPermissionBlocker(combinedPermissionDiagnostics, requiresConversationResolution));
+            summaryBody = AppendConversationResolutionPermissionBlocker(summaryBody, combinedPermissionDiagnostics,
+                requiresConversationResolution);
             var inlineSuppressed = inlineSupported && !inlineAllowed;
             var autoResolveSummary = allowWrites && settings.ReviewThreadsAutoResolveAISummary ? triageResult.SummaryLine : string.Empty;
             autoResolveSummary = CombineNotes(autoResolveSummary, permissionNote);

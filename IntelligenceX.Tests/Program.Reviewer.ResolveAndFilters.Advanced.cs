@@ -165,17 +165,18 @@ internal static partial class Program {
             "None."
         });
 
-        var blocker = CallBuildConversationResolutionPermissionBlocker(2, true, "GITHUB_TOKEN", "INTELLIGENCEX_GITHUB_TOKEN");
-        var merged = string.IsNullOrWhiteSpace(blocker) ? body : body + "\n\n" + blocker;
+        var merged = CallAppendConversationResolutionPermissionBlocker(body, 2, true, "GITHUB_TOKEN",
+            "INTELLIGENCEX_GITHUB_TOKEN");
 
         AssertContainsText(merged, "requires resolved review conversations before merge",
             "conversation resolution blocker rationale");
         AssertContainsText(merged, "`GITHUB_TOKEN` and `INTELLIGENCEX_GITHUB_TOKEN`",
             "conversation resolution blocker token labels");
+        AssertEqual(1, CountOccurrences(merged, "## Critical Issues ⚠️"), "conversation resolution blocker keeps one critical section");
         AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(merged), "conversation resolution blocker triggers merge blocker");
 
-        var notRequired = CallBuildConversationResolutionPermissionBlocker(2, false, "GITHUB_TOKEN");
-        AssertEqual(string.Empty, notRequired, "conversation resolution blocker omitted when branch rule disabled");
+        var notRequired = CallAppendConversationResolutionPermissionBlocker(body, 2, false, "GITHUB_TOKEN");
+        AssertEqual(body, notRequired, "conversation resolution blocker omitted when branch rule disabled");
     }
 
     private static void TestReviewFormatterModelUsageSection() {

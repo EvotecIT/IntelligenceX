@@ -168,9 +168,9 @@ internal static partial class Program {
         return ReviewerApp.BuildAutoResolvePermissionNoteForTests(permissionDeniedCount, credentialLabels);
     }
 
-    private static string CallBuildConversationResolutionPermissionBlocker(int deniedThreadCount,
+    private static string CallAppendConversationResolutionPermissionBlocker(string summaryBody, int deniedThreadCount,
         bool? requiresConversationResolution, params string[] credentialLabels) {
-        return ReviewerApp.BuildConversationResolutionPermissionBlockerForTests(
+        return ReviewerApp.AppendConversationResolutionPermissionBlockerForTests(summaryBody,
             AutoResolvePermissionDiagnostics.From(deniedThreadCount, credentialLabels), requiresConversationResolution);
     }
 

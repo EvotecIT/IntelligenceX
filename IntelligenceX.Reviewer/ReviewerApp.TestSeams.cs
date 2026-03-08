@@ -131,7 +131,7 @@ public static partial class ReviewerApp {
         return ResolveDiffRangeFilesAsync(codeHostReader, context, range, currentFiles, settings, cancellationToken);
     }
 
-    internal static string BuildConversationResolutionPermissionBlockerForTests(
+    internal static string AppendConversationResolutionPermissionBlockerForTests(string summaryBody,
         AutoResolvePermissionDiagnostics diagnostics, bool? requiresConversationResolution) =>
-        BuildConversationResolutionPermissionBlocker(diagnostics, requiresConversationResolution);
+        AppendConversationResolutionPermissionBlocker(summaryBody, diagnostics, requiresConversationResolution);
 }
