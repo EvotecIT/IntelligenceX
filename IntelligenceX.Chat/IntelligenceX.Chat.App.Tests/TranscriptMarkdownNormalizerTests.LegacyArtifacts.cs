@@ -43,4 +43,43 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
         Assert.DoesNotContain("#### ad_environment_discover", fixedText, StringComparison.Ordinal);
         Assert.Contains("##### Active Directory: Environment Discovery", fixedText, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures legacy trailing four-asterisk close markers are upgraded into balanced strong spans.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_RepairsDanglingTrailingStrongCloseArtifacts() {
+        var malformed = "- Overall health ✅ Healthy****";
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Equal("- Overall health ✅ **Healthy**", fixedText);
+    }
+
+    /// <summary>
+    /// Ensures indented legacy network JSON blocks are upgraded into ix-network fenced visuals.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_UpgradesIndentedLegacyNetworkJsonBlock() {
+        var malformed = """
+                        Scope graph preview:
+
+                            {
+                              "nodes": [
+                                { "id": "forest_ad.evotec.xyz", "label": "Forest: ad.evotec.xyz" }
+                              ],
+                              "edges": [
+                                { "source": "forest_ad.evotec.xyz", "target": "domain_ad.evotec.xyz", "label": "contains" }
+                              ]
+                            }
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Contains("```ix-network", fixedText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Scope graph preview:\n\n    {", fixedText, StringComparison.Ordinal);
+        Assert.Contains("\"nodes\": [", fixedText, StringComparison.Ordinal);
+    }
 }

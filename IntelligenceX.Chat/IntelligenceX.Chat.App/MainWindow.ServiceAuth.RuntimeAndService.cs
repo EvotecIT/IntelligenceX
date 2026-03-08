@@ -129,6 +129,33 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    internal static bool ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput(
+        bool requiresInteractiveSignIn,
+        bool isConnected,
+        bool isAuthenticated,
+        bool loginInProgress) {
+        return requiresInteractiveSignIn
+               && isConnected
+               && !isAuthenticated
+               && !loginInProgress;
+    }
+
+    private void PromoteAuthenticatedStateFromSuccessfulAssistantOutput() {
+        if (!ShouldPromoteAuthenticatedStateFromSuccessfulAssistantOutput(
+                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                isConnected: _isConnected,
+                isAuthenticated: _isAuthenticated,
+                loginInProgress: _loginInProgress)) {
+            return;
+        }
+
+        _isAuthenticated = true;
+        _loginInProgress = false;
+        ResetEnsureLoginProbeCache();
+        QueuePersistAppState();
+        _ = SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true));
+    }
+
     private async Task<bool> StartLoginFlowIfNeededAsync(bool forceInteractive = false, bool skipPreLoginAuthProbe = false) {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
@@ -321,4 +348,3 @@ public sealed partial class MainWindow : Window {
         }
     }
 }
-

@@ -54,6 +54,10 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"(?<!\*)\*{4}(?<inner>[^*\r\n]+)\*{4}(?!\*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex DanglingTrailingStrongCloseRegex = new(
+        @"(?m)^(?<prefix>.*\s)(?<inner>[^\s*\r\n][^*\r\n]*?)\*{4}(?<tail>\s*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex LeadingWhitespaceInsideStrongOpenRegex = new(
         @"(?:(?<=^)|(?<=[\s(\[{>]))\*\*[ \t]+(?=[^\s*\r\n])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -218,6 +222,7 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         normalized = StripInternalTransportMarkers(normalized);
         normalized = UpgradeLegacyVisualFences(normalized);
+        normalized = UpgradeLegacyIndentedNetworkBlocks(normalized);
         normalized = NormalizeLegacyToolHeadingArtifacts(normalized);
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
@@ -505,9 +510,18 @@ internal static partial class TranscriptMarkdownNormalizer {
     }
 
     private static string NormalizeOverwrappedStrongSpans(string text) {
-        return OverwrappedStrongSpanRegex.Replace(text, static match => {
+        var normalized = OverwrappedStrongSpanRegex.Replace(text, static match => {
             var inner = match.Groups["inner"].Value.Trim();
             return inner.Length == 0 ? match.Value : "**" + inner + "**";
+        });
+
+        return DanglingTrailingStrongCloseRegex.Replace(normalized, static match => {
+            var value = match.Groups["inner"].Value.Trim();
+            if (value.Length == 0 || value.Contains("**", StringComparison.Ordinal)) {
+                return match.Value;
+            }
+
+            return match.Groups["prefix"].Value + "**" + value + "**" + match.Groups["tail"].Value;
         });
     }
 
