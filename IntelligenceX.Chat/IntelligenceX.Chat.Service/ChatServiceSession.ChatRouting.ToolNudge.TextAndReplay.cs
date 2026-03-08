@@ -213,19 +213,15 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var explicitToolReference = ExtractExplicitRequestedToolNames(normalized).Length > 0;
         var followUpShape = LooksLikeFollowUpShape(normalized, Math.Max(ContinuationFollowUpQuestionCharLimit, 128))
-                            || ContainsQuestionSignal(normalized);
+                            || ContainsQuestionSignal(normalized)
+                            || (!explicitToolReference && ContainsLiveRefreshFollowUpPhrase(normalized));
         if (!followUpShape) {
             return false;
         }
 
-        for (var i = 0; i < LiveRefreshFollowUpPhrases.Length; i++) {
-            if (ContainsPhraseWithBoundaries(normalized, LiveRefreshFollowUpPhrases[i])) {
-                return true;
-            }
-        }
-
-        return false;
+        return ContainsLiveRefreshFollowUpPhrase(normalized);
     }
 
     private static bool LooksLikeExplicitLiveRefreshToolRequest(string userRequest) {
@@ -246,6 +242,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        return ContainsLiveRefreshFollowUpPhrase(normalized);
+    }
+
+    private static bool ContainsLiveRefreshFollowUpPhrase(string normalized) {
         for (var i = 0; i < LiveRefreshFollowUpPhrases.Length; i++) {
             if (ContainsPhraseWithBoundaries(normalized, LiveRefreshFollowUpPhrases[i])) {
                 return true;

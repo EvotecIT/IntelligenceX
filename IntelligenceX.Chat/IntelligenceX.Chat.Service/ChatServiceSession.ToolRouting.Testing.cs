@@ -269,6 +269,14 @@ internal sealed partial class ChatServiceSession {
         return LooksLikeLiveRefreshFollowUp(userRequest);
     }
 
+    internal static bool ResolveLiveRefreshFollowUpTurnForTesting(
+        bool hasStructuredContinuationContext,
+        bool hasFreshThreadToolEvidence,
+        string userRequest) {
+        return (hasStructuredContinuationContext || hasFreshThreadToolEvidence)
+               && LooksLikeLiveRefreshFollowUp(userRequest);
+    }
+
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {
         RememberPendingDomainIntentClarificationRequest(threadId);
     }

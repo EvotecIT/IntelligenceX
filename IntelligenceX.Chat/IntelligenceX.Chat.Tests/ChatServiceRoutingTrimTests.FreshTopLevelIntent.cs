@@ -72,4 +72,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void LooksLikeLiveRefreshFollowUp_DoesNotMisclassifyNonRefreshRequests(string userRequest) {
         Assert.False(ChatServiceSession.LooksLikeLiveRefreshFollowUpForTesting(userRequest));
     }
+
+    [Fact]
+    public void ResolveLiveRefreshFollowUpTurn_RecognizesImperativeRerunWithoutToolNameAsFreshExecutionFollowUp() {
+        var liveRefreshFollowUpTurn = ChatServiceSession.ResolveLiveRefreshFollowUpTurnForTesting(
+            hasStructuredContinuationContext: false,
+            hasFreshThreadToolEvidence: true,
+            userRequest: "please rerun those checks now");
+
+        Assert.True(liveRefreshFollowUpTurn);
+    }
 }
