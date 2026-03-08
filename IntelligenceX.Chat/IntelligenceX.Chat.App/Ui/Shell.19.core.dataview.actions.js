@@ -145,6 +145,9 @@
       dataViewTitle.textContent = dataViewState.title;
     }
     setDataViewMeta(metaText || "");
+    if (typeof updateDataViewQuickExportLabel === "function") {
+      updateDataViewQuickExportLabel();
+    }
 
     document.body.classList.add("data-view-open");
     if (dataViewPanel) {

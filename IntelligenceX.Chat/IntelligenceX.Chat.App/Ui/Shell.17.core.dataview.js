@@ -229,6 +229,18 @@
     return [btnDataViewQuickExport, btnDataViewExportCsv, btnDataViewExportXlsx, btnDataViewExportDocx];
   }
 
+  function updateDataViewQuickExportLabel() {
+    if (!btnDataViewQuickExport) {
+      return;
+    }
+
+    var prefs = getExportPreferences();
+    var normalizedFormat = normalizeExportFormatForDataView(prefs && prefs.defaultFormat);
+    var formatLabel = getFormatLabel(normalizedFormat) || "Excel";
+    btnDataViewQuickExport.textContent = "Quick " + formatLabel;
+    btnDataViewQuickExport.title = "Export " + formatLabel + " using the default format and last folder when available.";
+  }
+
   function clearDataViewFeedbackTimer() {
     if (dataViewFeedbackClearTimer) {
       window.clearTimeout(dataViewFeedbackClearTimer);
@@ -327,6 +339,8 @@
       lastDirectory: String(exportPrefs.lastDirectory || "").trim()
     };
   }
+
+  updateDataViewQuickExportLabel();
 
   function getExportFileExtension(format) {
     var normalized = normalizeExportFormatForDataView(format);
