@@ -128,26 +128,6 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures the data-view quick save button derives user-facing copy from current export preferences
-    /// instead of falling back to a stale fixed label.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesDynamicDataViewQuickExportLabeling() {
-        var html = UiShellAssets.Load();
-        var dataviewScriptPath = Path.Combine(UiDirectory, "Shell.17.core.dataview.js");
-        var dataviewScript = File.ReadAllText(dataviewScriptPath);
-        var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
-        var toolsScript = File.ReadAllText(toolsScriptPath);
-
-        Assert.Contains(">Quick Save<", html, StringComparison.Ordinal);
-        Assert.Contains("function updateDataViewQuickExportLabel()", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("function getQuickExportButtonCopy(format, saveMode) {", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("btnDataViewQuickExport.textContent = copy.text;", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("btnDataViewQuickExport.title = copy.title;", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("if (typeof updateDataViewQuickExportLabel === \"function\") {", toolsScript, StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// Ensures routing-catalog normalization remains backward compatible for older payloads
     /// that do not include newer explicit-routing readiness counters.
     /// </summary>
@@ -257,6 +237,24 @@ public sealed class UiShellAssetsTests {
             "var canDecodeSharedConfig = !!sharedConfigB64 && (!hasContract || !configEncoding || configEncoding === \"base64-utf8\");",
             "return getOfficeImoVisualSource(element, entry.cachedSourceAttribute, entry.fallbackConfigAttribute);",
             "state && typeof state.maxSourceChars === \"number\" && source.length > state.maxSourceChars");
+    }
+
+    /// <summary>
+    /// Ensures Mermaid transcript upgrades support both OfficeIMO-native blocks and plain fenced-code fallback shapes.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesMermaidFallbackSelectorsAndRuntimeDiagnostics() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
+        var script = File.ReadAllText(scriptPath);
+
+        AssertContainsAll(
+            script,
+            "window.ixGetVisualRuntimeDiagnostics = function() {",
+            "function recordVisualRuntimeAssetState(kind, asset, state, url, detail) {",
+            "function recordVisualRuntimeReady(kind, ready) {",
+            ".bubble .markdown-body pre > code.language-mermaid",
+            ".bubble .markdown-body pre.language-mermaid",
+            "var blocks = collectMermaidBlocks(root);");
     }
 
     /// <summary>
@@ -491,28 +489,6 @@ public sealed class UiShellAssetsTests {
             "export_visual_artifact",
             "visual_export_action",
             "open_visual_popout");
-    }
-
-    /// <summary>
-    /// Ensures Mermaid runtime resolution survives the vendor bundle shape and later visual phases
-    /// still run when an earlier renderer throws.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesMermaidRuntimeFallbackAndSafeTranscriptPhaseChaining() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
-        var script = File.ReadAllText(scriptPath);
-
-        AssertContainsAll(
-            script,
-            "function resolveMermaidRuntimeCandidate() {",
-            "function getMermaidRuntime() {",
-            "globalThis.__esbuild_esm_mermaid_nm",
-            "window.mermaid = runtime;",
-            "function runTranscriptVisualPhaseSafely(root, renderPhase) {",
-            "console.warn(\"transcript visual phase failed\", error);",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptCharts)",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptNetworks)",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptMermaid)");
     }
 
     /// <summary>

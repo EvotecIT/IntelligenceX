@@ -712,6 +712,7 @@ public sealed partial class MainWindow : Window {
     public MainWindow() {
         StartupLog.Write("MainWindow.ctor enter");
         _markdownOptions = ChatMarkdownOptions.Create();
+        StartupLogRendererDiagnostics();
         Title = "IntelligenceX Chat";
         _debugMode = VerboseServiceLogs;
         _nativeAccountSlots = new string[ResolveNativeAccountSlotCount()];

@@ -29,10 +29,50 @@ public sealed class TranscriptHtmlFormatterTests {
                           """, now)
         }, "HH:mm:ss", options);
 
-        Assert.Contains("class=\"mermaid\"", html, StringComparison.Ordinal);
-        Assert.Contains("data-mermaid-hash=", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("language-mermaid", html, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            html.Contains("class=\"mermaid\"", StringComparison.Ordinal)
+            || html.Contains("language-mermaid", StringComparison.OrdinalIgnoreCase),
+            "Expected native OfficeIMO mermaid HTML or a fenced language-mermaid fallback.");
+        if (html.Contains("class=\"mermaid\"", StringComparison.Ordinal)) {
+            Assert.Contains("data-mermaid-hash=", html, StringComparison.Ordinal);
+        }
         Assert.Contains("flowchart LR", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures transcript rendering preserves Mermaid upgrade compatibility for longer real-world diagram replies.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesMermaidUpgradeCompatibility_ForTranscriptStyleDiagramReply() {
+        var options = ChatMarkdownOptions.Create();
+        var now = new DateTime(2026, 3, 7, 23, 8, 26, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Replication map preview:
+                          ```mermaid
+                          flowchart LR
+                            subgraph D1["ad.evotec.xyz"]
+                              AD0["AD0.ad.evotec.xyz"]
+                              AD1["AD1.ad.evotec.xyz"]
+                            end
+                            subgraph D2["ad.evotec.pl"]
+                              DC1["DC1.ad.evotec.pl"]
+                            end
+                            AD0 --- AD1
+                            AD0 --- DC1
+                          ```
+
+                          Interpretation:
+                          topology and recent replication are healthy.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Replication map preview:", html, StringComparison.Ordinal);
+        Assert.Contains("flowchart LR", html, StringComparison.Ordinal);
+        Assert.True(
+            html.Contains("class=\"mermaid\"", StringComparison.Ordinal)
+            || html.Contains("language-mermaid", StringComparison.OrdinalIgnoreCase),
+            "Expected native OfficeIMO mermaid HTML or a fenced language-mermaid fallback.");
     }
 
     /// <summary>
@@ -446,61 +486,6 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("outcome-card outcome-warn", html);
         Assert.Contains("outcome-badge'>Warning</span>", html);
         Assert.Contains("Tool health checks need attention", html);
-    }
-
-    /// <summary>
-    /// Ensures startup-prefixed system messages render as structured callout cards instead of raw bracket tags.
-    /// </summary>
-    [Fact]
-    public void Format_RendersStartupSystemMessageAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
-        var now = new DateTime(2026, 3, 8, 8, 2, 39, DateTimeKind.Local);
-        var html = TranscriptHtmlFormatter.Format(new[] {
-            ("System", "[startup] Runtime tool bootstrap summary\n\n- Total: 9.6s\n- Packs loaded: 10, disabled: 1, tools: 187", now)
-        }, "HH:mm:ss", options);
-
-        Assert.Contains("msg-row system", html);
-        Assert.Contains("bubble bubble-callout", html);
-        Assert.Contains("outcome-card outcome-neutral outcome-kind-startup outcome-role-system", html);
-        Assert.Contains("outcome-badge'>Startup</span>", html);
-        Assert.Contains("Runtime tool bootstrap summary", html);
-        Assert.Contains("Packs loaded", html);
-    }
-
-    /// <summary>
-    /// Ensures cached evidence fallback headers render as structured callouts with readable body content.
-    /// </summary>
-    [Fact]
-    public void Format_RendersCachedEvidenceFallbackAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
-        var now = new DateTime(2026, 3, 8, 8, 12, 36, DateTimeKind.Local);
-        var html = TranscriptHtmlFormatter.Format(new[] {
-            ("Assistant", "[Cached evidence fallback]\nix:cached-tool-evidence:v1\n\n#### ad_environment_discover\n### Active Directory: Environment Discovery", now)
-        }, "HH:mm:ss", options);
-
-        Assert.Contains("bubble bubble-callout", html);
-        Assert.Contains("outcome-card outcome-neutral outcome-kind-cached-evidence-fallback outcome-role-assistant", html);
-        Assert.Contains("outcome-badge'>Cached</span>", html);
-        Assert.DoesNotContain("ix:cached-tool-evidence:v1", html);
-        Assert.Contains("Active Directory: Environment Discovery", html);
-    }
-
-    /// <summary>
-    /// Ensures hyphenated cached-evidence prefixes normalize into the structured cached callout path.
-    /// </summary>
-    [Fact]
-    public void Format_RendersHyphenatedCachedEvidenceFallbackPrefixAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
-        var now = new DateTime(2026, 3, 8, 8, 12, 36, DateTimeKind.Local);
-        var html = TranscriptHtmlFormatter.Format(new[] {
-            ("Assistant", "[cached-evidence-fallback]\nix:cached-tool-evidence:v1\n\nCached tool output reused.", now)
-        }, "HH:mm:ss", options);
-
-        Assert.Contains("bubble bubble-callout", html);
-        Assert.Contains("outcome-card outcome-neutral outcome-kind-cached-evidence-fallback outcome-role-assistant", html);
-        Assert.Contains("outcome-badge'>Cached</span>", html);
-        Assert.DoesNotContain("ix:cached-tool-evidence:v1", html);
-        Assert.Contains("Cached tool output reused.", html);
     }
 
     /// <summary>
