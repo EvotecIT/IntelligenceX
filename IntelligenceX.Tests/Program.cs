@@ -145,6 +145,8 @@ internal static partial class Program {
         failed += Run("Setup config build honors analysis gate", TestSetupBuildConfigJsonHonorsAnalysisGateOnNewConfig);
         failed += Run("Setup config build includes analysis run strict", TestSetupBuildConfigJsonIncludesAnalysisRunStrict);
         failed += Run("Setup config build includes OpenAI account routing", TestSetupBuildConfigJsonIncludesOpenAiAccountRouting);
+        failed += Run("Setup config build includes reviewer runtime policy defaults",
+            TestSetupBuildConfigJsonIncludesReviewerRuntimePolicyDefaults);
         failed += Run("Setup config normalizes OpenAI primary into account ids",
             TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds);
         failed += Run("Setup config build persists OpenAI routing with primary only",

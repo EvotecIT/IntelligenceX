@@ -99,6 +99,8 @@ internal static partial class SetupRunner {
         public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
         public string? OpenAIAccountRotation { get; set; }
         public bool? OpenAIAccountFailover { get; set; }
+        public bool? SummaryStability { get; set; }
+        public string? ReviewDiffRange { get; set; }
         public string? Intent { get; set; }
         public string? Strictness { get; set; }
         public string? VisionPath { get; set; }
@@ -110,6 +112,21 @@ internal static partial class SetupRunner {
         public string? CommentMode { get; set; }
         public bool? IncludeIssueComments { get; set; }
         public bool? IncludeReviewComments { get; set; }
+        public bool? IncludeReviewThreads { get; set; }
+        public bool? ReviewThreadsIncludeBots { get; set; }
+        public int? ReviewThreadsMax { get; set; }
+        public int? ReviewThreadsMaxComments { get; set; }
+        public bool? ReviewThreadsAutoResolveStale { get; set; }
+        public string? ReviewThreadsAutoResolveDiffRange { get; set; }
+        public int? ReviewThreadsAutoResolveMax { get; set; }
+        public bool? ReviewThreadsAutoResolveSweepNoBlockers { get; set; }
+        public bool? ReviewThreadsAutoResolveAIReply { get; set; }
+        public bool? ReviewUsageSummary { get; set; }
+        public int? ReviewUsageSummaryCacheMinutes { get; set; }
+        public int? ReviewUsageSummaryTimeoutSeconds { get; set; }
+        public bool? ReviewUsageBudgetGuard { get; set; }
+        public bool? ReviewUsageBudgetAllowCredits { get; set; }
+        public bool? ReviewUsageBudgetAllowWeeklyLimit { get; set; }
         public bool? IncludeRelatedPullRequests { get; set; }
         public bool? ProgressUpdates { get; set; }
         public bool? Diagnostics { get; set; }
@@ -128,6 +145,8 @@ internal static partial class SetupRunner {
             OpenAIAccountIds.Length > 0 ||
             OpenAIAccountRotation is not null ||
             OpenAIAccountFailover.HasValue ||
+            SummaryStability.HasValue ||
+            ReviewDiffRange is not null ||
             Intent is not null ||
             Strictness is not null ||
             VisionPath is not null ||
@@ -139,6 +158,21 @@ internal static partial class SetupRunner {
             CommentMode is not null ||
             IncludeIssueComments.HasValue ||
             IncludeReviewComments.HasValue ||
+            IncludeReviewThreads.HasValue ||
+            ReviewThreadsIncludeBots.HasValue ||
+            ReviewThreadsMax.HasValue ||
+            ReviewThreadsMaxComments.HasValue ||
+            ReviewThreadsAutoResolveStale.HasValue ||
+            ReviewThreadsAutoResolveDiffRange is not null ||
+            ReviewThreadsAutoResolveMax.HasValue ||
+            ReviewThreadsAutoResolveSweepNoBlockers.HasValue ||
+            ReviewThreadsAutoResolveAIReply.HasValue ||
+            ReviewUsageSummary.HasValue ||
+            ReviewUsageSummaryCacheMinutes.HasValue ||
+            ReviewUsageSummaryTimeoutSeconds.HasValue ||
+            ReviewUsageBudgetGuard.HasValue ||
+            ReviewUsageBudgetAllowCredits.HasValue ||
+            ReviewUsageBudgetAllowWeeklyLimit.HasValue ||
             IncludeRelatedPullRequests.HasValue ||
             ProgressUpdates.HasValue ||
             Diagnostics.HasValue ||

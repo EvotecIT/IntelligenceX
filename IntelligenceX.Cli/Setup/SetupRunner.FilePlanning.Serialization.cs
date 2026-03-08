@@ -44,6 +44,8 @@ internal static partial class SetupRunner {
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }
+        review["summaryStability"] = settings.SummaryStability;
+        review["reviewDiffRange"] = settings.ReviewDiffRange;
         if (!string.IsNullOrWhiteSpace(settings.Intent)) {
             review["intent"] = settings.Intent;
         }
@@ -71,6 +73,21 @@ internal static partial class SetupRunner {
         review["commentMode"] = settings.CommentMode;
         review["includeIssueComments"] = settings.IncludeIssueComments;
         review["includeReviewComments"] = settings.IncludeReviewComments;
+        review["includeReviewThreads"] = settings.IncludeReviewThreads;
+        review["reviewThreadsIncludeBots"] = settings.ReviewThreadsIncludeBots;
+        review["reviewThreadsMax"] = settings.ReviewThreadsMax;
+        review["reviewThreadsMaxComments"] = settings.ReviewThreadsMaxComments;
+        review["reviewThreadsAutoResolveStale"] = settings.ReviewThreadsAutoResolveStale;
+        review["reviewThreadsAutoResolveDiffRange"] = settings.ReviewThreadsAutoResolveDiffRange;
+        review["reviewThreadsAutoResolveMax"] = settings.ReviewThreadsAutoResolveMax;
+        review["reviewThreadsAutoResolveSweepNoBlockers"] = settings.ReviewThreadsAutoResolveSweepNoBlockers;
+        review["reviewThreadsAutoResolveAIReply"] = settings.ReviewThreadsAutoResolveAIReply;
+        review["reviewUsageSummary"] = settings.ReviewUsageSummary;
+        review["reviewUsageSummaryCacheMinutes"] = settings.ReviewUsageSummaryCacheMinutes;
+        review["reviewUsageSummaryTimeoutSeconds"] = settings.ReviewUsageSummaryTimeoutSeconds;
+        review["reviewUsageBudgetGuard"] = settings.ReviewUsageBudgetGuard;
+        review["reviewUsageBudgetAllowCredits"] = settings.ReviewUsageBudgetAllowCredits;
+        review["reviewUsageBudgetAllowWeeklyLimit"] = settings.ReviewUsageBudgetAllowWeeklyLimit;
         review["includeRelatedPrs"] = settings.IncludeRelatedPullRequests;
         review["progressUpdates"] = settings.ProgressUpdates;
         review["diagnostics"] = settings.Diagnostics;
@@ -333,6 +350,8 @@ internal static partial class SetupRunner {
                 snapshot.OpenAIAccountFailover =
                     ReadJsonBool(review, "openaiAccountFailover") ??
                     ReadJsonBool(review, "openAiAccountFailover");
+                snapshot.SummaryStability = ReadJsonBool(review, "summaryStability");
+                snapshot.ReviewDiffRange = ReadJsonString(review, "reviewDiffRange");
                 snapshot.Intent = ReadJsonString(review, "intent");
                 snapshot.Strictness = ReadJsonString(review, "strictness");
                 snapshot.VisionPath = ReadJsonString(review, "visionPath");
@@ -344,6 +363,21 @@ internal static partial class SetupRunner {
                 snapshot.CommentMode = ReadJsonString(review, "commentMode");
                 snapshot.IncludeIssueComments = ReadJsonBool(review, "includeIssueComments");
                 snapshot.IncludeReviewComments = ReadJsonBool(review, "includeReviewComments");
+                snapshot.IncludeReviewThreads = ReadJsonBool(review, "includeReviewThreads");
+                snapshot.ReviewThreadsIncludeBots = ReadJsonBool(review, "reviewThreadsIncludeBots");
+                snapshot.ReviewThreadsMax = ReadJsonInt(review, "reviewThreadsMax");
+                snapshot.ReviewThreadsMaxComments = ReadJsonInt(review, "reviewThreadsMaxComments");
+                snapshot.ReviewThreadsAutoResolveStale = ReadJsonBool(review, "reviewThreadsAutoResolveStale");
+                snapshot.ReviewThreadsAutoResolveDiffRange = ReadJsonString(review, "reviewThreadsAutoResolveDiffRange");
+                snapshot.ReviewThreadsAutoResolveMax = ReadJsonInt(review, "reviewThreadsAutoResolveMax");
+                snapshot.ReviewThreadsAutoResolveSweepNoBlockers = ReadJsonBool(review, "reviewThreadsAutoResolveSweepNoBlockers");
+                snapshot.ReviewThreadsAutoResolveAIReply = ReadJsonBool(review, "reviewThreadsAutoResolveAIReply");
+                snapshot.ReviewUsageSummary = ReadJsonBool(review, "reviewUsageSummary");
+                snapshot.ReviewUsageSummaryCacheMinutes = ReadJsonInt(review, "reviewUsageSummaryCacheMinutes");
+                snapshot.ReviewUsageSummaryTimeoutSeconds = ReadJsonInt(review, "reviewUsageSummaryTimeoutSeconds");
+                snapshot.ReviewUsageBudgetGuard = ReadJsonBool(review, "reviewUsageBudgetGuard");
+                snapshot.ReviewUsageBudgetAllowCredits = ReadJsonBool(review, "reviewUsageBudgetAllowCredits");
+                snapshot.ReviewUsageBudgetAllowWeeklyLimit = ReadJsonBool(review, "reviewUsageBudgetAllowWeeklyLimit");
                 snapshot.IncludeRelatedPullRequests =
                     ReadJsonBool(review, "includeRelatedPrs") ??
                     ReadJsonBool(review, "includeRelatedPullRequests");

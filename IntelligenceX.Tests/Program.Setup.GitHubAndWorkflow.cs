@@ -12,6 +12,10 @@ internal static partial class Program {
     "profile": "security",
     "mode": "summary",
     "commentMode": "sticky",
+    "reviewDiffRange": "first-review",
+    "includeReviewThreads": false,
+    "reviewThreadsAutoResolveAIReply": false,
+    "reviewUsageSummary": false,
     "includeIssueComments": false,
     "includeReviewComments": true,
     "includeRelatedPullRequests": false,
@@ -36,6 +40,11 @@ internal static partial class Program {
         AssertNotNull(review, "config json merge review");
         AssertEqual("keep-me", review!["customReviewFlag"]?.GetValue<string>(), "config json merge keeps custom review key");
         AssertEqual("security", review["profile"]?.GetValue<string>(), "config json merge keeps existing profile");
+        AssertEqual("first-review", review["reviewDiffRange"]?.GetValue<string>(), "config json merge keeps diff range");
+        AssertEqual(false, review["includeReviewThreads"]?.GetValue<bool>(), "config json merge keeps include review threads");
+        AssertEqual(false, review["reviewThreadsAutoResolveAIReply"]?.GetValue<bool>(),
+            "config json merge keeps auto-resolve ai reply");
+        AssertEqual(false, review["reviewUsageSummary"]?.GetValue<bool>(), "config json merge keeps usage summary");
 
         var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(analysis, "config json merge analysis object");

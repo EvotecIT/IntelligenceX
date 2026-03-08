@@ -475,6 +475,37 @@ internal static partial class Program {
         AssertEqual("acc-backup", ids[1]?.GetValue<string>(), "config json openai account routing second id");
     }
 
+    private static void TestSetupBuildConfigJsonIncludesReviewerRuntimePolicyDefaults() {
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--with-config"
+        });
+        AssertNotNull(content, "config json runtime policy content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json runtime policy root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json runtime policy review");
+
+        AssertEqual("pr-base", review!["reviewDiffRange"]?.GetValue<string>(), "config json review diff range");
+        AssertEqual(true, review["summaryStability"]?.GetValue<bool>(), "config json summary stability");
+        AssertEqual(true, review["includeReviewThreads"]?.GetValue<bool>(), "config json include review threads");
+        AssertEqual(true, review["reviewThreadsIncludeBots"]?.GetValue<bool>(), "config json review threads include bots");
+        AssertEqual(25, review["reviewThreadsMax"]?.GetValue<int>(), "config json review threads max");
+        AssertEqual(25, review["reviewThreadsAutoResolveMax"]?.GetValue<int>(), "config json auto-resolve max");
+        AssertEqual("pr-base", review["reviewThreadsAutoResolveDiffRange"]?.GetValue<string>(),
+            "config json auto-resolve diff range");
+        AssertEqual(true, review["reviewThreadsAutoResolveSweepNoBlockers"]?.GetValue<bool>(),
+            "config json sweep no blockers");
+        AssertEqual(true, review["reviewThreadsAutoResolveAIReply"]?.GetValue<bool>(),
+            "config json auto-resolve ai reply");
+        AssertEqual(true, review["reviewUsageSummary"]?.GetValue<bool>(), "config json usage summary");
+        AssertEqual(true, review["reviewUsageBudgetGuard"]?.GetValue<bool>(), "config json usage budget guard");
+        AssertEqual(true, review["reviewUsageBudgetAllowCredits"]?.GetValue<bool>(),
+            "config json usage budget credits");
+        AssertEqual(true, review["reviewUsageBudgetAllowWeeklyLimit"]?.GetValue<bool>(),
+            "config json usage budget weekly");
+    }
+
     private static void TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds() {
         var content = SetupRunner.BuildReviewerConfigJson(new[] {
             "--openai-account-id", "  acc-primary  ",
