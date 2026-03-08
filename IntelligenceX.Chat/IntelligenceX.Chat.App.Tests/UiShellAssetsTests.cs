@@ -128,23 +128,23 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures the data-view quick export button advertises the current default export format
-    /// instead of a generic label with unclear behavior.
+    /// Ensures the data-view quick save button derives user-facing copy from current export preferences
+    /// instead of falling back to a stale fixed label.
     /// </summary>
     [Fact]
     public void Load_IncludesDynamicDataViewQuickExportLabeling() {
         var html = UiShellAssets.Load();
         var dataviewScriptPath = Path.Combine(UiDirectory, "Shell.17.core.dataview.js");
         var dataviewScript = File.ReadAllText(dataviewScriptPath);
-        var dataviewActionsScriptPath = Path.Combine(UiDirectory, "Shell.19.core.dataview.actions.js");
-        var dataviewActionsScript = File.ReadAllText(dataviewActionsScriptPath);
+        var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var toolsScript = File.ReadAllText(toolsScriptPath);
 
-        Assert.Contains(">Quick Excel<", html, StringComparison.Ordinal);
+        Assert.Contains(">Quick Save<", html, StringComparison.Ordinal);
         Assert.Contains("function updateDataViewQuickExportLabel()", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("var normalizedFormat = normalizeExportFormatForDataView(prefs && prefs.defaultFormat);", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("btnDataViewQuickExport.textContent = \"Quick \" + formatLabel;", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("btnDataViewQuickExport.title = \"Export \" + formatLabel + \" using the default format and last folder when available.\";", dataviewScript, StringComparison.Ordinal);
-        Assert.Contains("if (typeof updateDataViewQuickExportLabel === \"function\") {", dataviewActionsScript, StringComparison.Ordinal);
+        Assert.Contains("function getQuickExportButtonCopy(format, saveMode) {", dataviewScript, StringComparison.Ordinal);
+        Assert.Contains("btnDataViewQuickExport.textContent = copy.text;", dataviewScript, StringComparison.Ordinal);
+        Assert.Contains("btnDataViewQuickExport.title = copy.title;", dataviewScript, StringComparison.Ordinal);
+        Assert.Contains("if (typeof updateDataViewQuickExportLabel === \"function\") {", toolsScript, StringComparison.Ordinal);
     }
 
     /// <summary>

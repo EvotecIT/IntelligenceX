@@ -2555,9 +2555,13 @@
 
     var quickExportButton = byId("btnDataViewQuickExport");
     if (quickExportButton) {
-      var label = exportFormatDisplayName(format);
-      quickExportButton.textContent = "Quick " + label;
-      quickExportButton.title = "Quick export using " + label + " and current save behavior";
+      if (typeof updateDataViewQuickExportLabel === "function") {
+        updateDataViewQuickExportLabel();
+      } else {
+        var label = exportFormatDisplayName(format);
+        quickExportButton.textContent = "Quick " + label;
+        quickExportButton.title = "Quick export using " + label + " and current save behavior";
+      }
     }
   }
 

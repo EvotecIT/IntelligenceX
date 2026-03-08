@@ -13,12 +13,14 @@
   var btnDataViewExportCsv = byId("btnDataViewExportCsv");
   var btnDataViewExportXlsx = byId("btnDataViewExportXlsx");
   var btnDataViewExportDocx = byId("btnDataViewExportDocx");
+  var btnDataViewToggleColumnMode = byId("btnDataViewToggleColumnMode");
   var dataViewState = {
     title: "Data View",
     rows: [],
     lastExportPath: "",
     lastExportFormat: "",
-    api: null
+    api: null,
+    columnMode: "wrapped"
   };
   var dataViewFeedbackClearTimer = 0;
   var pendingExports = Object.create(null);
@@ -103,6 +105,37 @@
     }
   }
 
+  function getNormalizedDataViewColumnMode(mode) {
+    return String(mode || "").toLowerCase() === "expanded" ? "expanded" : "wrapped";
+  }
+
+  function applyDataViewColumnMode(mode) {
+    var normalizedMode = getNormalizedDataViewColumnMode(mode);
+    dataViewState.columnMode = normalizedMode;
+
+    if (dataViewPanel) {
+      dataViewPanel.classList.toggle("data-view-columns-expanded", normalizedMode === "expanded");
+      dataViewPanel.classList.toggle("data-view-columns-wrapped", normalizedMode !== "expanded");
+    }
+
+    if (btnDataViewToggleColumnMode) {
+      var expanded = normalizedMode === "expanded";
+      btnDataViewToggleColumnMode.textContent = expanded ? "Wrap Cells" : "Expand Columns";
+      btnDataViewToggleColumnMode.title = expanded
+        ? "Wrap long values so more columns fit on screen"
+        : "Show full-width columns and rely on horizontal scrolling";
+      btnDataViewToggleColumnMode.setAttribute("aria-pressed", expanded ? "true" : "false");
+    }
+
+    if (dataViewState.api && typeof dataViewState.api.columns === "function") {
+      try {
+        dataViewState.api.columns.adjust();
+      } catch (_) {
+        // ignore
+      }
+    }
+  }
+
   function renderDataViewTable() {
     if (!dataViewTable) {
       return;
@@ -125,6 +158,7 @@
     if (typeof window.DataTable !== "function") {
       renderDataViewPlainTable(headers, bodyRows);
       setDataViewFeedback("Enhanced table mode unavailable. Showing basic table view.", "warn", 4000);
+      applyDataViewColumnMode(dataViewState.columnMode);
       return;
     }
 
@@ -176,10 +210,12 @@
       }
 
       dataViewState.api = new window.DataTable(dataViewTable, options);
+      applyDataViewColumnMode(dataViewState.columnMode);
     } catch (_) {
       renderDataViewPlainTable(headers, bodyRows);
       setDataViewFeedback("Enhanced table mode failed to initialize. Showing basic table view.", "warn", 4500);
       dataViewState.api = null;
+      applyDataViewColumnMode(dataViewState.columnMode);
       return;
     }
 
@@ -226,7 +262,7 @@
   }
 
   function getDataViewExportButtons() {
-    return [btnDataViewQuickExport, btnDataViewExportCsv, btnDataViewExportXlsx, btnDataViewExportDocx];
+    return [btnDataViewQuickExport, btnDataViewExportCsv, btnDataViewExportXlsx, btnDataViewExportDocx, btnDataViewToggleColumnMode];
   }
 
   function updateDataViewQuickExportLabel() {
@@ -235,10 +271,9 @@
     }
 
     var prefs = getExportPreferences();
-    var normalizedFormat = normalizeExportFormatForDataView(prefs && prefs.defaultFormat);
-    var formatLabel = getFormatLabel(normalizedFormat) || "Excel";
-    btnDataViewQuickExport.textContent = "Quick " + formatLabel;
-    btnDataViewQuickExport.title = "Export " + formatLabel + " using the default format and last folder when available.";
+    var copy = getQuickExportButtonCopy(prefs.defaultFormat, prefs.saveMode);
+    btnDataViewQuickExport.textContent = copy.text;
+    btnDataViewQuickExport.title = copy.title;
   }
 
   function clearDataViewFeedbackTimer() {
@@ -315,6 +350,23 @@
       return normalized.toUpperCase();
     }
     return "file";
+  }
+
+  function getQuickExportButtonCopy(format, saveMode) {
+    var normalizedFormat = normalizeExportFormatForDataView(format);
+    var formatLabel = getFormatLabel(normalizedFormat) || "Excel";
+    var normalizedSaveMode = normalizeExportSaveModeForDataView(saveMode);
+    if (normalizedSaveMode === "remember") {
+      return {
+        text: "Quick Save " + formatLabel,
+        title: "Save " + formatLabel + " to the last export folder without prompting"
+      };
+    }
+
+    return {
+      text: "Save " + formatLabel,
+      title: "Pick a location and save " + formatLabel + " using the default export format"
+    };
   }
 
   function normalizeExportSaveModeForDataView(value) {
