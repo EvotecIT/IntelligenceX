@@ -11,17 +11,21 @@
     <IxChatSiblingsRoot1>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\'))</IxChatSiblingsRoot1>
     <!-- root2: worktree layout (..\..\..\OfficeIMO from IntelligenceX.Chat) -->
     <IxChatSiblingsRoot2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\..\\'))</IxChatSiblingsRoot2>
-    <OfficeImoRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)OfficeIMO\\'))</OfficeImoRepoRootCandidate1>
-    <OfficeImoRepoRootCandidate2>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)OfficeIMO\\'))</OfficeImoRepoRootCandidate2>
+    <OfficeImoRepoRootCandidate1>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)OfficeIMO\\'))))</OfficeImoRepoRootCandidate1>
+    <OfficeImoRepoRootCandidate2>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)OfficeIMO\\'))))</OfficeImoRepoRootCandidate2>
+    <OfficeImoMarkdownRendererProbeRelativePath>OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProbeRelativePath>
     <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
-    <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))</OfficeImoRepoRootInputNormalized>
-    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>
-    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
-    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and Exists('$(OfficeImoRepoRootCandidate2)OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">$(OfficeImoRepoRootCandidate2)</OfficeImoRepoRoot>
-    <!-- fallback root for NuGet mode when no local checkout is present -->
+    <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))))</OfficeImoRepoRootInputNormalized>
+    <OfficeImoRepoRootResolved Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)$(OfficeImoMarkdownRendererProbeRelativePath)')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRootResolved>
+    <OfficeImoRepoRootResolved Condition="'$(OfficeImoRepoRootResolved)' == '' and Exists('$(OfficeImoRepoRootCandidate1)$(OfficeImoMarkdownRendererProbeRelativePath)')">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRootResolved>
+    <OfficeImoRepoRootResolved Condition="'$(OfficeImoRepoRootResolved)' == '' and Exists('$(OfficeImoRepoRootCandidate2)$(OfficeImoMarkdownRendererProbeRelativePath)')">$(OfficeImoRepoRootCandidate2)</OfficeImoRepoRootResolved>
+    <!-- OfficeImoRepoRoot is the normalized downstream base path; OfficeImoRepoRootResolved is only set when a checkout actually exists. -->
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != ''">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>
+    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and '$(OfficeImoRepoRootResolved)' != ''">$(OfficeImoRepoRootResolved)</OfficeImoRepoRoot>
+    <!-- fallback base path for package mode when no local checkout is present -->
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == ''">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckoutInput)' != ''">$(UseLocalOfficeImoCheckoutInput)</UseLocalOfficeImoCheckout>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRoot)\\OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj')">true</UseLocalOfficeImoCheckout>
+    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRootResolved)' != ''">true</UseLocalOfficeImoCheckout>
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
 
     <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>
