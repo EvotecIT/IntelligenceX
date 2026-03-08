@@ -244,6 +244,44 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures legacy cached-evidence tool slug bullet headings are promoted into normal markdown headings.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_PromotesLegacyToolHeadingBullets() {
+        var malformed = """
+                        [Cached evidence fallback]
+
+                        Recent evidence:
+                        - eventlog_top_events: ### Top 30 recent events (preview)
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.DoesNotContain("- eventlog_top_events:", fixedText, StringComparison.Ordinal);
+        Assert.Contains("### Top 30 recent events (preview)", fixedText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures legacy cached-evidence duplicate tool slug headings are removed when a real content heading follows.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_RemovesDuplicateToolSlugHeadingBeforeRealHeading() {
+        var malformed = """
+                        [Cached evidence fallback]
+
+                        #### ad_environment_discover
+                        ### Active Directory: Environment Discovery
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.DoesNotContain("#### ad_environment_discover", fixedText, StringComparison.Ordinal);
+        Assert.Contains("### Active Directory: Environment Discovery", fixedText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures legacy JSON graph fences upgrade to ix-network so historical chats can hydrate with the current shell renderer.
     /// </summary>
     [Fact]
