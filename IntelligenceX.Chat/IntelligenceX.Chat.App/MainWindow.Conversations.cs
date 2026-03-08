@@ -340,6 +340,14 @@ public sealed partial class MainWindow : Window {
         _modelKickoffAttempted = _messages.Count > 0;
         _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
         await RenderTranscriptAsync().ConfigureAwait(false);
+        if (ShouldRefreshAuthenticationStateAfterConversationSwitch(
+                requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+                isConnected: _isConnected,
+                isAuthenticated: _isAuthenticated,
+                loginInProgress: _loginInProgress,
+                hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot())) {
+            _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
+        }
         await PublishOptionsStateAsync().ConfigureAwait(false);
         await PersistAppStateAsync().ConfigureAwait(false);
     }

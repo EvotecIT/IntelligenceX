@@ -140,6 +140,19 @@ public sealed partial class MainWindow : Window {
                && !loginInProgress;
     }
 
+    internal static bool ShouldRefreshAuthenticationStateAfterConversationSwitch(
+        bool requiresInteractiveSignIn,
+        bool isConnected,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool hasExplicitUnauthenticatedProbeSnapshot) {
+        return requiresInteractiveSignIn
+               && isConnected
+               && !isAuthenticated
+               && !loginInProgress
+               && !hasExplicitUnauthenticatedProbeSnapshot;
+    }
+
     private void PromoteAuthenticatedStateFromFinalAssistantTurn() {
         if (!ShouldPromoteAuthenticatedStateFromFinalAssistantTurn(
                 requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),

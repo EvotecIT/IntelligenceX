@@ -41,4 +41,44 @@ public sealed class MainWindowAssistantAuthPromotionTests {
 
         Assert.False(result);
     }
+
+    /// <summary>
+    /// Ensures switching to an old conversation can opportunistically clear a stale auth badge.
+    /// </summary>
+    [Fact]
+    public void ShouldRefreshAuthenticationStateAfterConversationSwitch_PromotesForConnectedNativeSessionWithoutExplicitUnauthenticatedProbe() {
+        var result = MainWindow.ShouldRefreshAuthenticationStateAfterConversationSwitch(
+            requiresInteractiveSignIn: true,
+            isConnected: true,
+            isAuthenticated: false,
+            loginInProgress: false,
+            hasExplicitUnauthenticatedProbeSnapshot: false);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures conversation switches do not hide an explicit unauthenticated state.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true, false, false, false)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(true, true, true, false, false)]
+    [InlineData(true, true, false, true, false)]
+    [InlineData(true, true, false, false, true)]
+    public void ShouldRefreshAuthenticationStateAfterConversationSwitch_StaysFalseWhenRefreshWouldBeUnsafe(
+        bool requiresInteractiveSignIn,
+        bool isConnected,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool hasExplicitUnauthenticatedProbeSnapshot) {
+        var result = MainWindow.ShouldRefreshAuthenticationStateAfterConversationSwitch(
+            requiresInteractiveSignIn,
+            isConnected,
+            isAuthenticated,
+            loginInProgress,
+            hasExplicitUnauthenticatedProbeSnapshot);
+
+        Assert.False(result);
+    }
 }
