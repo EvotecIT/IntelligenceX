@@ -123,6 +123,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldBypassCachedToolEvidenceFallback(normalizedThreadId, userRequest)) {
+            return false;
+        }
+
         TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
 
         var requestTokens = TokenizeRoutingTokens(userRequest, maxTokens: 10);
@@ -244,15 +248,43 @@ internal sealed partial class ChatServiceSession {
             var snippet = entry.SummaryMarkdown.Length > 0
                 ? entry.SummaryMarkdown
                 : BuildToolEvidenceSnippet(entry.Output);
-            sb.AppendLine();
-            sb.Append("#### ").AppendLine(entry.ToolName);
-            AppendMarkdownBlock(sb, snippet);
+            sb.Append("- ").Append(entry.ToolName).Append(": ").AppendLine(snippet);
         }
 
         sb.AppendLine();
         sb.Append("If you want a live refresh, ask me to rerun these checks now.");
         text = sb.ToString().Trim();
         return text.Length > 0;
+    }
+
+    private bool ShouldBypassCachedToolEvidenceFallback(string threadId, string userRequest) {
+        return HasFreshThreadToolEvidence(threadId)
+               && LooksLikeLiveRefreshFollowUp(userRequest);
+    }
+
+    private bool HasFreshThreadToolEvidence(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
+
+        var nowUtc = DateTime.UtcNow;
+        lock (_threadToolEvidenceLock) {
+            if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature) || bySignature.Count == 0) {
+                return false;
+            }
+
+            foreach (var pair in bySignature) {
+                if (TryGetUtcDateTimeFromTicks(pair.Value.SeenUtcTicks, out var seenUtc)
+                    && nowUtc - seenUtc <= ThreadToolEvidenceContextMaxAge) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private string ResolveRequestedToolEvidenceFamily(string threadId, string userRequest) {
@@ -286,19 +318,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         return normalized.Length == 0 ? "(no summary available)" : normalized;
-    }
-
-    private static void AppendMarkdownBlock(StringBuilder sb, string markdown) {
-        var normalized = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();
-        if (normalized.Length == 0) {
-            sb.AppendLine("(no summary available)");
-            return;
-        }
-
-        var lines = normalized.Split('\n', StringSplitOptions.None);
-        for (var i = 0; i < lines.Length; i++) {
-            sb.AppendLine(lines[i]);
-        }
     }
 
     private static string CompactToolEvidencePayload(string output) {

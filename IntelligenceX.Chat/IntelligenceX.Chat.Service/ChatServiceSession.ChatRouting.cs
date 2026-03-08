@@ -76,11 +76,23 @@ internal sealed partial class ChatServiceSession {
         var hasStructuredContinuationContext = continuationContractDetected
                                               || hasFreshPendingActionContext
                                               || continuationExpandedFromContext;
+        var hasFreshThreadToolEvidence = HasFreshThreadToolEvidence(threadId);
+        var liveRefreshFollowUpTurn = (hasStructuredContinuationContext || hasFreshThreadToolEvidence)
+                                      && LooksLikeLiveRefreshFollowUp(userRequest);
         var requestedMaxCandidateTools = request.Options?.MaxCandidateTools;
         var maxCandidateToolDiagnostics = ResolveMaxCandidateToolsDiagnosticsForTurn(requestedMaxCandidateTools, client.TransportKind, selectedModel);
         var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
-        var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest);
+        var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest) || liveRefreshFollowUpTurn;
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
+        if (liveRefreshFollowUpTurn) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: "Detected a live refresh follow-up and reopened fresh read-only execution for the active investigation scope.")
+                .ConfigureAwait(false);
+        }
         if (TryResolvePendingDomainIntentClarificationSelection(
                 threadId,
                 userRequest,

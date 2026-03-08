@@ -265,6 +265,10 @@ internal sealed partial class ChatServiceSession {
             routedUserRequest);
     }
 
+    internal static bool LooksLikeLiveRefreshFollowUpForTesting(string userRequest) {
+        return LooksLikeLiveRefreshFollowUp(userRequest);
+    }
+
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {
         RememberPendingDomainIntentClarificationRequest(threadId);
     }

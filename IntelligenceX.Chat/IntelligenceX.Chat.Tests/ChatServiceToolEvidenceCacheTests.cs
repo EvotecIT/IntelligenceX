@@ -53,45 +53,6 @@ public sealed class ChatServiceToolEvidenceCacheTests {
         Assert.Contains("ix:cached-tool-evidence:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("domaindetective_domain_summary", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("dnsclientx_query", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("#### domaindetective_domain_summary", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("- domaindetective_domain_summary:", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ToolEvidenceCache_PreservesMultiLineMarkdownBlocksInFallback() {
-        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
-        var calls = new[] {
-            new ToolCallDto {
-                CallId = "call-1",
-                Name = "ad_environment_discover",
-                ArgumentsJson = "{\"forest\":\"ad.evotec.xyz\"}"
-            }
-        };
-        var outputs = new[] {
-            new ToolOutputDto {
-                CallId = "call-1",
-                Ok = true,
-                Output = "{\"ok\":true}",
-                SummaryMarkdown = "### Active Directory: Environment Discovery\n\n```json\n{\"ok\":true}\n```"
-            }
-        };
-
-        session.RememberThreadToolEvidenceForTesting(
-            threadId: "thread-multiline",
-            toolCalls: calls,
-            toolOutputs: outputs,
-            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
-
-        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
-            "thread-multiline",
-            "show latest ad environment discovery",
-            out var text);
-
-        Assert.True(built);
-        Assert.Contains("#### ad_environment_discover", text, StringComparison.Ordinal);
-        Assert.Contains("### Active Directory: Environment Discovery", text, StringComparison.Ordinal);
-        Assert.Contains("```json", text, StringComparison.Ordinal);
-        Assert.Contains("{\"ok\":true}", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -215,7 +176,7 @@ public sealed class ChatServiceToolEvidenceCacheTests {
     }
 
     [Fact]
-    public void ToolEvidenceCache_PrefersTokenMatchedEvidenceOverRecentUnmatchedEntries() {
+    public void ToolEvidenceCache_DoesNotReuseCachedEvidence_ForExplicitLiveRerunRequest() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new[] {
             new ToolCallDto {
@@ -253,11 +214,9 @@ public sealed class ChatServiceToolEvidenceCacheTests {
         var built = session.TryBuildToolEvidenceFallbackTextForTesting(
             "thread-token-match",
             "please rerun eventlog_evtx_query for this host",
-            out var text);
+            out _);
 
-        Assert.True(built);
-        Assert.Contains("eventlog_evtx_query", text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("dnsclientx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.False(built);
     }
 
     [Fact]
@@ -431,5 +390,38 @@ public sealed class ChatServiceToolEvidenceCacheTests {
             "co to `eventlog_\u200bevtx_query · Event Log (EventViewerX)`");
 
         Assert.Contains("eventlogevtxquery", extracted);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_DoesNotReuseCachedEvidence_ForCompactRecheckQuestion() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "ad_replication_summary",
+                ArgumentsJson = "{\"scope\":\"forest\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"health\":\"healthy\"}",
+                SummaryMarkdown = "Forest replication health is healthy."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-live-recheck",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-live-recheck",
+            "can't you recheck?",
+            out _);
+
+        Assert.False(built);
     }
 }
