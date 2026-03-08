@@ -55,4 +55,31 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(expectedContinuationFollowUpTurn, result.ContinuationFollowUpTurn);
         Assert.Equal(expectedCompactFollowUpTurn, result.CompactFollowUpTurn);
     }
+
+    [Theory]
+    [InlineData("please rerun those checks now")]
+    [InlineData("can't you recheck?")]
+    [InlineData("sprawdz jeszcze raz")]
+    public void LooksLikeLiveRefreshFollowUp_RecognizesExplicitFreshExecutionRequests(string userRequest) {
+        Assert.True(ChatServiceSession.LooksLikeLiveRefreshFollowUpForTesting(userRequest));
+    }
+
+    [Theory]
+    [InlineData("what does eventlog_evtx_query do?")]
+    [InlineData("hello")]
+    [InlineData("show me a table")]
+    [InlineData("please rerun eventlog_evtx_query for this host")]
+    public void LooksLikeLiveRefreshFollowUp_DoesNotMisclassifyNonRefreshRequests(string userRequest) {
+        Assert.False(ChatServiceSession.LooksLikeLiveRefreshFollowUpForTesting(userRequest));
+    }
+
+    [Fact]
+    public void ResolveLiveRefreshFollowUpTurn_RecognizesImperativeRerunWithoutToolNameAsFreshExecutionFollowUp() {
+        var liveRefreshFollowUpTurn = ChatServiceSession.ResolveLiveRefreshFollowUpTurnForTesting(
+            hasStructuredContinuationContext: false,
+            hasFreshThreadToolEvidence: true,
+            userRequest: "please rerun those checks now");
+
+        Assert.True(liveRefreshFollowUpTurn);
+    }
 }

@@ -123,6 +123,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (ShouldBypassCachedToolEvidenceFallback(normalizedThreadId, userRequest)) {
+            return false;
+        }
+
         TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
 
         var requestTokens = TokenizeRoutingTokens(userRequest, maxTokens: 10);
@@ -253,6 +257,37 @@ internal sealed partial class ChatServiceSession {
         sb.Append("If you want a live refresh, ask me to rerun these checks now.");
         text = sb.ToString().Trim();
         return text.Length > 0;
+    }
+
+    private bool ShouldBypassCachedToolEvidenceFallback(string threadId, string userRequest) {
+        return HasFreshThreadToolEvidence(threadId)
+               && (LooksLikeLiveRefreshFollowUp(userRequest)
+                   || LooksLikeExplicitLiveRefreshToolRequest(userRequest));
+    }
+
+    private bool HasFreshThreadToolEvidence(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
+
+        var nowUtc = DateTime.UtcNow;
+        lock (_threadToolEvidenceLock) {
+            if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature) || bySignature.Count == 0) {
+                return false;
+            }
+
+            foreach (var pair in bySignature) {
+                if (TryGetUtcDateTimeFromTicks(pair.Value.SeenUtcTicks, out var seenUtc)
+                    && nowUtc - seenUtc <= ThreadToolEvidenceContextMaxAge) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private string ResolveRequestedToolEvidenceFamily(string threadId, string userRequest) {

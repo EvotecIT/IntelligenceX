@@ -1,0 +1,70 @@
+{
+  "name": "AD diagram, LDAP/ADWS matrix, and rerun follow-up",
+  "tags": ["ad", "diagram", "ldap", "adws", "strict", "live", "continuation", "rerun"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "Natural opener",
+      "user": "Hello Mr",
+      "assert_not_contains": ["[Cached evidence fallback]"]
+    },
+    {
+      "name": "Forest replication summary",
+      "user": "I would prefer to check ad forest replication today",
+      "assert_contains_any": ["forest replication", "Forest replication", "replication"],
+      "require_any_tools": ["ad_*", "directory_*"]
+    },
+    {
+      "name": "Second domain follow-up",
+      "user": "that doesn't look complete? ad forest has 2 domains",
+      "assert_contains_any": ["2-domain", "both domains", "second domain", "ad.evotec.pl"],
+      "assert_not_contains": ["[Cached evidence fallback]"],
+      "require_any_tools": ["ad_*", "directory_*"]
+    },
+    {
+      "name": "Diagram plus live LDAP and ADWS checks",
+      "user": "could you diagram it for me and then check ldap and adws ports whether they work properly and are responding for all dcs?",
+      "assert_contains": ["```mermaid"],
+      "assert_contains_any": ["ADWS", "LDAP + ADWS", "LDAP/ADWS"],
+      "assert_not_contains": ["[Cached evidence fallback]"],
+      "require_any_tools": ["ad_*", "directory_*", "system_*"]
+    },
+    {
+      "name": "AD0 focused live follow-up",
+      "user": "yes please.",
+      "assert_contains_any": ["AD0", "IPv4", "IPv6", "LDAPS", "3269"],
+      "assert_not_contains": ["[Cached evidence fallback]"],
+      "require_any_tools": ["ad_*", "directory_*", "system_*"]
+    },
+    {
+      "name": "Disk and event log investigation",
+      "user": "maybe there is a problem with disk space on the drive or something is wrong with ad0? could you check? maybe check event log as well why it's a problem?",
+      "assert_contains_any": ["disk", "event log", "AD0"],
+      "assert_not_contains": ["[Cached evidence fallback]"],
+      "require_any_tools": ["eventlog_*", "system_*"]
+    },
+    {
+      "name": "Remote disk capability clarification",
+      "user": "don't you have disk  space feature for remote?",
+      "assert_contains_any": ["computer_name", "remote", "disk", "AD0"],
+      "assert_not_contains": ["capability gap", "[Cached evidence fallback]"]
+    },
+    {
+      "name": "Live rerun for flakiness investigation",
+      "user": "right, but i have seen it flaky today, can you investigate events about it?",
+      "assert_not_contains": [
+        "[Cached evidence fallback]",
+        "Live tool execution did not complete in this turn, so I reused recent read-only evidence from this session."
+      ],
+      "assert_contains_any": ["event", "AD0", "flaky", "System", "Directory Service"],
+      "require_any_tools": ["eventlog_*", "ad_*", "directory_*"]
+    }
+  ]
+}
