@@ -282,6 +282,44 @@
       entry.fallbackPrefix);
   }
 
+  function compareVisualBlockDocumentOrder(left, right) {
+    if (left === right) {
+      return 0;
+    }
+    if (!left || typeof left.compareDocumentPosition !== "function") {
+      return -1;
+    }
+    if (!right || typeof right.compareDocumentPosition !== "function") {
+      return 1;
+    }
+
+    var relation = left.compareDocumentPosition(right);
+    if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
+      return -1;
+    }
+    if (relation & Node.DOCUMENT_POSITION_PRECEDING) {
+      return 1;
+    }
+    return 0;
+  }
+
+  function buildOrderedVisualEntries(fenceBlocks, nativeBlocks) {
+    var entries = [];
+
+    for (var i = 0; i < fenceBlocks.length; i++) {
+      entries.push({ block: fenceBlocks[i], isNative: false });
+    }
+    for (var j = 0; j < nativeBlocks.length; j++) {
+      entries.push({ block: nativeBlocks[j], isNative: true });
+    }
+
+    entries.sort(function(left, right) {
+      return compareVisualBlockDocumentOrder(left.block, right.block);
+    });
+
+    return entries;
+  }
+
   function ensureVisualNotice(anchor, text) {
     if (!anchor || !anchor.parentElement) {
       return;
