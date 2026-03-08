@@ -2,7 +2,7 @@ namespace IntelligenceX.Tests;
 
 internal static partial class Program {
     #if !NET472
-    private static void TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis() {
+    private static void TestSetupBuildConfigJsonMergeRefreshesManagedReviewerDefaultsWhenEnablingAnalysis() {
         var seed = """
 {
   "review": {
@@ -40,11 +40,12 @@ internal static partial class Program {
         AssertNotNull(review, "config json merge review");
         AssertEqual("keep-me", review!["customReviewFlag"]?.GetValue<string>(), "config json merge keeps custom review key");
         AssertEqual("security", review["profile"]?.GetValue<string>(), "config json merge keeps existing profile");
-        AssertEqual("first-review", review["reviewDiffRange"]?.GetValue<string>(), "config json merge keeps diff range");
-        AssertEqual(false, review["includeReviewThreads"]?.GetValue<bool>(), "config json merge keeps include review threads");
-        AssertEqual(false, review["reviewThreadsAutoResolveAIReply"]?.GetValue<bool>(),
-            "config json merge keeps auto-resolve ai reply");
-        AssertEqual(false, review["reviewUsageSummary"]?.GetValue<bool>(), "config json merge keeps usage summary");
+        AssertEqual(true, review["summaryStability"]?.GetValue<bool>(), "config json merge refreshes summary stability");
+        AssertEqual("pr-base", review["reviewDiffRange"]?.GetValue<string>(), "config json merge refreshes diff range");
+        AssertEqual(true, review["includeReviewThreads"]?.GetValue<bool>(), "config json merge refreshes include review threads");
+        AssertEqual(true, review["reviewThreadsAutoResolveAIReply"]?.GetValue<bool>(),
+            "config json merge refreshes auto-resolve ai reply");
+        AssertEqual(true, review["reviewUsageSummary"]?.GetValue<bool>(), "config json merge refreshes usage summary");
 
         var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(analysis, "config json merge analysis object");

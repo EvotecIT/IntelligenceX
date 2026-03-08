@@ -277,12 +277,6 @@ internal static partial class SetupRunner {
             settings.OpenAIAccountFailover = snapshot.OpenAIAccountFailover.Value;
         }
         NormalizeOpenAiAccountRouting(settings);
-        if (snapshot.SummaryStability.HasValue) {
-            settings.SummaryStability = snapshot.SummaryStability.Value;
-        }
-        if (!string.IsNullOrWhiteSpace(snapshot.ReviewDiffRange)) {
-            settings.ReviewDiffRange = snapshot.ReviewDiffRange!;
-        }
         if (!options.ReviewProfileSet && !string.IsNullOrWhiteSpace(snapshot.Profile)) {
             settings.Profile = snapshot.Profile!;
         }
@@ -315,51 +309,6 @@ internal static partial class SetupRunner {
         }
         if (!options.IncludeReviewCommentsSet && snapshot.IncludeReviewComments.HasValue) {
             settings.IncludeReviewComments = snapshot.IncludeReviewComments.Value;
-        }
-        if (snapshot.IncludeReviewThreads.HasValue) {
-            settings.IncludeReviewThreads = snapshot.IncludeReviewThreads.Value;
-        }
-        if (snapshot.ReviewThreadsIncludeBots.HasValue) {
-            settings.ReviewThreadsIncludeBots = snapshot.ReviewThreadsIncludeBots.Value;
-        }
-        if (snapshot.ReviewThreadsMax.HasValue) {
-            settings.ReviewThreadsMax = snapshot.ReviewThreadsMax.Value;
-        }
-        if (snapshot.ReviewThreadsMaxComments.HasValue) {
-            settings.ReviewThreadsMaxComments = snapshot.ReviewThreadsMaxComments.Value;
-        }
-        if (snapshot.ReviewThreadsAutoResolveStale.HasValue) {
-            settings.ReviewThreadsAutoResolveStale = snapshot.ReviewThreadsAutoResolveStale.Value;
-        }
-        if (!string.IsNullOrWhiteSpace(snapshot.ReviewThreadsAutoResolveDiffRange)) {
-            settings.ReviewThreadsAutoResolveDiffRange = snapshot.ReviewThreadsAutoResolveDiffRange!;
-        }
-        if (snapshot.ReviewThreadsAutoResolveMax.HasValue) {
-            settings.ReviewThreadsAutoResolveMax = snapshot.ReviewThreadsAutoResolveMax.Value;
-        }
-        if (snapshot.ReviewThreadsAutoResolveSweepNoBlockers.HasValue) {
-            settings.ReviewThreadsAutoResolveSweepNoBlockers = snapshot.ReviewThreadsAutoResolveSweepNoBlockers.Value;
-        }
-        if (snapshot.ReviewThreadsAutoResolveAIReply.HasValue) {
-            settings.ReviewThreadsAutoResolveAIReply = snapshot.ReviewThreadsAutoResolveAIReply.Value;
-        }
-        if (snapshot.ReviewUsageSummary.HasValue) {
-            settings.ReviewUsageSummary = snapshot.ReviewUsageSummary.Value;
-        }
-        if (snapshot.ReviewUsageSummaryCacheMinutes.HasValue) {
-            settings.ReviewUsageSummaryCacheMinutes = snapshot.ReviewUsageSummaryCacheMinutes.Value;
-        }
-        if (snapshot.ReviewUsageSummaryTimeoutSeconds.HasValue) {
-            settings.ReviewUsageSummaryTimeoutSeconds = snapshot.ReviewUsageSummaryTimeoutSeconds.Value;
-        }
-        if (snapshot.ReviewUsageBudgetGuard.HasValue) {
-            settings.ReviewUsageBudgetGuard = snapshot.ReviewUsageBudgetGuard.Value;
-        }
-        if (snapshot.ReviewUsageBudgetAllowCredits.HasValue) {
-            settings.ReviewUsageBudgetAllowCredits = snapshot.ReviewUsageBudgetAllowCredits.Value;
-        }
-        if (snapshot.ReviewUsageBudgetAllowWeeklyLimit.HasValue) {
-            settings.ReviewUsageBudgetAllowWeeklyLimit = snapshot.ReviewUsageBudgetAllowWeeklyLimit.Value;
         }
         if (!options.IncludeRelatedPullRequestsSet && snapshot.IncludeRelatedPullRequests.HasValue) {
             settings.IncludeRelatedPullRequests = snapshot.IncludeRelatedPullRequests.Value;

@@ -169,7 +169,8 @@ internal static partial class Program {
             TestSetupBuildConfigJsonIncludesVisionInferenceFromFile);
         failed += Run("Setup config merge preserves review loop settings",
             TestSetupBuildConfigJsonMergePreservesReviewLoopSettings);
-        failed += Run("Setup config merge preserves review settings when enabling analysis", TestSetupBuildConfigJsonMergePreservesReviewSettingsWhenEnablingAnalysis);
+        failed += Run("Setup config merge refreshes managed reviewer defaults when enabling analysis",
+            TestSetupBuildConfigJsonMergeRefreshesManagedReviewerDefaultsWhenEnablingAnalysis);
         failed += Run("Setup autodetect JSON serializes check statuses as lowercase strings",
             TestSetupAutodetectJsonSerializesCheckStatusesAsLowercaseStrings);
         failed += Run("Setup autodetect missing workspace value fails", TestSetupAutodetectMissingWorkspaceValueFails);
