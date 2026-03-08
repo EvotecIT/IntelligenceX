@@ -53,6 +53,8 @@ public sealed class ChatServiceToolEvidenceCacheTests {
         Assert.Contains("ix:cached-tool-evidence:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("domaindetective_domain_summary", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("dnsclientx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("#### domaindetective_domain_summary", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("- domaindetective_domain_summary:", text, StringComparison.Ordinal);
     }
 
     [Fact]

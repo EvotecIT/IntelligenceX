@@ -128,6 +128,25 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures the data-view quick export button advertises the current default export format
+    /// instead of a generic label with unclear behavior.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesDynamicDataViewQuickExportLabeling() {
+        var html = UiShellAssets.Load();
+        var dataviewScriptPath = Path.Combine(UiDirectory, "Shell.17.core.dataview.js");
+        var dataviewScript = File.ReadAllText(dataviewScriptPath);
+        var dataviewActionsScriptPath = Path.Combine(UiDirectory, "Shell.19.core.dataview.actions.js");
+        var dataviewActionsScript = File.ReadAllText(dataviewActionsScriptPath);
+
+        Assert.Contains(">Quick Excel<", html, StringComparison.Ordinal);
+        Assert.Contains("function updateDataViewQuickExportLabel()", dataviewScript, StringComparison.Ordinal);
+        Assert.Contains("btnDataViewQuickExport.textContent = \"Quick \" + formatLabel;", dataviewScript, StringComparison.Ordinal);
+        Assert.Contains("btnDataViewQuickExport.title = \"Export \" + formatLabel + \" using the default format and last folder when available.\";", dataviewScript, StringComparison.Ordinal);
+        Assert.Contains("if (typeof updateDataViewQuickExportLabel === \"function\") {", dataviewActionsScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures routing-catalog normalization remains backward compatible for older payloads
     /// that do not include newer explicit-routing readiness counters.
     /// </summary>
