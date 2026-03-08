@@ -474,6 +474,28 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures Mermaid runtime resolution survives the vendor bundle shape and later visual phases
+    /// still run when an earlier renderer throws.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesMermaidRuntimeFallbackAndSafeTranscriptPhaseChaining() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
+        var script = File.ReadAllText(scriptPath);
+
+        AssertContainsAll(
+            script,
+            "function resolveMermaidRuntimeCandidate() {",
+            "function getMermaidRuntime() {",
+            "globalThis.__esbuild_esm_mermaid_nm",
+            "window.mermaid = runtime;",
+            "function runTranscriptVisualPhaseSafely(root, renderPhase) {",
+            "console.warn(\"transcript visual phase failed\", error);",
+            "return runTranscriptVisualPhaseSafely(root, renderTranscriptCharts)",
+            "return runTranscriptVisualPhaseSafely(root, renderTranscriptNetworks)",
+            "return runTranscriptVisualPhaseSafely(root, renderTranscriptMermaid)");
+    }
+
+    /// <summary>
     /// Ensures visual export and popout show actionable prep failures instead of generic pre-save errors.
     /// </summary>
     [Fact]

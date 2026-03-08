@@ -19,7 +19,7 @@ internal static class TranscriptHtmlFormatter {
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
-        @"^\[(?<kind>[a-z_]+)\]\s*(?<headline>[^\r\n]*)",
+        @"^\[(?<kind>[a-zA-Z0-9 _-]+)\]\s*(?<headline>[^\r\n]*)",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PendingActionLineRegex = new(
         @"^\s*(?<index>\d+)\.\s+(?<label>.+?)\s+\((?:`)?(?<command>/act\s+(?<id>[^\s)`]+))(?:`)?\)\s*$",
@@ -289,18 +289,19 @@ internal static class TranscriptHtmlFormatter {
         }
 
         var kindRaw = match.Groups["kind"].Value.Trim();
+        var normalizedKind = NormalizeOutcomeKind(kindRaw);
         var headlineRaw = match.Groups["headline"].Value.Trim();
-        if (!IsAssistantOutcomeKind(kindRaw)) {
+        if (!IsAssistantOutcomeKind(normalizedKind)) {
             return false;
         }
 
         var headline = headlineRaw.Length == 0
-            ? GetOutcomeDefaultTitle(kindRaw, role)
+            ? GetOutcomeDefaultTitle(normalizedKind, role)
             : headlineRaw;
         var detail = raw[match.Length..].Trim();
-        var toneClass = GetAssistantOutcomeToneClass(kindRaw);
-        var badge = GetAssistantOutcomeBadge(kindRaw);
-        var iconSvg = GetAssistantOutcomeIconSvg(kindRaw);
+        var toneClass = GetAssistantOutcomeToneClass(normalizedKind);
+        var badge = GetAssistantOutcomeBadge(normalizedKind);
+        var iconSvg = GetAssistantOutcomeIconSvg(normalizedKind);
         var encoder = HtmlEncoder.Default;
 
         var sb = new StringBuilder();
@@ -324,11 +325,21 @@ internal static class TranscriptHtmlFormatter {
         return true;
     }
 
+    private static string NormalizeOutcomeKind(string kind) {
+        return (kind ?? string.Empty)
+            .Trim()
+            .Replace("-", "_", StringComparison.Ordinal)
+            .Replace(" ", "_", StringComparison.Ordinal)
+            .ToLowerInvariant();
+    }
+
     private static bool IsAssistantOutcomeKind(string kind) {
         return kind.Equals("error", StringComparison.OrdinalIgnoreCase)
                || kind.Equals("canceled", StringComparison.OrdinalIgnoreCase)
                || kind.Equals("limit", StringComparison.OrdinalIgnoreCase)
-               || kind.Equals("warning", StringComparison.OrdinalIgnoreCase);
+               || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)
+               || kind.Equals("startup", StringComparison.OrdinalIgnoreCase)
+               || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsOutcomeRole(string role) {
@@ -347,6 +358,12 @@ internal static class TranscriptHtmlFormatter {
         if (kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
             return isSystemRole ? "System warning" : "Warning";
         }
+        if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)) {
+            return isSystemRole ? "Startup diagnostics" : "Startup";
+        }
+        if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
+            return "Cached evidence fallback";
+        }
 
         return isSystemRole ? "System error" : "Request failed";
     }
@@ -361,6 +378,12 @@ internal static class TranscriptHtmlFormatter {
         if (kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
             return "Warning";
         }
+        if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)) {
+            return "Startup";
+        }
+        if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
+            return "Cached";
+        }
 
         return "Error";
     }
@@ -373,6 +396,10 @@ internal static class TranscriptHtmlFormatter {
             || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
             return "outcome-warn";
         }
+        if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
+            return "outcome-neutral";
+        }
 
         return "outcome-error";
     }
@@ -384,6 +411,10 @@ internal static class TranscriptHtmlFormatter {
         if (kind.Equals("limit", StringComparison.OrdinalIgnoreCase)
             || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
             return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M8 4.6v4.4'/><circle cx='8' cy='11.7' r='0.8' fill='currentColor' stroke='none'/></svg>";
+        }
+        if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)
+            || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
+            return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M8 6v2.8'/><path d='M8 10.7h.01'/></svg>";
         }
 
         return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6'/></svg>";
