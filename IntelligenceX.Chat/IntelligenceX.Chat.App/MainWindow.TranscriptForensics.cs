@@ -100,12 +100,19 @@ public sealed partial class MainWindow {
         }
 
         if (!string.IsNullOrWhiteSpace(liveThreadId)) {
+            ChatConversationState? matchedConversation = null;
             for (var i = 0; i < state.Conversations.Count; i++) {
                 var conversation = state.Conversations[i];
                 if (string.Equals(conversation.ThreadId, liveThreadId, StringComparison.Ordinal)) {
-                    return conversation;
+                    if (matchedConversation is not null) {
+                        return null;
+                    }
+
+                    matchedConversation = conversation;
                 }
             }
+
+            return matchedConversation;
         }
 
         return null;

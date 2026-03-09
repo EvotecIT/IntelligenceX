@@ -255,6 +255,35 @@ public sealed class TranscriptForensicsExporterTests {
     }
 
     /// <summary>
+    /// Verifies ambiguous thread id matches do not attach an arbitrary persisted conversation.
+    /// </summary>
+    [Fact]
+    public void FindPersistedConversationState_ReturnsNullWhenThreadIdMatchesMultipleConversations() {
+        var state = new ChatAppState {
+            Conversations = new List<ChatConversationState> {
+                new() {
+                    Id = "persisted-1",
+                    ThreadId = "thread-42",
+                    Messages = new List<ChatMessageState> {
+                        new() { Role = "Assistant", Text = "One" }
+                    }
+                },
+                new() {
+                    Id = "persisted-2",
+                    ThreadId = "thread-42",
+                    Messages = new List<ChatMessageState> {
+                        new() { Role = "Assistant", Text = "Two" }
+                    }
+                }
+            }
+        };
+
+        var match = MainWindow.FindPersistedConversationState(state, "live-1", "thread-42");
+
+        Assert.Null(match);
+    }
+
+    /// <summary>
     /// Verifies transcript forensics output paths normalize the extension and create the target directory.
     /// </summary>
     [Fact]
