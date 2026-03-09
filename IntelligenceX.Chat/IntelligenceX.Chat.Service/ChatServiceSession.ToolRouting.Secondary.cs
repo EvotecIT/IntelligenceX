@@ -26,10 +26,10 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
-    private async Task<IReadOnlyList<ToolDefinition>> TrySelectToolsViaModelPlannerAsync(IntelligenceXClient client, string activeThreadId, string userRequest,
+    private async Task<IReadOnlyList<ToolDefinition>> TrySelectToolsViaModelPlannerAsync(IntelligenceXClient client, string activeThreadId, string requestText,
         IReadOnlyList<ToolDefinition> definitions, int limit, CancellationToken cancellationToken) {
         if (string.IsNullOrWhiteSpace(activeThreadId)
-            || string.IsNullOrWhiteSpace(userRequest)
+            || string.IsNullOrWhiteSpace(requestText)
             || definitions.Count == 0
             || limit <= 0) {
             return Array.Empty<ToolDefinition>();
@@ -39,7 +39,7 @@ internal sealed partial class ChatServiceSession {
         Exception? plannerFailure = null;
         Exception? restoreFailure = null;
         try {
-            var plannerPrompt = BuildModelPlannerPrompt(userRequest, definitions, limit);
+            var plannerPrompt = BuildModelPlannerPrompt(requestText, definitions, limit);
             if (plannerPrompt.Length == 0) {
                 return Array.Empty<ToolDefinition>();
             }
@@ -414,15 +414,30 @@ internal sealed partial class ChatServiceSession {
         return list;
     }
 
-    private static string BuildModelPlannerPrompt(string userRequest, IReadOnlyList<ToolDefinition> definitions, int limit) {
+    private static string BuildModelPlannerPrompt(string requestText, IReadOnlyList<ToolDefinition> definitions, int limit) {
         if (definitions.Count == 0) {
             return string.Empty;
         }
 
+        var userRequest = ExtractPrimaryUserRequest(requestText);
         var sb = new StringBuilder(capacity: Math.Min(64_000, 4000 + (definitions.Count * 120)));
         sb.AppendLine("Select tools for the following user request.");
         sb.AppendLine("User request:");
         sb.AppendLine(userRequest.Trim());
+        if (TryReadContinuationFocusUnresolvedAskFromWorkingMemoryPrompt(requestText, out var unresolvedAsk)) {
+            sb.AppendLine();
+            sb.AppendLine("Current unresolved follow-up focus:");
+            sb.AppendLine(unresolvedAsk);
+        }
+        if (TryReadContinuationFocusCachedEvidenceReusePreferenceFromWorkingMemoryPrompt(requestText, out var preferCachedEvidenceReuse, out var cachedEvidenceReuseReason)
+            && preferCachedEvidenceReuse) {
+            sb.AppendLine();
+            sb.AppendLine("Continuation preference:");
+            sb.AppendLine("Reuse the latest fresh read-only evidence snapshot if it is still sufficient.");
+            if (cachedEvidenceReuseReason.Length > 0) {
+                sb.Append("Preference reason: ").AppendLine(cachedEvidenceReuseReason);
+            }
+        }
         sb.AppendLine();
         sb.AppendLine($"Return at most {Math.Max(1, limit)} tool names.");
         sb.AppendLine("Available tools:");
@@ -849,6 +864,7 @@ internal sealed partial class ChatServiceSession {
         bool DirectNameMatch,
         bool ExplicitToolMatch,
         int TokenHits,
+        int FocusTokenHits,
         double Adjustment);
 
     private enum ToolRoutingInsightStrategy {

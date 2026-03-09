@@ -464,7 +464,21 @@ internal sealed partial class ChatServiceSession {
         out IReadOnlyList<ToolDefinition> subset) {
         subset = Array.Empty<ToolDefinition>();
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
-        if (normalizedThreadId.Length == 0 || !LooksLikeContinuationFollowUp(userRequest)) {
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        var hasCheckpoint = TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint);
+        var compactContinuationFollowUp = LooksLikeContinuationFollowUp(userRequest);
+        var focusedQuestionFollowUp = hasCheckpoint && LooksLikeWorkingMemoryFocusedQuestionFollowUp(userRequest, checkpoint);
+        if (!compactContinuationFollowUp && !focusedQuestionFollowUp) {
+            return false;
+        }
+
+        if (hasCheckpoint
+            && compactContinuationFollowUp
+            && checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
+            && checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0) {
             return false;
         }
 
@@ -557,7 +571,7 @@ internal sealed partial class ChatServiceSession {
             seenUtcTicks = capabilitySeenUtcTicks;
         }
 
-        if (ShouldBypassContinuationSubsetForFollowUpQuestion(userRequest)) {
+        if (ShouldBypassContinuationSubsetForFollowUpQuestion(userRequest, focusedQuestionFollowUp)) {
             return false;
         }
 
@@ -702,7 +716,11 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
-    private static bool ShouldBypassContinuationSubsetForFollowUpQuestion(string userRequest) {
+    private static bool ShouldBypassContinuationSubsetForFollowUpQuestion(string userRequest, bool focusedQuestionFollowUp) {
+        if (focusedQuestionFollowUp) {
+            return false;
+        }
+
         var request = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
         if (request.Length == 0 || !ContainsQuestionSignal(request) || LooksLikeActionSelectionPayload(request)) {
             return false;

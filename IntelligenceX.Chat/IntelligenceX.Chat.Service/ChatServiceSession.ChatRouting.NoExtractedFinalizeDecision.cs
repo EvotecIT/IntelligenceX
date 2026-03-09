@@ -198,13 +198,14 @@ internal sealed partial class ChatServiceSession {
         TurnExecutionIntent turnExecutionIntent,
         string userRequest,
         string assistantDraft,
+        TurnAnswerPlan answerPlan,
         bool executionContractApplies,
         bool hasToolActivity,
         ProactiveFollowUpReviewDecision proactiveDecision,
         IReadOnlyList<ToolOutputDto> toolOutputs) {
         if (!noResultWatchdogTriggered
             && turnExecutionIntent.RequestedArtifact.RequiresArtifact
-            && !IsRequestedArtifactSatisfied(turnExecutionIntent.RequestedArtifact, assistantDraft)) {
+            && !IsRequestedArtifactRequirementSatisfied(turnExecutionIntent.RequestedArtifact, assistantDraft, answerPlan)) {
             return NoExtractedFinalizeReviewDecision.ProactiveFollowUpReview(
                 "allow_requested_artifact_missing",
                 BuildProactiveFollowUpReviewPrompt(userRequest, assistantDraft, toolOutputs));
@@ -463,6 +464,7 @@ internal sealed partial class ChatServiceSession {
             startupBootstrapCompletedSuccessfully: true,
             hasCachedToolCatalog: false,
             servingPersistedPreview: false);
+        var reviewedDraft = ResolveReviewedAssistantDraft(assistantDraft);
         var proactiveDecision = ResolveProactiveFollowUpReviewDecision(
             proactiveModeEnabled: proactiveModeEnabled,
             hasToolActivity: hasToolActivity,
@@ -470,7 +472,8 @@ internal sealed partial class ChatServiceSession {
             continuationFollowUpTurn: continuationFollowUpTurn,
             compactFollowUpTurn: compactFollowUpTurn,
             userRequest: userRequest,
-            assistantDraft: assistantDraft);
+            assistantDraft: assistantDraft,
+            answerPlanOverride: reviewedDraft.AnswerPlan);
         var decision = ResolveNoExtractedFinalizeReviewDecision(
             noResultWatchdogTriggered: noResultWatchdogTriggered,
             planExecuteReviewLoop: planExecuteReviewLoop,
@@ -478,7 +481,8 @@ internal sealed partial class ChatServiceSession {
             reviewPassesUsed: reviewPassesUsed,
             turnExecutionIntent: turnExecutionIntent,
             userRequest: userRequest,
-            assistantDraft: assistantDraft,
+            assistantDraft: reviewedDraft.VisibleText,
+            answerPlan: reviewedDraft.AnswerPlan,
             executionContractApplies: executionContractApplies,
             hasToolActivity: hasToolActivity,
             proactiveDecision: proactiveDecision,

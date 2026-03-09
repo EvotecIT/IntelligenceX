@@ -124,6 +124,25 @@ internal sealed partial class ChatServiceSession {
         return string.Equals(intent.PreferredVisualType, draftVisualType, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsRequestedArtifactRequirementSatisfied(
+        RequestedArtifactIntent intent,
+        string? assistantDraft,
+        TurnAnswerPlan answerPlan) {
+        if (IsRequestedArtifactSatisfied(intent, assistantDraft)) {
+            return true;
+        }
+
+        if (!intent.RequiresArtifact
+            || !answerPlan.HasPlan
+            || !answerPlan.RequestedArtifactAlreadyVisibleAbove
+            || string.IsNullOrWhiteSpace(answerPlan.RequestedArtifactVisibilityReason)
+            || !answerPlan.AdvancesCurrentAsk) {
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool AssistantDraftContainsMarkdownTableArtifact(string draft) {
         if (string.IsNullOrWhiteSpace(draft)) {
             return false;

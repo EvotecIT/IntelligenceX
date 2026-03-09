@@ -70,7 +70,7 @@ internal sealed partial class ChatServiceSession {
                     request.RequestId,
                     threadId,
                     status: ChatStatusCodes.Routing,
-                    message: "Recovered compact follow-up context from working-memory checkpoint.")
+                    message: "Recovered follow-up context from working-memory checkpoint.")
                 .ConfigureAwait(false);
         }
         var hasStructuredContinuationContext = continuationContractDetected
@@ -528,7 +528,9 @@ internal sealed partial class ChatServiceSession {
         for (var round = 0; round < maxRounds; round++) {
             var extracted = ToolCallParser.Extract(turn);
             if (extracted.Count == 0) {
-                var assistantDraft = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+                var rawAssistantDraft = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
+                var reviewedAssistantDraft = ResolveReviewedAssistantDraft(rawAssistantDraft);
+                var assistantDraft = reviewedAssistantDraft.VisibleText;
                 var controlPayloadDetected = isLocalCompatibleLoopback && LooksLikeRuntimeControlPayloadArtifact(assistantDraft);
                 if (!controlPayloadDetected && !string.IsNullOrWhiteSpace(assistantDraft)) {
                     lastNonEmptyAssistantDraft = assistantDraft.Trim();
@@ -537,6 +539,7 @@ internal sealed partial class ChatServiceSession {
                 var noExtractedRoundState = new NoExtractedToolRoundState(
                     turn: turn,
                     assistantDraft: assistantDraft,
+                    answerPlan: reviewedAssistantDraft.AnswerPlan,
                     controlPayloadDetected: controlPayloadDetected,
                     routedUserRequest: routedUserRequest,
                     executionContractApplies: executionContractApplies,

@@ -444,6 +444,136 @@ public sealed class ChatServiceToolEvidenceCacheTests {
     }
 
     [Fact]
+    public void ToolEvidenceCache_DoesNotReuseCachedEvidenceWhenContinuationFollowUpIntroducesNewUnresolvedAsk() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "ad_replication_summary",
+                ArgumentsJson = "{\"scope\":\"forest\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"scope\":\"forest\",\"servers\":[\"AD0\",\"AD1\",\"AD2\"]}",
+                SummaryMarkdown = "Full forest replication table currently shows AD0, AD1, and AD2 with healthy replication."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-unresolved-ask-shift",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-unresolved-ask-shift",
+            intentAnchor: "Go ahead and check full AD replication forest.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: Full forest replication table currently shows AD0, AD1, and AD2." });
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-unresolved-ask-shift",
+            "where is ADRODC in the full replication table?",
+            out _);
+
+        Assert.False(built);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_ReusesCachedEvidenceWhenContinuationFollowUpStillMatchesRememberedAsk() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "ad_replication_summary",
+                ArgumentsJson = "{\"scope\":\"forest\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"scope\":\"forest\",\"servers\":[\"AD0\",\"AD1\",\"AD2\"]}",
+                SummaryMarkdown = "Forest replication status for AD0, AD1, and AD2 is healthy."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-covered-follow-up",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-covered-follow-up",
+            intentAnchor: "Check forest replication across AD0, AD1, and AD2.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: Forest replication status for AD0, AD1, and AD2 is healthy." });
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-covered-follow-up",
+            "continue forest replication on AD2",
+            out var text);
+
+        Assert.True(built);
+        Assert.Contains("ad_replication_summary", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_DoesNotReuseCachedEvidenceForPriorAnswerPlanUnresolvedAsk() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "ad_replication_summary",
+                ArgumentsJson = "{\"scope\":\"forest\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"scope\":\"forest\",\"servers\":[\"AD0\",\"AD1\",\"AD2\"],\"missing\":[\"ADRODC\"]}",
+                SummaryMarkdown = "Full forest replication table currently shows AD0, AD1, AD2, and notes that ADRODC is missing from the returned rows."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-prior-unresolved-answer-plan",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-prior-unresolved-answer-plan",
+            intentAnchor: "Go ahead and check full AD replication forest.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: ADRODC is missing from the returned rows." },
+            priorAnswerPlanUserGoal: "Return the full forest replication table.",
+            priorAnswerPlanUnresolvedNow: "Explain why ADRODC is absent from the full replication table.",
+            priorAnswerPlanPrimaryArtifact: "table");
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-prior-unresolved-answer-plan",
+            "where is ADRODC in the full replication table?",
+            out _);
+
+        Assert.False(built);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_SelectCachedEvidenceAskCoverageTokens_PreservesShortNonLatinTokens() {
+        var selected = ChatServiceSession.SelectCachedEvidenceAskCoverageTokensForTesting("лес", "表", "ok");
+
+        Assert.Contains("лес", selected);
+        Assert.Contains("表", selected);
+        Assert.DoesNotContain("ok", selected);
+    }
+
+    [Fact]
     public void ToolEvidenceCache_ExtractExplicitRequestedToolNames_NormalizesEscapedAndHyphenatedForms() {
         var extracted = ChatServiceSession.ExtractExplicitRequestedToolNamesForTesting(
             "sprawdz `eventlog\\_evtx\\_query` and dnsclientx-query");

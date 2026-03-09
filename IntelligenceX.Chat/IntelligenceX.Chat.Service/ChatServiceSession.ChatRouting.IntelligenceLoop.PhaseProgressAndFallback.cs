@@ -414,7 +414,7 @@ internal sealed partial class ChatServiceSession {
         string assistantDraft,
         IReadOnlyList<ToolOutputDto>? toolOutputs) {
         var requestText = TrimForPrompt(userRequest, 520);
-        var draftText = TrimForPrompt(assistantDraft, 1800);
+        var draftText = TrimForPrompt(ResolveReviewedAssistantDraft(assistantDraft).VisibleText, 1800);
         var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
         var visualPolicy = ResolveProactiveVisualizationPolicy(userRequest, assistantDraft, toolOutputs);
         var allowNewVisualsText = visualPolicy.AllowNewVisuals ? "true" : "false";
@@ -467,6 +467,8 @@ internal sealed partial class ChatServiceSession {
             Current assistant draft:
             {{draftText}}
 
+            {{BuildAnswerPlanInstructions()}}
+
             Requirements:
             - Keep all existing factual findings that are already supported by tool output.
             - Keep the response natural and conversational, not scripted.
@@ -483,7 +485,7 @@ internal sealed partial class ChatServiceSession {
             - If confidence is uncertain, say what evidence is missing and how to collect it.
             - Prefer proactive checks that can catch hidden regressions, not just obvious follow-ups.
             - Do not invent tool outputs or claim completed actions that were not executed.
-            Return only the revised assistant response text.
+            After the answer-plan block, return only the revised assistant response text.
             """;
     }
 

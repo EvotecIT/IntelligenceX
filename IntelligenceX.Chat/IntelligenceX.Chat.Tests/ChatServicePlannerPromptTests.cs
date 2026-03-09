@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using IntelligenceX.Json;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.Tools;
@@ -30,6 +31,9 @@ public sealed class ChatServicePlannerPromptTests {
     private static readonly MethodInfo SelectWeightedToolSubsetMethod =
         typeof(ChatServiceSession).GetMethod("SelectWeightedToolSubset", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("SelectWeightedToolSubset not found.");
+    private static readonly MethodInfo BuildModelPlannerCandidatesMethod =
+        typeof(ChatServiceSession).GetMethod("BuildModelPlannerCandidates", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildModelPlannerCandidates not found.");
     private static readonly MethodInfo EnsureMinimumToolSelectionMethod =
         typeof(ChatServiceSession).GetMethod("EnsureMinimumToolSelection", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("EnsureMinimumToolSelection not found.");
@@ -104,6 +108,78 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("family: public_domain", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("intent:public_domain", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:domaindetective", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesContinuationFocusUnresolvedAskWhenPresent() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_replication_summary",
+                "Summarize AD replication health.",
+                ToolSchema.Object(("forest_name", ToolSchema.String("Forest DNS name."))).NoAdditionalProperties())
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            """
+            [Continuation focus]
+            ix:continuation-focus:v1
+            last_user_goal: Summarize the forest replication state in a table.
+            last_unresolved_ask: Explain why ADRODC is absent from the forest replication rows.
+            last_primary_artifact: table
+
+            [Working memory checkpoint]
+            ix:working-memory:v1
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: where is ADRODC in the table?
+            """,
+            definitions,
+            4
+        }));
+
+        Assert.Contains("User request:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("where is ADRODC in the table?", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Current unresolved follow-up focus:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Explain why ADRODC is absent from the forest replication rows.", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesContinuationFocusCachedEvidenceReusePreferenceWhenPresent() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_replication_summary",
+                "Summarize AD replication health.",
+                ToolSchema.Object(("forest_name", ToolSchema.String("Forest DNS name."))).NoAdditionalProperties())
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            """
+            [Continuation focus]
+            ix:continuation-focus:v1
+            last_user_goal: Continue from the same forest replication evidence.
+            last_prefer_cached_evidence_reuse: true
+            last_cached_evidence_reuse_reason: compact continuation should reuse the latest forest replication evidence snapshot
+            last_primary_artifact: prose
+
+            [Working memory checkpoint]
+            ix:working-memory:v1
+            intent_anchor: Continue from the same forest replication evidence.
+            follow_up: continue replication AD2
+            """,
+            definitions,
+            4
+        }));
+
+        Assert.Contains("User request:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("continue replication AD2", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Continuation preference:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Reuse the latest fresh read-only evidence snapshot if it is still sufficient.",
+            prompt,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "Preference reason: compact continuation should reuse the latest forest replication evidence snapshot",
+            prompt,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -505,6 +581,107 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.InRange(selected.Count, 4, 8);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_evtx_probe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_BoostsToolsMatchingContinuationFocusUnresolvedAsk() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 12; i++) {
+            definitions.Add(new ToolDefinition(
+                $"forest_table_summary_{i:D2}",
+                "Summarize the full forest replication state in a wide table and compare naming contexts, replication edges, largest delta, and error distribution per controller.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        for (var i = 0; i < 4; i++) {
+            definitions.Add(new ToolDefinition(
+                $"adrodc_gap_probe_{i:D2}",
+                "Explain why ADRODC is absent from forest replication rows and identify the missing controller evidence.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        var requestText = """
+            [Continuation focus]
+            ix:continuation-focus:v1
+            last_user_goal: Summarize the full forest replication state in a wide table and compare naming contexts, replication edges, largest delta, and error distribution per controller.
+            last_unresolved_ask: Explain why ADRODC is absent from the forest replication rows.
+            last_primary_artifact: table
+
+            [Working memory checkpoint]
+            ix:working-memory:v1
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: please explain it carefully for me
+            """;
+
+        var args = new object?[] {
+            definitions,
+            requestText,
+            4,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.InRange(selected.Count, 4, 10);
+        Assert.Contains(selected, tool => tool.Name.StartsWith("adrodc_gap_probe_", StringComparison.OrdinalIgnoreCase));
+
+        var insights = Assert.IsAssignableFrom<System.Collections.IEnumerable>(args[3]);
+        var hasFocusReason = false;
+        foreach (var insight in insights) {
+            if (insight is null) {
+                continue;
+            }
+
+            var reasonProperty = insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance);
+            var reason = reasonProperty?.GetValue(insight)?.ToString() ?? string.Empty;
+            if (reason.IndexOf("unresolved focus match", StringComparison.OrdinalIgnoreCase) >= 0) {
+                hasFocusReason = true;
+                break;
+            }
+        }
+
+        Assert.True(hasFocusReason);
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_PrefersToolsMatchingContinuationFocusUnresolvedAsk() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"forest_table_summary_{i:D2}",
+                "Summarize the full forest replication state in a wide table and compare naming contexts, replication edges, largest delta, and error distribution per controller.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        for (var i = 0; i < 4; i++) {
+            definitions.Add(new ToolDefinition(
+                $"adrodc_gap_probe_{i:D2}",
+                "Explain why ADRODC is absent from forest replication rows and identify the missing controller evidence.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
+            null,
+            new object?[] {
+                definitions,
+                """
+                [Continuation focus]
+                ix:continuation-focus:v1
+                last_user_goal: Summarize the forest replication state in a table.
+                last_unresolved_ask: Explain why ADRODC is absent from the forest replication rows.
+                last_primary_artifact: table
+
+                [Working memory checkpoint]
+                ix:working-memory:v1
+                intent_anchor: Run forest-wide replication and LDAP diagnostics.
+                follow_up: where is ADRODC in the table?
+                """,
+                4,
+                ToolOrchestrationCatalog.Build(definitions)
+            }));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => tool.Name.StartsWith("adrodc_gap_probe_", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

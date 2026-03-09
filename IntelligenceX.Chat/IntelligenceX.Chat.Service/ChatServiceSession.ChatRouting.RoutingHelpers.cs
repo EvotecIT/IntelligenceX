@@ -23,6 +23,8 @@ internal sealed partial class ChatServiceSession {
     private const int WeightedRoutingAmbiguousClusterMinCount = 3;
     private const int WeightedRoutingAmbiguousSelectionFloor = 10;
     private const int WeightedRoutingAmbiguousSelectionCap = 12;
+    private const int MaxWeightedRoutingFocusTokens = 12;
+    private const double WeightedRoutingFocusTokenScore = 2d;
 
     private readonly record struct WeightedRoutingSelectionDiagnostics(
         bool AmbiguityWidened,
@@ -471,8 +473,8 @@ internal sealed partial class ChatServiceSession {
             return (definitions, new List<ToolRoutingInsight>());
         }
 
-        var plannerCandidates = BuildModelPlannerCandidates(definitions, limit, _toolOrchestrationCatalog);
-        var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, userRequest, plannerCandidates, limit, cancellationToken)
+        var plannerCandidates = BuildModelPlannerCandidates(definitions, requestText, limit, _toolOrchestrationCatalog);
+        var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, requestText, plannerCandidates, limit, cancellationToken)
             .ConfigureAwait(false);
         if (planned.Count > 0) {
             var selected = EnsureMinimumToolSelection(userRequest, definitions, planned, limit);
@@ -488,6 +490,7 @@ internal sealed partial class ChatServiceSession {
 
     private static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(
         IReadOnlyList<ToolDefinition> definitions,
+        string requestText,
         int limit,
         ToolOrchestrationCatalog toolOrchestrationCatalog) {
         if (definitions.Count <= 64) {
@@ -496,7 +499,71 @@ internal sealed partial class ChatServiceSession {
 
         var minCandidateLimit = Math.Max(24, limit);
         var candidateLimit = Math.Clamp(Math.Max(limit * 3, minCandidateLimit), minCandidateLimit, Math.Min(definitions.Count, 96));
-        return SelectDeterministicToolSubset(definitions, candidateLimit, toolOrchestrationCatalog);
+        var focusTokens = ResolveWeightedRoutingFocusTokens(requestText, Array.Empty<string>());
+        if (focusTokens.Length == 0) {
+            return SelectDeterministicToolSubset(definitions, candidateLimit, toolOrchestrationCatalog);
+        }
+
+        var scored = new List<(ToolDefinition Definition, int FocusHits, string SearchText)>(definitions.Count);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            var searchText = BuildToolRoutingSearchText(definition);
+            var focusHits = 0;
+            for (var t = 0; t < focusTokens.Length; t++) {
+                var token = focusTokens[t];
+                if (token.Length == 0) {
+                    continue;
+                }
+
+                if (searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    focusHits++;
+                }
+            }
+
+            scored.Add((definition, focusHits, searchText));
+        }
+
+        scored.Sort(static (left, right) => {
+            var hitCompare = right.FocusHits.CompareTo(left.FocusHits);
+            if (hitCompare != 0) {
+                return hitCompare;
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(left.Definition.Name, right.Definition.Name);
+        });
+
+        var selected = new List<ToolDefinition>(candidateLimit);
+        var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < scored.Count && selected.Count < candidateLimit; i++) {
+            if (scored[i].FocusHits <= 0) {
+                break;
+            }
+
+            var definition = scored[i].Definition;
+            var name = (definition.Name ?? string.Empty).Trim();
+            if (name.Length == 0 || !selectedNames.Add(name)) {
+                continue;
+            }
+
+            selected.Add(definition);
+        }
+
+        if (selected.Count >= candidateLimit) {
+            return selected;
+        }
+
+        var deterministicBackfill = SelectDeterministicToolSubset(definitions, candidateLimit, toolOrchestrationCatalog);
+        for (var i = 0; i < deterministicBackfill.Count && selected.Count < candidateLimit; i++) {
+            var definition = deterministicBackfill[i];
+            var name = (definition.Name ?? string.Empty).Trim();
+            if (name.Length == 0 || !selectedNames.Add(name)) {
+                continue;
+            }
+
+            selected.Add(definition);
+        }
+
+        return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
     }
 
     private IReadOnlyList<ToolDefinition> SelectWeightedToolSubset(IReadOnlyList<ToolDefinition> definitions, string requestText, int? maxCandidateTools,
@@ -518,9 +585,11 @@ internal sealed partial class ChatServiceSession {
 
         var explicitRequestedToolNames = BuildExplicitRequestedToolNameSet(userRequest);
         var routingTokens = TokenizeRoutingTokens(userRequest, maxTokens: 16);
+        var focusTokens = ResolveWeightedRoutingFocusTokens(requestText, routingTokens);
         var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
+        var focusTokenSupport = focusTokens.Length == 0 ? Array.Empty<int>() : new int[focusTokens.Length];
         string[]? toolSearchTexts = null;
-        if (routingTokens.Length > 0) {
+        if (routingTokens.Length > 0 || focusTokens.Length > 0) {
             toolSearchTexts = new string[definitions.Count];
             for (var i = 0; i < definitions.Count; i++) {
                 toolSearchTexts[i] = BuildToolRoutingSearchText(definitions[i]);
@@ -541,6 +610,22 @@ internal sealed partial class ChatServiceSession {
 
                 routingTokenSupport[t] = support;
             }
+
+            for (var t = 0; t < focusTokens.Length; t++) {
+                var token = focusTokens[t];
+                if (token.Length == 0) {
+                    continue;
+                }
+
+                var support = 0;
+                for (var i = 0; i < toolSearchTexts.Length; i++) {
+                    if (toolSearchTexts[i].IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                        support++;
+                    }
+                }
+
+                focusTokenSupport[t] = support;
+            }
         }
 
         // Tokens that show up in most tools are noise (ex: "get", "list"). Filter them out per-turn.
@@ -552,6 +637,7 @@ internal sealed partial class ChatServiceSession {
             var definition = definitions[i];
             var score = 0d;
             var tokenHits = 0;
+            var focusTokenHits = 0;
             var explicitToolMatch = IsExplicitRequestedToolMatch(definition.Name, explicitRequestedToolNames);
             var directNameMatch = userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0;
             if (explicitToolMatch) {
@@ -583,6 +669,28 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
+            if (focusTokens.Length > 0) {
+                var searchText = toolSearchTexts?[i] ?? BuildToolRoutingSearchText(definition);
+                for (var t = 0; t < focusTokens.Length; t++) {
+                    if (focusTokenSupport[t] > maxTokenSupport) {
+                        continue;
+                    }
+
+                    var token = focusTokens[t];
+                    if (token.Length == 0) {
+                        continue;
+                    }
+
+                    if (searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                        focusTokenHits++;
+                    }
+                }
+
+                if (focusTokenHits > 0) {
+                    score += focusTokenHits * WeightedRoutingFocusTokenScore;
+                }
+            }
+
             var adjustment = ReadToolRoutingAdjustment(definition.Name);
             score += adjustment;
             if (score > 0.01d) {
@@ -595,6 +703,7 @@ internal sealed partial class ChatServiceSession {
                 DirectNameMatch: directNameMatch,
                 ExplicitToolMatch: explicitToolMatch,
                 TokenHits: tokenHits,
+                FocusTokenHits: focusTokenHits,
                 Adjustment: adjustment));
         }
 
@@ -647,6 +756,26 @@ internal sealed partial class ChatServiceSession {
 
         insights = BuildRoutingInsights(scored, selectedDefs, selectionDiagnostics);
         return selectedDefs;
+    }
+
+    private static string[] ResolveWeightedRoutingFocusTokens(string requestText, IReadOnlyList<string> routingTokens) {
+        if (!TryReadContinuationFocusUnresolvedAskFromWorkingMemoryPrompt(requestText, out var unresolvedAsk)) {
+            return Array.Empty<string>();
+        }
+
+        var focusTokens = TokenizeRoutingTokens(unresolvedAsk, maxTokens: MaxWeightedRoutingFocusTokens);
+        if (focusTokens.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        if (routingTokens.Count == 0) {
+            return focusTokens;
+        }
+
+        var existing = new HashSet<string>(routingTokens, StringComparer.OrdinalIgnoreCase);
+        return focusTokens
+            .Where(existing.Add)
+            .ToArray();
     }
 
     private static WeightedRoutingSelectionDiagnostics ResolveWeightedRoutingSelectionDiagnostics(

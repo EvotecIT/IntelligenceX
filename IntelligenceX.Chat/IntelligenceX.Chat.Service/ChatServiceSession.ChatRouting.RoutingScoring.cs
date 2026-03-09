@@ -176,6 +176,9 @@ internal sealed partial class ChatServiceSession {
             if (toolScore.TokenHits > 0) {
                 reasons.Add("token match");
             }
+            if (toolScore.FocusTokenHits > 0) {
+                reasons.Add("unresolved focus match");
+            }
             if (toolScore.Adjustment > 0.2d) {
                 reasons.Add("recent tool success");
             } else if (toolScore.Adjustment < -0.2d) {

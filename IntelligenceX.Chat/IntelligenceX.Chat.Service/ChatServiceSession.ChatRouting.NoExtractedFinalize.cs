@@ -337,7 +337,8 @@ internal sealed partial class ChatServiceSession {
                     continuationFollowUpTurn: continuationFollowUpTurn,
                     compactFollowUpTurn: compactFollowUpTurn,
                     userRequest: routedUserRequest,
-                    assistantDraft: text);
+                    assistantDraft: text,
+                    answerPlanOverride: state.AnswerPlan);
                 var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
                 var turnExecutionIntent = ResolveTurnExecutionIntent(
                     userRequest: routedUserRequest,
@@ -368,6 +369,7 @@ internal sealed partial class ChatServiceSession {
                     turnExecutionIntent: turnExecutionIntent,
                     userRequest: routedUserRequest,
                     assistantDraft: text,
+                    answerPlan: state.AnswerPlan,
                     executionContractApplies: executionContractApplies,
                     hasToolActivity: hasToolActivity,
                     proactiveDecision: proactiveDecision,
@@ -394,7 +396,14 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 var explicitToolQuestionTurn = LooksLikeExplicitToolQuestionTurn(routedUserRequest);
-                if (ShouldForceExecutionContractBlockerAtFinalize(
+                if (TryPreferCachedEvidenceForResolvedCompactContinuation(
+                        threadId: threadId,
+                        userRequest: ExtractPrimaryUserRequest(request.Text),
+                        answerPlan: state.AnswerPlan,
+                        toolActivityDetected: hasToolActivity,
+                        out var resolvedContinuationCachedEvidenceText)) {
+                    text = resolvedContinuationCachedEvidenceText;
+                } else if (ShouldForceExecutionContractBlockerAtFinalize(
                         userRequest: routedUserRequest,
                         executionContractApplies: executionContractApplies,
                         autoPendingActionReplayUsed: autoPendingActionReplayUsed,
@@ -404,6 +413,7 @@ internal sealed partial class ChatServiceSession {
                         compactFollowUpTurn: compactFollowUpTurn,
                         explicitToolQuestionTurn: explicitToolQuestionTurn,
                         toolActivityDetected: hasToolActivity,
+                        answerPlan: state.AnswerPlan,
                         assistantDraft: text)) {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
@@ -437,7 +447,7 @@ internal sealed partial class ChatServiceSession {
                 // with what the user actually sees (including contract fallback substitutions).
                 RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHints);
                 RememberThreadToolEvidence(threadId, toolCalls, toolOutputs, mutatingToolHints);
-                RememberWorkingMemoryCheckpoint(threadId, userIntent, routedUserRequest, toolCalls, toolOutputs, mutatingToolHints);
+                RememberWorkingMemoryCheckpoint(threadId, userIntent, routedUserRequest, state.AnswerPlan, toolCalls, toolOutputs, mutatingToolHints);
 
                 var textBeforeNoTextFallback = text;
                 text = ResolveAssistantTextBeforeNoTextFallback(
@@ -504,6 +514,10 @@ internal sealed partial class ChatServiceSession {
                         transport: _options.OpenAITransport,
                         baseUrl: _options.OpenAIBaseUrl);
                 }
+
+                // Hidden answer-plan metadata is runtime-only and should never leak into the final
+                // user-visible ChatResultMessage, even on paths that already parsed it earlier.
+                text = ResolveReviewedAssistantDraft(text).VisibleText;
 
                 if (_options.Redact) {
                     text = RedactText(text);

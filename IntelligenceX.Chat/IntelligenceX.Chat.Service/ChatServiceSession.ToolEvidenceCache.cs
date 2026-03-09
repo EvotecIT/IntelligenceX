@@ -11,6 +11,7 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const string CachedToolEvidenceMarker = "ix:cached-tool-evidence:v1";
+    private const int CachedEvidenceAskCoverageMinTokenLength = 6;
     private static readonly Regex ExplicitRequestedToolNameRegex = new(
         @"\b[a-z][a-z0-9]*(?:(?:\\?[_-])[a-z0-9]+)+\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
@@ -130,15 +131,21 @@ internal sealed partial class ChatServiceSession {
         TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
 
         var requestTokens = TokenizeRoutingTokens(userRequest, maxTokens: 10);
+        if (ShouldBypassCachedEvidenceFallbackForPriorUnresolvedAsk(normalizedThreadId, requestTokens, userRequest)) {
+            return false;
+        }
+
         var requestedToolNames = ExtractExplicitRequestedToolNames(userRequest);
         var requestedFamily = ResolveRequestedToolEvidenceFamily(normalizedThreadId, userRequest);
         var hasRequestedFamily = requestedFamily.Length > 0;
+        var compactContinuationNudge = IsCompactToolEvidenceContinuationNudge(userRequest);
         var allowFamilyOnlyFallbackWithoutTokenMatch = hasRequestedFamily
                                                        && requestedToolNames.Length == 0
-                                                       && requestTokens.Length <= 2
-                                                       && !ContainsQuestionSignal(userRequest)
+                                                       && (compactContinuationNudge
+                                                           || ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, userRequest))
                                                        && !LooksLikeLiveRefreshFollowUp(userRequest)
                                                        && !LooksLikeExplicitLiveRefreshToolRequest(userRequest);
+        var requireAskCoverage = ShouldRequireCachedEvidenceAskCoverage(normalizedThreadId, userRequest, compactContinuationNudge);
         ThreadToolEvidenceEntry[] selected;
         ThreadToolEvidenceEntry[]? updatedSnapshotEntries = null;
         var shouldClearSnapshot = false;
@@ -211,6 +218,15 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (hasCandidates
+                && requireAskCoverage
+                && candidates.Count > 0) {
+                candidates.RemoveAll(candidate => !HasSufficientCachedEvidenceAskCoverage(normalizedThreadId, requestTokens, candidate.Entry));
+                if (candidates.Count == 0) {
+                    hasCandidates = false;
+                }
+            }
+
+            if (hasCandidates
                 && candidates.Count > 0
                 && requestedToolNames.Length > 0) {
                 candidates.RemoveAll(candidate => !MatchesExplicitRequestedToolName(candidate.Entry.ToolName, requestedToolNames));
@@ -274,6 +290,30 @@ internal sealed partial class ChatServiceSession {
                    || LooksLikeExplicitLiveRefreshToolRequest(userRequest));
     }
 
+    private bool TryPreferCachedEvidenceForResolvedCompactContinuation(
+        string threadId,
+        string userRequest,
+        TurnAnswerPlan answerPlan,
+        bool toolActivityDetected,
+        out string text) {
+        text = string.Empty;
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var normalizedRequest = (userRequest ?? string.Empty).Trim();
+        if (toolActivityDetected
+            || normalizedThreadId.Length == 0
+            || normalizedRequest.Length == 0
+            || ContainsQuestionSignal(normalizedRequest)
+            || !LooksLikeContinuationFollowUp(normalizedRequest)
+            || !answerPlan.HasPlan
+            || !answerPlan.PreferCachedEvidenceReuse
+            || answerPlan.CarryForwardUnresolvedFocus
+            || !HasFreshThreadToolEvidence(normalizedThreadId)) {
+            return false;
+        }
+
+        return TryBuildToolEvidenceFallbackText(normalizedThreadId, normalizedRequest, out text);
+    }
+
     private bool HasFreshThreadToolEvidence(string threadId) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0) {
@@ -312,6 +352,201 @@ internal sealed partial class ChatServiceSession {
         return TryGetCurrentDomainIntentFamily(threadId, out var rememberedFamily)
             ? rememberedFamily
             : string.Empty;
+    }
+
+    private bool ShouldRequireCachedEvidenceAskCoverage(string threadId, string userRequest, bool compactContinuationNudge) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0
+            || compactContinuationNudge
+            || ShouldTreatAsPassiveCompactFollowUp(threadId, normalized)
+            || !LooksLikeContinuationFollowUp(normalized)
+            || !TryGetWorkingMemoryCheckpoint(threadId, out _)) {
+            return false;
+        }
+
+        if (LooksLikeLiveRefreshFollowUp(normalized)
+            || LooksLikeExplicitLiveRefreshToolRequest(normalized)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool HasSufficientCachedEvidenceAskCoverage(string threadId, string[] requestTokens, ThreadToolEvidenceEntry entry) {
+        var askTokens = SelectCachedEvidenceAskCoverageTokens(requestTokens);
+        if (askTokens.Length == 0) {
+            return true;
+        }
+
+        var searchText = BuildCachedEvidenceAskCoverageText(threadId, entry);
+        if (searchText.Length == 0) {
+            return false;
+        }
+
+        var matched = 0;
+        for (var i = 0; i < askTokens.Length; i++) {
+            if (searchText.IndexOf(askTokens[i], StringComparison.OrdinalIgnoreCase) >= 0) {
+                matched++;
+            }
+        }
+
+        if (matched == 0) {
+            return false;
+        }
+
+        return (matched * 2) > askTokens.Length;
+    }
+
+    private bool ShouldBypassCachedEvidenceFallbackForPriorUnresolvedAsk(string threadId, string[] requestTokens, string userRequest) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var normalizedRequest = (userRequest ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0
+            || normalizedRequest.Length == 0
+            || !LooksLikeContinuationFollowUp(normalizedRequest)
+            || IsCompactToolEvidenceContinuationNudge(normalizedRequest)
+            || ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalizedRequest)
+            || !TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint)
+            || checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0) {
+            return false;
+        }
+
+        var requestAskTokens = SelectCachedEvidenceAskCoverageTokens(requestTokens);
+        if (requestAskTokens.Length == 0) {
+            return false;
+        }
+
+        var unresolvedTokens = SelectCachedEvidenceAskCoverageTokens(
+            TokenizeRoutingTokens(checkpoint.PriorAnswerPlanUnresolvedNow, maxTokens: 10));
+        if (unresolvedTokens.Length == 0) {
+            return false;
+        }
+
+        var overlap = 0;
+        for (var i = 0; i < requestAskTokens.Length; i++) {
+            for (var j = 0; j < unresolvedTokens.Length; j++) {
+                if (string.Equals(requestAskTokens[i], unresolvedTokens[j], StringComparison.OrdinalIgnoreCase)) {
+                    overlap++;
+                    break;
+                }
+            }
+        }
+
+        if (overlap <= 0) {
+            return false;
+        }
+
+        return (overlap * 2) > requestAskTokens.Length || overlap >= 2;
+    }
+
+    private static string[] SelectCachedEvidenceAskCoverageTokens(string[] requestTokens) {
+        if (requestTokens.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var selected = new List<string>(requestTokens.Length);
+        for (var i = 0; i < requestTokens.Length; i++) {
+            var token = (requestTokens[i] ?? string.Empty).Trim();
+            if (token.Length == 0) {
+                continue;
+            }
+
+            if (token.Length >= CachedEvidenceAskCoverageMinTokenLength
+                || token.IndexOfAny(new[] { '_', '-' }) >= 0
+                || ContainsDigit(token)
+                || ContainsNonLatinLetter(token)) {
+                selected.Add(token);
+            }
+        }
+
+        return selected.Count == 0 ? Array.Empty<string>() : selected.ToArray();
+    }
+
+    private string BuildCachedEvidenceAskCoverageText(string threadId, ThreadToolEvidenceEntry entry) {
+        var sb = new StringBuilder(1024);
+        AppendCachedEvidenceAskCoverageSegment(sb, entry.ToolName);
+        AppendCachedEvidenceAskCoverageSegment(sb, entry.ArgumentsJson);
+        AppendCachedEvidenceAskCoverageSegment(sb, entry.SummaryMarkdown);
+        AppendCachedEvidenceAskCoverageSegment(sb, entry.Output);
+
+        if (TryGetWorkingMemoryCheckpoint(threadId, out var checkpoint)) {
+            AppendCachedEvidenceAskCoverageSegment(sb, checkpoint.IntentAnchor);
+            AppendCachedEvidenceAskCoverageSegment(sb, checkpoint.PriorAnswerPlanUserGoal);
+            AppendCachedEvidenceAskCoverageSegment(sb, checkpoint.PriorAnswerPlanUnresolvedNow);
+            AppendCachedEvidenceAskCoverageSegment(sb, checkpoint.PriorAnswerPlanPrimaryArtifact);
+            for (var i = 0; i < checkpoint.RecentToolNames.Length; i++) {
+                AppendCachedEvidenceAskCoverageSegment(sb, checkpoint.RecentToolNames[i]);
+            }
+
+            for (var i = 0; i < checkpoint.RecentEvidenceSnippets.Length; i++) {
+                AppendCachedEvidenceAskCoverageSegment(sb, checkpoint.RecentEvidenceSnippets[i]);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static void AppendCachedEvidenceAskCoverageSegment(StringBuilder sb, string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return;
+        }
+
+        if (sb.Length > 0) {
+            sb.Append(' ');
+        }
+
+        sb.Append(normalized);
+    }
+
+    private static bool IsCompactToolEvidenceContinuationNudge(string userRequest) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0
+            || !LooksLikeContinuationFollowUp(normalized)
+            || ContainsQuestionSignal(normalized)
+            || normalized.Length > FollowUpShapeShortCharLimit) {
+            return false;
+        }
+
+        var tokenCount = CountLetterDigitTokens(normalized, maxTokens: 6);
+        return tokenCount > 0 && tokenCount <= 2;
+    }
+
+    private static bool ContainsDigit(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        for (var i = 0; i < normalized.Length; i++) {
+            if (char.IsDigit(normalized[i])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsNonLatinLetter(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (!char.IsLetter(ch)) {
+                continue;
+            }
+
+            if (!IsLatinLetter(ch)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLatinLetter(char ch) {
+        return ch switch {
+            <= '\u024F' => true,
+            >= '\u1E00' and <= '\u1EFF' => true,
+            >= '\u2C60' and <= '\u2C7F' => true,
+            >= '\uA720' and <= '\uA7FF' => true,
+            >= '\uAB30' and <= '\uAB6F' => true,
+            _ => false
+        };
     }
 
     private static string BuildToolEvidenceSnippet(string text) {

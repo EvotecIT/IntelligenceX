@@ -80,6 +80,62 @@ internal sealed partial class ChatServiceSession {
         return ExpandContinuationUserRequestWithOptions(threadId, userRequest, forceContinuationFollowUp);
     }
 
+    internal bool TryGetContinuationToolSubsetForTesting(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> allDefinitions,
+        out IReadOnlyList<ToolDefinition> subset) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(userRequest);
+        ArgumentNullException.ThrowIfNull(allDefinitions);
+        return TryGetContinuationToolSubset(threadId, userRequest, allDefinitions, out subset);
+    }
+
+    internal (
+        string UserRequest,
+        string UserIntent,
+        string RoutedUserRequest,
+        bool ContinuationExpandedFromContext,
+        bool HasStructuredContinuationContext,
+        bool ContinuationFollowUpTurn,
+        bool CompactFollowUpTurn) ResolveRoutingPreludeForTesting(string threadId, string requestText) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(requestText);
+
+        var userRequest = ExtractPrimaryUserRequest(requestText);
+        var userIntent = ExtractIntentUserText(requestText);
+        var continuationContractDetected = TryReadContinuationContractFromRequestText(requestText, out _, out _);
+        var hasFreshPendingActionContext = HasFreshPendingActionsContext(threadId);
+        RememberUserIntent(threadId, userIntent);
+
+        var routedUserRequest = ExpandContinuationUserRequestWithOptions(
+            threadId,
+            userRequest,
+            forceContinuationFollowUp: continuationContractDetected);
+        var continuationExpandedFromContext = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
+        if (TryAugmentRoutedUserRequestFromWorkingMemoryCheckpoint(threadId, userRequest, routedUserRequest, out var checkpointAugmentedRequest)) {
+            routedUserRequest = checkpointAugmentedRequest;
+            continuationExpandedFromContext = !string.Equals(routedUserRequest, userRequest, StringComparison.Ordinal);
+        }
+
+        var hasStructuredContinuationContext = continuationContractDetected
+                                              || hasFreshPendingActionContext
+                                              || continuationExpandedFromContext;
+        var (continuationFollowUpTurn, compactFollowUpTurn) = ResolveFollowUpTurnClassification(
+            continuationContractDetected,
+            hasStructuredContinuationContext,
+            userRequest,
+            routedUserRequest);
+        return (
+            userRequest,
+            userIntent,
+            routedUserRequest,
+            continuationExpandedFromContext,
+            hasStructuredContinuationContext,
+            continuationFollowUpTurn,
+            compactFollowUpTurn);
+    }
+
     internal void RememberUserIntentForTesting(string threadId, string userRequest) {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(userRequest);
@@ -90,6 +146,10 @@ internal sealed partial class ChatServiceSession {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(assistantReply);
         RememberPendingActions(threadId, assistantReply);
+    }
+
+    internal static string[] SelectCachedEvidenceAskCoverageTokensForTesting(params string[] requestTokens) {
+        return SelectCachedEvidenceAskCoverageTokens(requestTokens ?? Array.Empty<string>());
     }
 
     internal void RememberStructuredNextActionCarryoverForTesting(
