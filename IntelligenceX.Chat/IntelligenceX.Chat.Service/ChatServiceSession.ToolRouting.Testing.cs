@@ -148,6 +148,10 @@ internal sealed partial class ChatServiceSession {
         RememberPendingActions(threadId, assistantReply);
     }
 
+    internal static string[] SelectCachedEvidenceAskCoverageTokensForTesting(params string[] requestTokens) {
+        return SelectCachedEvidenceAskCoverageTokens(requestTokens ?? Array.Empty<string>());
+    }
+
     internal void RememberStructuredNextActionCarryoverForTesting(
         string threadId,
         IReadOnlyList<ToolDefinition> toolDefinitions,

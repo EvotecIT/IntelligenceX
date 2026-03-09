@@ -215,6 +215,38 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveNoExtractedFinalizeReviewDecisionForTesting_RejectsTableOnlyDraftThatAlsoIncludesDiagram() {
+        var assistantDraft = """
+            | Server | Health |
+            | --- | --- |
+            | AD0 | healthy |
+
+            ```mermaid
+            flowchart TD
+              AD0 --> AD1
+            ```
+            """;
+
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeReviewDecisionForTesting(
+            noResultWatchdogTriggered: false,
+            planExecuteReviewLoop: false,
+            maxReviewPasses: 1,
+            reviewPassesUsed: 0,
+            userRequest: "show only the replication table",
+            assistantDraft: assistantDraft,
+            executionContractApplies: false,
+            hasToolActivity: true,
+            proactiveModeEnabled: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false);
+
+        Assert.Equal("ProactiveFollowUpReview", result.Kind);
+        Assert.Equal("allow_requested_artifact_missing", result.Reason);
+        Assert.Equal(0, result.ReviewPassNumber);
+    }
+
+    [Fact]
     public void ResolveNoExtractedFinalizeNoTextDecisionForTesting_SelectsToolOutputSynthesisRetry() {
         var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextDecisionForTesting(
             noTextToolOutputDirectRetryUsed: false,

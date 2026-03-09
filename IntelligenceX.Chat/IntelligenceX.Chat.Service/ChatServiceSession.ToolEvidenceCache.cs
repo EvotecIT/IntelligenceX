@@ -452,7 +452,8 @@ internal sealed partial class ChatServiceSession {
 
             if (token.Length >= CachedEvidenceAskCoverageMinTokenLength
                 || token.IndexOfAny(new[] { '_', '-' }) >= 0
-                || ContainsDigit(token)) {
+                || ContainsDigit(token)
+                || ContainsNonLatinLetter(token)) {
                 selected.Add(token);
             }
         }
@@ -519,6 +520,33 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool ContainsNonLatinLetter(string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (!char.IsLetter(ch)) {
+                continue;
+            }
+
+            if (!IsLatinLetter(ch)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLatinLetter(char ch) {
+        return ch switch {
+            <= '\u024F' => true,
+            >= '\u1E00' and <= '\u1EFF' => true,
+            >= '\u2C60' and <= '\u2C7F' => true,
+            >= '\uA720' and <= '\uA7FF' => true,
+            >= '\uAB30' and <= '\uAB6F' => true,
+            _ => false
+        };
     }
 
     private static string BuildToolEvidenceSnippet(string text) {

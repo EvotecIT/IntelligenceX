@@ -264,6 +264,9 @@ internal sealed partial class ChatServiceSession {
                 hasAdvancesCurrentAsk = true;
                 continue;
             }
+
+            blockLength = lineOffset - blockStart;
+            break;
         }
 
         if (blockLength == 0) {

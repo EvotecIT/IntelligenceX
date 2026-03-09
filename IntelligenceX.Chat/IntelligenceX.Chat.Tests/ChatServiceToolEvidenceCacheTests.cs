@@ -565,6 +565,15 @@ public sealed class ChatServiceToolEvidenceCacheTests {
     }
 
     [Fact]
+    public void ToolEvidenceCache_SelectCachedEvidenceAskCoverageTokens_PreservesShortNonLatinTokens() {
+        var selected = ChatServiceSession.SelectCachedEvidenceAskCoverageTokensForTesting("лес", "表", "ok");
+
+        Assert.Contains("лес", selected);
+        Assert.Contains("表", selected);
+        Assert.DoesNotContain("ok", selected);
+    }
+
+    [Fact]
     public void ToolEvidenceCache_ExtractExplicitRequestedToolNames_NormalizesEscapedAndHyphenatedForms() {
         var extracted = ChatServiceSession.ExtractExplicitRequestedToolNamesForTesting(
             "sprawdz `eventlog\\_evtx\\_query` and dnsclientx-query");

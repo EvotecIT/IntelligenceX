@@ -443,7 +443,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             assistantDraft: draft);
 
         Assert.True(decision.ShouldAttempt);
-        Assert.Equal("allow_unjustified_visual_reuse", decision.Reason);
+        Assert.Equal("allow_requested_artifact_missing", decision.Reason);
     }
 
     [Fact]
@@ -525,6 +525,35 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(reviewedDraft.AnswerPlan.RepeatAddsNewInformation);
         Assert.Equal("clarifies why ADRODC is absent from the returned rows", reviewedDraft.AnswerPlan.RepeatNoveltyReason);
         Assert.DoesNotContain("ix:answer-plan:v1", reviewedDraft.VisibleText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "The summary currently lists only three servers because the collector returned domain-scoped rows.",
+            reviewedDraft.VisibleText);
+    }
+
+    [Fact]
+    public void ResolveReviewedAssistantDraft_PreservesVisibleTextWhenAnswerPlanBlockHasNoBlankLineTerminator() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain the missing rows
+            resolved_so_far: topology already summarized
+            unresolved_now: missing forest rows
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the forest-scope explanation still remains
+            prefer_cached_evidence_reuse: false
+            cached_evidence_reuse_reason: none
+            primary_artifact: prose
+            requested_artifact_already_visible_above: true
+            requested_artifact_visibility_reason: the table above is still the relevant artifact
+            advances_current_ask: true
+            advance_reason: clarifies why the table is partial
+            The summary currently lists only three servers because the collector returned domain-scoped rows.
+            """;
+
+        var reviewedDraft = ChatServiceSession.ResolveReviewedAssistantDraft(draft);
+
+        Assert.True(reviewedDraft.AnswerPlan.HasPlan);
+        Assert.Equal("explain the missing rows", reviewedDraft.AnswerPlan.UserGoal);
         Assert.Equal(
             "The summary currently lists only three servers because the collector returned domain-scoped rows.",
             reviewedDraft.VisibleText);
