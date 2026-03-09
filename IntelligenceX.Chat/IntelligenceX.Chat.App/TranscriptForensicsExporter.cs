@@ -155,11 +155,19 @@ internal static class TranscriptForensicsExporter {
             messages.Add((
                 message.Role,
                 message.Text,
-                message.TimeUtc.Kind == DateTimeKind.Utc ? message.TimeUtc.ToLocalTime() : message.TimeUtc,
+                NormalizePersistedTimestamp(message.TimeUtc),
                 message.Model));
         }
 
         return messages;
+    }
+
+    private static DateTime NormalizePersistedTimestamp(DateTime timestampUtc) {
+        return timestampUtc.Kind switch {
+            DateTimeKind.Utc => timestampUtc.ToLocalTime(),
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(timestampUtc, DateTimeKind.Utc).ToLocalTime(),
+            _ => timestampUtc
+        };
     }
 
     private static TranscriptForensicsRendererSnapshot BuildRendererSnapshot() {

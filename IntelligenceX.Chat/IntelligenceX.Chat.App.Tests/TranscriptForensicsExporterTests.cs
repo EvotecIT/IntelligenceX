@@ -60,6 +60,36 @@ public sealed class TranscriptForensicsExporterTests {
     }
 
     /// <summary>
+    /// Verifies persisted timestamps loaded without a kind are treated as UTC before projection.
+    /// </summary>
+    [Fact]
+    public void Build_TreatsPersistedUnspecifiedTimestampAsUtc() {
+        var options = ChatMarkdownOptions.Create();
+        var persistedTimestamp = new DateTime(2026, 3, 8, 18, 6, 28, DateTimeKind.Unspecified);
+        var bundle = TranscriptForensicsExporter.Build(
+            "default",
+            @"C:\Users\me\AppData\Local\IntelligenceX.Chat\app-state.db",
+            "HH:mm:ss",
+            options,
+            "conv-utc",
+            "Forest",
+            "thread-1",
+            new List<(string Role, string Text, DateTime Time, string? Model)>(),
+            new List<ChatMessageState> {
+                new() {
+                    Role = "Assistant",
+                    Text = "One",
+                    TimeUtc = persistedTimestamp,
+                    Model = "gpt-5.3-codex"
+                }
+            });
+
+        Assert.NotNull(bundle.Persisted);
+        Assert.Single(bundle.Persisted!.Messages);
+        Assert.Equal(DateTime.SpecifyKind(persistedTimestamp, DateTimeKind.Utc), bundle.Persisted.Messages[0].TimeUtc);
+    }
+
+    /// <summary>
     /// Verifies forensic export writes an indented JSON document with the expected raw and rendered transcript fields.
     /// </summary>
     [Fact]
@@ -220,5 +250,4 @@ public sealed class TranscriptForensicsExporterTests {
         return path;
     }
 }
-
 
