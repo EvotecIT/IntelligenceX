@@ -623,21 +623,25 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
 
         if (domainControllers.Count <= 1) {
             if (discoveryFallback != DirectoryDiscoveryFallback.CurrentForest) {
+                var sparseExpansionHasForestScope = !string.IsNullOrWhiteSpace(effectiveForest);
+                var sparseExpansionForestName = sparseExpansionHasForestScope ? effectiveForest ?? string.Empty : string.Empty;
+                var sparseExpansionDomainName = sparseExpansionHasForestScope ? string.Empty : effectiveDomain ?? string.Empty;
+                var sparseExpansionFallback = sparseExpansionHasForestScope ? "current_forest" : fallbackName;
                 nextActions.Add(ToolChainingHints.NextAction(
                     tool: "ad_forest_discover",
-                    reason: "expand_scope_via_current_forest_when_domain_controller_inventory_sparse",
+                    reason: "expand_scope_when_domain_controller_inventory_sparse",
                     suggestedArguments: ToolChainingHints.Map(
-                        ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", string.Empty),
-                        ("discovery_fallback", "current_forest"),
+                        ("forest_name", sparseExpansionForestName),
+                        ("domain_name", sparseExpansionDomainName),
+                        ("discovery_fallback", sparseExpansionFallback),
                         ("include_trusts", true),
                         ("max_domains", 500),
                         ("max_domain_controllers_total", 5000),
                         ("max_domain_controllers_per_domain", 500)),
                     arguments: ToolChainingHints.MapObject(
-                        ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", string.Empty),
-                        ("discovery_fallback", "current_forest"),
+                        ("forest_name", sparseExpansionForestName),
+                        ("domain_name", sparseExpansionDomainName),
+                        ("discovery_fallback", sparseExpansionFallback),
                         ("include_trusts", true),
                         ("max_domains", 500),
                         ("max_domain_controllers_total", 5000),

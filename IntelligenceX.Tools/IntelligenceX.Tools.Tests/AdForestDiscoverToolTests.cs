@@ -4,13 +4,19 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ADPlayground.Monitoring.Probes;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.ADPlayground;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
 
 public sealed class AdForestDiscoverToolTests {
+    private static readonly MethodInfo BuildChainContractMethod =
+        typeof(AdForestDiscoverTool).GetMethod("BuildChainContract", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildChainContract not found.");
+
     private static readonly MethodInfo BuildRenderHintsMethod =
         typeof(AdForestDiscoverTool).GetMethod("BuildRenderHints", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildRenderHints not found.");
@@ -96,9 +102,7 @@ public sealed class AdForestDiscoverToolTests {
         JsonElement? expansionAction = null;
         foreach (var action in nextActions.EnumerateArray()) {
             if (string.Equals(action.GetProperty("tool").GetString(), "ad_forest_discover", StringComparison.OrdinalIgnoreCase)) {
-                if (action.TryGetProperty("arguments", out var arguments)
-                    && arguments.TryGetProperty("discovery_fallback", out var fallback)
-                    && string.Equals(fallback.GetString(), "current_forest", StringComparison.OrdinalIgnoreCase)) {
+                if (action.TryGetProperty("arguments", out _)) {
                     expansionAction = action;
                     break;
                 }
@@ -148,5 +152,75 @@ public sealed class AdForestDiscoverToolTests {
             new object?[] { 0, 0, 0, 0, 0, 0 });
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public void BuildChainContract_WhenForestScopePreserved_BlanksDomainNameForChainedActions() {
+        var contract = InvokeBuildChainContract(
+            discoveryFallback: DirectoryDiscoveryFallback.CurrentDomain,
+            effectiveForest: "ad.evotec.xyz",
+            effectiveDomain: "child.ad.evotec.xyz",
+            domains: new[] { "ad.evotec.xyz", "child.ad.evotec.xyz" },
+            includeTrusts: false);
+
+        var scopeDiscoveryAction = FindAction(contract, "ad_scope_discovery");
+        Assert.Equal("ad.evotec.xyz", scopeDiscoveryAction.SuggestedArguments["forest_name"]);
+        Assert.Equal(string.Empty, scopeDiscoveryAction.SuggestedArguments["domain_name"]);
+
+        var probeRunAction = FindAction(contract, "ad_monitoring_probe_run");
+        Assert.NotNull(probeRunAction.Arguments);
+        Assert.Equal("ad.evotec.xyz", Assert.IsAssignableFrom<string>(probeRunAction.Arguments!["forest_name"]));
+        Assert.Equal(string.Empty, Assert.IsAssignableFrom<string>(probeRunAction.Arguments["domain_name"]));
+    }
+
+    [Fact]
+    public void BuildChainContract_WhenForestScopeUnknown_KeepsExplicitDomainForSparseExpansion() {
+        var contract = InvokeBuildChainContract(
+            discoveryFallback: DirectoryDiscoveryFallback.CurrentDomain,
+            effectiveForest: null,
+            effectiveDomain: "child.ad.evotec.xyz",
+            domains: new[] { "child.ad.evotec.xyz" },
+            includeTrusts: false);
+
+        var scopeDiscoveryAction = FindAction(contract, "ad_scope_discovery");
+        Assert.Equal(string.Empty, scopeDiscoveryAction.SuggestedArguments["forest_name"]);
+        Assert.Equal("child.ad.evotec.xyz", scopeDiscoveryAction.SuggestedArguments["domain_name"]);
+
+        var sparseExpansionAction = FindAction(contract, "ad_forest_discover");
+        Assert.NotNull(sparseExpansionAction.Arguments);
+        Assert.Equal(string.Empty, Assert.IsAssignableFrom<string>(sparseExpansionAction.Arguments!["forest_name"]));
+        Assert.Equal("child.ad.evotec.xyz", Assert.IsAssignableFrom<string>(sparseExpansionAction.Arguments["domain_name"]));
+        Assert.Equal("current_domain", Assert.IsAssignableFrom<string>(sparseExpansionAction.Arguments["discovery_fallback"]));
+    }
+
+    private static ToolChainContractModel InvokeBuildChainContract(
+        DirectoryDiscoveryFallback discoveryFallback,
+        string? effectiveForest,
+        string? effectiveDomain,
+        IReadOnlyList<string> domains,
+        bool includeTrusts) {
+        var result = BuildChainContractMethod.Invoke(
+            null,
+            new object?[] {
+                discoveryFallback,
+                effectiveForest,
+                effectiveDomain,
+                domains,
+                Array.Empty<string>(),
+                Array.Empty<object>(),
+                includeTrusts,
+                true,
+                true,
+                false,
+                true
+            });
+
+        return Assert.IsType<ToolChainContractModel>(result);
+    }
+
+    private static ToolNextActionModel FindAction(ToolChainContractModel contract, string toolName) {
+        return Assert.Single(
+            contract.NextActions,
+            action => string.Equals(action.Tool, toolName, StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -618,21 +618,25 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
 
         if (domainControllers.Count <= 1) {
             if (request.DiscoveryFallback != DirectoryDiscoveryFallback.CurrentForest || !request.IncludeTrusts) {
+                var sparseExpansionHasForestScope = !string.IsNullOrWhiteSpace(effectiveForest);
+                var sparseExpansionForestName = sparseExpansionHasForestScope ? effectiveForest ?? string.Empty : string.Empty;
+                var sparseExpansionDomainName = sparseExpansionHasForestScope ? string.Empty : effectiveDomain ?? string.Empty;
+                var sparseExpansionFallback = sparseExpansionHasForestScope ? "current_forest" : fallbackName;
                 nextActions.Add(ToolChainingHints.NextAction(
                     tool: "ad_scope_discovery",
-                    reason: "expand_scope_via_current_forest_and_trusts_when_domain_controller_inventory_sparse",
+                    reason: "expand_scope_and_trusts_when_domain_controller_inventory_sparse",
                     suggestedArguments: ToolChainingHints.Map(
-                        ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", string.Empty),
-                        ("discovery_fallback", "current_forest"),
+                        ("forest_name", sparseExpansionForestName),
+                        ("domain_name", sparseExpansionDomainName),
+                        ("discovery_fallback", sparseExpansionFallback),
                         ("include_trusts", true),
                         ("max_domains", Math.Max(request.MaxDomains, 500)),
                         ("max_domain_controllers_total", Math.Max(request.MaxDomainControllersTotal, 5000)),
                         ("max_domain_controllers_per_domain", Math.Max(request.MaxDomainControllersPerDomain, 500))),
                     arguments: ToolChainingHints.MapObject(
-                        ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", string.Empty),
-                        ("discovery_fallback", "current_forest"),
+                        ("forest_name", sparseExpansionForestName),
+                        ("domain_name", sparseExpansionDomainName),
+                        ("discovery_fallback", sparseExpansionFallback),
                         ("include_trusts", true),
                         ("include_domains", request.IncludeDomains.ToArray()),
                         ("exclude_domains", request.ExcludeDomains.ToArray()),
