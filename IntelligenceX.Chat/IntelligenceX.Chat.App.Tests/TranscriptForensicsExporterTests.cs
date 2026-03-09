@@ -91,6 +91,33 @@ public sealed class TranscriptForensicsExporterTests {
     }
 
     /// <summary>
+    /// Verifies messages that normalize to blank are excluded consistently from all forensic transcript artifacts.
+    /// </summary>
+    [Fact]
+    public void Build_SkipsMessagesThatNormalizeToBlankAcrossArtifacts() {
+        var options = ChatMarkdownOptions.Create();
+        var now = new DateTime(2026, 3, 8, 18, 10, 0, DateTimeKind.Local);
+        var bundle = TranscriptForensicsExporter.Build(
+            "default",
+            @"C:\db\app-state.db",
+            "HH:mm:ss",
+            options,
+            "conv-blank",
+            "Diagnostics",
+            null,
+            new List<(string Role, string Text, DateTime Time, string? Model)> {
+                ("Assistant", "\u200B", now, "gpt-5.3-codex")
+            },
+            persistedMessages: null);
+
+        Assert.Empty(bundle.Live.Messages);
+        Assert.Equal(0, bundle.Live.MessageCount);
+        Assert.Equal(string.Empty, bundle.Live.RawTranscriptMarkdown);
+        Assert.Equal(string.Empty, bundle.Live.NormalizedTranscriptMarkdown);
+        Assert.Equal(string.Empty, bundle.Live.RenderedTranscriptHtml);
+    }
+
+    /// <summary>
     /// Verifies forensic export writes an indented JSON document with the expected raw and rendered transcript fields.
     /// </summary>
     [Fact]

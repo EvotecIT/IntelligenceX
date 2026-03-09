@@ -68,14 +68,16 @@ internal static class TranscriptForensicsExporter {
         IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
         MarkdownRendererOptions markdownOptions) {
+        var includedMessages = new List<(string Role, string Text, DateTime Time, string? Model)>(messages.Count);
         var projectedMessages = new List<TranscriptForensicsMessage>(messages.Count);
         foreach (var message in messages) {
-            if (string.IsNullOrWhiteSpace(message.Text)) {
+            var rawText = message.Text;
+            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }
 
-            var rawText = message.Text;
-            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            includedMessages.Add((message.Role, rawText, message.Time, message.Model));
             // Diagnostic exports intentionally capture per-message render output to compare formatter behavior
             // against the full transcript artifact when debugging rendering mismatches.
             var renderedHtml = TranscriptHtmlFormatter.Format(
@@ -94,9 +96,9 @@ internal static class TranscriptForensicsExporter {
             });
         }
 
-        var rawTranscriptMarkdown = BuildRawTranscriptMarkdown(messages, timestampFormat);
+        var rawTranscriptMarkdown = BuildRawTranscriptMarkdown(includedMessages, timestampFormat);
         var normalizedTranscriptMarkdown = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(rawTranscriptMarkdown);
-        var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(messages, timestampFormat, markdownOptions);
+        var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(includedMessages, timestampFormat, markdownOptions);
 
         return new TranscriptForensicsConversationSnapshot {
             MessageCount = projectedMessages.Count,
@@ -118,14 +120,13 @@ internal static class TranscriptForensicsExporter {
             var message = persistedMessages[i];
             var timeUtc = NormalizePersistedTimestampUtc(message.TimeUtc);
             var displayTime = timeUtc.ToLocalTime();
-            displayMessages.Add((message.Role, message.Text, displayTime, message.Model));
-
-            if (string.IsNullOrWhiteSpace(message.Text)) {
+            var rawText = message.Text;
+            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }
 
-            var rawText = message.Text;
-            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            displayMessages.Add((message.Role, rawText, displayTime, message.Model));
             var renderedHtml = TranscriptHtmlFormatter.Format(
                 new[] { (message.Role, rawText, displayTime, message.Model) },
                 timestampFormat,
