@@ -410,6 +410,40 @@ public sealed class ChatServiceToolEvidenceCacheTests {
     }
 
     [Fact]
+    public void ToolEvidenceCache_DoesNotReuseFamilyMatchedEvidenceWhenSpecificRequestTokensDoNotMatch() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "ad_environment_discover",
+                ArgumentsJson = "{\"forest\":\"ad.evotec.xyz\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"ok\":true,\"domain_controllers\":[\"AD0\",\"AD1\",\"AD2\"]}",
+                SummaryMarkdown = "Active Directory environment discovery returned AD0, AD1, and AD2."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-family-token-mismatch",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.SetPreferredDomainIntentFamilyForTesting("thread-family-token-mismatch", "ad_domain");
+
+        var built = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-family-token-mismatch",
+            "where is ADRODC in the full replication table?",
+            out _);
+
+        Assert.False(built);
+    }
+
+    [Fact]
     public void ToolEvidenceCache_ExtractExplicitRequestedToolNames_NormalizesEscapedAndHyphenatedForms() {
         var extracted = ChatServiceSession.ExtractExplicitRequestedToolNamesForTesting(
             "sprawdz `eventlog\\_evtx\\_query` and dnsclientx-query");

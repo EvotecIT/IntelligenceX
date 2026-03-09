@@ -585,7 +585,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (requestedArtifactIntent.WantsTable) {
-            return "- The user explicitly asked for a compact table. Include it when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request.";
+            return "- The user explicitly asked for a compact table. Include it when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request. Do not add unrelated diagram/chart/network blocks when the user only asked for a table.";
         }
 
         return "- The user explicitly asked for a visual artifact. Include a supported visual block when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request.";

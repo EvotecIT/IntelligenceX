@@ -559,6 +559,13 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
         IReadOnlyList<ScopeDiscoveryGap> gaps,
         IReadOnlyList<ScopeDiscoveryStep> steps) {
         var fallbackName = ToDiscoveryFallbackName(request.DiscoveryFallback);
+        var preserveForestScope = !string.IsNullOrWhiteSpace(effectiveForest)
+                                  && (!string.IsNullOrWhiteSpace(request.ForestName)
+                                      || request.DiscoveryFallback == DirectoryDiscoveryFallback.CurrentForest
+                                      || request.IncludeTrusts
+                                      || domains.Count > 1);
+        var chainedForestName = preserveForestScope ? effectiveForest ?? string.Empty : string.Empty;
+        var chainedDomainName = preserveForestScope ? string.Empty : effectiveDomain ?? string.Empty;
         var handoff = ToolChainingHints.Map(
             ("contract", "ad_scope_discovery_handoff"),
             ("version", 1),
@@ -574,9 +581,10 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
                 tool: "ad_forest_discover",
                 reason: "Expand trust/domain-controller context and capture per-source discovery receipts for deeper diagnostics.",
                 suggestedArguments: ToolChainingHints.Map(
-                    ("forest_name", effectiveForest ?? string.Empty),
-                    ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName)),
+                    ("forest_name", chainedForestName),
+                    ("domain_name", chainedDomainName),
+                    ("discovery_fallback", fallbackName),
+                    ("include_trusts", request.IncludeTrusts)),
                 mutating: false),
             ToolChainingHints.NextAction(
                 tool: "ad_monitoring_probe_catalog",
@@ -594,33 +602,41 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
                 reason: "Run a replication probe against discovered scope to validate operational health.",
                 suggestedArguments: ToolChainingHints.Map(
                     ("probe_kind", "replication"),
-                    ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName)),
+                    ("forest_name", chainedForestName),
+                    ("domain_name", chainedDomainName),
+                    ("discovery_fallback", fallbackName),
+                    ("include_trusts", request.IncludeTrusts)),
                 arguments: ToolChainingHints.MapObject(
                     ("probe_kind", "replication"),
-                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("forest_name", chainedForestName),
+                    ("domain_name", chainedDomainName),
                     ("discovery_fallback", fallbackName),
+                    ("include_trusts", request.IncludeTrusts),
                     ("include_domain_controllers", probeIncludeDcs)),
                 mutating: false));
         }
 
         if (domainControllers.Count <= 1) {
             if (request.DiscoveryFallback != DirectoryDiscoveryFallback.CurrentForest || !request.IncludeTrusts) {
+                var sparseExpansionHasForestScope = !string.IsNullOrWhiteSpace(effectiveForest);
+                var sparseExpansionForestName = sparseExpansionHasForestScope ? effectiveForest ?? string.Empty : string.Empty;
+                var sparseExpansionDomainName = sparseExpansionHasForestScope ? string.Empty : effectiveDomain ?? string.Empty;
+                var sparseExpansionFallback = sparseExpansionHasForestScope ? "current_forest" : fallbackName;
                 nextActions.Add(ToolChainingHints.NextAction(
                     tool: "ad_scope_discovery",
-                    reason: "expand_scope_via_current_forest_and_trusts_when_domain_controller_inventory_sparse",
+                    reason: "expand_scope_and_trusts_when_domain_controller_inventory_sparse",
                     suggestedArguments: ToolChainingHints.Map(
-                        ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", effectiveDomain ?? string.Empty),
-                        ("discovery_fallback", "current_forest"),
+                        ("forest_name", sparseExpansionForestName),
+                        ("domain_name", sparseExpansionDomainName),
+                        ("discovery_fallback", sparseExpansionFallback),
                         ("include_trusts", true),
                         ("max_domains", Math.Max(request.MaxDomains, 500)),
                         ("max_domain_controllers_total", Math.Max(request.MaxDomainControllersTotal, 5000)),
                         ("max_domain_controllers_per_domain", Math.Max(request.MaxDomainControllersPerDomain, 500))),
                     arguments: ToolChainingHints.MapObject(
-                        ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", effectiveDomain ?? string.Empty),
-                        ("discovery_fallback", "current_forest"),
+                        ("forest_name", sparseExpansionForestName),
+                        ("domain_name", sparseExpansionDomainName),
+                        ("discovery_fallback", sparseExpansionFallback),
                         ("include_trusts", true),
                         ("include_domains", request.IncludeDomains.ToArray()),
                         ("exclude_domains", request.ExcludeDomains.ToArray()),

@@ -404,6 +404,32 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_TableOnlyRequestRejectsDraftThatRepeatsMermaidDiagram() {
+        var draft = """
+            | server | status |
+            | --- | --- |
+            | ad0 | healthy |
+
+            ```mermaid
+            flowchart TD
+              AD0 --> AD1
+            ```
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            userRequest: "daj tabelke dla ad replikacji",
+            assistantDraft: draft);
+
+        Assert.True(decision.ShouldAttempt);
+        Assert.Equal("allow_requested_artifact_missing", decision.Reason);
+    }
+
+    [Fact]
     public void ResolveAssistantTextBeforeNoTextFallback_ReusesPriorDraftWhenCurrentDraftIsEmptyAndToolActivityExists() {
         var resolved = ChatServiceSession.ResolveAssistantTextBeforeNoTextFallback(
             assistantDraft: " \n\t",
@@ -600,6 +626,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("include at most 1 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildProactiveFollowUpReviewPrompt_TableOnlyRequestDisallowsUnrelatedVisualBlocks() {
+        var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(
+            "show only the replication table",
+            "Current findings...");
+
+        Assert.Contains("The user explicitly asked for a compact table.", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not add unrelated diagram/chart/network blocks", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -304,18 +304,18 @@
 }
 
 .outcome-card.outcome-kind-cached-evidence-fallback {
-  border-color: rgba(154, 224, 203, 0.34);
-  background: linear-gradient(180deg, rgba(25, 62, 59, 0.95) 0%, rgba(17, 43, 42, 0.94) 100%);
+  border-color: rgba(124, 186, 238, 0.38);
+  background: linear-gradient(180deg, rgba(20, 53, 82, 0.95) 0%, rgba(14, 37, 61, 0.94) 100%);
 }
 
 .outcome-card.outcome-kind-cached-evidence-fallback .outcome-head {
-  background: linear-gradient(180deg, rgba(64, 132, 118, 0.24) 0%, rgba(28, 72, 66, 0.12) 100%);
+  background: linear-gradient(180deg, rgba(49, 103, 151, 0.28) 0%, rgba(21, 56, 88, 0.14) 100%);
 }
 
 .outcome-card.outcome-kind-cached-evidence-fallback .outcome-badge {
-  color: #dcfff2;
-  background: rgba(109, 221, 183, 0.18);
-  border-color: rgba(109, 221, 183, 0.42);
+  color: #dff2ff;
+  background: rgba(109, 184, 241, 0.2);
+  border-color: rgba(109, 184, 241, 0.48);
 }
 
 .bubble-meta {

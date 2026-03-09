@@ -16,6 +16,7 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
     private sealed record ReplicationSummaryRequest(
         string? DomainController,
         string? DomainName,
+        string? ForestName,
         bool Outbound,
         bool BySource,
         int StaleThresholdHours,
@@ -46,6 +47,7 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
         ToolSchema.Object(
                 ("domain_controller", ToolSchema.String("Optional domain controller to query. When set, reports replication edges for that DC only.")),
                 ("domain_name", ToolSchema.String("Optional DNS domain name to scope to a single domain. When omitted, uses the current forest.")),
+                ("forest_name", ToolSchema.String("Optional forest DNS name to use for forest-scoped enumeration when domain_name is omitted.")),
                 ("outbound", ToolSchema.Boolean("When true, summarizes links from the source perspective (source -> destination) instead of inbound (default false).")),
                 ("by_source", ToolSchema.Boolean("When true, group summary rows by source (neighbor) instead of destination (domain controller). Default false.")),
                 ("stale_threshold_hours", ToolSchema.Integer("Threshold used to flag stale replication (hours since last success). Default 24.")),
@@ -99,6 +101,7 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
             return ToolRequestBindingResult<ReplicationSummaryRequest>.Success(new ReplicationSummaryRequest(
                 DomainController: reader.OptionalString("domain_controller"),
                 DomainName: reader.OptionalString("domain_name"),
+                ForestName: reader.OptionalString("forest_name"),
                 Outbound: reader.Boolean("outbound"),
                 BySource: reader.Boolean("by_source"),
                 StaleThresholdHours: staleThresholdHours,
@@ -118,6 +121,7 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
             new ReplicationSummaryQueryOptions {
                 DomainController = request.DomainController,
                 DomainName = request.DomainName,
+                ForestName = request.ForestName,
                 Outbound = request.Outbound,
                 BySource = request.BySource,
                 StaleThresholdHours = request.StaleThresholdHours,

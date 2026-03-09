@@ -133,6 +133,12 @@ internal sealed partial class ChatServiceSession {
         var requestedToolNames = ExtractExplicitRequestedToolNames(userRequest);
         var requestedFamily = ResolveRequestedToolEvidenceFamily(normalizedThreadId, userRequest);
         var hasRequestedFamily = requestedFamily.Length > 0;
+        var allowFamilyOnlyFallbackWithoutTokenMatch = hasRequestedFamily
+                                                       && requestedToolNames.Length == 0
+                                                       && requestTokens.Length <= 2
+                                                       && !ContainsQuestionSignal(userRequest)
+                                                       && !LooksLikeLiveRefreshFollowUp(userRequest)
+                                                       && !LooksLikeExplicitLiveRefreshToolRequest(userRequest);
         ThreadToolEvidenceEntry[] selected;
         ThreadToolEvidenceEntry[]? updatedSnapshotEntries = null;
         var shouldClearSnapshot = false;
@@ -195,7 +201,10 @@ internal sealed partial class ChatServiceSession {
                         candidates.RemoveAll(static candidate => candidate.StrongTokenHits <= 0);
                     } else if (hasTokenMatchedCandidate) {
                         candidates.RemoveAll(static candidate => candidate.TokenHits <= 0);
-                    } else if (!hasRequestedFamily) {
+                    } else if (!allowFamilyOnlyFallbackWithoutTokenMatch) {
+                        // Same-family evidence is still too broad when none of the request's
+                        // routing tokens match the cached payload. In that case prefer no
+                        // fallback over replaying a nearby-but-unrelated AD artifact.
                         hasCandidates = false;
                     }
                 }
