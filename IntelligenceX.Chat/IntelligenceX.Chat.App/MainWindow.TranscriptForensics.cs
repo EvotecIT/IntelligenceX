@@ -43,6 +43,7 @@ public sealed partial class MainWindow {
             TranscriptForensicsExporter.Export(outputPath, bundle);
             AppendSystem("Exported transcript forensics: " + outputPath);
         } catch (Exception ex) {
+            StartupLog.Write("Transcript forensics export failed: " + ex);
             AppendSystem("Transcript forensics export failed: " + ex.Message);
         }
     }
@@ -69,7 +70,7 @@ public sealed partial class MainWindow {
         return selectedPath;
     }
 
-    private static string ResolveTranscriptForensicsOutputPath(string selectedPath) {
+    internal static string ResolveTranscriptForensicsOutputPath(string selectedPath) {
         var fullPath = Path.GetFullPath(selectedPath);
         if (!string.Equals(Path.GetExtension(fullPath), ".json", StringComparison.OrdinalIgnoreCase)) {
             fullPath = Path.ChangeExtension(fullPath, ".json");
@@ -101,7 +102,7 @@ public sealed partial class MainWindow {
         if (!string.IsNullOrWhiteSpace(liveThreadId)) {
             for (var i = 0; i < state.Conversations.Count; i++) {
                 var conversation = state.Conversations[i];
-                if (string.Equals(conversation.ThreadId, liveThreadId, StringComparison.OrdinalIgnoreCase)) {
+                if (string.Equals(conversation.ThreadId, liveThreadId, StringComparison.Ordinal)) {
                     return conversation;
                 }
             }
@@ -110,4 +111,3 @@ public sealed partial class MainWindow {
         return null;
     }
 }
-

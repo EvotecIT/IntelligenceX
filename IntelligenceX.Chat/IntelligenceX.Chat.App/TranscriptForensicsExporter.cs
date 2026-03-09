@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Rendering;
@@ -17,8 +16,7 @@ namespace IntelligenceX.Chat.App;
 internal static class TranscriptForensicsExporter {
     private static readonly JsonSerializerOptions JsonOptions = new() {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        WriteIndented = true
     };
 
     public static void Export(string outputPath, TranscriptForensicsBundle bundle) {
@@ -78,6 +76,8 @@ internal static class TranscriptForensicsExporter {
 
             var rawText = message.Text;
             var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            // Diagnostic exports intentionally capture per-message render output to compare formatter behavior
+            // against the full transcript artifact when debugging rendering mismatches.
             var renderedHtml = TranscriptHtmlFormatter.Format(
                 new[] { (message.Role, rawText, message.Time, message.Model) },
                 timestampFormat,
@@ -231,4 +231,3 @@ internal sealed class TranscriptForensicsMessage {
     public string RenderedHtml { get; set; } = string.Empty;
     public bool WasNormalized { get; set; }
 }
-

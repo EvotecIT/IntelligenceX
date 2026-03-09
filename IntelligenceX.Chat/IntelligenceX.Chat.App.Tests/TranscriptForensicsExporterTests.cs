@@ -94,6 +94,39 @@ public sealed class TranscriptForensicsExporterTests {
         }
     }
 
+    /// <summary>
+    /// Verifies transcript forensics export keeps HTML-sensitive content escaped in the JSON payload.
+    /// </summary>
+    [Fact]
+    public void Export_EscapesHtmlSensitiveContentInJson() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 3, 8, 18, 9, 40, DateTimeKind.Local);
+        var bundle = TranscriptForensicsExporter.Build(
+            "default",
+            @"C:\db\app-state.db",
+            "HH:mm:ss",
+            options,
+            "conv-escaped",
+            "Diagnostics",
+            null,
+            new List<(string Role, string Text, DateTime Time, string? Model)> {
+                ("Assistant", "<script>alert('xss')</script>", now, "gpt-5.3-codex")
+            },
+            persistedMessages: null);
+
+        var root = CreateTempDirectory();
+        try {
+            var outputPath = Path.Combine(root, "forensics.json");
+            TranscriptForensicsExporter.Export(outputPath, bundle);
+
+            var json = File.ReadAllText(outputPath);
+            Assert.Contains("\\u003Cscript\\u003Ealert(\\u0027xss\\u0027)\\u003C/script\\u003E", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("<script>alert('xss')</script>", json, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
 
     /// <summary>
     /// Verifies forensic export refuses weak title-plus-count matches to avoid attaching the wrong persisted conversation.
@@ -141,12 +174,51 @@ public sealed class TranscriptForensicsExporterTests {
         Assert.Equal("persisted-1", match!.Id);
     }
 
+    /// <summary>
+    /// Verifies thread id matching remains case-sensitive to avoid correlating the wrong persisted conversation.
+    /// </summary>
+    [Fact]
+    public void FindPersistedConversationState_DoesNotMatchThreadIdWithDifferentCase() {
+        var state = new ChatAppState {
+            Conversations = new List<ChatConversationState> {
+                new() {
+                    Id = "persisted-1",
+                    ThreadId = "Thread-42",
+                    Messages = new List<ChatMessageState> {
+                        new() { Role = "Assistant", Text = "One" }
+                    }
+                }
+            }
+        };
+
+        var match = MainWindow.FindPersistedConversationState(state, "live-1", "thread-42");
+
+        Assert.Null(match);
+    }
+
+    /// <summary>
+    /// Verifies transcript forensics output paths normalize the extension and create the target directory.
+    /// </summary>
+    [Fact]
+    public void ResolveTranscriptForensicsOutputPath_NormalizesExtensionAndCreatesDirectory() {
+        var root = CreateTempDirectory();
+        try {
+            var selectedPath = Path.Combine(root, "nested", "bundle.trace");
+
+            var resolvedPath = MainWindow.ResolveTranscriptForensicsOutputPath(selectedPath);
+
+            Assert.Equal(Path.Combine(root, "nested", "bundle.json"), resolvedPath, ignoreCase: true);
+            Assert.True(Directory.Exists(Path.GetDirectoryName(resolvedPath)));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
     }
 }
-
 
 
