@@ -417,6 +417,7 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
             domains: domains,
             domainControllers: allDcs,
             trusts: trusts,
+            includeTrusts: includeTrustedDomains,
             rootDseOk: rootDseStep.Ok,
             domainsOk: domainsStep.Ok,
             domainControllersOk: dcStep.Ok,
@@ -559,11 +560,19 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
         IReadOnlyList<string> domains,
         IReadOnlyList<string> domainControllers,
         IReadOnlyList<object> trusts,
+        bool includeTrusts,
         bool rootDseOk,
         bool domainsOk,
         bool domainControllersOk,
         bool trustsOk) {
         var fallbackName = ToDiscoveryFallbackName(discoveryFallback);
+        var preserveForestScope = !string.IsNullOrWhiteSpace(effectiveForest)
+                                  && (discoveryFallback == DirectoryDiscoveryFallback.CurrentForest
+                                      || includeTrusts
+                                      || domains.Count > 1
+                                      || trusts.Count > 0);
+        var chainedForestName = preserveForestScope ? effectiveForest ?? string.Empty : string.Empty;
+        var chainedDomainName = preserveForestScope ? string.Empty : effectiveDomain ?? string.Empty;
         var handoff = ToolChainingHints.Map(
             ("contract", "ad_forest_discover_handoff"),
             ("version", 1),
@@ -579,21 +588,26 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
                 tool: "ad_scope_discovery",
                 reason: "Capture normalized naming contexts and per-domain probe receipts before deep AD follow-ups.",
                 suggestedArguments: ToolChainingHints.Map(
-                    ("forest_name", effectiveForest ?? string.Empty),
-                    ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName)),
+                    ("forest_name", chainedForestName),
+                    ("domain_name", chainedDomainName),
+                    ("discovery_fallback", fallbackName),
+                    ("include_trusts", includeTrusts)),
                 mutating: false),
             ToolChainingHints.NextAction(
                 tool: "ad_monitoring_probe_run",
                 reason: "Run replication health probes across discovered scope.",
                 suggestedArguments: ToolChainingHints.Map(
                     ("probe_kind", "replication"),
-                    ("domain_name", effectiveDomain ?? string.Empty),
-                    ("discovery_fallback", fallbackName)),
+                    ("forest_name", chainedForestName),
+                    ("domain_name", chainedDomainName),
+                    ("discovery_fallback", fallbackName),
+                    ("include_trusts", includeTrusts)),
                 arguments: ToolChainingHints.MapObject(
                     ("probe_kind", "replication"),
-                    ("domain_name", effectiveDomain ?? string.Empty),
+                    ("forest_name", chainedForestName),
+                    ("domain_name", chainedDomainName),
                     ("discovery_fallback", fallbackName),
+                    ("include_trusts", includeTrusts),
                     ("include_domain_controllers", domainControllers.Where(static dc => !string.IsNullOrWhiteSpace(dc)).Take(50).ToArray())),
                 mutating: false)
         };
@@ -614,7 +628,7 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
                     reason: "expand_scope_via_current_forest_when_domain_controller_inventory_sparse",
                     suggestedArguments: ToolChainingHints.Map(
                         ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", effectiveDomain ?? string.Empty),
+                        ("domain_name", string.Empty),
                         ("discovery_fallback", "current_forest"),
                         ("include_trusts", true),
                         ("max_domains", 500),
@@ -622,7 +636,7 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
                         ("max_domain_controllers_per_domain", 500)),
                     arguments: ToolChainingHints.MapObject(
                         ("forest_name", effectiveForest ?? string.Empty),
-                        ("domain_name", effectiveDomain ?? string.Empty),
+                        ("domain_name", string.Empty),
                         ("discovery_fallback", "current_forest"),
                         ("include_trusts", true),
                         ("max_domains", 500),

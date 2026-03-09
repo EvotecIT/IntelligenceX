@@ -14,6 +14,7 @@ internal sealed partial class ChatServiceSession {
             new(HasExplicitRequest: false, WantsTable: false, WantsVisual: false, PreferredVisualType: string.Empty, Reason: reason);
 
         internal bool RequiresArtifact => HasExplicitRequest && (WantsTable || WantsVisual);
+        internal bool WantsOnlyTable => WantsTable && !WantsVisual;
     }
 
     internal readonly record struct ContinuationIntent(
@@ -98,6 +99,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (intent.WantsOnlyTable && AssistantDraftContainsNonTableVisualArtifact(draft)) {
+            return false;
+        }
+
         if (!intent.WantsVisual) {
             return true;
         }
@@ -130,6 +135,31 @@ internal sealed partial class ChatServiceSession {
 
         return draft.Contains("| ---", StringComparison.Ordinal)
                || draft.Contains("|---", StringComparison.Ordinal);
+    }
+
+    private static bool AssistantDraftContainsNonTableVisualArtifact(string draft) {
+        if (string.IsNullOrWhiteSpace(draft)) {
+            return false;
+        }
+
+        var content = draft.AsSpan();
+        var lineStart = 0;
+        while (lineStart < content.Length) {
+            ReadOnlySpan<char> line;
+            lineStart = ReadNextLine(content, lineStart, out line);
+            var trimmed = line.TrimStart();
+            if (!TryGetFenceLanguage(trimmed, out var fenceLanguage)) {
+                continue;
+            }
+
+            if (TryResolvePreferredVisualTypeToken(fenceLanguage, out var visualType)
+                && !string.Equals(visualType, TableVisualType, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return TryResolvePreferredVisualTypeFromStructuredJsonSignal(draft, out var structuredVisualType)
+               && !string.Equals(structuredVisualType, TableVisualType, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryResolvePreferredVisualTypeFromVisualRequestSignal(

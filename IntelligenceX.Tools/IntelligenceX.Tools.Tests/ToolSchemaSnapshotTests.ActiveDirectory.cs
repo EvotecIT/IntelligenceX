@@ -541,7 +541,7 @@ public partial class ToolSchemaSnapshotTests {
 
         yield return new object[] {
             "ad_replication_summary",
-            new[] { "domain_controller", "domain_name", "outbound", "by_source", "stale_threshold_hours", "bucket_hours", "include_details", "max_details", "max_domain_controllers", "max_errors", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "domain_controller", "domain_name", "forest_name", "outbound", "by_source", "stale_threshold_hours", "bucket_hours", "include_details", "max_details", "max_domain_controllers", "max_errors", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
         };
 

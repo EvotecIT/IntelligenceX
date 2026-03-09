@@ -110,8 +110,12 @@ public class AdScopeDiscoveryToolTests {
         }
 
         Assert.True(probeRunAction.HasValue);
+        var suggestedArguments = probeRunAction.Value.GetProperty("suggested_arguments");
+        Assert.Equal(global::System.Text.Json.JsonValueKind.Object, suggestedArguments.ValueKind);
+        Assert.True(suggestedArguments.TryGetProperty("forest_name", out _));
         var arguments = probeRunAction.Value.GetProperty("arguments");
         Assert.Equal(global::System.Text.Json.JsonValueKind.Object, arguments.ValueKind);
+        Assert.True(arguments.TryGetProperty("forest_name", out _));
         Assert.True(arguments.TryGetProperty("include_domain_controllers", out var includeDomainControllers));
         Assert.Equal(global::System.Text.Json.JsonValueKind.Array, includeDomainControllers.ValueKind);
     }

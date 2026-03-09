@@ -90,6 +90,9 @@ internal sealed partial class ChatServiceSession {
         "data-table",
         "grid",
         "tabela",
+        "tabelka",
+        "tabelki",
+        "tabelke",
         "tabla");
 
     private static IReadOnlyDictionary<string, string> BuildPreferredVisualTypeByToken() {
