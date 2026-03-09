@@ -19,6 +19,7 @@ internal sealed partial class ChatServiceSession {
     private const string ParallelToolModeForceSerial = "force_serial";
     private const string ParallelToolModeAllowParallel = "allow_parallel";
     private const string ResponseReviewMarker = "ix:response-review:v1";
+    private const string AnswerPlanMarker = "ix:answer-plan:v1";
     private const string ProactiveModeMarker = "ix:proactive-mode:v1";
     private const string ProactiveFollowUpMarker = "ix:proactive-followup:v1";
     // Keep parsing bounded while supporting larger structured request envelopes.
@@ -307,7 +308,7 @@ internal sealed partial class ChatServiceSession {
     internal static string BuildResponseQualityReviewPrompt(string userRequest, string assistantDraft, bool hasToolActivity, int reviewPassNumber,
         int maxReviewPasses) {
         var requestText = TrimForPrompt(userRequest, 520);
-        var draftText = TrimForPrompt(assistantDraft, 1600);
+        var draftText = TrimForPrompt(ResolveReviewedAssistantDraft(assistantDraft).VisibleText, 1600);
         var toolActivityHint = hasToolActivity ? "present" : "none";
         var pass = Math.Max(1, reviewPassNumber);
         var maxPasses = Math.Max(pass, maxReviewPasses);
@@ -324,10 +325,12 @@ internal sealed partial class ChatServiceSession {
 
             Tool activity this turn: {{toolActivityHint}}.
 
+            {{BuildAnswerPlanInstructions()}}
+
             Rewrite the assistant response so it is helpful, direct, and action-oriented.
             Do not invent tool outputs.
             If a blocker exists, state the exact blocker and the minimal missing input.
-            Return only the revised assistant response text.
+            After the answer-plan block, return only the revised assistant response text.
             """;
     }
 
@@ -356,7 +359,8 @@ internal sealed partial class ChatServiceSession {
         bool continuationFollowUpTurn,
         bool compactFollowUpTurn,
         string userRequest,
-        string assistantDraft) {
+        string assistantDraft,
+        TurnAnswerPlan? answerPlanOverride = null) {
         if (!proactiveModeEnabled || !hasToolActivity || proactiveFollowUpUsed) {
             return new ProactiveFollowUpReviewDecision(
                 ShouldAttempt: false,
@@ -370,7 +374,9 @@ internal sealed partial class ChatServiceSession {
                 PendingMutatingCount: 0);
         }
 
-        var draft = (assistantDraft ?? string.Empty).Trim();
+        var reviewedDraft = ResolveReviewedAssistantDraft(assistantDraft);
+        var draft = reviewedDraft.VisibleText.Trim();
+        var answerPlan = answerPlanOverride ?? reviewedDraft.AnswerPlan;
         if (draft.Length == 0 || draft.Length > 2800) {
             return new ProactiveFollowUpReviewDecision(
                 ShouldAttempt: false,
@@ -391,11 +397,77 @@ internal sealed partial class ChatServiceSession {
                 PendingMutatingCount: 0);
         }
 
+        if (answerPlan.HasPlan
+            && answerPlan.RequestedArtifactAlreadyVisibleAbove
+            && string.IsNullOrWhiteSpace(answerPlan.RequestedArtifactVisibilityReason)) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_unjustified_artifact_omission",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
         var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
-        if (requestedArtifactIntent.RequiresArtifact && !IsRequestedArtifactSatisfied(requestedArtifactIntent, draft)) {
+        if (requestedArtifactIntent.RequiresArtifact
+            && !IsRequestedArtifactRequirementSatisfied(requestedArtifactIntent, draft, answerPlan)) {
             return new ProactiveFollowUpReviewDecision(
                 ShouldAttempt: true,
                 Reason: "allow_requested_artifact_missing",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        if (answerPlan.HasPlan && !answerPlan.AdvancesCurrentAsk) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_answer_plan_not_advancing_current_ask",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        if (answerPlan.HasPlan
+            && answerPlan.RepeatsPriorVisibleContent
+            && string.IsNullOrWhiteSpace(answerPlan.PriorVisibleDeltaReason)) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_unjustified_prior_visible_repeat",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        if (answerPlan.HasPlan
+            && answerPlan.ReusePriorVisuals
+            && string.IsNullOrWhiteSpace(answerPlan.ReuseReason)) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_unjustified_visual_reuse",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        if (answerPlan.HasPlan
+            && answerPlan.ReusePriorVisuals
+            && !answerPlan.RepeatAddsNewInformation) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_redundant_visual_reuse",
+                PendingReadOnlyCount: 0,
+                PendingUnknownCount: 0,
+                PendingMutatingCount: 0);
+        }
+
+        if (answerPlan.HasPlan
+            && answerPlan.ReusePriorVisuals
+            && answerPlan.RepeatAddsNewInformation
+            && string.IsNullOrWhiteSpace(answerPlan.RepeatNoveltyReason)) {
+            return new ProactiveFollowUpReviewDecision(
+                ShouldAttempt: true,
+                Reason: "allow_unjustified_visual_novelty_claim",
                 PendingReadOnlyCount: 0,
                 PendingUnknownCount: 0,
                 PendingMutatingCount: 0);

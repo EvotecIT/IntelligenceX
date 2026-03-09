@@ -35,6 +35,41 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryGetContinuationToolSubset_ReusesSubsetForFocusedLongQuestionFollowUpFromWorkingMemory() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-subset-focused-question";
+        var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
+        var previousSubset = new List<ToolDefinition> {
+            allDefinitions[0],
+            allDefinitions[1]
+        };
+        const string userRequest = "Where is ADRODC in the full forest replication table above, and why are those rows still missing from it?";
+
+        Assert.False(Assert.IsType<bool>(LooksLikeContinuationFollowUpMethod.Invoke(null, new object?[] { userRequest })));
+
+        RememberWeightedToolSubsetMethod.Invoke(session, new object?[] { threadId, previousSubset, allDefinitions.Count });
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Run forest-wide replication and LDAP diagnostics.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: forest rows still omit ADRODC." },
+            priorAnswerPlanUserGoal: "Summarize the forest replication state in a table.",
+            priorAnswerPlanUnresolvedNow: "Explain why ADRODC is absent from the forest replication rows.",
+            priorAnswerPlanPrimaryArtifact: "table",
+            enabledPackIds: new[] { "active_directory" },
+            routingFamilies: new[] { "ad_domain" },
+            healthyToolNames: new[] { "dnsclientx_query", "dnsclientx_ping" });
+
+        var result = session.TryGetContinuationToolSubsetForTesting(threadId, userRequest, allDefinitions, out var subset);
+
+        Assert.True(result);
+        Assert.Equal(2, subset.Count);
+        Assert.Equal("dnsclientx_query", subset[0].Name);
+        Assert.Equal("dnsclientx_ping", subset[1].Name);
+    }
+
+    [Fact]
     public void TryGetContinuationToolSubset_SkipsSubsetWhenFollowUpMentionsToolOutsideSubset() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-continuation-subset-explicit-tool";
@@ -104,6 +139,34 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void TryGetContinuationToolSubset_SkipsSubsetForUnrelatedLongQuestionEvenWithWorkingMemory() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-subset-unrelated-question";
+        var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
+        var previousSubset = new List<ToolDefinition> {
+            allDefinitions[0],
+            allDefinitions[1]
+        };
+        const string userRequest = "Which firewall ports should I open for LDAP and Kerberos troubleshooting in another environment?";
+
+        RememberWeightedToolSubsetMethod.Invoke(session, new object?[] { threadId, previousSubset, allDefinitions.Count });
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Run forest-wide replication and LDAP diagnostics.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: forest rows still omit ADRODC." },
+            priorAnswerPlanUserGoal: "Summarize the forest replication state in a table.",
+            priorAnswerPlanUnresolvedNow: "Explain why ADRODC is absent from the forest replication rows.",
+            priorAnswerPlanPrimaryArtifact: "table");
+
+        var result = session.TryGetContinuationToolSubsetForTesting(threadId, userRequest, allDefinitions, out var subset);
+
+        Assert.False(result);
+        Assert.Empty(subset);
+    }
+
+    [Fact]
     public void TryGetContinuationToolSubset_ReusesSubsetForShortAcknowledgementQuestion() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-continuation-subset-short-question";
@@ -126,6 +189,35 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(2, subset.Count);
         Assert.Equal("dnsclientx_query", subset[0].Name);
         Assert.Equal("dnsclientx_ping", subset[1].Name);
+    }
+
+    [Fact]
+    public void TryGetContinuationToolSubset_SkipsSubsetWhenContinuationFocusPrefersCachedEvidenceReuse() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-subset-cache-reuse";
+        var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
+        var previousSubset = new List<ToolDefinition> {
+            allDefinitions[0],
+            allDefinitions[1]
+        };
+
+        RememberWeightedToolSubsetMethod.Invoke(session, new object?[] { threadId, previousSubset, allDefinitions.Count });
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Continue from the same forest replication evidence.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: forest replication is healthy for AD0, AD1, and AD2." },
+            priorAnswerPlanUserGoal: "Continue from the same forest replication evidence.",
+            priorAnswerPlanUnresolvedNow: string.Empty,
+            priorAnswerPlanPreferCachedEvidenceReuse: true,
+            priorAnswerPlanCachedEvidenceReuseReason: "compact continuation should reuse the latest forest replication evidence snapshot",
+            priorAnswerPlanPrimaryArtifact: "prose");
+
+        var result = session.TryGetContinuationToolSubsetForTesting(threadId, "continue replication AD2", allDefinitions, out var subset);
+
+        Assert.False(result);
+        Assert.Empty(subset);
     }
 
     [Fact]

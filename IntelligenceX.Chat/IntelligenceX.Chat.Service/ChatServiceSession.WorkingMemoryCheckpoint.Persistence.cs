@@ -26,6 +26,11 @@ internal sealed partial class ChatServiceSession {
         public string DomainIntentFamily { get; set; } = string.Empty;
         public string[] RecentToolNames { get; set; } = Array.Empty<string>();
         public string[] RecentEvidenceSnippets { get; set; } = Array.Empty<string>();
+        public string PriorAnswerPlanUserGoal { get; set; } = string.Empty;
+        public string PriorAnswerPlanUnresolvedNow { get; set; } = string.Empty;
+        public bool PriorAnswerPlanPreferCachedEvidenceReuse { get; set; }
+        public string PriorAnswerPlanCachedEvidenceReuseReason { get; set; } = string.Empty;
+        public string PriorAnswerPlanPrimaryArtifact { get; set; } = string.Empty;
         public string[] CapabilityEnabledPackIds { get; set; } = Array.Empty<string>();
         public string[] CapabilityRoutingFamilies { get; set; } = Array.Empty<string>();
         public string[] CapabilitySkills { get; set; } = Array.Empty<string>();
@@ -66,6 +71,13 @@ internal sealed partial class ChatServiceSession {
                 DomainIntentFamily = checkpoint.DomainIntentFamily,
                 RecentToolNames = NormalizeWorkingMemoryList(checkpoint.RecentToolNames, MaxWorkingMemoryToolNames),
                 RecentEvidenceSnippets = NormalizeWorkingMemoryList(checkpoint.RecentEvidenceSnippets, MaxWorkingMemoryEvidenceLines),
+                PriorAnswerPlanUserGoal = NormalizeWorkingMemoryAnswerPlanFocus(checkpoint.PriorAnswerPlanUserGoal),
+                PriorAnswerPlanUnresolvedNow = NormalizeWorkingMemoryAnswerPlanFocus(checkpoint.PriorAnswerPlanUnresolvedNow),
+                PriorAnswerPlanPreferCachedEvidenceReuse = checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse,
+                PriorAnswerPlanCachedEvidenceReuseReason = checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
+                    ? NormalizeWorkingMemoryAnswerPlanFocus(checkpoint.PriorAnswerPlanCachedEvidenceReuseReason)
+                    : string.Empty,
+                PriorAnswerPlanPrimaryArtifact = NormalizeWorkingMemoryAnswerPlanArtifact(checkpoint.PriorAnswerPlanPrimaryArtifact),
                 CapabilityEnabledPackIds = NormalizeDistinctStrings(
                     (checkpoint.CapabilityEnabledPackIds ?? Array.Empty<string>())
                     .Select(static packId => NormalizePackId(packId))
@@ -101,6 +113,13 @@ internal sealed partial class ChatServiceSession {
             var recentToolNames = NormalizeWorkingMemoryList(entry.RecentToolNames ?? Array.Empty<string>(), MaxWorkingMemoryToolNames);
             var recentEvidenceSnippets =
                 NormalizeWorkingMemoryList(entry.RecentEvidenceSnippets ?? Array.Empty<string>(), MaxWorkingMemoryEvidenceLines);
+            var priorAnswerPlanUserGoal = NormalizeWorkingMemoryAnswerPlanFocus(entry.PriorAnswerPlanUserGoal);
+            var priorAnswerPlanUnresolvedNow = NormalizeWorkingMemoryAnswerPlanFocus(entry.PriorAnswerPlanUnresolvedNow);
+            var priorAnswerPlanPreferCachedEvidenceReuse = entry.PriorAnswerPlanPreferCachedEvidenceReuse;
+            var priorAnswerPlanCachedEvidenceReuseReason = priorAnswerPlanPreferCachedEvidenceReuse
+                ? NormalizeWorkingMemoryAnswerPlanFocus(entry.PriorAnswerPlanCachedEvidenceReuseReason)
+                : string.Empty;
+            var priorAnswerPlanPrimaryArtifact = NormalizeWorkingMemoryAnswerPlanArtifact(entry.PriorAnswerPlanPrimaryArtifact);
             var capabilityEnabledPackIds = NormalizeDistinctStrings(
                 (entry.CapabilityEnabledPackIds ?? Array.Empty<string>())
                 .Select(static packId => NormalizePackId(packId))
@@ -115,6 +134,11 @@ internal sealed partial class ChatServiceSession {
                 && domainIntentFamily.Length == 0
                 && recentToolNames.Length == 0
                 && recentEvidenceSnippets.Length == 0
+                && priorAnswerPlanUserGoal.Length == 0
+                && priorAnswerPlanUnresolvedNow.Length == 0
+                && !priorAnswerPlanPreferCachedEvidenceReuse
+                && priorAnswerPlanCachedEvidenceReuseReason.Length == 0
+                && priorAnswerPlanPrimaryArtifact.Length == 0
                 && capabilityEnabledPackIds.Length == 0
                 && capabilityRoutingFamilies.Length == 0
                 && capabilitySkills.Length == 0
@@ -142,6 +166,11 @@ internal sealed partial class ChatServiceSession {
                 DomainIntentFamily: domainIntentFamily,
                 RecentToolNames: recentToolNames,
                 RecentEvidenceSnippets: recentEvidenceSnippets,
+                PriorAnswerPlanUserGoal: priorAnswerPlanUserGoal,
+                PriorAnswerPlanUnresolvedNow: priorAnswerPlanUnresolvedNow,
+                PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
+                PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanCachedEvidenceReuseReason,
+                PriorAnswerPlanPrimaryArtifact: priorAnswerPlanPrimaryArtifact,
                 CapabilityEnabledPackIds: capabilityEnabledPackIds,
                 CapabilityRoutingFamilies: capabilityRoutingFamilies,
                 CapabilitySkills: capabilitySkills,

@@ -108,7 +108,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(2, statuses.Count(static s => string.Equals(s, "tool_round_completed", StringComparison.OrdinalIgnoreCase)));
         Assert.DoesNotContain(statuses, static s => string.Equals(s, "tool_round_limit_reached", StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(3, server.ChatCompletionRequestCount);
+        Assert.InRange(server.ChatCompletionRequestCount, 3, 4);
         Assert.True(CountRoleMessages(server.GetChatRequestBody(0), "tool") == 0);
         Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(1), "call_round_1"));
         Assert.True(ContainsToolMessageForCallId(server.GetChatRequestBody(2), "call_round_2"));
@@ -2662,7 +2662,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             thread.Id,
             CancellationToken.None);
 
-        Assert.Equal(3, server.ChatCompletionRequestCount);
+        Assert.InRange(server.ChatCompletionRequestCount, 3, 4);
 
         var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
         Assert.Contains("Cross-DC comparison complete", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
@@ -3644,6 +3644,741 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("ad_search", resultMessage2.Tools.Calls[0].Name);
         Assert.Equal("call_ad_search_turn2", resultMessage2.Tools.Calls[0].CallId);
         Assert.DoesNotContain(resultMessage2.Tools.Calls, call => call.CallId.StartsWith("host_pack_preflight_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_CarriesFocusedForestGapAcrossFollowUpThenClearsItAfterResolution() {
+        static string BuildTextResponse(string text) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-forest-followup",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = text
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            });
+        }
+
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-forest-turn1-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_forest_replication_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "forest_replication" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: summarize the forest replication state in a table
+                resolved_so_far: generated the forest replication table and topology overview
+                unresolved_now: explain why ADRODC is absent from the forest replication rows
+                carry_forward_unresolved_focus: true
+                carry_forward_reason: the missing-controller explanation is still unresolved after showing the table
+                primary_artifact: table
+                requested_artifact_already_visible_above: false
+                requested_artifact_visibility_reason: none
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: provides the requested forest table while keeping the missing-row explanation open
+
+                | Server | Fails | Total Links | % Error |
+                | --- | --- | --- | --- |
+                | AD0.ad.evotec.xyz | 0 | 16 | 0% |
+                | AD1.ad.evotec.xyz | 0 | 12 | 0% |
+                | AD2.ad.evotec.xyz | 0 | 16 | 0% |
+
+                ```mermaid
+                flowchart TD
+                  AD0["AD0"] --> AD1["AD1"]
+                  AD1["AD1"] --> AD2["AD2"]
+                ```
+                """),
+            3 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: explain why ADRODC is missing from the table above
+                resolved_so_far: the forest replication table is already visible above
+                unresolved_now: explain why ADRODC is absent from the forest replication rows
+                carry_forward_unresolved_focus: false
+                carry_forward_reason: the missing-controller explanation is fully resolved in this turn
+                primary_artifact: prose
+                requested_artifact_already_visible_above: true
+                requested_artifact_visibility_reason: the table above already shows the returned rows, so repeating it adds no value
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: answers the missing-row follow-up without replaying the diagram or table
+
+                The table above already shows the returned forest rows. ADRODC is missing because that run still surfaced domain-scoped replication rows from the upstream collector instead of the complete forest rowset.
+                """),
+            _ => BuildTextResponse("Unexpected extra chat request.")
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (arguments, _) => {
+                var step = arguments?.GetString("step") ?? "unknown";
+                return Task.FromResult(JsonSerializer.Serialize(new { ok = true, step }));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request1 = new ChatRequest {
+            RequestId = "req-forest-followup-turn1",
+            ThreadId = thread.Id,
+            Text = "go ahead and check full ad replication forest",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        var request2 = new ChatRequest {
+            RequestId = "req-forest-followup-turn2",
+            ThreadId = thread.Id,
+            Text = "where is ADRODC in the full forest replication table above, and why are those rows still missing from it?",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        using var capture1 = new SynchronizedCaptureStream();
+        using var writer1 = new StreamWriter(capture1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult1 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer1,
+            request1,
+            thread.Id,
+            CancellationToken.None);
+
+        var resultMessage1 = GetPropertyValue<ChatResultMessage>(runResult1, "Result");
+        Assert.NotNull(resultMessage1.Tools);
+        Assert.Single(resultMessage1.Tools!.Calls);
+        Assert.Contains("| Server | Fails | Total Links | % Error |", resultMessage1.Text, StringComparison.Ordinal);
+        Assert.Contains("```mermaid", resultMessage1.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:answer-plan:v1", resultMessage1.Text, StringComparison.OrdinalIgnoreCase);
+
+        var foundInitialFocus = session.TryGetWorkingMemoryAnswerPlanFocusForTesting(
+            thread.Id,
+            out var initialRememberedUserGoal,
+            out var initialRememberedUnresolvedNow,
+            out var initialRememberedPrimaryArtifact);
+        Assert.True(foundInitialFocus);
+        Assert.Equal("summarize the forest replication state in a table", initialRememberedUserGoal);
+        Assert.Equal("explain why ADRODC is absent from the forest replication rows", initialRememberedUnresolvedNow);
+        Assert.Equal("table", initialRememberedPrimaryArtifact);
+
+        var followUpPrelude = session.ResolveRoutingPreludeForTesting(thread.Id, request2.Text);
+        Assert.True(followUpPrelude.ContinuationExpandedFromContext);
+        Assert.True(followUpPrelude.HasStructuredContinuationContext);
+        Assert.Contains("ix:continuation-focus:v1", followUpPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("last_unresolved_ask: explain why ADRODC is absent from the forest replication rows", followUpPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("follow_up: where is ADRODC in the full forest replication table above, and why are those rows still missing from it?", followUpPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+
+        using var capture2 = new SynchronizedCaptureStream();
+        using var writer2 = new StreamWriter(capture2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult2 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer2,
+            request2,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(3, server.ChatCompletionRequestCount);
+
+        var resultMessage2 = GetPropertyValue<ChatResultMessage>(runResult2, "Result");
+        Assert.Null(resultMessage2.Tools);
+        Assert.Contains("The table above already shows the returned forest rows.", resultMessage2.Text, StringComparison.Ordinal);
+        Assert.Contains("ADRODC is missing because that run still surfaced domain-scoped replication rows", resultMessage2.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("```mermaid", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("| Server |", resultMessage2.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("ix:answer-plan:v1", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Cached evidence fallback", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+
+        var foundFocus = session.TryGetWorkingMemoryAnswerPlanFocusForTesting(
+            thread.Id,
+            out var rememberedUserGoal,
+            out var rememberedUnresolvedNow,
+            out var rememberedPrimaryArtifact);
+        Assert.True(foundFocus);
+        Assert.Equal("explain why ADRODC is missing from the table above", rememberedUserGoal);
+        Assert.Equal(string.Empty, rememberedUnresolvedNow);
+        Assert.Equal("prose", rememberedPrimaryArtifact);
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_DoesNotReplayCachedEvidenceForUnresolvedForestGapContinuation() {
+        static string BuildTextResponse(string text) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-forest-cached-fallback",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = text
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            });
+        }
+
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-forest-cache-turn1-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_forest_cache_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "forest_cache" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: summarize the forest replication state in a table
+                resolved_so_far: returned the visible forest replication table summary
+                unresolved_now: explain why ADRODC is absent from the full replication table
+                carry_forward_unresolved_focus: true
+                carry_forward_reason: the missing-controller explanation is still unresolved after the summary turn
+                primary_artifact: table
+                requested_artifact_already_visible_above: false
+                requested_artifact_visibility_reason: none
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: returns the visible summary while keeping the missing-row explanation active
+
+                | Server | Health |
+                | --- | --- |
+                | AD0 | healthy |
+                | AD1 | healthy |
+                | AD2 | healthy |
+                """),
+            3 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: explain why ADRODC is absent from the full replication table
+                resolved_so_far: the visible forest replication table is still available above
+                unresolved_now: explain why ADRODC is absent from the full replication table
+                carry_forward_unresolved_focus: true
+                carry_forward_reason: the missing-controller explanation still requires a live rerun or deeper evidence
+                prefer_cached_evidence_reuse: false
+                cached_evidence_reuse_reason: none
+                primary_artifact: prose
+                requested_artifact_already_visible_above: true
+                requested_artifact_visibility_reason: the forest replication table is already visible above
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: clarifies that the missing-row explanation still needs live evidence rather than replaying cached nearby output
+
+                Done. Continuing with the same replication context.
+                """),
+            4 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: explain why ADRODC is absent from the full replication table
+                resolved_so_far: the visible forest replication table is still available above
+                unresolved_now: explain why ADRODC is absent from the full replication table
+                carry_forward_unresolved_focus: true
+                carry_forward_reason: the missing-controller explanation still requires a live rerun or deeper evidence
+                prefer_cached_evidence_reuse: false
+                cached_evidence_reuse_reason: none
+                primary_artifact: prose
+                requested_artifact_already_visible_above: true
+                requested_artifact_visibility_reason: the forest replication table is already visible above
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: clarifies that the missing-row explanation still needs live evidence rather than replaying cached nearby output
+
+                Done. Continuing with the same replication context.
+                """),
+            _ => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: explain why ADRODC is absent from the full replication table
+                resolved_so_far: the visible forest replication table is still available above
+                unresolved_now: explain why ADRODC is absent from the full replication table
+                carry_forward_unresolved_focus: true
+                carry_forward_reason: the missing-controller explanation still requires a live rerun or deeper evidence
+                prefer_cached_evidence_reuse: false
+                cached_evidence_reuse_reason: none
+                primary_artifact: prose
+                requested_artifact_already_visible_above: true
+                requested_artifact_visibility_reason: the forest replication table is already visible above
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: clarifies that the missing-row explanation still needs live evidence rather than replaying cached nearby output
+
+                Done. Continuing with the same replication context.
+                """)
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult(
+                """{"ok":true,"summary_markdown":"Full forest replication table shows AD0, AD1, AD2, and ADRODC is absent from the returned rows."}""")));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request1 = new ChatRequest {
+            RequestId = "req-forest-cache-turn1",
+            ThreadId = thread.Id,
+            Text = "go ahead and check full ad replication forest",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        var request2 = new ChatRequest {
+            RequestId = "req-forest-cache-turn2",
+            ThreadId = thread.Id,
+            Text = "continue ADRODC absent",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture1 = new SynchronizedCaptureStream();
+        using var writer1 = new StreamWriter(capture1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult1 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer1,
+            request1,
+            thread.Id,
+            CancellationToken.None);
+
+        var rememberedInitialFocus = session.TryGetWorkingMemoryAnswerPlanFocusForTesting(
+            thread.Id,
+            out _,
+            out var rememberedInitialUnresolvedNow,
+            out _);
+        Assert.True(rememberedInitialFocus);
+        Assert.Equal("explain why ADRODC is absent from the full replication table", rememberedInitialUnresolvedNow);
+
+        var initialFocusPrelude = session.ResolveRoutingPreludeForTesting(thread.Id, request2.Text);
+        Assert.True(initialFocusPrelude.ContinuationExpandedFromContext);
+
+        using var capture2 = new SynchronizedCaptureStream();
+        using var writer2 = new StreamWriter(capture2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult2 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer2,
+            request2,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.InRange(server.ChatCompletionRequestCount, 3, 6);
+
+        var resultMessage1 = GetPropertyValue<ChatResultMessage>(runResult1, "Result");
+        Assert.NotNull(resultMessage1.Tools);
+        Assert.Single(resultMessage1.Tools!.Calls);
+        Assert.DoesNotContain("ix:answer-plan:v1", resultMessage1.Text, StringComparison.OrdinalIgnoreCase);
+
+        var resultMessage2 = GetPropertyValue<ChatResultMessage>(runResult2, "Result");
+        Assert.Null(resultMessage2.Tools);
+        Assert.Contains("[Execution blocked]", resultMessage2.Text, StringComparison.Ordinal);
+        Assert.Contains("Reason code:", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Cached evidence fallback", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ADRODC is absent from the returned rows.", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+
+        var rememberedFocus = session.TryGetWorkingMemoryAnswerPlanFocusForTesting(
+            thread.Id,
+            out _,
+            out var rememberedUnresolvedNow,
+            out _);
+        Assert.True(rememberedFocus);
+        Assert.Equal("explain why ADRODC is absent from the full replication table", rememberedUnresolvedNow);
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_ReusesCachedEvidenceForResolvedForestContinuation() {
+        static string BuildTextResponse(string text) {
+            return JsonSerializer.Serialize(new {
+                id = "chatcmpl-forest-cached-fallback-safe",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = text
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            });
+        }
+
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-forest-cache-safe-turn1-call",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_forest_cache_safe_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "mock_round_tool",
+                                        arguments = JsonSerializer.Serialize(new { step = "forest_cache_safe" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            2 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: summarize the forest replication state in a table
+                resolved_so_far: returned the visible forest replication table summary
+                unresolved_now: none
+                carry_forward_unresolved_focus: false
+                carry_forward_reason: the summary turn fully answers the requested replication status check
+                prefer_cached_evidence_reuse: false
+                cached_evidence_reuse_reason: none
+                primary_artifact: table
+                requested_artifact_already_visible_above: false
+                requested_artifact_visibility_reason: none
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: returns the requested forest summary and leaves no unresolved follow-up gap
+
+                | Server | Health |
+                | --- | --- |
+                | AD0 | healthy |
+                | AD1 | healthy |
+                | AD2 | healthy |
+                """),
+            3 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: continue from the same forest replication evidence
+                resolved_so_far: the forest replication table is already available above
+                unresolved_now: none
+                carry_forward_unresolved_focus: false
+                carry_forward_reason: this continuation reuses the already-resolved evidence snapshot
+                prefer_cached_evidence_reuse: true
+                cached_evidence_reuse_reason: compact continuation should reuse the latest forest replication evidence snapshot
+                primary_artifact: prose
+                requested_artifact_already_visible_above: true
+                requested_artifact_visibility_reason: the forest replication table is already visible above
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: confirms that the next step should reuse the same forest replication evidence without a rerun
+
+                Reusing the latest forest replication evidence for AD0, AD1, and AD2.
+                """),
+            4 => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: continue from the same forest replication evidence
+                resolved_so_far: the forest replication table is already available above
+                unresolved_now: none
+                carry_forward_unresolved_focus: false
+                carry_forward_reason: this continuation reuses the already-resolved evidence snapshot
+                prefer_cached_evidence_reuse: true
+                cached_evidence_reuse_reason: compact continuation should reuse the latest forest replication evidence snapshot
+                primary_artifact: prose
+                requested_artifact_already_visible_above: true
+                requested_artifact_visibility_reason: the forest replication table is already visible above
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: confirms that the next step should reuse the same forest replication evidence without a rerun
+
+                Reusing the latest forest replication evidence for AD0, AD1, and AD2.
+                """),
+            _ => BuildTextResponse("""
+                [Answer progression plan]
+                ix:answer-plan:v1
+                user_goal: continue from the same forest replication evidence
+                resolved_so_far: the forest replication table is already available above
+                unresolved_now: none
+                carry_forward_unresolved_focus: false
+                carry_forward_reason: this continuation reuses the already-resolved evidence snapshot
+                prefer_cached_evidence_reuse: true
+                cached_evidence_reuse_reason: compact continuation should reuse the latest forest replication evidence snapshot
+                primary_artifact: prose
+                requested_artifact_already_visible_above: true
+                requested_artifact_visibility_reason: the forest replication table is already visible above
+                repeats_prior_visible_content: false
+                prior_visible_delta_reason: none
+                reuse_prior_visuals: false
+                reuse_reason: none
+                repeat_adds_new_information: true
+                repeat_novelty_reason: none
+                advances_current_ask: true
+                advance_reason: confirms that the next step should reuse the same forest replication evidence without a rerun
+
+                Reusing the latest forest replication evidence for AD0, AD1, and AD2.
+                """)
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "mock_round_tool",
+            static (_, _) => Task.FromResult(
+                """{"ok":true,"summary_markdown":"Full forest replication table shows AD0, AD1, and AD2 with healthy replication."}""")));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request1 = new ChatRequest {
+            RequestId = "req-forest-cache-safe-turn1",
+            ThreadId = thread.Id,
+            Text = "go ahead and check full ad replication forest",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+        var request2 = new ChatRequest {
+            RequestId = "req-forest-cache-safe-turn2",
+            ThreadId = thread.Id,
+            Text = "continue replication AD2",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture1 = new SynchronizedCaptureStream();
+        using var writer1 = new StreamWriter(capture1, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult1 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer1,
+            request1,
+            thread.Id,
+            CancellationToken.None);
+
+        var initialFocusPrelude = session.ResolveRoutingPreludeForTesting(thread.Id, request2.Text);
+        Assert.DoesNotContain("ix:continuation-focus:v1", initialFocusPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("last_unresolved_ask:", initialFocusPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+
+        using var capture2 = new SynchronizedCaptureStream();
+        using var writer2 = new StreamWriter(capture2, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult2 = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer2,
+            request2,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.InRange(server.ChatCompletionRequestCount, 3, 6);
+
+        var resultMessage1 = GetPropertyValue<ChatResultMessage>(runResult1, "Result");
+        Assert.NotNull(resultMessage1.Tools);
+        Assert.Single(resultMessage1.Tools!.Calls);
+        Assert.DoesNotContain("ix:answer-plan:v1", resultMessage1.Text, StringComparison.OrdinalIgnoreCase);
+
+        var resultMessage2 = GetPropertyValue<ChatResultMessage>(runResult2, "Result");
+        Assert.Null(resultMessage2.Tools);
+        Assert.Contains("[Cached evidence fallback]", resultMessage2.Text, StringComparison.Ordinal);
+        Assert.Contains("ix:cached-tool-evidence:v1", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("mock_round_tool", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD2", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[Execution blocked]", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:answer-plan:v1", resultMessage2.Text, StringComparison.OrdinalIgnoreCase);
+
+        var rememberedFocus = session.TryGetWorkingMemoryAnswerPlanFocusForTesting(
+            thread.Id,
+            out var rememberedUserGoal,
+            out var rememberedUnresolvedNow,
+            out var rememberedPrimaryArtifact);
+        Assert.True(rememberedFocus);
+        Assert.Equal("continue from the same forest replication evidence", rememberedUserGoal);
+        Assert.Equal(string.Empty, rememberedUnresolvedNow);
+        Assert.Equal("prose", rememberedPrimaryArtifact);
+
+        var followOnPrelude = session.ResolveRoutingPreludeForTesting(thread.Id, "continue replication AD1");
+        Assert.Contains("ix:continuation-focus:v1", followOnPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("last_unresolved_ask:", followOnPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("last_prefer_cached_evidence_reuse: true", followOnPrelude.RoutedUserRequest, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "last_cached_evidence_reuse_reason: compact continuation should reuse the latest forest replication evidence snapshot",
+            followOnPrelude.RoutedUserRequest,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

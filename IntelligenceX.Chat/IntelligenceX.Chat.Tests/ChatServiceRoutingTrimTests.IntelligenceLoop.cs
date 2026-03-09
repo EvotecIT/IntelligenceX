@@ -404,8 +404,25 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ResolveProactiveFollowUpReviewDecision_TableOnlyRequestRejectsDraftThatRepeatsMermaidDiagram() {
+    public void ResolveProactiveFollowUpReviewDecision_TableOnlyRequestLetsAnswerPlanOwnVisualReuseReview() {
         var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: return the requested replication table
+            resolved_so_far: the topology diagram already exists above
+            unresolved_now: provide the compact replication table
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the compact table is still the remaining gap
+            primary_artifact: table
+            repeats_prior_visible_content: true
+            prior_visible_delta_reason: keeps the diagram visible while adding the requested compact table
+            reuse_prior_visuals: true
+            reuse_reason: none
+            repeat_adds_new_information: false
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: includes the compact table
+
             | server | status |
             | --- | --- |
             | ad0 | healthy |
@@ -426,7 +443,281 @@ public sealed partial class ChatServiceRoutingTrimTests {
             assistantDraft: draft);
 
         Assert.True(decision.ShouldAttempt);
-        Assert.Equal("allow_requested_artifact_missing", decision.Reason);
+        Assert.Equal("allow_unjustified_visual_reuse", decision.Reason);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_UsesHiddenAnswerPlanToRejectNonAdvancingDraft() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain the missing rows
+            resolved_so_far: the diagram already showed topology
+            unresolved_now: why the table is incomplete
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the incomplete table explanation is still unresolved
+            primary_artifact: prose
+            repeats_prior_visible_content: true
+            prior_visible_delta_reason: none
+            reuse_prior_visuals: false
+            reuse_reason: none
+            repeat_adds_new_information: true
+            repeat_novelty_reason: none
+            advances_current_ask: false
+            advance_reason: it repeats prior content
+
+            The forest replication diagram is shown above.
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            userRequest: "why is this still incomplete?",
+            assistantDraft: draft);
+
+        Assert.True(decision.ShouldAttempt);
+        Assert.Equal("allow_answer_plan_not_advancing_current_ask", decision.Reason);
+    }
+
+    [Fact]
+    public void ResolveReviewedAssistantDraft_StripsHiddenAnswerPlanBeforeDisplay() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain the missing rows
+            resolved_so_far: topology already summarized
+            unresolved_now: missing forest rows
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the forest-scope explanation still remains
+            prefer_cached_evidence_reuse: false
+            cached_evidence_reuse_reason: none
+            primary_artifact: prose
+            requested_artifact_already_visible_above: true
+            requested_artifact_visibility_reason: the table above is still the relevant artifact
+            repeats_prior_visible_content: true
+            prior_visible_delta_reason: clarifies the missing forest rows instead of redrawing topology
+            reuse_prior_visuals: true
+            reuse_reason: diagram already visible above
+            repeat_adds_new_information: true
+            repeat_novelty_reason: clarifies why ADRODC is absent from the returned rows
+            advances_current_ask: true
+            advance_reason: clarifies why the table is partial
+
+            The summary currently lists only three servers because the collector returned domain-scoped rows.
+            """;
+
+        var reviewedDraft = ChatServiceSession.ResolveReviewedAssistantDraft(draft);
+
+        Assert.True(reviewedDraft.AnswerPlan.HasPlan);
+        Assert.True(reviewedDraft.AnswerPlan.CarryForwardUnresolvedFocus);
+        Assert.Equal("the forest-scope explanation still remains", reviewedDraft.AnswerPlan.CarryForwardReason);
+        Assert.False(reviewedDraft.AnswerPlan.PreferCachedEvidenceReuse);
+        Assert.Equal(string.Empty, reviewedDraft.AnswerPlan.CachedEvidenceReuseReason);
+        Assert.True(reviewedDraft.AnswerPlan.RequestedArtifactAlreadyVisibleAbove);
+        Assert.Equal("the table above is still the relevant artifact", reviewedDraft.AnswerPlan.RequestedArtifactVisibilityReason);
+        Assert.True(reviewedDraft.AnswerPlan.RepeatsPriorVisibleContent);
+        Assert.Equal("clarifies the missing forest rows instead of redrawing topology", reviewedDraft.AnswerPlan.PriorVisibleDeltaReason);
+        Assert.True(reviewedDraft.AnswerPlan.ReusePriorVisuals);
+        Assert.Equal("diagram already visible above", reviewedDraft.AnswerPlan.ReuseReason);
+        Assert.True(reviewedDraft.AnswerPlan.RepeatAddsNewInformation);
+        Assert.Equal("clarifies why ADRODC is absent from the returned rows", reviewedDraft.AnswerPlan.RepeatNoveltyReason);
+        Assert.DoesNotContain("ix:answer-plan:v1", reviewedDraft.VisibleText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "The summary currently lists only three servers because the collector returned domain-scoped rows.",
+            reviewedDraft.VisibleText);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_RejectsRedundantVisualReuseWhenPlanSaysNoNewInformation() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain the discrepancy
+            resolved_so_far: topology diagram is already above
+            unresolved_now: why the returned rows are incomplete
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the scope explanation is still open
+            primary_artifact: diagram
+            repeats_prior_visible_content: true
+            prior_visible_delta_reason: same content as above
+            reuse_prior_visuals: true
+            reuse_reason: same topology is still accurate
+            repeat_adds_new_information: false
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: repeats the same topology
+
+            ```mermaid
+            flowchart TD
+              AD0 --> AD1
+            ```
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            userRequest: "can you explain the mismatch now?",
+            assistantDraft: draft);
+
+        Assert.True(decision.ShouldAttempt);
+        Assert.Equal("allow_redundant_visual_reuse", decision.Reason);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_RejectsVisualReuseNoveltyClaimWithoutReason() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain the discrepancy
+            resolved_so_far: topology diagram is already above
+            unresolved_now: why the returned rows are incomplete
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the scope explanation is still open
+            primary_artifact: diagram
+            repeats_prior_visible_content: true
+            prior_visible_delta_reason: points at the missing scope explanation below
+            reuse_prior_visuals: true
+            reuse_reason: same topology is still accurate
+            repeat_adds_new_information: true
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: focuses on the mismatch
+
+            ```mermaid
+            flowchart TD
+              AD0 --> AD1
+            ```
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            userRequest: "can you explain the mismatch now?",
+            assistantDraft: draft);
+
+        Assert.True(decision.ShouldAttempt);
+        Assert.Equal("allow_unjustified_visual_novelty_claim", decision.Reason);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_RejectsRepeatOfPriorVisibleContentWithoutDeltaReason() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain the discrepancy
+            resolved_so_far: the explanation already exists above
+            unresolved_now: why the returned rows are incomplete
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the scope explanation is still open
+            primary_artifact: prose
+            repeats_prior_visible_content: true
+            prior_visible_delta_reason: none
+            reuse_prior_visuals: false
+            reuse_reason: none
+            repeat_adds_new_information: true
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: restates the same point
+
+            The summary currently lists only three servers because the collector returned domain-scoped rows.
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            userRequest: "can you explain the mismatch now?",
+            assistantDraft: draft);
+
+        Assert.True(decision.ShouldAttempt);
+        Assert.Equal("allow_unjustified_prior_visible_repeat", decision.Reason);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_AllowsArtifactAlreadyVisibleAboveWhenPlanJustifiesOmission() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain why ADRODC is missing from the table above
+            resolved_so_far: the compact table is already visible above
+            unresolved_now: explain the missing row
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the cause of the missing row is still unresolved
+            primary_artifact: prose
+            requested_artifact_already_visible_above: true
+            requested_artifact_visibility_reason: the table above is already visible, so repeating it adds no value
+            repeats_prior_visible_content: false
+            prior_visible_delta_reason: none
+            reuse_prior_visuals: false
+            reuse_reason: none
+            repeat_adds_new_information: true
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: explains the missing row without redrawing the table
+
+            The table above already shows the returned rows. ADRODC is absent because the collector output was partial.
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            userRequest: "use the table above and explain why ADRODC is missing",
+            assistantDraft: draft);
+
+        Assert.False(decision.ShouldAttempt);
+        Assert.Equal("skip_follow_up_turn", decision.Reason);
+    }
+
+    [Fact]
+    public void ResolveProactiveFollowUpReviewDecision_RejectsUnjustifiedArtifactOmission() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain why ADRODC is missing from the table above
+            resolved_so_far: the compact table is already visible above
+            unresolved_now: explain the missing row
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the cause of the missing row is still unresolved
+            primary_artifact: prose
+            requested_artifact_already_visible_above: true
+            requested_artifact_visibility_reason: none
+            repeats_prior_visible_content: false
+            prior_visible_delta_reason: none
+            reuse_prior_visuals: false
+            reuse_reason: none
+            repeat_adds_new_information: true
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: explains the missing row without redrawing the table
+
+            ADRODC is absent because the collector output was partial.
+            """;
+
+        var decision = ChatServiceSession.ResolveProactiveFollowUpReviewDecision(
+            proactiveModeEnabled: true,
+            hasToolActivity: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            userRequest: "use the table above and explain why ADRODC is missing",
+            assistantDraft: draft);
+
+        Assert.True(decision.ShouldAttempt);
+        Assert.Equal("allow_unjustified_artifact_omission", decision.Reason);
     }
 
     [Fact]
@@ -596,6 +887,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("ix:proactive-followup:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:proactive-visualization:v1", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ix:answer-plan:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("natural and conversational", text, StringComparison.OrdinalIgnoreCase);
@@ -605,6 +897,55 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("signal -> why it matters -> exact next validation/fix action", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Signal <text> -> Why it matters: <text> -> Next action: <text>", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("hidden regressions", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildResponseQualityReviewPrompt_EmitsAnswerPlanContractAndSanitizesPriorPlanBlock() {
+        var existingDraft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: summarize the issue
+            resolved_so_far: domain rows returned
+            unresolved_now: forest explanation
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the forest explanation remains unresolved
+            prefer_cached_evidence_reuse: false
+            cached_evidence_reuse_reason: none
+            primary_artifact: prose
+            repeats_prior_visible_content: true
+            prior_visible_delta_reason: narrows the explanation to the missing forest scope
+            reuse_prior_visuals: false
+            reuse_reason: none
+            repeat_adds_new_information: true
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: focuses on the missing scope
+
+            The summary still needs a cleaner explanation.
+            """;
+
+        var prompt = ChatServiceSession.BuildResponseQualityReviewPrompt(
+            userRequest: "explain the forest mismatch",
+            assistantDraft: existingDraft,
+            hasToolActivity: true,
+            reviewPassNumber: 1,
+            maxReviewPasses: 2);
+
+        Assert.Contains("ix:answer-plan:v1", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Start your output with this exact answer-plan block", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requested_artifact_already_visible_above: true|false", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requested_artifact_visibility_reason: <short line or none>", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("carry_forward_unresolved_focus: true|false", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("carry_forward_reason: <short line or none>", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("prefer_cached_evidence_reuse: true|false", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cached_evidence_reuse_reason: <short line or none>", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("repeats_prior_visible_content: true|false", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("prior_visible_delta_reason: <short line or none>", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Compare against assistant content already visible earlier in the thread", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("repeat_adds_new_information: true|false", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("repeat_novelty_reason: <short line or none>", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("The summary still needs a cleaner explanation.", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("resolved_so_far: domain rows returned", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -99,10 +99,6 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (intent.WantsOnlyTable && AssistantDraftContainsNonTableVisualArtifact(draft)) {
-            return false;
-        }
-
         if (!intent.WantsVisual) {
             return true;
         }
@@ -124,6 +120,25 @@ internal sealed partial class ChatServiceSession {
         return string.Equals(intent.PreferredVisualType, draftVisualType, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsRequestedArtifactRequirementSatisfied(
+        RequestedArtifactIntent intent,
+        string? assistantDraft,
+        TurnAnswerPlan answerPlan) {
+        if (IsRequestedArtifactSatisfied(intent, assistantDraft)) {
+            return true;
+        }
+
+        if (!intent.RequiresArtifact
+            || !answerPlan.HasPlan
+            || !answerPlan.RequestedArtifactAlreadyVisibleAbove
+            || string.IsNullOrWhiteSpace(answerPlan.RequestedArtifactVisibilityReason)
+            || !answerPlan.AdvancesCurrentAsk) {
+            return false;
+        }
+
+        return true;
+    }
+
     private static bool AssistantDraftContainsMarkdownTableArtifact(string draft) {
         if (string.IsNullOrWhiteSpace(draft)) {
             return false;
@@ -135,31 +150,6 @@ internal sealed partial class ChatServiceSession {
 
         return draft.Contains("| ---", StringComparison.Ordinal)
                || draft.Contains("|---", StringComparison.Ordinal);
-    }
-
-    private static bool AssistantDraftContainsNonTableVisualArtifact(string draft) {
-        if (string.IsNullOrWhiteSpace(draft)) {
-            return false;
-        }
-
-        var content = draft.AsSpan();
-        var lineStart = 0;
-        while (lineStart < content.Length) {
-            ReadOnlySpan<char> line;
-            lineStart = ReadNextLine(content, lineStart, out line);
-            var trimmed = line.TrimStart();
-            if (!TryGetFenceLanguage(trimmed, out var fenceLanguage)) {
-                continue;
-            }
-
-            if (TryResolvePreferredVisualTypeToken(fenceLanguage, out var visualType)
-                && !string.Equals(visualType, TableVisualType, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return TryResolvePreferredVisualTypeFromStructuredJsonSignal(draft, out var structuredVisualType)
-               && !string.Equals(structuredVisualType, TableVisualType, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryResolvePreferredVisualTypeFromVisualRequestSignal(

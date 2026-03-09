@@ -173,6 +173,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveNoExtractedFinalizeReviewDecisionForTesting_AllowsArtifactAlreadyVisibleAboveWhenPlanJustifiesOmission() {
+        var assistantDraft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: explain why ADRODC is missing from the table above
+            resolved_so_far: the compact table is already visible above
+            unresolved_now: explain the missing row
+            primary_artifact: prose
+            requested_artifact_already_visible_above: true
+            requested_artifact_visibility_reason: the table above is already visible, so repeating it adds no value
+            repeats_prior_visible_content: false
+            prior_visible_delta_reason: none
+            reuse_prior_visuals: false
+            reuse_reason: none
+            repeat_adds_new_information: true
+            repeat_novelty_reason: none
+            advances_current_ask: true
+            advance_reason: explains the missing row without redrawing the table
+
+            The table above already shows the returned rows. ADRODC is absent because the collector output was partial.
+            """;
+
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeReviewDecisionForTesting(
+            noResultWatchdogTriggered: false,
+            planExecuteReviewLoop: false,
+            maxReviewPasses: 1,
+            reviewPassesUsed: 0,
+            userRequest: "use the table above and explain why ADRODC is missing",
+            assistantDraft: assistantDraft,
+            executionContractApplies: false,
+            hasToolActivity: true,
+            proactiveModeEnabled: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true);
+
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("review_loop_disabled", result.Reason);
+        Assert.Equal(0, result.ReviewPassNumber);
+    }
+
+    [Fact]
     public void ResolveNoExtractedFinalizeNoTextDecisionForTesting_SelectsToolOutputSynthesisRetry() {
         var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextDecisionForTesting(
             noTextToolOutputDirectRetryUsed: false,

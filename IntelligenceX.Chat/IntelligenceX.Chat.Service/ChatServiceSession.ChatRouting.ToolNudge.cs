@@ -80,6 +80,7 @@ internal sealed partial class ChatServiceSession {
         bool compactFollowUpTurn,
         bool explicitToolQuestionTurn,
         bool toolActivityDetected,
+        TurnAnswerPlan answerPlan,
         string assistantDraft) {
         if (toolActivityDetected) {
             return false;
@@ -120,6 +121,12 @@ internal sealed partial class ChatServiceSession {
         if (draft.Contains(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase)
             || draft.Contains("ix:action:v1", StringComparison.OrdinalIgnoreCase)) {
             return false;
+        }
+
+        if ((continuationFollowUpTurn || compactFollowUpTurn)
+            && answerPlan.HasPlan
+            && answerPlan.CarryForwardUnresolvedFocus) {
+            return true;
         }
 
         if (continuationFollowUpTurn || compactFollowUpTurn) {

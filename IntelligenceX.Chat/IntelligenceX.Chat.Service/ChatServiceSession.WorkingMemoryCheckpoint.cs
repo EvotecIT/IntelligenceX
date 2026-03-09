@@ -12,9 +12,14 @@ internal sealed partial class ChatServiceSession {
     private const int MaxWorkingMemoryToolNames = 8;
     private const int MaxWorkingMemoryEvidenceLines = 3;
     private const int MaxWorkingMemoryEvidenceChars = 220;
+    private const int MaxWorkingMemoryAnswerPlanChars = 220;
     private const int MaxWorkingMemoryAugmentedRequestChars = 1600;
+    private const int MaxWorkingMemoryQuestionFollowUpChars = 240;
+    private const int MaxWorkingMemoryQuestionFollowUpTokens = 24;
+    private const int MinWorkingMemoryFocusedOverlapTokenLength = 6;
     private static readonly TimeSpan WorkingMemoryContextMaxAge = TimeSpan.FromHours(24);
     private const string WorkingMemoryMarker = "ix:working-memory:v1";
+    private const string ContinuationFocusMarker = "ix:continuation-focus:v1";
     private readonly object _workingMemoryCheckpointLock = new();
     private readonly Dictionary<string, WorkingMemoryCheckpoint> _workingMemoryCheckpointByThreadId = new(StringComparer.Ordinal);
 
@@ -23,6 +28,11 @@ internal sealed partial class ChatServiceSession {
         string DomainIntentFamily,
         string[] RecentToolNames,
         string[] RecentEvidenceSnippets,
+        string PriorAnswerPlanUserGoal,
+        string PriorAnswerPlanUnresolvedNow,
+        bool PriorAnswerPlanPreferCachedEvidenceReuse,
+        string PriorAnswerPlanCachedEvidenceReuseReason,
+        string PriorAnswerPlanPrimaryArtifact,
         string[] CapabilityEnabledPackIds,
         string[] CapabilityRoutingFamilies,
         string[] CapabilitySkills,
@@ -33,6 +43,7 @@ internal sealed partial class ChatServiceSession {
         string threadId,
         string userIntent,
         string routedUserRequest,
+        TurnAnswerPlan answerPlan,
         IReadOnlyList<ToolCallDto> toolCalls,
         IReadOnlyList<ToolOutputDto> toolOutputs,
         IReadOnlyDictionary<string, bool> mutatingToolHintsByName) {
@@ -53,6 +64,21 @@ internal sealed partial class ChatServiceSession {
             mutatingToolHintsByName,
             fallbackToolNames: existing.RecentToolNames,
             fallbackEvidenceSnippets: existing.RecentEvidenceSnippets);
+        var priorAnswerPlanUserGoal = ResolveWorkingMemoryAnswerPlanFocus(
+            answerPlan.HasPlan ? answerPlan.UserGoal : null,
+            existing.PriorAnswerPlanUserGoal);
+        var priorAnswerPlanUnresolvedNow = ResolveWorkingMemoryAnswerPlanUnresolvedFocus(
+            answerPlan,
+            existing.PriorAnswerPlanUnresolvedNow);
+        var priorAnswerPlanPreferCachedEvidenceReuse = ResolveWorkingMemoryAnswerPlanCachedEvidenceReusePreference(
+            answerPlan,
+            existing.PriorAnswerPlanPreferCachedEvidenceReuse);
+        var priorAnswerPlanCachedEvidenceReuseReason = ResolveWorkingMemoryAnswerPlanCachedEvidenceReuseReason(
+            answerPlan,
+            existing.PriorAnswerPlanCachedEvidenceReuseReason);
+        var priorAnswerPlanPrimaryArtifact = ResolveWorkingMemoryAnswerPlanArtifact(
+            answerPlan.HasPlan ? answerPlan.PrimaryArtifact : null,
+            existing.PriorAnswerPlanPrimaryArtifact);
         var capabilityEnabledPackIds = ResolveWorkingMemoryCapabilityEnabledPackIds(existing.CapabilityEnabledPackIds);
         var capabilityRoutingFamilies = ResolveWorkingMemoryCapabilityRoutingFamilies(existing.CapabilityRoutingFamilies);
         var capabilitySkills = ResolveWorkingMemoryCapabilitySkills(existing.CapabilitySkills);
@@ -64,6 +90,11 @@ internal sealed partial class ChatServiceSession {
             && resolvedDomainIntentFamily.Length == 0
             && recentToolNames.Length == 0
             && recentEvidenceSnippets.Length == 0
+            && priorAnswerPlanUserGoal.Length == 0
+            && priorAnswerPlanUnresolvedNow.Length == 0
+            && !priorAnswerPlanPreferCachedEvidenceReuse
+            && priorAnswerPlanCachedEvidenceReuseReason.Length == 0
+            && priorAnswerPlanPrimaryArtifact.Length == 0
             && capabilityEnabledPackIds.Length == 0
             && capabilityRoutingFamilies.Length == 0
             && capabilitySkills.Length == 0
@@ -76,6 +107,11 @@ internal sealed partial class ChatServiceSession {
             DomainIntentFamily: resolvedDomainIntentFamily,
             RecentToolNames: recentToolNames,
             RecentEvidenceSnippets: recentEvidenceSnippets,
+            PriorAnswerPlanUserGoal: priorAnswerPlanUserGoal,
+            PriorAnswerPlanUnresolvedNow: priorAnswerPlanUnresolvedNow,
+            PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
+            PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanCachedEvidenceReuseReason,
+            PriorAnswerPlanPrimaryArtifact: priorAnswerPlanPrimaryArtifact,
             CapabilityEnabledPackIds: capabilityEnabledPackIds,
             CapabilityRoutingFamilies: capabilityRoutingFamilies,
             CapabilitySkills: capabilitySkills,
@@ -96,20 +132,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         var normalizedFollowUp = (userRequest ?? string.Empty).Trim();
-        if (normalizedFollowUp.Length == 0 || !LooksLikeContinuationFollowUp(normalizedFollowUp)) {
+        if (normalizedFollowUp.Length == 0) {
             return false;
         }
-
-        if (ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalizedFollowUp)) {
-            return false;
-        }
-
         if (ShouldSkipWorkingMemoryAugmentationForStructuredSelection(normalizedThreadId, normalizedFollowUp)) {
             return false;
         }
 
         var normalizedRouted = (routedUserRequest ?? string.Empty).Trim();
-        if (!string.Equals(normalizedFollowUp, normalizedRouted, StringComparison.Ordinal)) {
+        var overrideExpandedRoutingWithWorkingMemoryFocus =
+            !string.Equals(normalizedFollowUp, normalizedRouted, StringComparison.Ordinal)
+            && normalizedRouted.IndexOf(WorkingMemoryMarker, StringComparison.OrdinalIgnoreCase) < 0
+            && normalizedRouted.IndexOf(ContinuationFocusMarker, StringComparison.OrdinalIgnoreCase) < 0;
+
+        if (!string.Equals(normalizedFollowUp, normalizedRouted, StringComparison.Ordinal)
+            && !overrideExpandedRoutingWithWorkingMemoryFocus) {
             return false;
         }
 
@@ -117,10 +154,32 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (overrideExpandedRoutingWithWorkingMemoryFocus
+            && checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+            && !checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse) {
+            return false;
+        }
+
+        var compactContinuationFollowUp = LooksLikeContinuationFollowUp(normalizedFollowUp);
+        var unresolvedAskQuestionFollowUp =
+            LooksLikeWorkingMemoryFocusedQuestionFollowUp(normalizedFollowUp, checkpoint);
+        if (!compactContinuationFollowUp && !unresolvedAskQuestionFollowUp) {
+            return false;
+        }
+
+        if (compactContinuationFollowUp && ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalizedFollowUp)) {
+            return false;
+        }
+
         if (checkpoint.IntentAnchor.Length == 0
             && checkpoint.DomainIntentFamily.Length == 0
             && checkpoint.RecentToolNames.Length == 0
             && checkpoint.RecentEvidenceSnippets.Length == 0
+            && checkpoint.PriorAnswerPlanUserGoal.Length == 0
+            && checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+            && !checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
+            && checkpoint.PriorAnswerPlanCachedEvidenceReuseReason.Length == 0
+            && checkpoint.PriorAnswerPlanPrimaryArtifact.Length == 0
             && checkpoint.CapabilityEnabledPackIds.Length == 0
             && checkpoint.CapabilityRoutingFamilies.Length == 0
             && checkpoint.CapabilitySkills.Length == 0
@@ -129,6 +188,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var builder = new StringBuilder(1024);
+        AppendWorkingMemoryContinuationFocusBlock(builder, checkpoint);
         builder.AppendLine("[Working memory checkpoint]");
         builder.AppendLine(WorkingMemoryMarker);
         if (checkpoint.IntentAnchor.Length > 0) {
@@ -148,6 +208,26 @@ internal sealed partial class ChatServiceSession {
                 .Append(i + 1)
                 .Append(": ")
                 .AppendLine(checkpoint.RecentEvidenceSnippets[i]);
+        }
+
+        if (checkpoint.PriorAnswerPlanUserGoal.Length > 0) {
+            builder.Append("prior_answer_plan_user_goal: ").AppendLine(checkpoint.PriorAnswerPlanUserGoal);
+        }
+
+        if (checkpoint.PriorAnswerPlanUnresolvedNow.Length > 0) {
+            builder.Append("prior_answer_plan_unresolved_now: ").AppendLine(checkpoint.PriorAnswerPlanUnresolvedNow);
+        }
+
+        builder.Append("prior_answer_plan_prefer_cached_evidence_reuse: ")
+            .AppendLine(checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse ? "true" : "false");
+
+        if (checkpoint.PriorAnswerPlanCachedEvidenceReuseReason.Length > 0) {
+            builder.Append("prior_answer_plan_cached_evidence_reuse_reason: ")
+                .AppendLine(checkpoint.PriorAnswerPlanCachedEvidenceReuseReason);
+        }
+
+        if (checkpoint.PriorAnswerPlanPrimaryArtifact.Length > 0) {
+            builder.Append("prior_answer_plan_primary_artifact: ").AppendLine(checkpoint.PriorAnswerPlanPrimaryArtifact);
         }
 
         if (checkpoint.CapabilityEnabledPackIds.Length > 0
@@ -190,6 +270,136 @@ internal sealed partial class ChatServiceSession {
 
         augmentedUserRequest = expanded;
         return true;
+    }
+
+    private static bool LooksLikeWorkingMemoryFocusedQuestionFollowUp(
+        string userRequest,
+        WorkingMemoryCheckpoint checkpoint) {
+        if (checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0) {
+            return false;
+        }
+
+        var normalized = NormalizeContextualFollowUpRequest(userRequest);
+        if (normalized.Length == 0
+            || normalized.Length > MaxWorkingMemoryQuestionFollowUpChars
+            || !ContainsQuestionSignal(normalized)) {
+            return false;
+        }
+
+        if (TryReadContinuationContractFromRequestText(normalized, out _, out _)
+            || LooksLikeActionSelectionPayload(normalized)
+            || TryParseExplicitActSelection(normalized, out _, out _)
+            || TryReadActionSelectionIntent(normalized, out _, out _)
+            || TryParseDomainIntentMarkerSelection(normalized, DomainIntentMarker, out _)
+            || TryParseDomainIntentChoiceMarkerSelection(normalized, out _)
+            || TryNormalizeDomainIntentFamily(normalized, out _)
+            || TryParseDomainIntentFamilyFromDomainScopePayload(normalized, out _)
+            || CountLetterDigitTokens(normalized, maxTokens: MaxWorkingMemoryQuestionFollowUpTokens + 1) > MaxWorkingMemoryQuestionFollowUpTokens) {
+            return false;
+        }
+
+        var requestTokens = ExtractMeaningfulTokensForContext(normalized, maxTokens: MaxWorkingMemoryQuestionFollowUpTokens);
+        if (requestTokens.Count == 0) {
+            return false;
+        }
+
+        var focusBuilder = new StringBuilder();
+        focusBuilder.AppendLine(checkpoint.PriorAnswerPlanUnresolvedNow);
+        if (checkpoint.PriorAnswerPlanUserGoal.Length > 0) {
+            focusBuilder.AppendLine(checkpoint.PriorAnswerPlanUserGoal);
+        }
+
+        if (checkpoint.PriorAnswerPlanPrimaryArtifact.Length > 0) {
+            focusBuilder.AppendLine(checkpoint.PriorAnswerPlanPrimaryArtifact);
+        }
+
+        var focusTokens = new HashSet<string>(
+            ExtractMeaningfulTokensForContext(focusBuilder.ToString(), maxTokens: MaxWorkingMemoryQuestionFollowUpTokens * 2),
+            StringComparer.OrdinalIgnoreCase);
+        if (focusTokens.Count == 0) {
+            return false;
+        }
+
+        var sharedCount = 0;
+        for (var i = 0; i < requestTokens.Count; i++) {
+            var token = requestTokens[i];
+            if (!focusTokens.Contains(token)) {
+                continue;
+            }
+
+            sharedCount++;
+            if (token.Length >= MinWorkingMemoryFocusedOverlapTokenLength) {
+                return true;
+            }
+        }
+
+        if (sharedCount >= 2) {
+            return true;
+        }
+
+        return LooksLikeArtifactAnchoredWorkingMemoryFocusedQuestionFollowUp(normalized, checkpoint);
+    }
+
+    private static bool LooksLikeArtifactAnchoredWorkingMemoryFocusedQuestionFollowUp(
+        string normalizedFollowUp,
+        WorkingMemoryCheckpoint checkpoint) {
+        if (normalizedFollowUp.Length == 0
+            || checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+            || checkpoint.PriorAnswerPlanPrimaryArtifact.Length == 0) {
+            return false;
+        }
+
+        if (normalizedFollowUp.IndexOf(checkpoint.PriorAnswerPlanPrimaryArtifact, StringComparison.OrdinalIgnoreCase) < 0) {
+            return false;
+        }
+
+        var focusTokens = ExtractMeaningfulTokensForContext(
+            checkpoint.PriorAnswerPlanUnresolvedNow,
+            maxTokens: MaxWorkingMemoryQuestionFollowUpTokens);
+        for (var i = 0; i < focusTokens.Count; i++) {
+            var token = focusTokens[i];
+            if (token.Length < MinWorkingMemoryFocusedOverlapTokenLength) {
+                continue;
+            }
+
+            if (normalizedFollowUp.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void AppendWorkingMemoryContinuationFocusBlock(StringBuilder builder, WorkingMemoryCheckpoint checkpoint) {
+        if (builder is null
+            || (checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+                && !checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse)) {
+            return;
+        }
+
+        builder.AppendLine("[Continuation focus]");
+        builder.AppendLine(ContinuationFocusMarker);
+        if (checkpoint.PriorAnswerPlanUserGoal.Length > 0) {
+            builder.Append("last_user_goal: ").AppendLine(checkpoint.PriorAnswerPlanUserGoal);
+        }
+
+        if (checkpoint.PriorAnswerPlanUnresolvedNow.Length > 0) {
+            builder.Append("last_unresolved_ask: ").AppendLine(checkpoint.PriorAnswerPlanUnresolvedNow);
+        }
+
+        builder.Append("last_prefer_cached_evidence_reuse: ")
+            .AppendLine(checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse ? "true" : "false");
+
+        if (checkpoint.PriorAnswerPlanCachedEvidenceReuseReason.Length > 0) {
+            builder.Append("last_cached_evidence_reuse_reason: ")
+                .AppendLine(checkpoint.PriorAnswerPlanCachedEvidenceReuseReason);
+        }
+
+        if (checkpoint.PriorAnswerPlanPrimaryArtifact.Length > 0) {
+            builder.Append("last_primary_artifact: ").AppendLine(checkpoint.PriorAnswerPlanPrimaryArtifact);
+        }
+
+        builder.AppendLine();
     }
 
     private void UpsertWorkingMemoryCheckpoint(string threadId, WorkingMemoryCheckpoint checkpoint) {
@@ -253,6 +463,10 @@ internal sealed partial class ChatServiceSession {
         var directIntentAnchor = NormalizeWorkingMemoryIntentAnchor(userIntent);
         if (directIntentAnchor.Length > 0) {
             return directIntentAnchor;
+        }
+
+        if (TryReadContinuationFocusUnresolvedAskFromWorkingMemoryPrompt(routedUserRequest, out var continuationFocusUnresolvedAsk)) {
+            return continuationFocusUnresolvedAsk;
         }
 
         if (TryReadIntentAnchorFromWorkingMemoryPrompt(routedUserRequest, out var promptIntentAnchor)) {
@@ -370,6 +584,74 @@ internal sealed partial class ChatServiceSession {
         }
 
         return normalized;
+    }
+
+    private static string ResolveWorkingMemoryAnswerPlanFocus(string? value, string fallbackValue) {
+        var normalized = NormalizeWorkingMemoryAnswerPlanFocus(value);
+        if (normalized.Length > 0 || value is not null) {
+            return normalized;
+        }
+
+        return NormalizeWorkingMemoryAnswerPlanFocus(fallbackValue);
+    }
+
+    private static string NormalizeWorkingMemoryAnswerPlanFocus(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.Length > MaxWorkingMemoryAnswerPlanChars) {
+            normalized = normalized.Substring(0, MaxWorkingMemoryAnswerPlanChars).TrimEnd();
+        }
+
+        return normalized;
+    }
+
+    private static string ResolveWorkingMemoryAnswerPlanUnresolvedFocus(TurnAnswerPlan answerPlan, string fallbackValue) {
+        if (!answerPlan.HasPlan) {
+            return NormalizeWorkingMemoryAnswerPlanFocus(fallbackValue);
+        }
+
+        if (!answerPlan.CarryForwardUnresolvedFocus) {
+            return string.Empty;
+        }
+
+        return NormalizeWorkingMemoryAnswerPlanFocus(answerPlan.UnresolvedNow);
+    }
+
+    private static bool ResolveWorkingMemoryAnswerPlanCachedEvidenceReusePreference(TurnAnswerPlan answerPlan, bool fallbackValue) {
+        if (!answerPlan.HasPlan) {
+            return fallbackValue;
+        }
+
+        return answerPlan.PreferCachedEvidenceReuse;
+    }
+
+    private static string ResolveWorkingMemoryAnswerPlanCachedEvidenceReuseReason(TurnAnswerPlan answerPlan, string fallbackValue) {
+        if (!answerPlan.HasPlan) {
+            return NormalizeWorkingMemoryAnswerPlanFocus(fallbackValue);
+        }
+
+        if (!answerPlan.PreferCachedEvidenceReuse) {
+            return string.Empty;
+        }
+
+        return NormalizeWorkingMemoryAnswerPlanFocus(answerPlan.CachedEvidenceReuseReason);
+    }
+
+    private static string ResolveWorkingMemoryAnswerPlanArtifact(string? value, string fallbackValue) {
+        var normalized = NormalizeWorkingMemoryAnswerPlanArtifact(value);
+        if (normalized.Length > 0 || value is not null) {
+            return normalized;
+        }
+
+        return NormalizeWorkingMemoryAnswerPlanArtifact(fallbackValue);
+    }
+
+    private static string NormalizeWorkingMemoryAnswerPlanArtifact(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? string.Empty : NormalizeStructuredArtifactKind(normalized);
     }
 
     private static string[] NormalizeWorkingMemoryList(IEnumerable<string> values, int maxItems) {
@@ -511,6 +793,85 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
+    private static bool TryReadContinuationFocusUnresolvedAskFromWorkingMemoryPrompt(string routedUserRequest, out string unresolvedAsk) {
+        unresolvedAsk = string.Empty;
+        var raw = routedUserRequest ?? string.Empty;
+        if (raw.IndexOf(ContinuationFocusMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return false;
+        }
+
+        using var reader = new System.IO.StringReader(raw);
+        while (reader.ReadLine() is { } line) {
+            var trimmed = line.Trim();
+            if (!trimmed.StartsWith("last_unresolved_ask:", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var separator = trimmed.IndexOf(':');
+            if (separator < 0 || separator + 1 >= trimmed.Length) {
+                continue;
+            }
+
+            var value = NormalizeWorkingMemoryIntentAnchor(trimmed[(separator + 1)..]);
+            if (value.Length == 0) {
+                continue;
+            }
+
+            unresolvedAsk = value;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryReadContinuationFocusCachedEvidenceReusePreferenceFromWorkingMemoryPrompt(
+        string routedUserRequest,
+        out bool preferCachedEvidenceReuse,
+        out string reuseReason) {
+        preferCachedEvidenceReuse = false;
+        reuseReason = string.Empty;
+        var raw = routedUserRequest ?? string.Empty;
+        if (raw.IndexOf(ContinuationFocusMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return false;
+        }
+
+        var sawFlag = false;
+        using var reader = new System.IO.StringReader(raw);
+        while (reader.ReadLine() is { } line) {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("last_prefer_cached_evidence_reuse:", StringComparison.OrdinalIgnoreCase)) {
+                var separator = trimmed.IndexOf(':');
+                if (separator >= 0 && separator + 1 < trimmed.Length) {
+                    var value = trimmed[(separator + 1)..].Trim();
+                    if (value.Equals("true", StringComparison.OrdinalIgnoreCase)) {
+                        preferCachedEvidenceReuse = true;
+                        sawFlag = true;
+                        continue;
+                    }
+
+                    if (value.Equals("false", StringComparison.OrdinalIgnoreCase)) {
+                        preferCachedEvidenceReuse = false;
+                        sawFlag = true;
+                        continue;
+                    }
+                }
+            }
+
+            if (!trimmed.StartsWith("last_cached_evidence_reuse_reason:", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var reasonSeparator = trimmed.IndexOf(':');
+            if (reasonSeparator < 0 || reasonSeparator + 1 >= trimmed.Length) {
+                continue;
+            }
+
+            reuseReason = NormalizeWorkingMemoryAnswerPlanFocus(trimmed[(reasonSeparator + 1)..]);
+        }
+
+        return sawFlag;
+    }
+
     private static bool TryReadIntentAnchorFromLegacyContinuationExpansion(string routedUserRequest, out string intentAnchor) {
         intentAnchor = string.Empty;
         var raw = (routedUserRequest ?? string.Empty).Trim();
@@ -625,6 +986,11 @@ internal sealed partial class ChatServiceSession {
         string domainIntentFamily,
         IReadOnlyList<string> recentToolNames,
         IReadOnlyList<string> recentEvidenceSnippets,
+        string? priorAnswerPlanUserGoal = null,
+        string? priorAnswerPlanUnresolvedNow = null,
+        bool priorAnswerPlanPreferCachedEvidenceReuse = false,
+        string? priorAnswerPlanCachedEvidenceReuseReason = null,
+        string? priorAnswerPlanPrimaryArtifact = null,
         IReadOnlyList<string>? enabledPackIds = null,
         IReadOnlyList<string>? routingFamilies = null,
         IReadOnlyList<string>? skills = null,
@@ -635,6 +1001,13 @@ internal sealed partial class ChatServiceSession {
             DomainIntentFamily: (domainIntentFamily ?? string.Empty).Trim(),
             RecentToolNames: NormalizeWorkingMemoryList(recentToolNames ?? Array.Empty<string>(), MaxWorkingMemoryToolNames),
             RecentEvidenceSnippets: NormalizeWorkingMemoryList(recentEvidenceSnippets ?? Array.Empty<string>(), MaxWorkingMemoryEvidenceLines),
+            PriorAnswerPlanUserGoal: NormalizeWorkingMemoryAnswerPlanFocus(priorAnswerPlanUserGoal),
+            PriorAnswerPlanUnresolvedNow: NormalizeWorkingMemoryAnswerPlanFocus(priorAnswerPlanUnresolvedNow),
+            PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
+            PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanPreferCachedEvidenceReuse
+                ? NormalizeWorkingMemoryAnswerPlanFocus(priorAnswerPlanCachedEvidenceReuseReason)
+                : string.Empty,
+            PriorAnswerPlanPrimaryArtifact: NormalizeWorkingMemoryAnswerPlanArtifact(priorAnswerPlanPrimaryArtifact),
             CapabilityEnabledPackIds: NormalizeDistinctStrings(
                 (enabledPackIds ?? Array.Empty<string>())
                 .Select(static packId => NormalizePackId(packId))
@@ -668,11 +1041,48 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
+    internal bool TryGetWorkingMemoryAnswerPlanFocusForTesting(
+        string threadId,
+        out string userGoal,
+        out string unresolvedNow,
+        out string primaryArtifact) {
+        userGoal = string.Empty;
+        unresolvedNow = string.Empty;
+        primaryArtifact = string.Empty;
+        if (!TryGetWorkingMemoryCheckpoint(threadId, out var checkpoint)) {
+            return false;
+        }
+
+        userGoal = checkpoint.PriorAnswerPlanUserGoal;
+        unresolvedNow = checkpoint.PriorAnswerPlanUnresolvedNow;
+        primaryArtifact = checkpoint.PriorAnswerPlanPrimaryArtifact;
+        return true;
+    }
+
+    internal void RememberWorkingMemoryCheckpointFromAnswerPlanForTesting(
+        string threadId,
+        string userIntent,
+        string routedUserRequest,
+        TurnAnswerPlan answerPlan) {
+        RememberWorkingMemoryCheckpoint(
+            threadId,
+            userIntent,
+            routedUserRequest,
+            answerPlan,
+            Array.Empty<ToolCallDto>(),
+            Array.Empty<ToolOutputDto>(),
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+    }
+
     internal bool TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(
         string threadId,
         string userRequest,
         string routedUserRequest,
         out string augmentedUserRequest) {
         return TryAugmentRoutedUserRequestFromWorkingMemoryCheckpoint(threadId, userRequest, routedUserRequest, out augmentedUserRequest);
+    }
+
+    internal static string ResolveWorkingMemoryIntentAnchorForTesting(string userIntent, string routedUserRequest, string fallbackIntentAnchor) {
+        return ResolveWorkingMemoryIntentAnchor(userIntent, routedUserRequest, fallbackIntentAnchor);
     }
 }

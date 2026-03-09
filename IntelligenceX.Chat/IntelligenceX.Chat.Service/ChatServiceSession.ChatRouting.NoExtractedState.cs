@@ -24,6 +24,7 @@ internal sealed partial class ChatServiceSession {
         public NoExtractedToolRoundState(
             TurnInfo turn,
             string assistantDraft,
+            TurnAnswerPlan answerPlan,
             bool controlPayloadDetected,
             string routedUserRequest,
             bool executionContractApplies,
@@ -58,6 +59,7 @@ internal sealed partial class ChatServiceSession {
             bool interimResultSent) {
             Turn = turn;
             AssistantDraft = assistantDraft;
+            AnswerPlan = answerPlan;
             ControlPayloadDetected = controlPayloadDetected;
             RoutedUserRequest = routedUserRequest;
             ExecutionContractApplies = executionContractApplies;
@@ -95,6 +97,8 @@ internal sealed partial class ChatServiceSession {
         public TurnInfo Turn { get; set; }
 
         public string AssistantDraft { get; set; }
+
+        public TurnAnswerPlan AnswerPlan { get; set; }
 
         public bool ControlPayloadDetected { get; set; }
 
