@@ -86,7 +86,8 @@ public sealed class TranscriptForensicsExporterTests {
 
         Assert.NotNull(bundle.Persisted);
         Assert.Single(bundle.Persisted!.Messages);
-        Assert.Equal(DateTime.SpecifyKind(persistedTimestamp, DateTimeKind.Utc), bundle.Persisted.Messages[0].TimeUtc);
+        Assert.Equal(DateTimeKind.Utc, bundle.Persisted.Messages[0].TimeUtc.Kind);
+        Assert.Equal(DateTime.SpecifyKind(persistedTimestamp, DateTimeKind.Utc).Ticks, bundle.Persisted.Messages[0].TimeUtc.Ticks);
     }
 
     /// <summary>
@@ -250,4 +251,3 @@ public sealed class TranscriptForensicsExporterTests {
         return path;
     }
 }
-

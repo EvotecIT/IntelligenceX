@@ -48,7 +48,7 @@ internal static class TranscriptForensicsExporter {
         var liveSnapshot = BuildSnapshot(liveMessages, timestampFormat, markdownOptions);
         var persistedSnapshot = persistedMessages is null
             ? null
-            : BuildSnapshot(ProjectPersistedMessages(persistedMessages), timestampFormat, markdownOptions);
+            : BuildPersistedSnapshot(persistedMessages, timestampFormat, markdownOptions);
 
         return new TranscriptForensicsBundle {
             ExportedUtc = DateTime.UtcNow,
@@ -107,6 +107,54 @@ internal static class TranscriptForensicsExporter {
         };
     }
 
+    private static TranscriptForensicsConversationSnapshot BuildPersistedSnapshot(
+        IReadOnlyList<ChatMessageState> persistedMessages,
+        string timestampFormat,
+        MarkdownRendererOptions markdownOptions) {
+        var displayMessages = new List<(string Role, string Text, DateTime Time, string? Model)>(persistedMessages.Count);
+        var projectedMessages = new List<TranscriptForensicsMessage>(persistedMessages.Count);
+
+        for (var i = 0; i < persistedMessages.Count; i++) {
+            var message = persistedMessages[i];
+            var timeUtc = NormalizePersistedTimestampUtc(message.TimeUtc);
+            var displayTime = timeUtc.ToLocalTime();
+            displayMessages.Add((message.Role, message.Text, displayTime, message.Model));
+
+            if (string.IsNullOrWhiteSpace(message.Text)) {
+                continue;
+            }
+
+            var rawText = message.Text;
+            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            var renderedHtml = TranscriptHtmlFormatter.Format(
+                new[] { (message.Role, rawText, displayTime, message.Model) },
+                timestampFormat,
+                markdownOptions);
+
+            projectedMessages.Add(new TranscriptForensicsMessage {
+                Role = message.Role,
+                TimeUtc = timeUtc,
+                Model = NormalizeOptionalValue(message.Model),
+                RawText = rawText,
+                NormalizedText = normalizedText,
+                RenderedHtml = renderedHtml,
+                WasNormalized = !string.Equals(rawText, normalizedText, StringComparison.Ordinal)
+            });
+        }
+
+        var rawTranscriptMarkdown = BuildRawTranscriptMarkdown(displayMessages, timestampFormat);
+        var normalizedTranscriptMarkdown = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(rawTranscriptMarkdown);
+        var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(displayMessages, timestampFormat, markdownOptions);
+
+        return new TranscriptForensicsConversationSnapshot {
+            MessageCount = projectedMessages.Count,
+            RawTranscriptMarkdown = rawTranscriptMarkdown,
+            NormalizedTranscriptMarkdown = normalizedTranscriptMarkdown,
+            RenderedTranscriptHtml = renderedTranscriptHtml,
+            Messages = projectedMessages
+        };
+    }
+
     private static string BuildRawTranscriptMarkdown(
         IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat) {
@@ -148,25 +196,11 @@ internal static class TranscriptForensicsExporter {
         return "<!-- ix:model: " + safeModel + " -->";
     }
 
-    private static IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> ProjectPersistedMessages(IReadOnlyList<ChatMessageState> persistedMessages) {
-        var messages = new List<(string Role, string Text, DateTime Time, string? Model)>(persistedMessages.Count);
-        for (var i = 0; i < persistedMessages.Count; i++) {
-            var message = persistedMessages[i];
-            messages.Add((
-                message.Role,
-                message.Text,
-                NormalizePersistedTimestamp(message.TimeUtc),
-                message.Model));
-        }
-
-        return messages;
-    }
-
-    private static DateTime NormalizePersistedTimestamp(DateTime timestampUtc) {
+    private static DateTime NormalizePersistedTimestampUtc(DateTime timestampUtc) {
         return timestampUtc.Kind switch {
-            DateTimeKind.Utc => timestampUtc.ToLocalTime(),
-            DateTimeKind.Unspecified => DateTime.SpecifyKind(timestampUtc, DateTimeKind.Utc).ToLocalTime(),
-            _ => timestampUtc
+            DateTimeKind.Utc => timestampUtc,
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(timestampUtc, DateTimeKind.Utc),
+            _ => timestampUtc.ToUniversalTime()
         };
     }
 
