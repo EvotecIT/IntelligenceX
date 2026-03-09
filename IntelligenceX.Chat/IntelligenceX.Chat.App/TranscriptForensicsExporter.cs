@@ -55,10 +55,10 @@ internal static class TranscriptForensicsExporter {
         return new TranscriptForensicsBundle {
             ExportedUtc = DateTime.UtcNow,
             ProfileName = (profileName ?? string.Empty).Trim(),
-            DatabasePath = NormalizeOptionalPath(databasePath),
+            DatabasePath = NormalizeOptionalValue(databasePath),
             ConversationId = (conversationId ?? string.Empty).Trim(),
             ConversationTitle = string.IsNullOrWhiteSpace(conversationTitle) ? "New Chat" : conversationTitle.Trim(),
-            ThreadId = NormalizeOptionalPath(threadId),
+            ThreadId = NormalizeOptionalValue(threadId),
             TimestampFormat = string.IsNullOrWhiteSpace(timestampFormat) ? "HH:mm:ss" : timestampFormat.Trim(),
             Renderer = BuildRendererSnapshot(),
             Live = liveSnapshot,
@@ -86,7 +86,7 @@ internal static class TranscriptForensicsExporter {
             projectedMessages.Add(new TranscriptForensicsMessage {
                 Role = message.Role,
                 TimeUtc = message.Time.Kind == DateTimeKind.Utc ? message.Time : message.Time.ToUniversalTime(),
-                Model = NormalizeOptionalPath(message.Model),
+                Model = NormalizeOptionalValue(message.Model),
                 RawText = rawText,
                 NormalizedText = normalizedText,
                 RenderedHtml = renderedHtml,
@@ -190,7 +190,7 @@ internal static class TranscriptForensicsExporter {
         return $"{name.Name} version={version} path={path}";
     }
 
-    private static string? NormalizeOptionalPath(string? value) {
+    private static string? NormalizeOptionalValue(string? value) {
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length == 0 ? null : normalized;
     }
@@ -231,3 +231,4 @@ internal sealed class TranscriptForensicsMessage {
     public string RenderedHtml { get; set; } = string.Empty;
     public bool WasNormalized { get; set; }
 }
+

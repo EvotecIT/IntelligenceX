@@ -24,7 +24,10 @@ public sealed partial class MainWindow {
             }
 
             var persistedState = await _stateStore.GetAsync(_appProfileName, CancellationToken.None).ConfigureAwait(false);
-            var persistedConversation = FindPersistedConversationState(persistedState, conversation);
+            var persistedConversation = FindPersistedConversationState(
+                persistedState,
+                conversation.Id,
+                conversation.ThreadId);
             var bundle = TranscriptForensicsExporter.Build(
                 _appProfileName,
                 _stateStore.DatabasePath,
@@ -80,30 +83,31 @@ public sealed partial class MainWindow {
         return fullPath;
     }
 
-    private static ChatConversationState? FindPersistedConversationState(ChatAppState? state, ConversationRuntime liveConversation) {
+    internal static ChatConversationState? FindPersistedConversationState(
+        ChatAppState? state,
+        string liveConversationId,
+        string? liveThreadId) {
         if (state?.Conversations is not { Count: > 0 }) {
             return null;
         }
 
         for (var i = 0; i < state.Conversations.Count; i++) {
             var conversation = state.Conversations[i];
-            if (string.Equals(conversation.Id, liveConversation.Id, StringComparison.Ordinal)) {
+            if (string.Equals(conversation.Id, liveConversationId, StringComparison.Ordinal)) {
                 return conversation;
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(liveConversation.ThreadId)) {
+        if (!string.IsNullOrWhiteSpace(liveThreadId)) {
             for (var i = 0; i < state.Conversations.Count; i++) {
                 var conversation = state.Conversations[i];
-                if (string.Equals(conversation.ThreadId, liveConversation.ThreadId, StringComparison.OrdinalIgnoreCase)) {
+                if (string.Equals(conversation.ThreadId, liveThreadId, StringComparison.OrdinalIgnoreCase)) {
                     return conversation;
                 }
             }
         }
 
-        return state.Conversations
-            .FirstOrDefault(conversation =>
-                string.Equals(conversation.Title, liveConversation.Title, StringComparison.Ordinal)
-                && conversation.Messages.Count == liveConversation.Messages.Count);
+        return null;
     }
 }
+

@@ -94,9 +94,59 @@ public sealed class TranscriptForensicsExporterTests {
         }
     }
 
+
+    /// <summary>
+    /// Verifies forensic export refuses weak title-plus-count matches to avoid attaching the wrong persisted conversation.
+    /// </summary>
+    [Fact]
+    public void FindPersistedConversationState_ReturnsNullWhenOnlyTitleAndMessageCountMatch() {
+        var state = new ChatAppState {
+            Conversations = new List<ChatConversationState> {
+                new() {
+                    Id = "persisted-1",
+                    Title = "Forest",
+                    Messages = new List<ChatMessageState> {
+                        new() { Role = "Assistant", Text = "One" }
+                    }
+                }
+            }
+        };
+
+        var match = MainWindow.FindPersistedConversationState(state, "live-1", null);
+
+        Assert.Null(match);
+    }
+
+    /// <summary>
+    /// Verifies thread id remains an acceptable persisted-conversation correlation key when conversation ids differ.
+    /// </summary>
+    [Fact]
+    public void FindPersistedConversationState_MatchesByThreadIdWhenConversationIdDiffers() {
+        var state = new ChatAppState {
+            Conversations = new List<ChatConversationState> {
+                new() {
+                    Id = "persisted-1",
+                    Title = "Forest",
+                    ThreadId = "thread-42",
+                    Messages = new List<ChatMessageState> {
+                        new() { Role = "Assistant", Text = "One" }
+                    }
+                }
+            }
+        };
+
+        var match = MainWindow.FindPersistedConversationState(state, "live-1", "thread-42");
+
+        Assert.NotNull(match);
+        Assert.Equal("persisted-1", match!.Id);
+    }
+
     private static string CreateTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
     }
 }
+
+
+
