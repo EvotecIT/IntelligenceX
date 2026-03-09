@@ -261,6 +261,7 @@
   });
 
   var menuWheelDiagnostics = byId("menuWheelDiagnostics");
+  var menuExportTranscriptForensics = byId("menuExportTranscriptForensics");
   function copyWheelDiagnosticsToClipboard() {
     post("omd_copy", { text: buildWheelDiagnosticsText() });
   }
@@ -296,6 +297,16 @@
   if (menuWheelDiagnostics) {
     menuWheelDiagnostics.addEventListener("click", function() {
       copyWheelDiagnosticsToClipboard();
+      menu.classList.remove("open");
+    });
+  }
+
+  if (menuExportTranscriptForensics) {
+    menuExportTranscriptForensics.addEventListener("click", function() {
+      if (!normalizeBool(state.options.debugToolsEnabled)) {
+        return;
+      }
+      post("debug_export_transcript_forensics");
       menu.classList.remove("open");
     });
   }
@@ -574,6 +585,13 @@
       return;
     }
     post("toggle_debug");
+  });
+
+  byId("btnDebugExportTranscriptForensics").addEventListener("click", function() {
+    if (!normalizeBool(state.options.debugToolsEnabled)) {
+      return;
+    }
+    post("debug_export_transcript_forensics");
   });
 
   byId("btnDebugCopyWheel").addEventListener("click", function() {

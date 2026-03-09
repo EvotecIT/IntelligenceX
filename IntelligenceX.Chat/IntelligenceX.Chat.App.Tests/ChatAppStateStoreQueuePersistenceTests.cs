@@ -97,6 +97,28 @@ public sealed class ChatAppStateStoreQueuePersistenceTests {
         }
     }
 
+    /// <summary>
+    /// Ensures the exposed database path is normalized to a full path for deterministic diagnostics.
+    /// </summary>
+    [Fact]
+    public void DatabasePath_NormalizesRelativeInputToFullPath() {
+        var relativeRoot = Path.Combine("artifacts", "state-store-tests", Guid.NewGuid().ToString("N"));
+        var relativePath = Path.Combine(relativeRoot, "state.db");
+
+        try {
+            using var store = new ChatAppStateStore(relativePath);
+
+            Assert.Equal(Path.GetFullPath(relativePath), store.DatabasePath, ignoreCase: true);
+        } finally {
+            var fullRoot = Path.GetFullPath(relativeRoot);
+            try {
+                Directory.Delete(fullRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
     private static List<ChatQueuedTurnState> BuildQueuedTurns(int count, string prefix) {
         var turns = new List<ChatQueuedTurnState>(count);
         var now = DateTime.UtcNow;

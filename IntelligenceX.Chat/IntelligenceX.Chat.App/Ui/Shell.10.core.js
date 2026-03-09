@@ -1886,6 +1886,7 @@
     var switchAccount = byId("menuSwitchAccount");
     var reconnect = byId("menuReconnect");
     var debug = byId("menuToggleDebug");
+    var transcriptForensics = byId("menuExportTranscriptForensics");
     var wheelDiagnostics = byId("menuWheelDiagnostics");
     var debugDivider = byId("menuDebugDivider");
     var authenticated = normalizeBool(state.authenticated);
@@ -1928,6 +1929,9 @@
     if (debug) {
       debug.hidden = !debugToolsEnabled;
       debug.textContent = normalizeBool(state.debugMode) ? "Disable Debug" : "Enable Debug";
+    }
+    if (transcriptForensics) {
+      transcriptForensics.hidden = !debugToolsEnabled;
     }
     if (wheelDiagnostics) {
       wheelDiagnostics.hidden = !debugToolsEnabled;

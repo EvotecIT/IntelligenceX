@@ -128,6 +128,24 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures debug surfaces expose transcript forensics export so persisted/raw/normalized/rendered states
+    /// can be captured without modifying the main transcript pipeline.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesTranscriptForensicsDebugActions() {
+        var html = UiShellAssets.Load();
+        var bindingsScriptPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindingsScript = File.ReadAllText(bindingsScriptPath);
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+
+        Assert.Contains("id=\"menuExportTranscriptForensics\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnDebugExportTranscriptForensics\"", html, StringComparison.Ordinal);
+        Assert.Contains("debug_export_transcript_forensics", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("menuExportTranscriptForensics", coreScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the data-view quick save button derives user-facing copy from current export preferences
     /// instead of falling back to a stale fixed label.
     /// </summary>

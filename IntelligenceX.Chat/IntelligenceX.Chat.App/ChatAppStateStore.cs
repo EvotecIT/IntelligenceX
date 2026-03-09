@@ -30,7 +30,7 @@ internal sealed class ChatAppStateStore : IDisposable {
             throw new ArgumentException("Database path cannot be empty.", nameof(dbPath));
         }
 
-        _dbPath = dbPath;
+        _dbPath = Path.GetFullPath(dbPath);
         _json = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
@@ -51,6 +51,8 @@ internal sealed class ChatAppStateStore : IDisposable {
 
         return Path.Combine(root, "IntelligenceX.Chat", "app-state.db");
     }
+
+    internal string DatabasePath => _dbPath;
 
     public Task<ChatAppState?> GetAsync(string profileName, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();

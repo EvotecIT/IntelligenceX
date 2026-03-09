@@ -55,6 +55,37 @@ internal static class TranscriptHtmlFormatter {
     }
 
     /// <summary>
+    /// Renders a single message body for export without rebuilding the full chat-shell row chrome.
+    /// </summary>
+    public static string FormatSingleMessageForExport(
+        string role,
+        string text,
+        MarkdownRendererOptions markdownOptions) {
+        ArgumentNullException.ThrowIfNull(markdownOptions);
+
+        var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        if (string.IsNullOrWhiteSpace(normalizedText)) {
+            return string.Empty;
+        }
+
+        if (TryRenderOutcomeCallout(role, normalizedText, markdownOptions, out var calloutHtml)) {
+            return calloutHtml;
+        }
+
+        var actionExtraction = string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase)
+            ? ExtractPendingActionsForRendering(normalizedText)
+            : new PendingActionExtraction(normalizedText, Array.Empty<PendingActionRenderItem>());
+        var bodyHtml = string.IsNullOrWhiteSpace(actionExtraction.CleanedText)
+            ? string.Empty
+            : RenderBodyHtml(actionExtraction.CleanedText, markdownOptions);
+        if (actionExtraction.Actions.Count > 0) {
+            bodyHtml = AppendPendingActionChips(bodyHtml, actionExtraction.Actions);
+        }
+
+        return bodyHtml;
+    }
+
+    /// <summary>
     /// Builds transcript HTML for the chat shell.
     /// </summary>
     /// <param name="messages">Role/text/time transcript entries.</param>
