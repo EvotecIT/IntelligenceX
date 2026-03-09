@@ -30,7 +30,7 @@ internal sealed class ChatAppStateStore : IDisposable {
             throw new ArgumentException("Database path cannot be empty.", nameof(dbPath));
         }
 
-        _dbPath = dbPath;
+        _dbPath = Path.GetFullPath(dbPath);
         _json = new JsonSerializerOptions {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };

@@ -78,11 +78,11 @@ internal static class TranscriptForensicsExporter {
             }
 
             includedMessages.Add((message.Role, rawText, message.Time, message.Model));
-            // Diagnostic exports intentionally capture per-message render output to compare formatter behavior
-            // against the full transcript artifact when debugging rendering mismatches.
-            var renderedHtml = TranscriptHtmlFormatter.Format(
-                new[] { (message.Role, rawText, message.Time, message.Model) },
-                timestampFormat,
+            // Export snapshots keep per-message HTML, but we only need the message body here rather than
+            // rebuilding full transcript-shell chrome for each entry.
+            var renderedHtml = TranscriptHtmlFormatter.FormatSingleMessageForExport(
+                message.Role,
+                rawText,
                 markdownOptions);
 
             projectedMessages.Add(new TranscriptForensicsMessage {
@@ -127,9 +127,9 @@ internal static class TranscriptForensicsExporter {
             }
 
             displayMessages.Add((message.Role, rawText, displayTime, message.Model));
-            var renderedHtml = TranscriptHtmlFormatter.Format(
-                new[] { (message.Role, rawText, displayTime, message.Model) },
-                timestampFormat,
+            var renderedHtml = TranscriptHtmlFormatter.FormatSingleMessageForExport(
+                message.Role,
+                rawText,
                 markdownOptions);
 
             projectedMessages.Add(new TranscriptForensicsMessage {
