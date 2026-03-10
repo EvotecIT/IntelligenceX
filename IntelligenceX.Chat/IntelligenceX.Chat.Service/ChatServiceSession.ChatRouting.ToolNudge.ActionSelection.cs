@@ -222,6 +222,10 @@ internal sealed partial class ChatServiceSession {
 
         if (node.ValueKind == JsonValueKind.Object) {
             foreach (var property in node.EnumerateObject()) {
+                if (property.NameEquals("next_actions") || property.NameEquals("nextActions")) {
+                    continue;
+                }
+
                 var value = property.Value;
                 if (value.ValueKind != JsonValueKind.Object && value.ValueKind != JsonValueKind.Array) {
                     continue;
@@ -265,11 +269,7 @@ internal sealed partial class ChatServiceSession {
                 break;
             case JsonValueKind.String when TryParseNamedConfidence((value.GetString() ?? string.Empty).Trim(), out rawValue):
                 break;
-            case JsonValueKind.String when double.TryParse(
-                    (value.GetString() ?? string.Empty).Trim(),
-                    NumberStyles.Float | NumberStyles.AllowThousands,
-                    CultureInfo.InvariantCulture,
-                    out rawValue):
+            case JsonValueKind.String when TryParseNormalizedConfidenceString(value.GetString(), out rawValue):
                 break;
             default:
                 return false;
@@ -302,6 +302,29 @@ internal sealed partial class ChatServiceSession {
             default:
                 return false;
         }
+    }
+
+    private static bool TryParseNormalizedConfidenceString(string? text, out double value) {
+        value = default;
+        var candidate = (text ?? string.Empty).Trim();
+        if (candidate.Length == 0) {
+            return false;
+        }
+
+        if (double.TryParse(candidate, NumberStyles.Float, CultureInfo.InvariantCulture, out value)) {
+            return true;
+        }
+
+        if (candidate.IndexOf('.') >= 0 || candidate.IndexOf(',') != candidate.LastIndexOf(',')) {
+            return false;
+        }
+
+        if (candidate.IndexOf(',') >= 0) {
+            var normalized = candidate.Replace(',', '.');
+            return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        }
+
+        return false;
     }
 
     private static string BuildStructuredNextActionRetryPrompt(

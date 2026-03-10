@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -200,6 +201,14 @@ internal sealed partial class ChatServiceSession {
         ArgumentNullException.ThrowIfNull(toolCalls);
         ArgumentNullException.ThrowIfNull(toolOutputs);
         RememberStructuredNextActionCarryover(threadId, toolDefinitions, toolCalls, toolOutputs, mutatingToolHintsByName);
+    }
+
+    internal static bool TryReadNormalizedConfidenceValueForTesting(JsonElement node, string propertyName, out double confidence) {
+        return TryReadNormalizedConfidenceValue(node, propertyName, out confidence);
+    }
+
+    internal static bool TryFindNormalizedConfidenceValueForTesting(JsonElement node, int maxDepth, out double confidence) {
+        return TryFindNormalizedConfidenceValue(node, maxDepth, out confidence);
     }
 
     internal bool HasFreshPendingActionsContextForTesting(string threadId) {
