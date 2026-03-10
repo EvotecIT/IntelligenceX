@@ -226,6 +226,42 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesLdapCertificateFollowthroughTargetsWhenProvided() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_ldap_diagnostics",
+                "Run LDAP diagnostics.",
+                ToolSchema.Object(("domain_name", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties()),
+            new(
+                "system_certificate_posture",
+                "Inspect certificate posture.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties())
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            missing_live_evidence: ldap certificate posture
+            preferred_pack_ids: active_directory, system
+            preferred_tool_names: ad_ldap_diagnostics, system_certificate_posture
+            handoff_target_pack_ids: system
+            handoff_target_tool_names: system_certificate_posture
+            allow_cached_evidence_reuse: false
+
+            continue from the same discovered domain controllers and inspect their certificate posture
+            """,
+            definitions,
+            4
+        }));
+
+        Assert.Contains("Missing live evidence: ldap certificate posture", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Preferred tools: ad_ldap_diagnostics, system_certificate_posture", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Target tools: system_certificate_posture", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildToolRoutingSearchText_IncludesSchemaTokens() {
         var definition = new ToolDefinition(
             "eventlog_top_events",
@@ -242,6 +278,41 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("log_name", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("required", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("table view projection", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_DistinguishesLdapCertificatesFromMachineCertificateStores() {
+        var ldapDefinition = new ToolDefinition(
+            "ad_ldap_diagnostics",
+            "Test LDAP/LDAPS endpoints including LDAPS endpoint certificates and certificate metadata.",
+            ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            tags: new[] { "intent:ldap_certificates", "protocol:ldaps" });
+        var systemDefinition = new ToolDefinition(
+            "system_certificate_posture",
+            "Return machine certificate-store posture for the host, not LDAP/LDAPS endpoint certificates.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Computer"))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            tags: new[] { "scope:host_certificate_store" });
+
+        var ldapSearchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { ldapDefinition }));
+        var systemSearchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { systemDefinition }));
+
+        Assert.Contains("ldap", ldapSearchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ldaps", ldapSearchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("intent:ldap_certificates", ldapSearchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("machine certificate-store posture", systemSearchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not ldap/ldaps endpoint certificates", systemSearchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -624,6 +695,55 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.InRange(selected.Count, 4, 8);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_evtx_probe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_PrefersAdLdapDiagnostics_ForLdapCertificateRequests() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "ad_ldap_diagnostics",
+            "Test LDAP/LDAPS endpoints for domain controllers, including LDAPS endpoint certificates, SAN/name match, and certificate metadata.",
+            ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            tags: new[] { "intent:ldap_certificates", "protocol:ldap", "protocol:ldaps" }));
+        definitions.Add(new ToolDefinition(
+            "system_certificate_posture",
+            "Return machine certificate-store posture for the host, not LDAP/LDAPS endpoint certificates.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Computer"))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            tags: new[] { "scope:host_certificate_store" }));
+
+        var args = new object?[] {
+            definitions,
+            "Please rerun the LDAP certificates check on the same domain controllers and verify the LDAPS certificate details.",
+            1,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.NotEmpty(selected);
+        Assert.Equal("ad_ldap_diagnostics", selected[0].Name);
+        Assert.DoesNotContain(
+            selected.Take(1),
+            static definition => string.Equals(definition.Name, "system_certificate_posture", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

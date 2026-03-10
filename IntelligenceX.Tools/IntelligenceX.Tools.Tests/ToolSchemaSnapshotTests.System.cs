@@ -78,6 +78,126 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "system_local_identity_inventory",
+            new[] { "computer_name", "include_group_members", "only_privileged_groups", "privileged_group_names", "max_entries", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_privacy_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_exploit_protection",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_office_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_browser_posture",
+            new[] { "computer_name", "include_extensions", "max_extensions" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_backup_posture",
+            new[] { "computer_name", "include_shadow_copies", "max_shadow_copies", "include_restore_points", "max_restore_points" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_tls_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_winrm_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_powershell_logging_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_uac_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_ldap_policy_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_network_client_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_account_policy_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_interactive_logon_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_device_guard_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_defender_asr_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_windows_update_client_status",
+            new[] { "computer_name", "include_event_telemetry", "event_lookback_days", "query_timeout_seconds" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_windows_update_telemetry",
+            new[] { "computer_name", "include_event_telemetry", "event_lookback_days", "query_timeout_seconds", "detect_stale_warning_after_hours", "detect_stale_down_after_hours" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_certificate_posture",
+            new[] { "computer_name", "recent_window_days", "include_certificates", "max_certificates_per_store", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_credential_posture",
+            new[] { "computer_name", "include_stored_credentials", "max_stored_credentials" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "system_info",
             new[] { "computer_name" },
             Array.Empty<string>()

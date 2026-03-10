@@ -42,6 +42,30 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_monitoring_service_heartbeat_get",
+            new[] { "monitoring_directory", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "monitoring_directory" }
+        };
+
+        yield return new object[] {
+            "ad_monitoring_diagnostics_get",
+            new[] { "monitoring_directory", "include_slow_probes", "max_slow_probes", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "monitoring_directory" }
+        };
+
+        yield return new object[] {
+            "ad_monitoring_metrics_get",
+            new[] { "monitoring_directory", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "monitoring_directory" }
+        };
+
+        yield return new object[] {
+            "ad_monitoring_dashboard_state_get",
+            new[] { "monitoring_directory", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "monitoring_directory" }
+        };
+
+        yield return new object[] {
             "ad_users_expired",
             new[] { "domain_controller", "search_base_dn", "reference_time_utc", "max_results" },
             Array.Empty<string>()

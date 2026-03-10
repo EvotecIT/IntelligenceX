@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace IntelligenceX.Tools.ADPlayground;
 
@@ -20,6 +21,11 @@ public sealed class ActiveDirectoryToolOptions {
     /// Maximum results returned by query tools.
     /// </summary>
     public int MaxResults { get; set; } = 1000;
+
+    /// <summary>
+    /// Allowed roots for persisted monitoring snapshot inspection.
+    /// </summary>
+    public List<string> AllowedMonitoringRoots { get; } = new();
 
     /// <summary>
     /// Validates this options instance.

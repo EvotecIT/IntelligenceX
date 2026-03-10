@@ -140,6 +140,10 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdDnsScavengingTool(options);
         yield return new AdMonitoringProbeCatalogTool(options);
         yield return new AdMonitoringProbeRunTool(options);
+        yield return new AdMonitoringServiceHeartbeatGetTool(options);
+        yield return new AdMonitoringDiagnosticsGetTool(options);
+        yield return new AdMonitoringMetricsGetTool(options);
+        yield return new AdMonitoringDashboardStateGetTool(options);
         yield return new AdReplicationSummaryTool(options);
         yield return new AdReplicationConnectionsTool(options);
         yield return new AdReplicationStatusTool(options);

@@ -31,7 +31,7 @@ public sealed class AdLdapDiagnosticsTool : ActiveDirectoryToolBase, ITool {
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_ldap_diagnostics",
-        "Test LDAP/LDAPS/GC endpoints (ports, bind, and LDAPS certificate metadata) for one or more domain controllers (read-only).",
+        "Test LDAP/LDAPS/GC endpoints for one or more domain controllers, including bind health, LDAPS endpoint certificates, SAN/name match, and certificate metadata (read-only).",
         ToolSchema.Object(
                 ("servers", ToolSchema.Array(ToolSchema.String(), "Optional server list (DC hostnames/FQDNs). If omitted, domain controllers are discovered.")),
                 ("domain_controller", ToolSchema.String("Optional domain controller override used for discovery and RootDSE reads.")),
@@ -42,7 +42,13 @@ public sealed class AdLdapDiagnosticsTool : ActiveDirectoryToolBase, ITool {
                 ("certificate_include_dns_names", ToolSchema.Array(ToolSchema.String(), "Optional DNS names that must appear in the LDAPS certificate SAN list.")),
                 ("timeout_ms", ToolSchema.Integer("Per-endpoint timeout in milliseconds (capped). Default 5000.")))
             .WithTableViewOptions()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "active_directory",
+        tags: new[] { "pack:active_directory", "intent:ldap_certificates", "protocol:ldap", "protocol:ldaps" },
+        aliases: new[] {
+            new ToolAliasDefinition("ad_ldap_certificates", "Inspect LDAP/LDAPS endpoint certificate details for domain controllers."),
+            new ToolAliasDefinition("ad_ldaps_certificates", "Inspect LDAPS endpoint certificate details for domain controllers.")
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdLdapDiagnosticsTool"/> class.

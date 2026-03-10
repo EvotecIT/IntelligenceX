@@ -8,15 +8,20 @@ using ADPlayground.Monitoring.Probes;
 using ADPlayground.Monitoring.Probes.DirectoryHealth;
 using ComputerX.Bios;
 using ComputerX.Boot;
+using ComputerX.Certificates;
+using ComputerX.Credentials;
 using ComputerX.Diagnostics;
 using ComputerX.Devices;
 using ComputerX.Features;
 using ComputerX.Firewall;
 using ComputerX.Hardware;
+using ComputerX.Identity;
 using ComputerX.InstalledApplications;
 using ComputerX.Network;
+using ComputerX.Office;
 using ComputerX.Ports;
 using ComputerX.Processes;
+using ComputerX.Privacy;
 using ComputerX.Rdp;
 using ComputerX.Runtime;
 using ComputerX.ScheduledTasks;
@@ -27,6 +32,9 @@ using ComputerX.Smb;
 using ComputerX.Storage;
 using ComputerX.Time;
 using ComputerX.Updates;
+using ComputerX.ExploitProtection;
+using ComputerX.Browsers;
+using ComputerX.Backup;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -77,6 +85,7 @@ public static class ToolCapabilityParityInventoryBuilder {
         CapabilityExpectation.ForRemoteTool("remote_scheduled_task_inventory", "system_scheduled_tasks_list", static () => HasComputerNameProperty<TaskSchedulerListQueryRequest>()),
         CapabilityExpectation.ForRemoteTool("remote_firewall_rule_inventory", "system_firewall_rules", static () => HasComputerNameProperty<FirewallRuleListQueryRequest>()),
         CapabilityExpectation.ForRemoteTool("remote_firewall_profile_inventory", "system_firewall_profiles", static () => HasComputerNameProperty<FirewallProfileListQueryRequest>()),
+        CapabilityExpectation.ForRemoteTool("remote_local_identity_inventory", "system_local_identity_inventory", static () => HasComputerNameProperty<LocalIdentityInventoryQueryRequest>()),
         CapabilityExpectation.ForRemoteTool("remote_security_options", "system_security_options", static () => HasStaticMethod(typeof(SecurityOptionsQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_rdp_posture", "system_rdp_posture", static () => HasStaticMethod(typeof(RdpPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_smb_posture", "system_smb_posture", static () => HasStaticMethod(typeof(SmbConfigQuery), "Get")),
@@ -84,6 +93,25 @@ public static class ToolCapabilityParityInventoryBuilder {
         CapabilityExpectation.ForRemoteTool("remote_bios_summary", "system_bios_summary", static () => HasStaticMethod(typeof(Bios), "Get") || HasStaticMethod(typeof(Bios), "GetAsync")),
         CapabilityExpectation.ForRemoteTool("remote_time_sync", "system_time_sync", static () => HasRemoteQueryMethod(typeof(TimeSync), "QueryRemoteStatusAsync")),
         CapabilityExpectation.ForRemoteTool("remote_bitlocker_status", "system_bitlocker_status", static () => HasStaticMethod(typeof(BitLocker), "Get") || HasStaticMethod(typeof(BitLocker), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_privacy_posture", "system_privacy_posture", static () => HasStaticMethod(typeof(PrivacyPosture), "Get") || HasStaticMethod(typeof(PrivacyPosture), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_exploit_protection", "system_exploit_protection", static () => HasStaticMethod(typeof(ExploitProtection), "Get") || HasStaticMethod(typeof(ExploitProtection), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_office_posture", "system_office_posture", static () => HasStaticMethod(typeof(OfficePosture), "Get") || HasStaticMethod(typeof(OfficePosture), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_browser_posture", "system_browser_posture", static () => HasStaticMethod(typeof(BrowserPosture), "Get") || HasStaticMethod(typeof(BrowserPosture), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_backup_posture", "system_backup_posture", static () => HasStaticMethod(typeof(Backup), "Get") || HasStaticMethod(typeof(Backup), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_tls_posture", "system_tls_posture", static () => HasStaticMethod(typeof(TlsPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_winrm_posture", "system_winrm_posture", static () => HasStaticMethod(typeof(WinRmPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_powershell_logging_posture", "system_powershell_logging_posture", static () => HasStaticMethod(typeof(PsLoggingPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_uac_posture", "system_uac_posture", static () => HasStaticMethod(typeof(UacPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_ldap_policy_posture", "system_ldap_policy_posture", static () => HasStaticMethod(typeof(LdapPolicyQuery), "GetClient") && HasStaticMethod(typeof(LdapPolicyQuery), "GetServer")),
+        CapabilityExpectation.ForRemoteTool("remote_network_client_posture", "system_network_client_posture", static () => HasStaticMethod(typeof(NetworkClientPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_account_policy_posture", "system_account_policy_posture", static () => HasStaticMethod(typeof(AccountPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_interactive_logon_posture", "system_interactive_logon_posture", static () => HasStaticMethod(typeof(InteractiveLogonPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_device_guard_posture", "system_device_guard_posture", static () => HasStaticMethod(typeof(DeviceGuardPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_defender_asr_posture", "system_defender_asr_posture", static () => HasStaticMethod(typeof(DefenderAsrPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_windows_update_client_status", "system_windows_update_client_status", static () => HasStaticMethod(typeof(WindowsUpdateClientStatusQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_windows_update_telemetry", "system_windows_update_telemetry", static () => HasStaticMethod(typeof(WindowsUpdateTelemetryQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_certificate_posture", "system_certificate_posture", static () => HasStaticMethod(typeof(CertificatePosture), "Get") || HasStaticMethod(typeof(CertificatePosture), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_credential_posture", "system_credential_posture", static () => HasStaticMethod(typeof(CredentialPosture), "Get") || HasStaticMethod(typeof(CredentialPosture), "GetAsync")),
         CapabilityExpectation.ForRemoteTool("remote_installed_applications", "system_installed_applications", static () => HasStaticMethod(typeof(InstalledApplications), "Query")),
         CapabilityExpectation.ForRemoteTool("remote_updates_installed", "system_updates_installed", static () => HasStaticMethod(typeof(Updates), "GetInstalledAsync")),
         CapabilityExpectation.ForRemoteTool("remote_patch_compliance", "system_patch_compliance", static () => HasStaticMethod(typeof(Updates), "GetInstalledAsync")),
@@ -111,6 +139,13 @@ public static class ToolCapabilityParityInventoryBuilder {
         CapabilityExpectation.ForTool("baseline_crosswalk", "testimox_baseline_crosswalk", static () => typeof(RuleCrosswalkReport) is not null),
         CapabilityExpectation.ForTool("rule_catalog", "testimox_rules_list", static () => typeof(ToolingRuleDiscoveryRequest) is not null),
         CapabilityExpectation.ForTool("rule_execution", "testimox_rules_run", static () => typeof(ToolingRuleRunRequest) is not null)
+    };
+
+    private static readonly CapabilityExpectation[] AdMonitoringReadOnlyExpectations = {
+        CapabilityExpectation.ForTool("service_heartbeat", "ad_monitoring_service_heartbeat_get", static () => typeof(MonitoringServiceHeartbeatSnapshot) is not null),
+        CapabilityExpectation.ForTool("diagnostics_snapshot", "ad_monitoring_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
+        CapabilityExpectation.ForTool("metrics_snapshot", "ad_monitoring_metrics_get", static () => typeof(MonitoringMetricsSnapshot) is not null),
+        CapabilityExpectation.ForTool("dashboard_state", "ad_monitoring_dashboard_state_get", static () => typeof(MonitoringDashboardAutoGenerateSnapshot) is not null)
     };
 
     /// <summary>
@@ -287,14 +322,21 @@ public static class ToolCapabilityParityInventoryBuilder {
         }
 
         var surfacedKinds = DiscoverSurfacedAdMonitoringProbeKinds(definitionNames, definitionsByPackId);
+        var availableReadOnlyExpectations = AdMonitoringReadOnlyExpectations
+            .Where(static expectation => expectation.IsAvailable())
+            .ToArray();
+        var surfacedReadOnlyCapabilities = availableReadOnlyExpectations
+            .Where(expectation => expectation.IsSurfaced(BuildDefinitionsByName(definitionsByPackId.TryGetValue(packId, out var packDefinitions) ? packDefinitions : Array.Empty<ToolDefinition>())))
+            .Select(static expectation => expectation.CapabilityId)
+            .ToArray();
         return CreateCapabilityEntry(
             engineId: "adplayground_monitoring",
             packId,
             sourceAvailable: true,
             registeredToolCount,
-            expectedCapabilities: upstreamKinds,
-            surfacedCapabilities: surfacedKinds,
-            note: "Probe-kind parity between ADPlayground.Monitoring and ad_monitoring_probe_*.");
+            expectedCapabilities: upstreamKinds.Concat(availableReadOnlyExpectations.Select(static expectation => expectation.CapabilityId)),
+            surfacedCapabilities: surfacedKinds.Concat(surfacedReadOnlyCapabilities),
+            note: "Probe-kind and persisted runtime-state parity between ADPlayground.Monitoring and IX AD monitoring tools.");
     }
 
     private static SessionCapabilityParityEntryDto? BuildComputerXEntry(

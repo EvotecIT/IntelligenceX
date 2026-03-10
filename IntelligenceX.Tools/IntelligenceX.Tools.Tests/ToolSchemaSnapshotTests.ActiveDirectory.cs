@@ -240,6 +240,18 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_ldap_certificates",
+            new[] { "servers", "domain_controller", "max_servers", "include_global_catalog", "verify_certificate", "identity", "certificate_include_dns_names", "timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_ldaps_certificates",
+            new[] { "servers", "domain_controller", "max_servers", "include_global_catalog", "verify_certificate", "identity", "certificate_include_dns_names", "timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_directory_discovery_diagnostics",
             new[] { "forest_name", "domains", "max_issues", "dns_resolve_timeout_ms", "ldap_timeout_ms", "include_dns_srv_comparison", "include_host_resolution", "include_directory_topology", "as_issue", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
