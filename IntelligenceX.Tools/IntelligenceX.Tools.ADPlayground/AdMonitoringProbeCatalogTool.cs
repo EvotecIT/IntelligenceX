@@ -49,12 +49,16 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                     probeKind: "ldap",
                     summary: "LDAP/LDAPS/GC bind + certificate + optional identity checks.",
                     keyArguments: new[] { "domain_name", "targets", "domain_controller", "identity", "verify_certificate", "include_global_catalog", "discovery_fallback" },
-                    preferredFollowUpTools: new[] { "ad_ldap_diagnostics", "system_ldap_policy_posture", "system_info", "system_metrics_summary" }),
+                    preferredFollowUpTools: new[] { "ad_ldap_diagnostics", "system_ldap_policy_posture", "system_info", "system_metrics_summary" },
+                    followUpProfiles: CreateLdapFollowUpProfiles(),
+                    resultSignalProfiles: CreateLdapResultSignalProfiles()),
                 CreateProbeKind(
                     probeKind: "dns",
                     summary: "DNS query validation against selected DNS servers.",
                     keyArguments: new[] { "targets", "dns_queries", "domain_name", "protocol", "discovery_fallback" },
-                    preferredFollowUpTools: new[] { "system_network_client_posture", "system_info", "system_network_adapters" }),
+                    preferredFollowUpTools: new[] { "system_network_client_posture", "system_info", "system_network_adapters" },
+                    followUpProfiles: CreateDnsFollowUpProfiles(),
+                    resultSignalProfiles: CreateDnsResultSignalProfiles()),
                 CreateProbeKind(
                     probeKind: "kerberos",
                     summary: "Credentialless Kerberos payload checks against KDCs.",
@@ -66,7 +70,9 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                     probeKind: "ntp",
                     summary: "NTP time-offset and delay checks.",
                     keyArguments: new[] { "domain_name", "targets", "timeout_ms", "max_concurrency", "discovery_fallback" },
-                    preferredFollowUpTools: new[] { "system_time_sync", "system_info" }),
+                    preferredFollowUpTools: new[] { "system_time_sync", "system_info" },
+                    followUpProfiles: CreateNtpFollowUpProfiles(),
+                    resultSignalProfiles: CreateNtpResultSignalProfiles()),
                 CreateProbeKind(
                     probeKind: "replication",
                     summary: "Replication topology/freshness checks with optional SYSVOL/port/ping diagnostics.",
@@ -112,12 +118,16 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                     probeKind: "ping",
                     summary: "ICMP reachability/latency checks with optional degradation thresholds.",
                     keyArguments: new[] { "targets", "latency_threshold_ms", "p95_latency_threshold_ms", "loss_threshold_percent", "discovery_fallback" },
-                    preferredFollowUpTools: new[] { "system_info", "system_metrics_summary" }),
+                    preferredFollowUpTools: new[] { "system_info", "system_metrics_summary" },
+                    followUpProfiles: CreatePingFollowUpProfiles(),
+                    resultSignalProfiles: CreatePingResultSignalProfiles()),
                 CreateProbeKind(
                     probeKind: "windows_update",
                     summary: "Windows Update / WSUS client telemetry checks for selected hosts or discovered AD scope.",
                     keyArguments: new[] { "domain_name", "targets", "domain_controller", "require_wsus", "max_concurrency", "discovery_fallback" },
-                    preferredFollowUpTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_updates_installed", "system_patch_compliance", "system_info" })
+                    preferredFollowUpTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_updates_installed", "system_patch_compliance", "system_info" },
+                    followUpProfiles: CreateWindowsUpdateFollowUpProfiles(),
+                    resultSignalProfiles: CreateWindowsUpdateResultSignalProfiles())
             },
             PreferredExecutionTool = "ad_monitoring_probe_run",
             PreferredStateTools = new[] {
@@ -133,8 +143,8 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                 "Raw probe_result includes nested children and metadata for downstream correlation.",
                 "LDAP probe results already include LDAPS certificate signal; if the user asks for LDAP certificates or LDAPS certificate details, stay on the LDAP probe/diagnostic path.",
                 "For probe_kind=directory, inspect directory_probe_subkinds and use the matching preferred_follow_up_tools for the selected directory_probe_kind before generic host pivots.",
-                "For kerberos, dns_service, replication, https, port, and adws, inspect follow_up_profiles when the user asks for the likely next diagnostic step rather than relying on only the top-level preferred_follow_up_tools list.",
-                "For kerberos, dns_service, replication, https, port, and adws, inspect result_signal_profiles when probe output points to a specific failure shape such as skew, missing answers, TLS failures, endpoint reachability, stale neighbors, or SYSVOL/share failures.",
+                "For ldap, dns, kerberos, ntp, replication, ping, windows_update, https, port, and adws, inspect follow_up_profiles when the user asks for the likely next diagnostic step rather than relying on only the top-level preferred_follow_up_tools list.",
+                "For ldap, dns, kerberos, ntp, replication, ping, windows_update, https, port, and adws, inspect result_signal_profiles when probe output points to a specific failure shape such as skew, missing answers, TLS failures, packet loss, patch drift, endpoint reachability, stale neighbors, or SYSVOL/share failures.",
                 "Use each probe kind's PreferredFollowUpTools list as the first cross-pack pivot hint before free-form reasoning.",
                 "Use system_certificate_posture only when the follow-up is explicitly about machine certificate stores or trust-store posture on the same host.",
                 "Use the ad_monitoring_*_get tools when you need persisted monitoring-service state instead of running fresh probes.",
@@ -193,6 +203,76 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
         };
     }
 
+    private static object[] CreateLdapFollowUpProfiles() {
+        return new object[] {
+            CreateFollowUpProfile(
+                id: "ldaps_certificate_focus",
+                summary: "Use when the operator explicitly asks about LDAP/LDAPS certificates, SANs, expiry, or chain health.",
+                activatingArguments: new[] { "verify_certificate", "identity", "include_global_catalog" },
+                preferredFollowUpTools: new[] { "ad_ldap_diagnostics", "system_ldap_policy_posture", "system_info" }),
+            CreateFollowUpProfile(
+                id: "identity_or_bind_focus",
+                summary: "Use when identity lookup, bind behavior, or LDAP search validation matters more than certificate detail.",
+                activatingArguments: new[] { "identity", "domain_controller", "targets" },
+                preferredFollowUpTools: new[] { "ad_ldap_diagnostics", "system_info", "system_metrics_summary" }),
+            CreateFollowUpProfile(
+                id: "host_policy_focus",
+                summary: "Use when LDAP succeeds but the next question is about host signing, channel binding, or broader DC runtime state.",
+                activatingArguments: new[] { "domain_name", "targets", "discovery_fallback" },
+                preferredFollowUpTools: new[] { "system_ldap_policy_posture", "system_metrics_summary", "system_info" })
+        };
+    }
+
+    private static object[] CreateLdapResultSignalProfiles() {
+        return new object[] {
+            CreateResultSignalProfile(
+                id: "ldaps_certificate_problem",
+                summary: "Use when LDAP probe output highlights certificate chain, expiry, SAN, or endpoint-identity issues.",
+                signalHints: new[] { "certificate_chain_failed", "certificate_expired", "certificate_name_mismatch", "endpoint_identity_mismatch", "dns_name_failed" },
+                preferredFollowUpTools: new[] { "ad_ldap_diagnostics", "system_ldap_policy_posture", "system_info" }),
+            CreateResultSignalProfile(
+                id: "bind_or_identity_failure",
+                summary: "Use when LDAP bind, search, or identity validation fails even though ports are reachable.",
+                signalHints: new[] { "bind_failed", "invalid_credentials", "identity_failed", "search_failed", "access_denied" },
+                preferredFollowUpTools: new[] { "ad_ldap_diagnostics", "system_info", "system_metrics_summary" }),
+            CreateResultSignalProfile(
+                id: "port_or_latency_issue",
+                summary: "Use when LDAP/LDAPS/GC ports are unreachable, slow, or inconsistent across the same host.",
+                signalHints: new[] { "port_failed", "ldaps_unreachable", "gc_unreachable", "degraded_latency", "timeout" },
+                preferredFollowUpTools: new[] { "system_ports_list", "system_metrics_summary", "system_info" })
+        };
+    }
+
+    private static object[] CreateDnsFollowUpProfiles() {
+        return new object[] {
+            CreateFollowUpProfile(
+                id: "query_shape_focus",
+                summary: "Use when the next step depends on record type, query template, or UDP versus TCP resolution behavior.",
+                activatingArguments: new[] { "dns_queries", "protocol", "domain_name" },
+                preferredFollowUpTools: new[] { "system_network_client_posture", "system_network_adapters", "system_info" }),
+            CreateFollowUpProfile(
+                id: "server_runtime_focus",
+                summary: "Use when selected DNS servers are known and the next step is broader host inspection rather than more query tuning.",
+                activatingArguments: new[] { "targets", "domain_name", "discovery_fallback" },
+                preferredFollowUpTools: new[] { "system_info", "system_metrics_summary", "system_network_adapters" })
+        };
+    }
+
+    private static object[] CreateDnsResultSignalProfiles() {
+        return new object[] {
+            CreateResultSignalProfile(
+                id: "missing_or_wrong_answers",
+                summary: "Use when DNS responses return empty, wrong, or mismatched answers for the requested records.",
+                signalHints: new[] { "no_answers", "wrong_answer", "record_missing", "query_name_mismatch", "srv_target_missing" },
+                preferredFollowUpTools: new[] { "system_network_client_posture", "system_network_adapters", "system_info" }),
+            CreateResultSignalProfile(
+                id: "resolver_timeout_or_transport_failure",
+                summary: "Use when DNS checks fail by timeout, truncation, or protocol-specific transport problems.",
+                signalHints: new[] { "timeout", "udp_failed", "tcp_failed", "truncated", "server_unreachable" },
+                preferredFollowUpTools: new[] { "system_network_adapters", "system_ports_list", "system_info" })
+        };
+    }
+
     private static object[] CreateKerberosResultSignalProfiles() {
         return new object[] {
             CreateResultSignalProfile(
@@ -205,6 +285,36 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                 summary: "Use when UDP/TCP behavior differs or when one Kerberos transport fails while the other succeeds.",
                 signalHints: new[] { "udp_failed", "tcp_failed", "split_protocol_child_down", "protocol_mismatch" },
                 preferredFollowUpTools: new[] { "system_ports_list", "system_network_adapters", "system_info" })
+        };
+    }
+
+    private static object[] CreateNtpFollowUpProfiles() {
+        return new object[] {
+            CreateFollowUpProfile(
+                id: "time_skew_focus",
+                summary: "Use when the operator wants to dig into skew, source selection, or w32time state on the same DCs.",
+                activatingArguments: new[] { "targets", "domain_name", "timeout_ms" },
+                preferredFollowUpTools: new[] { "system_time_sync", "system_info", "system_metrics_summary" }),
+            CreateFollowUpProfile(
+                id: "latency_and_runtime_focus",
+                summary: "Use when NTP is reachable but delay or degradation suggests broader host runtime follow-up.",
+                activatingArguments: new[] { "max_concurrency", "discovery_fallback" },
+                preferredFollowUpTools: new[] { "system_metrics_summary", "system_info", "system_network_adapters" })
+        };
+    }
+
+    private static object[] CreateNtpResultSignalProfiles() {
+        return new object[] {
+            CreateResultSignalProfile(
+                id: "clock_skew_detected",
+                summary: "Use when NTP output reports excessive skew or offset beyond expected thresholds.",
+                signalHints: new[] { "time_offset_high", "clock_skew", "offset_exceeded", "drift_detected" },
+                preferredFollowUpTools: new[] { "system_time_sync", "system_info", "system_metrics_summary" }),
+            CreateResultSignalProfile(
+                id: "timeout_or_packet_loss",
+                summary: "Use when NTP requests fail intermittently, time out, or show network-path loss symptoms.",
+                signalHints: new[] { "timeout", "packet_loss", "server_unreachable", "response_missing" },
+                preferredFollowUpTools: new[] { "system_network_adapters", "system_time_sync", "system_info" })
         };
     }
 
@@ -390,6 +500,66 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                 summary: "Use when replication details show RPC, port, or ping preflight failures for involved DCs.",
                 signalHints: new[] { "rpc_failed", "port_check_failed", "ping_failed", "preflight_below_threshold" },
                 preferredFollowUpTools: new[] { "system_ports_list", "system_network_adapters", "system_info" })
+        };
+    }
+
+    private static object[] CreatePingFollowUpProfiles() {
+        return new object[] {
+            CreateFollowUpProfile(
+                id: "latency_focus",
+                summary: "Use when the next step is to understand why a host is slow rather than fully unreachable.",
+                activatingArguments: new[] { "latency_threshold_ms", "p95_latency_threshold_ms", "targets" },
+                preferredFollowUpTools: new[] { "system_metrics_summary", "system_network_adapters", "system_info" }),
+            CreateFollowUpProfile(
+                id: "reachability_focus",
+                summary: "Use when the operator wants to branch from ICMP reachability into broader host diagnostics for the same targets.",
+                activatingArguments: new[] { "targets", "domain_name", "discovery_fallback" },
+                preferredFollowUpTools: new[] { "system_info", "system_network_adapters", "system_metrics_summary" })
+        };
+    }
+
+    private static object[] CreatePingResultSignalProfiles() {
+        return new object[] {
+            CreateResultSignalProfile(
+                id: "high_latency_or_jitter",
+                summary: "Use when ping succeeds but RTT, p95 latency, or jitter suggests runtime or path pressure.",
+                signalHints: new[] { "degraded_latency", "p95_high", "jitter_high", "slow_response" },
+                preferredFollowUpTools: new[] { "system_metrics_summary", "system_network_adapters", "system_info" }),
+            CreateResultSignalProfile(
+                id: "packet_loss_or_unreachable",
+                summary: "Use when ping shows loss, unreachable targets, or ICMP suppression behavior.",
+                signalHints: new[] { "packet_loss", "unreachable", "icmp_blocked", "host_down" },
+                preferredFollowUpTools: new[] { "system_network_adapters", "system_ports_list", "system_info" })
+        };
+    }
+
+    private static object[] CreateWindowsUpdateFollowUpProfiles() {
+        return new object[] {
+            CreateFollowUpProfile(
+                id: "wsus_management_focus",
+                summary: "Use when the next step is to validate WSUS/client-management posture rather than enumerate installed patches.",
+                activatingArguments: new[] { "require_wsus", "targets", "domain_controller" },
+                preferredFollowUpTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_info" }),
+            CreateFollowUpProfile(
+                id: "patch_inventory_focus",
+                summary: "Use when the next step is patch inventory or compliance follow-through on the same hosts.",
+                activatingArguments: new[] { "domain_name", "targets", "discovery_fallback" },
+                preferredFollowUpTools: new[] { "system_updates_installed", "system_patch_compliance", "system_windows_update_client_status" })
+        };
+    }
+
+    private static object[] CreateWindowsUpdateResultSignalProfiles() {
+        return new object[] {
+            CreateResultSignalProfile(
+                id: "wsus_misconfiguration_or_scan_failure",
+                summary: "Use when Windows Update probe output shows WSUS misconfiguration, scan failures, or stale client state.",
+                signalHints: new[] { "wsus_missing", "scan_failed", "last_scan_stale", "client_misconfigured" },
+                preferredFollowUpTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_info" }),
+            CreateResultSignalProfile(
+                id: "missing_updates_or_reboot_required",
+                summary: "Use when the primary issue is patch drift, reboot pressure, or stale installed-update state.",
+                signalHints: new[] { "missing_updates", "reboot_required", "pending_reboot", "compliance_failed" },
+                preferredFollowUpTools: new[] { "system_patch_compliance", "system_updates_installed", "system_windows_update_telemetry" })
         };
     }
 

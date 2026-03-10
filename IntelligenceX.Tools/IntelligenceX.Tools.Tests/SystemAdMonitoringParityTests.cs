@@ -406,6 +406,46 @@ public class SystemAdMonitoringParityTests {
     }
 
     [Fact]
+    public async Task AdMonitoringProbeCatalog_ShouldExposeProfilesForLdapDnsNtpPingAndWindowsUpdate() {
+        var tool = new AdMonitoringProbeCatalogTool(new ActiveDirectoryToolOptions());
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var probeKinds = document.RootElement.GetProperty("probe_kinds").EnumerateArray().ToArray();
+        var ldap = Assert.Single(probeKinds, static node => string.Equals(node.GetProperty("probe_kind").GetString(), "ldap", StringComparison.OrdinalIgnoreCase));
+        var dns = Assert.Single(probeKinds, static node => string.Equals(node.GetProperty("probe_kind").GetString(), "dns", StringComparison.OrdinalIgnoreCase));
+        var ntp = Assert.Single(probeKinds, static node => string.Equals(node.GetProperty("probe_kind").GetString(), "ntp", StringComparison.OrdinalIgnoreCase));
+        var ping = Assert.Single(probeKinds, static node => string.Equals(node.GetProperty("probe_kind").GetString(), "ping", StringComparison.OrdinalIgnoreCase));
+        var windowsUpdate = Assert.Single(probeKinds, static node => string.Equals(node.GetProperty("probe_kind").GetString(), "windows_update", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains(
+            "ad_ldap_diagnostics",
+            Assert.Single(ldap.GetProperty("follow_up_profiles").EnumerateArray(), static node => string.Equals(node.GetProperty("id").GetString(), "ldaps_certificate_focus", StringComparison.OrdinalIgnoreCase))
+                .GetProperty("preferred_follow_up_tools").EnumerateArray().Select(static x => x.GetString()),
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            "system_network_client_posture",
+            Assert.Single(dns.GetProperty("result_signal_profiles").EnumerateArray(), static node => string.Equals(node.GetProperty("id").GetString(), "missing_or_wrong_answers", StringComparison.OrdinalIgnoreCase))
+                .GetProperty("preferred_follow_up_tools").EnumerateArray().Select(static x => x.GetString()),
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            "system_time_sync",
+            Assert.Single(ntp.GetProperty("result_signal_profiles").EnumerateArray(), static node => string.Equals(node.GetProperty("id").GetString(), "clock_skew_detected", StringComparison.OrdinalIgnoreCase))
+                .GetProperty("preferred_follow_up_tools").EnumerateArray().Select(static x => x.GetString()),
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            "system_metrics_summary",
+            Assert.Single(ping.GetProperty("result_signal_profiles").EnumerateArray(), static node => string.Equals(node.GetProperty("id").GetString(), "high_latency_or_jitter", StringComparison.OrdinalIgnoreCase))
+                .GetProperty("preferred_follow_up_tools").EnumerateArray().Select(static x => x.GetString()),
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            "system_patch_compliance",
+            Assert.Single(windowsUpdate.GetProperty("result_signal_profiles").EnumerateArray(), static node => string.Equals(node.GetProperty("id").GetString(), "missing_updates_or_reboot_required", StringComparison.OrdinalIgnoreCase))
+                .GetProperty("preferred_follow_up_tools").EnumerateArray().Select(static x => x.GetString()),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AdMonitoringServiceHeartbeatGetTool_ShouldLoadSnapshotFromAllowedRoot() {
         var monitoringDirectory = CreateMonitoringDirectory();
         var snapshotPath = Path.Combine(monitoringDirectory, MonitoringServiceHeartbeatSnapshot.DefaultFileName);
