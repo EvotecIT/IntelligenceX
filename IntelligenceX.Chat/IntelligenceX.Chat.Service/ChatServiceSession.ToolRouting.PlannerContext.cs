@@ -359,6 +359,7 @@ internal sealed partial class ChatServiceSession {
         var matchingSkills = Array.Empty<string>();
         var allowCachedEvidenceReuse = false;
         var sawMarker = false;
+        var parsedAnyStructuredValue = false;
 
         using var reader = new StringReader(raw);
         while (reader.ReadLine() is { } line) {
@@ -371,27 +372,43 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (trimmed.Length == 0 || LooksLikeStructuredSectionHeader(trimmed)) {
-                break;
+            if (trimmed.Length == 0) {
+                if (parsedAnyStructuredValue) {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (LooksLikeStructuredSectionHeader(trimmed)) {
+                if (parsedAnyStructuredValue) {
+                    break;
+                }
+
+                continue;
             }
 
             if (TryParseStructuredBooleanLine(trimmed, "requires_live_execution", out var parsedRequiresLiveExecution)) {
                 requiresLiveExecution = parsedRequiresLiveExecution;
+                parsedAnyStructuredValue = true;
                 continue;
             }
 
             if (TryParseStructuredBooleanLine(trimmed, "allow_cached_evidence_reuse", out var parsedAllowCachedEvidenceReuse)) {
                 allowCachedEvidenceReuse = parsedAllowCachedEvidenceReuse;
+                parsedAnyStructuredValue = true;
                 continue;
             }
 
             if (TryParseStructuredKeyValueLine(trimmed, "missing_live_evidence", out var missingLiveEvidenceValue)) {
                 missingLiveEvidence = NormalizeWorkingMemoryAnswerPlanFocus(missingLiveEvidenceValue.ToString());
+                parsedAnyStructuredValue = true;
                 continue;
             }
 
             if (TryParseStructuredKeyValueLine(trimmed, "preferred_pack_ids", out var preferredPackIdsValue)) {
                 preferredPackIds = NormalizeStructuredMetadataCsv(preferredPackIdsValue, NormalizePackId, MaxPlannerContextPackIds);
+                parsedAnyStructuredValue = true;
                 continue;
             }
 
@@ -400,6 +417,7 @@ internal sealed partial class ChatServiceSession {
                     preferredToolNamesValue,
                     static value => NormalizeToolNameForAnswerPlan(value),
                     MaxPlannerContextToolNames);
+                parsedAnyStructuredValue = true;
                 continue;
             }
 
@@ -408,6 +426,7 @@ internal sealed partial class ChatServiceSession {
                     handoffTargetPackIdsValue,
                     NormalizePackId,
                     MaxPlannerContextHandoffTargets);
+                parsedAnyStructuredValue = true;
                 continue;
             }
 
@@ -416,6 +435,7 @@ internal sealed partial class ChatServiceSession {
                     handoffTargetToolNamesValue,
                     static value => NormalizeToolNameForAnswerPlan(value),
                     MaxPlannerContextHandoffTargets);
+                parsedAnyStructuredValue = true;
                 continue;
             }
 
@@ -439,6 +459,12 @@ internal sealed partial class ChatServiceSession {
                     matchingSkillsValue,
                     static value => NormalizeSkillSnapshotValue(value),
                     MaxPlannerContextSkills);
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (parsedAnyStructuredValue) {
+                break;
             }
         }
 
@@ -454,7 +480,7 @@ internal sealed partial class ChatServiceSession {
             ContinuationConfidence: continuationConfidence,
             MatchingSkills: matchingSkills,
             AllowCachedEvidenceReuse: allowCachedEvidenceReuse);
-        return sawMarker;
+        return sawMarker && parsedAnyStructuredValue;
     }
 
     private static string NormalizeContinuationConfidence(string? value) {
