@@ -622,12 +622,28 @@ internal sealed partial class ChatServiceSession {
         if (preferredNames.Length == 0) {
             preferredNames = checkpoint.RecentToolNames;
         }
+        var (
+            structuredPreferredPackIds,
+            structuredPreferredToolNames,
+            structuredHandoffTargetPackIds,
+            structuredHandoffTargetToolNames) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, allDefinitions);
+        preferredNames = NormalizeDistinctStrings(
+            preferredNames
+                .Concat(structuredPreferredToolNames)
+                .Concat(structuredHandoffTargetToolNames),
+            maxItems: 8);
 
         var preferredPackIds = new HashSet<string>(
             checkpoint.PriorAnswerPlanPreferredPackIds
                 .Select(static packId => NormalizePackId(packId))
                 .Where(static packId => packId.Length > 0),
             StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < structuredPreferredPackIds.Length; i++) {
+            preferredPackIds.Add(structuredPreferredPackIds[i]);
+        }
+        for (var i = 0; i < structuredHandoffTargetPackIds.Length; i++) {
+            preferredPackIds.Add(structuredHandoffTargetPackIds[i]);
+        }
         if (preferredPackIds.Count == 0) {
             var (handoffTargetPackIds, _) = CollectPlannerHandoffTargets(
                 NormalizeDistinctStrings(
