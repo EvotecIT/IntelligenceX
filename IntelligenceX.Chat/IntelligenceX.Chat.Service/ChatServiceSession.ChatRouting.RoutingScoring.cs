@@ -356,7 +356,7 @@ internal sealed partial class ChatServiceSession {
 
         AppendRoutingPackTokens(sb, definition);
 
-        var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 12, out var hasTableViewProjection);
+        var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 12, out var schemaTraits);
         for (var i = 0; i < schemaArguments.Length; i++) {
             sb.Append(' ').Append(schemaArguments[i]);
         }
@@ -369,8 +369,9 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        if (hasTableViewProjection) {
-            sb.Append(" table view projection columns sort_by sort_direction top");
+        var traitSearchAugmentation = ToolSchemaTraitProjection.BuildRoutingSearchAugmentation(schemaTraits);
+        if (traitSearchAugmentation.Length > 0) {
+            sb.Append(traitSearchAugmentation);
         }
 
         return sb.ToString();
@@ -407,84 +408,12 @@ internal sealed partial class ChatServiceSession {
         return string.Empty;
     }
 
-    private static string[] ExtractToolSchemaPropertyNames(ToolDefinition definition, int maxCount, out bool hasTableViewProjection) {
-        hasTableViewProjection = false;
-        if (definition?.Parameters is null || maxCount <= 0) {
-            return Array.Empty<string>();
-        }
-
-        var properties = definition.Parameters.GetObject("properties");
-        if (properties is null || properties.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        hasTableViewProjection = HasTableViewProjectionArguments(properties);
-
-        var names = new List<string>(Math.Min(maxCount, properties.Count));
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in properties) {
-            var name = NormalizeToolSchemaToken(kv.Key);
-            if (name.Length == 0 || !seen.Add(name)) {
-                continue;
-            }
-
-            names.Add(name);
-            if (names.Count >= maxCount) {
-                break;
-            }
-        }
-
-        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+    private static string[] ExtractToolSchemaPropertyNames(ToolDefinition definition, int maxCount, out ToolSchemaTraits traits) {
+        return ToolSchemaTraitProjection.ReadPropertyNames(definition, maxCount, out traits);
     }
 
     private static string[] ExtractToolSchemaRequiredNames(ToolDefinition definition, int maxCount) {
-        if (definition?.Parameters is null || maxCount <= 0) {
-            return Array.Empty<string>();
-        }
-
-        var required = definition.Parameters.GetArray("required");
-        if (required is null || required.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        var names = new List<string>(Math.Min(maxCount, required.Count));
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < required.Count && names.Count < maxCount; i++) {
-            var value = NormalizeToolSchemaToken(required[i]?.AsString());
-            if (value.Length == 0 || !seen.Add(value)) {
-                continue;
-            }
-
-            names.Add(value);
-        }
-
-        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
-    }
-
-    private static bool HasTableViewProjectionArguments(JsonObject properties) {
-        return properties.TryGetValue("columns", out _)
-               || properties.TryGetValue("sort_by", out _)
-               || properties.TryGetValue("sort_direction", out _)
-               || properties.TryGetValue("top", out _);
-    }
-
-    private static string NormalizeToolSchemaToken(string? token) {
-        var value = (token ?? string.Empty).Trim();
-        if (value.Length == 0) {
-            return string.Empty;
-        }
-
-        var sb = new StringBuilder(value.Length);
-        for (var i = 0; i < value.Length; i++) {
-            var c = value[i];
-            if (char.IsLetterOrDigit(c) || c is '_' or '-') {
-                sb.Append(c);
-            } else if (char.IsWhiteSpace(c)) {
-                sb.Append('_');
-            }
-        }
-
-        return sb.ToString().Trim('_');
+        return ToolSchemaTraitProjection.ReadRequiredNames(definition, maxCount);
     }
 
 }

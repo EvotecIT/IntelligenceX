@@ -87,6 +87,26 @@ public sealed record ToolOrchestrationCatalogEntry {
     public string Risk { get; init; } = ToolRoutingTaxonomy.RiskLow;
 
     /// <summary>
+    /// Indicates whether the tool schema exposes target-scope arguments.
+    /// </summary>
+    public bool SupportsTargetScoping { get; init; }
+
+    /// <summary>
+    /// Canonical target-scope arguments projected from the tool schema.
+    /// </summary>
+    public IReadOnlyList<string> TargetScopeArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates whether the tool schema exposes remote-host targeting arguments.
+    /// </summary>
+    public bool SupportsRemoteHostTargeting { get; init; }
+
+    /// <summary>
+    /// Canonical remote-host targeting arguments projected from the tool schema.
+    /// </summary>
+    public IReadOnlyList<string> RemoteHostArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Optional domain intent family token.
     /// </summary>
     public string DomainIntentFamily { get; init; } = string.Empty;
@@ -258,6 +278,7 @@ public sealed class ToolOrchestrationCatalog {
             var routingInfo = ToolSelectionMetadata.ResolveRouting(definition);
             var routing = definition.Routing;
             var packId = NormalizePackId(routing?.PackId);
+            var schemaTraits = ToolSchemaTraitProjection.Project(definition);
 
             var role = NormalizeToken(routing?.Role);
             if (!ToolRoutingTaxonomy.IsAllowedRole(role)) {
@@ -389,6 +410,10 @@ public sealed class ToolOrchestrationCatalog {
                 Operation = NormalizeToken(routingInfo.Operation, ToolRoutingTaxonomy.OperationRead),
                 Entity = NormalizeToken(routingInfo.Entity, ToolRoutingTaxonomy.EntityResource),
                 Risk = NormalizeToken(routingInfo.Risk, ToolRoutingTaxonomy.RiskLow),
+                SupportsTargetScoping = schemaTraits.SupportsTargetScoping,
+                TargetScopeArguments = FreezeStringList(schemaTraits.TargetScopeArguments),
+                SupportsRemoteHostTargeting = schemaTraits.SupportsRemoteHostTargeting,
+                RemoteHostArguments = FreezeStringList(schemaTraits.RemoteHostArguments),
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = actionId,
                 IsSetupAware = isSetupAware,

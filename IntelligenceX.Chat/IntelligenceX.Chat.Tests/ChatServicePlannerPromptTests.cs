@@ -80,6 +80,34 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesRemoteHostAndTargetScopeTraits() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_tls_posture",
+                "Inspect TLS posture for a remote host.",
+                ToolSchema.Object(
+                        ("computer_name", ToolSchema.String("Remote host.")),
+                        ("search_base_dn", ToolSchema.String("Optional directory scope.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "inspect tls posture on the same domain controller",
+            definitions,
+            4
+        }));
+
+        Assert.Contains("target_scoping(search_base_dn, computer_name)", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("remote_host_targeting(computer_name)", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildModelPlannerPrompt_IncludesCategoryFamilyAndTagsHints() {
         var definitions = new List<ToolDefinition> {
             new(
@@ -278,6 +306,25 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("log_name", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("required", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("table view projection", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesRemoteHostAndTargetScopeTraitTokens() {
+        var definition = new ToolDefinition(
+            "system_tls_posture",
+            "Inspect TLS posture for a remote host.",
+            ToolSchema.Object(
+                    ("computer_name", ToolSchema.String("Remote host.")),
+                    ("server", ToolSchema.String("Server alias.")),
+                    ("search_base_dn", ToolSchema.String("Optional directory scope.")))
+                .NoAdditionalProperties());
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("remote_host_targeting", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target_scope", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("computer_name", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("search_base_dn", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

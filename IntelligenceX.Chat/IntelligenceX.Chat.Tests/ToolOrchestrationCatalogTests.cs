@@ -1,6 +1,7 @@
 using System;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -504,6 +505,32 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.False(entry.IsSetupAware);
         Assert.False(entry.IsHandoffAware);
         Assert.False(entry.IsRecoveryAware);
+    }
+
+    [Fact]
+    public void Build_ProjectsSchemaTargetScopeAndRemoteHostTraits() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            new ToolDefinition(
+                "system_tls_posture",
+                "Inspect TLS posture for a remote host.",
+                ToolSchema.Object(
+                        ("computer_name", ToolSchema.String("Remote host.")),
+                        ("search_base_dn", ToolSchema.String("Optional directory scope.")),
+                        ("columns", ToolSchema.Array(ToolSchema.String("Column."))))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("system_tls_posture", out var entry));
+        Assert.True(entry.SupportsTargetScoping);
+        Assert.Equal(new[] { "search_base_dn", "computer_name" }, entry.TargetScopeArguments);
+        Assert.True(entry.SupportsRemoteHostTargeting);
+        Assert.Equal(new[] { "computer_name" }, entry.RemoteHostArguments);
     }
 
     private static ToolDefinition CreateDefinition(
