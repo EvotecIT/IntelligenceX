@@ -38,6 +38,7 @@ internal static partial class TranscriptMarkdownNormalizer {
                 return null;
             }
 
+            var presetFactoryMethod = ResolveOfficeImoInputNormalizationPresetFactory(optionsType);
             var enabledProperties = new List<PropertyInfo>(OfficeImoInputNormalizationPropertyNames.Length);
             foreach (var propertyName in OfficeImoInputNormalizationPropertyNames) {
                 var property = optionsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
@@ -46,26 +47,51 @@ internal static partial class TranscriptMarkdownNormalizer {
                 }
             }
 
-            if (enabledProperties.Count == 0) {
+            if (presetFactoryMethod == null && enabledProperties.Count == 0) {
                 return null;
             }
 
-            return new OfficeImoInputNormalizationBridge(optionsType, normalizeMethod, enabledProperties.ToArray());
+            return new OfficeImoInputNormalizationBridge(optionsType, normalizeMethod, presetFactoryMethod, enabledProperties.ToArray());
         } catch {
             return null;
         }
     }
 
-    private sealed class OfficeImoInputNormalizationBridge(Type optionsType, MethodInfo normalizeMethod, PropertyInfo[] enabledProperties) {
+    private static MethodInfo? ResolveOfficeImoInputNormalizationPresetFactory(Type optionsType) {
+        try {
+            var presetsType = Type.GetType("OfficeIMO.Markdown.MarkdownInputNormalizationPresets, OfficeIMO.Markdown", throwOnError: false);
+            if (presetsType == null) {
+                return null;
+            }
+
+            var createChatTranscriptMethod = presetsType.GetMethod(
+                "CreateChatTranscript",
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+            if (createChatTranscriptMethod == null || !optionsType.IsAssignableFrom(createChatTranscriptMethod.ReturnType)) {
+                return null;
+            }
+
+            return createChatTranscriptMethod;
+        } catch {
+            return null;
+        }
+    }
+
+    private sealed class OfficeImoInputNormalizationBridge(Type optionsType, MethodInfo normalizeMethod, MethodInfo? presetFactoryMethod, PropertyInfo[] enabledProperties) {
         public string Normalize(string text) {
             try {
-                var options = Activator.CreateInstance(optionsType);
+                var options = CreateOptionsInstance();
                 if (options == null) {
                     return text;
                 }
 
-                for (var i = 0; i < enabledProperties.Length; i++) {
-                    enabledProperties[i].SetValue(options, true);
+                if (presetFactoryMethod == null) {
+                    for (var i = 0; i < enabledProperties.Length; i++) {
+                        enabledProperties[i].SetValue(options, true);
+                    }
                 }
 
                 var normalized = normalizeMethod.Invoke(null, [text, options]) as string;
@@ -73,6 +99,21 @@ internal static partial class TranscriptMarkdownNormalizer {
             } catch {
                 return text;
             }
+        }
+
+        private object? CreateOptionsInstance() {
+            try {
+                if (presetFactoryMethod != null) {
+                    var presetOptions = presetFactoryMethod.Invoke(null, null);
+                    if (presetOptions != null && optionsType.IsInstanceOfType(presetOptions)) {
+                        return presetOptions;
+                    }
+                }
+            } catch {
+                // Fall back to the legacy property-enabling path below.
+            }
+
+            return Activator.CreateInstance(optionsType);
         }
     }
 
