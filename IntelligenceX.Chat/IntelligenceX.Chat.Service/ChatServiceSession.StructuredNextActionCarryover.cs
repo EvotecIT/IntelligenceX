@@ -11,9 +11,12 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int CarryoverHostHintMultiHostThreshold = 2;
     private readonly record struct StructuredNextActionSnapshot(
+        string SourceToolName,
         string ToolName,
         string ArgumentsJson,
         ActionMutability Mutability,
+        string Reason,
+        string Confidence,
         long SeenUtcTicks);
     private readonly record struct StructuredNextActionAutoReplaySnapshot(
         string Signature,
@@ -39,11 +42,12 @@ internal sealed partial class ChatServiceSession {
                 toolDefinitions,
                 toolCalls,
                 toolOutputs,
-                out _,
+                out var sourceToolName,
                 out var nextTool,
                 out var argumentsJson,
-                out _,
-                out var nextActionMutability)) {
+                out var nextActionReason,
+                out var nextActionMutability,
+                out var nextActionConfidence)) {
             RemoveStructuredNextActionCarryover(normalizedThreadId);
             return;
         }
@@ -74,9 +78,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         var snapshot = new StructuredNextActionSnapshot(
+            SourceToolName: sourceToolName,
             ToolName: nextTool,
             ArgumentsJson: JsonLite.Serialize(normalizedArguments),
             Mutability: ActionMutability.ReadOnly,
+            Reason: nextActionReason,
+            Confidence: nextActionConfidence,
             SeenUtcTicks: DateTime.UtcNow.Ticks);
         lock (_toolRoutingContextLock) {
             _structuredNextActionByThreadId[normalizedThreadId] = snapshot;

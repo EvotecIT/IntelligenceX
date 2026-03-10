@@ -4,32 +4,32 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.TestimoX;
 
 /// <summary>
-/// IX.TestimoX tool pack (self-describing + self-registering).
+/// TestimoX monitoring/history artifact pack (self-describing + self-registering).
 /// </summary>
-public sealed class TestimoXToolPack : IToolPack {
+public sealed class TestimoXMonitoringToolPack : IToolPack {
     private readonly TestimoXToolOptions _options;
 
     /// <summary>
-    /// Creates a new <see cref="TestimoXToolPack"/>.
+    /// Creates a new <see cref="TestimoXMonitoringToolPack"/>.
     /// </summary>
-    /// <param name="options">Pack options.</param>
-    public TestimoXToolPack(TestimoXToolOptions options) {
+    public TestimoXMonitoringToolPack(TestimoXToolOptions options) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _options.Validate();
     }
 
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
-        Id = "testimox",
-        Name = "TestimoX",
+        Id = "testimox_monitoring",
+        Name = "TestimoX Monitoring",
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
-        Description = "TestimoX rule, profile, baseline, and stored-run diagnostics.",
+        Description = "Persisted TestimoX monitoring, report, and history artifact inspection.",
         SourceKind = "closed_source"
     };
 
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
-        registry.RegisterTestimoXPack(_options);
+        registry.RegisterTestimoXMonitoringPack(_options);
     }
 }
+

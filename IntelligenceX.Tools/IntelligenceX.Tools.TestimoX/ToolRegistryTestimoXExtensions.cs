@@ -37,13 +37,6 @@ public static class ToolRegistryTestimoXExtensions {
 
     private static IEnumerable<ITool> CreateCoreTools(TestimoXToolOptions options) {
         yield return new TestimoXPackInfoTool(options);
-        yield return new TestimoXReportJobHistoryTool(options);
-        yield return new TestimoXHistoryQueryTool(options);
-        yield return new TestimoXProbeIndexStatusTool(options);
-        yield return new TestimoXMonitoringDiagnosticsGetTool(options);
-        yield return new TestimoXMaintenanceWindowHistoryTool(options);
-        yield return new TestimoXReportDataSnapshotGetTool(options);
-        yield return new TestimoXReportSnapshotGetTool(options);
         yield return new TestimoXRunsListTool(options);
         yield return new TestimoXRunSummaryTool(options);
         yield return new TestimoXBaselinesListTool(options);

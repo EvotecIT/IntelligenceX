@@ -49,6 +49,7 @@ internal sealed partial class ChatServiceSession {
                 out var nextTool,
                 out var argumentsJson,
                 out var nextReason,
+                out _,
                 out _)) {
             reason = "no_structured_next_action";
             return false;
@@ -286,12 +287,14 @@ internal sealed partial class ChatServiceSession {
         out string nextTool,
         out string argumentsJson,
         out string nextReason,
-        out ActionMutability nextActionMutability) {
+        out ActionMutability nextActionMutability,
+        out string nextActionConfidence) {
         sourceTool = string.Empty;
         nextTool = string.Empty;
         argumentsJson = "{}";
         nextReason = string.Empty;
         nextActionMutability = ActionMutability.Unknown;
+        nextActionConfidence = string.Empty;
 
         var availableTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolDefinitions.Count; i++) {
@@ -345,6 +348,7 @@ internal sealed partial class ChatServiceSession {
                     var candidateArgumentsJson = TryReadNextActionArgumentsJson(action);
                     var candidateReason = TryReadNextActionReason(action);
                     var candidateMutability = TryReadNextActionMutability(action);
+                    var candidateConfidence = TryReadNextActionConfidence(action, doc.RootElement);
 
                     var outputCallId = (output.CallId ?? string.Empty).Trim();
                     if (outputCallId.Length > 0 && callNamesById.TryGetValue(outputCallId, out var sourceName)) {
@@ -355,6 +359,7 @@ internal sealed partial class ChatServiceSession {
                     argumentsJson = candidateArgumentsJson;
                     nextReason = candidateReason;
                     nextActionMutability = candidateMutability;
+                    nextActionConfidence = candidateConfidence;
                     return true;
                 }
             } catch (JsonException) {
@@ -384,7 +389,8 @@ internal sealed partial class ChatServiceSession {
                 out var nextTool,
                 out var argumentsJson,
                 out _,
-                out var nextActionMutability)) {
+                out var nextActionMutability,
+                out _)) {
             reason = "no_structured_next_action";
             return false;
         }
@@ -466,6 +472,61 @@ internal sealed partial class ChatServiceSession {
         }
 
         return ActionMutability.Unknown;
+    }
+
+    private static string TryReadNextActionConfidence(JsonElement action, JsonElement root) {
+        if (TryReadConfidenceValue(action, out var actionConfidence)) {
+            return actionConfidence;
+        }
+
+        if (TryReadConfidenceValue(root, out var rootConfidence)) {
+            return rootConfidence;
+        }
+
+        if (root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("meta", out var meta)
+            && meta.ValueKind == JsonValueKind.Object
+            && TryReadConfidenceValue(meta, out var metaConfidence)) {
+            return metaConfidence;
+        }
+
+        return string.Empty;
+    }
+
+    private static bool TryReadConfidenceValue(JsonElement node, out string confidence) {
+        confidence = string.Empty;
+        if (node.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        if (TryReadConfidenceProperty(node, "confidence", out confidence)
+            || TryReadConfidenceProperty(node, "chain_confidence", out confidence)
+            || TryReadConfidenceProperty(node, "next_action_confidence", out confidence)) {
+            return confidence.Length > 0;
+        }
+
+        return false;
+    }
+
+    private static bool TryReadConfidenceProperty(JsonElement node, string propertyName, out string confidence) {
+        confidence = string.Empty;
+        if (!node.TryGetProperty(propertyName, out var value)) {
+            return false;
+        }
+
+        switch (value.ValueKind) {
+            case JsonValueKind.String:
+                confidence = (value.GetString() ?? string.Empty).Trim();
+                return confidence.Length > 0;
+            case JsonValueKind.Number:
+                if (value.TryGetDouble(out var numeric)) {
+                    confidence = numeric >= 0.72d ? "high" : numeric >= 0.45d ? "medium" : "low";
+                    return true;
+                }
+                return false;
+            default:
+                return false;
+        }
     }
 
     private static bool TryReadNextActionBoolean(JsonElement action, string propertyName, out bool value) {
