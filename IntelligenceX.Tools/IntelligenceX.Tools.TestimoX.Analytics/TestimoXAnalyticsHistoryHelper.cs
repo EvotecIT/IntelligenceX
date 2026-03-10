@@ -7,7 +7,7 @@ using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.TestimoX;
 
-internal static class TestimoXMonitoringHistoryHelper {
+internal static class TestimoXAnalyticsHistoryHelper {
     private const string DefaultSqliteDatabaseFileName = "monitoring.sqlite";
     private const int DefaultPreviewChars = 1200;
 

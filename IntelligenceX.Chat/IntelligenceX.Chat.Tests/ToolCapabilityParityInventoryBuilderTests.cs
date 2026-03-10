@@ -24,7 +24,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         registry.RegisterSystemPack(new SystemToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             registry.GetDefinitions(),
@@ -32,13 +32,13 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
                 CreateEnabledPack("system", "System"),
                 CreateEnabledPack("active_directory", "Active Directory"),
                 CreateEnabledPack("testimox", "TestimoX"),
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
         var ad = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "adplayground_monitoring", StringComparison.OrdinalIgnoreCase));
         var system = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "computerx", StringComparison.OrdinalIgnoreCase));
         var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox", StringComparison.OrdinalIgnoreCase));
-        var testimoxMonitoring = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimoxMonitoring = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
         var governed = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_powershell", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, ad.Status);
@@ -632,7 +632,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     [Fact]
     public void Build_WhenTestimoXReportJobHistoryWrapperMissing_ReportsTestimoXParityGap() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var filteredDefinitions = registry.GetDefinitions()
             .Where(static definition => !string.Equals(definition.Name, "testimox_report_job_history", StringComparison.OrdinalIgnoreCase))
@@ -641,10 +641,10 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             filteredDefinitions,
             new[] {
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
-        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
         Assert.Contains("report_job_history", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
@@ -656,7 +656,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     [Fact]
     public void Build_WhenTestimoXMaintenanceWindowHistoryWrapperMissing_ReportsTestimoXParityGap() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var filteredDefinitions = registry.GetDefinitions()
             .Where(static definition => !string.Equals(definition.Name, "testimox_maintenance_window_history", StringComparison.OrdinalIgnoreCase))
@@ -665,10 +665,10 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             filteredDefinitions,
             new[] {
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
-        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
         Assert.Contains("maintenance_window_history", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
@@ -680,7 +680,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     [Fact]
     public void Build_WhenTestimoXProbeIndexStatusWrapperMissing_ReportsTestimoXParityGap() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var filteredDefinitions = registry.GetDefinitions()
             .Where(static definition => !string.Equals(definition.Name, "testimox_probe_index_status", StringComparison.OrdinalIgnoreCase))
@@ -689,10 +689,10 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             filteredDefinitions,
             new[] {
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
-        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
         Assert.Contains("probe_index_status", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
@@ -702,21 +702,21 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     /// Ensures TestimoX parity reports a gap when the monitoring diagnostics wrapper is absent.
     /// </summary>
     [Fact]
-    public void Build_WhenTestimoXMonitoringDiagnosticsWrapperMissing_ReportsTestimoXParityGap() {
+    public void Build_WhenTestimoXAnalyticsDiagnosticsWrapperMissing_ReportsTestimoXParityGap() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var filteredDefinitions = registry.GetDefinitions()
-            .Where(static definition => !string.Equals(definition.Name, "testimox_monitoring_diagnostics_get", StringComparison.OrdinalIgnoreCase))
+            .Where(static definition => !string.Equals(definition.Name, "testimox_analytics_diagnostics_get", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             filteredDefinitions,
             new[] {
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
-        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
         Assert.Contains("monitoring_diagnostics", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
@@ -728,7 +728,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     [Fact]
     public void Build_WhenTestimoXHistoryQueryWrapperMissing_ReportsTestimoXParityGap() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var filteredDefinitions = registry.GetDefinitions()
             .Where(static definition => !string.Equals(definition.Name, "testimox_history_query", StringComparison.OrdinalIgnoreCase))
@@ -737,10 +737,10 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             filteredDefinitions,
             new[] {
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
-        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
         Assert.Contains("monitoring_history", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
@@ -752,7 +752,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     [Fact]
     public void Build_WhenTestimoXReportDataSnapshotWrapperMissing_ReportsTestimoXParityGap() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var filteredDefinitions = registry.GetDefinitions()
             .Where(static definition => !string.Equals(definition.Name, "testimox_report_data_snapshot_get", StringComparison.OrdinalIgnoreCase))
@@ -761,10 +761,10 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             filteredDefinitions,
             new[] {
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
-        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
         Assert.Contains("report_data_snapshot", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
@@ -776,7 +776,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     [Fact]
     public void Build_WhenTestimoXReportSnapshotWrapperMissing_ReportsTestimoXParityGap() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var filteredDefinitions = registry.GetDefinitions()
             .Where(static definition => !string.Equals(definition.Name, "testimox_report_snapshot_get", StringComparison.OrdinalIgnoreCase))
@@ -785,10 +785,10 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             filteredDefinitions,
             new[] {
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
-        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_monitoring", StringComparison.OrdinalIgnoreCase));
+        var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
         Assert.Contains("report_snapshot", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
@@ -947,7 +947,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         registry.RegisterSystemPack(new SystemToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
         var entries = ToolCapabilityParityInventoryBuilder.Build(
             registry.GetDefinitions(),
@@ -955,7 +955,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
                 CreateEnabledPack("system", "System"),
                 CreateEnabledPack("active_directory", "Active Directory"),
                 CreateEnabledPack("testimox", "TestimoX"),
-                CreateEnabledPack("testimox_monitoring", "TestimoX Monitoring")
+                CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
         var details = ToolCapabilityParityInventoryBuilder.BuildDetailSummaries(entries, maxItems: 8);

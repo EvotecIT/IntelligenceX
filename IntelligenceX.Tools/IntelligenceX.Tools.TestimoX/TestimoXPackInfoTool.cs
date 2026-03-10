@@ -48,7 +48,7 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
             engine: "TestimoX",
             tools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
-                "Call testimox_monitoring_pack_info when you need persisted monitoring/report/history artifact guidance; that surface is intentionally split from live rule workflows.",
+                "Call testimox_analytics_pack_info when you need persisted analytics/report/history artifact guidance; that surface is intentionally split from live rule workflows.",
                 "Call testimox_runs_list when you need to inspect stored TestimoX execution history inside an allowed result store before drilling into a specific run.",
                 "Call testimox_run_summary when you need per-run score and penalty summaries plus stored rule rows from a known run_id.",
                 "Call testimox_baselines_list when you need to discover available vendor baseline ids/products/versions before crosswalk or operator reporting.",
@@ -67,7 +67,7 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
                     goal: "Inspect monitoring artifacts in the separate monitoring pack",
-                    suggestedTools: new[] { "testimox_monitoring_pack_info" }),
+                    suggestedTools: new[] { "testimox_analytics_pack_info" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Inspect stored execution history",
                     suggestedTools: new[] { "testimox_runs_list", "testimox_run_summary" }),

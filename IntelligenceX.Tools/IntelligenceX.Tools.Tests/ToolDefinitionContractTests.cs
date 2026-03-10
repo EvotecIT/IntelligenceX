@@ -29,7 +29,7 @@ public class ToolDefinitionContractTests {
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
         registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
         registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
 
@@ -63,7 +63,7 @@ public class ToolDefinitionContractTests {
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterEmailPack(new EmailToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions { Enabled = true });
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions { Enabled = true });
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions { Enabled = true });
         registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
         registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
 
@@ -664,9 +664,9 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
-    public void TestimoXMonitoringPack_ShouldExposeHistoryAndSnapshotTools() {
+    public void TestimoXAnalyticsPack_ShouldExposeHistoryAndSnapshotTools() {
         var registry = new ToolRegistry();
-        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions {
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions {
             Enabled = true
         });
 
@@ -675,8 +675,8 @@ public class ToolDefinitionContractTests {
             definitions.Select(static d => d.Name),
             StringComparer.OrdinalIgnoreCase);
 
-        Assert.Contains("testimox_monitoring_pack_info", names);
-        Assert.Contains("testimox_monitoring_diagnostics_get", names);
+        Assert.Contains("testimox_analytics_pack_info", names);
+        Assert.Contains("testimox_analytics_diagnostics_get", names);
         Assert.Contains("testimox_probe_index_status", names);
         Assert.Contains("testimox_maintenance_window_history", names);
         Assert.Contains("testimox_report_data_snapshot_get", names);
@@ -685,7 +685,7 @@ public class ToolDefinitionContractTests {
         Assert.Contains("testimox_report_job_history", names);
 
         var definitionsByName = definitions.ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
-        var monitoringDiagnostics = Assert.IsType<ToolDefinition>(definitionsByName["testimox_monitoring_diagnostics_get"]);
+        var monitoringDiagnostics = Assert.IsType<ToolDefinition>(definitionsByName["testimox_analytics_diagnostics_get"]);
         var probeIndexStatus = Assert.IsType<ToolDefinition>(definitionsByName["testimox_probe_index_status"]);
         var maintenanceWindowHistory = Assert.IsType<ToolDefinition>(definitionsByName["testimox_maintenance_window_history"]);
         var reportDataSnapshot = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_data_snapshot_get"]);

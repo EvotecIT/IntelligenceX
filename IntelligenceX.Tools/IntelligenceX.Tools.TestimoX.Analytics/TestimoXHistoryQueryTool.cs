@@ -126,12 +126,12 @@ public sealed class TestimoXHistoryQueryTool : TestimoXToolBase, ITool {
         if (!Options.Enabled) {
             return ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX Monitoring pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX Monitoring pack in host/service options before calling testimox_history_query." },
+                error: "IX.TestimoX Analytics pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Analytics pack in host/service options before calling testimox_history_query." },
                 isTransient: false);
         }
 
-        if (!TestimoXMonitoringHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_history_query",
@@ -144,8 +144,8 @@ public sealed class TestimoXHistoryQueryTool : TestimoXToolBase, ITool {
         IReadOnlyList<MonitoringAvailabilityRollupSample> discovered;
         try {
             using var store = new MonitoringAvailabilityRollupStore(
-                TestimoXMonitoringHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXMonitoringHistoryHelper.CreateSqliteOptions(),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
                 historyDirectory);
             discovered = context.Request.RootProbeNames.Count > 0 || context.Request.ExcludedProbeNamePrefixes.Count > 0
                 ? await store.ReadFilteredAsync(

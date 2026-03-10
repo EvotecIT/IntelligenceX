@@ -142,8 +142,8 @@ public static class ToolCapabilityParityInventoryBuilder {
         CapabilityExpectation.ForTool("rule_execution", "testimox_rules_run", static () => typeof(ToolingRuleRunRequest) is not null)
     };
 
-    private static readonly CapabilityExpectation[] TestimoXMonitoringReadOnlyExpectations = {
-        CapabilityExpectation.ForTool("monitoring_diagnostics", "testimox_monitoring_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
+    private static readonly CapabilityExpectation[] TestimoXAnalyticsReadOnlyExpectations = {
+        CapabilityExpectation.ForTool("monitoring_diagnostics", "testimox_analytics_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
         CapabilityExpectation.ForTool("probe_index_status", "testimox_probe_index_status", static () => typeof(ProbeIndexStatusEntry) is not null),
         CapabilityExpectation.ForTool("maintenance_window_history", "testimox_maintenance_window_history", static () => typeof(MaintenanceWindowHistoryEntry) is not null),
         CapabilityExpectation.ForTool("report_data_snapshot", "testimox_report_data_snapshot_get", static () => typeof(MonitoringReportDataSnapshot) is not null),
@@ -188,7 +188,7 @@ public static class ToolCapabilityParityInventoryBuilder {
         TryAddEntry(entries, BuildAdMonitoringEntry(definitionNames, definitionsByPackId, packEnabledIds));
         TryAddEntry(entries, BuildComputerXEntry(definitionsByName, definitionsByPackId, packEnabledIds));
         TryAddEntry(entries, BuildTestimoXCoreEntry(definitionsByName, definitionsByPackId, packEnabledIds));
-        TryAddEntry(entries, BuildTestimoXMonitoringEntry(definitionsByName, definitionsByPackId, packEnabledIds));
+        TryAddEntry(entries, BuildTestimoXAnalyticsEntry(definitionsByName, definitionsByPackId, packEnabledIds));
         TryAddEntry(entries, BuildTestimoXPowerShellEntry(definitionsByPackId, packEnabledIds));
 
         return entries
@@ -431,22 +431,22 @@ public static class ToolCapabilityParityInventoryBuilder {
             note: "Profiles, inventory, baseline crosswalk, catalog, and execution parity for TestimoX tooling service.");
     }
 
-    private static SessionCapabilityParityEntryDto? BuildTestimoXMonitoringEntry(
+    private static SessionCapabilityParityEntryDto? BuildTestimoXAnalyticsEntry(
         IReadOnlyDictionary<string, ToolDefinition> definitionsByName,
         Dictionary<string, List<ToolDefinition>> definitionsByPackId,
         HashSet<string> packEnabledIds) {
-        const string packId = "testimox_monitoring";
+        const string packId = "testimox_analytics";
         var registeredToolCount = GetRegisteredToolCount(definitionsByPackId, packId);
         if (registeredToolCount == 0 && !packEnabledIds.Contains(packId)) {
             return null;
         }
 
-        var availableExpectations = TestimoXMonitoringReadOnlyExpectations
+        var availableExpectations = TestimoXAnalyticsReadOnlyExpectations
             .Where(static expectation => expectation.IsAvailable())
             .ToArray();
         if (availableExpectations.Length == 0) {
             return CreateStatusEntry(
-                engineId: "testimox_monitoring",
+                engineId: "testimox_analytics",
                 packId,
                 status: SourceUnavailableStatus,
                 sourceAvailable: false,
@@ -454,7 +454,7 @@ public static class ToolCapabilityParityInventoryBuilder {
                 expectedCapabilityCount: 0,
                 surfacedCapabilityCount: 0,
                 missingCapabilities: Array.Empty<string>(),
-                note: "TestimoX monitoring artifact contracts were not available in this runtime.");
+                note: "TestimoX analytics artifact contracts were not available in this runtime.");
         }
 
         var surfacedCapabilities = availableExpectations
@@ -462,13 +462,13 @@ public static class ToolCapabilityParityInventoryBuilder {
             .Select(static expectation => expectation.CapabilityId)
             .ToArray();
         return CreateCapabilityEntry(
-            engineId: "testimox_monitoring",
+            engineId: "testimox_analytics",
             packId,
             sourceAvailable: true,
             registeredToolCount,
             expectedCapabilities: availableExpectations.Select(static expectation => expectation.CapabilityId),
             surfacedCapabilities: surfacedCapabilities,
-            note: "Persisted monitoring, report, snapshot, and maintenance artifact parity for TestimoX monitoring tooling.");
+            note: "Persisted analytics, report, snapshot, and maintenance artifact parity for TestimoX analytics tooling.");
     }
 
     private static SessionCapabilityParityEntryDto? BuildTestimoXPowerShellEntry(

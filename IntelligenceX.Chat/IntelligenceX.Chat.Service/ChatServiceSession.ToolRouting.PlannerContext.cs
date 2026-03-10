@@ -421,19 +421,16 @@ internal sealed partial class ChatServiceSession {
 
             if (TryParseStructuredKeyValueLine(trimmed, "continuation_source_tool", out var continuationSourceToolValue)) {
                 continuationSourceTool = NormalizeToolNameForAnswerPlan(continuationSourceToolValue.ToString());
-                parsedAnyStructuredValue = true;
                 continue;
             }
 
             if (TryParseStructuredKeyValueLine(trimmed, "continuation_reason", out var continuationReasonValue)) {
                 continuationReason = NormalizeWorkingMemoryAnswerPlanFocus(continuationReasonValue.ToString());
-                parsedAnyStructuredValue = true;
                 continue;
             }
 
             if (TryParseStructuredKeyValueLine(trimmed, "continuation_confidence", out var continuationConfidenceValue)) {
                 continuationConfidence = NormalizeContinuationConfidence(continuationConfidenceValue.ToString());
-                parsedAnyStructuredValue = true;
                 continue;
             }
 

@@ -103,12 +103,12 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
         if (!Options.Enabled) {
             return ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX Monitoring pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX Monitoring pack in host/service options before calling testimox_report_job_history." },
+                error: "IX.TestimoX Analytics pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Analytics pack in host/service options before calling testimox_report_job_history." },
                 isTransient: false);
         }
 
-        if (!TestimoXMonitoringHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_report_job_history",
@@ -121,8 +121,8 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
         IReadOnlyList<MonitoringReportJobSummary> discovered;
         try {
             using var store = new MonitoringReportJobStore(
-                TestimoXMonitoringHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXMonitoringHistoryHelper.CreateSqliteOptions(),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
                 historyDirectory);
             discovered = await store.QueryRecentAsync(
                     context.Request.JobKey,

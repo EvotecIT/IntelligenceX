@@ -72,7 +72,7 @@ public sealed class TestimoXReportDataSnapshotGetTool : TestimoXToolBase, ITool 
                 HistoryDirectory: historyDirectory,
                 ReportKey: reportKey,
                 IncludePayload: reader.Boolean("include_payload", defaultValue: false),
-                MaxChars: TestimoXMonitoringHistoryHelper.ResolveContentCharLimit(arguments, Options.MaxSnapshotContentChars)));
+                MaxChars: TestimoXAnalyticsHistoryHelper.ResolveContentCharLimit(arguments, Options.MaxSnapshotContentChars)));
         });
     }
 
@@ -82,12 +82,12 @@ public sealed class TestimoXReportDataSnapshotGetTool : TestimoXToolBase, ITool 
         if (!Options.Enabled) {
             return ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX Monitoring pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX Monitoring pack in host/service options before calling testimox_report_data_snapshot_get." },
+                error: "IX.TestimoX Analytics pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Analytics pack in host/service options before calling testimox_report_data_snapshot_get." },
                 isTransient: false);
         }
 
-        if (!TestimoXMonitoringHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_report_data_snapshot_get",
@@ -100,8 +100,8 @@ public sealed class TestimoXReportDataSnapshotGetTool : TestimoXToolBase, ITool 
         MonitoringReportDataSnapshot? snapshot;
         try {
             using var store = new MonitoringReportDataSnapshotStore(
-                TestimoXMonitoringHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXMonitoringHistoryHelper.CreateSqliteOptions(),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
                 historyDirectory);
             snapshot = await store.TryLoadAsync(context.Request.ReportKey, cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) {
@@ -121,7 +121,7 @@ public sealed class TestimoXReportDataSnapshotGetTool : TestimoXToolBase, ITool 
                 isTransient: false);
         }
 
-        var payloadProjection = TestimoXMonitoringHistoryHelper.ProjectText(
+        var payloadProjection = TestimoXAnalyticsHistoryHelper.ProjectText(
             snapshot.PayloadJson,
             context.Request.IncludePayload,
             context.Request.MaxChars);
@@ -132,7 +132,7 @@ public sealed class TestimoXReportDataSnapshotGetTool : TestimoXToolBase, ITool 
             SourceUpdatedUtc: snapshot.SourceUpdatedUtc,
             PayloadBytes: snapshot.PayloadBytes,
             PayloadHash: snapshot.PayloadHash ?? string.Empty,
-            MetadataJson: TestimoXMonitoringHistoryHelper.NormalizeJsonPreview(snapshot.MetadataJson),
+            MetadataJson: TestimoXAnalyticsHistoryHelper.NormalizeJsonPreview(snapshot.MetadataJson),
             PayloadPreview: payloadProjection.Preview,
             PayloadJson: payloadProjection.Content,
             PayloadIncluded: payloadProjection.Included,

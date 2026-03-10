@@ -128,11 +128,11 @@ public sealed class TestimoXCatalogToolsTests {
     }
 
     [Fact]
-    public async Task TestimoXMonitoringDiagnosticsGetTool_ShouldReturnCompactSnapshotAndSlowProbes() {
+    public async Task TestimoXAnalyticsDiagnosticsGetTool_ShouldReturnCompactSnapshotAndSlowProbes() {
         using var fixture = CreateMonitoringHistoryFixture();
         var options = new TestimoXToolOptions();
         options.AllowedHistoryRoots.Add(fixture.RootDirectory);
-        var tool = new TestimoXMonitoringDiagnosticsGetTool(options);
+        var tool = new TestimoXAnalyticsDiagnosticsGetTool(options);
         var arguments = new JsonObject()
             .Add("history_directory", fixture.HistoryDirectory)
             .Add("include_slow_probes", true)

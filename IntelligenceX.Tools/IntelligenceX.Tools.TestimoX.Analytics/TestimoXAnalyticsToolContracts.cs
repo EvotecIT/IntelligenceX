@@ -4,7 +4,7 @@ using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.TestimoX;
 
-internal static class TestimoXMonitoringToolContracts {
+internal static class TestimoXAnalyticsToolContracts {
     private static readonly string[] SetupHintKeys = {
         "history_directory",
         "report_key",
@@ -44,7 +44,7 @@ internal static class TestimoXMonitoringToolContracts {
                 ? ToolRoutingContract.DefaultContractId
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
-            PackId = "testimox_monitoring",
+            PackId = "testimox_analytics",
             Role = ResolveRole(definition.Name),
             DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
             DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
@@ -88,11 +88,10 @@ internal static class TestimoXMonitoringToolContracts {
     }
 
     private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "testimox_monitoring_pack_info", StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(toolName, "testimox_analytics_pack_info", StringComparison.OrdinalIgnoreCase)) {
             return ToolRoutingTaxonomy.RolePackInfo;
         }
 
         return ToolRoutingTaxonomy.RoleDiagnostic;
     }
 }
-
