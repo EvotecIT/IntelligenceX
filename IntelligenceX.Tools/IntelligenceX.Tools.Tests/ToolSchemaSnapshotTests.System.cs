@@ -72,6 +72,24 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "system_uac_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_interactive_logon_posture",
+            new[] { "computer_name", "include_legal_notice_text" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_network_client_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "system_boot_configuration",
             new[] { "computer_name", "include_reboot_pending" },
             Array.Empty<string>()

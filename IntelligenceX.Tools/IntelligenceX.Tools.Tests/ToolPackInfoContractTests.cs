@@ -284,6 +284,9 @@ public class ToolPackInfoContractTests {
         Assert.Contains("system_tls_posture", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_winrm_posture", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_powershell_logging_posture", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_uac_posture", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_interactive_logon_posture", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_network_client_posture", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("computer_name", hostScope.GetProperty("field_mappings").ToString(), StringComparison.OrdinalIgnoreCase);
 
         var patchFollowUp = entityHandoffs

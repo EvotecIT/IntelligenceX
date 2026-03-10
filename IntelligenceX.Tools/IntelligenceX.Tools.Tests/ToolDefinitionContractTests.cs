@@ -499,6 +499,9 @@ public class ToolDefinitionContractTests {
         Assert.Contains("system_tls_posture", names);
         Assert.Contains("system_winrm_posture", names);
         Assert.Contains("system_powershell_logging_posture", names);
+        Assert.Contains("system_uac_posture", names);
+        Assert.Contains("system_interactive_logon_posture", names);
+        Assert.Contains("system_network_client_posture", names);
         Assert.Contains("system_logical_disks_list", names);
         Assert.Contains("system_disks_list", names);
         Assert.Contains("system_devices_summary", names);
