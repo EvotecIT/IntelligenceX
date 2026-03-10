@@ -384,7 +384,7 @@ public sealed class ChatServicePlannerPromptTests {
                     CallId = "call-ldap",
                     Ok = true,
                     Output = """
-                             {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"arguments":{"domain_controller":"ad0.contoso.com"}}]}
+                             {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"reason":"prefer ad_ldap_diagnostics after prior tool output","confidence":"medium","arguments":{"domain_controller":"ad0.contoso.com"}}]}
                              """
                 }
             },
@@ -405,6 +405,9 @@ public sealed class ChatServicePlannerPromptTests {
             out var preferredToolNames,
             out var handoffTargetPackIds,
             out var handoffTargetToolNames,
+            out var continuationSourceTool,
+            out var continuationReason,
+            out var continuationConfidence,
             out var matchingSkills,
             out var allowCachedEvidenceReuse);
 
@@ -415,6 +418,9 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("ad_ldap_diagnostics", preferredToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Empty(handoffTargetPackIds);
         Assert.Empty(handoffTargetToolNames);
+        Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
+        Assert.Equal("prefer ad_ldap_diagnostics after prior tool output", continuationReason);
+        Assert.Equal("medium", continuationConfidence);
         Assert.Empty(matchingSkills);
         Assert.False(allowCachedEvidenceReuse);
     }
@@ -431,6 +437,9 @@ public sealed class ChatServicePlannerPromptTests {
             preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary
             handoff_target_pack_ids: system
             handoff_target_tool_names: system_metrics_summary
+            continuation_source_tool: ad_monitoring_probe_run
+            continuation_reason: prefer ad_ldap_diagnostics after prior tool output
+            continuation_confidence: high
             matching_skills: ad_domain.scope_hosts, system.host_baseline
             allow_cached_evidence_reuse: false
 
@@ -442,6 +451,9 @@ public sealed class ChatServicePlannerPromptTests {
             out var preferredToolNames,
             out var handoffTargetPackIds,
             out var handoffTargetToolNames,
+            out var continuationSourceTool,
+            out var continuationReason,
+            out var continuationConfidence,
             out var matchingSkills,
             out var allowCachedEvidenceReuse);
 
@@ -454,6 +466,9 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("system_hardware_summary", preferredToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", handoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_metrics_summary", handoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
+        Assert.Equal("prefer ad_ldap_diagnostics after prior tool output", continuationReason);
+        Assert.Equal("high", continuationConfidence);
         Assert.Contains("ad_domain.scope_hosts", matchingSkills, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system.host_baseline", matchingSkills, StringComparer.OrdinalIgnoreCase);
         Assert.False(allowCachedEvidenceReuse);

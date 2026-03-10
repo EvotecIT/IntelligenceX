@@ -22,6 +22,9 @@ internal sealed partial class ChatServiceSession {
         string[] PreferredToolNames,
         string[] HandoffTargetPackIds,
         string[] HandoffTargetToolNames,
+        string ContinuationSourceTool,
+        string ContinuationReason,
+        string ContinuationConfidence,
         string[] MatchingSkills,
         bool AllowCachedEvidenceReuse);
 
@@ -42,12 +45,18 @@ internal sealed partial class ChatServiceSession {
             structuredPreferredPackIds,
             structuredPreferredToolNames,
             structuredHandoffTargetPackIds,
-            structuredHandoffTargetToolNames) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, definitions);
+            structuredHandoffTargetToolNames,
+            continuationSourceTool,
+            continuationReason,
+            continuationConfidence) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, definitions);
         if (!hasCheckpoint
             && structuredPreferredPackIds.Length == 0
             && structuredPreferredToolNames.Length == 0
             && structuredHandoffTargetPackIds.Length == 0
-            && structuredHandoffTargetToolNames.Length == 0) {
+            && structuredHandoffTargetToolNames.Length == 0
+            && continuationSourceTool.Length == 0
+            && continuationReason.Length == 0
+            && continuationConfidence.Length == 0) {
             return normalizedRequest;
         }
 
@@ -90,6 +99,9 @@ internal sealed partial class ChatServiceSession {
             && preferredToolNames.Length == 0
             && handoffTargetPackIds.Length == 0
             && handoffTargetToolNames.Length == 0
+            && continuationSourceTool.Length == 0
+            && continuationReason.Length == 0
+            && continuationConfidence.Length == 0
             && matchingSkills.Length == 0
             && (!hasCheckpoint || !checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse)) {
             return normalizedRequest;
@@ -127,6 +139,21 @@ internal sealed partial class ChatServiceSession {
                 .AppendLine(string.Join(", ", handoffTargetToolNames));
         }
 
+        if (continuationSourceTool.Length > 0) {
+            builder.Append("continuation_source_tool: ")
+                .AppendLine(continuationSourceTool);
+        }
+
+        if (continuationReason.Length > 0) {
+            builder.Append("continuation_reason: ")
+                .AppendLine(continuationReason);
+        }
+
+        if (continuationConfidence.Length > 0) {
+            builder.Append("continuation_confidence: ")
+                .AppendLine(continuationConfidence);
+        }
+
         if (matchingSkills.Length > 0) {
             builder.Append("matching_skills: ")
                 .AppendLine(string.Join(", ", matchingSkills));
@@ -137,7 +164,7 @@ internal sealed partial class ChatServiceSession {
         return builder.ToString().TrimEnd();
     }
 
-    private (string[] PreferredPackIds, string[] PreferredToolNames, string[] HandoffTargetPackIds, string[] HandoffTargetToolNames)
+    private (string[] PreferredPackIds, string[] PreferredToolNames, string[] HandoffTargetPackIds, string[] HandoffTargetToolNames, string ContinuationSourceTool, string ContinuationReason, string ContinuationConfidence)
         ResolvePlannerStructuredNextActionHints(string normalizedThreadId, IReadOnlyList<ToolDefinition> definitions) {
         if (normalizedThreadId.Length == 0
             || definitions is null
@@ -145,7 +172,7 @@ internal sealed partial class ChatServiceSession {
             || !TryGetStructuredNextActionCarryover(normalizedThreadId, out var snapshot, out _)
             || snapshot.Mutability == ActionMutability.Mutating
             || !TryGetToolDefinitionByName(definitions, snapshot.ToolName, out var toolDefinition)) {
-            return (Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
+            return (Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
         }
 
         var preferredToolNames = NormalizeDistinctStrings(new[] { snapshot.ToolName }, MaxPlannerContextToolNames);
@@ -158,7 +185,10 @@ internal sealed partial class ChatServiceSession {
             preferredPackIds,
             preferredToolNames,
             handoffTargetPackIds,
-            handoffTargetToolNames);
+            handoffTargetToolNames,
+            NormalizeToolNameForAnswerPlan(snapshot.SourceToolName),
+            NormalizeWorkingMemoryAnswerPlanFocus(snapshot.Reason),
+            NormalizeContinuationConfidence(snapshot.Confidence));
     }
 
     private (string[] TargetPackIds, string[] TargetToolNames) CollectPlannerHandoffTargets(IReadOnlyList<string> sourceToolNames) {
@@ -307,6 +337,9 @@ internal sealed partial class ChatServiceSession {
             PreferredToolNames: Array.Empty<string>(),
             HandoffTargetPackIds: Array.Empty<string>(),
             HandoffTargetToolNames: Array.Empty<string>(),
+            ContinuationSourceTool: string.Empty,
+            ContinuationReason: string.Empty,
+            ContinuationConfidence: string.Empty,
             MatchingSkills: Array.Empty<string>(),
             AllowCachedEvidenceReuse: false);
         var raw = requestText ?? string.Empty;
@@ -320,6 +353,9 @@ internal sealed partial class ChatServiceSession {
         var preferredToolNames = Array.Empty<string>();
         var handoffTargetPackIds = Array.Empty<string>();
         var handoffTargetToolNames = Array.Empty<string>();
+        var continuationSourceTool = string.Empty;
+        var continuationReason = string.Empty;
+        var continuationConfidence = string.Empty;
         var matchingSkills = Array.Empty<string>();
         var allowCachedEvidenceReuse = false;
         var sawMarker = false;
@@ -403,6 +439,24 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (TryParseStructuredKeyValueLine(trimmed, "continuation_source_tool", out var continuationSourceToolValue)) {
+                continuationSourceTool = NormalizeToolNameForAnswerPlan(continuationSourceToolValue.ToString());
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "continuation_reason", out var continuationReasonValue)) {
+                continuationReason = NormalizeWorkingMemoryAnswerPlanFocus(continuationReasonValue.ToString());
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "continuation_confidence", out var continuationConfidenceValue)) {
+                continuationConfidence = NormalizeContinuationConfidence(continuationConfidenceValue.ToString());
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
             if (TryParseStructuredKeyValueLine(trimmed, "matching_skills", out var matchingSkillsValue)) {
                 matchingSkills = NormalizeStructuredMetadataCsv(
                     matchingSkillsValue,
@@ -424,8 +478,26 @@ internal sealed partial class ChatServiceSession {
             PreferredToolNames: preferredToolNames,
             HandoffTargetPackIds: handoffTargetPackIds,
             HandoffTargetToolNames: handoffTargetToolNames,
+            ContinuationSourceTool: continuationSourceTool,
+            ContinuationReason: continuationReason,
+            ContinuationConfidence: continuationConfidence,
             MatchingSkills: matchingSkills,
             AllowCachedEvidenceReuse: allowCachedEvidenceReuse);
         return sawMarker && parsedAnyStructuredValue;
+    }
+
+    private static string NormalizeContinuationConfidence(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.Equals("high", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("medium", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("low", StringComparison.OrdinalIgnoreCase)) {
+            return normalized.ToLowerInvariant();
+        }
+
+        return string.Empty;
     }
 }

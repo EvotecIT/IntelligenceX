@@ -76,6 +76,9 @@ public static class ToolRegistrySystemExtensions {
             yield return new SystemTlsPostureTool(options);
             yield return new SystemWinRmPostureTool(options);
             yield return new SystemPowerShellLoggingPostureTool(options);
+            yield return new SystemPlatformSecurityPostureTool(options);
+            yield return new SystemAppControlPostureTool(options);
+            yield return new SystemRemoteAccessPostureTool(options);
             yield return new SystemUacPostureTool(options);
             yield return new SystemLdapPolicyPostureTool(options);
             yield return new SystemNetworkClientPostureTool(options);

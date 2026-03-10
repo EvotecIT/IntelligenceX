@@ -460,6 +460,21 @@ internal sealed partial class ChatServiceSession {
                 sb.Append("Target tools: ").AppendLine(string.Join(", ", plannerContext.HandoffTargetToolNames));
             }
         }
+        if (plannerContext.ContinuationSourceTool.Length > 0
+            || plannerContext.ContinuationReason.Length > 0
+            || plannerContext.ContinuationConfidence.Length > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Structured continuation hint:");
+            if (plannerContext.ContinuationSourceTool.Length > 0) {
+                sb.Append("Source tool: ").AppendLine(plannerContext.ContinuationSourceTool);
+            }
+            if (plannerContext.ContinuationReason.Length > 0) {
+                sb.Append("Reason: ").AppendLine(plannerContext.ContinuationReason);
+            }
+            if (plannerContext.ContinuationConfidence.Length > 0) {
+                sb.Append("Confidence: ").AppendLine(plannerContext.ContinuationConfidence);
+            }
+        }
         if (plannerContext.MatchingSkills.Length > 0) {
             sb.AppendLine();
             sb.AppendLine("Matching reusable skills:");

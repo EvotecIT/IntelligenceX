@@ -83,8 +83,8 @@ public sealed class TestimoXMonitoringDiagnosticsGetTool : TestimoXToolBase, ITo
         if (!Options.Enabled) {
             return Task.FromResult(ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX pack in host/service options before calling testimox_monitoring_diagnostics_get." },
+                error: "IX.TestimoX Monitoring pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Monitoring pack in host/service options before calling testimox_monitoring_diagnostics_get." },
                 isTransient: false));
         }
 

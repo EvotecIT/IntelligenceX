@@ -22,9 +22,12 @@ internal sealed partial class ChatServiceSession {
     }
 
     private sealed class StructuredNextActionStoreEntryDto {
+        public string SourceToolName { get; set; } = string.Empty;
         public string ToolName { get; set; } = string.Empty;
         public string ArgumentsJson { get; set; } = "{}";
         public bool? Mutating { get; set; }
+        public string Reason { get; set; } = string.Empty;
+        public string Confidence { get; set; } = string.Empty;
         public long SeenUtcTicks { get; set; }
     }
 
@@ -60,11 +63,14 @@ internal sealed partial class ChatServiceSession {
         lock (StructuredNextActionStoreLock) {
             var store = ReadStructuredNextActionStoreNoThrow(path);
             store.Threads[normalizedThreadId] = new StructuredNextActionStoreEntryDto {
+                SourceToolName = snapshot.SourceToolName.Trim(),
                 ToolName = snapshot.ToolName.Trim(),
                 ArgumentsJson = snapshot.ArgumentsJson.Trim(),
                 Mutating = snapshot.Mutability == ActionMutability.Unknown
                     ? null
                     : snapshot.Mutability == ActionMutability.Mutating,
+                Reason = snapshot.Reason.Trim(),
+                Confidence = snapshot.Confidence.Trim(),
                 SeenUtcTicks = snapshot.SeenUtcTicks
             };
             PruneStructuredNextActionStore(store);
@@ -138,9 +144,12 @@ internal sealed partial class ChatServiceSession {
             }
 
             snapshot = new StructuredNextActionSnapshot(
+                SourceToolName: (entry.SourceToolName ?? string.Empty).Trim(),
                 ToolName: toolName,
                 ArgumentsJson: argumentsJson,
                 Mutability: ResolveActionMutabilityFromNullableBoolean(entry.Mutating),
+                Reason: (entry.Reason ?? string.Empty).Trim(),
+                Confidence: (entry.Confidence ?? string.Empty).Trim(),
                 SeenUtcTicks: entry.SeenUtcTicks);
             return true;
         }

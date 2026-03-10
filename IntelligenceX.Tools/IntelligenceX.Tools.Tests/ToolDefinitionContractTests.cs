@@ -29,6 +29,7 @@ public class ToolDefinitionContractTests {
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
+        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions());
         registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
         registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
 
@@ -62,6 +63,7 @@ public class ToolDefinitionContractTests {
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterEmailPack(new EmailToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions { Enabled = true });
+        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions { Enabled = true });
         registry.RegisterDnsClientXPack(new DnsClientXToolOptions());
         registry.RegisterDomainDetectivePack(new DomainDetectiveToolOptions());
 
@@ -612,13 +614,6 @@ public class ToolDefinitionContractTests {
             StringComparer.OrdinalIgnoreCase);
 
         Assert.Contains("testimox_pack_info", names);
-        Assert.Contains("testimox_monitoring_diagnostics_get", names);
-        Assert.Contains("testimox_probe_index_status", names);
-        Assert.Contains("testimox_maintenance_window_history", names);
-        Assert.Contains("testimox_report_data_snapshot_get", names);
-        Assert.Contains("testimox_report_snapshot_get", names);
-        Assert.Contains("testimox_history_query", names);
-        Assert.Contains("testimox_report_job_history", names);
         Assert.Contains("testimox_runs_list", names);
         Assert.Contains("testimox_run_summary", names);
         Assert.Contains("testimox_baselines_list", names);
@@ -631,13 +626,6 @@ public class ToolDefinitionContractTests {
         Assert.Contains("testimox_rules_run", names);
 
         var definitionsByName = definitions.ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
-        var monitoringDiagnostics = Assert.IsType<ToolDefinition>(definitionsByName["testimox_monitoring_diagnostics_get"]);
-        var probeIndexStatus = Assert.IsType<ToolDefinition>(definitionsByName["testimox_probe_index_status"]);
-        var maintenanceWindowHistory = Assert.IsType<ToolDefinition>(definitionsByName["testimox_maintenance_window_history"]);
-        var reportDataSnapshot = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_data_snapshot_get"]);
-        var reportSnapshot = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_snapshot_get"]);
-        var historyQuery = Assert.IsType<ToolDefinition>(definitionsByName["testimox_history_query"]);
-        var reportJobHistory = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_job_history"]);
         var runsList = Assert.IsType<ToolDefinition>(definitionsByName["testimox_runs_list"]);
         var runSummary = Assert.IsType<ToolDefinition>(definitionsByName["testimox_run_summary"]);
         var baselinesList = Assert.IsType<ToolDefinition>(definitionsByName["testimox_baselines_list"]);
@@ -648,6 +636,62 @@ public class ToolDefinitionContractTests {
         var baselineCrosswalk = Assert.IsType<ToolDefinition>(definitionsByName["testimox_baseline_crosswalk"]);
         var rulesList = Assert.IsType<ToolDefinition>(definitionsByName["testimox_rules_list"]);
         var rulesRun = Assert.IsType<ToolDefinition>(definitionsByName["testimox_rules_run"]);
+
+        Assert.Contains("history", runsList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("store", runsList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:store_directory,run_id_contains,completed_only", runsList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("summary", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback:requires_selection", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_selection_keys:store_directory,run_id", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:store_directory,run_id,scope_group,rule_name_contains,scope_id_contains", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("catalog", baselinesList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:search_text,vendor_ids,product_ids,version_wildcard,baseline_ids,id_patterns", baselinesList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("compare", baselineCompare.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:product_id,vendor_ids,version_wildcard,latest_only,only_diff,search_text", baselineCompare.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("profiles", profilesList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("inventory", ruleInventory.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("provenance", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback:requires_selection", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin,migration_states", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types,migration_states,profile", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("crosswalk", baselineCrosswalk.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:search_text,rule_origin,categories,tags,source_types,profile,rule_names,rule_name_patterns", baselineCrosswalk.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:search_text,rule_origin,categories,tags,source_types,migration_states,profile", ruleInventory.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:search_text,rule_origin,categories,tags,source_types", rulesList.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback:requires_selection", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TestimoXMonitoringPack_ShouldExposeHistoryAndSnapshotTools() {
+        var registry = new ToolRegistry();
+        registry.RegisterTestimoXMonitoringPack(new TestimoXToolOptions {
+            Enabled = true
+        });
+
+        var definitions = registry.GetDefinitions();
+        var names = new HashSet<string>(
+            definitions.Select(static d => d.Name),
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Contains("testimox_monitoring_pack_info", names);
+        Assert.Contains("testimox_monitoring_diagnostics_get", names);
+        Assert.Contains("testimox_probe_index_status", names);
+        Assert.Contains("testimox_maintenance_window_history", names);
+        Assert.Contains("testimox_report_data_snapshot_get", names);
+        Assert.Contains("testimox_report_snapshot_get", names);
+        Assert.Contains("testimox_history_query", names);
+        Assert.Contains("testimox_report_job_history", names);
+
+        var definitionsByName = definitions.ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
+        var monitoringDiagnostics = Assert.IsType<ToolDefinition>(definitionsByName["testimox_monitoring_diagnostics_get"]);
+        var probeIndexStatus = Assert.IsType<ToolDefinition>(definitionsByName["testimox_probe_index_status"]);
+        var maintenanceWindowHistory = Assert.IsType<ToolDefinition>(definitionsByName["testimox_maintenance_window_history"]);
+        var reportDataSnapshot = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_data_snapshot_get"]);
+        var reportSnapshot = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_snapshot_get"]);
+        var historyQuery = Assert.IsType<ToolDefinition>(definitionsByName["testimox_history_query"]);
+        var reportJobHistory = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_job_history"]);
 
         Assert.Contains("diagnostics", monitoringDiagnostics.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("snapshot", monitoringDiagnostics.Tags, StringComparer.OrdinalIgnoreCase);
@@ -676,30 +720,6 @@ public class ToolDefinitionContractTests {
         Assert.Contains("monitoring", reportJobHistory.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("reporting", reportJobHistory.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("fallback_hint_keys:history_directory,job_key,since_utc,statuses", reportJobHistory.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("history", runsList.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("store", runsList.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:store_directory,run_id_contains,completed_only", runsList.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("summary", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback:requires_selection", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_selection_keys:store_directory,run_id", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:store_directory,run_id,scope_group,rule_name_contains,scope_id_contains", runSummary.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("catalog", baselinesList.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:search_text,vendor_ids,product_ids,version_wildcard,baseline_ids,id_patterns", baselinesList.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("compare", baselineCompare.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:product_id,vendor_ids,version_wildcard,latest_only,only_diff,search_text", baselineCompare.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("profiles", profilesList.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("inventory", ruleInventory.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("provenance", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback:requires_selection", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin,migration_states", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types,migration_states,profile", sourceQuery.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("crosswalk", baselineCrosswalk.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:search_text,rule_origin,categories,tags,source_types,profile,rule_names,rule_name_patterns", baselineCrosswalk.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:search_text,rule_origin,categories,tags,source_types,migration_states,profile", ruleInventory.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:search_text,rule_origin,categories,tags,source_types", rulesList.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback:requires_selection", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types", rulesRun.Tags, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

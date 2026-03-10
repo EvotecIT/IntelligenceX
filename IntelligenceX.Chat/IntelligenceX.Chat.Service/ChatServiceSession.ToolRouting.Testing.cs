@@ -109,6 +109,9 @@ internal sealed partial class ChatServiceSession {
         out string[] preferredToolNames,
         out string[] handoffTargetPackIds,
         out string[] handoffTargetToolNames,
+        out string continuationSourceTool,
+        out string continuationReason,
+        out string continuationConfidence,
         out string[] matchingSkills,
         out bool allowCachedEvidenceReuse) {
         var found = TryReadPlannerContextFromRequestText(requestText, out var context);
@@ -118,6 +121,9 @@ internal sealed partial class ChatServiceSession {
         preferredToolNames = context.PreferredToolNames;
         handoffTargetPackIds = context.HandoffTargetPackIds;
         handoffTargetToolNames = context.HandoffTargetToolNames;
+        continuationSourceTool = context.ContinuationSourceTool;
+        continuationReason = context.ContinuationReason;
+        continuationConfidence = context.ContinuationConfidence;
         matchingSkills = context.MatchingSkills;
         allowCachedEvidenceReuse = context.AllowCachedEvidenceReuse;
         return found;

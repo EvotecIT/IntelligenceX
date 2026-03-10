@@ -103,8 +103,8 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
         if (!Options.Enabled) {
             return ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX pack in host/service options before calling testimox_report_job_history." },
+                error: "IX.TestimoX Monitoring pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Monitoring pack in host/service options before calling testimox_report_job_history." },
                 isTransient: false);
         }
 

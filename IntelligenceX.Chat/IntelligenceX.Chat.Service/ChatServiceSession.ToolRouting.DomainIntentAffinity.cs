@@ -626,7 +626,10 @@ internal sealed partial class ChatServiceSession {
             structuredPreferredPackIds,
             structuredPreferredToolNames,
             structuredHandoffTargetPackIds,
-            structuredHandoffTargetToolNames) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, allDefinitions);
+            structuredHandoffTargetToolNames,
+            _,
+            _,
+            _) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, allDefinitions);
         preferredNames = NormalizeDistinctStrings(
             preferredNames
                 .Concat(structuredPreferredToolNames)

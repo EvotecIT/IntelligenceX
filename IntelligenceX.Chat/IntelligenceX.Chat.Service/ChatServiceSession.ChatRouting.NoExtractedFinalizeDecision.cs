@@ -423,6 +423,7 @@ internal sealed partial class ChatServiceSession {
             out var structuredNextToolName,
             out _,
             out _,
+            out _,
             out _);
         var decision = ResolveNoExtractedFinalizeContinuationDecision(
             structuredNextActionRetryUsed: structuredNextActionRetryUsed,

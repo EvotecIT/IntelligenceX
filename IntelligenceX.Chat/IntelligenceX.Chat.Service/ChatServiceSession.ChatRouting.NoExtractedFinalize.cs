@@ -84,6 +84,7 @@ internal sealed partial class ChatServiceSession {
                     out var structuredNextToolName,
                     out _,
                     out _,
+                    out _,
                     out _);
                 var allowHostStructuredReplay = ShouldAllowHostStructuredNextActionReplay(text);
                 var hostStructuredReplayHintInput = BuildCarryoverHostHintInput(userIntent, text);
