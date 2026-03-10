@@ -130,6 +130,37 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildHostPackPreflightCalls_DoesNotDuplicateExplicitRecoveryHelperCallsInSameRound() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_health_scan",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                RecoveryToolNames = new[] { "customx_recovery_discover" }
+            }));
+        registry.Register(new PreflightStubTool(
+            "customx_recovery_discover",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleDiagnostic)));
+        SetSessionRegistry(session, registry);
+
+        var extractedCalls = new List<ToolCall> {
+            new("call_operational_4", "customx_health_scan", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal)),
+            new("call_explicit_helper_4", "customx_recovery_discover", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-4b", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        var preflightCall = Assert.Single(preflightCalls);
+        Assert.Equal("customx_pack_probe", preflightCall.Name);
+    }
+
+    [Fact]
     public void BuildHostPackPreflightCalls_PrefersHealthyAlternatePackRoleCandidateWhenDefaultPathIsSuppressed() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberHostBootstrapFailureForTesting("thread-5", "customx_pack_probe_remote", "pack_preflight");

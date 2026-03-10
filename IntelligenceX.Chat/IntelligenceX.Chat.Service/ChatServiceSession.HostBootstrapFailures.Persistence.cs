@@ -153,16 +153,34 @@ internal sealed partial class ChatServiceSession {
             var call = executedCalls[i];
             var callId = (call.CallId ?? string.Empty).Trim();
             var toolName = (call.Name ?? string.Empty).Trim();
+            var failureKind = ResolveHostBootstrapFailureKind(callId, toolName);
             if (callId.Length == 0
                 || toolName.Length == 0
-                || !IsHostPackPreflightToolName(toolName)
+                || failureKind.Length == 0
                 || !outputByCallId.TryGetValue(callId, out var output)
                 || IsSuccessfulToolOutput(output)) {
                 continue;
             }
 
-            RememberHostBootstrapFailure(normalizedThreadId, toolName, HostBootstrapFailureKindPackPreflight, output);
+            RememberHostBootstrapFailure(normalizedThreadId, toolName, failureKind, output);
         }
+    }
+
+    private string ResolveHostBootstrapFailureKind(string callId, string toolName) {
+        var normalizedCallId = (callId ?? string.Empty).Trim();
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (!IsHostGeneratedPackPreflightCallId(normalizedCallId) || normalizedToolName.Length == 0) {
+            return string.Empty;
+        }
+
+        return IsHostPackPreflightToolName(normalizedToolName)
+            ? HostBootstrapFailureKindPackPreflight
+            : HostBootstrapFailureKindRecoveryHelper;
+    }
+
+    private static bool IsHostGeneratedPackPreflightCallId(string callId) {
+        var normalizedCallId = (callId ?? string.Empty).Trim();
+        return normalizedCallId.StartsWith(HostPackPreflightCallIdPrefix, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeHostBootstrapFailureKind(string? failureKind) {

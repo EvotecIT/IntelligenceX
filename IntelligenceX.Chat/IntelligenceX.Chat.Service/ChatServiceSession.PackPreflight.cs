@@ -37,12 +37,14 @@ internal sealed partial class ChatServiceSession {
         var operationalPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var recoveryHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var explicitRoundPreflightNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var extractedRoundToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < extractedCalls.Count; i++) {
             var callName = (extractedCalls[i].Name ?? string.Empty).Trim();
             if (callName.Length == 0) {
                 continue;
             }
 
+            extractedRoundToolNames.Add(callName);
             if (catalog.PreflightToolNames.Contains(callName)) {
                 explicitRoundPreflightNames.Add(callName);
                 continue;
@@ -109,7 +111,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var excludedRecoveryHelperToolNames = new HashSet<string>(explicitRoundPreflightNames, StringComparer.OrdinalIgnoreCase);
+        var excludedRecoveryHelperToolNames = new HashSet<string>(extractedRoundToolNames, StringComparer.OrdinalIgnoreCase);
         foreach (var rememberedToolName in rememberedPreflightTools) {
             excludedRecoveryHelperToolNames.Add(rememberedToolName);
         }
