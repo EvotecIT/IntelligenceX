@@ -491,10 +491,10 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures DOCX transcript normalization separates adjacent definition-like lines into stable paragraphs.
+    /// Ensures the legacy DOCX compatibility repair separates adjacent definition-like lines into stable paragraphs.
     /// </summary>
     [Fact]
-    public void ExportTranscript_Docx_NormalizationSeparatesAdjacentDefinitionLikeLines() {
+    public void ExportTranscript_Docx_LegacyCompatibilityRepairSeparatesAdjacentDefinitionLikeLines() {
         const string markdown = """
             # Transcript
 
@@ -502,17 +502,17 @@ public sealed class LocalExportArtifactWriterTests {
             Impact: none
             """;
 
-        var normalized = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(markdown)
+        var normalized = OfficeImoArtifactWriter.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("Status: healthy\n\nImpact: none", normalized, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Ensures DOCX transcript normalization leaves adjacent definition-like lines untouched inside fenced code blocks.
+    /// Ensures the legacy DOCX compatibility repair leaves adjacent definition-like lines untouched inside fenced code blocks.
     /// </summary>
     [Fact]
-    public void ExportTranscript_Docx_NormalizationDoesNotSplitAdjacentDefinitionLikeLinesInsideFence() {
+    public void ExportTranscript_Docx_LegacyCompatibilityRepairDoesNotSplitAdjacentDefinitionLikeLinesInsideFence() {
         const string markdown = """
             # Transcript
 
@@ -522,7 +522,7 @@ public sealed class LocalExportArtifactWriterTests {
             ```
             """;
 
-        var normalized = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(markdown)
+        var normalized = OfficeImoArtifactWriter.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("```text\nStatus: healthy\nImpact: none\n```", normalized, StringComparison.Ordinal);

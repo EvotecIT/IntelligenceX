@@ -82,6 +82,22 @@ public static class TranscriptTypographyNormalizer {
             lines[i] = NormalizeLine(line);
         }
 
+        return string.Join(newline, lines);
+    }
+
+    /// <summary>
+    /// Inserts paragraph boundaries between adjacent simple definition-like lines outside fenced code blocks.
+    /// </summary>
+    /// <param name="markdown">Markdown source.</param>
+    /// <returns>Markdown with blank lines inserted between targeted adjacent definition-like lines.</returns>
+    public static string SeparateAdjacentDefinitionLikeLinesOutsideFencedCodeBlocks(string markdown) {
+        if (string.IsNullOrEmpty(markdown) || !ContainsAdjacentDefinitionLikeLines(markdown)) {
+            return markdown ?? string.Empty;
+        }
+
+        var newline = DetectLineEnding(markdown);
+        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
         return string.Join(newline, InsertBlankLinesBetweenAdjacentDefinitionLikeLines(lines));
     }
 
@@ -112,8 +128,7 @@ public static class TranscriptTypographyNormalizer {
         return markdown.Contains("****", StringComparison.Ordinal)
                || markdown.Contains("->**", StringComparison.Ordinal)
                || ContainsAnySignalFlowBoldLabel(markdown)
-               || TightSignalLabelRegex.IsMatch(markdown)
-               || ContainsAdjacentDefinitionLikeLines(markdown);
+               || TightSignalLabelRegex.IsMatch(markdown);
     }
 
     private static string RepairWrappedSignalFlowLine(string line) {

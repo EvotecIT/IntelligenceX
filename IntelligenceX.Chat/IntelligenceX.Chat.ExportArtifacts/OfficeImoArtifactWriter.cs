@@ -13,6 +13,7 @@ public static partial class OfficeImoArtifactWriter {
     private const int MinDocxVisualMaxWidthPx = 320;
     private const int MaxDocxVisualMaxWidthPx = 2000;
     private const int DefaultDocxVisualMaxWidthPx = 760;
+    private static readonly Lazy<bool> PreservesGroupedDefinitionLikeParagraphsLazy = new(DetectGroupedDefinitionLikeParagraphSupport);
 
     /// <summary>
     /// Writes tabular rows to an Excel workbook using OfficeIMO.Excel.
@@ -203,7 +204,16 @@ public static partial class OfficeImoArtifactWriter {
     }
 
     internal static string NormalizeTranscriptMarkdownForDocx(string markdown) {
-        return TranscriptTypographyNormalizer.NormalizeMarkdownOutsideFencedCodeBlocks(markdown);
+        var normalized = TranscriptTypographyNormalizer.NormalizeMarkdownOutsideFencedCodeBlocks(markdown);
+        if (!PreservesGroupedDefinitionLikeParagraphsLazy.Value) {
+            normalized = NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(normalized);
+        }
+
+        return normalized;
+    }
+
+    internal static string NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(string markdown) {
+        return TranscriptTypographyNormalizer.SeparateAdjacentDefinitionLikeLinesOutsideFencedCodeBlocks(markdown);
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {
@@ -278,6 +288,36 @@ public static partial class OfficeImoArtifactWriter {
         }
 
         return value;
+    }
+
+    private static bool DetectGroupedDefinitionLikeParagraphSupport() {
+        try {
+            const string sampleMarkdown = """
+                # Transcript
+
+                Status: healthy
+                Impact: none
+                """;
+
+            using var document = sampleMarkdown.LoadFromMarkdown(new MarkdownToWordOptions {
+                PreferNarrativeSingleLineDefinitions = true
+            });
+
+            var bodyParagraphs = new List<string>();
+            foreach (var paragraph in document.Paragraphs) {
+                var text = paragraph.Text ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(text) || string.Equals(text, "Transcript", StringComparison.Ordinal)) {
+                    continue;
+                }
+
+                bodyParagraphs.Add(text);
+            }
+
+            return bodyParagraphs.Contains("Status: healthy", StringComparer.Ordinal)
+                   && bodyParagraphs.Contains("Impact: none", StringComparer.Ordinal);
+        } catch {
+            return false;
+        }
     }
 
 }
