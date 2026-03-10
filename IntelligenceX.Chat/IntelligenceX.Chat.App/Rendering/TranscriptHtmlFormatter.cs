@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
+using IntelligenceX.Chat.App.Markdown;
 using OfficeIMO.MarkdownRenderer;
 
 namespace IntelligenceX.Chat.App.Rendering;
@@ -63,7 +64,7 @@ internal static class TranscriptHtmlFormatter {
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(markdownOptions);
 
-        var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(text);
         if (string.IsNullOrWhiteSpace(normalizedText)) {
             return string.Empty;
         }
@@ -112,7 +113,7 @@ internal static class TranscriptHtmlFormatter {
         var messageIndex = 0;
 
         foreach (var message in messages) {
-            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(message.Text);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(message.Text);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 messageIndex++;
                 continue;
@@ -353,8 +354,9 @@ internal static class TranscriptHtmlFormatter {
             .Append("</div>");
 
         if (detail.Length > 0) {
+            var preparedDetail = TranscriptMarkdownPreparation.PrepareMessageBody(detail);
             sb.Append("<div class='outcome-body'>")
-                .Append(RenderBodyHtml(detail, markdownOptions))
+                .Append(RenderBodyHtml(preparedDetail, markdownOptions))
                 .Append("</div>");
         }
 
@@ -485,7 +487,7 @@ internal static class TranscriptHtmlFormatter {
 
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {
         try {
-            var html = MarkdownRenderer.RenderBodyHtml(ExpandAdjacentOrderedListItems(text), markdownOptions);
+            var html = MarkdownRenderer.RenderBodyHtml(text, markdownOptions);
             html = RemoveStandaloneHashParagraphsBeforeHeadings(html);
             return EnsureInlineCodeHtml(html);
         } catch {
@@ -499,58 +501,6 @@ internal static class TranscriptHtmlFormatter {
         }
 
         return StandaloneHashParagraphBeforeHeadingRegex.Replace(html, string.Empty);
-    }
-
-    private static string ExpandAdjacentOrderedListItems(string text) {
-        if (string.IsNullOrEmpty(text) || text.IndexOf('\n') < 0) {
-            return text;
-        }
-
-        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        var lines = normalized.Split('\n');
-        if (lines.Length < 2) {
-            return normalized;
-        }
-
-        var sb = new StringBuilder(normalized.Length + 32);
-        for (var i = 0; i < lines.Length; i++) {
-            var current = lines[i] ?? string.Empty;
-            sb.Append(current);
-            if (i >= lines.Length - 1) {
-                continue;
-            }
-
-            sb.Append('\n');
-            var next = lines[i + 1] ?? string.Empty;
-            if (IsOrderedListLine(current) && IsOrderedListLine(next)) {
-                sb.Append('\n');
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    private static bool IsOrderedListLine(string line) {
-        if (string.IsNullOrWhiteSpace(line)) {
-            return false;
-        }
-
-        var i = 0;
-        while (i < line.Length && char.IsWhiteSpace(line[i])) {
-            i++;
-        }
-
-        var numberStart = i;
-        while (i < line.Length && char.IsDigit(line[i])) {
-            i++;
-        }
-
-        if (i == numberStart || i >= line.Length || line[i] != '.') {
-            return false;
-        }
-
-        i++;
-        return i < line.Length && char.IsWhiteSpace(line[i]);
     }
 
     private static PendingActionExtraction ExtractPendingActionsForRendering(string text) {

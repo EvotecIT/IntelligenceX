@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.ExportArtifacts;
 
@@ -200,33 +201,7 @@ internal static class LocalExportArtifactWriter {
     }
 
     internal static string NormalizeTranscriptMarkdownForExport(string markdown) {
-        if (string.IsNullOrEmpty(markdown)) {
-            return string.Empty;
-        }
-
-        var repaired = TranscriptMarkdownNormalizer.NormalizeForRendering(markdown);
-        var newline = markdown.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        var normalized = repaired.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        var lines = normalized.Split('\n');
-        var output = new List<string>(lines.Length);
-        var previousWasBlank = false;
-
-        foreach (var rawLine in lines) {
-            var line = rawLine ?? string.Empty;
-            if (line.Trim().Equals("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var isBlank = string.IsNullOrWhiteSpace(line);
-            if (isBlank && previousWasBlank) {
-                continue;
-            }
-
-            output.Add(line);
-            previousWasBlank = isBlank;
-        }
-
-        return string.Join(newline, output);
+        return TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown);
     }
 
     private static string ReadCellAsText(JsonElement cell) {

@@ -41,6 +41,35 @@ public sealed class TranscriptMarkdownFormatterTests {
     }
 
     /// <summary>
+    /// Ensures markdown export applies the same adjacent ordered-list spacing repair used by transcript rendering.
+    /// </summary>
+    [Fact]
+    public void Format_InsertsBlankLineBetweenAdjacentOrderedItems() {
+        var now = new DateTime(2026, 3, 10, 10, 22, 14, DateTimeKind.Local);
+        var markdown = TranscriptMarkdownFormatter.Format(new[] {
+            ("Assistant", "1. First check\n2. Second check", now)
+        }, "HH:mm:ss").Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("1. First check\n\n2. Second check", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures markdown export also benefits from the shared typography cleanup used by DOCX export.
+    /// </summary>
+    [Fact]
+    public void Format_NormalizesSharedSignalFlowTypographyArtifacts() {
+        var now = new DateTime(2026, 3, 10, 10, 30, 0, DateTimeKind.Local);
+        var markdown = TranscriptMarkdownFormatter.Format(new[] {
+            ("Assistant", "- Signal **Only total count checked, not origin split -> **Why it matters:**external/custom rules can drift ->**Next action:**break down origins.**\n- TestimoX rules available ****359****", now)
+        }, "HH:mm:ss");
+
+        Assert.Contains("**Only total count checked, not origin split** -> **Why it matters:** external/custom rules can drift", markdown, StringComparison.Ordinal);
+        Assert.Contains("**Next action:** break down origins.", markdown, StringComparison.Ordinal);
+        Assert.Contains("**359**", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("****359****", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures assistant transcript exports include a model comment for per-turn provenance.
     /// </summary>
     [Fact]

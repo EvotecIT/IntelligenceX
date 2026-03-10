@@ -601,6 +601,21 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
+    /// Ensures transcript rendering applies the shared adjacent ordered-list spacing repair before HTML conversion.
+    /// </summary>
+    [Fact]
+    public void Format_RendersAdjacentOrderedItemsAsSeparateListEntries() {
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var now = new DateTime(2026, 3, 10, 10, 22, 14, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", "1. First check\n2. Second check", now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("<li>First check</li>", html, StringComparison.Ordinal);
+        Assert.Contains("<li>Second check</li>", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures malformed collapsed status metrics render as proper bullet rows rather than literal markdown markers.
     /// </summary>
     [Fact]

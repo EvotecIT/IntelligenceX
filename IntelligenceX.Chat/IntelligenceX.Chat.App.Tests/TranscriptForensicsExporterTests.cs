@@ -55,6 +55,9 @@ public sealed class TranscriptForensicsExporterTests {
         Assert.Contains("****healthy****", bundle.Live.Messages[0].RawText, StringComparison.Ordinal);
         Assert.Contains("**healthy**", bundle.Live.Messages[0].NormalizedText, StringComparison.Ordinal);
         Assert.True(bundle.Live.Messages[0].WasNormalized);
+        Assert.Contains("<!-- ix:model: gpt-5.3-codex -->", bundle.Live.RawTranscriptMarkdown, StringComparison.Ordinal);
+        Assert.Contains("****healthy****", bundle.Live.RawTranscriptMarkdown, StringComparison.Ordinal);
+        Assert.Contains("**healthy**", bundle.Live.NormalizedTranscriptMarkdown, StringComparison.Ordinal);
         Assert.Contains("Forest Replication Status", bundle.Live.RenderedTranscriptHtml, StringComparison.Ordinal);
         Assert.Contains("OfficeIMO.MarkdownRenderer", bundle.Renderer.MarkdownRendererAssembly, StringComparison.Ordinal);
     }
