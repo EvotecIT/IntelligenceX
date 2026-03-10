@@ -33,6 +33,25 @@ public sealed class ChatServiceOutputLifecycleDuplicateFinalTests {
     }
 
     [Fact]
+    public void NormalizeFinalResultTextForProtocol_DoesNotRewriteMultiSentenceQuotedUserText() {
+        var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
+            "You wrote: \"First sentence. I refreshed the check and can share fresh results.\" but no tools ran in this turn.");
+
+        Assert.Contains("\"First sentence. I refreshed the check and can share fresh results.\"", normalized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NormalizeFinalResultTextForProtocol_RewritesOperationalRuleTextThatIsNotMetaDiscussion() {
+        var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
+            "I refreshed firewall rules and can share fresh results.");
+
+        Assert.DoesNotContain("I refreshed", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fresh results", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("I reran", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("current results", normalized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ShouldSuppressDuplicateFinalResultForRequest_ReturnsTrue_ForRepeatedNonEmptyFinalOnSameRequestAndThread() {
         var suppress = ChatServiceSession.ShouldSuppressDuplicateFinalResultForRequest(
             previousRequestId: "req-1",

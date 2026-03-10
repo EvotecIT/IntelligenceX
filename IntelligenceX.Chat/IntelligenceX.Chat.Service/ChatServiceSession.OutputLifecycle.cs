@@ -305,7 +305,7 @@ internal sealed partial class ChatServiceSession {
         var (sentenceStart, sentenceEnd) = FindSentenceBounds(text, matchIndex, matchLength);
         var sentence = text.Substring(sentenceStart, sentenceEnd - sentenceStart);
         var lowerSentence = sentence.ToLowerInvariant();
-        if (IsInsideQuotedSpan(sentence, matchIndex - sentenceStart)) {
+        if (IsInsideQuotedSpan(text, matchIndex)) {
             return false;
         }
 
@@ -350,25 +350,28 @@ internal sealed partial class ChatServiceSession {
                || lowerSentence.Contains("quoted", StringComparison.Ordinal)
                || lowerSentence.Contains("quote", StringComparison.Ordinal)
                || lowerSentence.Contains("policy", StringComparison.Ordinal)
-               || lowerSentence.Contains("rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("policy rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("protocol rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("rewrite rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("normalization rule", StringComparison.Ordinal)
                || lowerSentence.Contains("claim ", StringComparison.Ordinal)
                || lowerSentence.Contains("claims ", StringComparison.Ordinal)
                || lowerSentence.Contains("claimed ", StringComparison.Ordinal);
     }
 
-    private static bool IsInsideQuotedSpan(string sentence, int matchOffset) {
+    private static bool IsInsideQuotedSpan(string text, int matchIndex) {
         var insideDoubleQuote = false;
         var insideSingleQuote = false;
-        for (var i = 0; i < sentence.Length; i++) {
-            var current = sentence[i];
+        for (var i = 0; i < text.Length; i++) {
+            var current = text[i];
             if (current == '"' || current == '“' || current == '”') {
                 insideDoubleQuote = !insideDoubleQuote;
             } else if ((current == '\'' || current == '‘' || current == '’')
-                       && !IsApostrophe(sentence, i)) {
+                       && !IsApostrophe(text, i)) {
                 insideSingleQuote = !insideSingleQuote;
             }
 
-            if (i == matchOffset) {
+            if (i == matchIndex) {
                 return insideDoubleQuote || insideSingleQuote;
             }
         }
