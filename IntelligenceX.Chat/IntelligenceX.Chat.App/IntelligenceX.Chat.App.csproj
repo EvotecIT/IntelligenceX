@@ -79,6 +79,8 @@
 
     <PackageReference Include="OfficeIMO.MarkdownRenderer" Version="$(OfficeImoMarkdownRendererNuGetVersion)"
                       Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or (!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)'))" />
+    <PackageReference Include="OfficeIMO.Markdown" Version="$(OfficeImoMarkdownNuGetVersion)"
+                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or (!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)'))" />
   </ItemGroup>
 
   <ItemGroup>
