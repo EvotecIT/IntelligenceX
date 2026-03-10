@@ -459,6 +459,78 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     }
 
     /// <summary>
+    /// Ensures ComputerX parity reports a gap when the audit-options wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenSystemAuditOptionsWrapperMissing_ReportsComputerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "system_audit_options", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("system", "System")
+            });
+
+        var system = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "computerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, system.Status);
+        Assert.Contains("remote_audit_options", system.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures ComputerX parity reports a gap when the built-in accounts wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenSystemBuiltinAccountsWrapperMissing_ReportsComputerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "system_builtin_accounts", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("system", "System")
+            });
+
+        var system = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "computerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, system.Status);
+        Assert.Contains("remote_builtin_accounts", system.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures ComputerX parity reports a gap when the remote-access wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenSystemRemoteAccessPostureWrapperMissing_ReportsComputerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "system_remote_access_posture", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("system", "System")
+            });
+
+        var system = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "computerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, system.Status);
+        Assert.Contains("remote_remote_access_posture", system.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures ComputerX parity reports a gap when the Device Guard posture wrapper is absent.
     /// </summary>
     [Fact]

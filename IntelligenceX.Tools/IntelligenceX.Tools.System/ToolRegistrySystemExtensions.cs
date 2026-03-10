@@ -84,6 +84,8 @@ public static class ToolRegistrySystemExtensions {
             yield return new SystemNetworkClientPostureTool(options);
             yield return new SystemAccountPolicyPostureTool(options);
             yield return new SystemInteractiveLogonPostureTool(options);
+            yield return new SystemAuditOptionsTool(options);
+            yield return new SystemBuiltinAccountsTool(options);
             yield return new SystemDeviceGuardPostureTool(options);
             yield return new SystemDefenderAsrPostureTool(options);
             yield return new SystemInstalledApplicationsTool(options);

@@ -38,7 +38,8 @@ public sealed class SystemRemoteAccessPostureTool : SystemToolBase, ITool {
         "Return remote-access posture (OpenSSH server/agent and Remote Assistance) for the local or remote Windows host.",
         ToolSchema.Object(
                 ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")))
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        tags: new[] { "pack:system", "intent:remote_access_posture", "intent:ssh_remote_assistance", "scope:host_remote_access" });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemRemoteAccessPostureTool"/> class.
@@ -78,7 +79,7 @@ public sealed class SystemRemoteAccessPostureTool : SystemToolBase, ITool {
         try {
             var posture = await RemoteAccess.GetAsync(request.ComputerName, cancellationToken).ConfigureAwait(false);
             var effectiveComputerName = string.IsNullOrWhiteSpace(posture.ComputerName) ? request.Target : posture.ComputerName;
-            var warnings = BuildWarnings(posture);
+            var warnings = BuildWarnings(posture, !IsLocalTarget(request.ComputerName, request.Target));
             var model = new RemoteAccessResponse(
                 ComputerName: effectiveComputerName,
                 SshdServiceInstalled: posture.SshdServiceInstalled,
@@ -129,7 +130,7 @@ public sealed class SystemRemoteAccessPostureTool : SystemToolBase, ITool {
         }
     }
 
-    private static IReadOnlyList<string> BuildWarnings(RemoteAccessPostureInfo posture) {
+    private static IReadOnlyList<string> BuildWarnings(RemoteAccessPostureInfo posture, bool isRemoteScope) {
         var warnings = new List<string>();
         if (posture.SshdServiceRunning == true) {
             warnings.Add("OpenSSH server is running.");
@@ -140,9 +141,14 @@ public sealed class SystemRemoteAccessPostureTool : SystemToolBase, ITool {
         if (posture.OpenSshPort22Listening == true) {
             warnings.Add("Port 22 listener is active on the local host.");
         }
+        if (isRemoteScope && (!posture.OpenSshConfigPresent.HasValue || !posture.OpenSshPort22Listening.HasValue)) {
+            warnings.Add("OpenSSH config-file and local port-listener checks are only available on the local host.");
+        }
 
         return warnings;
     }
 
-    private static string FormatNullableBool(bool? value) => value.HasValue ? (value.Value ? "true" : "false") : "unknown";
+    private static string FormatNullableBool(bool? value) {
+        return value.HasValue ? (value.Value ? "true" : "false") : "unknown";
+    }
 }
