@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using System.Text.Json;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Rendering;
@@ -165,31 +164,10 @@ internal static class TranscriptForensicsExporter {
     }
 
     private static TranscriptForensicsRendererSnapshot BuildRendererSnapshot() {
-        var rendererAssembly = typeof(MarkdownRenderer).Assembly;
-        var markdownAssembly = Type.GetType(
-            "OfficeIMO.Markdown.MarkdownInputNormalizer, OfficeIMO.Markdown",
-            throwOnError: false)?.Assembly;
-
         return new TranscriptForensicsRendererSnapshot {
-            MarkdownRendererAssembly = BuildAssemblyIdentity(rendererAssembly),
-            MarkdownAssembly = markdownAssembly is null ? "unavailable" : BuildAssemblyIdentity(markdownAssembly)
+            MarkdownRendererAssembly = OfficeImoMarkdownRuntimeContract.DescribeMarkdownRendererContract(),
+            MarkdownAssembly = OfficeImoMarkdownRuntimeContract.DescribeMarkdownContract()
         };
-    }
-
-    private static string BuildAssemblyIdentity(Assembly assembly) {
-        var name = assembly.GetName();
-        var version = name.Version?.ToString() ?? "unknown";
-        var location = string.Empty;
-        try {
-            location = assembly.Location ?? string.Empty;
-        } catch {
-            location = string.Empty;
-        }
-
-        var path = string.IsNullOrWhiteSpace(location)
-            ? "(dynamic)"
-            : Path.GetFullPath(location);
-        return $"{name.Name} version={version} path={path}";
     }
 
     private static string? NormalizeOptionalValue(string? value) {

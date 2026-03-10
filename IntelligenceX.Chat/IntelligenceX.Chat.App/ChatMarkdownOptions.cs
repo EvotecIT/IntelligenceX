@@ -1,4 +1,3 @@
-using System.Reflection;
 using OfficeIMO.MarkdownRenderer;
 
 namespace IntelligenceX.Chat.App;
@@ -15,20 +14,7 @@ internal static class ChatMarkdownOptions {
         var options = MarkdownRendererPresets.CreateChatStrictMinimal();
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
-        EnableOptionalNetworkSupport(options);
+        OfficeImoMarkdownRuntimeContract.TryEnableOptionalRendererNetworkSupport(options);
         return options;
-    }
-
-    private static void EnableOptionalNetworkSupport(MarkdownRendererOptions options) {
-        var networkProperty = typeof(MarkdownRendererOptions).GetProperty(
-            "Network",
-            BindingFlags.Instance | BindingFlags.Public);
-        var networkOptions = networkProperty?.GetValue(options);
-        var enabledProperty = networkOptions?.GetType().GetProperty(
-            "Enabled",
-            BindingFlags.Instance | BindingFlags.Public);
-        if (enabledProperty?.CanWrite == true && enabledProperty.PropertyType == typeof(bool)) {
-            enabledProperty.SetValue(networkOptions, true);
-        }
     }
 }
