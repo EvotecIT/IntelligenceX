@@ -491,6 +491,44 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures the legacy DOCX compatibility repair separates adjacent definition-like lines into stable paragraphs.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_LegacyCompatibilityRepairSeparatesAdjacentDefinitionLikeLines() {
+        const string markdown = """
+            # Transcript
+
+            Status: healthy
+            Impact: none
+            """;
+
+        var normalized = OfficeImoArtifactWriter.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("Status: healthy\n\nImpact: none", normalized, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the legacy DOCX compatibility repair leaves adjacent definition-like lines untouched inside fenced code blocks.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_LegacyCompatibilityRepairDoesNotSplitAdjacentDefinitionLikeLinesInsideFence() {
+        const string markdown = """
+            # Transcript
+
+            ```text
+            Status: healthy
+            Impact: none
+            ```
+            """;
+
+        var normalized = OfficeImoArtifactWriter.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("```text\nStatus: healthy\nImpact: none\n```", normalized, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures malformed transcript normalization is idempotent after the first repair pass.
     /// </summary>
     [Fact]
