@@ -51,6 +51,26 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     }
 
     /// <summary>
+    /// Ensures the live ComputerX parity surface includes the remote-access posture capability when the wrapper is registered.
+    /// </summary>
+    [Fact]
+    public void Build_WithLivePacks_DoesNotReportRemoteAccessParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            registry.GetDefinitions(),
+            new[] {
+                CreateEnabledPack("system", "System")
+            });
+
+        var system = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "computerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, system.Status);
+        Assert.DoesNotContain("remote_remote_access_posture", system.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures the parity inventory flags a gap when a required remote ComputerX wrapper contract is absent.
     /// </summary>
     [Fact]
