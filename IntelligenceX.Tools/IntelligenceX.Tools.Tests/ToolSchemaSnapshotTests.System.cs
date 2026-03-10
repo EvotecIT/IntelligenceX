@@ -162,6 +162,24 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "system_audit_options",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_builtin_accounts",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_remote_access_posture",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "system_device_guard_posture",
             new[] { "computer_name" },
             Array.Empty<string>()

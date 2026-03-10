@@ -36,16 +36,17 @@ using ComputerX.ExploitProtection;
 using ComputerX.Browsers;
 using ComputerX.Backup;
 using ComputerX.AppControl;
+using ComputerX.Audit;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
+using ComputerX.RemoteAccess;
 using TestimoX.Baselines;
 using TestimoX.Baselines.Crosswalk;
 using TestimoX.Execution;
 using TestimoX.Providers;
 using ADPlayground.Monitoring.Reporting;
 using ComputerX.PlatformSecurity;
-using ComputerX.RemoteAccess;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -106,12 +107,14 @@ public static class ToolCapabilityParityInventoryBuilder {
         CapabilityExpectation.ForRemoteTool("remote_powershell_logging_posture", "system_powershell_logging_posture", static () => HasStaticMethod(typeof(PsLoggingPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_platform_security_posture", "system_platform_security_posture", static () => HasStaticMethod(typeof(global::ComputerX.PlatformSecurity.PlatformSecurity), "Get") || HasStaticMethod(typeof(global::ComputerX.PlatformSecurity.PlatformSecurity), "GetAsync")),
         CapabilityExpectation.ForRemoteTool("remote_app_control_posture", "system_app_control_posture", static () => HasStaticMethod(typeof(AppControl), "Get") || HasStaticMethod(typeof(AppControl), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_remote_access_posture", "system_remote_access_posture", static () => HasStaticMethod(typeof(RemoteAccess), "Get") || HasStaticMethod(typeof(RemoteAccess), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_remote_access_posture", "system_remote_access_posture", static () => HasRemoteAccessQueryContract()),
         CapabilityExpectation.ForRemoteTool("remote_uac_posture", "system_uac_posture", static () => HasStaticMethod(typeof(UacPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_ldap_policy_posture", "system_ldap_policy_posture", static () => HasStaticMethod(typeof(LdapPolicyQuery), "GetClient") && HasStaticMethod(typeof(LdapPolicyQuery), "GetServer")),
         CapabilityExpectation.ForRemoteTool("remote_network_client_posture", "system_network_client_posture", static () => HasStaticMethod(typeof(NetworkClientPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_account_policy_posture", "system_account_policy_posture", static () => HasStaticMethod(typeof(AccountPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_interactive_logon_posture", "system_interactive_logon_posture", static () => HasStaticMethod(typeof(InteractiveLogonPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_audit_options", "system_audit_options", static () => HasStaticMethod(typeof(AuditOptionsQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_builtin_accounts", "system_builtin_accounts", static () => HasStaticMethod(typeof(BuiltinAccountsQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_device_guard_posture", "system_device_guard_posture", static () => HasStaticMethod(typeof(DeviceGuardPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_defender_asr_posture", "system_defender_asr_posture", static () => HasStaticMethod(typeof(DefenderAsrPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_windows_update_client_status", "system_windows_update_client_status", static () => HasStaticMethod(typeof(WindowsUpdateClientStatusQuery), "Get")),
@@ -653,6 +656,12 @@ public static class ToolCapabilityParityInventoryBuilder {
 
     private static bool HasRemoteQueryMethod(Type type, string methodName) {
         return type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase) is not null;
+    }
+
+    private static bool HasRemoteAccessQueryContract() {
+        Type facadeType = typeof(global::ComputerX.RemoteAccess.RemoteAccess);
+        return HasStaticMethod(facadeType, nameof(global::ComputerX.RemoteAccess.RemoteAccess.Get))
+            || HasStaticMethod(facadeType, nameof(global::ComputerX.RemoteAccess.RemoteAccess.GetAsync));
     }
 
     private static bool HasStaticMethod(Type type, string methodName) {
