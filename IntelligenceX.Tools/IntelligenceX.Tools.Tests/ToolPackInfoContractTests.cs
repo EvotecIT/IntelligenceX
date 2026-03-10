@@ -682,6 +682,7 @@ public class ToolPackInfoContractTests {
         Assert.Equal(expectedTraits.SupportsTimeRange, actualTraits.GetProperty("supports_time_range").GetBoolean());
         Assert.Equal(expectedTraits.SupportsDynamicAttributes, actualTraits.GetProperty("supports_dynamic_attributes").GetBoolean());
         Assert.Equal(expectedTraits.SupportsTargetScoping, actualTraits.GetProperty("supports_target_scoping").GetBoolean());
+        Assert.Equal(expectedTraits.SupportsRemoteHostTargeting, actualTraits.GetProperty("supports_remote_host_targeting").GetBoolean());
         Assert.Equal(expectedTraits.SupportsMutatingActions, actualTraits.GetProperty("supports_mutating_actions").GetBoolean());
         Assert.Equal(expectedTraits.SupportsWriteGovernanceMetadata, actualTraits.GetProperty("supports_write_governance_metadata").GetBoolean());
         Assert.Equal(expectedTraits.SupportsAuthentication, actualTraits.GetProperty("supports_authentication").GetBoolean());
@@ -701,6 +702,9 @@ public class ToolPackInfoContractTests {
         Assert.Equal(
             expectedTraits.TargetScopeArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
             ReadStringArray(actualTraits.GetProperty("target_scope_arguments")));
+        Assert.Equal(
+            expectedTraits.RemoteHostArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualTraits.GetProperty("remote_host_arguments")));
         Assert.Equal(
             expectedTraits.MutatingActionArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
             ReadStringArray(actualTraits.GetProperty("mutating_action_arguments")));

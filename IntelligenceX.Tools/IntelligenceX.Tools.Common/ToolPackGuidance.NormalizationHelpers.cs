@@ -250,6 +250,7 @@ public static partial class ToolPackGuidance {
         var timeRangeArguments = IntersectKnownArguments(names, TimeRangeArgumentNames);
         var dynamicAttributeArguments = IntersectKnownArguments(names, DynamicAttributeArgumentNames);
         var targetScopeArguments = IntersectKnownArguments(names, TargetScopeArgumentNames);
+        var remoteHostArguments = IntersectKnownArguments(names, RemoteHostArgumentNames);
         var mutatingActionArguments = IntersectKnownArguments(names, MutatingActionArgumentNames);
         var writeGovernanceMetadataArguments = IntersectKnownArguments(
             names,
@@ -267,6 +268,8 @@ public static partial class ToolPackGuidance {
             DynamicAttributeArguments = dynamicAttributeArguments,
             SupportsTargetScoping = targetScopeArguments.Count > 0,
             TargetScopeArguments = targetScopeArguments,
+            SupportsRemoteHostTargeting = remoteHostArguments.Count > 0,
+            RemoteHostArguments = remoteHostArguments,
             SupportsMutatingActions = mutatingActionArguments.Count > 0,
             MutatingActionArguments = mutatingActionArguments,
             SupportsWriteGovernanceMetadata = writeGovernanceMetadataArguments.Count > 0,
@@ -375,6 +378,7 @@ public static partial class ToolPackGuidance {
         var timeRangeArguments = NormalizeValues(traits.TimeRangeArguments);
         var dynamicAttributeArguments = NormalizeValues(traits.DynamicAttributeArguments);
         var targetScopeArguments = NormalizeValues(traits.TargetScopeArguments);
+        var remoteHostArguments = NormalizeValues(traits.RemoteHostArguments);
         var mutatingActionArguments = NormalizeValues(traits.MutatingActionArguments);
         var writeGovernanceMetadataArguments = NormalizeValues(traits.WriteGovernanceMetadataArguments);
         var authenticationArguments = NormalizeValues(traits.AuthenticationArguments);
@@ -390,6 +394,8 @@ public static partial class ToolPackGuidance {
             DynamicAttributeArguments = dynamicAttributeArguments,
             SupportsTargetScoping = traits.SupportsTargetScoping || targetScopeArguments.Count > 0,
             TargetScopeArguments = targetScopeArguments,
+            SupportsRemoteHostTargeting = traits.SupportsRemoteHostTargeting || remoteHostArguments.Count > 0,
+            RemoteHostArguments = remoteHostArguments,
             SupportsMutatingActions = traits.SupportsMutatingActions || mutatingActionArguments.Count > 0,
             MutatingActionArguments = mutatingActionArguments,
             SupportsWriteGovernanceMetadata = traits.SupportsWriteGovernanceMetadata || writeGovernanceMetadataArguments.Count > 0,
