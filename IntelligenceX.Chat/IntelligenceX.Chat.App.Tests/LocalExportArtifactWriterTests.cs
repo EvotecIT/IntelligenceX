@@ -228,6 +228,23 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures full-transcript export normalization preserves the shared adjacent ordered-list spacing repair.
+    /// </summary>
+    [Fact]
+    public void NormalizeTranscriptMarkdownForExport_InsertsBlankLineBetweenAdjacentOrderedItems() {
+        const string markdown = """
+            ### Assistant (10:22:14)
+            1. First check
+            2. Second check
+            """;
+
+        var normalized = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("1. First check\n\n2. Second check", normalized, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures requested DOCX transcript export falls back to markdown with typed result metadata when the DOCX writer fails.
     /// </summary>
     [Fact]
@@ -640,6 +657,37 @@ public sealed class LocalExportArtifactWriterTests {
             Assert.Contains("Status", bodyText, StringComparison.Ordinal);
             Assert.Contains("healthy", bodyText, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Status\\:", bodyText, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures grouped label-value blocks remain distinct paragraphs instead of collapsing into one narrative line.
+    /// </summary>
+    [Fact]
+    public void WriteDocxTranscript_PreservesGroupedDefinitionLikeBlocks() {
+        const string markdown = """
+            # Transcript
+
+            Status: healthy
+            Impact: none
+            """;
+
+        var root = CreateTempDirectory();
+        try {
+            var docxPath = Path.Combine(root, "transcript-grouped-definition-lines.docx");
+            OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, additionalAllowedImageDirectories: null);
+            Assert.True(File.Exists(docxPath));
+
+            using var docx = WordDocument.Load(docxPath, readOnly: true);
+            var bodyParagraphs = docx.Paragraphs
+                .Select(p => string.Concat(p.GetRuns().Select(run => run.Text)))
+                .Where(text => !string.IsNullOrWhiteSpace(text) && !string.Equals(text, "Transcript", StringComparison.Ordinal))
+                .ToList();
+
+            Assert.Contains("Status: healthy", bodyParagraphs);
+            Assert.Contains("Impact: none", bodyParagraphs);
         } finally {
             Directory.Delete(root, recursive: true);
         }

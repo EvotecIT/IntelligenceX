@@ -72,7 +72,7 @@ internal static class TranscriptForensicsExporter {
         var projectedMessages = new List<TranscriptForensicsMessage>(messages.Count);
         foreach (var message in messages) {
             var rawText = message.Text;
-            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(rawText);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }
@@ -96,7 +96,7 @@ internal static class TranscriptForensicsExporter {
             });
         }
 
-        var rawTranscriptMarkdown = BuildRawTranscriptMarkdown(includedMessages, timestampFormat);
+        var rawTranscriptMarkdown = TranscriptMarkdownDocumentBuilder.Build(includedMessages, timestampFormat, prepareMessageBodies: false);
         var normalizedTranscriptMarkdown = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(rawTranscriptMarkdown);
         var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(includedMessages, timestampFormat, markdownOptions);
 
@@ -121,7 +121,7 @@ internal static class TranscriptForensicsExporter {
             var timeUtc = NormalizePersistedTimestampUtc(message.TimeUtc);
             var displayTime = timeUtc.ToLocalTime();
             var rawText = message.Text;
-            var normalizedText = TranscriptMarkdownNormalizer.NormalizeForRendering(rawText);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(rawText);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }
@@ -143,7 +143,7 @@ internal static class TranscriptForensicsExporter {
             });
         }
 
-        var rawTranscriptMarkdown = BuildRawTranscriptMarkdown(displayMessages, timestampFormat);
+        var rawTranscriptMarkdown = TranscriptMarkdownDocumentBuilder.Build(displayMessages, timestampFormat, prepareMessageBodies: false);
         var normalizedTranscriptMarkdown = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(rawTranscriptMarkdown);
         var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(displayMessages, timestampFormat, markdownOptions);
 
@@ -154,47 +154,6 @@ internal static class TranscriptForensicsExporter {
             RenderedTranscriptHtml = renderedTranscriptHtml,
             Messages = projectedMessages
         };
-    }
-
-    private static string BuildRawTranscriptMarkdown(
-        IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages,
-        string timestampFormat) {
-        var markdown = new MarkdownComposer();
-        var format = string.IsNullOrWhiteSpace(timestampFormat) ? "HH:mm:ss" : timestampFormat.Trim();
-
-        foreach (var message in messages) {
-            if (string.IsNullOrWhiteSpace(message.Text)) {
-                continue;
-            }
-
-            markdown.Heading($"{message.Role} ({message.Time.ToString(format)})", 3);
-            var modelComment = BuildModelComment(message.Role, message.Model);
-            if (!string.IsNullOrWhiteSpace(modelComment)) {
-                markdown.Raw(modelComment);
-            }
-
-            markdown.Raw(message.Text).BlankLine();
-        }
-
-        return markdown.Build();
-    }
-
-    private static string BuildModelComment(string role, string? model) {
-        var normalizedRole = (role ?? string.Empty).Trim();
-        if (!normalizedRole.Equals("Assistant", StringComparison.OrdinalIgnoreCase)
-            && !normalizedRole.Equals("Tools", StringComparison.OrdinalIgnoreCase)) {
-            return string.Empty;
-        }
-
-        var normalizedModel = (model ?? string.Empty).Trim();
-        if (normalizedModel.Length == 0) {
-            return string.Empty;
-        }
-
-        var safeModel = normalizedModel
-            .Replace("--", "- -", StringComparison.Ordinal)
-            .Replace(">", "&gt;", StringComparison.Ordinal);
-        return "<!-- ix:model: " + safeModel + " -->";
     }
 
     private static DateTime NormalizePersistedTimestampUtc(DateTime timestampUtc) {
