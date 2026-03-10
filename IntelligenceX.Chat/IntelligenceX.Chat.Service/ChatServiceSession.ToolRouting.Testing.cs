@@ -101,6 +101,28 @@ internal sealed partial class ChatServiceSession {
         return BuildPlannerContextAugmentedRequest(threadId, requestText, definitions);
     }
 
+    internal static bool TryReadPlannerContextFromRequestTextForTesting(
+        string requestText,
+        out bool requiresLiveExecution,
+        out string missingLiveEvidence,
+        out string[] preferredPackIds,
+        out string[] preferredToolNames,
+        out string[] handoffTargetPackIds,
+        out string[] handoffTargetToolNames,
+        out string[] matchingSkills,
+        out bool allowCachedEvidenceReuse) {
+        var found = TryReadPlannerContextFromRequestText(requestText, out var context);
+        requiresLiveExecution = context.RequiresLiveExecution;
+        missingLiveEvidence = context.MissingLiveEvidence;
+        preferredPackIds = context.PreferredPackIds;
+        preferredToolNames = context.PreferredToolNames;
+        handoffTargetPackIds = context.HandoffTargetPackIds;
+        handoffTargetToolNames = context.HandoffTargetToolNames;
+        matchingSkills = context.MatchingSkills;
+        allowCachedEvidenceReuse = context.AllowCachedEvidenceReuse;
+        return found;
+    }
+
     internal (
         string UserRequest,
         string UserIntent,
