@@ -1,5 +1,11 @@
 # TestimoX Pack Split Proposal
 
+Implemented direction on this branch:
+
+- runtime/project split is now `IntelligenceX.Tools.TestimoX` + `IntelligenceX.Tools.TestimoX.Analytics`
+- runtime pack ids are now `testimox` + `testimox_analytics`
+- persisted history/report/snapshot readers live in the analytics project
+
 ## Goal
 
 Split the current `IntelligenceX.Tools.TestimoX` surface into two self-registering packs so the runtime, operator, and chat planner can distinguish between:
@@ -30,7 +36,7 @@ Suggested runtime intent:
 
 - discovery -> selection -> execution -> run receipt follow-up
 
-### `IntelligenceX.Tools.TestimoX.Monitoring`
+### `IntelligenceX.Tools.TestimoX.Analytics`
 
 Purpose:
 
@@ -41,9 +47,9 @@ Purpose:
 - maintenance-window history
 - probe index status
 
-Suggested pack id:
+Pack id:
 
-- `testimox_monitoring`
+- `testimox_analytics`
 
 Suggested runtime intent:
 
@@ -69,16 +75,16 @@ Suggested runtime intent:
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXStoreCatalogHelper.cs`
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXPagingHelper.cs`
 
-### Move to `TestimoX.Monitoring`
+### Move to `TestimoX.Analytics`
 
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXReportJobHistoryTool.cs`
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXHistoryQueryTool.cs`
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXProbeIndexStatusTool.cs`
-- `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXMonitoringDiagnosticsGetTool.cs`
+- `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX.Analytics/TestimoXAnalyticsDiagnosticsGetTool.cs`
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXMaintenanceWindowHistoryTool.cs`
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXReportDataSnapshotGetTool.cs`
 - `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXReportSnapshotGetTool.cs`
-- `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX/TestimoXMonitoringHistoryHelper.cs`
+- `IntelligenceX.Tools/IntelligenceX.Tools.TestimoX.Analytics/TestimoXAnalyticsHistoryHelper.cs`
 
 ## Options Split
 
@@ -99,11 +105,11 @@ Fields:
 - `MaxResultRowsPerRule`
 - `AllowedStoreRoots`
 
-### Monitoring options
+### Analytics options
 
 Suggested type:
 
-- `TestimoXMonitoringToolOptions`
+- `TestimoXAnalyticsToolOptions`
 
 Fields:
 
@@ -129,7 +135,7 @@ Current monolithic files:
 Target shape:
 
 - keep `RegisterTestimoXPack(...)` for core
-- add `RegisterTestimoXMonitoringPack(...)` for monitoring artifacts
+- add `RegisterTestimoXAnalyticsPack(...)` for analytics artifacts
 - optionally keep a compatibility overload that registers both temporarily
 
 ## Pack-Info Split
@@ -142,19 +148,19 @@ Target:
 
 - `testimox_pack_info`
   only rules, profiles, baselines, execution, stored runs
-- `testimox_monitoring_pack_info`
-  only monitoring diagnostics/history/report/snapshot/maintenance artifact surfaces
+- `testimox_analytics_pack_info`
+  only analytics diagnostics/history/report/snapshot/maintenance artifact surfaces
 
 ## Chat and Runtime Implications
 
 - parity inventory should stop treating all TestimoX surfaces as one blended family
 - `/toolhealth` should show at least:
   - `testimox_core`
-  - `testimox_monitoring_artifacts`
+  - `testimox_analytics`
   - `testimox_powershell`
 - runtime enablement should become independently controllable:
   - `enable_testimox_pack`
-  - `enable_testimox_monitoring_pack`
+  - `enable_testimox_analytics_pack`
 
 ## Dependency Boundary
 

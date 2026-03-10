@@ -93,6 +93,10 @@ Status values:
 | `IntelligenceX.Tools.TestimoX/TestimoXPackInfoTool.cs` | `done` | Model-facing pack guidance via shared contract. |
 | `IntelligenceX.Tools.TestimoX/TestimoXRulesListTool.cs` | `done` | Engine rule-discovery wrapper + auto-column projection via shared table envelope. |
 | `IntelligenceX.Tools.TestimoX/TestimoXRulesRunTool.cs` | `done` | Engine rule-run wrapper + typed per-rule outcomes + optional capped raw rule rows. |
+| `IntelligenceX.Tools.TestimoX.Analytics/TestimoXAnalyticsToolPack.cs` | `done` | Dedicated `IX.TestimoX.Analytics` descriptor for persisted analytics/history/report artifacts. |
+| `IntelligenceX.Tools.TestimoX.Analytics/ToolRegistryTestimoXAnalyticsExtensions.cs` | `done` | Separate registration source for analytics/history/report tools. |
+| `IntelligenceX.Tools.TestimoX.Analytics/TestimoXAnalyticsPackInfoTool.cs` | `done` | Model-facing analytics pack guidance via shared contract. |
+| `IntelligenceX.Tools.TestimoX.Analytics/TestimoXAnalyticsDiagnosticsGetTool.cs` | `done` | Compact analytics diagnostics snapshot wrapper with safe-by-default preview behavior. |
 
 ## FileSystem
 | File | Status | Notes |

@@ -347,6 +347,134 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void PlannerContextRoundTrip_ParsesAugmentedRequestEmittedByBuilder() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var threadId = "thread-planner-roundtrip";
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "ad_monitoring_probe_run",
+                "Run AD monitoring probe.",
+                ToolSchema.Object(("probe_kind", ToolSchema.String("Probe kind."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "ad_ldap_diagnostics",
+                "Run LDAP diagnostics.",
+                ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                })
+        };
+
+        session.RememberStructuredNextActionCarryoverForTesting(
+            threadId,
+            toolDefinitions,
+            new List<IntelligenceX.Chat.Abstractions.Protocol.ToolCallDto> {
+                new() { CallId = "call-ldap", Name = "ad_monitoring_probe_run" }
+            },
+            new List<IntelligenceX.Chat.Abstractions.Protocol.ToolOutputDto> {
+                new() {
+                    CallId = "call-ldap",
+                    Ok = true,
+                    Output = """
+                             {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"reason":"prefer ad_ldap_diagnostics after prior tool output","confidence":"medium","arguments":{"domain_controller":"ad0.contoso.com"}}]}
+                             """
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+                ["ad_ldap_diagnostics"] = false
+            });
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            threadId,
+            "can you check ldap certificates now?",
+            toolDefinitions);
+
+        var parsed = ChatServiceSession.TryReadPlannerContextFromRequestTextForTesting(
+            augmented,
+            out var requiresLiveExecution,
+            out var missingLiveEvidence,
+            out var preferredPackIds,
+            out var preferredToolNames,
+            out var handoffTargetPackIds,
+            out var handoffTargetToolNames,
+            out var continuationSourceTool,
+            out var continuationReason,
+            out var continuationConfidence,
+            out var matchingSkills,
+            out var allowCachedEvidenceReuse);
+
+        Assert.True(parsed);
+        Assert.False(requiresLiveExecution);
+        Assert.Equal(string.Empty, missingLiveEvidence);
+        Assert.Contains("active_directory", preferredPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_diagnostics", preferredToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(handoffTargetPackIds);
+        Assert.Empty(handoffTargetToolNames);
+        Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
+        Assert.Equal("prefer ad_ldap_diagnostics after prior tool output", continuationReason);
+        Assert.Equal("medium", continuationConfidence);
+        Assert.Empty(matchingSkills);
+        Assert.False(allowCachedEvidenceReuse);
+    }
+
+    [Fact]
+    public void TryReadPlannerContextFromRequestText_ParsesContextWhenBlockAppearsBeforeUserRequest() {
+        var parsed = ChatServiceSession.TryReadPlannerContextFromRequestTextForTesting(
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            missing_live_evidence: ldap certificate posture
+            preferred_pack_ids: active_directory, system
+            preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary
+            handoff_target_pack_ids: system
+            handoff_target_tool_names: system_metrics_summary
+            continuation_source_tool: ad_monitoring_probe_run
+            continuation_reason: prefer ad_ldap_diagnostics after prior tool output
+            continuation_confidence: high
+            matching_skills: ad_domain.scope_hosts, system.host_baseline
+            allow_cached_evidence_reuse: false
+
+            can you check ldap certificates now?
+            """,
+            out var requiresLiveExecution,
+            out var missingLiveEvidence,
+            out var preferredPackIds,
+            out var preferredToolNames,
+            out var handoffTargetPackIds,
+            out var handoffTargetToolNames,
+            out var continuationSourceTool,
+            out var continuationReason,
+            out var continuationConfidence,
+            out var matchingSkills,
+            out var allowCachedEvidenceReuse);
+
+        Assert.True(parsed);
+        Assert.True(requiresLiveExecution);
+        Assert.Equal("ldap certificate posture", missingLiveEvidence);
+        Assert.Contains("active_directory", preferredPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system", preferredPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_diagnostics", preferredToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_hardware_summary", preferredToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system", handoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_metrics_summary", handoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
+        Assert.Equal("prefer ad_ldap_diagnostics after prior tool output", continuationReason);
+        Assert.Equal("high", continuationConfidence);
+        Assert.Contains("ad_domain.scope_hosts", matchingSkills, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system.host_baseline", matchingSkills, StringComparer.OrdinalIgnoreCase);
+        Assert.False(allowCachedEvidenceReuse);
+    }
+
+    [Fact]
     public void BuildToolRoutingSearchText_IncludesSchemaTokens() {
         var definition = new ToolDefinition(
             "eventlog_top_events",

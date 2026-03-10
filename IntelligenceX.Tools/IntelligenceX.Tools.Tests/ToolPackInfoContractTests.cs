@@ -304,34 +304,6 @@ public class ToolPackInfoContractTests {
         var capabilities = root.GetProperty("capabilities");
         Assert.Contains(
             capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "monitoring_diagnostics", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("testimox_monitoring_diagnostics_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(
-            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "probe_index_status", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("testimox_probe_index_status", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(
-            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "maintenance_window_history", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("testimox_maintenance_window_history", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(
-            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "report_data_snapshot", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("testimox_report_data_snapshot_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(
-            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "report_snapshot", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("testimox_report_snapshot_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(
-            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "monitoring_history", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("testimox_history_query", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(
-            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "report_job_history", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains("testimox_report_job_history", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(
-            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
             static id => string.Equals(id, "run_catalog", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("testimox_runs_list", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains(
@@ -359,6 +331,10 @@ public class ToolPackInfoContractTests {
         Assert.Contains(
             capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
             static id => string.Equals(id, "baseline_crosswalk", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain("testimox_analytics_diagnostics_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "analytics_diagnostics", StringComparison.OrdinalIgnoreCase));
 
         var entityHandoffs = root.GetProperty("entity_handoffs");
         Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
@@ -379,6 +355,48 @@ public class ToolPackInfoContractTests {
         Assert.Contains("testimox_run_summary", ReadStringArray(followUpHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("testimox_rules_run", ReadStringArray(followUpHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_object_resolve", ReadStringArray(followUpHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TestimoXAnalyticsPackInfo_ShouldExposeMonitoringArtifactCapabilities() {
+        var tool = new TestimoXAnalyticsPackInfoTool(new TestimoXToolOptions { Enabled = true });
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("testimox_analytics", root.GetProperty("pack").GetString());
+
+        var capabilities = root.GetProperty("capabilities");
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "analytics_diagnostics", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_analytics_diagnostics_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "probe_index_status", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_probe_index_status", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "maintenance_window_history", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_maintenance_window_history", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "report_data_snapshot", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_report_data_snapshot_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "report_snapshot", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_report_snapshot_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "monitoring_history", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_history_query", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "report_job_history", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_report_job_history", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("testimox_rules_run", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("testimox_runs_list", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("testimox_baselines_list", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -548,6 +566,12 @@ public class ToolPackInfoContractTests {
                 Tool: new TestimoXPackInfoTool(testimoXOptions),
                 ExpectedTools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(testimoXOptions),
                 ExpectedCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(testimoXOptions)),
+            new PackCase(
+                Pack: "testimox_analytics",
+                Engine: "ADPlayground.Monitoring",
+                Tool: new TestimoXAnalyticsPackInfoTool(testimoXOptions),
+                ExpectedTools: ToolRegistryTestimoXAnalyticsExtensions.GetRegisteredToolNames(testimoXOptions),
+                ExpectedCatalog: ToolRegistryTestimoXAnalyticsExtensions.GetRegisteredToolCatalog(testimoXOptions)),
             new PackCase(
                 Pack: "officeimo",
                 Engine: "OfficeIMO.Reader",

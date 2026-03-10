@@ -108,12 +108,12 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
         if (!Options.Enabled) {
             return ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX pack in host/service options before calling testimox_probe_index_status." },
+                error: "IX.TestimoX Analytics pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Analytics pack in host/service options before calling testimox_probe_index_status." },
                 isTransient: false);
         }
 
-        if (!TestimoXMonitoringHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_probe_index_status",
@@ -129,9 +129,9 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
         var usedExplicitProbeNames = context.Request.ProbeNames.Count > 0;
         try {
             using var store = new DbaClientXHistoryStore(
-                TestimoXMonitoringHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
                 historyDirectory,
-                sqliteOptions: TestimoXMonitoringHistoryHelper.CreateSqliteOptions());
+                sqliteOptions: TestimoXAnalyticsHistoryHelper.CreateSqliteOptions());
             candidateNames = usedExplicitProbeNames
                 ? context.Request.ProbeNames
                 : await store.ListProbeNamesSinceAsync(new DateTimeOffset(DateTime.SpecifyKind(effectiveSinceUtc, DateTimeKind.Utc), TimeSpan.Zero), cancellationToken)

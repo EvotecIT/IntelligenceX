@@ -4,8 +4,14 @@ using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.TestimoX;
 
-internal static class TestimoXPagingHelper {
-    internal static int? ResolvePageSize(JsonObject? arguments, int maxPageSize) {
+/// <summary>
+/// Shared paging helpers for TestimoX core and analytics tools.
+/// </summary>
+public static class TestimoXPagingHelper {
+    /// <summary>
+    /// Resolves an optional page size from the current request while honoring the provided maximum.
+    /// </summary>
+    public static int? ResolvePageSize(JsonObject? arguments, int maxPageSize) {
         if (!HasArgument(arguments, "page_size") && !HasArgument(arguments, "max_rules")) {
             return null;
         }
@@ -29,7 +35,10 @@ internal static class TestimoXPagingHelper {
         return pageSize;
     }
 
-    internal static bool TryReadOffset(JsonObject? arguments, out int offset, out string? error) {
+    /// <summary>
+    /// Resolves a stable offset from cursor/offset arguments and validates that they do not conflict.
+    /// </summary>
+    public static bool TryReadOffset(JsonObject? arguments, out int offset, out string? error) {
         offset = 0;
         error = null;
 

@@ -35,6 +35,7 @@ using ComputerX.Updates;
 using ComputerX.ExploitProtection;
 using ComputerX.Browsers;
 using ComputerX.Backup;
+using ComputerX.AppControl;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -43,6 +44,8 @@ using TestimoX.Baselines.Crosswalk;
 using TestimoX.Execution;
 using TestimoX.Providers;
 using ADPlayground.Monitoring.Reporting;
+using ComputerX.PlatformSecurity;
+using ComputerX.RemoteAccess;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -101,6 +104,9 @@ public static class ToolCapabilityParityInventoryBuilder {
         CapabilityExpectation.ForRemoteTool("remote_tls_posture", "system_tls_posture", static () => HasStaticMethod(typeof(TlsPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_winrm_posture", "system_winrm_posture", static () => HasStaticMethod(typeof(WinRmPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_powershell_logging_posture", "system_powershell_logging_posture", static () => HasStaticMethod(typeof(PsLoggingPolicyQuery), "Get")),
+        CapabilityExpectation.ForRemoteTool("remote_platform_security_posture", "system_platform_security_posture", static () => HasStaticMethod(typeof(global::ComputerX.PlatformSecurity.PlatformSecurity), "Get") || HasStaticMethod(typeof(global::ComputerX.PlatformSecurity.PlatformSecurity), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_app_control_posture", "system_app_control_posture", static () => HasStaticMethod(typeof(AppControl), "Get") || HasStaticMethod(typeof(AppControl), "GetAsync")),
+        CapabilityExpectation.ForRemoteTool("remote_remote_access_posture", "system_remote_access_posture", static () => HasStaticMethod(typeof(RemoteAccess), "Get") || HasStaticMethod(typeof(RemoteAccess), "GetAsync")),
         CapabilityExpectation.ForRemoteTool("remote_uac_posture", "system_uac_posture", static () => HasStaticMethod(typeof(UacPolicyQuery), "Get")),
         CapabilityExpectation.ForRemoteTool("remote_ldap_policy_posture", "system_ldap_policy_posture", static () => HasStaticMethod(typeof(LdapPolicyQuery), "GetClient") && HasStaticMethod(typeof(LdapPolicyQuery), "GetServer")),
         CapabilityExpectation.ForRemoteTool("remote_network_client_posture", "system_network_client_posture", static () => HasStaticMethod(typeof(NetworkClientPolicyQuery), "Get")),
@@ -123,22 +129,27 @@ public static class ToolCapabilityParityInventoryBuilder {
         CapabilityExpectation.ForRemoteTool("remote_feature_inventory", "system_features_list", static () => HasComputerNameProperty<FeatureInventoryQueryRequest>())
     };
 
-    private static readonly CapabilityExpectation[] TestimoXReadOnlyExpectations = {
-        CapabilityExpectation.ForTool("monitoring_diagnostics", "testimox_monitoring_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
-        CapabilityExpectation.ForTool("probe_index_status", "testimox_probe_index_status", static () => typeof(ProbeIndexStatusEntry) is not null),
-        CapabilityExpectation.ForTool("maintenance_window_history", "testimox_maintenance_window_history", static () => typeof(MaintenanceWindowHistoryEntry) is not null),
-        CapabilityExpectation.ForTool("report_data_snapshot", "testimox_report_data_snapshot_get", static () => typeof(MonitoringReportDataSnapshot) is not null),
-        CapabilityExpectation.ForTool("report_snapshot", "testimox_report_snapshot_get", static () => typeof(MonitoringReportSnapshot) is not null),
-        CapabilityExpectation.ForTool("monitoring_history", "testimox_history_query", static () => typeof(MonitoringAvailabilityRollupSample) is not null),
-        CapabilityExpectation.ForTool("report_job_history", "testimox_report_job_history", static () => typeof(MonitoringReportJobSummary) is not null),
+    private static readonly CapabilityExpectation[] TestimoXCoreReadOnlyExpectations = {
         CapabilityExpectation.ForTool("baseline_catalog", "testimox_baselines_list", static () => typeof(BaselineListEntry) is not null),
         CapabilityExpectation.ForTool("baseline_compare", "testimox_baseline_compare", static () => typeof(BaselineComparisonRow) is not null),
         CapabilityExpectation.ForTool("profile_catalog", "testimox_profiles_list", static () => typeof(RuleSelectionProfileInfo) is not null),
         CapabilityExpectation.ForTool("rule_inventory", "testimox_rule_inventory", static () => typeof(RuleInventoryEntry) is not null),
         CapabilityExpectation.ForTool("source_provenance", "testimox_source_query", static () => typeof(RuleOverview) is not null),
         CapabilityExpectation.ForTool("baseline_crosswalk", "testimox_baseline_crosswalk", static () => typeof(RuleCrosswalkReport) is not null),
+        CapabilityExpectation.ForTool("run_catalog", "testimox_runs_list", static () => typeof(ToolingRuleRunRequest) is not null),
+        CapabilityExpectation.ForTool("run_summary", "testimox_run_summary", static () => typeof(ToolingRuleRunRequest) is not null),
         CapabilityExpectation.ForTool("rule_catalog", "testimox_rules_list", static () => typeof(ToolingRuleDiscoveryRequest) is not null),
         CapabilityExpectation.ForTool("rule_execution", "testimox_rules_run", static () => typeof(ToolingRuleRunRequest) is not null)
+    };
+
+    private static readonly CapabilityExpectation[] TestimoXAnalyticsReadOnlyExpectations = {
+        CapabilityExpectation.ForTool("analytics_diagnostics", "testimox_analytics_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
+        CapabilityExpectation.ForTool("probe_index_status", "testimox_probe_index_status", static () => typeof(ProbeIndexStatusEntry) is not null),
+        CapabilityExpectation.ForTool("maintenance_window_history", "testimox_maintenance_window_history", static () => typeof(MaintenanceWindowHistoryEntry) is not null),
+        CapabilityExpectation.ForTool("report_data_snapshot", "testimox_report_data_snapshot_get", static () => typeof(MonitoringReportDataSnapshot) is not null),
+        CapabilityExpectation.ForTool("report_snapshot", "testimox_report_snapshot_get", static () => typeof(MonitoringReportSnapshot) is not null),
+        CapabilityExpectation.ForTool("monitoring_history", "testimox_history_query", static () => typeof(MonitoringAvailabilityRollupSample) is not null),
+        CapabilityExpectation.ForTool("report_job_history", "testimox_report_job_history", static () => typeof(MonitoringReportJobSummary) is not null),
     };
 
     private static readonly CapabilityExpectation[] AdMonitoringReadOnlyExpectations = {
@@ -176,7 +187,8 @@ public static class ToolCapabilityParityInventoryBuilder {
         var entries = new List<SessionCapabilityParityEntryDto>(4);
         TryAddEntry(entries, BuildAdMonitoringEntry(definitionNames, definitionsByPackId, packEnabledIds));
         TryAddEntry(entries, BuildComputerXEntry(definitionsByName, definitionsByPackId, packEnabledIds));
-        TryAddEntry(entries, BuildTestimoXEntry(definitionsByName, definitionsByPackId, packEnabledIds));
+        TryAddEntry(entries, BuildTestimoXCoreEntry(definitionsByName, definitionsByPackId, packEnabledIds));
+        TryAddEntry(entries, BuildTestimoXAnalyticsEntry(definitionsByName, definitionsByPackId, packEnabledIds));
         TryAddEntry(entries, BuildTestimoXPowerShellEntry(definitionsByPackId, packEnabledIds));
 
         return entries
@@ -379,7 +391,7 @@ public static class ToolCapabilityParityInventoryBuilder {
             note: "Expanded remote read-only parity for ComputerX operator surfaces.");
     }
 
-    private static SessionCapabilityParityEntryDto? BuildTestimoXEntry(
+    private static SessionCapabilityParityEntryDto? BuildTestimoXCoreEntry(
         IReadOnlyDictionary<string, ToolDefinition> definitionsByName,
         Dictionary<string, List<ToolDefinition>> definitionsByPackId,
         HashSet<string> packEnabledIds) {
@@ -389,7 +401,7 @@ public static class ToolCapabilityParityInventoryBuilder {
             return null;
         }
 
-        var availableExpectations = TestimoXReadOnlyExpectations
+        var availableExpectations = TestimoXCoreReadOnlyExpectations
             .Where(static expectation => expectation.IsAvailable())
             .ToArray();
         if (availableExpectations.Length == 0) {
@@ -417,6 +429,46 @@ public static class ToolCapabilityParityInventoryBuilder {
             expectedCapabilities: availableExpectations.Select(static expectation => expectation.CapabilityId),
             surfacedCapabilities: surfacedCapabilities,
             note: "Profiles, inventory, baseline crosswalk, catalog, and execution parity for TestimoX tooling service.");
+    }
+
+    private static SessionCapabilityParityEntryDto? BuildTestimoXAnalyticsEntry(
+        IReadOnlyDictionary<string, ToolDefinition> definitionsByName,
+        Dictionary<string, List<ToolDefinition>> definitionsByPackId,
+        HashSet<string> packEnabledIds) {
+        const string packId = "testimox_analytics";
+        var registeredToolCount = GetRegisteredToolCount(definitionsByPackId, packId);
+        if (registeredToolCount == 0 && !packEnabledIds.Contains(packId)) {
+            return null;
+        }
+
+        var availableExpectations = TestimoXAnalyticsReadOnlyExpectations
+            .Where(static expectation => expectation.IsAvailable())
+            .ToArray();
+        if (availableExpectations.Length == 0) {
+            return CreateStatusEntry(
+                engineId: "testimox_analytics",
+                packId,
+                status: SourceUnavailableStatus,
+                sourceAvailable: false,
+                registeredToolCount,
+                expectedCapabilityCount: 0,
+                surfacedCapabilityCount: 0,
+                missingCapabilities: Array.Empty<string>(),
+                note: "TestimoX analytics artifact contracts were not available in this runtime.");
+        }
+
+        var surfacedCapabilities = availableExpectations
+            .Where(expectation => expectation.IsSurfaced(definitionsByName))
+            .Select(static expectation => expectation.CapabilityId)
+            .ToArray();
+        return CreateCapabilityEntry(
+            engineId: "testimox_analytics",
+            packId,
+            sourceAvailable: true,
+            registeredToolCount,
+            expectedCapabilities: availableExpectations.Select(static expectation => expectation.CapabilityId),
+            surfacedCapabilities: surfacedCapabilities,
+            note: "Persisted analytics, report, snapshot, and maintenance artifact parity for TestimoX analytics tooling.");
     }
 
     private static SessionCapabilityParityEntryDto? BuildTestimoXPowerShellEntry(

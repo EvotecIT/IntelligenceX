@@ -118,12 +118,12 @@ public sealed class TestimoXMaintenanceWindowHistoryTool : TestimoXToolBase, ITo
         if (!Options.Enabled) {
             return ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX pack in host/service options before calling testimox_maintenance_window_history." },
+                error: "IX.TestimoX Analytics pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Analytics pack in host/service options before calling testimox_maintenance_window_history." },
                 isTransient: false);
         }
 
-        if (!TestimoXMonitoringHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_maintenance_window_history",
@@ -136,8 +136,8 @@ public sealed class TestimoXMaintenanceWindowHistoryTool : TestimoXToolBase, ITo
         IReadOnlyList<MaintenanceWindowHistoryEntry> discovered;
         try {
             using var store = new MonitoringMaintenanceWindowHistoryStore(
-                TestimoXMonitoringHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXMonitoringHistoryHelper.CreateSqliteOptions(),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
+                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
                 historyDirectory);
             discovered = await store.ReadEntriesAsync(
                     new DateTimeOffset(context.Request.StartUtc, TimeSpan.Zero),

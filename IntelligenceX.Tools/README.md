@@ -47,6 +47,10 @@ and can resolve engine sources from configured local roots when needed.
   - Native TestimoX diagnostics pack for rule discovery and focused rule execution
   - Includes `testimox_pack_info`, `testimox_rules_list`, and `testimox_rules_run`
   - Engine-first via `TestimoX.Execution.TestimoRunner`
+- `IntelligenceX.Tools.TestimoX.Analytics`
+  - Persisted analytics/history/report artifact pack separated from core TestimoX execution flows
+  - Includes `testimox_analytics_pack_info`, `testimox_analytics_diagnostics_get`, and related history/report readers
+  - Engine-first via `ADPlayground.Monitoring`
 - `IntelligenceX.Tools.ReviewerSetup`
   - Reviewer onboarding path contract and command templates for bot orchestration
   - Includes `reviewer_setup_pack_info`

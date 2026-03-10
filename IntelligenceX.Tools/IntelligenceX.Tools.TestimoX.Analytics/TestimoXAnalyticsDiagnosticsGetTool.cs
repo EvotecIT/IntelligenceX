@@ -11,9 +11,9 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.TestimoX;
 
 /// <summary>
-/// Loads a compact monitoring diagnostics snapshot from an allowed monitoring history directory.
+/// Loads a compact analytics diagnostics snapshot from an allowed monitoring history directory.
 /// </summary>
-public sealed class TestimoXMonitoringDiagnosticsGetTool : TestimoXToolBase, ITool {
+public sealed class TestimoXAnalyticsDiagnosticsGetTool : TestimoXToolBase, ITool {
     private const int DefaultMaxSlowProbes = 5;
     private const int MaxSlowProbes = 20;
 
@@ -23,8 +23,8 @@ public sealed class TestimoXMonitoringDiagnosticsGetTool : TestimoXToolBase, ITo
         int MaxSlowProbes);
 
     private static readonly ToolDefinition DefinitionValue = new(
-        "testimox_monitoring_diagnostics_get",
-        "Get a compact monitoring diagnostics snapshot from an allowed monitoring history directory.",
+        "testimox_analytics_diagnostics_get",
+        "Get a compact analytics diagnostics snapshot from an allowed monitoring history directory.",
         ToolSchema.Object(
                 ("history_directory", ToolSchema.String("Monitoring history directory to inspect (must be inside AllowedHistoryRoots).")),
                 ("include_slow_probes", ToolSchema.Boolean("When true, include capped slow probe rows from the diagnostics snapshot. Default false.")),
@@ -42,9 +42,9 @@ public sealed class TestimoXMonitoringDiagnosticsGetTool : TestimoXToolBase, ITo
         });
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="TestimoXMonitoringDiagnosticsGetTool"/> class.
+    /// Initializes a new instance of the <see cref="TestimoXAnalyticsDiagnosticsGetTool"/> class.
     /// </summary>
-    public TestimoXMonitoringDiagnosticsGetTool(TestimoXToolOptions options) : base(options) { }
+    public TestimoXAnalyticsDiagnosticsGetTool(TestimoXToolOptions options) : base(options) { }
 
     /// <inheritdoc />
     public override ToolDefinition Definition => DefinitionValue;
@@ -83,16 +83,16 @@ public sealed class TestimoXMonitoringDiagnosticsGetTool : TestimoXToolBase, ITo
         if (!Options.Enabled) {
             return Task.FromResult(ToolResultV2.Error(
                 errorCode: "disabled",
-                error: "IX.TestimoX pack is disabled by policy.",
-                hints: new[] { "Enable the TestimoX pack in host/service options before calling testimox_monitoring_diagnostics_get." },
+                error: "IX.TestimoX Analytics pack is disabled by policy.",
+                hints: new[] { "Enable the TestimoX Analytics pack in host/service options before calling testimox_analytics_diagnostics_get." },
                 isTransient: false));
         }
 
-        if (!TestimoXMonitoringHistoryHelper.TryResolveHistoryFilePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryFilePath(
                 Options,
                 context.Request.HistoryDirectory,
                 MonitoringDiagnosticsSnapshot.DefaultFileName,
-                toolName: "testimox_monitoring_diagnostics_get",
+                toolName: "testimox_analytics_diagnostics_get",
                 out var historyDirectory,
                 out var snapshotPath,
                 out var resolveError)) {
@@ -193,7 +193,7 @@ public sealed class TestimoXMonitoringDiagnosticsGetTool : TestimoXToolBase, ITo
             model: model,
             sourceRows: new[] { row },
             viewRowsPath: "snapshot_view",
-            title: "Monitoring diagnostics snapshot",
+            title: "Analytics diagnostics snapshot",
             baseTruncated: !context.Request.IncludeSlowProbes && slowProbes.Count > 0,
             maxTop: 1,
             scanned: 1,

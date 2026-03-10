@@ -61,14 +61,7 @@ internal static class TestimoXToolContracts {
         }
 
         if (string.Equals(definition.Name, "testimox_runs_list", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_report_job_history", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_history_query", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_probe_index_status", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_monitoring_diagnostics_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_maintenance_window_history", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_report_data_snapshot_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "testimox_report_snapshot_get", StringComparison.OrdinalIgnoreCase)) {
+            || string.Equals(definition.Name, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
             if (definition.Setup is { IsSetupAware: true }) {
                 return definition.Setup;
             }
@@ -126,13 +119,6 @@ internal static class TestimoXToolContracts {
         }
 
         if (string.Equals(toolName, "testimox_baselines_list", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_report_job_history", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_history_query", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_probe_index_status", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_monitoring_diagnostics_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_maintenance_window_history", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_report_data_snapshot_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_report_snapshot_get", StringComparison.OrdinalIgnoreCase)
             || string.Equals(toolName, "testimox_runs_list", StringComparison.OrdinalIgnoreCase)
             || string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
             || string.Equals(toolName, "testimox_baseline_compare", StringComparison.OrdinalIgnoreCase)
