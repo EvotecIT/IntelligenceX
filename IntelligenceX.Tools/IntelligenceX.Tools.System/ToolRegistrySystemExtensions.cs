@@ -59,6 +59,9 @@ public static class ToolRegistrySystemExtensions {
             yield return new SystemFirewallRulesTool(options);
             yield return new SystemFirewallProfilesTool(options);
             yield return new SystemSecurityOptionsTool(options);
+            yield return new SystemTlsPostureTool(options);
+            yield return new SystemWinRmPostureTool(options);
+            yield return new SystemPowerShellLoggingPostureTool(options);
             yield return new SystemRdpPostureTool(options);
             yield return new SystemSmbPostureTool(options);
             yield return new SystemBootConfigurationTool(options);

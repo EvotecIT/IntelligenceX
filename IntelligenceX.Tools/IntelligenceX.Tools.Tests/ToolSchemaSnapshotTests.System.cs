@@ -54,6 +54,24 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "system_tls_posture",
+            new[] { "computer_name", "include_algorithms", "include_cipher_suites_order" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_winrm_posture",
+            new[] { "computer_name", "include_listeners", "include_service_root_sddl" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_powershell_logging_posture",
+            new[] { "computer_name", "include_module_names" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "system_boot_configuration",
             new[] { "computer_name", "include_reboot_pending" },
             Array.Empty<string>()

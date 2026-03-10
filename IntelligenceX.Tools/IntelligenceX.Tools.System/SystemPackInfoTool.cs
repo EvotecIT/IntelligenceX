@@ -51,8 +51,8 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             recommendedFlow: new[] {
                 "Call system_info or system_hardware_summary for baseline context.",
                 "Use list tools (processes/services/ports/adapters/firewall/disks/features/apps/updates/bitlocker) for evidence collection.",
-                "Use system_rdp_posture/system_smb_posture/system_boot_configuration/system_bios_summary for host-hardening and firmware posture checks.",
-                "Use system_security_options when you need a registry-backed snapshot of Windows security-option posture.",
+                "Use system_tls_posture/system_winrm_posture/system_powershell_logging_posture/system_rdp_posture/system_smb_posture/system_boot_configuration/system_bios_summary for host-hardening and firmware posture checks.",
+                "Use system_security_options/system_tls_posture/system_winrm_posture/system_powershell_logging_posture when you need a registry-backed Windows policy snapshot.",
                 "Use system_time_sync for quick skew checks and w32time runtime status (local or remote).",
                 "Use system_patch_details for monthly MSRC patch intelligence (CVE/KB/severity details, defaulting to current UTC month).",
                 "Use system_patch_compliance to correlate monthly MSRC KB coverage with installed updates and prioritize missing exploited CVEs.",
@@ -66,7 +66,7 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     suggestedTools: new[] { "system_info", "system_hardware_summary", "system_whoami" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect process/network/security evidence",
-                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
+                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect storage/feature configuration evidence",
                     suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_features_list", "system_scheduled_tasks_list", "system_service_list", "system_installed_applications", "system_updates_installed", "system_boot_configuration", "system_bios_summary" }),
@@ -81,8 +81,8 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     primaryTools: new[] { "system_info", "system_hardware_identity", "system_hardware_summary", "system_whoami" }),
                 ToolPackGuidance.Capability(
                     id: "runtime_evidence",
-                    summary: "Enumerate processes, services, ports, adapters, firewall rules/profiles, security-option posture, and time sync/BitLocker posture.",
-                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
+                    summary: "Enumerate processes, services, ports, adapters, firewall rules/profiles, registry-backed host hardening posture, and time sync/BitLocker posture.",
+                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
                 ToolPackGuidance.Capability(
                     id: "platform_configuration",
                     summary: "Inventory disks, devices, features, scheduled tasks, installed applications/updates, and optional WSL state.",
@@ -98,7 +98,7 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     summary: "Promote AD/EventLog host indicators into ComputerX remote host-scoping arguments.",
                     entityKinds: new[] { "computer", "host", "domain_controller" },
                     sourceTools: new[] { "ad_scope_discovery", "ad_domain_controller_facts", "ad_object_resolve", "eventlog_live_stats", "eventlog_named_events_query" },
-                    targetTools: new[] { "system_info", "system_process_list", "system_service_list", "system_ports_list", "system_security_options", "system_time_sync", "system_updates_installed", "system_disks_list", "system_logical_disks_list" },
+                    targetTools: new[] { "system_info", "system_process_list", "system_service_list", "system_ports_list", "system_security_options", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_time_sync", "system_updates_installed", "system_disks_list", "system_logical_disks_list" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("rows[].dns_host_name", "computer_name", "Prefer canonical FQDN/hostname values and deduplicate before fan-out."),
                         ToolPackGuidance.EntityFieldMapping("rows[].computer", "computer_name", "Normalize and deduplicate host aliases for remote ComputerX calls."),
