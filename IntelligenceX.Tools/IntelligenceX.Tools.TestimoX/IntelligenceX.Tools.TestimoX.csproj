@@ -22,5 +22,6 @@
   <ItemGroup>
     <!-- Engine-first: TestimoX provides rule discovery/execution orchestration and typed outputs. -->
     <ProjectReference Include="$(TestimoXRoot)TestimoX\\TestimoX.csproj" Condition="Exists('$(TestimoXRoot)TestimoX\\TestimoX.csproj')" />
+    <ProjectReference Include="$(TestimoXRoot)ADPlayground.Monitoring\\ADPlayground.Monitoring.csproj" Condition="Exists('$(TestimoXRoot)ADPlayground.Monitoring\\ADPlayground.Monitoring.csproj')" />
   </ItemGroup>
 </Project>

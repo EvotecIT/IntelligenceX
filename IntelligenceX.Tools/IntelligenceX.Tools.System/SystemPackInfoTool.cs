@@ -49,11 +49,14 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             engine: "ComputerX",
             tools: ToolRegistrySystemExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
-                "Call system_info or system_hardware_summary for baseline context.",
-                "Use list tools (processes/services/ports/adapters/firewall/disks/features/apps/updates/bitlocker) for evidence collection.",
-                "Use system_rdp_posture/system_smb_posture/system_boot_configuration/system_bios_summary for host-hardening and firmware posture checks.",
+                "Call system_info, system_hardware_summary, or system_metrics_summary for baseline host context.",
+                "Use list tools (processes/services/ports/adapters/firewall/disks/features/apps/updates/bitlocker/local identities) for evidence collection.",
+                "Use system_privacy_posture, system_exploit_protection, system_office_posture, system_browser_posture, system_backup_posture, system_certificate_posture, system_credential_posture, system_tls_posture, system_winrm_posture, system_powershell_logging_posture, system_uac_posture, system_ldap_policy_posture, system_network_client_posture, system_account_policy_posture, system_interactive_logon_posture, system_device_guard_posture, and system_defender_asr_posture for host privacy, hardening, application, backup, trust-store, crypto, remote-management, elevation, LDAP signing, password/lockout, virtualization security, ASR, and interactive-logon posture.",
+                "Use system_rdp_posture/system_smb_posture/system_boot_configuration/system_bios_summary for remote access, protocol hardening, and firmware posture checks.",
                 "Use system_security_options when you need a registry-backed snapshot of Windows security-option posture.",
                 "Use system_time_sync for quick skew checks and w32time runtime status (local or remote).",
+                "Use system_metrics_summary for focused remote CPU/memory pressure checks when AD/EventLog/TestimoX evidence already identifies the host.",
+                "Use system_windows_update_client_status and system_windows_update_telemetry for low-privilege remote Windows Update/WSUS state, reboot pressure, and freshness diagnostics.",
                 "Use system_patch_details for monthly MSRC patch intelligence (CVE/KB/severity details, defaulting to current UTC month).",
                 "Use system_patch_compliance to correlate monthly MSRC KB coverage with installed updates and prioritize missing exploited CVEs.",
                 "Use AD/TestimoX/EventLog handoff evidence (computer/host identifiers) to drive focused ComputerX follow-up rather than broad host scans.",
@@ -63,16 +66,16 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
                     goal: "Collect baseline host context",
-                    suggestedTools: new[] { "system_info", "system_hardware_summary", "system_whoami" }),
+                    suggestedTools: new[] { "system_info", "system_hardware_summary", "system_metrics_summary", "system_whoami" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect process/network/security evidence",
-                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
+                    suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status", "system_local_identity_inventory", "system_privacy_posture", "system_exploit_protection", "system_office_posture", "system_browser_posture", "system_backup_posture", "system_credential_posture", "system_certificate_posture", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_uac_posture", "system_ldap_policy_posture", "system_network_client_posture", "system_account_policy_posture", "system_interactive_logon_posture", "system_device_guard_posture", "system_defender_asr_posture" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect storage/feature configuration evidence",
                     suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_features_list", "system_scheduled_tasks_list", "system_service_list", "system_installed_applications", "system_updates_installed", "system_boot_configuration", "system_bios_summary" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Assess monthly patch exposure and prioritization",
-                    suggestedTools: new[] { "system_patch_details", "system_patch_compliance", "system_updates_installed" })
+                    suggestedTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_patch_details", "system_patch_compliance", "system_updates_installed" })
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
@@ -81,16 +84,24 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     primaryTools: new[] { "system_info", "system_hardware_identity", "system_hardware_summary", "system_whoami" }),
                 ToolPackGuidance.Capability(
                     id: "runtime_evidence",
-                    summary: "Enumerate processes, services, ports, adapters, firewall rules/profiles, security-option posture, and time sync/BitLocker posture.",
-                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
+                    summary: "Enumerate processes, services, ports, adapters, firewall rules/profiles, local identities, security-option posture, and time sync/BitLocker posture.",
+                    primaryTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_local_identity_inventory", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
                 ToolPackGuidance.Capability(
                     id: "platform_configuration",
                     summary: "Inventory disks, devices, features, scheduled tasks, installed applications/updates, and optional WSL state.",
                     primaryTools: new[] { "system_logical_disks_list", "system_disks_list", "system_devices_summary", "system_features_list", "system_scheduled_tasks_list", "system_installed_applications", "system_updates_installed", "system_boot_configuration", "system_bios_summary", "wsl_status" }),
                 ToolPackGuidance.Capability(
+                    id: "security_posture",
+                    summary: "Summarize privacy policy, exploit mitigation, office/browser hardening, backup/recovery readiness, local identity exposure, credential hardening, certificate-store posture, TLS crypto posture, WinRM remote-management posture, PowerShell logging posture, UAC posture, LDAP policy posture, network-client hardening, effective account policy, interactive-logon posture, Device Guard posture, and Defender ASR posture for the local or remote host.",
+                    primaryTools: new[] { "system_local_identity_inventory", "system_privacy_posture", "system_exploit_protection", "system_office_posture", "system_browser_posture", "system_backup_posture", "system_credential_posture", "system_certificate_posture", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_uac_posture", "system_ldap_policy_posture", "system_network_client_posture", "system_account_policy_posture", "system_interactive_logon_posture", "system_device_guard_posture", "system_defender_asr_posture" }),
+                ToolPackGuidance.Capability(
                     id: "patch_intelligence",
-                    summary: "Provide month-scoped MSRC patch intelligence with CVE/KB metadata and severity/exploitation prioritization.",
-                    primaryTools: new[] { "system_patch_details", "system_patch_compliance", "system_updates_installed" })
+                    summary: "Provide low-privilege Windows Update/WSUS client state plus month-scoped MSRC patch intelligence with CVE/KB metadata and severity/exploitation prioritization.",
+                    primaryTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_patch_details", "system_patch_compliance", "system_updates_installed" }),
+                ToolPackGuidance.Capability(
+                    id: "host_runtime_metrics",
+                    summary: "Collect focused CPU/memory telemetry and summarized hardware context for the local or remote host.",
+                    primaryTools: new[] { "system_metrics_summary", "system_hardware_summary", "system_info" })
             },
             entityHandoffs: new[] {
                 ToolPackGuidance.EntityHandoff(
@@ -98,13 +109,13 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     summary: "Promote AD/EventLog host indicators into ComputerX remote host-scoping arguments.",
                     entityKinds: new[] { "computer", "host", "domain_controller" },
                     sourceTools: new[] { "ad_scope_discovery", "ad_domain_controller_facts", "ad_object_resolve", "eventlog_live_stats", "eventlog_named_events_query" },
-                    targetTools: new[] { "system_info", "system_process_list", "system_service_list", "system_ports_list", "system_security_options", "system_time_sync", "system_updates_installed", "system_disks_list", "system_logical_disks_list" },
+                    targetTools: new[] { "system_info", "system_hardware_summary", "system_metrics_summary", "system_process_list", "system_service_list", "system_scheduled_tasks_list", "system_ports_list", "system_network_adapters", "system_devices_summary", "system_features_list", "system_security_options", "system_time_sync", "system_local_identity_inventory", "system_privacy_posture", "system_exploit_protection", "system_office_posture", "system_browser_posture", "system_backup_posture", "system_credential_posture", "system_certificate_posture", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_uac_posture", "system_ldap_policy_posture", "system_network_client_posture", "system_account_policy_posture", "system_interactive_logon_posture", "system_device_guard_posture", "system_defender_asr_posture", "system_windows_update_client_status", "system_windows_update_telemetry", "system_updates_installed", "system_disks_list", "system_logical_disks_list" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("rows[].dns_host_name", "computer_name", "Prefer canonical FQDN/hostname values and deduplicate before fan-out."),
                         ToolPackGuidance.EntityFieldMapping("rows[].computer", "computer_name", "Normalize and deduplicate host aliases for remote ComputerX calls."),
                         ToolPackGuidance.EntityFieldMapping("rows[].host", "computer_name", "Map generic host indicators to ComputerX computer_name scope.")
                     },
-                    notes: "Use focused host batches from AD/EventLog evidence to reduce noisy host-wide diagnostics. Physical and logical disk inventory tools accept computer_name for the same remote host-scoping pattern."),
+                    notes: "Use focused host batches from AD/EventLog evidence to reduce noisy host-wide diagnostics. Baseline, process/service/port/adapter, identity/privacy/exploit/office/browser/backup/credential/certificate/TLS/WinRM/PowerShell logging/UAC/LDAP policy/network-client/account policy/interactive logon/Device Guard/ASR posture, device/feature, metrics, and disk tools all accept computer_name for the same remote host-scoping pattern."),
                 ToolPackGuidance.EntityHandoff(
                     id: "system_patch_findings_to_ad_eventlog_followup",
                     summary: "Route patch compliance findings into AD identity ownership and EventLog correlation workflows.",

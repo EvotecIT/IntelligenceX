@@ -279,6 +279,8 @@ public class ToolPackInfoContractTests {
         Assert.Equal(JsonValueKind.Object, hostScope.ValueKind);
         Assert.Contains("ad_scope_discovery", ReadStringArray(hostScope.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_info", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_hardware_summary", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_metrics_summary", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_disks_list", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_logical_disks_list", ReadStringArray(hostScope.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("computer_name", hostScope.GetProperty("field_mappings").ToString(), StringComparison.OrdinalIgnoreCase);
@@ -299,6 +301,65 @@ public class ToolPackInfoContractTests {
         var root = document.RootElement;
         Assert.Equal("testimox", root.GetProperty("pack").GetString());
 
+        var capabilities = root.GetProperty("capabilities");
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "monitoring_diagnostics", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_monitoring_diagnostics_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "probe_index_status", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_probe_index_status", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "maintenance_window_history", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_maintenance_window_history", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "report_data_snapshot", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_report_data_snapshot_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "report_snapshot", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_report_snapshot_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "monitoring_history", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_history_query", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "report_job_history", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_report_job_history", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "run_catalog", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_runs_list", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "run_summary", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_run_summary", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "baseline_catalog", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_baselines_list", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "baseline_compare", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_baseline_compare", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "source_provenance", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_source_query", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "profile_catalog", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "rule_inventory", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "baseline_crosswalk", StringComparison.OrdinalIgnoreCase));
+
         var entityHandoffs = root.GetProperty("entity_handoffs");
         Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
         Assert.True(entityHandoffs.GetArrayLength() > 0);
@@ -308,12 +369,14 @@ public class ToolPackInfoContractTests {
             .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "ad_scope_to_testimox_execution_scope", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(JsonValueKind.Object, scopeHandoff.ValueKind);
         Assert.Contains("ad_scope_discovery", ReadStringArray(scopeHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("testimox_rule_inventory", ReadStringArray(scopeHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("testimox_rules_run", ReadStringArray(scopeHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
 
         var followUpHandoff = entityHandoffs
             .EnumerateArray()
             .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "testimox_findings_to_ad_system_eventlog_followup", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(JsonValueKind.Object, followUpHandoff.ValueKind);
+        Assert.Contains("testimox_run_summary", ReadStringArray(followUpHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("testimox_rules_run", ReadStringArray(followUpHandoff.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_object_resolve", ReadStringArray(followUpHandoff.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
     }
@@ -619,6 +682,7 @@ public class ToolPackInfoContractTests {
         Assert.Equal(expectedTraits.SupportsTimeRange, actualTraits.GetProperty("supports_time_range").GetBoolean());
         Assert.Equal(expectedTraits.SupportsDynamicAttributes, actualTraits.GetProperty("supports_dynamic_attributes").GetBoolean());
         Assert.Equal(expectedTraits.SupportsTargetScoping, actualTraits.GetProperty("supports_target_scoping").GetBoolean());
+        Assert.Equal(expectedTraits.SupportsRemoteHostTargeting, actualTraits.GetProperty("supports_remote_host_targeting").GetBoolean());
         Assert.Equal(expectedTraits.SupportsMutatingActions, actualTraits.GetProperty("supports_mutating_actions").GetBoolean());
         Assert.Equal(expectedTraits.SupportsWriteGovernanceMetadata, actualTraits.GetProperty("supports_write_governance_metadata").GetBoolean());
         Assert.Equal(expectedTraits.SupportsAuthentication, actualTraits.GetProperty("supports_authentication").GetBoolean());
@@ -638,6 +702,9 @@ public class ToolPackInfoContractTests {
         Assert.Equal(
             expectedTraits.TargetScopeArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
             ReadStringArray(actualTraits.GetProperty("target_scope_arguments")));
+        Assert.Equal(
+            expectedTraits.RemoteHostArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualTraits.GetProperty("remote_host_arguments")));
         Assert.Equal(
             expectedTraits.MutatingActionArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
             ReadStringArray(actualTraits.GetProperty("mutating_action_arguments")));

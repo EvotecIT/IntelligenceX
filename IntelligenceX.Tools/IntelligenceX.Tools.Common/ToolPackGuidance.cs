@@ -452,6 +452,16 @@ public sealed class ToolPackToolTraitsModel {
     public IReadOnlyList<string> TargetScopeArguments { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Indicates support for directly targeting remote hosts or host-like endpoints.
+    /// </summary>
+    public bool SupportsRemoteHostTargeting { get; init; }
+
+    /// <summary>
+    /// Remote-host argument names when <see cref="SupportsRemoteHostTargeting"/> is true.
+    /// </summary>
+    public IReadOnlyList<string> RemoteHostArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Indicates support for mutating/action flags.
     /// </summary>
     public bool SupportsMutatingActions { get; init; }
@@ -492,6 +502,9 @@ public static partial class ToolPackGuidance {
     private static readonly string[] DynamicAttributeArgumentNames = { "attributes", "include_raw", "include_operational_attributes", "include_computed_flags", "include_security_descriptor" };
     private static readonly string[] TargetScopeArgumentNames = {
         "domain_controller", "search_base_dn", "path", "folder", "channel", "provider_name", "computer_name", "server"
+    };
+    private static readonly string[] RemoteHostArgumentNames = {
+        "computer_name", "domain_controller", "server", "targets"
     };
     private static readonly string[] MutatingActionArgumentNames = { "send", "dry_run", "confirm", "execute", "apply", "force", "enable", "disable", "allow_write" };
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
@@ -651,4 +664,3 @@ public static partial class ToolPackGuidance {
         return NormalizeToolCatalog(list);
     }
 }
-

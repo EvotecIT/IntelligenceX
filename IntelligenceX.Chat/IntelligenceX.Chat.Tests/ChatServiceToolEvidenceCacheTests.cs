@@ -511,7 +511,11 @@ public sealed class ChatServiceToolEvidenceCacheTests {
             intentAnchor: "Check forest replication across AD0, AD1, and AD2.",
             domainIntentFamily: "ad_domain",
             recentToolNames: new[] { "ad_replication_summary" },
-            recentEvidenceSnippets: new[] { "ad_replication_summary: Forest replication status for AD0, AD1, and AD2 is healthy." });
+            recentEvidenceSnippets: new[] { "ad_replication_summary: Forest replication status for AD0, AD1, and AD2 is healthy." },
+            priorAnswerPlanUserGoal: "Continue from the same replication snapshot.",
+            priorAnswerPlanAllowCachedEvidenceReuse: true,
+            priorAnswerPlanPreferCachedEvidenceReuse: true,
+            priorAnswerPlanCachedEvidenceReuseReason: "latest replication snapshot still answers this compact continuation.");
 
         var built = session.TryBuildToolEvidenceFallbackTextForTesting(
             "thread-covered-follow-up",
@@ -631,7 +635,7 @@ public sealed class ChatServiceToolEvidenceCacheTests {
     }
 
     [Fact]
-    public void ToolEvidenceCache_DoesNotReuseCachedEvidence_ForExplicitLiveRerunRequest() {
+    public void ToolEvidenceCache_DoesNotReuseCachedEvidence_ForStructuredLiveExecutionFollowUp() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new[] {
             new ToolCallDto {
@@ -654,12 +658,108 @@ public sealed class ChatServiceToolEvidenceCacheTests {
             toolCalls: calls,
             toolOutputs: outputs,
             mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-rerun",
+            intentAnchor: "Continue the same event log diagnostics.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "eventlog_evtx_query" },
+            recentEvidenceSnippets: new[] { "eventlog_evtx_query: Recent system events found." },
+            priorAnswerPlanUserGoal: "Refresh the same host event log query.",
+            priorAnswerPlanRequiresLiveExecution: true,
+            priorAnswerPlanMissingLiveEvidence: "fresh event log output for this host",
+            priorAnswerPlanPreferredToolNames: new[] { "eventlog_evtx_query" });
 
         var built = session.TryBuildToolEvidenceFallbackTextForTesting(
             "thread-rerun",
-            "please rerun eventlog_evtx_query for this host",
+            "eventlog_evtx_query for this host",
             out _);
 
         Assert.False(built);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_PrefersResolvedContinuationReuseFromCurrentAnswerPlanEvenBeforeCheckpointRefresh() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "mock_round_tool",
+                ArgumentsJson = "{\"step\":\"forest_cache_safe\"}"
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = "{\"ok\":true,\"summary_markdown\":\"Full forest replication table shows AD0, AD1, and AD2 with healthy replication.\"}"
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-resolved-current-plan",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-resolved-current-plan",
+            intentAnchor: "go ahead and check full ad replication forest",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "mock_round_tool" },
+            recentEvidenceSnippets: new[] { "mock_round_tool: Full forest replication table shows AD0, AD1, and AD2 with healthy replication." },
+            priorAnswerPlanUserGoal: "summarize the forest replication state in a table",
+            priorAnswerPlanUnresolvedNow: string.Empty,
+            priorAnswerPlanAllowCachedEvidenceReuse: false,
+            priorAnswerPlanPreferCachedEvidenceReuse: false,
+            priorAnswerPlanPrimaryArtifact: "table");
+
+        var currentAnswerPlan = ChatServiceSession.ResolveReviewedAssistantDraft("""
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: continue from the same forest replication evidence
+            resolved_so_far: the forest replication table is already available above
+            unresolved_now: none
+            carry_forward_unresolved_focus: false
+            carry_forward_reason: this continuation reuses the already-resolved evidence snapshot
+            prefer_cached_evidence_reuse: true
+            cached_evidence_reuse_reason: compact continuation should reuse the latest forest replication evidence snapshot
+            primary_artifact: prose
+            requested_artifact_already_visible_above: true
+            requested_artifact_visibility_reason: the forest replication table is already visible above
+            advances_current_ask: true
+            advance_reason: confirms that the next step should reuse the same forest replication evidence without a rerun
+
+            Reusing the latest forest replication evidence for AD0, AD1, and AD2.
+            """).AnswerPlan;
+
+        Assert.True(currentAnswerPlan.HasPlan);
+        Assert.True(currentAnswerPlan.PreferCachedEvidenceReuse);
+        Assert.True(currentAnswerPlan.AllowCachedEvidenceReuse);
+
+        var builtWithoutCurrentPlanOverride = session.TryBuildToolEvidenceFallbackTextForTesting(
+            "thread-resolved-current-plan",
+            "continue replication AD2",
+            out _);
+
+        Assert.False(builtWithoutCurrentPlanOverride);
+
+        var builtIgnoringLiveExecutionBypass = session.TryBuildToolEvidenceFallbackTextIgnoringLiveExecutionBypassForTesting(
+            "thread-resolved-current-plan",
+            "continue replication AD2",
+            out var directText);
+
+        Assert.True(builtIgnoringLiveExecutionBypass);
+        Assert.Contains("mock_round_tool", directText, StringComparison.OrdinalIgnoreCase);
+
+        var built = session.TryPreferCachedEvidenceForResolvedCompactContinuationForTesting(
+            "thread-resolved-current-plan",
+            "continue replication AD2",
+            currentAnswerPlan,
+            toolActivityDetected: false,
+            out var text);
+
+        Assert.True(built);
+        Assert.Contains("[Cached evidence fallback]", text, StringComparison.Ordinal);
+        Assert.Contains("mock_round_tool", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD2", text, StringComparison.OrdinalIgnoreCase);
     }
 }

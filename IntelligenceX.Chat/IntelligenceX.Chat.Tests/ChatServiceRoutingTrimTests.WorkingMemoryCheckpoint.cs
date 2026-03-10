@@ -25,6 +25,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 recentEvidenceSnippets: new[] { "ad_replication_summary: replication failures were concentrated on DC02." },
                 priorAnswerPlanUserGoal: "Summarize the forest replication state in a table.",
                 priorAnswerPlanUnresolvedNow: "Explain why ADRODC is absent from the forest replication rows.",
+                priorAnswerPlanRequiresLiveExecution: true,
+                priorAnswerPlanMissingLiveEvidence: "cert status and memory usage",
+                priorAnswerPlanPreferredPackIds: new[] { "active_directory", "system" },
+                priorAnswerPlanPreferredToolNames: new[] { "ad_ldap_diagnostics", "system_hardware_summary" },
                 priorAnswerPlanPrimaryArtifact: "table",
                 enabledPackIds: new[] { "adplayground", "eventlog" },
                 routingFamilies: new[] { "ad_domain", "public_domain" },
@@ -44,6 +48,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.Contains("ix:continuation-focus:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("last_user_goal:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("last_unresolved_ask:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("last_requires_live_execution: true", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("last_missing_live_evidence: cert status and memory usage", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("last_preferred_pack_ids: active_directory, system", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("last_preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("last_primary_artifact: table", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("ix:working-memory:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("intent_anchor:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
@@ -51,13 +59,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.Contains("recent_tools:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("prior_answer_plan_user_goal:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("prior_answer_plan_unresolved_now:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("prior_answer_plan_requires_live_execution: true", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("prior_answer_plan_missing_live_evidence: cert status and memory usage", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("prior_answer_plan_preferred_pack_ids: active_directory, system", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("prior_answer_plan_preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("prior_answer_plan_primary_artifact: table", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("ix:capability-snapshot:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("enabled_packs:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("routing_families:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("skills: ad_domain.scope_hosts, public_domain.query_whois", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("healthy_tools:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("follow_up: run now", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
         } finally {
             try {
                 if (Directory.Exists(root)) {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -344,6 +345,87 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(2, subset.Count);
         Assert.Equal("dnsclientx_query", subset[0].Name);
         Assert.Equal("dnsclientx_ping", subset[1].Name);
+    }
+
+    [Fact]
+    public void TryGetContinuationToolSubset_UsesStructuredNextActionHintsFromCapabilitySnapshot() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-structured-next-action";
+        var allDefinitions = new List<ToolDefinition> {
+            new(
+                "ad_monitoring_probe_run",
+                "Run AD monitoring probe.",
+                ToolSchema.Object(("probe_kind", ToolSchema.String("Probe kind."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "ad_ldap_diagnostics",
+                "Run LDAP diagnostics.",
+                ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "system_info",
+                "Inspect system identity.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Computer"))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Run LDAP health checks for the same domain controllers.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_monitoring_probe_run" },
+            recentEvidenceSnippets: new[] { "ad_monitoring_probe_run: LDAP health is green but certificate details are still missing." },
+            priorAnswerPlanUserGoal: "Check LDAP health and certificate status for the same domain controllers.",
+            priorAnswerPlanUnresolvedNow: "Inspect the LDAP certificates for the same domain controllers.",
+            priorAnswerPlanRequiresLiveExecution: true,
+            priorAnswerPlanMissingLiveEvidence: "ldap certificate details",
+            enabledPackIds: new[] { "active_directory", "system" },
+            routingFamilies: new[] { "ad_domain" },
+            healthyToolNames: new[] { "ad_monitoring_probe_run" });
+
+        session.RememberStructuredNextActionCarryoverForTesting(
+            threadId,
+            allDefinitions,
+            new List<ToolCallDto> {
+                new() { CallId = "call-ldap", Name = "ad_monitoring_probe_run" }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ldap",
+                    Ok = true,
+                    Output = """
+                             {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"arguments":{"domain_controller":"ad0.contoso.com"}}]}
+                             """
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+                ["ad_ldap_diagnostics"] = false
+            });
+
+        var result = session.TryGetContinuationToolSubsetForTesting(
+            threadId,
+            "can you check the ldap certificates now?",
+            allDefinitions,
+            out var subset);
+
+        Assert.True(result);
+        Assert.Contains(subset, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(subset, tool => string.Equals(tool.Name, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<ToolDefinition> BuildContinuationSubsetTestToolDefinitions() {

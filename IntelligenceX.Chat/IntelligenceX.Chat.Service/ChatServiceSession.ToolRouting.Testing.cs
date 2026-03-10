@@ -91,6 +91,16 @@ internal sealed partial class ChatServiceSession {
         return TryGetContinuationToolSubset(threadId, userRequest, allDefinitions, out subset);
     }
 
+    internal string BuildPlannerContextAugmentedRequestForTesting(
+        string threadId,
+        string requestText,
+        IReadOnlyList<ToolDefinition> definitions) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(requestText);
+        ArgumentNullException.ThrowIfNull(definitions);
+        return BuildPlannerContextAugmentedRequest(threadId, requestText, definitions);
+    }
+
     internal (
         string UserRequest,
         string UserIntent,
@@ -325,16 +335,31 @@ internal sealed partial class ChatServiceSession {
             routedUserRequest);
     }
 
-    internal static bool LooksLikeLiveRefreshFollowUpForTesting(string userRequest) {
-        return LooksLikeLiveRefreshFollowUp(userRequest);
+    internal bool LooksLikeLiveRefreshFollowUpForTesting(string threadId, string userRequest) {
+        return ShouldTreatFollowUpAsLiveExecutionRequest(threadId, userRequest);
     }
 
-    internal static bool ResolveLiveRefreshFollowUpTurnForTesting(
+    internal bool TryPreferCachedEvidenceForResolvedCompactContinuationForTesting(
+        string threadId,
+        string userRequest,
+        TurnAnswerPlan answerPlan,
+        bool toolActivityDetected,
+        out string text) {
+        return TryPreferCachedEvidenceForResolvedCompactContinuation(
+            threadId,
+            userRequest,
+            answerPlan,
+            toolActivityDetected,
+            out text);
+    }
+
+    internal bool ResolveLiveRefreshFollowUpTurnForTesting(
+        string threadId,
         bool hasStructuredContinuationContext,
         bool hasFreshThreadToolEvidence,
         string userRequest) {
         return (hasStructuredContinuationContext || hasFreshThreadToolEvidence)
-               && LooksLikeLiveRefreshFollowUp(userRequest);
+               && ShouldTreatFollowUpAsLiveExecutionRequest(threadId, userRequest);
     }
 
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {

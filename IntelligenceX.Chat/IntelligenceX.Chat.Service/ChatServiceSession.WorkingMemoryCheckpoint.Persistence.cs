@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private const int WorkingMemoryCheckpointStoreVersion = 1;
+    private const int WorkingMemoryCheckpointStoreVersion = 2;
     private static readonly object WorkingMemoryCheckpointStoreLock = new();
     private static readonly JsonSerializerOptions WorkingMemoryCheckpointStoreJsonOptions = new() {
         WriteIndented = false,
@@ -28,6 +28,11 @@ internal sealed partial class ChatServiceSession {
         public string[] RecentEvidenceSnippets { get; set; } = Array.Empty<string>();
         public string PriorAnswerPlanUserGoal { get; set; } = string.Empty;
         public string PriorAnswerPlanUnresolvedNow { get; set; } = string.Empty;
+        public bool PriorAnswerPlanRequiresLiveExecution { get; set; }
+        public string PriorAnswerPlanMissingLiveEvidence { get; set; } = string.Empty;
+        public string[] PriorAnswerPlanPreferredPackIds { get; set; } = Array.Empty<string>();
+        public string[] PriorAnswerPlanPreferredToolNames { get; set; } = Array.Empty<string>();
+        public bool PriorAnswerPlanAllowCachedEvidenceReuse { get; set; }
         public bool PriorAnswerPlanPreferCachedEvidenceReuse { get; set; }
         public string PriorAnswerPlanCachedEvidenceReuseReason { get; set; } = string.Empty;
         public string PriorAnswerPlanPrimaryArtifact { get; set; } = string.Empty;
@@ -73,6 +78,19 @@ internal sealed partial class ChatServiceSession {
                 RecentEvidenceSnippets = NormalizeWorkingMemoryList(checkpoint.RecentEvidenceSnippets, MaxWorkingMemoryEvidenceLines),
                 PriorAnswerPlanUserGoal = NormalizeWorkingMemoryAnswerPlanFocus(checkpoint.PriorAnswerPlanUserGoal),
                 PriorAnswerPlanUnresolvedNow = NormalizeWorkingMemoryAnswerPlanFocus(checkpoint.PriorAnswerPlanUnresolvedNow),
+                PriorAnswerPlanRequiresLiveExecution = checkpoint.PriorAnswerPlanRequiresLiveExecution,
+                PriorAnswerPlanMissingLiveEvidence = checkpoint.PriorAnswerPlanRequiresLiveExecution
+                    ? NormalizeWorkingMemoryAnswerPlanFocus(checkpoint.PriorAnswerPlanMissingLiveEvidence)
+                    : string.Empty,
+                PriorAnswerPlanPreferredPackIds = NormalizeDistinctStrings(
+                    (checkpoint.PriorAnswerPlanPreferredPackIds ?? Array.Empty<string>())
+                    .Select(static packId => NormalizePackId(packId))
+                    .Where(static packId => packId.Length > 0),
+                    maxItems: 8),
+                PriorAnswerPlanPreferredToolNames = NormalizeDistinctStrings(
+                    checkpoint.PriorAnswerPlanPreferredToolNames ?? Array.Empty<string>(),
+                    maxItems: 8),
+                PriorAnswerPlanAllowCachedEvidenceReuse = checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse,
                 PriorAnswerPlanPreferCachedEvidenceReuse = checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse,
                 PriorAnswerPlanCachedEvidenceReuseReason = checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
                     ? NormalizeWorkingMemoryAnswerPlanFocus(checkpoint.PriorAnswerPlanCachedEvidenceReuseReason)
@@ -115,6 +133,19 @@ internal sealed partial class ChatServiceSession {
                 NormalizeWorkingMemoryList(entry.RecentEvidenceSnippets ?? Array.Empty<string>(), MaxWorkingMemoryEvidenceLines);
             var priorAnswerPlanUserGoal = NormalizeWorkingMemoryAnswerPlanFocus(entry.PriorAnswerPlanUserGoal);
             var priorAnswerPlanUnresolvedNow = NormalizeWorkingMemoryAnswerPlanFocus(entry.PriorAnswerPlanUnresolvedNow);
+            var priorAnswerPlanRequiresLiveExecution = entry.PriorAnswerPlanRequiresLiveExecution;
+            var priorAnswerPlanMissingLiveEvidence = priorAnswerPlanRequiresLiveExecution
+                ? NormalizeWorkingMemoryAnswerPlanFocus(entry.PriorAnswerPlanMissingLiveEvidence)
+                : string.Empty;
+            var priorAnswerPlanPreferredPackIds = NormalizeDistinctStrings(
+                (entry.PriorAnswerPlanPreferredPackIds ?? Array.Empty<string>())
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+                maxItems: 8);
+            var priorAnswerPlanPreferredToolNames = NormalizeDistinctStrings(
+                entry.PriorAnswerPlanPreferredToolNames ?? Array.Empty<string>(),
+                maxItems: 8);
+            var priorAnswerPlanAllowCachedEvidenceReuse = entry.PriorAnswerPlanAllowCachedEvidenceReuse;
             var priorAnswerPlanPreferCachedEvidenceReuse = entry.PriorAnswerPlanPreferCachedEvidenceReuse;
             var priorAnswerPlanCachedEvidenceReuseReason = priorAnswerPlanPreferCachedEvidenceReuse
                 ? NormalizeWorkingMemoryAnswerPlanFocus(entry.PriorAnswerPlanCachedEvidenceReuseReason)
@@ -136,6 +167,11 @@ internal sealed partial class ChatServiceSession {
                 && recentEvidenceSnippets.Length == 0
                 && priorAnswerPlanUserGoal.Length == 0
                 && priorAnswerPlanUnresolvedNow.Length == 0
+                && !priorAnswerPlanRequiresLiveExecution
+                && priorAnswerPlanMissingLiveEvidence.Length == 0
+                && priorAnswerPlanPreferredPackIds.Length == 0
+                && priorAnswerPlanPreferredToolNames.Length == 0
+                && !priorAnswerPlanAllowCachedEvidenceReuse
                 && !priorAnswerPlanPreferCachedEvidenceReuse
                 && priorAnswerPlanCachedEvidenceReuseReason.Length == 0
                 && priorAnswerPlanPrimaryArtifact.Length == 0
@@ -168,6 +204,11 @@ internal sealed partial class ChatServiceSession {
                 RecentEvidenceSnippets: recentEvidenceSnippets,
                 PriorAnswerPlanUserGoal: priorAnswerPlanUserGoal,
                 PriorAnswerPlanUnresolvedNow: priorAnswerPlanUnresolvedNow,
+                PriorAnswerPlanRequiresLiveExecution: priorAnswerPlanRequiresLiveExecution,
+                PriorAnswerPlanMissingLiveEvidence: priorAnswerPlanMissingLiveEvidence,
+                PriorAnswerPlanPreferredPackIds: priorAnswerPlanPreferredPackIds,
+                PriorAnswerPlanPreferredToolNames: priorAnswerPlanPreferredToolNames,
+                PriorAnswerPlanAllowCachedEvidenceReuse: priorAnswerPlanAllowCachedEvidenceReuse,
                 PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
                 PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanCachedEvidenceReuseReason,
                 PriorAnswerPlanPrimaryArtifact: priorAnswerPlanPrimaryArtifact,

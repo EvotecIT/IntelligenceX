@@ -196,11 +196,13 @@ public class ToolPackGuidanceTests {
         Assert.False(a.Traits.SupportsTimeRange);
         Assert.False(a.Traits.SupportsDynamicAttributes);
         Assert.False(a.Traits.SupportsTargetScoping);
+        Assert.False(a.Traits.SupportsRemoteHostTargeting);
         Assert.False(a.Traits.SupportsMutatingActions);
         Assert.False(a.Traits.SupportsWriteGovernanceMetadata);
         Assert.Empty(a.Traits.WriteGovernanceMetadataArguments);
         Assert.False(a.Traits.SupportsAuthentication);
         Assert.Empty(a.Traits.AuthenticationArguments);
+        Assert.Empty(a.Traits.RemoteHostArguments);
         Assert.False(a.IsWriteCapable);
         Assert.False(a.RequiresWriteGovernance);
         Assert.Null(a.WriteGovernanceContractId);
@@ -231,6 +233,8 @@ public class ToolPackGuidanceTests {
         Assert.Equal(new[] { "attributes" }, b.Traits.DynamicAttributeArguments);
         Assert.True(b.Traits.SupportsTargetScoping);
         Assert.Equal(new[] { "domain_controller" }, b.Traits.TargetScopeArguments);
+        Assert.True(b.Traits.SupportsRemoteHostTargeting);
+        Assert.Equal(new[] { "domain_controller" }, b.Traits.RemoteHostArguments);
         Assert.True(b.Traits.SupportsMutatingActions);
         Assert.Equal(new[] { "send" }, b.Traits.MutatingActionArguments);
         Assert.True(b.Traits.SupportsWriteGovernanceMetadata);

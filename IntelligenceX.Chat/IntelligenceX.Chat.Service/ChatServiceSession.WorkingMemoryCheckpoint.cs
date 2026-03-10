@@ -30,6 +30,11 @@ internal sealed partial class ChatServiceSession {
         string[] RecentEvidenceSnippets,
         string PriorAnswerPlanUserGoal,
         string PriorAnswerPlanUnresolvedNow,
+        bool PriorAnswerPlanRequiresLiveExecution,
+        string PriorAnswerPlanMissingLiveEvidence,
+        string[] PriorAnswerPlanPreferredPackIds,
+        string[] PriorAnswerPlanPreferredToolNames,
+        bool PriorAnswerPlanAllowCachedEvidenceReuse,
         bool PriorAnswerPlanPreferCachedEvidenceReuse,
         string PriorAnswerPlanCachedEvidenceReuseReason,
         string PriorAnswerPlanPrimaryArtifact,
@@ -70,6 +75,21 @@ internal sealed partial class ChatServiceSession {
         var priorAnswerPlanUnresolvedNow = ResolveWorkingMemoryAnswerPlanUnresolvedFocus(
             answerPlan,
             existing.PriorAnswerPlanUnresolvedNow);
+        var priorAnswerPlanRequiresLiveExecution = ResolveWorkingMemoryAnswerPlanRequiresLiveExecution(
+            answerPlan,
+            existing.PriorAnswerPlanRequiresLiveExecution);
+        var priorAnswerPlanMissingLiveEvidence = ResolveWorkingMemoryAnswerPlanMissingLiveEvidence(
+            answerPlan,
+            existing.PriorAnswerPlanMissingLiveEvidence);
+        var priorAnswerPlanPreferredPackIds = ResolveWorkingMemoryAnswerPlanPreferredPackIds(
+            answerPlan,
+            existing.PriorAnswerPlanPreferredPackIds);
+        var priorAnswerPlanPreferredToolNames = ResolveWorkingMemoryAnswerPlanPreferredToolNames(
+            answerPlan,
+            existing.PriorAnswerPlanPreferredToolNames);
+        var priorAnswerPlanAllowCachedEvidenceReuse = ResolveWorkingMemoryAnswerPlanAllowCachedEvidenceReusePreference(
+            answerPlan,
+            existing.PriorAnswerPlanAllowCachedEvidenceReuse);
         var priorAnswerPlanPreferCachedEvidenceReuse = ResolveWorkingMemoryAnswerPlanCachedEvidenceReusePreference(
             answerPlan,
             existing.PriorAnswerPlanPreferCachedEvidenceReuse);
@@ -92,6 +112,11 @@ internal sealed partial class ChatServiceSession {
             && recentEvidenceSnippets.Length == 0
             && priorAnswerPlanUserGoal.Length == 0
             && priorAnswerPlanUnresolvedNow.Length == 0
+            && !priorAnswerPlanRequiresLiveExecution
+            && priorAnswerPlanMissingLiveEvidence.Length == 0
+            && priorAnswerPlanPreferredPackIds.Length == 0
+            && priorAnswerPlanPreferredToolNames.Length == 0
+            && !priorAnswerPlanAllowCachedEvidenceReuse
             && !priorAnswerPlanPreferCachedEvidenceReuse
             && priorAnswerPlanCachedEvidenceReuseReason.Length == 0
             && priorAnswerPlanPrimaryArtifact.Length == 0
@@ -109,6 +134,11 @@ internal sealed partial class ChatServiceSession {
             RecentEvidenceSnippets: recentEvidenceSnippets,
             PriorAnswerPlanUserGoal: priorAnswerPlanUserGoal,
             PriorAnswerPlanUnresolvedNow: priorAnswerPlanUnresolvedNow,
+            PriorAnswerPlanRequiresLiveExecution: priorAnswerPlanRequiresLiveExecution,
+            PriorAnswerPlanMissingLiveEvidence: priorAnswerPlanMissingLiveEvidence,
+            PriorAnswerPlanPreferredPackIds: priorAnswerPlanPreferredPackIds,
+            PriorAnswerPlanPreferredToolNames: priorAnswerPlanPreferredToolNames,
+            PriorAnswerPlanAllowCachedEvidenceReuse: priorAnswerPlanAllowCachedEvidenceReuse,
             PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
             PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanCachedEvidenceReuseReason,
             PriorAnswerPlanPrimaryArtifact: priorAnswerPlanPrimaryArtifact,
@@ -156,6 +186,7 @@ internal sealed partial class ChatServiceSession {
 
         if (overrideExpandedRoutingWithWorkingMemoryFocus
             && checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+            && !checkpoint.PriorAnswerPlanRequiresLiveExecution
             && !checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse) {
             return false;
         }
@@ -177,6 +208,11 @@ internal sealed partial class ChatServiceSession {
             && checkpoint.RecentEvidenceSnippets.Length == 0
             && checkpoint.PriorAnswerPlanUserGoal.Length == 0
             && checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+            && !checkpoint.PriorAnswerPlanRequiresLiveExecution
+            && checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0
+            && checkpoint.PriorAnswerPlanPreferredPackIds.Length == 0
+            && checkpoint.PriorAnswerPlanPreferredToolNames.Length == 0
+            && !checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse
             && !checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
             && checkpoint.PriorAnswerPlanCachedEvidenceReuseReason.Length == 0
             && checkpoint.PriorAnswerPlanPrimaryArtifact.Length == 0
@@ -217,6 +253,27 @@ internal sealed partial class ChatServiceSession {
         if (checkpoint.PriorAnswerPlanUnresolvedNow.Length > 0) {
             builder.Append("prior_answer_plan_unresolved_now: ").AppendLine(checkpoint.PriorAnswerPlanUnresolvedNow);
         }
+
+        builder.Append("prior_answer_plan_requires_live_execution: ")
+            .AppendLine(checkpoint.PriorAnswerPlanRequiresLiveExecution ? "true" : "false");
+
+        if (checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0) {
+            builder.Append("prior_answer_plan_missing_live_evidence: ")
+                .AppendLine(checkpoint.PriorAnswerPlanMissingLiveEvidence);
+        }
+
+        if (checkpoint.PriorAnswerPlanPreferredPackIds.Length > 0) {
+            builder.Append("prior_answer_plan_preferred_pack_ids: ")
+                .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredPackIds));
+        }
+
+        if (checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0) {
+            builder.Append("prior_answer_plan_preferred_tool_names: ")
+                .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredToolNames));
+        }
+
+        builder.Append("prior_answer_plan_allow_cached_evidence_reuse: ")
+            .AppendLine(checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse ? "true" : "false");
 
         builder.Append("prior_answer_plan_prefer_cached_evidence_reuse: ")
             .AppendLine(checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse ? "true" : "false");
@@ -340,6 +397,65 @@ internal sealed partial class ChatServiceSession {
         return LooksLikeArtifactAnchoredWorkingMemoryFocusedQuestionFollowUp(normalized, checkpoint);
     }
 
+    private static bool LooksLikeWorkingMemoryAnchoredContinuationFollowUp(
+        string userRequest,
+        WorkingMemoryCheckpoint checkpoint) {
+        var normalized = NormalizeContextualFollowUpRequest(userRequest);
+        if (normalized.Length == 0
+            || normalized.Length > MaxWorkingMemoryQuestionFollowUpChars) {
+            return false;
+        }
+
+        if (TryReadContinuationContractFromRequestText(normalized, out _, out _)
+            || LooksLikeActionSelectionPayload(normalized)
+            || TryParseExplicitActSelection(normalized, out _, out _)
+            || TryReadActionSelectionIntent(normalized, out _, out _)
+            || TryParseDomainIntentMarkerSelection(normalized, DomainIntentMarker, out _)
+            || TryParseDomainIntentChoiceMarkerSelection(normalized, out _)
+            || TryNormalizeDomainIntentFamily(normalized, out _)
+            || TryParseDomainIntentFamilyFromDomainScopePayload(normalized, out _)
+            || CountLetterDigitTokens(normalized, maxTokens: MaxWorkingMemoryQuestionFollowUpTokens + 1) > MaxWorkingMemoryQuestionFollowUpTokens) {
+            return false;
+        }
+
+        if (LooksLikeWorkingMemoryFocusedQuestionFollowUp(normalized, checkpoint)) {
+            return true;
+        }
+
+        var requestTokens = ExtractMeaningfulTokensForContext(normalized, maxTokens: MaxWorkingMemoryQuestionFollowUpTokens);
+        if (requestTokens.Count == 0) {
+            return false;
+        }
+
+        var focusTokens = BuildWorkingMemoryFollowUpFocusTokens(checkpoint);
+        var sharedCount = 0;
+        if (focusTokens.Count > 0) {
+            for (var i = 0; i < requestTokens.Count; i++) {
+                var token = requestTokens[i];
+                if (!focusTokens.Contains(token)) {
+                    continue;
+                }
+
+                sharedCount++;
+                if (token.Length >= MinWorkingMemoryFocusedOverlapTokenLength) {
+                    return true;
+                }
+            }
+
+            if (sharedCount >= 2) {
+                return true;
+            }
+        }
+
+        if (LooksLikeArtifactAnchoredWorkingMemoryFocusedQuestionFollowUp(normalized, checkpoint)) {
+            return true;
+        }
+
+        return requestTokens.Count <= FollowUpShapeShortTokenLimit
+               && LooksLikeContinuationFollowUp(normalized)
+               && HasWorkingMemoryExecutionContinuationAnchor(checkpoint);
+    }
+
     private static bool LooksLikeArtifactAnchoredWorkingMemoryFocusedQuestionFollowUp(
         string normalizedFollowUp,
         WorkingMemoryCheckpoint checkpoint) {
@@ -370,9 +486,55 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
+    private static HashSet<string> BuildWorkingMemoryFollowUpFocusTokens(WorkingMemoryCheckpoint checkpoint) {
+        var focusBuilder = new StringBuilder();
+        if (checkpoint.IntentAnchor.Length > 0) {
+            focusBuilder.AppendLine(checkpoint.IntentAnchor);
+        }
+
+        if (checkpoint.PriorAnswerPlanUnresolvedNow.Length > 0) {
+            focusBuilder.AppendLine(checkpoint.PriorAnswerPlanUnresolvedNow);
+        }
+
+        if (checkpoint.PriorAnswerPlanUserGoal.Length > 0) {
+            focusBuilder.AppendLine(checkpoint.PriorAnswerPlanUserGoal);
+        }
+
+        if (checkpoint.PriorAnswerPlanPrimaryArtifact.Length > 0) {
+            focusBuilder.AppendLine(checkpoint.PriorAnswerPlanPrimaryArtifact);
+        }
+
+        for (var i = 0; i < checkpoint.RecentToolNames.Length; i++) {
+            focusBuilder.AppendLine(checkpoint.RecentToolNames[i]);
+        }
+
+        for (var i = 0; i < checkpoint.RecentEvidenceSnippets.Length; i++) {
+            focusBuilder.AppendLine(checkpoint.RecentEvidenceSnippets[i]);
+        }
+
+        return new HashSet<string>(
+            ExtractMeaningfulTokensForContext(
+                focusBuilder.ToString(),
+                maxTokens: MaxWorkingMemoryQuestionFollowUpTokens * 3),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool HasWorkingMemoryExecutionContinuationAnchor(WorkingMemoryCheckpoint checkpoint) {
+        return checkpoint.PriorAnswerPlanRequiresLiveExecution
+               || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0
+               || checkpoint.PriorAnswerPlanPreferredPackIds.Length > 0
+               || checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0
+               || checkpoint.PriorAnswerPlanUnresolvedNow.Length > 0
+               || checkpoint.PriorAnswerPlanUserGoal.Length > 0
+               || checkpoint.PriorAnswerPlanPrimaryArtifact.Length > 0
+               || checkpoint.RecentToolNames.Length > 0
+               || checkpoint.IntentAnchor.Length > 0;
+    }
+
     private static void AppendWorkingMemoryContinuationFocusBlock(StringBuilder builder, WorkingMemoryCheckpoint checkpoint) {
         if (builder is null
             || (checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+                && !checkpoint.PriorAnswerPlanRequiresLiveExecution
                 && !checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse)) {
             return;
         }
@@ -386,6 +548,27 @@ internal sealed partial class ChatServiceSession {
         if (checkpoint.PriorAnswerPlanUnresolvedNow.Length > 0) {
             builder.Append("last_unresolved_ask: ").AppendLine(checkpoint.PriorAnswerPlanUnresolvedNow);
         }
+
+        builder.Append("last_requires_live_execution: ")
+            .AppendLine(checkpoint.PriorAnswerPlanRequiresLiveExecution ? "true" : "false");
+
+        if (checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0) {
+            builder.Append("last_missing_live_evidence: ")
+                .AppendLine(checkpoint.PriorAnswerPlanMissingLiveEvidence);
+        }
+
+        if (checkpoint.PriorAnswerPlanPreferredPackIds.Length > 0) {
+            builder.Append("last_preferred_pack_ids: ")
+                .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredPackIds));
+        }
+
+        if (checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0) {
+            builder.Append("last_preferred_tool_names: ")
+                .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredToolNames));
+        }
+
+        builder.Append("last_allow_cached_evidence_reuse: ")
+            .AppendLine(checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse ? "true" : "false");
 
         builder.Append("last_prefer_cached_evidence_reuse: ")
             .AppendLine(checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse ? "true" : "false");
@@ -618,6 +801,58 @@ internal sealed partial class ChatServiceSession {
         }
 
         return NormalizeWorkingMemoryAnswerPlanFocus(answerPlan.UnresolvedNow);
+    }
+
+    private static bool ResolveWorkingMemoryAnswerPlanRequiresLiveExecution(TurnAnswerPlan answerPlan, bool fallbackValue) {
+        if (!answerPlan.HasPlan) {
+            return fallbackValue;
+        }
+
+        return answerPlan.RequiresLiveExecution;
+    }
+
+    private static string ResolveWorkingMemoryAnswerPlanMissingLiveEvidence(TurnAnswerPlan answerPlan, string fallbackValue) {
+        if (!answerPlan.HasPlan) {
+            return NormalizeWorkingMemoryAnswerPlanFocus(fallbackValue);
+        }
+
+        if (!answerPlan.RequiresLiveExecution) {
+            return string.Empty;
+        }
+
+        return NormalizeWorkingMemoryAnswerPlanFocus(answerPlan.MissingLiveEvidence);
+    }
+
+    private static string[] ResolveWorkingMemoryAnswerPlanPreferredPackIds(TurnAnswerPlan answerPlan, IReadOnlyList<string> fallbackValues) {
+        if (!answerPlan.HasPlan) {
+            return NormalizeDistinctStrings(
+                (fallbackValues ?? Array.Empty<string>())
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+                maxItems: 8);
+        }
+
+        return NormalizeDistinctStrings(
+            (answerPlan.PreferredPackIds ?? Array.Empty<string>())
+            .Select(static packId => NormalizePackId(packId))
+            .Where(static packId => packId.Length > 0),
+            maxItems: 8);
+    }
+
+    private static string[] ResolveWorkingMemoryAnswerPlanPreferredToolNames(TurnAnswerPlan answerPlan, IReadOnlyList<string> fallbackValues) {
+        if (!answerPlan.HasPlan) {
+            return NormalizeDistinctStrings(fallbackValues ?? Array.Empty<string>(), maxItems: 8);
+        }
+
+        return NormalizeDistinctStrings(answerPlan.PreferredToolNames ?? Array.Empty<string>(), maxItems: 8);
+    }
+
+    private static bool ResolveWorkingMemoryAnswerPlanAllowCachedEvidenceReusePreference(TurnAnswerPlan answerPlan, bool fallbackValue) {
+        if (!answerPlan.HasPlan) {
+            return fallbackValue;
+        }
+
+        return answerPlan.AllowCachedEvidenceReuse;
     }
 
     private static bool ResolveWorkingMemoryAnswerPlanCachedEvidenceReusePreference(TurnAnswerPlan answerPlan, bool fallbackValue) {
@@ -872,6 +1107,78 @@ internal sealed partial class ChatServiceSession {
         return sawFlag;
     }
 
+    private static bool TryReadContinuationFocusLiveExecutionRequirementFromWorkingMemoryPrompt(
+        string routedUserRequest,
+        out bool requiresLiveExecution,
+        out string missingLiveEvidence,
+        out string[] preferredPackIds,
+        out string[] preferredToolNames) {
+        requiresLiveExecution = false;
+        missingLiveEvidence = string.Empty;
+        preferredPackIds = Array.Empty<string>();
+        preferredToolNames = Array.Empty<string>();
+        var raw = routedUserRequest ?? string.Empty;
+        if (raw.IndexOf(ContinuationFocusMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return false;
+        }
+
+        var sawFlag = false;
+        using var reader = new System.IO.StringReader(raw);
+        while (reader.ReadLine() is { } line) {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("last_requires_live_execution:", StringComparison.OrdinalIgnoreCase)) {
+                var separator = trimmed.IndexOf(':');
+                if (separator >= 0 && separator + 1 < trimmed.Length) {
+                    var value = trimmed[(separator + 1)..].Trim();
+                    if (value.Equals("true", StringComparison.OrdinalIgnoreCase)) {
+                        requiresLiveExecution = true;
+                        sawFlag = true;
+                        continue;
+                    }
+
+                    if (value.Equals("false", StringComparison.OrdinalIgnoreCase)) {
+                        requiresLiveExecution = false;
+                        sawFlag = true;
+                        continue;
+                    }
+                }
+            }
+
+            if (trimmed.StartsWith("last_missing_live_evidence:", StringComparison.OrdinalIgnoreCase)) {
+                var separator = trimmed.IndexOf(':');
+                if (separator >= 0 && separator + 1 < trimmed.Length) {
+                    missingLiveEvidence = NormalizeWorkingMemoryAnswerPlanFocus(trimmed[(separator + 1)..]);
+                }
+                continue;
+            }
+
+            if (trimmed.StartsWith("last_preferred_pack_ids:", StringComparison.OrdinalIgnoreCase)) {
+                var separator = trimmed.IndexOf(':');
+                if (separator >= 0 && separator + 1 < trimmed.Length) {
+                    preferredPackIds = NormalizeDistinctStrings(
+                        trimmed[(separator + 1)..]
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .Select(static packId => NormalizePackId(packId))
+                            .Where(static packId => packId.Length > 0),
+                        maxItems: 8);
+                }
+                continue;
+            }
+
+            if (trimmed.StartsWith("last_preferred_tool_names:", StringComparison.OrdinalIgnoreCase)) {
+                var separator = trimmed.IndexOf(':');
+                if (separator >= 0 && separator + 1 < trimmed.Length) {
+                    preferredToolNames = NormalizeDistinctStrings(
+                        trimmed[(separator + 1)..]
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                        maxItems: 8);
+                }
+            }
+        }
+
+        return sawFlag;
+    }
+
     private static bool TryReadIntentAnchorFromLegacyContinuationExpansion(string routedUserRequest, out string intentAnchor) {
         intentAnchor = string.Empty;
         var raw = (routedUserRequest ?? string.Empty).Trim();
@@ -988,6 +1295,11 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<string> recentEvidenceSnippets,
         string? priorAnswerPlanUserGoal = null,
         string? priorAnswerPlanUnresolvedNow = null,
+        bool priorAnswerPlanRequiresLiveExecution = false,
+        string? priorAnswerPlanMissingLiveEvidence = null,
+        IReadOnlyList<string>? priorAnswerPlanPreferredPackIds = null,
+        IReadOnlyList<string>? priorAnswerPlanPreferredToolNames = null,
+        bool priorAnswerPlanAllowCachedEvidenceReuse = false,
         bool priorAnswerPlanPreferCachedEvidenceReuse = false,
         string? priorAnswerPlanCachedEvidenceReuseReason = null,
         string? priorAnswerPlanPrimaryArtifact = null,
@@ -1003,6 +1315,19 @@ internal sealed partial class ChatServiceSession {
             RecentEvidenceSnippets: NormalizeWorkingMemoryList(recentEvidenceSnippets ?? Array.Empty<string>(), MaxWorkingMemoryEvidenceLines),
             PriorAnswerPlanUserGoal: NormalizeWorkingMemoryAnswerPlanFocus(priorAnswerPlanUserGoal),
             PriorAnswerPlanUnresolvedNow: NormalizeWorkingMemoryAnswerPlanFocus(priorAnswerPlanUnresolvedNow),
+            PriorAnswerPlanRequiresLiveExecution: priorAnswerPlanRequiresLiveExecution,
+            PriorAnswerPlanMissingLiveEvidence: priorAnswerPlanRequiresLiveExecution
+                ? NormalizeWorkingMemoryAnswerPlanFocus(priorAnswerPlanMissingLiveEvidence)
+                : string.Empty,
+            PriorAnswerPlanPreferredPackIds: NormalizeDistinctStrings(
+                (priorAnswerPlanPreferredPackIds ?? Array.Empty<string>())
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+                maxItems: 8),
+            PriorAnswerPlanPreferredToolNames: NormalizeDistinctStrings(
+                priorAnswerPlanPreferredToolNames ?? Array.Empty<string>(),
+                maxItems: 8),
+            PriorAnswerPlanAllowCachedEvidenceReuse: priorAnswerPlanAllowCachedEvidenceReuse,
             PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
             PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanPreferCachedEvidenceReuse
                 ? NormalizeWorkingMemoryAnswerPlanFocus(priorAnswerPlanCachedEvidenceReuseReason)

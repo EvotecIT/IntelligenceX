@@ -162,6 +162,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
                 RoutingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics,
                 CapabilitySnapshot = snapshot.CapabilitySnapshot ?? ChatServiceSession.BuildCapabilitySnapshot(
                     new ServiceOptions(),
+                    toolDefinitions: null,
                     snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
                     snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
                     snapshot.RoutingCatalogDiagnostics)

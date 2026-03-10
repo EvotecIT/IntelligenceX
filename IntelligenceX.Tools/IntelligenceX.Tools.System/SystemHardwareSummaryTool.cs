@@ -15,6 +15,8 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
     private sealed record HardwareSummaryRequest(
+        string? ComputerName,
+        string Target,
         bool IncludeProcessors,
         bool IncludeMemoryModules,
         bool IncludeVideoControllers,
@@ -25,6 +27,7 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
         "system_hardware_summary",
         "Return a summarized hardware snapshot (CPU, memory, GPU).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("include_processors", ToolSchema.Boolean("Include CPU summary fields. Default true.")),
                 ("include_memory_modules", ToolSchema.Boolean("Include memory summary fields. Default true.")),
                 ("include_video_controllers", ToolSchema.Boolean("Include GPU summary fields. Default true.")),
@@ -51,6 +54,7 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
 
     private ToolRequestBindingResult<HardwareSummaryRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
             var includeProcessors = reader.Boolean("include_processors", defaultValue: true);
             var includeMemoryModules = reader.Boolean("include_memory_modules", defaultValue: true);
             var includeVideoControllers = reader.Boolean("include_video_controllers", defaultValue: true);
@@ -71,6 +75,8 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
             }
 
             return ToolRequestBindingResult<HardwareSummaryRequest>.Success(new HardwareSummaryRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 IncludeProcessors: includeProcessors,
                 IncludeMemoryModules: includeMemoryModules,
                 IncludeVideoControllers: includeVideoControllers,
@@ -85,6 +91,7 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
 
         if (!HardwareSummaryQueryExecutor.TryExecute(
                 request: new HardwareSummaryQueryRequest {
+                    ComputerName = request.ComputerName,
                     IncludeProcessors = request.IncludeProcessors,
                     IncludeMemoryModules = request.IncludeMemoryModules,
                     IncludeVideoControllers = request.IncludeVideoControllers,
@@ -99,6 +106,8 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
 
         var result = queryResult!;
         var facts = new List<(string Key, string Value)>();
+        var effectiveComputerName = string.IsNullOrWhiteSpace(result.ComputerName) ? request.Target : result.ComputerName;
+        facts.Add(("Computer", effectiveComputerName));
         if (request.IncludeProcessors) {
             facts.Add(("Processor Count", result.ProcessorCount.ToString(CultureInfo.InvariantCulture)));
             facts.Add(("Total CPU Cores", result.TotalCpuCores.ToString(CultureInfo.InvariantCulture)));
@@ -118,11 +127,15 @@ public sealed class SystemHardwareSummaryTool : SystemToolBase, ITool {
             model: result,
             title: "Hardware summary",
             facts: facts,
-            meta: ToolOutputHints.Meta(count: facts.Count, truncated: false)
-                .Add("timeout_ms", request.TimeoutMs)
-                .Add("include_processors", request.IncludeProcessors)
-                .Add("include_memory_modules", request.IncludeMemoryModules)
-                .Add("include_video_controllers", request.IncludeVideoControllers),
+            meta: BuildFactsMeta(
+                count: 1,
+                truncated: false,
+                target: effectiveComputerName,
+                mutate: meta => meta
+                    .Add("timeout_ms", request.TimeoutMs)
+                    .Add("include_processors", request.IncludeProcessors)
+                    .Add("include_memory_modules", request.IncludeMemoryModules)
+                    .Add("include_video_controllers", request.IncludeVideoControllers)),
             keyHeader: "Metric",
             valueHeader: "Value",
             truncated: false,

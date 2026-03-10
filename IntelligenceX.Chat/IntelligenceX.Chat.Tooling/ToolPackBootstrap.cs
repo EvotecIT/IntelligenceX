@@ -436,7 +436,8 @@ public static partial class ToolPackBootstrap {
             [PackOptionKeyActiveDirectory] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
                 ["DomainController"] = options.AdDomainController,
                 ["DefaultSearchBaseDn"] = options.AdDefaultSearchBaseDn,
-                ["MaxResults"] = options.AdMaxResults > 0 ? options.AdMaxResults : 1000
+                ["MaxResults"] = options.AdMaxResults > 0 ? options.AdMaxResults : 1000,
+                ["AllowedMonitoringRoots"] = options.AllowedRoots?.ToArray() ?? Array.Empty<string>()
             },
             [PackOptionKeyAdPlayground] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
                 ["DomainController"] = options.AdDomainController,

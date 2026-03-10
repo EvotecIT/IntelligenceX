@@ -585,7 +585,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_TriggersWhenExecutionPathHadNoToolEvidence() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, false, "On it." });
+            new object?[] { "Run the query and return UTC timestamp.", false, false, true, false, false, false, false, false, ChatServiceSession.TurnAnswerPlan.None(), "On it." });
 
         Assert.True(Assert.IsType<bool>(result));
     }
@@ -604,6 +604,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 true,
                 false,
                 false,
+                ChatServiceSession.TurnAnswerPlan.None(),
                 "W tej sesji nie mam aktywnego eventlog packa."
             });
 
@@ -624,6 +625,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 false,
                 true,
                 false,
+                ChatServiceSession.TurnAnswerPlan.None(),
                 "W tej sesji narzedzie eventlog_evtx_query nie jest aktywne."
             });
 
@@ -646,7 +648,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void ShouldForceExecutionContractBlockerAtFinalize_DoesNotTriggerWhenToolActivityExists() {
         var result = ShouldForceExecutionContractBlockerAtFinalizeMethod.Invoke(
             null,
-            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, false, true, "Completed." });
+            new object?[] { "Run the query and return UTC timestamp.", true, false, false, false, false, false, false, true, ChatServiceSession.TurnAnswerPlan.None(), "Completed." });
 
         Assert.False(Assert.IsType<bool>(result));
     }

@@ -420,6 +420,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var userRequest = ExtractPrimaryUserRequest(requestText);
+        _ = TryReadPlannerContextFromRequestText(requestText, out var plannerContext);
         var sb = new StringBuilder(capacity: Math.Min(64_000, 4000 + (definitions.Count * 120)));
         sb.AppendLine("Select tools for the following user request.");
         sb.AppendLine("User request:");
@@ -428,6 +429,41 @@ internal sealed partial class ChatServiceSession {
             sb.AppendLine();
             sb.AppendLine("Current unresolved follow-up focus:");
             sb.AppendLine(unresolvedAsk);
+        }
+        if (plannerContext.RequiresLiveExecution || plannerContext.MissingLiveEvidence.Length > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Execution intent:");
+            sb.AppendLine(plannerContext.RequiresLiveExecution
+                ? "Fresh live execution is required for this follow-up."
+                : "Fresh live execution is optional for this follow-up.");
+            if (plannerContext.MissingLiveEvidence.Length > 0) {
+                sb.Append("Missing live evidence: ").AppendLine(plannerContext.MissingLiveEvidence);
+            }
+        }
+        if (plannerContext.PreferredPackIds.Length > 0 || plannerContext.PreferredToolNames.Length > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Planner preferences:");
+            if (plannerContext.PreferredPackIds.Length > 0) {
+                sb.Append("Preferred packs: ").AppendLine(string.Join(", ", plannerContext.PreferredPackIds));
+            }
+            if (plannerContext.PreferredToolNames.Length > 0) {
+                sb.Append("Preferred tools: ").AppendLine(string.Join(", ", plannerContext.PreferredToolNames));
+            }
+        }
+        if (plannerContext.HandoffTargetPackIds.Length > 0 || plannerContext.HandoffTargetToolNames.Length > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Handoff targets:");
+            if (plannerContext.HandoffTargetPackIds.Length > 0) {
+                sb.Append("Target packs: ").AppendLine(string.Join(", ", plannerContext.HandoffTargetPackIds));
+            }
+            if (plannerContext.HandoffTargetToolNames.Length > 0) {
+                sb.Append("Target tools: ").AppendLine(string.Join(", ", plannerContext.HandoffTargetToolNames));
+            }
+        }
+        if (plannerContext.MatchingSkills.Length > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Matching reusable skills:");
+            sb.AppendLine(string.Join(", ", plannerContext.MatchingSkills));
         }
         if (TryReadContinuationFocusCachedEvidenceReusePreferenceFromWorkingMemoryPrompt(requestText, out var preferCachedEvidenceReuse, out var cachedEvidenceReuseReason)
             && preferCachedEvidenceReuse) {
@@ -453,11 +489,12 @@ internal sealed partial class ChatServiceSession {
             if (description.Length > 220) {
                 description = description[..220].TrimEnd();
             }
-            var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var hasTableViewProjection);
+            var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var schemaTraits);
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             var category = ResolvePlannerCategory(definition);
             var domainIntentFamily = ResolveDomainIntentFamily(definition);
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
+            var traitSummary = ToolSchemaTraitProjection.BuildTraitSummary(schemaTraits);
             sb.Append(i + 1).Append(". ").Append(name);
             if (description.Length > 0) {
                 sb.Append(" :: ").Append(description);
@@ -477,8 +514,8 @@ internal sealed partial class ChatServiceSession {
             if (schemaArguments.Length > 0) {
                 sb.Append(" | args: ").Append(string.Join(", ", schemaArguments));
             }
-            if (hasTableViewProjection) {
-                sb.Append(" | traits: table_view_projection");
+            if (traitSummary.Length > 0) {
+                sb.Append(" | traits: ").Append(traitSummary);
             }
             sb.AppendLine();
         }

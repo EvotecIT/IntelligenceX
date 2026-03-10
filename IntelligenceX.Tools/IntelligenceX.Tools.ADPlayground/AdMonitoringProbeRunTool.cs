@@ -14,6 +14,7 @@ using ADPlayground.Monitoring.Probes.Ldap;
 using ADPlayground.Monitoring.Probes.Ntp;
 using ADPlayground.Monitoring.Probes.Port;
 using ADPlayground.Monitoring.Probes.Replication;
+using ADPlayground.Monitoring.Probes.WindowsUpdate;
 using ADPlayground.Network;
 using ADPlayground.Replication;
 using IntelligenceX.Json;
@@ -130,6 +131,9 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 case "ping":
                     result = await RunPingAsync().ConfigureAwait(false);
                     break;
+                case "windows_update":
+                    result = await RunWindowsUpdateAsync().ConfigureAwait(false);
+                    break;
                 default:
                     return Error("invalid_argument", "Unsupported probe_kind.");
             }
@@ -142,10 +146,30 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
         }
 
         var rows = FlattenProbeRows(result, includeChildren);
+        var directoryProbeKind = string.Equals(normalizedKind, "directory", StringComparison.OrdinalIgnoreCase)
+            ? ToolArgs.GetOptionalTrimmed(arguments, "directory_probe_kind")
+            : null;
+        var chain = BuildChainContract(
+            normalizedKind: normalizedKind,
+            directoryProbeKind: directoryProbeKind,
+            result: result,
+            resolvedTargets: resolvedTargets,
+            domainName: domainName,
+            forestName: forestName,
+            includeTrusts: includeTrusts,
+            discoveryFallback: discoveryFallback);
         var model = new {
             ProbeKind = normalizedKind,
             ProbeResult = result,
             ResultRows = rows,
+            NextActions = chain.NextActions,
+            Cursor = chain.Cursor,
+            ResumeToken = chain.ResumeToken,
+            FlowId = chain.FlowId,
+            StepId = chain.StepId,
+            Checkpoint = chain.Checkpoint,
+            Handoff = chain.Handoff,
+            Confidence = chain.Confidence,
             NormalizedRequest = new {
                 Name = name,
                 DomainName = domainName,
@@ -181,6 +205,15 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             metaMutate: meta => {
                 meta.Add("probe_kind", normalizedKind);
                 meta.Add("row_count", rows.Count);
+                if (chain.NextActions.Count > 0) {
+                    var nextActionsJson = new JsonArray();
+                    for (var i = 0; i < chain.NextActions.Count; i++) {
+                        nextActionsJson.Add(ToolJson.ToJsonObjectSnakeCase(chain.NextActions[i]));
+                    }
+
+                    meta.Add("next_actions", nextActionsJson);
+                    meta.Add("chain_confidence", chain.Confidence);
+                }
             });
         return response;
 
@@ -536,6 +569,30 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 timeoutMs: timeoutMs,
                 retryDelay: retryDelay,
                 cancellationToken: cancellationToken);
+        }
+
+        async Task<ProbeResult> RunWindowsUpdateAsync() {
+            var def = new WindowsUpdateProbeDefinition {
+                Name = name!,
+                Targets = resolvedTargets.ToArray(),
+                DomainName = domainName,
+                ForestName = forestName,
+                IncludeDomains = includeDomains.ToArray(),
+                ExcludeDomains = excludeDomains.ToArray(),
+                IncludeDomainControllers = includeDomainControllers.ToArray(),
+                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                SkipRodc = skipRodc,
+                IncludeTrusts = includeTrusts,
+                Timeout = timeout,
+                Retries = retries,
+                RetryDelay = retryDelay,
+                MaxConcurrency = maxConcurrency,
+                QueryTimeout = timeout,
+                RequireWsus = ToolArgs.GetBoolean(arguments, "require_wsus", defaultValue: true)
+            };
+
+            var runner = new WindowsUpdateProbeRunner();
+            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
         }
     }
 }

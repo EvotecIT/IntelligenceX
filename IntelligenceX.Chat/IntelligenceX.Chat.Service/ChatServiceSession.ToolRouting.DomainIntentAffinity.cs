@@ -616,9 +616,42 @@ internal sealed partial class ChatServiceSession {
 
         var preferredNames = checkpoint.CapabilityHealthyToolNames.Length > 0
             ? checkpoint.CapabilityHealthyToolNames
-            : checkpoint.RecentToolNames;
+            : checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0
+                ? checkpoint.PriorAnswerPlanPreferredToolNames
+                : checkpoint.RecentToolNames;
         if (preferredNames.Length == 0) {
-            return false;
+            preferredNames = checkpoint.RecentToolNames;
+        }
+        var (
+            structuredPreferredPackIds,
+            structuredPreferredToolNames,
+            structuredHandoffTargetPackIds,
+            structuredHandoffTargetToolNames) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, allDefinitions);
+        preferredNames = NormalizeDistinctStrings(
+            preferredNames
+                .Concat(structuredPreferredToolNames)
+                .Concat(structuredHandoffTargetToolNames),
+            maxItems: 8);
+
+        var preferredPackIds = new HashSet<string>(
+            checkpoint.PriorAnswerPlanPreferredPackIds
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < structuredPreferredPackIds.Length; i++) {
+            preferredPackIds.Add(structuredPreferredPackIds[i]);
+        }
+        for (var i = 0; i < structuredHandoffTargetPackIds.Length; i++) {
+            preferredPackIds.Add(structuredHandoffTargetPackIds[i]);
+        }
+        if (preferredPackIds.Count == 0) {
+            var (handoffTargetPackIds, _) = CollectPlannerHandoffTargets(
+                NormalizeDistinctStrings(
+                    checkpoint.RecentToolNames.Concat(checkpoint.PriorAnswerPlanPreferredToolNames),
+                    maxItems: 8));
+            for (var i = 0; i < handoffTargetPackIds.Length; i++) {
+                preferredPackIds.Add(handoffTargetPackIds[i]);
+            }
         }
 
         var preferredSet = new HashSet<string>(preferredNames, StringComparer.OrdinalIgnoreCase);
@@ -633,8 +666,31 @@ internal sealed partial class ChatServiceSession {
                 routingFamilies.Add(normalizedFamily);
             }
         }
-        var selected = new List<ToolDefinition>(Math.Min(8, preferredSet.Count));
-        var selectedNames = new List<string>(Math.Min(8, preferredSet.Count));
+        var selected = new List<ToolDefinition>(Math.Min(8, Math.Max(preferredSet.Count, preferredPackIds.Count)));
+        var selectedNames = new List<string>(Math.Min(8, Math.Max(preferredSet.Count, preferredPackIds.Count)));
+
+        void TryAddDefinition(ToolDefinition definition, string toolName) {
+            if (selectedNames.Any(existing => string.Equals(existing, toolName, StringComparison.OrdinalIgnoreCase))) {
+                return;
+            }
+
+            if (routingFamilies.Count > 0) {
+                var family = ResolveDomainIntentFamily(definition);
+                if (family.Length > 0 && !routingFamilies.Contains(family)) {
+                    return;
+                }
+            }
+
+            if (enabledPackIds.Count > 0) {
+                var packId = ResolveToolPackIdForContinuationCapability(definition);
+                if (packId.Length > 0 && !enabledPackIds.Contains(packId)) {
+                    return;
+                }
+            }
+
+            selected.Add(definition);
+            selectedNames.Add(toolName);
+        }
 
         for (var i = 0; i < allDefinitions.Count; i++) {
             var definition = allDefinitions[i];
@@ -643,22 +699,28 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (routingFamilies.Count > 0) {
-                var family = ResolveDomainIntentFamily(definition);
-                if (family.Length > 0 && !routingFamilies.Contains(family)) {
+            TryAddDefinition(definition, toolName);
+        }
+
+        if (selected.Count < 2 && preferredPackIds.Count > 0) {
+            for (var i = 0; i < allDefinitions.Count; i++) {
+                var definition = allDefinitions[i];
+                var toolName = (definition.Name ?? string.Empty).Trim();
+                if (toolName.Length == 0) {
                     continue;
                 }
-            }
 
-            if (enabledPackIds.Count > 0) {
                 var packId = ResolveToolPackIdForContinuationCapability(definition);
-                if (packId.Length > 0 && !enabledPackIds.Contains(packId)) {
+                if (!preferredPackIds.Contains(packId)) {
                     continue;
                 }
-            }
 
-            selected.Add(definition);
-            selectedNames.Add(toolName);
+                TryAddDefinition(definition, toolName);
+            }
+        }
+
+        if (selected.Count < 2 && preferredSet.Count == 0 && preferredPackIds.Count == 0) {
+            return false;
         }
 
         if (selected.Count < 2) {

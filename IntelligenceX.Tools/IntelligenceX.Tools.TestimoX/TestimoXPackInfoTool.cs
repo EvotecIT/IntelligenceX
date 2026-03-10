@@ -48,6 +48,21 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
             engine: "TestimoX",
             tools: ToolRegistryTestimoXExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
+                "Call testimox_monitoring_diagnostics_get when you need a compact operator-facing diagnostics snapshot from an allowed monitoring history directory before deeper history/report drill-down.",
+                "Call testimox_probe_index_status when you need the latest indexed status per probe from an allowed monitoring history directory without loading raw probe history.",
+                "Call testimox_maintenance_window_history when you need resolved reporting maintenance windows and suppression scope from an allowed monitoring history directory.",
+                "Call testimox_report_data_snapshot_get when you need the cached report data payload for a known report key and want a safe preview by default.",
+                "Call testimox_report_snapshot_get when you need the cached HTML report snapshot for a known report key and want a safe preview by default.",
+                "Call testimox_history_query when you need monitoring availability history rollups from an allowed monitoring history directory before asking for trend or outage summaries.",
+                "Call testimox_report_job_history when you need monitoring report execution history from an allowed monitoring history directory before opening stored report artifacts.",
+                "Call testimox_runs_list when you need to inspect stored TestimoX execution history inside an allowed result store before drilling into a specific run.",
+                "Call testimox_run_summary when you need per-run score and penalty summaries plus stored rule rows from a known run_id.",
+                "Call testimox_baselines_list when you need to discover available vendor baseline ids/products/versions before crosswalk or operator reporting.",
+                "Call testimox_baseline_compare when you need a direct vendor delta view for one product/version slice before summarizing posture drift.",
+                "Call testimox_profiles_list when you need curated execution profiles and assessment-area defaults.",
+                "Call testimox_rule_inventory to inspect authoritative-vs-legacy coverage, migration state, and assessment-area classification before choosing rules.",
+                "Call testimox_source_query when you need rule provenance such as enum mapping, modules, supported systems, and supersedence links.",
+                "Call testimox_baseline_crosswalk to map rules to vendor baselines and PingCastle/PurpleKnight references before reporting operator deltas.",
                 "Call testimox_rules_list to discover available rules and metadata (scope/source_type/origin/categories/tags/cost).",
                 "When you need deterministic pagination, call testimox_rules_list with page_size + offset (or cursor) and continue from next_offset/next_cursor.",
                 "Select a focused subset using explicit names and/or selectors (patterns/categories/tags/source_type/rule_origin).",
@@ -56,6 +71,48 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
                 "Call testimox_rules_run and correlate run output with AD/system/eventlog evidence."
             },
             flowSteps: new[] {
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect compact monitoring diagnostics",
+                    suggestedTools: new[] { "testimox_monitoring_diagnostics_get" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect latest indexed probe status",
+                    suggestedTools: new[] { "testimox_probe_index_status" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect resolved maintenance windows",
+                    suggestedTools: new[] { "testimox_maintenance_window_history" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Retrieve cached report data payload",
+                    suggestedTools: new[] { "testimox_report_data_snapshot_get" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Retrieve cached HTML report snapshot",
+                    suggestedTools: new[] { "testimox_report_snapshot_get" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect monitoring availability history",
+                    suggestedTools: new[] { "testimox_history_query" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect monitoring report execution history",
+                    suggestedTools: new[] { "testimox_report_job_history" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect stored execution history",
+                    suggestedTools: new[] { "testimox_runs_list", "testimox_run_summary" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Discover available vendor baselines",
+                    suggestedTools: new[] { "testimox_baselines_list" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Compare vendor baseline deltas",
+                    suggestedTools: new[] { "testimox_baseline_compare" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Understand curated profiles",
+                    suggestedTools: new[] { "testimox_profiles_list" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inventory authoritative vs legacy rules",
+                    suggestedTools: new[] { "testimox_rule_inventory" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect rule provenance",
+                    suggestedTools: new[] { "testimox_source_query" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Map rules to vendor baselines",
+                    suggestedTools: new[] { "testimox_baseline_crosswalk" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Discover available checks",
                     suggestedTools: new[] { "testimox_rules_list" }),
@@ -67,6 +124,66 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
                     suggestedTools: new[] { "ad_search_facets", "system_info", "eventlog_live_stats" })
             },
             capabilities: new[] {
+                ToolPackGuidance.Capability(
+                    id: "monitoring_diagnostics",
+                    summary: "Load a compact monitoring diagnostics snapshot with queue, notification, maintenance, SQLite health, reachability, and optional slow-probe summaries.",
+                    primaryTools: new[] { "testimox_monitoring_diagnostics_get" }),
+                ToolPackGuidance.Capability(
+                    id: "probe_index_status",
+                    summary: "Read the latest indexed status and completion time per probe from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_probe_index_status" }),
+                ToolPackGuidance.Capability(
+                    id: "maintenance_window_history",
+                    summary: "Query resolved reporting maintenance windows, overlap ranges, suppression flags, and targeting filters from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_maintenance_window_history" }),
+                ToolPackGuidance.Capability(
+                    id: "report_data_snapshot",
+                    summary: "Load a cached report data snapshot by report_key with preview-first payload access from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_report_data_snapshot_get" }),
+                ToolPackGuidance.Capability(
+                    id: "report_snapshot",
+                    summary: "Load a cached HTML report snapshot by report_key with preview-first HTML access from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_report_snapshot_get" }),
+                ToolPackGuidance.Capability(
+                    id: "monitoring_history",
+                    summary: "Query monitoring availability rollup buckets, probe scope, and uptime/problem counts from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_history_query" }),
+                ToolPackGuidance.Capability(
+                    id: "report_job_history",
+                    summary: "List monitoring report generation jobs, status, timing, and captured history/report metrics from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_report_job_history" }),
+                ToolPackGuidance.Capability(
+                    id: "run_catalog",
+                    summary: "List stored TestimoX runs from an allowed result store directory before selecting a run for deeper follow-up.",
+                    primaryTools: new[] { "testimox_runs_list" }),
+                ToolPackGuidance.Capability(
+                    id: "run_summary",
+                    summary: "Summarize a stored TestimoX run with score/penalty totals and preview stored rule outcomes.",
+                    primaryTools: new[] { "testimox_run_summary" }),
+                ToolPackGuidance.Capability(
+                    id: "baseline_catalog",
+                    summary: "List available vendor baselines and stable baseline ids before crosswalk, compare, or operator delta planning.",
+                    primaryTools: new[] { "testimox_baselines_list" }),
+                ToolPackGuidance.Capability(
+                    id: "baseline_compare",
+                    summary: "Compare vendor baselines for a product/version slice and surface desired/comparator/value-kind deltas.",
+                    primaryTools: new[] { "testimox_baseline_compare" }),
+                ToolPackGuidance.Capability(
+                    id: "profile_catalog",
+                    summary: "List curated TestimoX profiles with included/excluded assessment areas, categories, tags, and cost posture.",
+                    primaryTools: new[] { "testimox_profiles_list" }),
+                ToolPackGuidance.Capability(
+                    id: "rule_inventory",
+                    summary: "Inspect authoritative-vs-legacy rule inventory, migration state, hidden/superseded posture, and profile-based assessment areas.",
+                    primaryTools: new[] { "testimox_rule_inventory" }),
+                ToolPackGuidance.Capability(
+                    id: "source_provenance",
+                    summary: "Inspect focused rule provenance including enum mapping, required modules, supported systems, resources, and supersedence links.",
+                    primaryTools: new[] { "testimox_source_query" }),
+                ToolPackGuidance.Capability(
+                    id: "baseline_crosswalk",
+                    summary: "Map TestimoX rules to vendor baselines and external documentation references for operator reporting and delta planning.",
+                    primaryTools: new[] { "testimox_baseline_crosswalk" }),
                 ToolPackGuidance.Capability(
                     id: "rule_catalog",
                     summary: "Enumerate TestimoX rules with metadata (scope, source_type, origin, categories, tags, cost, visibility).",
@@ -86,7 +203,7 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
                     summary: "Promote AD discovery receipts into explicit TestimoX execution scope for deterministic rule targeting.",
                     entityKinds: new[] { "forest", "domain", "domain_controller" },
                     sourceTools: new[] { "ad_environment_discover", "ad_scope_discovery", "ad_forest_discover" },
-                    targetTools: new[] { "testimox_rules_list", "testimox_rules_run" },
+                    targetTools: new[] { "testimox_rule_inventory", "testimox_rules_list", "testimox_rules_run" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("scope.domains[].dns_root", "include_domains", "Deduplicate discovered domains and keep canonical DNS roots."),
                         ToolPackGuidance.EntityFieldMapping("scope.domain_controllers[].hostname", "include_domain_controllers", "Prefer reachable DC hostnames/FQDNs from discovery receipts."),
@@ -97,12 +214,14 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
                     id: "testimox_findings_to_ad_system_eventlog_followup",
                     summary: "Route TestimoX finding entities into AD identity resolution and host telemetry deep-dive tools.",
                     entityKinds: new[] { "identity", "computer", "domain_controller", "policy" },
-                    sourceTools: new[] { "testimox_rules_run" },
+                    sourceTools: new[] { "testimox_rules_run", "testimox_run_summary" },
                     targetTools: new[] { "ad_object_resolve", "ad_search_facets", "system_security_options", "eventlog_live_stats" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("rules[].findings[].identity", "identity", "Resolve accounts/groups in AD before ownership and blast-radius analysis."),
                         ToolPackGuidance.EntityFieldMapping("rules[].findings[].computer", "computer_name", "Use host indicators for ComputerX/EventLog follow-up evidence collection."),
-                        ToolPackGuidance.EntityFieldMapping("rules[].findings[].domain_controller", "computer_name", "Route DC-specific findings into host-level telemetry checks.")
+                        ToolPackGuidance.EntityFieldMapping("rules[].findings[].domain_controller", "computer_name", "Route DC-specific findings into host-level telemetry checks."),
+                        ToolPackGuidance.EntityFieldMapping("rows[].domain_controller", "computer_name", "Use stored DC scope identifiers for host-level follow-up."),
+                        ToolPackGuidance.EntityFieldMapping("rows[].domain", "domain_name", "Use stored domain identifiers to pivot back into AD-focused follow-up.")
                     },
                     notes: "Prefer ad_object_resolve first for identity normalization, then query host/event evidence.")
             },
@@ -112,6 +231,10 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
             correlationGuidance: "Correlate rule outcomes by rule_name/category/scope with outputs from AD/System/EventLog packs.",
             setupHints: new {
                 Enabled = Options.Enabled,
+                AllowedHistoryRootsCount = Options.AllowedHistoryRoots.Count,
+                AllowedStoreRootsCount = Options.AllowedStoreRoots.Count,
+                MaxHistoryRowsInCatalog = Options.MaxHistoryRowsInCatalog,
+                MaxSnapshotContentChars = Options.MaxSnapshotContentChars,
                 MaxRulesInCatalog = Options.MaxRulesInCatalog,
                 MaxRulesPerRun = Options.MaxRulesPerRun,
                 DefaultConcurrency = Options.DefaultConcurrency,

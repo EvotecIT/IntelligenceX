@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -15,10 +16,13 @@ internal sealed partial class ChatServiceSession {
     private const int MaxCapabilitySnapshotFamilies = 6;
     private const int MaxCapabilitySnapshotSkills = 8;
     private const int MaxCapabilitySnapshotHealthyTools = 12;
+    private const int MaxCapabilitySnapshotParityAttention = 4;
+    private const int MaxCapabilitySnapshotParityDetail = 4;
 
     private SessionCapabilitySnapshotDto BuildRuntimeCapabilitySnapshot() {
         return BuildCapabilitySnapshot(
             _options,
+            _registry.GetDefinitions(),
             _packAvailability,
             _pluginAvailability,
             _routingCatalogDiagnostics,
@@ -31,6 +35,7 @@ internal sealed partial class ChatServiceSession {
 
     internal static SessionCapabilitySnapshotDto BuildCapabilitySnapshot(
         ServiceOptions options,
+        IReadOnlyList<ToolDefinition>? toolDefinitions,
         IEnumerable<ToolPackAvailabilityInfo> packAvailability,
         IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         ToolRoutingCatalogDiagnostics? routingCatalog,
@@ -74,6 +79,12 @@ internal sealed partial class ChatServiceSession {
         var healthyTools = NormalizeCapabilitySnapshotHealthyToolNames(healthyToolNames ?? Array.Empty<string>());
         var registeredTools = Math.Max(0, routingCatalog?.TotalTools ?? 0);
         var allowedRootCount = Math.Max(0, options.AllowedRoots.Count);
+        var parityEntries = ToolCapabilityParityInventoryBuilder.Build(toolDefinitions, packAvailability);
+        var parityAttentionCount = parityEntries.Count(static entry =>
+            !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.HealthyStatus, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.SourceUnavailableStatus, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.PackUnavailableStatus, StringComparison.OrdinalIgnoreCase));
+        var parityMissingCapabilityCount = parityEntries.Sum(static entry => Math.Max(0, entry.MissingCapabilityCount));
 
         return new SessionCapabilitySnapshotDto {
             RegisteredTools = registeredTools,
@@ -88,7 +99,10 @@ internal sealed partial class ChatServiceSession {
             FamilyActions = familyActions,
             Skills = skills,
             HealthyTools = healthyTools,
-            RemoteReachabilityMode = NormalizeCapabilitySnapshotRemoteReachabilityMode(remoteReachabilityMode)
+            RemoteReachabilityMode = NormalizeCapabilitySnapshotRemoteReachabilityMode(remoteReachabilityMode),
+            ParityEntries = parityEntries,
+            ParityAttentionCount = Math.Max(0, parityAttentionCount),
+            ParityMissingCapabilityCount = Math.Max(0, parityMissingCapabilityCount)
         };
     }
 
@@ -197,8 +211,28 @@ internal sealed partial class ChatServiceSession {
         if (snapshot.HealthyTools.Length > 0) {
             runtimeIdentity.AppendLine("healthy_tools: " + string.Join(", ", snapshot.HealthyTools));
         }
+        if (snapshot.ParityEntries.Length > 0) {
+            runtimeIdentity.AppendLine("parity_engine_count: " + snapshot.ParityEntries.Length);
+            runtimeIdentity.AppendLine("parity_attention_count: " + snapshot.ParityAttentionCount);
+            runtimeIdentity.AppendLine("parity_missing_readonly_capabilities: " + snapshot.ParityMissingCapabilityCount);
+
+            var attentionSummaries = ToolCapabilityParityInventoryBuilder.BuildAttentionSummaries(
+                snapshot.ParityEntries,
+                MaxCapabilitySnapshotParityAttention);
+            if (attentionSummaries.Count > 0) {
+                runtimeIdentity.AppendLine("parity_attention: " + string.Join(" | ", attentionSummaries));
+            }
+
+            var detailSummaries = ToolCapabilityParityInventoryBuilder.BuildDetailSummaries(
+                snapshot.ParityEntries,
+                MaxCapabilitySnapshotParityDetail);
+            if (detailSummaries.Count > 0) {
+                runtimeIdentity.AppendLine("parity_detail: " + string.Join(" | ", detailSummaries));
+            }
+        }
 
         runtimeIdentity.AppendLine("Use this snapshot only for routing and tool-availability decisions.");
+        runtimeIdentity.AppendLine("Parity fields describe phase-1 read-only engine coverage; use them to avoid promising governed or missing surfaces as live tools.");
         runtimeIdentity.AppendLine("Do not narrate this snapshot to the user unless they explicitly ask about runtime, tooling, or bootstrap state.");
 
         runtimeIdentity.AppendLine();

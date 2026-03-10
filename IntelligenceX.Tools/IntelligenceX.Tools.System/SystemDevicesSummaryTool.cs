@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ComputerX.Devices;
@@ -14,6 +13,8 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
     private sealed record DevicesSummaryRequest(
+        string? ComputerName,
+        string Target,
         bool IncludeUsb,
         bool IncludeDeviceManager,
         string? NameContains,
@@ -30,6 +31,7 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
         "system_devices_summary",
         "List and summarize USB/Device Manager devices (read-only, capped).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("include_usb", ToolSchema.Boolean("Include USB inventory rows. Default true.")),
                 ("include_device_manager", ToolSchema.Boolean("Include Device Manager inventory rows. Default true.")),
                 ("name_contains", ToolSchema.String("Optional case-insensitive device-name filter.")),
@@ -61,6 +63,7 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
 
     private ToolRequestBindingResult<DevicesSummaryRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
             var includeUsb = reader.Boolean("include_usb", defaultValue: true);
             var includeDeviceManager = reader.Boolean("include_device_manager", defaultValue: true);
             if (!includeUsb && !includeDeviceManager) {
@@ -69,6 +72,8 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
             }
 
             return ToolRequestBindingResult<DevicesSummaryRequest>.Success(new DevicesSummaryRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 IncludeUsb: includeUsb,
                 IncludeDeviceManager: includeDeviceManager,
                 NameContains: reader.OptionalString("name_contains"),
@@ -87,6 +92,7 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
 
         if (!DeviceInventoryQueryExecutor.TryExecute(
                 request: new DeviceInventoryQueryRequest {
+                    ComputerName = request.ComputerName,
                     IncludeUsb = request.IncludeUsb,
                     IncludeDeviceManager = request.IncludeDeviceManager,
                     NameContains = request.NameContains,
@@ -104,6 +110,7 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new DeviceInventoryQueryResult();
+        var effectiveComputerName = string.IsNullOrWhiteSpace(result.ComputerName) ? request.Target : result.ComputerName;
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
@@ -114,6 +121,8 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
+                AddComputerNameMeta(meta, effectiveComputerName);
+                AddMaxResultsMeta(meta, request.MaxEntries);
                 meta.Add("include_usb", request.IncludeUsb);
                 meta.Add("include_device_manager", request.IncludeDeviceManager);
                 meta.Add("problem_only", request.ProblemOnly);
@@ -131,6 +140,13 @@ public sealed class SystemDevicesSummaryTool : SystemToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(request.StatusContains)) {
                     meta.Add("status_contains", request.StatusContains);
                 }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_devices_summary",
+                    targetComputer: effectiveComputerName,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
             });
         return Task.FromResult(response);
     }

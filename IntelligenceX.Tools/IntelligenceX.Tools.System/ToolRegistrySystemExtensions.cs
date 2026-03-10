@@ -64,14 +64,35 @@ public static class ToolRegistrySystemExtensions {
             yield return new SystemBootConfigurationTool(options);
             yield return new SystemBiosSummaryTool(options);
             yield return new SystemTimeSyncTool(options);
+            yield return new SystemLocalIdentityInventoryTool(options);
             yield return new SystemBitlockerStatusTool(options);
+            yield return new SystemPrivacyPostureTool(options);
+            yield return new SystemExploitProtectionTool(options);
+            yield return new SystemOfficePostureTool(options);
+            yield return new SystemBrowserPostureTool(options);
+            yield return new SystemBackupPostureTool(options);
+            yield return new SystemCertificatePostureTool(options);
+            yield return new SystemCredentialPostureTool(options);
+            yield return new SystemTlsPostureTool(options);
+            yield return new SystemWinRmPostureTool(options);
+            yield return new SystemPowerShellLoggingPostureTool(options);
+            yield return new SystemUacPostureTool(options);
+            yield return new SystemLdapPolicyPostureTool(options);
+            yield return new SystemNetworkClientPostureTool(options);
+            yield return new SystemAccountPolicyPostureTool(options);
+            yield return new SystemInteractiveLogonPostureTool(options);
+            yield return new SystemDeviceGuardPostureTool(options);
+            yield return new SystemDefenderAsrPostureTool(options);
             yield return new SystemInstalledApplicationsTool(options);
             yield return new SystemUpdatesInstalledTool(options);
+            yield return new SystemWindowsUpdateClientStatusTool(options);
+            yield return new SystemWindowsUpdateTelemetryTool(options);
             yield return new SystemPatchComplianceTool(options);
             yield return new SystemLogicalDisksListTool(options);
             yield return new SystemDisksListTool(options);
             yield return new SystemDevicesSummaryTool(options);
             yield return new SystemHardwareSummaryTool(options);
+            yield return new SystemMetricsSummaryTool(options);
             yield return new SystemFeaturesListTool(options);
         }
 

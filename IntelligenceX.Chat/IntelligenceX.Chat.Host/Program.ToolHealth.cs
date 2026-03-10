@@ -102,6 +102,30 @@ internal static partial class Program {
         }
 
         Console.WriteLine($"Tool health summary: ok={okCount}, failed={failCount}");
+        var descriptors = ToolPackBootstrap.GetDescriptors(packs);
+        var availability = descriptors
+            .Select(static descriptor => new ToolPackAvailabilityInfo {
+                Id = descriptor.Id ?? string.Empty,
+                Name = descriptor.Name ?? string.Empty,
+                Description = descriptor.Description,
+                Tier = descriptor.Tier,
+                IsDangerous = descriptor.IsDangerous,
+                SourceKind = descriptor.SourceKind ?? string.Empty,
+                Enabled = true
+            })
+            .ToArray();
+        var parityEntries = ToolCapabilityParityInventoryBuilder.Build(registry.GetDefinitions(), availability);
+        if (parityEntries.Length > 0) {
+            Console.WriteLine("Capability parity summary: " + ToolCapabilityParityInventoryBuilder.FormatSummary(parityEntries));
+            var details = ToolCapabilityParityInventoryBuilder.BuildDetailSummaries(parityEntries, maxItems: 8);
+            foreach (var line in details) {
+                Console.WriteLine("  [parity-detail] " + line);
+            }
+            var attention = ToolCapabilityParityInventoryBuilder.BuildAttentionSummaries(parityEntries, maxItems: 6);
+            foreach (var line in attention) {
+                Console.WriteLine("  [parity] " + line);
+            }
+        }
     }
 
     private static bool TryParseToolHealthFilter(string? filterText, out ToolHealthFilter filter, out string? error, out bool showHelp) {

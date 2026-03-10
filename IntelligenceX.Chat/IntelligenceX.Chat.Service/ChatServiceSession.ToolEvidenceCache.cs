@@ -118,13 +118,17 @@ internal sealed partial class ChatServiceSession {
     }
 
     private bool TryBuildToolEvidenceFallbackText(string threadId, string userRequest, out string text) {
+        return TryBuildToolEvidenceFallbackText(threadId, userRequest, skipLiveExecutionBypass: false, out text);
+    }
+
+    private bool TryBuildToolEvidenceFallbackText(string threadId, string userRequest, bool skipLiveExecutionBypass, out string text) {
         text = string.Empty;
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0) {
             return false;
         }
 
-        if (ShouldBypassCachedToolEvidenceFallback(normalizedThreadId, userRequest)) {
+        if (!skipLiveExecutionBypass && ShouldBypassCachedToolEvidenceFallback(normalizedThreadId, userRequest)) {
             return false;
         }
 
@@ -139,12 +143,12 @@ internal sealed partial class ChatServiceSession {
         var requestedFamily = ResolveRequestedToolEvidenceFamily(normalizedThreadId, userRequest);
         var hasRequestedFamily = requestedFamily.Length > 0;
         var compactContinuationNudge = IsCompactToolEvidenceContinuationNudge(userRequest);
+        var liveExecutionFollowUp = ShouldTreatFollowUpAsLiveExecutionRequest(normalizedThreadId, userRequest);
         var allowFamilyOnlyFallbackWithoutTokenMatch = hasRequestedFamily
                                                        && requestedToolNames.Length == 0
                                                        && (compactContinuationNudge
                                                            || ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, userRequest))
-                                                       && !LooksLikeLiveRefreshFollowUp(userRequest)
-                                                       && !LooksLikeExplicitLiveRefreshToolRequest(userRequest);
+                                                       && !liveExecutionFollowUp;
         var requireAskCoverage = ShouldRequireCachedEvidenceAskCoverage(normalizedThreadId, userRequest, compactContinuationNudge);
         ThreadToolEvidenceEntry[] selected;
         ThreadToolEvidenceEntry[]? updatedSnapshotEntries = null;
@@ -286,8 +290,7 @@ internal sealed partial class ChatServiceSession {
 
     private bool ShouldBypassCachedToolEvidenceFallback(string threadId, string userRequest) {
         return HasFreshThreadToolEvidence(threadId)
-               && (LooksLikeLiveRefreshFollowUp(userRequest)
-                   || LooksLikeExplicitLiveRefreshToolRequest(userRequest));
+               && ShouldTreatFollowUpAsLiveExecutionRequest(threadId, userRequest);
     }
 
     private bool TryPreferCachedEvidenceForResolvedCompactContinuation(
@@ -305,13 +308,17 @@ internal sealed partial class ChatServiceSession {
             || ContainsQuestionSignal(normalizedRequest)
             || !LooksLikeContinuationFollowUp(normalizedRequest)
             || !answerPlan.HasPlan
+            || !answerPlan.AllowCachedEvidenceReuse
             || !answerPlan.PreferCachedEvidenceReuse
-            || answerPlan.CarryForwardUnresolvedFocus
-            || !HasFreshThreadToolEvidence(normalizedThreadId)) {
+            || answerPlan.CarryForwardUnresolvedFocus) {
             return false;
         }
 
-        return TryBuildToolEvidenceFallbackText(normalizedThreadId, normalizedRequest, out text);
+        return TryBuildToolEvidenceFallbackText(
+            normalizedThreadId,
+            normalizedRequest,
+            skipLiveExecutionBypass: true,
+            out text);
     }
 
     private bool HasFreshThreadToolEvidence(string threadId) {
@@ -364,8 +371,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (LooksLikeLiveRefreshFollowUp(normalized)
-            || LooksLikeExplicitLiveRefreshToolRequest(normalized)) {
+        if (ShouldTreatFollowUpAsLiveExecutionRequest(threadId, normalized)) {
             return false;
         }
 
@@ -405,8 +411,16 @@ internal sealed partial class ChatServiceSession {
             || !LooksLikeContinuationFollowUp(normalizedRequest)
             || IsCompactToolEvidenceContinuationNudge(normalizedRequest)
             || ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalizedRequest)
-            || !TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint)
-            || checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0) {
+            || !TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint)) {
+            return false;
+        }
+
+        if (checkpoint.PriorAnswerPlanRequiresLiveExecution
+            || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0) {
+            return true;
+        }
+
+        if (checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0) {
             return false;
         }
 
@@ -959,6 +973,10 @@ internal sealed partial class ChatServiceSession {
 
     internal bool TryBuildToolEvidenceFallbackTextForTesting(string threadId, string userRequest, out string text) {
         return TryBuildToolEvidenceFallbackText(threadId, userRequest, out text);
+    }
+
+    internal bool TryBuildToolEvidenceFallbackTextIgnoringLiveExecutionBypassForTesting(string threadId, string userRequest, out string text) {
+        return TryBuildToolEvidenceFallbackText(threadId, userRequest, skipLiveExecutionBypass: true, out text);
     }
 
     internal void RememberThreadToolEvidenceForTesting(

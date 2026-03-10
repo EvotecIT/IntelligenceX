@@ -37,7 +37,8 @@ public sealed partial class AdMonitoringProbeRunTool {
         "dns_service",
         "adws",
         "directory",
-        "ping"
+        "ping",
+        "windows_update"
     };
 
     private static readonly string[] DirectoryProbeKinds = {
@@ -112,9 +113,9 @@ public sealed partial class AdMonitoringProbeRunTool {
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_monitoring_probe_run",
-        "Run an AD monitoring probe through ADPlayground.Monitoring (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping) with optional domain/forest/DC scoping.",
+        "Run an AD monitoring probe through ADPlayground.Monitoring (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update) with optional domain/forest/DC scoping.",
         ToolSchema.Object(
-                ("probe_kind", ToolSchema.String("Probe kind to execute.").Enum("ldap", "dns", "kerberos", "ntp", "replication", "port", "https", "dns_service", "adws", "directory", "ping")),
+                ("probe_kind", ToolSchema.String("Probe kind to execute.").Enum("ldap", "dns", "kerberos", "ntp", "replication", "port", "https", "dns_service", "adws", "directory", "ping", "windows_update")),
                 ("directory_probe_kind", ToolSchema.String("Directory probe kind (required when probe_kind=directory).").Enum("root_dse", "dns_registration", "srv_coverage", "fsmo", "sysvol_gpt", "netlogon_share", "dns_soa", "ldap_search", "gc_readiness", "client_path", "rpc_endpoint", "share_permissions")),
                 ("name", ToolSchema.String("Optional probe execution name. If omitted, a generated name is used.")),
                 ("targets", ToolSchema.Array(ToolSchema.String(), "Optional explicit target hosts. When omitted, AD discovery can be used via domain/forest/include filters.")),
@@ -149,6 +150,7 @@ public sealed partial class AdMonitoringProbeRunTool {
                 ("include_facts", ToolSchema.Boolean("LDAP only: include quickly retrievable DC facts. Default true.")),
                 ("identity", ToolSchema.String("LDAP only: optional identity to validate (samAccountName/UPN/DN/GUID/SID).")),
                 ("stale_threshold_hours", ToolSchema.Integer("Replication only: stale threshold in hours. Default 12.")),
+                ("require_wsus", ToolSchema.Boolean("Windows Update probe only: require WSUS management signal. Default true.")),
                 ("include_sysvol", ToolSchema.Boolean("Replication only: include SYSVOL/DFSR snapshot.")),
                 ("test_sysvol_shares", ToolSchema.Boolean("Replication only: validate SYSVOL/NETLOGON share access.")),
                 ("test_ports", ToolSchema.Boolean("Replication only: include TCP connectivity precheck details.")),

@@ -1,0 +1,37 @@
+{
+  "name": "ad-ldap-cert-pivot-manual",
+  "tags": ["ad", "system", "continuation", "handoff", "certificate", "manual"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "LDAP baseline",
+      "user": "Discover current forest/domain scope, list discovered DCs, then run a compact LDAP and NTP baseline.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*", "ad_ldap_diagnostics", "ad_monitoring_probe_run"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Certificate posture follow-up",
+      "user": "Now inspect the certificate posture on those same discovered DCs.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["system_certificate_posture"],
+      "assert_not_contains": ["Please provide the host", "Which server should I use", "I only have LDAP status"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Fresh certificate posture refresh",
+      "user": "Refresh the certificate posture on the same hosts now and only report fresh results.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["system_certificate_posture"],
+      "assert_not_contains": ["[Cached evidence fallback]", "reused recent read-only evidence", "previous results still show"],
+      "assert_no_questions": true
+    }
+  ]
+}

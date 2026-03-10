@@ -78,7 +78,7 @@ internal sealed partial class ChatServiceSession {
                                               || continuationExpandedFromContext;
         var hasFreshThreadToolEvidence = HasFreshThreadToolEvidence(threadId);
         var liveRefreshFollowUpTurn = (hasStructuredContinuationContext || hasFreshThreadToolEvidence)
-                                      && LooksLikeLiveRefreshFollowUp(userRequest);
+                                      && ShouldTreatFollowUpAsLiveExecutionRequest(threadId, userRequest);
         var requestedMaxCandidateTools = request.Options?.MaxCandidateTools;
         var maxCandidateToolDiagnostics = ResolveMaxCandidateToolsDiagnosticsForTurn(requestedMaxCandidateTools, client.TransportKind, selectedModel);
         var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
@@ -379,7 +379,7 @@ internal sealed partial class ChatServiceSession {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
                     ThreadId = threadId,
-                    Text = clarificationVisibleText,
+                    Text = NormalizeFinalResultTextForProtocol(clarificationVisibleText),
                     Tools = null,
                     TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId),
                     AutonomyTelemetry = BuildAutonomyTelemetrySummary(

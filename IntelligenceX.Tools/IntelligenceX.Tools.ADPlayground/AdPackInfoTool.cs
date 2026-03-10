@@ -97,7 +97,10 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "For authoritative last-logon investigations, enumerate DCs first (ad_scope_discovery/ad_forest_discover), then query each DC with ad_ldap_query for lastLogon and compare max value; treat lastLogonTimestamp as replicated approximation.",
                 "Use ad_ldap_query_paged for large exploratory queries and continue with cursor.",
                 "Use ad_search_facets/ad_replication_summary/ad_replication_connections/ad_replication_status/ad_directory_discovery_diagnostics/ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_delegation_audit/ad_spn_stats for aggregated diagnostics.",
-                "Use ad_monitoring_probe_catalog + ad_monitoring_probe_run for runtime AD monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping)."
+                "Use ad_monitoring_probe_catalog + ad_monitoring_probe_run for runtime AD monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update). For probe_kind=directory, inspect the catalog's directory_probe_subkinds and follow those preferred follow-up tools before generic host pivots. For ldap, dns, kerberos, ntp, replication, ping, windows_update, port, https, and adws, inspect follow_up_profiles when the next diagnostic step depends on transport, TLS, WSUS, preflight, listener, or runtime pressure context, and inspect result_signal_profiles when probe output already points to a specific failure shape.",
+                "For LDAP/LDAPS certificate questions, prefer ad_ldap_diagnostics or ad_monitoring_probe_run with probe_kind=ldap and verify_certificate=true for endpoint evidence. Use system_certificate_posture only when the follow-up is explicitly about machine certificate stores or trust-store posture on the same host.",
+                "Use ad_monitoring_service_heartbeat_get/ad_monitoring_diagnostics_get/ad_monitoring_metrics_get/ad_monitoring_dashboard_state_get for persisted monitoring-service health, scheduler pressure, queue pressure, and dashboard-state inspection from an allowed monitoring directory.",
+                "When AD discovery or monitoring results identify specific domain controllers or hosts, pivot into system_info/system_time_sync/system_metrics_summary/system_hardware_summary/system_logical_disks_list/system_backup_posture/system_office_posture/system_browser_posture/system_tls_posture/system_winrm_posture/system_powershell_logging_posture/system_uac_posture/system_ldap_policy_posture/system_network_client_posture/system_account_policy_posture/system_interactive_logon_posture/system_device_guard_posture/system_defender_asr_posture with computer_name instead of asking the model to improvise the cross-pack jump."
             },
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
@@ -198,8 +201,16 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     primaryTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health", "ad_gpo_inventory_health", "ad_gpo_duplicates", "ad_gpo_blocked_inheritance", "ad_gpo_ou_link_summary", "ad_gpo_integrity", "ad_gpo_redirect", "ad_gpo_permission_read", "ad_gpo_permission_administrative", "ad_gpo_permission_consistency", "ad_gpo_permission_unknown", "ad_gpo_permission_root", "ad_gpo_permission_report", "ad_wmi_filters", "ad_wsus_configuration" }),
                 ToolPackGuidance.Capability(
                     id: "ad_runtime_monitoring",
-                    summary: "Run ADPlayground.Monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping) for server/domain/forest scope.",
-                    primaryTools: new[] { "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" })
+                    summary: "Run ADPlayground.Monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update) for server/domain/forest scope, and use the catalog metadata for probe-specific follow-through including directory sub-kinds, follow-up profiles, and result-signal profiles.",
+                    primaryTools: new[] { "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" }),
+                ToolPackGuidance.Capability(
+                    id: "ldap_certificate_followthrough",
+                    summary: "Capture LDAP/LDAPS endpoint certificate evidence. Use remote ComputerX certificate-store posture only when the follow-up is explicitly about the host machine stores rather than the LDAP service certificate itself.",
+                    primaryTools: new[] { "ad_ldap_diagnostics", "ad_monitoring_probe_run", "system_certificate_posture", "system_tls_posture" }),
+                ToolPackGuidance.Capability(
+                    id: "ad_monitoring_runtime_state",
+                    summary: "Inspect persisted ADPlayground.Monitoring heartbeat, diagnostics, scheduler pressure, and dashboard auto-generation state.",
+                    primaryTools: new[] { "ad_monitoring_service_heartbeat_get", "ad_monitoring_diagnostics_get", "ad_monitoring_metrics_get", "ad_monitoring_dashboard_state_get" })
             },
             entityHandoffs: new[] {
                 ToolPackGuidance.EntityHandoff(
@@ -215,7 +226,20 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                         ToolPackGuidance.EntityFieldMapping("identity.account_name", "identity", "Use as direct identity input for ad_search/ad_object_get."),
                         ToolPackGuidance.EntityFieldMapping("resolved[].distinguished_name", "identity", "Use direct DN for follow-up detail lookups.")
                     },
-                    notes: "Prefer ad_scope_discovery before lookups when domain/DC context is unclear; use ad_object_resolve for bulk correlation to avoid N+1 lookups.")
+                    notes: "Prefer ad_scope_discovery before lookups when domain/DC context is unclear; use ad_object_resolve for bulk correlation to avoid N+1 lookups."),
+                ToolPackGuidance.EntityHandoff(
+                    id: "ad_host_context_to_system_remote_scope",
+                    summary: "Promote discovered domain-controller and AD host evidence into remote ComputerX/System host diagnostics.",
+                    entityKinds: new[] { "computer", "host", "domain_controller" },
+                    sourceTools: new[] { "ad_environment_discover", "ad_scope_discovery", "ad_forest_discover", "ad_domain_controllers", "ad_monitoring_probe_run" },
+                    targetTools: new[] { "system_info", "system_time_sync", "system_metrics_summary", "system_hardware_summary", "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters", "system_logical_disks_list", "system_disks_list", "system_devices_summary", "system_features_list", "system_windows_update_client_status", "system_windows_update_telemetry", "system_backup_posture", "system_office_posture", "system_browser_posture", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_uac_posture", "system_ldap_policy_posture", "system_network_client_posture", "system_account_policy_posture", "system_interactive_logon_posture", "system_device_guard_posture", "system_defender_asr_posture", "system_certificate_posture" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("domain_controllers[].value", "computer_name", "Use discovered DC FQDN/host values directly as remote ComputerX targets."),
+                        ToolPackGuidance.EntityFieldMapping("domain_controllers[]", "computer_name", "Handle flat DC arrays returned by scope-discovery and discovery receipts."),
+                        ToolPackGuidance.EntityFieldMapping("domain_controller", "computer_name", "Use explicit domain_controller when a single-server pivot is intended."),
+                        ToolPackGuidance.EntityFieldMapping("targets[]", "computer_name", "Use explicit monitoring probe targets as remote ComputerX follow-up hosts.")
+                    },
+                    notes: "Prefer one host or a small deduplicated host batch at a time; use computer_name for all remote System pack follow-up tools. LDAP/LDAPS certificate requests should normally stay in the AD tools unless the user explicitly asks for machine-store or trust-store posture on the same host. For NTP/time-skew follow-up prefer system_time_sync; for host backup coverage prefer system_backup_posture; for host application hardening prefer system_office_posture or system_browser_posture; for crypto, remote-management, script-auditing, elevation, host LDAP/network client policy, effective host account/logon policy, or virtualization/ASR follow-up prefer system_tls_posture, system_winrm_posture, system_powershell_logging_posture, system_uac_posture, system_ldap_policy_posture, system_network_client_posture, system_account_policy_posture, system_interactive_logon_posture, system_device_guard_posture, or system_defender_asr_posture.")
             },
             toolCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(Options),
             rawPayloadPolicy: "Preserve raw engine payloads (including dynamic LDAP attribute bags and nested objects).",
@@ -224,7 +248,8 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
             setupHints: new {
                 DomainController = Options.DomainController ?? string.Empty,
                 SearchBaseDn = Options.DefaultSearchBaseDn ?? string.Empty,
-                Note = "Use ad_environment_discover first to bootstrap context; provide domain_controller/search_base_dn only when discovery cannot reach your target."
+                AllowedMonitoringRootsCount = Options.AllowedMonitoringRoots.Count,
+                Note = "Use ad_environment_discover first to bootstrap context; provide domain_controller/search_base_dn only when discovery cannot reach your target. Persisted monitoring-state tools require monitoring_directory inside AllowedMonitoringRoots."
             });
 
         var summary = ToolMarkdown.SummaryText(

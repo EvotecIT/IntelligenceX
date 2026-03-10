@@ -240,6 +240,18 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_ldap_certificates",
+            new[] { "servers", "domain_controller", "max_servers", "include_global_catalog", "verify_certificate", "identity", "certificate_include_dns_names", "timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_ldaps_certificates",
+            new[] { "servers", "domain_controller", "max_servers", "include_global_catalog", "verify_certificate", "identity", "certificate_include_dns_names", "timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_directory_discovery_diagnostics",
             new[] { "forest_name", "domains", "max_issues", "dns_resolve_timeout_ms", "ldap_timeout_ms", "include_dns_srv_comparison", "include_host_resolution", "include_directory_topology", "as_issue", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
@@ -295,7 +307,7 @@ public partial class ToolSchemaSnapshotTests {
 
         yield return new object[] {
             "ad_monitoring_probe_run",
-            new[] { "bind_identity", "bind_secret", "columns", "degraded_above_ms", "directory_allow_authenticated_fallback", "directory_allowed_shares", "directory_attribute", "directory_dns_servers", "directory_exclude_sites", "directory_filter", "directory_ignore_drive_shares", "directory_include_forest_roles", "directory_optional_shares", "directory_probe_kind", "directory_query_name", "directory_query_timeout_ms", "directory_require_global_catalog_ready", "directory_require_synchronized", "directory_required_shares", "directory_search_base", "directory_share_name", "directory_sites", "directory_use_all_dns_servers", "directory_use_anonymous_bind", "directory_use_ldaps", "directory_use_start_tls", "directory_zones", "discovery_fallback", "dns_queries", "dns_service_query_name", "dns_service_record_type", "dns_service_require_answers", "domain_controller", "domain_name", "exclude_domain_controllers", "exclude_domains", "forest_name", "identity", "include_children", "include_domain_controllers", "include_domains", "include_facts", "include_global_catalog", "include_sysvol", "include_trusts", "include_udp", "latency_threshold_ms", "loss_threshold_percent", "max_concurrency", "name", "p95_latency_threshold_ms", "path", "port", "probe_kind", "protocol", "query_mode", "request_timeout_ms", "retries", "retry_delay_ms", "skip_rodc", "sort_by", "sort_direction", "split_protocol_results", "stale_threshold_hours", "targets", "tcp_ports", "test_ping", "test_ports", "test_sysvol_shares", "timeout_ms", "top", "total_budget_ms", "udp_ports", "url", "use_ad_core_profile", "verify_certificate" },
+            new[] { "bind_identity", "bind_secret", "columns", "degraded_above_ms", "directory_allow_authenticated_fallback", "directory_allowed_shares", "directory_attribute", "directory_dns_servers", "directory_exclude_sites", "directory_filter", "directory_ignore_drive_shares", "directory_include_forest_roles", "directory_optional_shares", "directory_probe_kind", "directory_query_name", "directory_query_timeout_ms", "directory_require_global_catalog_ready", "directory_require_synchronized", "directory_required_shares", "directory_search_base", "directory_share_name", "directory_sites", "directory_use_all_dns_servers", "directory_use_anonymous_bind", "directory_use_ldaps", "directory_use_start_tls", "directory_zones", "discovery_fallback", "dns_queries", "dns_service_query_name", "dns_service_record_type", "dns_service_require_answers", "domain_controller", "domain_name", "exclude_domain_controllers", "exclude_domains", "forest_name", "identity", "include_children", "include_domain_controllers", "include_domains", "include_facts", "include_global_catalog", "include_sysvol", "include_trusts", "include_udp", "latency_threshold_ms", "loss_threshold_percent", "max_concurrency", "name", "p95_latency_threshold_ms", "path", "port", "probe_kind", "protocol", "query_mode", "request_timeout_ms", "require_wsus", "retries", "retry_delay_ms", "skip_rodc", "sort_by", "sort_direction", "split_protocol_results", "stale_threshold_hours", "targets", "tcp_ports", "test_ping", "test_ports", "test_sysvol_shares", "timeout_ms", "top", "total_budget_ms", "udp_ports", "url", "use_ad_core_profile", "verify_certificate" },
             new[] { "probe_kind" }
         };
 
