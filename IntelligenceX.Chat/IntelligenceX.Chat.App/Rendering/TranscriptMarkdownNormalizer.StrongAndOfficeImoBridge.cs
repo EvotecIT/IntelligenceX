@@ -83,12 +83,12 @@ internal static partial class TranscriptMarkdownNormalizer {
     private sealed class OfficeImoInputNormalizationBridge(Type optionsType, MethodInfo normalizeMethod, MethodInfo? presetFactoryMethod, PropertyInfo[] enabledProperties) {
         public string Normalize(string text) {
             try {
-                var options = CreateOptionsInstance();
+                var options = CreateOptionsInstance(out var usedPresetFactory);
                 if (options == null) {
                     return text;
                 }
 
-                if (presetFactoryMethod == null) {
+                if (!usedPresetFactory) {
                     for (var i = 0; i < enabledProperties.Length; i++) {
                         enabledProperties[i].SetValue(options, true);
                     }
@@ -101,11 +101,13 @@ internal static partial class TranscriptMarkdownNormalizer {
             }
         }
 
-        private object? CreateOptionsInstance() {
+        private object? CreateOptionsInstance(out bool usedPresetFactory) {
+            usedPresetFactory = false;
             try {
                 if (presetFactoryMethod != null) {
                     var presetOptions = presetFactoryMethod.Invoke(null, null);
                     if (presetOptions != null && optionsType.IsInstanceOfType(presetOptions)) {
+                        usedPresetFactory = true;
                         return presetOptions;
                     }
                 }
