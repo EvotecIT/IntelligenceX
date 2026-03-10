@@ -327,6 +327,7 @@ internal sealed partial class ChatServiceSession {
         UpdateToolRoutingStats(calls, outputs);
         if (decision.RememberSuccessfulPreflightCalls) {
             RememberSuccessfulPackPreflightCalls(threadId, calls, outputs);
+            RememberFailedPackPreflightCalls(threadId, calls, outputs);
         }
 
         foreach (var output in outputs) {

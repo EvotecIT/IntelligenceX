@@ -22,6 +22,16 @@ public sealed class HostRuntimeSelfReportTests {
         Assert.False(result);
     }
 
+    [Theory]
+    [InlineData("Jakiego modelu uzywasz?")]
+    [InlineData("Z jakiego modelu korzystasz?")]
+    [InlineData("¿Que modelo usas?")]
+    public void LooksLikeCompactRuntimeSelfReportQuestion_ReturnsTrueForShortInflectedModelAsk(string userText) {
+        var result = RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
+
+        Assert.True(result);
+    }
+
     [Fact]
     public void BuildCompactRuntimeSelfReportInput_EmbedsExactRuntimeFacts() {
         var toolDefinitions = new List<ToolDefinition> {

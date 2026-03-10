@@ -53,7 +53,8 @@ public sealed class ToolOrchestrationCatalogTests {
                     MaxRetryAttempts = 3,
                     RetryableErrorCodes = new[] { "timeout", "query_failed" },
                     SupportsAlternateEngines = true,
-                    AlternateEngineIds = new[] { "wmi", "cim" }
+                    AlternateEngineIds = new[] { "wmi", "cim" },
+                    RecoveryToolNames = new[] { "custom_discover_scope", "custom_pack_info" }
                 }),
             CreateDefinition(
                 name: "custom_operational_query",
@@ -94,6 +95,8 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.True(entry.SupportsAlternateEngines);
         Assert.Equal(2, entry.AlternateEngineCount);
         Assert.Equal(new[] { "cim", "wmi" }, entry.AlternateEngineIds);
+        Assert.Equal(2, entry.RecoveryToolCount);
+        Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, entry.RecoveryToolNames);
         Assert.Equal("custom_setup", entry.SetupToolName);
 
         var byPack = catalog.GetByPackId("customx");
@@ -228,7 +231,8 @@ public sealed class ToolOrchestrationCatalogTests {
             recovery: new ToolRecoveryContract {
                 IsRecoveryAware = true,
                 RetryableErrorCodes = new[] { "timeout" },
-                AlternateEngineIds = new[] { "cim" }
+                AlternateEngineIds = new[] { "cim" },
+                RecoveryToolNames = new[] { "custom_discover_scope" }
             });
 
         var catalog = ToolOrchestrationCatalog.Build(new[] { definition });
@@ -241,6 +245,7 @@ public sealed class ToolOrchestrationCatalogTests {
         definition.Handoff.OutboundRoutes[0].Bindings[0].TargetArgument = "mutated_target";
         definition.Recovery!.RetryableErrorCodes = new[] { "mutated_error" };
         definition.Recovery.AlternateEngineIds = new[] { "mutated_engine" };
+        definition.Recovery.RecoveryToolNames = new[] { "mutated_recovery_tool" };
 
         Assert.True(catalog.TryGetEntry("custom_pack_info", out var entryAfterMutation));
         Assert.Equal(new[] { "auth.session" }, entryAfterMutation.SetupRequirementIds);
@@ -249,6 +254,7 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(new[] { "host->target" }, entryAfterMutation.HandoffEdges[0].BindingPairs);
         Assert.Equal(new[] { "timeout" }, entryAfterMutation.RetryableErrorCodes);
         Assert.Equal(new[] { "cim" }, entryAfterMutation.AlternateEngineIds);
+        Assert.Equal(new[] { "custom_discover_scope" }, entryAfterMutation.RecoveryToolNames);
         Assert.Equal(entryBeforeMutation, entryAfterMutation);
     }
 
@@ -484,7 +490,8 @@ public sealed class ToolOrchestrationCatalogTests {
                 IsRecoveryAware = true,
                 SupportsTransientRetry = true,
                 MaxRetryAttempts = 2,
-                RetryableErrorCodes = new[] { "timeout" }
+                RetryableErrorCodes = new[] { "timeout" },
+                RecoveryToolNames = new[] { "custom_pack_probe" }
             });
 
         // Simulate malformed in-memory mutations after contract validation.
@@ -498,6 +505,7 @@ public sealed class ToolOrchestrationCatalogTests {
         definition.Recovery.SupportsAlternateEngines = false;
         definition.Recovery.RetryableErrorCodes = Array.Empty<string>();
         definition.Recovery.AlternateEngineIds = Array.Empty<string>();
+        definition.Recovery.RecoveryToolNames = Array.Empty<string>();
         definition.Recovery.RecoveryContractId = string.Empty;
 
         var catalog = ToolOrchestrationCatalog.Build(new[] { definition });

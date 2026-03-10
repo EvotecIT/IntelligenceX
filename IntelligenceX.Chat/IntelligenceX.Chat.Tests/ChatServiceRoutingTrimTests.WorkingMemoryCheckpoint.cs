@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using Xunit;
 
@@ -67,6 +68,74 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.Contains("ix:capability-snapshot:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("enabled_packs:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("routing_families:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
+    }
+
+    [Fact]
+    public void WorkingMemoryCheckpoint_AugmentsCompactFollowUpAfterRestart_WithRememberedExecutionBackend() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-working-memory-backend-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        const string threadId = "thread-working-memory-backend";
+
+        try {
+            var session1 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var toolCalls = new[] {
+                new ToolCallDto {
+                    CallId = "call-1",
+                    Name = "system_service_list",
+                    ArgumentsJson = "{\"engine\":\"cim\"}"
+                }
+            };
+            var toolOutputs = new[] {
+                new ToolOutputDto {
+                    CallId = "call-1",
+                    Ok = true,
+                    Output = "{\"services\":[{\"name\":\"wuauserv\"}]}",
+                    SummaryMarkdown = "Listed Windows services for this host.",
+                    MetaJson = "{\"engine_preference\":\"cim\"}"
+                }
+            };
+            session1.RememberThreadToolEvidenceForTesting(
+                threadId: threadId,
+                toolCalls: toolCalls,
+                toolOutputs: toolOutputs,
+                mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+            session1.RememberWorkingMemoryCheckpointFromToolOutputsForTesting(
+                threadId: threadId,
+                userIntent: "List system services and continue from that result.",
+                routedUserRequest: "List system services and continue from that result.",
+                toolCalls: toolCalls,
+                toolOutputs: toolOutputs);
+
+            var session2 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var augmented = session2.TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(
+                threadId,
+                userRequest: "run now",
+                routedUserRequest: "run now",
+                out var routedFromCheckpoint);
+
+            Assert.True(augmented);
+            Assert.Contains(
+                "recent_tool_execution_backends: system_service_list=cim",
+                routedFromCheckpoint,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                "recent_evidence_1: system_service_list: [backend: cim] Listed Windows services for this host.",
+                routedFromCheckpoint,
+                StringComparison.OrdinalIgnoreCase);
         } finally {
             try {
                 if (Directory.Exists(root)) {

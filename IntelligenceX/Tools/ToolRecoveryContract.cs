@@ -48,6 +48,12 @@ public sealed class ToolRecoveryContract {
     public IReadOnlyList<string> AlternateEngineIds { get; set; } = Array.Empty<string>();
 
     /// <summary>
+    /// Optional helper tool names that can restore context before retrying or resuming execution.
+    /// These helpers should be read-only bootstrap/discovery tools when provided.
+    /// </summary>
+    public IReadOnlyList<string> RecoveryToolNames { get; set; } = Array.Empty<string>();
+
+    /// <summary>
     /// Validates the contract and throws when invalid.
     /// </summary>
     public void Validate() {
@@ -79,6 +85,11 @@ public sealed class ToolRecoveryContract {
                 throw new InvalidOperationException(
                     "AlternateEngineIds must include at least one non-empty engine identifier.");
             }
+        }
+
+        if (RecoveryToolNames is not null && RecoveryToolNames.Count > 0 && !HasAnyNonEmptyToken(RecoveryToolNames)) {
+            throw new InvalidOperationException(
+                "RecoveryToolNames must include at least one non-empty tool name when provided.");
         }
     }
 

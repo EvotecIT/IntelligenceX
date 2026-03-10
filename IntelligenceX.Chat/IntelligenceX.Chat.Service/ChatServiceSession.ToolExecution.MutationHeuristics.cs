@@ -72,7 +72,7 @@ internal sealed partial class ChatServiceSession {
         var sawReadOnlyHint = false;
         var sawMutatingHint = false;
         for (var i = 0; i < tags.Count; i++) {
-            var token = NormalizeMutationHintToken(tags[i]);
+            var token = ToolMutabilityHintNames.NormalizeHintToken(tags[i]);
             if (token.Length == 0) {
                 continue;
             }
@@ -105,7 +105,7 @@ internal sealed partial class ChatServiceSession {
         var sawReadOnlyHint = false;
         var sawMutatingHint = false;
         foreach (var property in properties) {
-            var keyToken = NormalizeMutationHintToken(property.Key);
+            var keyToken = ToolMutabilityHintNames.NormalizeHintToken(property.Key);
             if (keyToken.Length > 0) {
                 sawMutatingHint |= IsMutatingMetadataToken(keyToken);
                 sawReadOnlyHint |= IsReadOnlyMetadataToken(keyToken);
@@ -118,7 +118,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             foreach (var enumValue in enumValues) {
-                var enumToken = NormalizeMutationHintToken(enumValue?.AsString());
+                var enumToken = ToolMutabilityHintNames.NormalizeHintToken(enumValue?.AsString());
                 if (enumToken.Length == 0) {
                     continue;
                 }
@@ -137,58 +137,11 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool IsMutatingMetadataToken(string token) {
-        if (token.Contains("read_write", StringComparison.Ordinal)
-            || token.Contains("readwrite", StringComparison.Ordinal)
-            || token.Contains("allow_write", StringComparison.Ordinal)
-            || token.Contains("danger", StringComparison.Ordinal)
-            || token.Contains("mutat", StringComparison.Ordinal)
-            || token.Contains("state_change", StringComparison.Ordinal)
-            || token.Contains("destruct", StringComparison.Ordinal)) {
-            return true;
-        }
-
-        return false;
+        return ToolMutabilityHintNames.LooksLikeMutatingHint(token);
     }
 
     private static bool IsReadOnlyMetadataToken(string token) {
-        return token.Contains("read_only", StringComparison.Ordinal)
-               || token.Contains("readonly", StringComparison.Ordinal)
-               || token.Contains("safe_read", StringComparison.Ordinal)
-               || token.Contains("query_only", StringComparison.Ordinal)
-               || token.Equals("inventory", StringComparison.Ordinal)
-               || token.Equals("diagnostic", StringComparison.Ordinal);
-    }
-
-    private static string NormalizeMutationHintToken(string? value) {
-        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length == 0) {
-            return string.Empty;
-        }
-
-        var chars = new char[normalized.Length];
-        var len = 0;
-        var previousWasSeparator = false;
-        for (var i = 0; i < normalized.Length; i++) {
-            var ch = normalized[i];
-            if (char.IsLetterOrDigit(ch)) {
-                chars[len++] = ch;
-                previousWasSeparator = false;
-                continue;
-            }
-
-            if (previousWasSeparator) {
-                continue;
-            }
-
-            chars[len++] = '_';
-            previousWasSeparator = true;
-        }
-
-        if (len == 0) {
-            return string.Empty;
-        }
-
-        return new string(chars, 0, len).Trim('_');
+        return ToolMutabilityHintNames.LooksLikeReadOnlyHint(token);
     }
 
     private static bool HasMutatingToolCallsWithHints(IReadOnlyList<ToolCall> calls, IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,

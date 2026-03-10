@@ -306,6 +306,12 @@ internal sealed partial class ChatServiceSession {
         var requestText = TrimForPrompt(userRequest, 520);
         var draftText = TrimForPrompt(ResolveReviewedAssistantDraft(assistantDraft).VisibleText, 1600);
         var toolActivityHint = hasToolActivity ? "present" : "none";
+        var rememberedExecutionBackends = ReadRememberedToolExecutionBackendHintsFromRequestText(userRequest);
+        var rememberedExecutionBackendsBlock = rememberedExecutionBackends.Length == 0
+            ? string.Empty
+            : "Remembered successful execution backends:\n"
+              + string.Join(", ", rememberedExecutionBackends)
+              + ".\n\n";
         var pass = Math.Max(1, reviewPassNumber);
         var maxPasses = Math.Max(pass, maxReviewPasses);
         return $$"""
@@ -321,7 +327,7 @@ internal sealed partial class ChatServiceSession {
 
             Tool activity this turn: {{toolActivityHint}}.
 
-            {{BuildAnswerPlanInstructions()}}
+            {{rememberedExecutionBackendsBlock}}{{BuildAnswerPlanInstructions()}}
 
             Rewrite the assistant response so it is helpful, direct, and action-oriented.
             Do not invent tool outputs.

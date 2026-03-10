@@ -143,7 +143,8 @@ internal static class EventLogToolContracts {
             MaxRetryAttempts = supportsRetry ? 1 : 0,
             RetryableErrorCodes = supportsRetry
                 ? new[] { "timeout", "query_failed", "probe_failed", "transport_unavailable" }
-                : Array.Empty<string>()
+                : Array.Empty<string>(),
+            RecoveryToolNames = new[] { "eventlog_channel_list" }
         };
     }
 

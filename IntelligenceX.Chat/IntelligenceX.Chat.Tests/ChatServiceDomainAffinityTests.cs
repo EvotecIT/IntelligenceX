@@ -885,12 +885,9 @@ public sealed class ChatServiceDomainAffinityTests {
     }
 
     [Theory]
-    [InlineData("AD and DNS")]
-    [InlineData("Need LDAP + MX checks")]
-    [InlineData("kerberos DNS MX")]
-    [InlineData("act_domain_scope_ad with dns checks")]
-    [InlineData("replication with DNSSEC checks")]
-    public void HasConflictingDomainIntentSignalsForTesting_ReturnsTrueForMixedSignals(string input) {
+    [InlineData("Need LDAP + MX checks for contoso.com")]
+    [InlineData("replication with DNSSEC checks for ad.evotec.xyz")]
+    public void HasConflictingDomainIntentSignalsForTesting_ReturnsTrueForAnchoredMixedSignals(string input) {
         Assert.True(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
     }
 
@@ -898,9 +895,71 @@ public sealed class ChatServiceDomainAffinityTests {
     [InlineData("AD LDAP GPO")]
     [InlineData("DNS MX SPF")]
     [InlineData("domain summary")]
+    [InlineData("AD and DNS")]
+    [InlineData("Need LDAP + MX checks")]
+    [InlineData("kerberos DNS MX")]
+    [InlineData("replication with DNSSEC checks")]
+    [InlineData("Necesito LDAP y MX")]
+    [InlineData("Potrzebuje LDAP i MX")]
     [InlineData("ad and dns")]
-    public void HasConflictingDomainIntentSignalsForTesting_ReturnsFalseWhenSignalsDoNotConflict(string input) {
+    public void HasConflictingDomainIntentSignalsForTesting_ReturnsFalseWhenSignalsDoNotConflictOrLackAnchor(string input) {
         Assert.False(ChatServiceSession.HasConflictingDomainIntentSignalsForTesting(input));
+    }
+
+    [Fact]
+    public void HasMixedTechnicalDomainIntentSignalsForTesting_ReturnsTrueWithoutAnchorWhenFamiliesConflict() {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
+        };
+
+        var mixed = ChatServiceSession.HasMixedTechnicalDomainIntentSignalsForTesting(
+            "Please run AD LDAP and DNS MX checks together now.",
+            tools);
+
+        Assert.True(mixed);
+    }
+
+    [Fact]
+    public void ShouldRequestDomainIntentClarificationBeforeRoutingForTesting_ReturnsTrueForParentChildDomainPair() {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
+        };
+
+        var shouldClarify = ChatServiceSession.ShouldRequestDomainIntentClarificationBeforeRoutingForTesting(
+            weightedToolRouting: true,
+            executionContractApplies: false,
+            compactFollowUpTurn: false,
+            hasPreferredDomainIntentFamily: false,
+            hasFreshPendingActionContext: false,
+            userRequest: "Check domain health for corp.contoso.com and contoso.com.",
+            hasAdFamily: true,
+            hasPublicFamily: true,
+            availableDefinitions: tools);
+
+        Assert.True(shouldClarify);
+    }
+
+    [Fact]
+    public void ShouldRequestDomainIntentClarificationBeforeRoutingForTesting_SuppressesCompactFollowUpWithExistingChoiceContext() {
+        var tools = new[] {
+            new ToolDefinition("ad_scope_discovery", "AD scope", tags: new[] { "domain_family:ad_domain" }),
+            new ToolDefinition("dnsclientx_query", "DNS query", tags: new[] { "domain_family:public_domain" })
+        };
+
+        var shouldClarify = ChatServiceSession.ShouldRequestDomainIntentClarificationBeforeRoutingForTesting(
+            weightedToolRouting: true,
+            executionContractApplies: false,
+            compactFollowUpTurn: true,
+            hasPreferredDomainIntentFamily: false,
+            hasFreshPendingActionContext: true,
+            userRequest: "Check contoso.com",
+            hasAdFamily: true,
+            hasPublicFamily: true,
+            availableDefinitions: tools);
+
+        Assert.False(shouldClarify);
     }
 
     [Fact]
@@ -911,7 +970,7 @@ public sealed class ChatServiceDomainAffinityTests {
         };
 
         var shouldForce = ChatServiceSession.ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
-            "Please do AD LDAP + DNS MX together now.",
+            "Please do AD LDAP + DNS MX together for contoso.com now.",
             tools);
 
         Assert.True(shouldForce);

@@ -103,6 +103,79 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantUsesStandaloneUnquotedCtaLine() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var assistantDraft = """
+            To continue:
+            run now
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            mutating: false
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", "run now" });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Theory]
+    [InlineData("yes, run now")]
+    [InlineData("please run now")]
+    public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenUserWrapsAssistantCtaWithCompactAffirmation(string input) {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var assistantDraft = """
+            If you say "run now", I'll execute it.
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            mutating: false
+            reply: /act act_001
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        Assert.Equal("act_001", doc.RootElement.GetProperty("ix_action_selection").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public void ExtractPendingActionCallToActionTokens_RecognizesStandaloneUnquotedCtaLineAfterColonLabel() {
+        var draft = """
+            To continue:
+            run now
+
+            [Action]
+            ix:action:v1
+            id: act_001
+            title: First
+            request: Do first thing.
+            reply: /act act_001
+            """;
+        var method = typeof(ChatServiceSession).GetMethod(
+            "ExtractPendingActionCallToActionTokens",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var tokensObj = method!.Invoke(null, new object?[] { draft });
+        var tokens = Assert.IsType<string[]>(tokensObj);
+
+        Assert.Contains(tokens, static t => string.Equals(t, "run now", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ExpandContinuationUserRequest_ResolvesSinglePendingActionWhenAssistantCtaIncludesTrailingColonInQuote() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var assistantDraft = """

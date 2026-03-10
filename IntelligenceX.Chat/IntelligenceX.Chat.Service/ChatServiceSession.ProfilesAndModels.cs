@@ -1029,6 +1029,9 @@ internal sealed partial class ChatServiceSession {
         ClearUserIntentSnapshots();
         ClearDomainIntentFamilySnapshots();
         ClearPendingDomainIntentClarificationSnapshots();
+        ClearPackPreflightSnapshots();
+        ClearHostBootstrapFailureSnapshots();
+        ClearAlternateEngineHealthSnapshots();
         ClearWeightedToolSubsetSnapshots();
         ClearStructuredNextActionSnapshots();
         ClearPlannerThreadContextSnapshots();

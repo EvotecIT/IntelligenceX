@@ -4582,6 +4582,71 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("Public domain", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_RequestsDomainScopeClarificationForParentChildDomainPairBeforeExecution() {
+        using var server = new DeterministicCompatibleHttpServer();
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 4,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool("ad_scope_discovery", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new RoundTripStubTool("dnsclientx_query", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-domain-intent-clarify-parent-child",
+            ThreadId = thread.Id,
+            Text = "Check domain health for corp.contoso.com and contoso.com.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = true,
+                MaxToolRounds = 4,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(0, server.ChatCompletionRequestCount);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Null(resultMessage.Tools);
+        Assert.Contains("I can check that", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("which side", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD domain", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Public domain", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void SetSessionRegistry(ChatServiceSession session, ToolRegistry registry) {
         RegistryField.SetValue(session, registry);
         var catalog = ToolOrchestrationCatalog.Build(registry.GetDefinitions());

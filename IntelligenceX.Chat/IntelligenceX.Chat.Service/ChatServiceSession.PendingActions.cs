@@ -250,6 +250,54 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        if (TryMatchStructuredPendingActionSelection(normalized, actions, out var structuredMatch, out var structuredReason)) {
+            var structuredRequest = string.IsNullOrWhiteSpace(structuredMatch.Request) ? structuredMatch.Title : structuredMatch.Request;
+            if (string.IsNullOrWhiteSpace(structuredRequest)) {
+                TracePendingActionDecision(
+                    userText: normalized,
+                    isExplicitAct: isExplicitAct,
+                    actionsCount: actions?.Length ?? 0,
+                    usedSnapshot: usedSnapshot,
+                    outcome: "skip",
+                    reason: "matched_action_missing_request",
+                    selectedActionId: structuredMatch.Id);
+                return false;
+            }
+
+            resolvedRequest = BuildActionSelectionPayloadJson(
+                actionId: structuredMatch.Id.Trim(),
+                title: structuredMatch.Title.Trim(),
+                request: structuredRequest,
+                mutability: structuredMatch.Mutability);
+            lock (_toolRoutingContextLock) {
+                _pendingActionsByThreadId.Remove(normalizedThreadId);
+                _pendingActionsSeenUtcTicks.Remove(normalizedThreadId);
+                _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
+                TrimWeightedRoutingContextsNoLock();
+            }
+            RemovePendingActionsSnapshot(normalizedThreadId);
+            TracePendingActionDecision(
+                userText: normalized,
+                isExplicitAct: isExplicitAct,
+                actionsCount: actions?.Length ?? 0,
+                usedSnapshot: usedSnapshot,
+                outcome: "match",
+                reason: structuredReason,
+                selectedActionId: structuredMatch.Id);
+            return true;
+        }
+
+        if (LooksLikeActionSelectionPayload(normalized)) {
+            TracePendingActionDecision(
+                userText: normalized,
+                isExplicitAct: isExplicitAct,
+                actionsCount: actions?.Length ?? 0,
+                usedSnapshot: usedSnapshot,
+                outcome: "skip",
+                reason: structuredReason);
+            return false;
+        }
+
         var selected = TryMatchPendingActionWithReason(
                 normalized,
                 actions,
@@ -398,6 +446,41 @@ internal sealed partial class ChatServiceSession {
             request: request,
             mutability: action.Mutability);
         return true;
+    }
+
+    private static bool TryMatchStructuredPendingActionSelection(
+        string userText,
+        IReadOnlyList<PendingAction> actions,
+        out PendingAction match,
+        out string reason) {
+        match = default;
+        reason = "not_structured_action_selection";
+        if (actions is null || actions.Count == 0) {
+            reason = "no_actions_available";
+            return false;
+        }
+
+        if (!TryReadActionSelectionIntent(userText, out var actionId, out _)) {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(actionId)) {
+            reason = "action_payload_invalid_id";
+            return false;
+        }
+
+        for (var i = 0; i < actions.Count; i++) {
+            if (!string.Equals(actions[i].Id, actionId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            match = actions[i];
+            reason = "structured_action_selection_id";
+            return true;
+        }
+
+        reason = "action_payload_id_not_found";
+        return false;
     }
 
     private static bool TryMatchPendingAction(string userText, IReadOnlyList<PendingAction> actions, IReadOnlyList<string> callToActionTokens, out PendingAction match) {

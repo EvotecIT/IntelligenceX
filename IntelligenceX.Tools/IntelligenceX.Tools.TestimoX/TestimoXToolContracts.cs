@@ -109,7 +109,8 @@ internal static class TestimoXToolContracts {
             MaxRetryAttempts = supportsRetry ? 1 : 0,
             RetryableErrorCodes = supportsRetry
                 ? new[] { "execution_failed", "timeout", "transport_unavailable" }
-                : Array.Empty<string>()
+                : Array.Empty<string>(),
+            RecoveryToolNames = new[] { "testimox_rules_list" }
         };
     }
 

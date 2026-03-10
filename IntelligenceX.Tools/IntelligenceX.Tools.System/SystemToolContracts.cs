@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -90,15 +91,22 @@ internal static class SystemToolContracts {
             return definition.Recovery;
         }
 
-        var supportsAlternateEngines = definition.Name.StartsWith("system_", StringComparison.OrdinalIgnoreCase);
+        var supportsAlternateEngines = ToolParametersExposeAlternateEngineSelector(definition.Parameters);
         return new ToolRecoveryContract {
             IsRecoveryAware = true,
             SupportsTransientRetry = true,
             MaxRetryAttempts = 1,
             RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed", "access_denied", "transport_unavailable" },
             SupportsAlternateEngines = supportsAlternateEngines,
-            AlternateEngineIds = supportsAlternateEngines ? new[] { "cim", "wmi" } : Array.Empty<string>()
+            AlternateEngineIds = supportsAlternateEngines ? new[] { "cim", "wmi" } : Array.Empty<string>(),
+            RecoveryToolNames = new[] { "system_info" }
         };
+    }
+
+    private static bool ToolParametersExposeAlternateEngineSelector(JsonObject? parameters) {
+        var properties = parameters?.GetObject("properties");
+        return properties is not null
+               && ToolAlternateEngineSelectorNames.TryResolveSelectorArgumentName(properties, out _);
     }
 
     private static string ResolveRole(string toolName) {

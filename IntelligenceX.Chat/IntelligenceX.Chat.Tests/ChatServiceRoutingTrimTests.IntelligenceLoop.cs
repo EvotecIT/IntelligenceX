@@ -1030,6 +1030,24 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildResponseQualityReviewPrompt_IncludesRememberedExecutionBackendsWhenPresentInStructuredContext() {
+        var prompt = ChatServiceSession.BuildResponseQualityReviewPrompt(
+            userRequest: """
+                [Working memory checkpoint]
+                ix:working-memory:v1
+                recent_tool_execution_backends: system_service_list=cim, eventlog_live_query=native
+                follow_up: continue
+                """,
+            assistantDraft: "I can continue the same diagnostics.",
+            hasToolActivity: true,
+            reviewPassNumber: 1,
+            maxReviewPasses: 2);
+
+        Assert.Contains("Remembered successful execution backends:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("system_service_list=cim, eventlog_live_query=native", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsOneVisualWhenStructuredVisualContractIsPresent() {
         var request = """
             Build the summary and include this visual contract if useful:

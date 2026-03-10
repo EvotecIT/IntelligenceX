@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ComputerX.PatchDetails;
+using ComputerX.Services;
 using ComputerX.Updates;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.Common;
@@ -19,6 +20,14 @@ public abstract class SystemToolBase : ToolBase {
         "Moderate",
         "Low"
     };
+
+    private static readonly IReadOnlyDictionary<string, ServiceEngine> ServiceEngineByName =
+        new Dictionary<string, ServiceEngine>(StringComparer.OrdinalIgnoreCase) {
+            ["auto"] = ServiceEngine.Auto,
+            ["native"] = ServiceEngine.Native,
+            ["wmi"] = ServiceEngine.Wmi,
+            ["cim"] = ServiceEngine.Cim
+        };
 
     /// <summary>
     /// Shared options for system tools.
@@ -443,6 +452,40 @@ public abstract class SystemToolBase : ToolBase {
         int maxInclusive = 120_000) {
         return ToolArgs.GetCappedInt32(arguments, argumentName, defaultValue, minInclusive, maxInclusive);
     }
+
+    /// <summary>
+    /// Resolves an optional service-engine selector for tools backed by ComputerX.Services.
+    /// </summary>
+    protected static bool TryResolveServiceEngine(
+        ToolArgumentReader reader,
+        string argumentName,
+        out ServiceEngine engine,
+        out string? errorResponse) {
+        if (!ToolEnumBinders.TryParseOptional(
+                reader.OptionalString(argumentName),
+                ServiceEngineByName,
+                argumentName,
+                out ServiceEngine? parsedEngine,
+                out errorResponse)) {
+            engine = ServiceEngine.Auto;
+            return false;
+        }
+
+        engine = parsedEngine ?? ServiceEngine.Auto;
+        errorResponse = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Normalizes a service-engine enum value into the lowercase contract form exposed by tool metadata.
+    /// </summary>
+    protected static string NormalizeServiceEngine(ServiceEngine engine) =>
+        engine switch {
+            ServiceEngine.Native => "native",
+            ServiceEngine.Wmi => "wmi",
+            ServiceEngine.Cim => "cim",
+            _ => "auto"
+        };
 
     private static bool TryNormalizePatchSeverity(string input, out string normalized) {
         normalized = string.Empty;

@@ -31,6 +31,7 @@ internal sealed partial class ChatServiceSession {
         public string ArgumentsJson { get; set; } = "{}";
         public string Output { get; set; } = string.Empty;
         public string SummaryMarkdown { get; set; } = string.Empty;
+        public string ExecutionBackend { get; set; } = string.Empty;
         public long SeenUtcTicks { get; set; }
     }
 
@@ -78,6 +79,7 @@ internal sealed partial class ChatServiceSession {
                     ArgumentsJson = NormalizeArgumentsJsonForReplayContract(entry.ArgumentsJson),
                     Output = CompactToolEvidencePayload((entry.Output ?? string.Empty).Trim()),
                     SummaryMarkdown = CompactToolEvidenceSummary((entry.SummaryMarkdown ?? string.Empty).Trim()),
+                    ExecutionBackend = NormalizeToolExecutionBackend(entry.ExecutionBackend),
                     SeenUtcTicks = entry.SeenUtcTicks
                 })
                 .Where(static entry => entry.ToolName.Length > 0 && (entry.Output.Length > 0 || entry.SummaryMarkdown.Length > 0))
@@ -134,6 +136,7 @@ internal sealed partial class ChatServiceSession {
                     ArgumentsJson: NormalizeArgumentsJsonForReplayContract(entry.ArgumentsJson),
                     Output: CompactToolEvidencePayload((entry.Output ?? string.Empty).Trim()),
                     SummaryMarkdown: CompactToolEvidenceSummary((entry.SummaryMarkdown ?? string.Empty).Trim()),
+                    ExecutionBackend: NormalizeToolExecutionBackend(entry.ExecutionBackend),
                     SeenUtcTicks: entry.SeenUtcTicks))
                 .Where(static entry => entry.ToolName.Length > 0 && (entry.Output.Length > 0 || entry.SummaryMarkdown.Length > 0))
                 .OrderByDescending(static entry => entry.SeenUtcTicks)

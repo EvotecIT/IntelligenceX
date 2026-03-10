@@ -113,6 +113,78 @@ internal sealed partial class ChatServiceSession {
             userRequest,
             routedUserRequest);
         var structuredCompactFollowUpTurn = continuationContractDetected && compactFollowUpTurn;
+        var domainIntentSignalRequest = userRequest;
+        var conflictingDomainSignals = domainIntentFamilyAvailability.HasMixedFamilies
+                                       && HasConflictingDomainIntentSignals(domainIntentSignalRequest, fullToolDefs);
+        if (conflictingDomainSignals) {
+            ClearPreferredDomainIntentFamily(threadId);
+        }
+
+        var forceDomainIntentClarification = ShouldForceDomainIntentClarificationForConflictingSignals(
+            domainIntentSignalRequest,
+            fullToolDefs);
+        var hasPreferredDomainIntentFamily = TryGetCurrentDomainIntentFamily(threadId, out var preferredDomainIntentFamily);
+        if (hasPreferredDomainIntentFamily
+            && !IsDomainIntentFamilyAvailable(domainIntentFamilyAvailability, preferredDomainIntentFamily)) {
+            ClearPreferredDomainIntentFamily(threadId);
+            hasPreferredDomainIntentFamily = false;
+        }
+
+        var shouldRequestEarlyDomainIntentClarification = !forceDomainIntentClarification
+                                                          && ShouldRequestDomainIntentClarificationBeforeRouting(
+                                                              weightedToolRouting: weightedToolRouting,
+                                                              executionContractApplies: executionContractApplies,
+                                                              compactFollowUpTurn: structuredCompactFollowUpTurn,
+                                                              hasPreferredDomainIntentFamily: hasPreferredDomainIntentFamily,
+                                                              hasFreshPendingActionContext: hasFreshPendingActionContext,
+                                                              userRequest: domainIntentSignalRequest,
+                                                              availability: domainIntentFamilyAvailability,
+                                                              availableDefinitions: fullToolDefs);
+        if (forceDomainIntentClarification || shouldRequestEarlyDomainIntentClarification) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: forceDomainIntentClarification
+                        ? "Tool routing detected conflicting domain-scope signals and forced structured clarification before execution."
+                        : "Tool routing detected mixed cross-family technical signals and requested scope clarification before weighted routing.")
+                .ConfigureAwait(false);
+
+            var actionCatalog = ResolveDomainIntentActionCatalog(fullToolDefs);
+            var clarificationText = BuildDomainIntentClarificationText(domainIntentFamilyAvailability, actionCatalog);
+            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, domainIntentFamilyAvailability, actionCatalog);
+            if (clarificationText.Length > 0 && clarificationVisibleText.Length > 0) {
+                RememberPendingDomainIntentClarificationRequest(threadId);
+                RememberPendingActions(threadId, clarificationText);
+                var clarificationResult = new ChatResultMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    ThreadId = threadId,
+                    Text = NormalizeFinalResultTextForProtocol(clarificationVisibleText),
+                    Tools = null,
+                    TurnTimelineEvents = SnapshotTurnTimelineEvents(request.RequestId),
+                    AutonomyTelemetry = BuildAutonomyTelemetrySummary(
+                        toolRounds: 0,
+                        projectionFallbackCount: 0,
+                        toolErrors: Array.Empty<ToolErrorMetricDto>(),
+                        autonomyCounters: Array.Empty<TurnCounterMetricDto>(),
+                        completed: true)
+                };
+                return new ChatTurnRunResult(
+                    Result: clarificationResult,
+                    Usage: null,
+                    ToolCallsCount: 0,
+                    ToolRounds: 0,
+                    ProjectionFallbackCount: 0,
+                    ToolErrors: Array.Empty<ToolErrorMetricDto>(),
+                    AutonomyCounters: Array.Empty<TurnCounterMetricDto>(),
+                    ResolvedModel: null,
+                    WeightedSubsetSelectionMs: weightedSubsetSelectionMs,
+                    ResolveModelMs: resolveModelMs);
+            }
+        }
+
         var usedContinuationSubset = false;
         if (weightedToolRouting && toolDefs.Count > 0) {
             if (!executionContractApplies) {
@@ -232,13 +304,6 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
-        var domainIntentSignalRequest = userRequest;
-        var conflictingDomainSignals = domainIntentFamilyAvailability.HasMixedFamilies
-                                       && HasConflictingDomainIntentSignals(domainIntentSignalRequest, fullToolDefs);
-        if (conflictingDomainSignals) {
-            ClearPreferredDomainIntentFamily(threadId);
-        }
-
         var domainIntentRoutingResolved = false;
         if (!conflictingDomainSignals
             && TryApplyDomainIntentSignalRoutingHint(
@@ -329,9 +394,6 @@ internal sealed partial class ChatServiceSession {
             domainIntentRoutingResolved = true;
         }
 
-        var forceDomainIntentClarification = ShouldForceDomainIntentClarificationForConflictingSignals(
-            domainIntentSignalRequest,
-            fullToolDefs);
         var shouldRequestDomainIntentClarification = ShouldRequestDomainIntentClarification(
             weightedToolRouting: weightedToolRouting,
             executionContractApplies: executionContractApplies,
@@ -341,12 +403,6 @@ internal sealed partial class ChatServiceSession {
             totalToolCount: routingTotalToolCount,
             selectedTools: toolDefs,
             availableDefinitions: fullToolDefs);
-        var hasPreferredDomainIntentFamily = TryGetCurrentDomainIntentFamily(threadId, out var preferredDomainIntentFamily);
-        if (hasPreferredDomainIntentFamily
-            && !IsDomainIntentFamilyAvailable(domainIntentFamilyAvailability, preferredDomainIntentFamily)) {
-            ClearPreferredDomainIntentFamily(threadId);
-            hasPreferredDomainIntentFamily = false;
-        }
         if (ShouldSuppressDomainIntentClarificationForCompactFollowUp(
                 structuredCompactFollowUpTurn,
                 hasPreferredDomainIntentFamily,
@@ -768,6 +824,7 @@ internal sealed partial class ChatServiceSession {
 
             UpdateToolRoutingStats(callsToExecute, executed);
             RememberSuccessfulPackPreflightCalls(threadId, callsToExecute, executed);
+            RememberFailedPackPreflightCalls(threadId, callsToExecute, executed);
             var executedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
             foreach (var call in roundCalls) {
                 var normalizedCallId = (call.CallId ?? string.Empty).Trim();

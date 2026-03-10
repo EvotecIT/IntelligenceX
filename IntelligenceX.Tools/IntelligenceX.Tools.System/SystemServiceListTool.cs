@@ -18,6 +18,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
     private sealed record ServiceListRequest(
         string? ComputerName,
         string Target,
+        ServiceEngine Engine,
         string? NameContains,
         ServiceListStatusFilter Status,
         int MaxServices);
@@ -36,6 +37,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         "List Windows services (read-only, capped).",
         ToolSchema.Object(
                 ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
+                ("engine", ToolSchema.String("Optional engine preference. Use 'auto' unless you need a specific backend for diagnostics or recovery.").Enum("auto", "native", "wmi", "cim")),
                 ("name_contains", ToolSchema.String("Optional case-insensitive filter against service name and display name.")),
                 ("status", ToolSchema.String("Optional status filter.").Enum("any", "running", "stopped", "paused")),
                 ("max_services", ToolSchema.Integer("Optional maximum services to return (capped).")))
@@ -63,6 +65,10 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
     private ToolRequestBindingResult<ServiceListRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
             var computerName = reader.OptionalString("computer_name");
+            if (!TryResolveServiceEngine(reader, "engine", out var engine, out var engineError)) {
+                return ToolRequestBindingResult<ServiceListRequest>.Failure(engineError ?? "Invalid engine value.");
+            }
+
             if (!ToolEnumBinders.TryParseOptional(
                     reader.OptionalString("status"),
                     StatusFilterByName,
@@ -75,6 +81,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
             return ToolRequestBindingResult<ServiceListRequest>.Success(new ServiceListRequest(
                 ComputerName: computerName,
                 Target: ResolveTargetComputerName(computerName),
+                Engine: engine,
                 NameContains: reader.OptionalString("name_contains"),
                 Status: parsedStatus ?? ServiceListStatusFilter.Any,
                 MaxServices: ResolveBoundedOptionLimit(arguments, "max_services")));
@@ -86,6 +93,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         var attempt = await ServiceListQueryExecutor.TryExecuteAsync(
             request: new ServiceListQueryRequest {
                 ComputerName = request.ComputerName,
+                Engine = request.Engine,
                 NameContains = request.NameContains,
                 StatusFilter = request.Status,
                 MaxResults = request.MaxServices,
@@ -116,6 +124,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
                 if (request.Status != ServiceListStatusFilter.Any) {
                     meta.Add("status", request.Status.ToString());
                 }
+                meta.Add("engine_preference", NormalizeServiceEngine(request.Engine));
                 AddReadOnlyPostureChainingMeta(
                     meta: meta,
                     currentTool: "system_service_list",

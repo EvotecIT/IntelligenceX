@@ -261,11 +261,38 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (!HasTechnicalDomainSignalAnchor(normalized)) {
+            return false;
+        }
+
         var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
         var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
                            || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
         var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
         return hasAdSignals && hasPublicSignals;
+    }
+
+    private static bool HasMixedTechnicalDomainIntentSignals(string text, IReadOnlyList<ToolDefinition>? availableDefinitions) {
+        var normalized = NormalizeCompactText(text);
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
+                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
+        return hasAdSignals && hasPublicSignals;
+    }
+
+    private static bool HasTechnicalDomainSignalAnchor(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return ExtractDomainLikeTokens(normalized).Count > 0
+               || ExtractExplicitRequestedToolNames(normalized).Length > 0;
     }
 
     private readonly record struct DomainIntentSignalLexicon(

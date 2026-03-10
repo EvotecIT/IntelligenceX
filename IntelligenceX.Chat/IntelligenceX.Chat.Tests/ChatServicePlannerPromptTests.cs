@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
@@ -234,6 +235,7 @@ public sealed class ChatServicePlannerPromptTests {
             structured_next_action_source_tools: ad_monitoring_probe_run
             structured_next_action_reason: inspect ldaps certificate details on the same domain controller
             structured_next_action_confidence: 0.88
+            preferred_execution_backends: system_service_list=cim
             handoff_target_pack_ids: system
             handoff_target_tool_names: system_metrics_summary
             matching_skills: ad_domain.scope_hosts, system.host_baseline
@@ -253,6 +255,7 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("Structured source tools: ad_monitoring_probe_run", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Structured next-action reason: inspect ldaps certificate details on the same domain controller", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Structured next-action confidence: 0.88", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Preferred execution backends: system_service_list=cim", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Target packs: system", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Target tools: system_metrics_summary", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Matching reusable skills:", prompt, StringComparison.OrdinalIgnoreCase);
@@ -400,6 +403,25 @@ public sealed class ChatServicePlannerPromptTests {
             new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
                 ["ad_ldap_diagnostics"] = false
             });
+        session.RememberThreadToolEvidenceForTesting(
+            threadId,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-ldap-pref",
+                    Name = "ad_ldap_diagnostics",
+                    ArgumentsJson = "{\"domain_controller\":\"ad0.contoso.com\",\"engine\":\"cim\"}"
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ldap-pref",
+                    Ok = true,
+                    Output = "{\"ok\":true}",
+                    SummaryMarkdown = "LDAP diagnostics completed.",
+                    MetaJson = "{\"engine_preference\":\"cim\"}"
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
 
         var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
             threadId,
@@ -412,6 +434,7 @@ public sealed class ChatServicePlannerPromptTests {
             out var missingLiveEvidence,
             out var preferredPackIds,
             out var preferredToolNames,
+            out var preferredExecutionBackends,
             out var handoffTargetPackIds,
             out var handoffTargetToolNames,
             out var continuationSourceTool,
@@ -425,6 +448,7 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Equal(string.Empty, missingLiveEvidence);
         Assert.Contains("active_directory", preferredPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_ldap_diagnostics", preferredToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_diagnostics=cim", preferredExecutionBackends, StringComparer.OrdinalIgnoreCase);
         Assert.Empty(handoffTargetPackIds);
         Assert.Empty(handoffTargetToolNames);
         Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
@@ -458,6 +482,7 @@ public sealed class ChatServicePlannerPromptTests {
             out var missingLiveEvidence,
             out var preferredPackIds,
             out var preferredToolNames,
+            out var preferredExecutionBackends,
             out var handoffTargetPackIds,
             out var handoffTargetToolNames,
             out var continuationSourceTool,
@@ -473,6 +498,7 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("system", preferredPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_ldap_diagnostics", preferredToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_hardware_summary", preferredToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(preferredExecutionBackends);
         Assert.Contains("system", handoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_metrics_summary", handoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
@@ -1306,6 +1332,40 @@ public sealed class ChatServicePlannerPromptTests {
             }));
 
         Assert.Equal(8, selected.Count);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EnsureMinimumToolSelection_DoesNotBackfillBeyondRequestedLimitForSmallBudget() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var allDefinitions = new List<ToolDefinition>();
+        for (var i = 0; i < 10; i++) {
+            allDefinitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        allDefinitions.Add(new ToolDefinition(
+            "eventlog_evtx_query",
+            "Read events from EVTX.",
+            ToolSchema.Object(("path", ToolSchema.String("Path to EVTX."))).NoAdditionalProperties()));
+
+        var initialSelected = new List<ToolDefinition> {
+            allDefinitions[0],
+            allDefinitions[1]
+        };
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(EnsureMinimumToolSelectionMethod.Invoke(
+            session,
+            new object?[] {
+                "show me what `eventlog\\_evtx\\_query · Event Log (EventViewerX)` does",
+                allDefinitions,
+                initialSelected,
+                4
+            }));
+
+        Assert.Equal(4, selected.Count);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase));
     }
 
