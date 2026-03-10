@@ -288,13 +288,13 @@ internal sealed partial class ChatServiceSession {
         out string argumentsJson,
         out string nextReason,
         out ActionMutability nextActionMutability,
-        out string nextActionConfidence) {
+        out double? nextActionConfidence) {
         sourceTool = string.Empty;
         nextTool = string.Empty;
         argumentsJson = "{}";
         nextReason = string.Empty;
         nextActionMutability = ActionMutability.Unknown;
-        nextActionConfidence = string.Empty;
+        nextActionConfidence = null;
 
         var availableTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolDefinitions.Count; i++) {
@@ -335,6 +335,8 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
+                var chainConfidence = TryReadChainConfidence(doc.RootElement);
+
                 for (var actionIndex = 0; actionIndex < nextActions.GetArrayLength(); actionIndex++) {
                     var action = nextActions[actionIndex];
                     if (!TryReadNextActionToolName(action, out var candidateTool)) {
@@ -348,7 +350,7 @@ internal sealed partial class ChatServiceSession {
                     var candidateArgumentsJson = TryReadNextActionArgumentsJson(action);
                     var candidateReason = TryReadNextActionReason(action);
                     var candidateMutability = TryReadNextActionMutability(action);
-                    var candidateConfidence = TryReadNextActionConfidence(action, doc.RootElement);
+                    var candidateConfidence = TryReadNextActionConfidence(action) ?? chainConfidence;
 
                     var outputCallId = (output.CallId ?? string.Empty).Trim();
                     if (outputCallId.Length > 0 && callNamesById.TryGetValue(outputCallId, out var sourceName)) {
@@ -359,7 +361,7 @@ internal sealed partial class ChatServiceSession {
                     argumentsJson = candidateArgumentsJson;
                     nextReason = candidateReason;
                     nextActionMutability = candidateMutability;
-                    nextActionConfidence = candidateConfidence;
+                    nextActionConfidence = NormalizeStructuredNextActionConfidence(candidateConfidence);
                     return true;
                 }
             } catch (JsonException) {
@@ -474,61 +476,6 @@ internal sealed partial class ChatServiceSession {
         return ActionMutability.Unknown;
     }
 
-    private static string TryReadNextActionConfidence(JsonElement action, JsonElement root) {
-        if (TryReadConfidenceValue(action, out var actionConfidence)) {
-            return actionConfidence;
-        }
-
-        if (TryReadConfidenceValue(root, out var rootConfidence)) {
-            return rootConfidence;
-        }
-
-        if (root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty("meta", out var meta)
-            && meta.ValueKind == JsonValueKind.Object
-            && TryReadConfidenceValue(meta, out var metaConfidence)) {
-            return metaConfidence;
-        }
-
-        return string.Empty;
-    }
-
-    private static bool TryReadConfidenceValue(JsonElement node, out string confidence) {
-        confidence = string.Empty;
-        if (node.ValueKind != JsonValueKind.Object) {
-            return false;
-        }
-
-        if (TryReadConfidenceProperty(node, "confidence", out confidence)
-            || TryReadConfidenceProperty(node, "chain_confidence", out confidence)
-            || TryReadConfidenceProperty(node, "next_action_confidence", out confidence)) {
-            return confidence.Length > 0;
-        }
-
-        return false;
-    }
-
-    private static bool TryReadConfidenceProperty(JsonElement node, string propertyName, out string confidence) {
-        confidence = string.Empty;
-        if (!node.TryGetProperty(propertyName, out var value)) {
-            return false;
-        }
-
-        switch (value.ValueKind) {
-            case JsonValueKind.String:
-                confidence = (value.GetString() ?? string.Empty).Trim();
-                return confidence.Length > 0;
-            case JsonValueKind.Number:
-                if (value.TryGetDouble(out var numeric)) {
-                    confidence = numeric >= 0.72d ? "high" : numeric >= 0.45d ? "medium" : "low";
-                    return true;
-                }
-                return false;
-            default:
-                return false;
-        }
-    }
-
     private static bool TryReadNextActionBoolean(JsonElement action, string propertyName, out bool value) {
         value = false;
         if (!action.TryGetProperty(propertyName, out var node)) {
@@ -559,6 +506,21 @@ internal sealed partial class ChatServiceSession {
             default:
                 return false;
         }
+    }
+
+    private static string NormalizeStructuredNextActionReason(string? reason) {
+        var normalized = (reason ?? string.Empty).Trim();
+        return normalized.Length == 0
+            ? string.Empty
+            : NormalizeWorkingMemoryAnswerPlanFocus(normalized);
+    }
+
+    private static double? NormalizeStructuredNextActionConfidence(double? confidence) {
+        if (!confidence.HasValue || double.IsNaN(confidence.Value) || double.IsInfinity(confidence.Value)) {
+            return null;
+        }
+
+        return Math.Round(Math.Clamp(confidence.Value, 0d, 1d), 3);
     }
 
     private static bool TryGetToolDefinitionByName(

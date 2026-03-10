@@ -820,8 +820,12 @@ internal sealed partial class ChatServiceSession {
 
             AddPlannerContextFocusTokens(focusTokens, plannerContext.PreferredPackIds);
             AddPlannerContextFocusTokens(focusTokens, plannerContext.PreferredToolNames);
+            AddPlannerContextFocusTokens(focusTokens, plannerContext.StructuredNextActionSourceToolNames);
             AddPlannerContextFocusTokens(focusTokens, plannerContext.HandoffTargetPackIds);
             AddPlannerContextFocusTokens(focusTokens, plannerContext.HandoffTargetToolNames);
+            if (plannerContext.StructuredNextActionReason.Length > 0) {
+                focusTokens.AddRange(TokenizeRoutingTokens(plannerContext.StructuredNextActionReason, maxTokens: 8));
+            }
         }
 
         var normalizedFocusTokens = NormalizeDistinctStrings(focusTokens, MaxWeightedRoutingFocusTokens);

@@ -14,12 +14,16 @@ internal sealed partial class ChatServiceSession {
     private const int MaxPlannerContextToolNames = 8;
     private const int MaxPlannerContextSkills = 6;
     private const int MaxPlannerContextHandoffTargets = 8;
+    private const int MaxPlannerContextSourceTools = 4;
 
     private readonly record struct PlannerContextMetadata(
         bool RequiresLiveExecution,
         string MissingLiveEvidence,
         string[] PreferredPackIds,
         string[] PreferredToolNames,
+        string[] StructuredNextActionSourceToolNames,
+        string StructuredNextActionReason,
+        double? StructuredNextActionConfidence,
         string[] HandoffTargetPackIds,
         string[] HandoffTargetToolNames,
         string ContinuationSourceTool,
@@ -44,6 +48,9 @@ internal sealed partial class ChatServiceSession {
         var (
             structuredPreferredPackIds,
             structuredPreferredToolNames,
+            structuredSourceToolNames,
+            structuredNextActionReason,
+            structuredNextActionConfidence,
             structuredHandoffTargetPackIds,
             structuredHandoffTargetToolNames,
             continuationSourceTool,
@@ -52,6 +59,9 @@ internal sealed partial class ChatServiceSession {
         if (!hasCheckpoint
             && structuredPreferredPackIds.Length == 0
             && structuredPreferredToolNames.Length == 0
+            && structuredSourceToolNames.Length == 0
+            && structuredNextActionReason.Length == 0
+            && !structuredNextActionConfidence.HasValue
             && structuredHandoffTargetPackIds.Length == 0
             && structuredHandoffTargetToolNames.Length == 0
             && continuationSourceTool.Length == 0
@@ -70,6 +80,7 @@ internal sealed partial class ChatServiceSession {
             (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredToolNames : Array.Empty<string>())
             .Concat(structuredPreferredToolNames),
             MaxPlannerContextToolNames);
+        var sourceToolNames = NormalizeDistinctStrings(structuredSourceToolNames, MaxPlannerContextSourceTools);
 
         var handoffSourceToolNames = NormalizeDistinctStrings(
             (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredToolNames : Array.Empty<string>())
@@ -90,6 +101,8 @@ internal sealed partial class ChatServiceSession {
             checkpoint,
             preferredPackIds,
             preferredToolNames,
+            sourceToolNames,
+            structuredNextActionReason,
             handoffTargetPackIds,
             handoffTargetToolNames);
 
@@ -97,6 +110,9 @@ internal sealed partial class ChatServiceSession {
             && (!hasCheckpoint || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0)
             && preferredPackIds.Length == 0
             && preferredToolNames.Length == 0
+            && sourceToolNames.Length == 0
+            && structuredNextActionReason.Length == 0
+            && !structuredNextActionConfidence.HasValue
             && handoffTargetPackIds.Length == 0
             && handoffTargetToolNames.Length == 0
             && continuationSourceTool.Length == 0
@@ -127,6 +143,21 @@ internal sealed partial class ChatServiceSession {
         if (preferredToolNames.Length > 0) {
             builder.Append("preferred_tool_names: ")
                 .AppendLine(string.Join(", ", preferredToolNames));
+        }
+
+        if (sourceToolNames.Length > 0) {
+            builder.Append("structured_next_action_source_tools: ")
+                .AppendLine(string.Join(", ", sourceToolNames));
+        }
+
+        if (structuredNextActionReason.Length > 0) {
+            builder.Append("structured_next_action_reason: ")
+                .AppendLine(structuredNextActionReason);
+        }
+
+        if (structuredNextActionConfidence.HasValue) {
+            builder.Append("structured_next_action_confidence: ")
+                .AppendLine(structuredNextActionConfidence.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
         }
 
         if (handoffTargetPackIds.Length > 0) {
@@ -164,7 +195,17 @@ internal sealed partial class ChatServiceSession {
         return builder.ToString().TrimEnd();
     }
 
-    private (string[] PreferredPackIds, string[] PreferredToolNames, string[] HandoffTargetPackIds, string[] HandoffTargetToolNames, string ContinuationSourceTool, string ContinuationReason, string ContinuationConfidence)
+    private (
+        string[] PreferredPackIds,
+        string[] PreferredToolNames,
+        string[] SourceToolNames,
+        string StructuredNextActionReason,
+        double? StructuredNextActionConfidence,
+        string[] HandoffTargetPackIds,
+        string[] HandoffTargetToolNames,
+        string ContinuationSourceTool,
+        string ContinuationReason,
+        string ContinuationConfidence)
         ResolvePlannerStructuredNextActionHints(string normalizedThreadId, IReadOnlyList<ToolDefinition> definitions) {
         if (normalizedThreadId.Length == 0
             || definitions is null
@@ -172,7 +213,7 @@ internal sealed partial class ChatServiceSession {
             || !TryGetStructuredNextActionCarryover(normalizedThreadId, out var snapshot, out _)
             || snapshot.Mutability == ActionMutability.Mutating
             || !TryGetToolDefinitionByName(definitions, snapshot.ToolName, out var toolDefinition)) {
-            return (Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
+            return (Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), string.Empty, null, Array.Empty<string>(), Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
         }
 
         var preferredToolNames = NormalizeDistinctStrings(new[] { snapshot.ToolName }, MaxPlannerContextToolNames);
@@ -180,10 +221,16 @@ internal sealed partial class ChatServiceSession {
         var preferredPackIds = packId.Length == 0
             ? Array.Empty<string>()
             : NormalizeDistinctStrings(new[] { packId }, MaxPlannerContextPackIds);
+        var sourceToolNames = NormalizeDistinctStrings(
+            new[] { (snapshot.SourceToolName ?? string.Empty).Trim() },
+            MaxPlannerContextSourceTools);
         var (handoffTargetPackIds, handoffTargetToolNames) = CollectPlannerHandoffTargets(preferredToolNames);
         return (
             preferredPackIds,
             preferredToolNames,
+            sourceToolNames,
+            NormalizeStructuredNextActionReason(snapshot.Reason),
+            NormalizeStructuredNextActionConfidence(snapshot.Confidence),
             handoffTargetPackIds,
             handoffTargetToolNames,
             NormalizeToolNameForAnswerPlan(snapshot.SourceToolName),
@@ -228,6 +275,8 @@ internal sealed partial class ChatServiceSession {
         WorkingMemoryCheckpoint checkpoint,
         IReadOnlyList<string> preferredPackIds,
         IReadOnlyList<string> preferredToolNames,
+        IReadOnlyList<string> sourceToolNames,
+        string structuredNextActionReason,
         IReadOnlyList<string> handoffTargetPackIds,
         IReadOnlyList<string> handoffTargetToolNames) {
         var skillInventory = NormalizeSkillInventoryValues(
@@ -243,8 +292,10 @@ internal sealed partial class ChatServiceSession {
             StringComparer.OrdinalIgnoreCase);
         AddPlannerTokenSeeds(requestTokens, preferredPackIds);
         AddPlannerTokenSeeds(requestTokens, preferredToolNames);
+        AddPlannerTokenSeeds(requestTokens, sourceToolNames);
         AddPlannerTokenSeeds(requestTokens, handoffTargetPackIds);
         AddPlannerTokenSeeds(requestTokens, handoffTargetToolNames);
+        AddPlannerReasonTokens(requestTokens, structuredNextActionReason);
         if (checkpoint.DomainIntentFamily.Length > 0) {
             requestTokens.Add(checkpoint.DomainIntentFamily);
         }
@@ -260,6 +311,7 @@ internal sealed partial class ChatServiceSession {
             score += CountPlannerSkillMatches(skill, preferredPackIds) * 3;
             score += CountPlannerSkillMatches(skill, handoffTargetPackIds) * 2;
             score += CountPlannerSkillMatches(skill, preferredToolNames) * 3;
+            score += CountPlannerSkillMatches(skill, sourceToolNames);
             score += CountPlannerSkillMatches(skill, handoffTargetToolNames) * 2;
             if (checkpoint.DomainIntentFamily.Length > 0
                 && skill.IndexOf(checkpoint.DomainIntentFamily, StringComparison.OrdinalIgnoreCase) >= 0) {
@@ -329,12 +381,28 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private static void AddPlannerReasonTokens(ISet<string> tokens, string value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (tokens is null || normalized.Length == 0) {
+            return;
+        }
+
+        tokens.Add(normalized);
+        var reasonTokens = TokenizeRoutingTokens(normalized, maxTokens: 8);
+        for (var i = 0; i < reasonTokens.Length; i++) {
+            tokens.Add(reasonTokens[i]);
+        }
+    }
+
     private static bool TryReadPlannerContextFromRequestText(string requestText, out PlannerContextMetadata context) {
         context = new PlannerContextMetadata(
             RequiresLiveExecution: false,
             MissingLiveEvidence: string.Empty,
             PreferredPackIds: Array.Empty<string>(),
             PreferredToolNames: Array.Empty<string>(),
+            StructuredNextActionSourceToolNames: Array.Empty<string>(),
+            StructuredNextActionReason: string.Empty,
+            StructuredNextActionConfidence: null,
             HandoffTargetPackIds: Array.Empty<string>(),
             HandoffTargetToolNames: Array.Empty<string>(),
             ContinuationSourceTool: string.Empty,
@@ -351,6 +419,9 @@ internal sealed partial class ChatServiceSession {
         var missingLiveEvidence = string.Empty;
         var preferredPackIds = Array.Empty<string>();
         var preferredToolNames = Array.Empty<string>();
+        var structuredNextActionSourceToolNames = Array.Empty<string>();
+        var structuredNextActionReason = string.Empty;
+        double? structuredNextActionConfidence = null;
         var handoffTargetPackIds = Array.Empty<string>();
         var handoffTargetToolNames = Array.Empty<string>();
         var continuationSourceTool = string.Empty;
@@ -421,6 +492,29 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (TryParseStructuredKeyValueLine(trimmed, "structured_next_action_source_tools", out var structuredSourceToolsValue)) {
+                structuredNextActionSourceToolNames = NormalizeStructuredMetadataCsv(
+                    structuredSourceToolsValue,
+                    static value => NormalizeToolNameForAnswerPlan(value),
+                    MaxPlannerContextSourceTools);
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "structured_next_action_reason", out var structuredReasonValue)) {
+                structuredNextActionReason = NormalizeStructuredNextActionReason(structuredReasonValue.ToString());
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "structured_next_action_confidence", out var structuredConfidenceValue)
+                && double.TryParse(
+                    structuredConfidenceValue.ToString(),
+                    System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsedStructuredConfidence)) {
+                structuredNextActionConfidence = NormalizeStructuredNextActionConfidence(parsedStructuredConfidence);
+                continue;
+            }
+
             if (TryParseStructuredKeyValueLine(trimmed, "handoff_target_pack_ids", out var handoffTargetPackIdsValue)) {
                 handoffTargetPackIds = NormalizeStructuredMetadataCsv(
                     handoffTargetPackIdsValue,
@@ -473,6 +567,9 @@ internal sealed partial class ChatServiceSession {
             MissingLiveEvidence: missingLiveEvidence,
             PreferredPackIds: preferredPackIds,
             PreferredToolNames: preferredToolNames,
+            StructuredNextActionSourceToolNames: structuredNextActionSourceToolNames,
+            StructuredNextActionReason: structuredNextActionReason,
+            StructuredNextActionConfidence: structuredNextActionConfidence,
             HandoffTargetPackIds: handoffTargetPackIds,
             HandoffTargetToolNames: handoffTargetToolNames,
             ContinuationSourceTool: continuationSourceTool,
@@ -496,5 +593,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         return string.Empty;
+    }
+
+    private static string NormalizeContinuationConfidence(double? value) {
+        if (!value.HasValue || double.IsNaN(value.Value) || double.IsInfinity(value.Value)) {
+            return string.Empty;
+        }
+
+        var normalized = Math.Clamp(value.Value, 0d, 1d);
+        return normalized >= 0.72d
+            ? "high"
+            : normalized >= 0.45d
+                ? "medium"
+                : "low";
     }
 }

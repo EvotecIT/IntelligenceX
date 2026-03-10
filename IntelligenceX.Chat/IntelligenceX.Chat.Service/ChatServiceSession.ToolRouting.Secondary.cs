@@ -449,6 +449,16 @@ internal sealed partial class ChatServiceSession {
             if (plannerContext.PreferredToolNames.Length > 0) {
                 sb.Append("Preferred tools: ").AppendLine(string.Join(", ", plannerContext.PreferredToolNames));
             }
+            if (plannerContext.StructuredNextActionSourceToolNames.Length > 0) {
+                sb.Append("Structured source tools: ").AppendLine(string.Join(", ", plannerContext.StructuredNextActionSourceToolNames));
+            }
+            if (plannerContext.StructuredNextActionReason.Length > 0) {
+                sb.Append("Structured next-action reason: ").AppendLine(plannerContext.StructuredNextActionReason);
+            }
+            if (plannerContext.StructuredNextActionConfidence.HasValue) {
+                sb.Append("Structured next-action confidence: ")
+                    .AppendLine(plannerContext.StructuredNextActionConfidence.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            }
         }
         if (plannerContext.HandoffTargetPackIds.Length > 0 || plannerContext.HandoffTargetToolNames.Length > 0) {
             sb.AppendLine();
