@@ -198,9 +198,25 @@ internal sealed partial class ChatServiceSession {
             return normalized;
         }
 
-        normalized = ReplaceOrdinalIgnoreCase(normalized, "I refreshed", "I reran the check");
-        normalized = ReplaceOrdinalIgnoreCase(normalized, "fresh results", "current results");
-        normalized = ReplaceOrdinalIgnoreCase(normalized, "just reran", "reran");
+        normalized = ReplaceProtocolSelfClaimPhrase(
+            normalized,
+            "I refreshed",
+            "I reran the check",
+            static lowerSentence => lowerSentence.Contains("i ", StringComparison.Ordinal));
+        normalized = ReplaceProtocolSelfClaimPhrase(
+            normalized,
+            "fresh results",
+            "current results",
+            static lowerSentence =>
+                lowerSentence.Contains("i ", StringComparison.Ordinal)
+                || lowerSentence.Contains("we ", StringComparison.Ordinal)
+                || lowerSentence.Contains("here are ", StringComparison.Ordinal)
+                || lowerSentence.Contains("these are ", StringComparison.Ordinal));
+        normalized = ReplaceProtocolSelfClaimPhrase(
+            normalized,
+            "just reran",
+            "reran",
+            static lowerSentence => lowerSentence.Contains("i ", StringComparison.Ordinal));
         return normalized;
     }
 
@@ -241,6 +257,132 @@ internal sealed partial class ChatServiceSession {
         }
 
         return builder.ToString();
+    }
+
+    private static string ReplaceProtocolSelfClaimPhrase(
+        string text,
+        string oldValue,
+        string newValue,
+        Func<string, bool> sentenceEligibility) {
+        if (string.IsNullOrEmpty(text)
+            || string.IsNullOrEmpty(oldValue)
+            || string.Equals(oldValue, newValue, StringComparison.Ordinal)) {
+            return text;
+        }
+
+        var firstIndex = text.IndexOf(oldValue, StringComparison.OrdinalIgnoreCase);
+        if (firstIndex < 0) {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length + Math.Max(0, newValue.Length - oldValue.Length));
+        var searchStart = 0;
+        while (true) {
+            var matchIndex = text.IndexOf(oldValue, searchStart, StringComparison.OrdinalIgnoreCase);
+            if (matchIndex < 0) {
+                builder.Append(text, searchStart, text.Length - searchStart);
+                break;
+            }
+
+            builder.Append(text, searchStart, matchIndex - searchStart);
+            if (ShouldRewriteProtocolSelfClaimPhrase(text, matchIndex, oldValue.Length, sentenceEligibility)) {
+                builder.Append(newValue);
+            } else {
+                builder.Append(text, matchIndex, oldValue.Length);
+            }
+
+            searchStart = matchIndex + oldValue.Length;
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool ShouldRewriteProtocolSelfClaimPhrase(
+        string text,
+        int matchIndex,
+        int matchLength,
+        Func<string, bool> sentenceEligibility) {
+        var (sentenceStart, sentenceEnd) = FindSentenceBounds(text, matchIndex, matchLength);
+        var sentence = text.Substring(sentenceStart, sentenceEnd - sentenceStart);
+        var lowerSentence = sentence.ToLowerInvariant();
+        if (IsInsideQuotedSpan(text, matchIndex)) {
+            return false;
+        }
+
+        if (!sentenceEligibility(lowerSentence)) {
+            return false;
+        }
+
+        return !LooksLikeProtocolMetaDiscussion(lowerSentence);
+    }
+
+    private static (int Start, int End) FindSentenceBounds(string text, int matchIndex, int matchLength) {
+        var start = matchIndex;
+        while (start > 0) {
+            var ch = text[start - 1];
+            if (ch == '\r' || ch == '\n' || ch == '.' || ch == '!' || ch == '?' || ch == '？' || ch == '¿' || ch == '؟') {
+                break;
+            }
+
+            start--;
+        }
+
+        var end = matchIndex + matchLength;
+        while (end < text.Length) {
+            var ch = text[end];
+            if (ch == '\r' || ch == '\n' || ch == '.' || ch == '!' || ch == '?' || ch == '？' || ch == '¿' || ch == '؟') {
+                break;
+            }
+
+            end++;
+        }
+
+        return (start, end);
+    }
+
+    private static bool LooksLikeProtocolMetaDiscussion(string lowerSentence) {
+        return lowerSentence.Contains("do not say", StringComparison.Ordinal)
+               || lowerSentence.Contains("don't say", StringComparison.Ordinal)
+               || lowerSentence.Contains("never say", StringComparison.Ordinal)
+               || lowerSentence.Contains("not say", StringComparison.Ordinal)
+               || lowerSentence.Contains("avoid saying", StringComparison.Ordinal)
+               || lowerSentence.Contains("avoid claiming", StringComparison.Ordinal)
+               || lowerSentence.Contains("quoted", StringComparison.Ordinal)
+               || lowerSentence.Contains("quote", StringComparison.Ordinal)
+               || lowerSentence.Contains("policy", StringComparison.Ordinal)
+               || lowerSentence.Contains("policy rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("protocol rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("rewrite rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("normalization rule", StringComparison.Ordinal)
+               || lowerSentence.Contains("claim ", StringComparison.Ordinal)
+               || lowerSentence.Contains("claims ", StringComparison.Ordinal)
+               || lowerSentence.Contains("claimed ", StringComparison.Ordinal);
+    }
+
+    private static bool IsInsideQuotedSpan(string text, int matchIndex) {
+        var insideDoubleQuote = false;
+        var insideSingleQuote = false;
+        for (var i = 0; i < text.Length; i++) {
+            var current = text[i];
+            if (current == '"' || current == '“' || current == '”') {
+                insideDoubleQuote = !insideDoubleQuote;
+            } else if ((current == '\'' || current == '‘' || current == '’')
+                       && !IsApostrophe(text, i)) {
+                insideSingleQuote = !insideSingleQuote;
+            }
+
+            if (i == matchIndex) {
+                return insideDoubleQuote || insideSingleQuote;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsApostrophe(string sentence, int index) {
+        var hasLetterOrDigitBefore = index > 0 && char.IsLetterOrDigit(sentence[index - 1]);
+        var hasLetterOrDigitAfter = index + 1 < sentence.Length && char.IsLetterOrDigit(sentence[index + 1]);
+        return hasLetterOrDigitBefore && hasLetterOrDigitAfter;
     }
 
     internal static bool ShouldSuppressDuplicateFinalResultForRequest(

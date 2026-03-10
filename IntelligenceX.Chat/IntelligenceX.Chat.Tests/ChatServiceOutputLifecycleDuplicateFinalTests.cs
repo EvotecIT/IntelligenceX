@@ -16,12 +16,39 @@ public sealed class ChatServiceOutputLifecycleDuplicateFinalTests {
     }
 
     [Fact]
-    public void NormalizeFinalResultTextForProtocol_RewritesForbiddenPhrasesEvenInsidePolicyStatements() {
+    public void NormalizeFinalResultTextForProtocol_DoesNotRewritePolicyStatements() {
         var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
             "If no live tools run in a turn, I will not say I refreshed anything or claim fresh results.");
 
+        Assert.Contains("I refreshed", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("fresh results", normalized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NormalizeFinalResultTextForProtocol_DoesNotRewriteQuotedUserText() {
+        var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
+            "You wrote: 'I refreshed the check and can share fresh results' but no tools ran in this turn.");
+
+        Assert.Contains("'I refreshed the check and can share fresh results'", normalized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NormalizeFinalResultTextForProtocol_DoesNotRewriteMultiSentenceQuotedUserText() {
+        var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
+            "You wrote: \"First sentence. I refreshed the check and can share fresh results.\" but no tools ran in this turn.");
+
+        Assert.Contains("\"First sentence. I refreshed the check and can share fresh results.\"", normalized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NormalizeFinalResultTextForProtocol_RewritesOperationalRuleTextThatIsNotMetaDiscussion() {
+        var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
+            "I refreshed firewall rules and can share fresh results.");
+
         Assert.DoesNotContain("I refreshed", normalized, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("fresh results", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("I reran", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("current results", normalized, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
