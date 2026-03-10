@@ -473,8 +473,9 @@ internal sealed partial class ChatServiceSession {
             return (definitions, new List<ToolRoutingInsight>());
         }
 
-        var plannerCandidates = BuildModelPlannerCandidates(definitions, requestText, limit, _toolOrchestrationCatalog);
-        var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, requestText, plannerCandidates, limit, cancellationToken)
+        var plannerRequestText = BuildPlannerContextAugmentedRequest(threadId, requestText, definitions);
+        var plannerCandidates = BuildModelPlannerCandidates(definitions, plannerRequestText, limit, _toolOrchestrationCatalog);
+        var planned = await TrySelectToolsViaModelPlannerAsync(client, threadId, plannerRequestText, plannerCandidates, limit, cancellationToken)
             .ConfigureAwait(false);
         if (planned.Count > 0) {
             var selected = EnsureMinimumToolSelection(userRequest, definitions, planned, limit);
@@ -500,15 +501,40 @@ internal sealed partial class ChatServiceSession {
         var minCandidateLimit = Math.Max(24, limit);
         var candidateLimit = Math.Clamp(Math.Max(limit * 3, minCandidateLimit), minCandidateLimit, Math.Min(definitions.Count, 96));
         var focusTokens = ResolveWeightedRoutingFocusTokens(requestText, Array.Empty<string>());
+        _ = TryReadPlannerContextFromRequestText(requestText, out var plannerContext);
+        var preferredToolNames = new HashSet<string>(plannerContext.PreferredToolNames, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetToolNames = new HashSet<string>(plannerContext.HandoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
+        var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetPackIds = new HashSet<string>(plannerContext.HandoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
         if (focusTokens.Length == 0) {
-            return SelectDeterministicToolSubset(definitions, candidateLimit, toolOrchestrationCatalog);
+            if (preferredToolNames.Count == 0
+                && handoffTargetToolNames.Count == 0
+                && preferredPackIds.Count == 0
+                && handoffTargetPackIds.Count == 0) {
+                return SelectDeterministicToolSubset(definitions, candidateLimit, toolOrchestrationCatalog);
+            }
         }
 
-        var scored = new List<(ToolDefinition Definition, int FocusHits, string SearchText)>(definitions.Count);
+        var scored = new List<(ToolDefinition Definition, int Priority, int FocusHits, string SearchText)>(definitions.Count);
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
             var searchText = BuildToolRoutingSearchText(definition);
             var focusHits = 0;
+            var priority = 0;
+            var toolName = (definition.Name ?? string.Empty).Trim();
+            var packId = ResolveToolPackId(definition, toolOrchestrationCatalog);
+            if (preferredToolNames.Contains(toolName)) {
+                priority += 1000;
+            }
+            if (handoffTargetToolNames.Contains(toolName)) {
+                priority += 800;
+            }
+            if (preferredPackIds.Contains(packId)) {
+                priority += 400;
+            }
+            if (handoffTargetPackIds.Contains(packId)) {
+                priority += 200;
+            }
             for (var t = 0; t < focusTokens.Length; t++) {
                 var token = focusTokens[t];
                 if (token.Length == 0) {
@@ -520,10 +546,15 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            scored.Add((definition, focusHits, searchText));
+            scored.Add((definition, priority, focusHits, searchText));
         }
 
         scored.Sort(static (left, right) => {
+            var priorityCompare = right.Priority.CompareTo(left.Priority);
+            if (priorityCompare != 0) {
+                return priorityCompare;
+            }
+
             var hitCompare = right.FocusHits.CompareTo(left.FocusHits);
             if (hitCompare != 0) {
                 return hitCompare;
@@ -535,7 +566,7 @@ internal sealed partial class ChatServiceSession {
         var selected = new List<ToolDefinition>(candidateLimit);
         var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < scored.Count && selected.Count < candidateLimit; i++) {
-            if (scored[i].FocusHits <= 0) {
+            if (scored[i].Priority <= 0 && scored[i].FocusHits <= 0) {
                 break;
             }
 
@@ -586,6 +617,11 @@ internal sealed partial class ChatServiceSession {
         var explicitRequestedToolNames = BuildExplicitRequestedToolNameSet(userRequest);
         var routingTokens = TokenizeRoutingTokens(userRequest, maxTokens: 16);
         var focusTokens = ResolveWeightedRoutingFocusTokens(requestText, routingTokens);
+        _ = TryReadPlannerContextFromRequestText(requestText, out var plannerContext);
+        var preferredToolNames = new HashSet<string>(plannerContext.PreferredToolNames, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetToolNames = new HashSet<string>(plannerContext.HandoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
+        var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetPackIds = new HashSet<string>(plannerContext.HandoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
         var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
         var focusTokenSupport = focusTokens.Length == 0 ? Array.Empty<int>() : new int[focusTokens.Length];
         string[]? toolSearchTexts = null;
@@ -640,11 +676,24 @@ internal sealed partial class ChatServiceSession {
             var focusTokenHits = 0;
             var explicitToolMatch = IsExplicitRequestedToolMatch(definition.Name, explicitRequestedToolNames);
             var directNameMatch = userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0;
+            var packId = ResolveToolPackId(definition, _toolOrchestrationCatalog);
             if (explicitToolMatch) {
                 score += 9d;
             }
             if (directNameMatch) {
                 score += 6d;
+            }
+            if (preferredToolNames.Contains(definition.Name)) {
+                score += 10d;
+            }
+            if (handoffTargetToolNames.Contains(definition.Name)) {
+                score += 8d;
+            }
+            if (preferredPackIds.Contains(packId)) {
+                score += 4d;
+            }
+            if (handoffTargetPackIds.Contains(packId)) {
+                score += 3d;
             }
 
             if (routingTokens.Length > 0) {
@@ -759,23 +808,54 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string[] ResolveWeightedRoutingFocusTokens(string requestText, IReadOnlyList<string> routingTokens) {
-        if (!TryReadContinuationFocusUnresolvedAskFromWorkingMemoryPrompt(requestText, out var unresolvedAsk)) {
-            return Array.Empty<string>();
+        var focusTokens = new List<string>();
+        if (TryReadContinuationFocusUnresolvedAskFromWorkingMemoryPrompt(requestText, out var unresolvedAsk)) {
+            focusTokens.AddRange(TokenizeRoutingTokens(unresolvedAsk, maxTokens: MaxWeightedRoutingFocusTokens));
         }
 
-        var focusTokens = TokenizeRoutingTokens(unresolvedAsk, maxTokens: MaxWeightedRoutingFocusTokens);
-        if (focusTokens.Length == 0) {
+        if (TryReadPlannerContextFromRequestText(requestText, out var plannerContext)) {
+            if (plannerContext.MissingLiveEvidence.Length > 0) {
+                focusTokens.AddRange(TokenizeRoutingTokens(plannerContext.MissingLiveEvidence, maxTokens: MaxWeightedRoutingFocusTokens));
+            }
+
+            AddPlannerContextFocusTokens(focusTokens, plannerContext.PreferredPackIds);
+            AddPlannerContextFocusTokens(focusTokens, plannerContext.PreferredToolNames);
+            AddPlannerContextFocusTokens(focusTokens, plannerContext.HandoffTargetPackIds);
+            AddPlannerContextFocusTokens(focusTokens, plannerContext.HandoffTargetToolNames);
+        }
+
+        var normalizedFocusTokens = NormalizeDistinctStrings(focusTokens, MaxWeightedRoutingFocusTokens);
+        if (normalizedFocusTokens.Length == 0) {
             return Array.Empty<string>();
         }
 
         if (routingTokens.Count == 0) {
-            return focusTokens;
+            return normalizedFocusTokens;
         }
 
         var existing = new HashSet<string>(routingTokens, StringComparer.OrdinalIgnoreCase);
-        return focusTokens
+        return normalizedFocusTokens
             .Where(existing.Add)
             .ToArray();
+    }
+
+    private static void AddPlannerContextFocusTokens(ICollection<string> target, IReadOnlyList<string> values) {
+        if (target is null || values is null || values.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < values.Count; i++) {
+            var value = (values[i] ?? string.Empty).Trim();
+            if (value.Length == 0) {
+                continue;
+            }
+
+            target.Add(value);
+            var tokens = TokenizeRoutingTokens(value, maxTokens: 6);
+            for (var t = 0; t < tokens.Length; t++) {
+                target.Add(tokens[t]);
+            }
+        }
     }
 
     private static WeightedRoutingSelectionDiagnostics ResolveWeightedRoutingSelectionDiagnostics(

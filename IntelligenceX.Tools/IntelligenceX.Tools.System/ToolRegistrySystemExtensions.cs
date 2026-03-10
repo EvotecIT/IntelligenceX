@@ -72,6 +72,7 @@ public static class ToolRegistrySystemExtensions {
             yield return new SystemDisksListTool(options);
             yield return new SystemDevicesSummaryTool(options);
             yield return new SystemHardwareSummaryTool(options);
+            yield return new SystemMetricsSummaryTool(options);
             yield return new SystemFeaturesListTool(options);
         }
 

@@ -5,6 +5,26 @@ namespace IntelligenceX.Chat.Tests;
 
 public sealed class ChatServiceOutputLifecycleDuplicateFinalTests {
     [Fact]
+    public void NormalizeFinalResultTextForProtocol_RewritesSelfClaimedRefreshPhrases() {
+        var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
+            "I verified live tooling. I refreshed the check and can report fresh results.");
+
+        Assert.DoesNotContain("I refreshed", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fresh results", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("I reran the check", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("current results", normalized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NormalizeFinalResultTextForProtocol_RewritesForbiddenPhrasesEvenInsidePolicyStatements() {
+        var normalized = ChatServiceSession.NormalizeFinalResultTextForProtocol(
+            "If no live tools run in a turn, I will not say I refreshed anything or claim fresh results.");
+
+        Assert.DoesNotContain("I refreshed", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("fresh results", normalized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ShouldSuppressDuplicateFinalResultForRequest_ReturnsTrue_ForRepeatedNonEmptyFinalOnSameRequestAndThread() {
         var suppress = ChatServiceSession.ShouldSuppressDuplicateFinalResultForRequest(
             previousRequestId: "req-1",

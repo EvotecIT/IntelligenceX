@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
@@ -60,6 +61,9 @@ internal static partial class Program {
         var pluginPaths = GetPluginSearchPaths(options, runtimePolicyContext);
         var familySummaries = ToolRoutingCatalogDiagnosticsBuilder.FormatFamilySummaries(routingCatalogDiagnostics, maxItems: 8);
         var routingWarnings = ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(routingCatalogDiagnostics, maxWarnings: 12);
+        var parityEntries = BuildCapabilityParityEntries(packs, runtimePolicyDiagnostics.RequireExplicitRoutingMetadata);
+        var parityDetails = ToolCapabilityParityInventoryBuilder.BuildDetailSummaries(parityEntries, maxItems: 8);
+        var parityAttention = ToolCapabilityParityInventoryBuilder.BuildAttentionSummaries(parityEntries, maxItems: 6);
 
         Console.WriteLine("Policy:");
         Console.WriteLine($"  Mode: {(dangerousEnabled ? "mixed (dangerous pack enabled)" : "read-only (no writes implied)")}");
@@ -87,6 +91,15 @@ internal static partial class Program {
         Console.WriteLine($"  Allowed roots: {(options.AllowedRoots.Count == 0 ? "(none)" : string.Join("; ", options.AllowedRoots))}");
         Console.WriteLine($"  Plugin search paths: {(pluginPaths.Count == 0 ? "(none)" : string.Join("; ", pluginPaths))}");
         Console.WriteLine($"  Routing catalog: {ToolRoutingCatalogDiagnosticsBuilder.FormatSummary(routingCatalogDiagnostics)}");
+        if (parityEntries.Length > 0) {
+            Console.WriteLine($"  Capability parity: {ToolCapabilityParityInventoryBuilder.FormatSummary(parityEntries)}");
+        }
+        if (parityDetails.Count > 0) {
+            Console.WriteLine("  Capability parity detail:");
+            foreach (var line in parityDetails) {
+                Console.WriteLine($"    - {line}");
+            }
+        }
         if (familySummaries.Count > 0) {
             Console.WriteLine("  Routing families:");
             foreach (var familySummary in familySummaries) {
@@ -96,6 +109,12 @@ internal static partial class Program {
         if (routingWarnings.Count > 0) {
             Console.WriteLine("  Routing warnings:");
             foreach (var warning in routingWarnings) {
+                Console.WriteLine($"    - {warning}");
+            }
+        }
+        if (parityAttention.Count > 0) {
+            Console.WriteLine("  Capability parity attention:");
+            foreach (var warning in parityAttention) {
                 Console.WriteLine($"    - {warning}");
             }
         }
@@ -126,6 +145,28 @@ internal static partial class Program {
         };
         ToolPackBootstrap.RegisterAll(registry, packs);
         return ToolRoutingCatalogDiagnosticsBuilder.Build(registry);
+    }
+
+    private static SessionCapabilityParityEntryDto[] BuildCapabilityParityEntries(
+        IReadOnlyList<IToolPack> packs,
+        bool requireExplicitRoutingMetadata) {
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = requireExplicitRoutingMetadata
+        };
+        ToolPackBootstrap.RegisterAll(registry, packs);
+        var descriptors = ToolPackBootstrap.GetDescriptors(packs);
+        var availability = descriptors
+            .Select(static descriptor => new ToolPackAvailabilityInfo {
+                Id = descriptor.Id ?? string.Empty,
+                Name = descriptor.Name ?? string.Empty,
+                Description = descriptor.Description,
+                Tier = descriptor.Tier,
+                IsDangerous = descriptor.IsDangerous,
+                SourceKind = descriptor.SourceKind ?? string.Empty,
+                Enabled = true
+            })
+            .ToArray();
+        return ToolCapabilityParityInventoryBuilder.Build(registry.GetDefinitions(), availability);
     }
 
     private static string? ApplyRuntimeShaping(string? instructions, ReplOptions options) {

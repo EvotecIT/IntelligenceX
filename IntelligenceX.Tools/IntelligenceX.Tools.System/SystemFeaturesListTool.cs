@@ -14,6 +14,8 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
     private sealed record FeaturesListRequest(
+        string? ComputerName,
+        string Target,
         FeatureInventorySource Source,
         string? NameContains,
         WindowsOptionalFeatureState? OptionalState,
@@ -56,6 +58,7 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
         "system_features_list",
         "List Windows optional/server features (read-only, capped).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("source", ToolSchema.String("Feature source filter. Default any.").Enum("any", "optional", "server")),
                 ("name_contains", ToolSchema.String("Optional case-insensitive name/display-name filter.")),
                 ("optional_state", ToolSchema.String("Optional state filter for optional features.").Enum("any", "enabled", "disabled", "absent", "unknown")),
@@ -83,6 +86,7 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
 
     private ToolRequestBindingResult<FeaturesListRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
             if (!ToolEnumBinders.TryParseOptional(
                     reader.OptionalString("source"),
                     SourceByName,
@@ -108,6 +112,8 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
             }
 
             return ToolRequestBindingResult<FeaturesListRequest>.Success(new FeaturesListRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 Source: source,
                 NameContains: reader.OptionalString("name_contains"),
                 OptionalState: optionalState,
@@ -121,6 +127,7 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
         var request = context.Request;
         if (!FeatureInventoryQueryExecutor.TryExecute(
                 request: new FeatureInventoryQueryRequest {
+                    ComputerName = request.ComputerName,
                     Source = request.Source,
                     NameContains = request.NameContains,
                     OptionalState = request.OptionalState,
@@ -134,6 +141,7 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new FeatureInventoryQueryResult { Source = request.Source };
+        var effectiveComputerName = string.IsNullOrWhiteSpace(result.ComputerName) ? request.Target : result.ComputerName;
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
@@ -144,6 +152,8 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
+                AddComputerNameMeta(meta, effectiveComputerName);
+                AddMaxResultsMeta(meta, request.MaxEntries);
                 meta.Add("source", ToolEnumBinders.ToName(request.Source, SourceNames));
                 meta.Add("timeout_ms", request.TimeoutMs);
                 if (!string.IsNullOrWhiteSpace(request.NameContains)) {
@@ -152,6 +162,13 @@ public sealed class SystemFeaturesListTool : SystemToolBase, ITool {
                 if (request.OptionalState.HasValue) {
                     meta.Add("optional_state", ToolEnumBinders.ToName(request.OptionalState.Value, OptionalStateNames));
                 }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_features_list",
+                    targetComputer: effectiveComputerName,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
             });
         return Task.FromResult(response);
     }

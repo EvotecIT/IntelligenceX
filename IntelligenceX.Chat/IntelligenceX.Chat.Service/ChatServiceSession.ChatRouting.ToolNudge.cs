@@ -63,8 +63,23 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool ShouldEnforceExecuteOrExplainContract(string userRequest) {
+        var normalized = (userRequest ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (TryReadContinuationFocusLiveExecutionRequirementFromWorkingMemoryPrompt(
+                normalized,
+                out var requiresLiveExecution,
+                out _,
+                out _,
+                out _)
+            && requiresLiveExecution) {
+            return true;
+        }
+
         return TryReadActionSelectionIntent(
-                   text: (userRequest ?? string.Empty).Trim(),
+                   text: normalized,
                    actionId: out _,
                    mutability: out var mutability)
                && mutability == ActionMutability.Mutating;

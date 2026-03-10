@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using ComputerX.Processes;
@@ -14,6 +13,8 @@ namespace IntelligenceX.Tools.System;
 /// </summary>
 public sealed class SystemProcessListTool : SystemToolBase, ITool {
     private sealed record ProcessListRequest(
+        string? ComputerName,
+        string Target,
         string? NameContains,
         int MaxProcesses);
 
@@ -23,6 +24,7 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
         "system_process_list",
         "List running processes (read-only, capped).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("name_contains", ToolSchema.String("Optional case-insensitive name filter.")),
                 ("max_processes", ToolSchema.Integer("Optional maximum processes to return (capped).")))
             .WithTableViewOptions()
@@ -46,10 +48,14 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
     }
 
     private ToolRequestBindingResult<ProcessListRequest> BindRequest(JsonObject? arguments) {
-        return ToolRequestBinder.Bind(arguments, reader => ToolRequestBindingResult<ProcessListRequest>.Success(
-            new ProcessListRequest(
+        return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
+            return ToolRequestBindingResult<ProcessListRequest>.Success(new ProcessListRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 NameContains: reader.OptionalString("name_contains"),
-                MaxProcesses: ResolveBoundedOptionLimit(arguments, "max_processes"))));
+                MaxProcesses: ResolveBoundedOptionLimit(arguments, "max_processes")));
+        });
     }
 
     private Task<string> ExecuteAsync(ToolPipelineContext<ProcessListRequest> context, CancellationToken cancellationToken) {
@@ -57,6 +63,7 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
         var request = context.Request;
         if (!ProcessListQueryExecutor.TryExecute(
                 request: new ProcessListQueryRequest {
+                    ComputerName = request.ComputerName,
                     NameContains = request.NameContains,
                     MaxResults = request.MaxProcesses,
                     SortBy = ProcessListQuerySort.PidAsc
@@ -68,6 +75,7 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult ?? new ProcessListQueryResult();
+        var effectiveComputerName = string.IsNullOrWhiteSpace(result.ComputerName) ? request.Target : result.ComputerName;
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
@@ -76,7 +84,21 @@ public sealed class SystemProcessListTool : SystemToolBase, ITool {
             title: "Processes (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            scanned: result.Scanned);
+            scanned: result.Scanned,
+            metaMutate: meta => {
+                AddComputerNameMeta(meta, effectiveComputerName);
+                AddMaxResultsMeta(meta, request.MaxProcesses);
+                if (!string.IsNullOrWhiteSpace(request.NameContains)) {
+                    meta.Add("name_contains", request.NameContains);
+                }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_process_list",
+                    targetComputer: effectiveComputerName,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
+            });
         return Task.FromResult(response);
     }
 }

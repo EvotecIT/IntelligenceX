@@ -325,16 +325,31 @@ internal sealed partial class ChatServiceSession {
             routedUserRequest);
     }
 
-    internal static bool LooksLikeLiveRefreshFollowUpForTesting(string userRequest) {
-        return LooksLikeLiveRefreshFollowUp(userRequest);
+    internal bool LooksLikeLiveRefreshFollowUpForTesting(string threadId, string userRequest) {
+        return ShouldTreatFollowUpAsLiveExecutionRequest(threadId, userRequest);
     }
 
-    internal static bool ResolveLiveRefreshFollowUpTurnForTesting(
+    internal bool TryPreferCachedEvidenceForResolvedCompactContinuationForTesting(
+        string threadId,
+        string userRequest,
+        TurnAnswerPlan answerPlan,
+        bool toolActivityDetected,
+        out string text) {
+        return TryPreferCachedEvidenceForResolvedCompactContinuation(
+            threadId,
+            userRequest,
+            answerPlan,
+            toolActivityDetected,
+            out text);
+    }
+
+    internal bool ResolveLiveRefreshFollowUpTurnForTesting(
+        string threadId,
         bool hasStructuredContinuationContext,
         bool hasFreshThreadToolEvidence,
         string userRequest) {
         return (hasStructuredContinuationContext || hasFreshThreadToolEvidence)
-               && LooksLikeLiveRefreshFollowUp(userRequest);
+               && ShouldTreatFollowUpAsLiveExecutionRequest(threadId, userRequest);
     }
 
     internal void RememberPendingDomainIntentClarificationRequestForTesting(string threadId) {

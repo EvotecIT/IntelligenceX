@@ -29,6 +29,12 @@ public sealed partial class MainWindow {
             if (!string.IsNullOrWhiteSpace(snapshot.RemoteReachabilityMode)) {
                 lines.Add("Remote reachability right now is " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
             }
+
+            if (snapshot.ParityMissingCapabilityCount > 0) {
+                lines.Add($"There are {snapshot.ParityMissingCapabilityCount} upstream read-only capability gaps still not surfaced through chat, so do not promise them as live tools yet.");
+            } else if (snapshot.ParityAttentionCount > 0) {
+                lines.Add("Some upstream capability families are intentionally governed or still gated, so keep promises anchored to the live registered tools above.");
+            }
         } else if (enabledPackNames.Count == 0) {
             lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
         }

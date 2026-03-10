@@ -14,6 +14,7 @@ using ADPlayground.Monitoring.Probes.Ldap;
 using ADPlayground.Monitoring.Probes.Ntp;
 using ADPlayground.Monitoring.Probes.Port;
 using ADPlayground.Monitoring.Probes.Replication;
+using ADPlayground.Monitoring.Probes.WindowsUpdate;
 using ADPlayground.Network;
 using ADPlayground.Replication;
 using IntelligenceX.Json;
@@ -129,6 +130,9 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                     break;
                 case "ping":
                     result = await RunPingAsync().ConfigureAwait(false);
+                    break;
+                case "windows_update":
+                    result = await RunWindowsUpdateAsync().ConfigureAwait(false);
                     break;
                 default:
                     return Error("invalid_argument", "Unsupported probe_kind.");
@@ -536,6 +540,30 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 timeoutMs: timeoutMs,
                 retryDelay: retryDelay,
                 cancellationToken: cancellationToken);
+        }
+
+        async Task<ProbeResult> RunWindowsUpdateAsync() {
+            var def = new WindowsUpdateProbeDefinition {
+                Name = name!,
+                Targets = resolvedTargets.ToArray(),
+                DomainName = domainName,
+                ForestName = forestName,
+                IncludeDomains = includeDomains.ToArray(),
+                ExcludeDomains = excludeDomains.ToArray(),
+                IncludeDomainControllers = includeDomainControllers.ToArray(),
+                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                SkipRodc = skipRodc,
+                IncludeTrusts = includeTrusts,
+                Timeout = timeout,
+                Retries = retries,
+                RetryDelay = retryDelay,
+                MaxConcurrency = maxConcurrency,
+                QueryTimeout = timeout,
+                RequireWsus = ToolArgs.GetBoolean(arguments, "require_wsus", defaultValue: true)
+            };
+
+            var runner = new WindowsUpdateProbeRunner();
+            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
         }
     }
 }

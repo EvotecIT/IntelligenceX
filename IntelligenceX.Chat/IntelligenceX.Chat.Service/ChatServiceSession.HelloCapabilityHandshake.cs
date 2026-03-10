@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
@@ -47,6 +48,9 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" remote_reachability_mode='").Append(snapshot.RemoteReachabilityMode ?? "none").Append('\'');
         warning.Append(" skills_marker='").Append(SkillsSnapshotMarker).Append('\'');
         warning.Append(" skill_count='").Append(snapshot.Skills.Length).Append('\'');
+        warning.Append(" parity_engine_count='").Append(snapshot.ParityEntries.Length).Append('\'');
+        warning.Append(" parity_attention_count='").Append(snapshot.ParityAttentionCount).Append('\'');
+        warning.Append(" parity_missing_readonly_capabilities='").Append(snapshot.ParityMissingCapabilityCount).Append('\'');
 
         if (snapshot.EnabledPackIds.Length > 0) {
             warning.Append(" enabled_packs='").Append(string.Join(",", snapshot.EnabledPackIds)).Append('\'');
@@ -66,6 +70,10 @@ internal sealed partial class ChatServiceSession {
 
         if (snapshot.HealthyTools.Length > 0) {
             warning.Append(" healthy_tools='").Append(string.Join(",", snapshot.HealthyTools)).Append('\'');
+        }
+        var parityAttention = ToolCapabilityParityInventoryBuilder.BuildAttentionSummaries(snapshot.ParityEntries, maxItems: 3);
+        if (parityAttention.Count > 0) {
+            warning.Append(" parity_attention='").Append(string.Join("|", parityAttention)).Append('\'');
         }
 
         return warning.ToString();

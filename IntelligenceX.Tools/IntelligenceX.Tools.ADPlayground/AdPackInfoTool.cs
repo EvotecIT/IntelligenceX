@@ -97,7 +97,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "For authoritative last-logon investigations, enumerate DCs first (ad_scope_discovery/ad_forest_discover), then query each DC with ad_ldap_query for lastLogon and compare max value; treat lastLogonTimestamp as replicated approximation.",
                 "Use ad_ldap_query_paged for large exploratory queries and continue with cursor.",
                 "Use ad_search_facets/ad_replication_summary/ad_replication_connections/ad_replication_status/ad_directory_discovery_diagnostics/ad_dns_server_config/ad_dns_zone_config/ad_dns_zone_security/ad_dns_delegation/ad_delegation_audit/ad_spn_stats for aggregated diagnostics.",
-                "Use ad_monitoring_probe_catalog + ad_monitoring_probe_run for runtime AD monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping)."
+                "Use ad_monitoring_probe_catalog + ad_monitoring_probe_run for runtime AD monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update)."
             },
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
@@ -198,7 +198,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     primaryTools: new[] { "ad_gpo_list", "ad_gpo_changes", "ad_gpo_health", "ad_gpo_inventory_health", "ad_gpo_duplicates", "ad_gpo_blocked_inheritance", "ad_gpo_ou_link_summary", "ad_gpo_integrity", "ad_gpo_redirect", "ad_gpo_permission_read", "ad_gpo_permission_administrative", "ad_gpo_permission_consistency", "ad_gpo_permission_unknown", "ad_gpo_permission_root", "ad_gpo_permission_report", "ad_wmi_filters", "ad_wsus_configuration" }),
                 ToolPackGuidance.Capability(
                     id: "ad_runtime_monitoring",
-                    summary: "Run ADPlayground.Monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping) for server/domain/forest scope.",
+                    summary: "Run ADPlayground.Monitoring probes (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update) for server/domain/forest scope.",
                     primaryTools: new[] { "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" })
             },
             entityHandoffs: new[] {

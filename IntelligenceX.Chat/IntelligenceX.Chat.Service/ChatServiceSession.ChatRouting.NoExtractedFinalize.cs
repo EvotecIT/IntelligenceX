@@ -395,10 +395,11 @@ internal sealed partial class ChatServiceSession {
                     return ContinueRound();
                 }
 
+                var primaryUserRequest = ExtractPrimaryUserRequest(request.Text);
                 var explicitToolQuestionTurn = LooksLikeExplicitToolQuestionTurn(routedUserRequest);
                 if (TryPreferCachedEvidenceForResolvedCompactContinuation(
                         threadId: threadId,
-                        userRequest: ExtractPrimaryUserRequest(request.Text),
+                        userRequest: primaryUserRequest,
                         answerPlan: state.AnswerPlan,
                         toolActivityDetected: hasToolActivity,
                         out var resolvedContinuationCachedEvidenceText)) {
@@ -418,7 +419,10 @@ internal sealed partial class ChatServiceSession {
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
                         : "no_tool_evidence_at_finalize";
-                    if (!TryBuildToolEvidenceFallbackText(threadId, routedUserRequest, out var cachedEvidenceFallbackText)) {
+                    var builtCachedEvidenceFallback =
+                        TryBuildToolEvidenceFallbackText(threadId, primaryUserRequest, out var cachedEvidenceFallbackText)
+                        || TryBuildToolEvidenceFallbackText(threadId, routedUserRequest, out cachedEvidenceFallbackText);
+                    if (!builtCachedEvidenceFallback) {
                         text = BuildExecutionContractBlockerText(
                             userRequest: routedUserRequest,
                             assistantDraft: text,
@@ -518,6 +522,7 @@ internal sealed partial class ChatServiceSession {
                 // Hidden answer-plan metadata is runtime-only and should never leak into the final
                 // user-visible ChatResultMessage, even on paths that already parsed it earlier.
                 text = ResolveReviewedAssistantDraft(text).VisibleText;
+                text = NormalizeFinalResultTextForProtocol(text);
 
                 if (_options.Redact) {
                     text = RedactText(text);

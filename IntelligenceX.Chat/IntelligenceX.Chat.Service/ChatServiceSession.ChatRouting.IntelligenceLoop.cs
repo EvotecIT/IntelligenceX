@@ -268,10 +268,6 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        if (!hasToolActivity) {
-            return false;
-        }
-
         var request = (userRequest ?? string.Empty).Trim();
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (request.Length == 0 || draft.Length == 0 || draft.Length > 2400) {
@@ -329,6 +325,8 @@ internal sealed partial class ChatServiceSession {
 
             Rewrite the assistant response so it is helpful, direct, and action-oriented.
             Do not invent tool outputs.
+            If no tools ran in this turn, do not imply fresh execution or fresh results.
+            When explaining a rule or capability constraint, summarize it abstractly instead of echoing example phrases from the user request verbatim.
             If a blocker exists, state the exact blocker and the minimal missing input.
             After the answer-plan block, return only the revised assistant response text.
             """;

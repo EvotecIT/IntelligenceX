@@ -379,7 +379,8 @@ internal sealed partial class ChatServiceSession {
                                 _routingCatalogDiagnostics,
                                 connectedRuntimeSkills: _connectedRuntimeSkillInventory,
                                 healthyToolNames: helloCapabilitySnapshot.HealthyTools,
-                                remoteReachabilityMode: helloCapabilitySnapshot.RemoteReachabilityMode)
+                                remoteReachabilityMode: helloCapabilitySnapshot.RemoteReachabilityMode,
+                                capabilitySnapshot: helloCapabilitySnapshot)
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 

@@ -12,12 +12,15 @@ namespace IntelligenceX.Tools.System;
 /// Returns basic OS/runtime information.
 /// </summary>
 public sealed class SystemInfoTool : SystemToolBase, ITool {
-    private sealed record SystemInfoRequest;
+    private sealed record SystemInfoRequest(
+        string? ComputerName,
+        string Target);
 
     private static readonly ToolDefinition DefinitionValue = new(
         "system_info",
         "Return basic OS/runtime information (read-only).",
-        ToolSchema.Object()
+        ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")))
             .NoAdditionalProperties());
 
     /// <summary>
@@ -38,14 +41,21 @@ public sealed class SystemInfoTool : SystemToolBase, ITool {
     }
 
     private static ToolRequestBindingResult<SystemInfoRequest> BindRequest(JsonObject? arguments) {
-        return ToolRequestBinder.Bind(arguments, static _ => ToolRequestBindingResult<SystemInfoRequest>.Success(new SystemInfoRequest()));
+        return ToolRequestBinder.Bind(arguments, static reader => {
+            var computerName = reader.OptionalString("computer_name");
+            return ToolRequestBindingResult<SystemInfoRequest>.Success(new SystemInfoRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName)));
+        });
     }
 
     private Task<string> ExecuteAsync(ToolPipelineContext<SystemInfoRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+        var request = context.Request;
 
         var attempt = SystemRuntimeQueryExecutor.TryExecute(
             request: new SystemRuntimeQueryRequest {
+                ComputerName = request.ComputerName,
                 IncludeOperatingSystemSummary = true,
                 IncludeOperatingSystemDetail = true,
                 IncludeComputerSystem = true
@@ -57,18 +67,19 @@ public sealed class SystemInfoTool : SystemToolBase, ITool {
 
         var result = attempt.Result!;
         var runtime = result.Runtime;
+        var effectiveComputerName = string.IsNullOrWhiteSpace(runtime.MachineName) ? request.Target : runtime.MachineName;
 
         var facts = new[] {
-            ("Machine", runtime.MachineName),
+            ("Machine", effectiveComputerName),
             ("OS", runtime.OsDescription),
             ("Framework", runtime.FrameworkDescription)
         };
-        var meta = BuildFactsMeta(count: 1, truncated: false, target: runtime.MachineName);
+        var meta = BuildFactsMeta(count: 1, truncated: false, target: effectiveComputerName);
         AddReadOnlyPostureChainingMeta(
             meta: meta,
             currentTool: "system_info",
-            targetComputer: runtime.MachineName,
-            isRemoteScope: false,
+            targetComputer: effectiveComputerName,
+            isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
             scanned: 1,
             truncated: false);
         return Task.FromResult(ToolResultV2.OkFactsModel(

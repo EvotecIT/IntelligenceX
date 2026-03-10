@@ -70,4 +70,19 @@ public sealed record SessionCapabilitySnapshotDto {
     /// Best-effort runtime reachability mode for the current tool inventory.
     /// </summary>
     public string? RemoteReachabilityMode { get; init; }
+
+    /// <summary>
+    /// Phase-1 read-only parity inventory derived from live pack surfaces and upstream engines.
+    /// </summary>
+    public SessionCapabilityParityEntryDto[] ParityEntries { get; init; } = Array.Empty<SessionCapabilityParityEntryDto>();
+
+    /// <summary>
+    /// Number of parity entries that still require operator attention.
+    /// </summary>
+    public int ParityAttentionCount { get; init; }
+
+    /// <summary>
+    /// Total number of missing upstream read-only capabilities across the current parity inventory.
+    /// </summary>
+    public int ParityMissingCapabilityCount { get; init; }
 }

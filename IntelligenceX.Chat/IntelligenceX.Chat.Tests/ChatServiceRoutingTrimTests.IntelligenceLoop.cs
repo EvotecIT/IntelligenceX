@@ -178,6 +178,26 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResponseQualityReviewEval_AllowsNoToolHonestyReviewForComplexLongDraft() {
+        const string userRequest = "If no live tools run in a turn, explain capability honestly without claiming you refreshed anything.";
+        const string draft =
+            "Capability statement\n" +
+            "- If no live tools run in a turn, I will describe capability or prior context only and keep the wording anchored to what actually happened in that same turn.\n" +
+            "- I will avoid implying a new check, a rerun, or newly collected evidence unless a tool actually ran and returned output in that turn.\n" +
+            "- If a tool does run, I will keep the result tied to that turn only, state the scope plainly, and avoid mixing older context with current execution.";
+
+        var result = ChatServiceSession.ShouldAttemptResponseQualityReview(
+            userRequest,
+            draft,
+            executionContractApplies: false,
+            hasToolActivity: false,
+            reviewPassesUsed: 0,
+            maxReviewPasses: 1);
+
+        Assert.True(result);
+    }
+
+    [Fact]
     public void SmartReviewDeltaBuffer_EnablesForActionOrientedRequestsWithReviewPasses() {
         var request = new ChatRequest {
             RequestId = "req",
@@ -250,6 +270,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:response-review:v1", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Review pass 1/2", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Tool activity this turn: none.", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("summarize it abstractly", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -557,6 +578,37 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(
             "The summary currently lists only three servers because the collector returned domain-scoped rows.",
             reviewedDraft.VisibleText);
+    }
+
+    [Fact]
+    public void ResolveReviewedAssistantDraft_InfersAllowCachedEvidenceReuseWhenPreferFlagIsPresent() {
+        var draft = """
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: continue from the same forest replication evidence
+            resolved_so_far: the forest replication table is already available above
+            unresolved_now: none
+            carry_forward_unresolved_focus: false
+            carry_forward_reason: this continuation reuses the already-resolved evidence snapshot
+            prefer_cached_evidence_reuse: true
+            cached_evidence_reuse_reason: compact continuation should reuse the latest forest replication evidence snapshot
+            primary_artifact: prose
+            requested_artifact_already_visible_above: true
+            requested_artifact_visibility_reason: the forest replication table is already visible above
+            advances_current_ask: true
+            advance_reason: confirms that the next step should reuse the same forest replication evidence without a rerun
+
+            Reusing the latest forest replication evidence for AD0, AD1, and AD2.
+            """;
+
+        var reviewedDraft = ChatServiceSession.ResolveReviewedAssistantDraft(draft);
+
+        Assert.True(reviewedDraft.AnswerPlan.HasPlan);
+        Assert.True(reviewedDraft.AnswerPlan.PreferCachedEvidenceReuse);
+        Assert.True(reviewedDraft.AnswerPlan.AllowCachedEvidenceReuse);
+        Assert.Equal(
+            "compact continuation should reuse the latest forest replication evidence snapshot",
+            reviewedDraft.AnswerPlan.CachedEvidenceReuseReason);
     }
 
     [Fact]

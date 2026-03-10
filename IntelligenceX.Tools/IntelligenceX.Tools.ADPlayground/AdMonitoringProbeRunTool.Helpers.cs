@@ -308,6 +308,7 @@ public sealed partial class AdMonitoringProbeRunTool {
 
         return normalized switch {
             "dnsservice" => "dns_service",
+            "windowsupdate" => "windows_update",
             _ => normalized
         };
     }

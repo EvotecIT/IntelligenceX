@@ -10,10 +10,12 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.System;
 
 /// <summary>
-/// Lists local TCP/UDP ports and owning processes (read-only, capped).
+/// Lists TCP/UDP ports and owning processes (read-only, capped).
 /// </summary>
 public sealed class SystemPortsListTool : SystemToolBase, ITool {
     private sealed record PortsListRequest(
+        string? ComputerName,
+        string Target,
         PortInventoryProtocol Protocol,
         int? LocalPort,
         string? State,
@@ -38,8 +40,9 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
 
     private static readonly ToolDefinition DefinitionValue = new(
         "system_ports_list",
-        "List local TCP/UDP ports and owning processes (read-only, capped).",
+        "List TCP/UDP ports and owning processes (read-only, capped).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("protocol", ToolSchema.String("Protocol filter. Default any.").Enum("any", "tcp", "udp")),
                 ("local_port", ToolSchema.Integer("Optional exact local port filter (1-65535).")),
                 ("state", ToolSchema.String("Optional TCP state filter (for example LISTEN, ESTAB).")),
@@ -67,6 +70,7 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
 
     private ToolRequestBindingResult<PortsListRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
             if (!ToolEnumBinders.TryParseOptional(
                     reader.OptionalString("protocol"),
                     ProtocolByName,
@@ -87,6 +91,8 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
             }
 
             return ToolRequestBindingResult<PortsListRequest>.Success(new PortsListRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 Protocol: parsedProtocol ?? PortInventoryProtocol.Any,
                 LocalPort: localPort,
                 State: reader.OptionalString("state"),
@@ -100,6 +106,7 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
         var request = context.Request;
         if (!PortInventoryQueryExecutor.TryExecute(
                 request: new PortInventoryQueryRequest {
+                    ComputerName = request.ComputerName,
                     Protocol = request.Protocol,
                     LocalPort = request.LocalPort,
                     ProcessNameContains = request.ProcessNameContains,
@@ -113,6 +120,7 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
         }
 
         var result = queryResult!;
+        var effectiveComputerName = string.IsNullOrWhiteSpace(result.ComputerName) ? request.Target : result.ComputerName;
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
@@ -123,6 +131,8 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
             baseTruncated: result.Truncated,
             scanned: result.Scanned,
             metaMutate: meta => {
+                AddComputerNameMeta(meta, effectiveComputerName);
+                AddMaxResultsMeta(meta, request.MaxEntries);
                 meta.Add("protocol", ProtocolToString(request.Protocol));
                 if (request.LocalPort.HasValue) {
                     meta.Add("local_port", request.LocalPort.Value);
@@ -133,6 +143,13 @@ public sealed class SystemPortsListTool : SystemToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(request.ProcessNameContains)) {
                     meta.Add("process_name_contains", request.ProcessNameContains);
                 }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_ports_list",
+                    targetComputer: effectiveComputerName,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
             });
         return Task.FromResult(response);
     }

@@ -14,7 +14,7 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_monitoring_probe_catalog",
-        "List available AD monitoring probe kinds (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping) with scope and argument hints.",
+        "List available AD monitoring probe kinds (ldap/dns/kerberos/ntp/replication/port/https/dns_service/adws/directory/ping/windows_update) with scope and argument hints.",
         ToolSchema.Object().NoAdditionalProperties());
 
     /// <summary>
@@ -121,6 +121,13 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
                     SupportsScopeDiscovery = true,
                     SupportsExplicitTargets = true,
                     KeyArguments = new[] { "targets", "latency_threshold_ms", "p95_latency_threshold_ms", "loss_threshold_percent", "discovery_fallback" }
+                },
+                new {
+                    ProbeKind = "windows_update",
+                    Summary = "Windows Update / WSUS client telemetry checks for selected hosts or discovered AD scope.",
+                    SupportsScopeDiscovery = true,
+                    SupportsExplicitTargets = true,
+                    KeyArguments = new[] { "domain_name", "targets", "domain_controller", "require_wsus", "max_concurrency", "discovery_fallback" }
                 }
             },
             PreferredExecutionTool = "ad_monitoring_probe_run",
@@ -134,7 +141,7 @@ public sealed class AdMonitoringProbeCatalogTool : ActiveDirectoryToolBase, IToo
 
         var summary = ToolMarkdown.SummaryText(
             title: "AD Monitoring Probe Catalog",
-            "Use `ad_monitoring_probe_run` with `probe_kind` set to one of: ldap, dns, kerberos, ntp, replication, port, https, dns_service, adws, directory, ping.",
+            "Use `ad_monitoring_probe_run` with `probe_kind` set to one of: ldap, dns, kerberos, ntp, replication, port, https, dns_service, adws, directory, ping, windows_update.",
             "Prefer `domain_controller` for single-server diagnostics, `domain_name` for domain-wide checks, and `discovery_fallback=current_forest` for forest-level discovery.");
 
         return Task.FromResult(ToolResultV2.OkModel(model, summaryMarkdown: summary));

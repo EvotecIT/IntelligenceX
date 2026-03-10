@@ -1,0 +1,87 @@
+{
+  "name": "ad-cert-disk-ram-transcript-replay-10-turn",
+  "tags": ["ad", "system", "continuation", "transcript", "strict", "live", "handoff"],
+  "defaults": {
+    "assert_clean_completion": true,
+    "assert_tool_call_output_pairing": true,
+    "assert_no_duplicate_tool_call_ids": true,
+    "assert_no_duplicate_tool_output_call_ids": true,
+    "max_no_tool_execution_retries": 0,
+    "max_duplicate_tool_call_signatures": 1
+  },
+  "turns": [
+    {
+      "name": "AD baseline",
+      "user": "Discover current forest/domain scope, list discovered DCs, then run a compact AD baseline for replication, trust, LDAP, and NTP.",
+      "min_tool_calls": 2,
+      "require_any_tools": ["ad_*discover*", "ad_*scope*", "ad_*replication*", "ad_*trust*", "ad_*diagnostics*", "ad_monitoring_probe_*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Trust fallback",
+      "user": "If deep trust mode returns empty or sparse data, retry with a lighter trust fallback and summarize the difference.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*trust*"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Certificates follow-up",
+      "user": "Now check certificate and LDAPS status across the same discovered DCs.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*diagnostics*", "ad_monitoring_probe_*"],
+      "assert_not_contains": ["I already checked", "I can rerun if you want"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Remote disks follow-up",
+      "user": "Also show remote logical disks for the same DCs with used and free space.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["system_logical_disks_list"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Remote RAM follow-up",
+      "user": "Also check RAM usage on those DCs.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["system_metrics_summary", "system_hardware_summary"],
+      "assert_not_contains": ["I can only do local hardware", "I do not have remote memory"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Refresh cert check",
+      "user": "Run the cert check again now and only report fresh results.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["ad_*diagnostics*", "ad_monitoring_probe_*"],
+      "assert_not_contains": ["[Cached evidence fallback]", "reused recent read-only evidence", "previous results still show"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Refresh disk check",
+      "user": "Refresh the disk state for the same hosts now.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["system_logical_disks_list"],
+      "assert_not_contains": ["[Cached evidence fallback]", "reused recent read-only evidence"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Refresh RAM check",
+      "user": "Refresh RAM for the same hosts now.",
+      "min_tool_calls": 1,
+      "require_any_tools": ["system_metrics_summary", "system_hardware_summary"],
+      "assert_not_contains": ["[Cached evidence fallback]", "reused recent read-only evidence"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Tool capability honesty",
+      "user": "If no live tools run in a turn, explain capability honestly without claiming you refreshed anything.",
+      "assert_not_contains": ["fresh results", "just reran", "I refreshed"],
+      "assert_no_questions": true
+    },
+    {
+      "name": "Final summary",
+      "user": "Summarize cert, disk, and RAM findings in 6 bullets with the exact tools used per section and no follow-up question.",
+      "assert_contains": ["ad_", "system_"],
+      "assert_no_questions": true
+    }
+  ]
+}

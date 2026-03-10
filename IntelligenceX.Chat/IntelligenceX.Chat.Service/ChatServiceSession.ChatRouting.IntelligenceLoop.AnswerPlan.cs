@@ -11,6 +11,11 @@ internal sealed partial class ChatServiceSession {
         string UnresolvedNow,
         bool CarryForwardUnresolvedFocus,
         string CarryForwardReason,
+        bool RequiresLiveExecution,
+        string MissingLiveEvidence,
+        string[] PreferredPackIds,
+        string[] PreferredToolNames,
+        bool AllowCachedEvidenceReuse,
         bool PreferCachedEvidenceReuse,
         string CachedEvidenceReuseReason,
         string PrimaryArtifact,
@@ -32,6 +37,11 @@ internal sealed partial class ChatServiceSession {
                 UnresolvedNow: string.Empty,
                 CarryForwardUnresolvedFocus: false,
                 CarryForwardReason: string.Empty,
+                RequiresLiveExecution: false,
+                MissingLiveEvidence: string.Empty,
+                PreferredPackIds: Array.Empty<string>(),
+                PreferredToolNames: Array.Empty<string>(),
+                AllowCachedEvidenceReuse: false,
                 PreferCachedEvidenceReuse: false,
                 CachedEvidenceReuseReason: string.Empty,
                 PrimaryArtifact: string.Empty,
@@ -74,6 +84,11 @@ internal sealed partial class ChatServiceSession {
             unresolved_now: <one short line>
             carry_forward_unresolved_focus: true|false
             carry_forward_reason: <short line or none>
+            requires_live_execution: true|false
+            missing_live_evidence: <short line or none>
+            preferred_pack_ids: <csv pack ids or none>
+            preferred_tool_names: <csv tool names or none>
+            allow_cached_evidence_reuse: true|false
             prefer_cached_evidence_reuse: true|false
             cached_evidence_reuse_reason: <short line or none>
             primary_artifact: prose|table|diagram|chart|network|none
@@ -91,6 +106,10 @@ internal sealed partial class ChatServiceSession {
             Compare against assistant content already visible earlier in the thread, not just this draft.
             Set carry_forward_unresolved_focus to false when this turn resolves the prior follow-up gap and nothing narrower should stay active.
             If carry_forward_unresolved_focus is true, unresolved_now must name only the next remaining gap, not the old umbrella task.
+            Set requires_live_execution to true when the current ask still needs fresh tool execution instead of capability explanation or cached evidence.
+            Use missing_live_evidence to name the fresh evidence that is still missing (for example cert status, disk state, memory usage).
+            preferred_pack_ids and preferred_tool_names should be compact planning hints for the next execution attempt.
+            Set allow_cached_evidence_reuse to true only when recent read-only evidence remains acceptable for this exact continuation.
             Set prefer_cached_evidence_reuse to true only when this turn should explicitly reuse the latest fresh read-only evidence snapshot on a compact continuation instead of rerunning tools.
             Start your output with this exact answer-plan block, then a blank line, then the revised assistant response text for the user.
             The answer-plan block is runtime-only metadata and will be removed before display.
@@ -123,6 +142,9 @@ internal sealed partial class ChatServiceSession {
         var resolvedSoFar = string.Empty;
         var unresolvedNow = string.Empty;
         var carryForwardReason = string.Empty;
+        var missingLiveEvidence = string.Empty;
+        var preferredPackIds = Array.Empty<string>();
+        var preferredToolNames = Array.Empty<string>();
         var cachedEvidenceReuseReason = string.Empty;
         var primaryArtifact = string.Empty;
         var requestedArtifactVisibilityReason = string.Empty;
@@ -131,6 +153,8 @@ internal sealed partial class ChatServiceSession {
         var repeatNoveltyReason = string.Empty;
         var advanceReason = string.Empty;
         var carryForwardUnresolvedFocus = false;
+        var requiresLiveExecution = false;
+        var allowCachedEvidenceReuse = false;
         var preferCachedEvidenceReuse = false;
         var requestedArtifactAlreadyVisibleAbove = false;
         var repeatsPriorVisibleContent = false;
@@ -138,6 +162,8 @@ internal sealed partial class ChatServiceSession {
         var repeatAddsNewInformation = true;
         var advancesCurrentAsk = true;
         var hasCarryForwardUnresolvedFocus = false;
+        var hasRequiresLiveExecution = false;
+        var hasAllowCachedEvidenceReuse = false;
         var hasPreferCachedEvidenceReuse = false;
         var hasRequestedArtifactAlreadyVisibleAbove = false;
         var hasRepeatsPriorVisibleContent = false;
@@ -188,6 +214,24 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (TryParseStructuredKeyValueLine(trimmed, "missing_live_evidence", out var missingLiveEvidenceValue)) {
+                missingLiveEvidence = missingLiveEvidenceValue.ToString();
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "preferred_pack_ids", out var preferredPackIdsValue)) {
+                preferredPackIds = NormalizeStructuredMetadataCsv(preferredPackIdsValue, NormalizePackId, maxItems: 8);
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "preferred_tool_names", out var preferredToolNamesValue)) {
+                preferredToolNames = NormalizeStructuredMetadataCsv(
+                    preferredToolNamesValue,
+                    static value => NormalizeToolNameForAnswerPlan(value),
+                    maxItems: 8);
+                continue;
+            }
+
             if (TryParseStructuredKeyValueLine(trimmed, "cached_evidence_reuse_reason", out var cachedEvidenceReuseReasonValue)) {
                 cachedEvidenceReuseReason = cachedEvidenceReuseReasonValue.ToString();
                 continue;
@@ -235,6 +279,18 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (TryParseStructuredBooleanLine(trimmed, "requires_live_execution", out var parsedRequiresLiveExecution)) {
+                requiresLiveExecution = parsedRequiresLiveExecution;
+                hasRequiresLiveExecution = true;
+                continue;
+            }
+
+            if (TryParseStructuredBooleanLine(trimmed, "allow_cached_evidence_reuse", out var parsedAllowCachedEvidenceReuse)) {
+                allowCachedEvidenceReuse = parsedAllowCachedEvidenceReuse;
+                hasAllowCachedEvidenceReuse = true;
+                continue;
+            }
+
             if (TryParseStructuredBooleanLine(trimmed, "prefer_cached_evidence_reuse", out var parsedPreferCachedEvidenceReuse)) {
                 preferCachedEvidenceReuse = parsedPreferCachedEvidenceReuse;
                 hasPreferCachedEvidenceReuse = true;
@@ -277,6 +333,10 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var effectiveAllowCachedEvidenceReuse = hasAllowCachedEvidenceReuse
+            ? allowCachedEvidenceReuse
+            : hasPreferCachedEvidenceReuse && preferCachedEvidenceReuse;
+
         answerPlan = new TurnAnswerPlan(
             HasPlan: true,
             UserGoal: userGoal,
@@ -284,6 +344,11 @@ internal sealed partial class ChatServiceSession {
             UnresolvedNow: unresolvedNow,
             CarryForwardUnresolvedFocus: hasCarryForwardUnresolvedFocus ? carryForwardUnresolvedFocus : NormalizeStructuredMetadataText(unresolvedNow).Length > 0,
             CarryForwardReason: NormalizeStructuredMetadataText(carryForwardReason),
+            RequiresLiveExecution: hasRequiresLiveExecution && requiresLiveExecution,
+            MissingLiveEvidence: NormalizeStructuredMetadataText(missingLiveEvidence),
+            PreferredPackIds: preferredPackIds,
+            PreferredToolNames: preferredToolNames,
+            AllowCachedEvidenceReuse: effectiveAllowCachedEvidenceReuse,
             PreferCachedEvidenceReuse: hasPreferCachedEvidenceReuse && preferCachedEvidenceReuse,
             CachedEvidenceReuseReason: NormalizeStructuredMetadataText(cachedEvidenceReuseReason),
             PrimaryArtifact: primaryArtifact,
@@ -344,6 +409,60 @@ internal sealed partial class ChatServiceSession {
         }
 
         return normalized;
+    }
+
+    private static string[] NormalizeStructuredMetadataCsv(
+        ReadOnlySpan<char> value,
+        Func<string, string> normalizeItem,
+        int maxItems) {
+        if (value.IsEmpty || maxItems <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var raw = NormalizeStructuredMetadataText(value.ToString());
+        if (raw.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var items = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (items.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(Math.Min(items.Length, maxItems));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < items.Length && normalized.Count < maxItems; i++) {
+            var candidate = normalizeItem(items[i]);
+            if (candidate.Length == 0 || !seen.Add(candidate)) {
+                continue;
+            }
+
+            normalized.Add(candidate);
+        }
+
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
+    }
+
+    private static string NormalizeToolNameForAnswerPlan(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        Span<char> buffer = stackalloc char[normalized.Length];
+        var written = 0;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch) || ch == '_' || ch == '-') {
+                buffer[written++] = char.ToLowerInvariant(ch);
+            }
+        }
+
+        if (written == 0) {
+            return string.Empty;
+        }
+
+        return new string(buffer[..written]).Replace('-', '_');
     }
 
     private static int FindAnswerPlanBlockStart(string text, int markerIndex) {

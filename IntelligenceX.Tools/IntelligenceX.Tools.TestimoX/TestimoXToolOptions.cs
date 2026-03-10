@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace IntelligenceX.Tools.TestimoX;
 
@@ -22,6 +23,16 @@ public sealed class TestimoXToolOptions {
     public int MaxRulesPerRun { get; set; } = 100;
 
     /// <summary>
+    /// Maximum page size accepted by read-only history/report catalog queries.
+    /// </summary>
+    public int MaxHistoryRowsInCatalog { get; set; } = 500;
+
+    /// <summary>
+    /// Maximum number of characters returned for report snapshot content.
+    /// </summary>
+    public int MaxSnapshotContentChars { get; set; } = 16000;
+
+    /// <summary>
     /// Default execution concurrency for testimox_rules_run.
     /// </summary>
     public int DefaultConcurrency { get; set; } = 4;
@@ -42,6 +53,16 @@ public sealed class TestimoXToolOptions {
     public int MaxResultRowsPerRule { get; set; } = 200;
 
     /// <summary>
+    /// Allowed roots for read-only TestimoX result-store inspection tools.
+    /// </summary>
+    public List<string> AllowedStoreRoots { get; } = new();
+
+    /// <summary>
+    /// Allowed roots for read-only monitoring history/report inspection tools.
+    /// </summary>
+    public List<string> AllowedHistoryRoots { get; } = new();
+
+    /// <summary>
     /// Validates option values.
     /// </summary>
     public void Validate() {
@@ -50,6 +71,12 @@ public sealed class TestimoXToolOptions {
         }
         if (MaxRulesPerRun <= 0) {
             throw new ArgumentOutOfRangeException(nameof(MaxRulesPerRun), "MaxRulesPerRun must be greater than 0.");
+        }
+        if (MaxHistoryRowsInCatalog <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(MaxHistoryRowsInCatalog), "MaxHistoryRowsInCatalog must be greater than 0.");
+        }
+        if (MaxSnapshotContentChars <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(MaxSnapshotContentChars), "MaxSnapshotContentChars must be greater than 0.");
         }
         if (DefaultConcurrency <= 0) {
             throw new ArgumentOutOfRangeException(nameof(DefaultConcurrency), "DefaultConcurrency must be greater than 0.");

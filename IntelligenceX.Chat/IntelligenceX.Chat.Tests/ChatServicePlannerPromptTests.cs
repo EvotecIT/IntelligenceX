@@ -183,6 +183,49 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesPlannerContextExecutionPreferencesHandoffAndSkills() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_ldap_diagnostics",
+                "Run LDAP diagnostics.",
+                ToolSchema.Object(("domain_name", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties()),
+            new(
+                "system_hardware_summary",
+                "Summarize hardware state.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties())
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            missing_live_evidence: cert status and memory usage
+            preferred_pack_ids: active_directory, system
+            preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary
+            handoff_target_pack_ids: system
+            handoff_target_tool_names: system_metrics_summary
+            matching_skills: ad_domain.scope_hosts, system.host_baseline
+            allow_cached_evidence_reuse: false
+
+            continue from the same DC scope
+            """,
+            definitions,
+            4
+        }));
+
+        Assert.Contains("Execution intent:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Fresh live execution is required", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Missing live evidence: cert status and memory usage", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Preferred packs: active_directory, system", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Preferred tools: ad_ldap_diagnostics, system_hardware_summary", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Target packs: system", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Target tools: system_metrics_summary", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Matching reusable skills:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad_domain.scope_hosts, system.host_baseline", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildToolRoutingSearchText_IncludesSchemaTokens() {
         var definition = new ToolDefinition(
             "eventlog_top_events",
@@ -682,6 +725,68 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => tool.Name.StartsWith("adrodc_gap_probe_", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_PrefersPreferredPackAndToolTargetsFromPlannerContext() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "ad_ldap_diagnostics",
+            "Run LDAP diagnostics.",
+            ToolSchema.Object(("domain_name", ToolSchema.String("Domain DNS name."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "system_hardware_summary",
+            "Summarize hardware state.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
+            null,
+            new object?[] {
+                definitions,
+                """
+                [Planner context]
+                ix:planner-context:v1
+                requires_live_execution: true
+                preferred_pack_ids: system
+                preferred_tool_names: ad_ldap_diagnostics
+                handoff_target_pack_ids: system
+                handoff_target_tool_names: system_hardware_summary
+                allow_cached_evidence_reuse: false
+
+                continue from the same DC scope
+                """,
+                4,
+                ToolOrchestrationCatalog.Build(definitions)
+            }));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "system_hardware_summary", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

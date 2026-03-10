@@ -29,7 +29,8 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<string> startupWarnings, SessionStartupBootstrapTelemetryDto? startupBootstrap, IReadOnlyList<string> pluginSearchPaths,
         ToolRuntimePolicyDiagnostics runtimePolicy, ToolRoutingCatalogDiagnostics? routingCatalog = null,
         IReadOnlyList<string>? connectedRuntimeSkills = null,
-        IReadOnlyList<string>? healthyToolNames = null, string? remoteReachabilityMode = null) {
+        IReadOnlyList<string>? healthyToolNames = null, string? remoteReachabilityMode = null,
+        SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
         var packList = new List<ToolPackInfoDto>();
@@ -60,8 +61,9 @@ internal sealed partial class ChatServiceSession {
         var pluginList = MapPluginPolicyList(pluginAvailability, packAvailability);
 
         var dangerousEnabled = packList.Exists(static p => p.Enabled && (p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite));
-        var capabilitySnapshot = BuildCapabilitySnapshot(
+        var resolvedCapabilitySnapshot = capabilitySnapshot ?? BuildCapabilitySnapshot(
             options,
+            toolDefinitions: null,
             packAvailability,
             pluginAvailability,
             routingCatalog,
@@ -104,7 +106,7 @@ internal sealed partial class ChatServiceSession {
                 AuthenticationProfilePath = runtimePolicy.AuthenticationProfilePath
             },
             RoutingCatalog = MapRoutingCatalogDiagnostics(routingCatalog),
-            CapabilitySnapshot = capabilitySnapshot
+            CapabilitySnapshot = resolvedCapabilitySnapshot
         };
     }
 

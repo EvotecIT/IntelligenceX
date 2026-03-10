@@ -372,9 +372,16 @@ public class SourceGuardrailTests {
     }
 
     [Fact]
-    public void RemoteCapableSystemDiskTools_ShouldExposeComputerNameAndPassThroughComputerXScope() {
+    public void RemoteCapableSystemComputerXWrappers_ShouldExposeComputerNameAndPassThroughComputerXScope() {
         var repoRoot = FindRepoRoot();
         string[] filePaths = {
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemProcessListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemNetworkAdaptersTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemPortsListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemServiceListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemScheduledTasksListTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemDevicesSummaryTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemFeaturesListTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemDisksListTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.System", "SystemLogicalDisksListTool.cs")
         };
@@ -384,7 +391,7 @@ public class SourceGuardrailTests {
             Assert.Contains("\"computer_name\"", source, StringComparison.Ordinal);
             Assert.Contains("ResolveTargetComputerName(computerName)", source, StringComparison.Ordinal);
             Assert.Contains("ComputerName = request.ComputerName", source, StringComparison.Ordinal);
-            Assert.Contains("AddComputerNameMeta(meta, request.Target);", source, StringComparison.Ordinal);
+            Assert.Contains("AddComputerNameMeta(", source, StringComparison.Ordinal);
         }
     }
 

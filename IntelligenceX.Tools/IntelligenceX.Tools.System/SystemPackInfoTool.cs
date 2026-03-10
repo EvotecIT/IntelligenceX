@@ -49,11 +49,12 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             engine: "ComputerX",
             tools: ToolRegistrySystemExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
-                "Call system_info or system_hardware_summary for baseline context.",
+                "Call system_info, system_hardware_summary, or system_metrics_summary for baseline host context.",
                 "Use list tools (processes/services/ports/adapters/firewall/disks/features/apps/updates/bitlocker) for evidence collection.",
                 "Use system_rdp_posture/system_smb_posture/system_boot_configuration/system_bios_summary for host-hardening and firmware posture checks.",
                 "Use system_security_options when you need a registry-backed snapshot of Windows security-option posture.",
                 "Use system_time_sync for quick skew checks and w32time runtime status (local or remote).",
+                "Use system_metrics_summary for focused remote CPU/memory pressure checks when AD/EventLog/TestimoX evidence already identifies the host.",
                 "Use system_patch_details for monthly MSRC patch intelligence (CVE/KB/severity details, defaulting to current UTC month).",
                 "Use system_patch_compliance to correlate monthly MSRC KB coverage with installed updates and prioritize missing exploited CVEs.",
                 "Use AD/TestimoX/EventLog handoff evidence (computer/host identifiers) to drive focused ComputerX follow-up rather than broad host scans.",
@@ -63,7 +64,7 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
                     goal: "Collect baseline host context",
-                    suggestedTools: new[] { "system_info", "system_hardware_summary", "system_whoami" }),
+                    suggestedTools: new[] { "system_info", "system_hardware_summary", "system_metrics_summary", "system_whoami" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect process/network/security evidence",
                     suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status" }),
@@ -90,7 +91,11 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                 ToolPackGuidance.Capability(
                     id: "patch_intelligence",
                     summary: "Provide month-scoped MSRC patch intelligence with CVE/KB metadata and severity/exploitation prioritization.",
-                    primaryTools: new[] { "system_patch_details", "system_patch_compliance", "system_updates_installed" })
+                    primaryTools: new[] { "system_patch_details", "system_patch_compliance", "system_updates_installed" }),
+                ToolPackGuidance.Capability(
+                    id: "host_runtime_metrics",
+                    summary: "Collect focused CPU/memory telemetry and summarized hardware context for the local or remote host.",
+                    primaryTools: new[] { "system_metrics_summary", "system_hardware_summary", "system_info" })
             },
             entityHandoffs: new[] {
                 ToolPackGuidance.EntityHandoff(
@@ -98,13 +103,13 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     summary: "Promote AD/EventLog host indicators into ComputerX remote host-scoping arguments.",
                     entityKinds: new[] { "computer", "host", "domain_controller" },
                     sourceTools: new[] { "ad_scope_discovery", "ad_domain_controller_facts", "ad_object_resolve", "eventlog_live_stats", "eventlog_named_events_query" },
-                    targetTools: new[] { "system_info", "system_process_list", "system_service_list", "system_ports_list", "system_security_options", "system_time_sync", "system_updates_installed", "system_disks_list", "system_logical_disks_list" },
+                    targetTools: new[] { "system_info", "system_hardware_summary", "system_metrics_summary", "system_process_list", "system_service_list", "system_scheduled_tasks_list", "system_ports_list", "system_network_adapters", "system_devices_summary", "system_features_list", "system_security_options", "system_time_sync", "system_updates_installed", "system_disks_list", "system_logical_disks_list" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("rows[].dns_host_name", "computer_name", "Prefer canonical FQDN/hostname values and deduplicate before fan-out."),
                         ToolPackGuidance.EntityFieldMapping("rows[].computer", "computer_name", "Normalize and deduplicate host aliases for remote ComputerX calls."),
                         ToolPackGuidance.EntityFieldMapping("rows[].host", "computer_name", "Map generic host indicators to ComputerX computer_name scope.")
                     },
-                    notes: "Use focused host batches from AD/EventLog evidence to reduce noisy host-wide diagnostics. Physical and logical disk inventory tools accept computer_name for the same remote host-scoping pattern."),
+                    notes: "Use focused host batches from AD/EventLog evidence to reduce noisy host-wide diagnostics. Baseline, process/service/port/adapter, device/feature, metrics, and disk tools all accept computer_name for the same remote host-scoping pattern."),
                 ToolPackGuidance.EntityHandoff(
                     id: "system_patch_findings_to_ad_eventlog_followup",
                     summary: "Route patch compliance findings into AD identity ownership and EventLog correlation workflows.",

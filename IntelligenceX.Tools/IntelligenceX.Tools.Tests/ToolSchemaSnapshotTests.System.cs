@@ -66,6 +66,66 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "system_hardware_summary",
+            new[] { "computer_name", "include_processors", "include_memory_modules", "include_video_controllers", "name_sample_size", "timeout_ms" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_metrics_summary",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_info",
+            new[] { "computer_name" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_process_list",
+            new[] { "computer_name", "name_contains", "max_processes", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_network_adapters",
+            new[] { "computer_name", "name_contains", "max_adapters", "timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_ports_list",
+            new[] { "computer_name", "protocol", "local_port", "state", "process_name_contains", "max_entries", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_service_list",
+            new[] { "computer_name", "name_contains", "status", "max_services", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_scheduled_tasks_list",
+            new[] { "computer_name", "name_contains", "max_tasks", "suspicious", "only_suspicious", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_devices_summary",
+            new[] { "computer_name", "include_usb", "include_device_manager", "name_contains", "class_contains", "manufacturer_contains", "status_contains", "problem_only", "max_entries", "timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_features_list",
+            new[] { "computer_name", "source", "name_contains", "optional_state", "max_entries", "timeout_ms", "columns", "sort_by", "sort_direction", "top" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "system_disks_list",
             new[] { "computer_name", "model_contains", "interface_contains", "media_contains", "min_size_bytes", "max_entries", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

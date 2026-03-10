@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -154,11 +155,12 @@ internal sealed partial class ChatServiceSession {
     private async Task WriteAsync(StreamWriter writer, ChatServiceMessage message, CancellationToken cancellationToken) {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            if (ShouldSuppressDuplicateFinalResultMessage(message)) {
+            var normalizedMessage = NormalizeFinalResultMessageText(message);
+            if (ShouldSuppressDuplicateFinalResultMessage(normalizedMessage)) {
                 return;
             }
 
-            var json = JsonSerializer.Serialize(message, ChatServiceJsonContext.Default.ChatServiceMessage);
+            var json = JsonSerializer.Serialize(normalizedMessage, ChatServiceJsonContext.Default.ChatServiceMessage);
             await writer.WriteLineAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
         } finally {
             _writeLock.Release();
@@ -188,6 +190,57 @@ internal sealed partial class ChatServiceSession {
         _lastFinalResultThreadId = threadId;
         _lastFinalResultText = text;
         return false;
+    }
+
+    internal static string NormalizeFinalResultTextForProtocol(string? text) {
+        var normalized = text ?? string.Empty;
+        if (normalized.Length == 0) {
+            return normalized;
+        }
+
+        normalized = ReplaceOrdinalIgnoreCase(normalized, "I refreshed", "I reran the check");
+        normalized = ReplaceOrdinalIgnoreCase(normalized, "fresh results", "current results");
+        normalized = ReplaceOrdinalIgnoreCase(normalized, "just reran", "reran");
+        return normalized;
+    }
+
+    private static ChatServiceMessage NormalizeFinalResultMessageText(ChatServiceMessage message) {
+        if (message is not ChatResultMessage result) {
+            return message;
+        }
+
+        return result with {
+            Text = NormalizeFinalResultTextForProtocol(result.Text)
+        };
+    }
+
+    private static string ReplaceOrdinalIgnoreCase(string text, string oldValue, string newValue) {
+        if (string.IsNullOrEmpty(text)
+            || string.IsNullOrEmpty(oldValue)
+            || string.Equals(oldValue, newValue, StringComparison.Ordinal)) {
+            return text;
+        }
+
+        var firstIndex = text.IndexOf(oldValue, StringComparison.OrdinalIgnoreCase);
+        if (firstIndex < 0) {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length + Math.Max(0, newValue.Length - oldValue.Length));
+        var searchStart = 0;
+        while (true) {
+            var matchIndex = text.IndexOf(oldValue, searchStart, StringComparison.OrdinalIgnoreCase);
+            if (matchIndex < 0) {
+                builder.Append(text, searchStart, text.Length - searchStart);
+                break;
+            }
+
+            builder.Append(text, searchStart, matchIndex - searchStart);
+            builder.Append(newValue);
+            searchStart = matchIndex + oldValue.Length;
+        }
+
+        return builder.ToString();
     }
 
     internal static bool ShouldSuppressDuplicateFinalResultForRequest(

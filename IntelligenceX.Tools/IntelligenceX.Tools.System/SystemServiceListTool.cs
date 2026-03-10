@@ -16,6 +16,8 @@ namespace IntelligenceX.Tools.System;
 [SupportedOSPlatform("windows")]
 public sealed class SystemServiceListTool : SystemToolBase, ITool {
     private sealed record ServiceListRequest(
+        string? ComputerName,
+        string Target,
         string? NameContains,
         ServiceListStatusFilter Status,
         int MaxServices);
@@ -33,6 +35,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         "system_service_list",
         "List Windows services (read-only, capped).",
         ToolSchema.Object(
+                ("computer_name", ToolSchema.String("Optional remote computer name. Omit for local machine.")),
                 ("name_contains", ToolSchema.String("Optional case-insensitive filter against service name and display name.")),
                 ("status", ToolSchema.String("Optional status filter.").Enum("any", "running", "stopped", "paused")),
                 ("max_services", ToolSchema.Integer("Optional maximum services to return (capped).")))
@@ -59,6 +62,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
 
     private ToolRequestBindingResult<ServiceListRequest> BindRequest(JsonObject? arguments) {
         return ToolRequestBinder.Bind(arguments, reader => {
+            var computerName = reader.OptionalString("computer_name");
             if (!ToolEnumBinders.TryParseOptional(
                     reader.OptionalString("status"),
                     StatusFilterByName,
@@ -69,6 +73,8 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
             }
 
             return ToolRequestBindingResult<ServiceListRequest>.Success(new ServiceListRequest(
+                ComputerName: computerName,
+                Target: ResolveTargetComputerName(computerName),
                 NameContains: reader.OptionalString("name_contains"),
                 Status: parsedStatus ?? ServiceListStatusFilter.Any,
                 MaxServices: ResolveBoundedOptionLimit(arguments, "max_services")));
@@ -79,6 +85,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         var request = context.Request;
         var attempt = await ServiceListQueryExecutor.TryExecuteAsync(
             request: new ServiceListQueryRequest {
+                ComputerName = request.ComputerName,
                 NameContains = request.NameContains,
                 StatusFilter = request.Status,
                 MaxResults = request.MaxServices,
@@ -90,6 +97,7 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
         }
 
         var result = attempt.Result ?? new ServiceListQueryResult();
+        var effectiveComputerName = string.IsNullOrWhiteSpace(result.ComputerName) ? request.Target : result.ComputerName;
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
@@ -98,7 +106,24 @@ public sealed class SystemServiceListTool : SystemToolBase, ITool {
             title: "Services (preview)",
             maxTop: MaxViewTop,
             baseTruncated: result.Truncated,
-            scanned: result.Scanned);
+            scanned: result.Scanned,
+            metaMutate: meta => {
+                AddComputerNameMeta(meta, effectiveComputerName);
+                AddMaxResultsMeta(meta, request.MaxServices);
+                if (!string.IsNullOrWhiteSpace(request.NameContains)) {
+                    meta.Add("name_contains", request.NameContains);
+                }
+                if (request.Status != ServiceListStatusFilter.Any) {
+                    meta.Add("status", request.Status.ToString());
+                }
+                AddReadOnlyPostureChainingMeta(
+                    meta: meta,
+                    currentTool: "system_service_list",
+                    targetComputer: effectiveComputerName,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
+            });
         return response;
     }
 }

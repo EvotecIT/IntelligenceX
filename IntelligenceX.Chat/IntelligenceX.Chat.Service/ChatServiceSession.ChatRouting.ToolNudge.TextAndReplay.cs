@@ -6,30 +6,6 @@ using System.Text.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private static readonly string[] LiveRefreshFollowUpPhrases = {
-        "rerun",
-        "re-run",
-        "recheck",
-        "re-check",
-        "requery",
-        "re-query",
-        "refresh",
-        "run again",
-        "check again",
-        "try again",
-        "live refresh",
-        "ponownie",
-        "jeszcze raz",
-        "sprawdz jeszcze raz",
-        "sprawdź jeszcze raz",
-        "odswiez",
-        "odśwież",
-        "uruchom ponownie",
-        "重新运行",
-        "再检查",
-        "다시 실행"
-    };
-
     private static bool TryGetQuotePair(char openQuote, out char closeQuote, out bool apostropheLike) {
         apostropheLike = false;
         closeQuote = '\0';
@@ -199,7 +175,7 @@ internal sealed partial class ChatServiceSession {
         return LooksLikeFollowUpShape(userRequest, CompactFollowUpQuestionCharLimit);
     }
 
-    private static bool LooksLikeLiveRefreshFollowUp(string userRequest) {
+    private bool ShouldTreatFollowUpAsLiveExecutionRequest(string threadId, string userRequest) {
         var normalized = NormalizeCompactText(userRequest);
         if (normalized.Length == 0 || normalized.Length > 180) {
             return false;
@@ -210,49 +186,76 @@ internal sealed partial class ChatServiceSession {
             || TryParseExplicitActSelection(normalized, out _, out _)
             || TryReadActionSelectionIntent(normalized, out _, out _)
             || LooksLikeExplicitToolQuestionTurn(normalized)) {
+            return false;
+        }
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
             return false;
         }
 
         var explicitToolReference = ExtractExplicitRequestedToolNames(normalized).Length > 0;
-        var followUpShape = LooksLikeFollowUpShape(normalized, Math.Max(ContinuationFollowUpQuestionCharLimit, 128))
-                            || ContainsQuestionSignal(normalized)
-                            || (!explicitToolReference && ContainsLiveRefreshFollowUpPhrase(normalized));
+        var followUpShape = explicitToolReference
+                            || LooksLikeFollowUpShape(normalized, Math.Max(ContinuationFollowUpQuestionCharLimit, 128))
+                            || ContainsQuestionSignal(normalized);
         if (!followUpShape) {
             return false;
         }
 
-        return ContainsLiveRefreshFollowUpPhrase(normalized);
-    }
-
-    private static bool LooksLikeExplicitLiveRefreshToolRequest(string userRequest) {
-        var normalized = NormalizeCompactText(userRequest);
-        if (normalized.Length == 0 || normalized.Length > 180) {
+        if (ShouldTreatAsPassiveCompactFollowUp(normalizedThreadId, normalized)) {
             return false;
         }
 
-        if (TryReadContinuationContractFromRequestText(normalized, out _, out _)
-            || LooksLikeActionSelectionPayload(normalized)
-            || TryParseExplicitActSelection(normalized, out _, out _)
-            || TryReadActionSelectionIntent(normalized, out _, out _)
-            || LooksLikeExplicitToolQuestionTurn(normalized)) {
+        var hasFreshEvidence = HasFreshThreadToolEvidence(normalizedThreadId);
+        var hasPendingActions = HasFreshPendingActionsContext(normalizedThreadId);
+        var hasCheckpoint = TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint);
+        if (!hasFreshEvidence && !hasPendingActions && !hasCheckpoint) {
             return false;
         }
 
-        if (ExtractExplicitRequestedToolNames(normalized).Length == 0) {
-            return false;
+        if (hasPendingActions) {
+            return true;
         }
 
-        return ContainsLiveRefreshFollowUpPhrase(normalized);
-    }
+        if (!hasCheckpoint) {
+            return hasFreshEvidence
+                   && ContainsQuestionSignal(normalized)
+                   && LooksLikeContinuationFollowUp(normalized);
+        }
 
-    private static bool ContainsLiveRefreshFollowUpPhrase(string normalized) {
-        for (var i = 0; i < LiveRefreshFollowUpPhrases.Length; i++) {
-            if (ContainsPhraseWithBoundaries(normalized, LiveRefreshFollowUpPhrases[i])) {
+        if (hasCheckpoint) {
+            var anchoredFollowUp = LooksLikeWorkingMemoryAnchoredContinuationFollowUp(normalized, checkpoint);
+            if (explicitToolReference) {
+                return true;
+            }
+
+            if (checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
+                && checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse
+                && checkpoint.PriorAnswerPlanUnresolvedNow.Length == 0
+                && anchoredFollowUp
+                && !ContainsQuestionSignal(normalized)) {
+                return false;
+            }
+
+            if (checkpoint.PriorAnswerPlanRequiresLiveExecution
+                || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0
+                || checkpoint.PriorAnswerPlanPreferredPackIds.Length > 0
+                || checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0) {
+                return anchoredFollowUp;
+            }
+
+            if (anchoredFollowUp) {
+                return true;
+            }
+
+            if (anchoredFollowUp) {
                 return true;
             }
         }
 
-        return false;
+        return hasFreshEvidence
+               && ContainsQuestionSignal(normalized)
+               && LooksLikeContinuationFollowUp(normalized);
     }
 
     private static bool LooksLikeContextualFollowUpForExecutionNudge(string userRequest, string assistantDraft) {
