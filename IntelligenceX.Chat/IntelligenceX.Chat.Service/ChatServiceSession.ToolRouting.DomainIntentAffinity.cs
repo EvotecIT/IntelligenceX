@@ -625,6 +625,9 @@ internal sealed partial class ChatServiceSession {
         var (
             structuredPreferredPackIds,
             structuredPreferredToolNames,
+            _,
+            _,
+            _,
             structuredHandoffTargetPackIds,
             structuredHandoffTargetToolNames,
             _,

@@ -122,6 +122,30 @@ internal sealed partial class ChatServiceSession {
         return string.Empty;
     }
 
+    private static double? TryReadNextActionConfidence(JsonElement action) {
+        if (action.ValueKind != JsonValueKind.Object) {
+            return null;
+        }
+
+        if (TryReadNormalizedConfidenceValue(action, "confidence", out var confidence)) {
+            return confidence;
+        }
+
+        if (TryReadNormalizedConfidenceValue(action, "chain_confidence", out confidence)) {
+            return confidence;
+        }
+
+        return null;
+    }
+
+    private static double? TryReadChainConfidence(JsonElement root) {
+        if (TryFindNormalizedConfidenceValue(root, maxDepth: 3, out var confidence)) {
+            return confidence;
+        }
+
+        return null;
+    }
+
     private static bool TryReadNextActionsArray(JsonElement root, out JsonElement nextActions) {
         return TryFindNextActionsArray(root, maxDepth: 3, out nextActions);
     }
@@ -184,6 +208,100 @@ internal sealed partial class ChatServiceSession {
 
         nextActions = default;
         return false;
+    }
+
+    private static bool TryFindNormalizedConfidenceValue(JsonElement node, int maxDepth, out double confidence) {
+        if (TryReadNormalizedConfidenceValue(node, "chain_confidence", out confidence)) {
+            return true;
+        }
+
+        if (maxDepth <= 0) {
+            confidence = default;
+            return false;
+        }
+
+        if (node.ValueKind == JsonValueKind.Object) {
+            foreach (var property in node.EnumerateObject()) {
+                var value = property.Value;
+                if (value.ValueKind != JsonValueKind.Object && value.ValueKind != JsonValueKind.Array) {
+                    continue;
+                }
+
+                if (TryFindNormalizedConfidenceValue(value, maxDepth - 1, out confidence)) {
+                    return true;
+                }
+            }
+        } else if (node.ValueKind == JsonValueKind.Array) {
+            var inspected = 0;
+            foreach (var item in node.EnumerateArray()) {
+                if (inspected >= 16) {
+                    break;
+                }
+
+                inspected++;
+                if (item.ValueKind != JsonValueKind.Object && item.ValueKind != JsonValueKind.Array) {
+                    continue;
+                }
+
+                if (TryFindNormalizedConfidenceValue(item, maxDepth - 1, out confidence)) {
+                    return true;
+                }
+            }
+        }
+
+        confidence = default;
+        return false;
+    }
+
+    private static bool TryReadNormalizedConfidenceValue(JsonElement node, string propertyName, out double confidence) {
+        confidence = default;
+        if (node.ValueKind != JsonValueKind.Object || !node.TryGetProperty(propertyName, out var value)) {
+            return false;
+        }
+
+        double rawValue;
+        switch (value.ValueKind) {
+            case JsonValueKind.Number when value.TryGetDouble(out rawValue):
+                break;
+            case JsonValueKind.String when TryParseNamedConfidence((value.GetString() ?? string.Empty).Trim(), out rawValue):
+                break;
+            case JsonValueKind.String when double.TryParse(
+                    (value.GetString() ?? string.Empty).Trim(),
+                    NumberStyles.Float | NumberStyles.AllowThousands,
+                    CultureInfo.InvariantCulture,
+                    out rawValue):
+                break;
+            default:
+                return false;
+        }
+
+        if (double.IsNaN(rawValue) || double.IsInfinity(rawValue)) {
+            return false;
+        }
+
+        confidence = Math.Clamp(rawValue, 0d, 1d);
+        return true;
+    }
+
+    private static bool TryParseNamedConfidence(string value, out double confidence) {
+        confidence = default;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        switch (value.Trim().ToLowerInvariant()) {
+            case "high":
+                confidence = 0.85d;
+                return true;
+            case "medium":
+                confidence = 0.60d;
+                return true;
+            case "low":
+                confidence = 0.25d;
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static string BuildStructuredNextActionRetryPrompt(

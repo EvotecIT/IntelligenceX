@@ -13,10 +13,10 @@ internal sealed partial class ChatServiceSession {
     private readonly record struct StructuredNextActionSnapshot(
         string SourceToolName,
         string ToolName,
+        string Reason,
+        double? Confidence,
         string ArgumentsJson,
         ActionMutability Mutability,
-        string Reason,
-        string Confidence,
         long SeenUtcTicks);
     private readonly record struct StructuredNextActionAutoReplaySnapshot(
         string Signature,
@@ -42,10 +42,10 @@ internal sealed partial class ChatServiceSession {
                 toolDefinitions,
                 toolCalls,
                 toolOutputs,
-                out var sourceToolName,
+                out var sourceTool,
                 out var nextTool,
                 out var argumentsJson,
-                out var nextActionReason,
+                out var nextReason,
                 out var nextActionMutability,
                 out var nextActionConfidence)) {
             RemoveStructuredNextActionCarryover(normalizedThreadId);
@@ -78,12 +78,12 @@ internal sealed partial class ChatServiceSession {
         }
 
         var snapshot = new StructuredNextActionSnapshot(
-            SourceToolName: sourceToolName,
+            SourceToolName: (sourceTool ?? string.Empty).Trim(),
             ToolName: nextTool,
+            Reason: NormalizeStructuredNextActionReason(nextReason),
+            Confidence: NormalizeStructuredNextActionConfidence(nextActionConfidence),
             ArgumentsJson: JsonLite.Serialize(normalizedArguments),
             Mutability: ActionMutability.ReadOnly,
-            Reason: nextActionReason,
-            Confidence: nextActionConfidence,
             SeenUtcTicks: DateTime.UtcNow.Ticks);
         lock (_toolRoutingContextLock) {
             _structuredNextActionByThreadId[normalizedThreadId] = snapshot;

@@ -231,6 +231,9 @@ public sealed class ChatServicePlannerPromptTests {
             missing_live_evidence: cert status and memory usage
             preferred_pack_ids: active_directory, system
             preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary
+            structured_next_action_source_tools: ad_monitoring_probe_run
+            structured_next_action_reason: inspect ldaps certificate details on the same domain controller
+            structured_next_action_confidence: 0.88
             handoff_target_pack_ids: system
             handoff_target_tool_names: system_metrics_summary
             matching_skills: ad_domain.scope_hosts, system.host_baseline
@@ -247,6 +250,9 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("Missing live evidence: cert status and memory usage", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Preferred packs: active_directory, system", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Preferred tools: ad_ldap_diagnostics, system_hardware_summary", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Structured source tools: ad_monitoring_probe_run", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Structured next-action reason: inspect ldaps certificate details on the same domain controller", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Structured next-action confidence: 0.88", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Target packs: system", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Target tools: system_metrics_summary", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Matching reusable skills:", prompt, StringComparison.OrdinalIgnoreCase);
@@ -322,7 +328,7 @@ public sealed class ChatServicePlannerPromptTests {
                 CallId = "call-ldap",
                 Ok = true,
                 Output = """
-                         {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"arguments":{"domain_controller":"ad0.contoso.com"}}]}
+                         {"ok":true,"chain_confidence":0.88,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"reason":"inspect ldaps certificate details on the same domain controller","arguments":{"domain_controller":"ad0.contoso.com"}}]}
                          """
             }
         };
@@ -344,6 +350,9 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("ix:planner-context:v1", augmented, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_pack_ids: active_directory", augmented, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("preferred_tool_names: ad_ldap_diagnostics", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("structured_next_action_source_tools: ad_monitoring_probe_run", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("structured_next_action_reason: inspect ldaps certificate details on the same domain controller", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("structured_next_action_confidence: 0.88", augmented, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1190,7 +1199,7 @@ public sealed class ChatServicePlannerPromptTests {
                     CallId = "call-ldap",
                     Ok = true,
                     Output = """
-                             {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"arguments":{"domain_controller":"ad0.contoso.com"}}]}
+                             {"ok":true,"chain_confidence":0.88,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"reason":"inspect ldaps certificate details on the same domain controller","arguments":{"domain_controller":"ad0.contoso.com"}}]}
                              """
                 }
             },
@@ -1208,6 +1217,56 @@ public sealed class ChatServicePlannerPromptTests {
             new object?[] {
                 definitions,
                 augmented,
+                4,
+                ToolOrchestrationCatalog.Build(definitions)
+            }));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_UsesStructuredNextActionReasonTokensWithoutPreferredToolNames() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "ad_ldap_diagnostics",
+            "Run LDAP diagnostics and inspect LDAPS endpoint certificate details for the same domain controller.",
+            ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            tags: new[] { "intent:ldap_certificates", "protocol:ldaps" }));
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
+            null,
+            new object?[] {
+                definitions,
+                """
+                [Planner context]
+                ix:planner-context:v1
+                structured_next_action_source_tools: ad_monitoring_probe_run
+                structured_next_action_reason: inspect ldaps certificate details on the same domain controller
+                structured_next_action_confidence: 0.88
+                allow_cached_evidence_reuse: false
+
+                continue with the same hosts
+                """,
                 4,
                 ToolOrchestrationCatalog.Build(definitions)
             }));
