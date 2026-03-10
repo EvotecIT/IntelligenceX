@@ -334,7 +334,7 @@ public class ToolPackInfoContractTests {
         Assert.DoesNotContain("testimox_analytics_diagnostics_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain(
             capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "monitoring_diagnostics", StringComparison.OrdinalIgnoreCase));
+            static id => string.Equals(id, "analytics_diagnostics", StringComparison.OrdinalIgnoreCase));
 
         var entityHandoffs = root.GetProperty("entity_handoffs");
         Assert.Equal(JsonValueKind.Array, entityHandoffs.ValueKind);
@@ -368,7 +368,7 @@ public class ToolPackInfoContractTests {
         var capabilities = root.GetProperty("capabilities");
         Assert.Contains(
             capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
-            static id => string.Equals(id, "monitoring_diagnostics", StringComparison.OrdinalIgnoreCase));
+            static id => string.Equals(id, "analytics_diagnostics", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("testimox_analytics_diagnostics_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains(
             capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),

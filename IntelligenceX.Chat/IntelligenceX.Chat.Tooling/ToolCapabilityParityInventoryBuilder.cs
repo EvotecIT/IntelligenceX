@@ -143,7 +143,7 @@ public static class ToolCapabilityParityInventoryBuilder {
     };
 
     private static readonly CapabilityExpectation[] TestimoXAnalyticsReadOnlyExpectations = {
-        CapabilityExpectation.ForTool("monitoring_diagnostics", "testimox_analytics_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
+        CapabilityExpectation.ForTool("analytics_diagnostics", "testimox_analytics_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
         CapabilityExpectation.ForTool("probe_index_status", "testimox_probe_index_status", static () => typeof(ProbeIndexStatusEntry) is not null),
         CapabilityExpectation.ForTool("maintenance_window_history", "testimox_maintenance_window_history", static () => typeof(MaintenanceWindowHistoryEntry) is not null),
         CapabilityExpectation.ForTool("report_data_snapshot", "testimox_report_data_snapshot_get", static () => typeof(MonitoringReportDataSnapshot) is not null),

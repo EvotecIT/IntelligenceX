@@ -719,7 +719,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, testimox.Status);
-        Assert.Contains("monitoring_diagnostics", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("analytics_diagnostics", testimox.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

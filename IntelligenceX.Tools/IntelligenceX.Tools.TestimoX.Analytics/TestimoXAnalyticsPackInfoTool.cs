@@ -85,7 +85,7 @@ public sealed class TestimoXAnalyticsPackInfoTool : TestimoXToolBase, ITool {
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
-                    id: "monitoring_diagnostics",
+                    id: "analytics_diagnostics",
                     summary: "Load a compact monitoring diagnostics snapshot with queue, notification, maintenance, SQLite health, reachability, and optional slow-probe summaries.",
                     primaryTools: new[] { "testimox_analytics_diagnostics_get" }),
                 ToolPackGuidance.Capability(
