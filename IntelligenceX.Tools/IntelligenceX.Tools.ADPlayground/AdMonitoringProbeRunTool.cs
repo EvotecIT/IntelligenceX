@@ -146,10 +146,30 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
         }
 
         var rows = FlattenProbeRows(result, includeChildren);
+        var directoryProbeKind = string.Equals(normalizedKind, "directory", StringComparison.OrdinalIgnoreCase)
+            ? ToolArgs.GetOptionalTrimmed(arguments, "directory_probe_kind")
+            : null;
+        var chain = BuildChainContract(
+            normalizedKind: normalizedKind,
+            directoryProbeKind: directoryProbeKind,
+            result: result,
+            resolvedTargets: resolvedTargets,
+            domainName: domainName,
+            forestName: forestName,
+            includeTrusts: includeTrusts,
+            discoveryFallback: discoveryFallback);
         var model = new {
             ProbeKind = normalizedKind,
             ProbeResult = result,
             ResultRows = rows,
+            NextActions = chain.NextActions,
+            Cursor = chain.Cursor,
+            ResumeToken = chain.ResumeToken,
+            FlowId = chain.FlowId,
+            StepId = chain.StepId,
+            Checkpoint = chain.Checkpoint,
+            Handoff = chain.Handoff,
+            Confidence = chain.Confidence,
             NormalizedRequest = new {
                 Name = name,
                 DomainName = domainName,
@@ -185,6 +205,15 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             metaMutate: meta => {
                 meta.Add("probe_kind", normalizedKind);
                 meta.Add("row_count", rows.Count);
+                if (chain.NextActions.Count > 0) {
+                    var nextActionsJson = new JsonArray();
+                    for (var i = 0; i < chain.NextActions.Count; i++) {
+                        nextActionsJson.Add(ToolJson.ToJsonObjectSnakeCase(chain.NextActions[i]));
+                    }
+
+                    meta.Add("next_actions", nextActionsJson);
+                    meta.Add("chain_confidence", chain.Confidence);
+                }
             });
         return response;
 

@@ -1,19 +1,27 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Monitoring.Diagnostics;
+using ADPlayground.Monitoring.Probes;
+using ADPlayground.Network;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
+using IntelligenceX.Tools.Common;
 using IntelligenceX.Tools.System;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
 
 public class SystemAdMonitoringParityTests {
+    private static readonly MethodInfo BuildMonitoringProbeChainContractMethod =
+        typeof(AdMonitoringProbeRunTool).GetMethod("BuildChainContract", BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildChainContract not found.");
+
     [Theory]
     [InlineData(typeof(SystemHardwareSummaryTool))]
     [InlineData(typeof(SystemMetricsSummaryTool))]
@@ -443,6 +451,68 @@ public class SystemAdMonitoringParityTests {
             Assert.Single(windowsUpdate.GetProperty("result_signal_profiles").EnumerateArray(), static node => string.Equals(node.GetProperty("id").GetString(), "missing_updates_or_reboot_required", StringComparison.OrdinalIgnoreCase))
                 .GetProperty("preferred_follow_up_tools").EnumerateArray().Select(static x => x.GetString()),
             StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AdMonitoringProbeRun_ChainContract_ShouldPreferLdapDiagnosticsForLdapFollowUp() {
+        var chain = Assert.IsType<ToolChainContractModel>(BuildMonitoringProbeChainContractMethod.Invoke(
+            null,
+            new object?[] {
+                "ldap",
+                null,
+                new ProbeResult { Status = ProbeStatus.Degraded, Target = "dc01.contoso.com" },
+                new[] { "dc01.contoso.com" },
+                "contoso.com",
+                string.Empty,
+                false,
+                DirectoryDiscoveryFallback.CurrentDomain
+            }));
+
+        var ldapAction = Assert.Single(chain.NextActions, static action => string.Equals(action.Tool, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("dc01.contoso.com", ldapAction.SuggestedArguments["domain_controller"]);
+        Assert.Equal("True", ldapAction.SuggestedArguments["verify_certificate"]);
+    }
+
+    [Fact]
+    public void AdMonitoringProbeRun_ChainContract_ShouldPromoteWindowsUpdateHostFollowUps() {
+        var chain = Assert.IsType<ToolChainContractModel>(BuildMonitoringProbeChainContractMethod.Invoke(
+            null,
+            new object?[] {
+                "windows_update",
+                null,
+                new ProbeResult { Status = ProbeStatus.Down, Target = "dc02.contoso.com" },
+                new[] { "dc02.contoso.com" },
+                "contoso.com",
+                string.Empty,
+                false,
+                DirectoryDiscoveryFallback.CurrentDomain
+            }));
+
+        Assert.Contains(chain.NextActions, static action => string.Equals(action.Tool, "system_windows_update_client_status", StringComparison.OrdinalIgnoreCase)
+                                                            && string.Equals(action.SuggestedArguments["computer_name"], "dc02.contoso.com", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(chain.NextActions, static action => string.Equals(action.Tool, "system_windows_update_telemetry", StringComparison.OrdinalIgnoreCase)
+                                                            && string.Equals(action.SuggestedArguments["computer_name"], "dc02.contoso.com", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AdMonitoringProbeRun_ChainContract_ShouldPromoteDirectoryRpcEndpointHostFollowUps() {
+        var chain = Assert.IsType<ToolChainContractModel>(BuildMonitoringProbeChainContractMethod.Invoke(
+            null,
+            new object?[] {
+                "directory",
+                "rpc_endpoint",
+                new ProbeResult { Status = ProbeStatus.Down, Target = "dc03.contoso.com" },
+                new[] { "dc03.contoso.com" },
+                "contoso.com",
+                string.Empty,
+                false,
+                DirectoryDiscoveryFallback.CurrentForest
+            }));
+
+        Assert.Contains(chain.NextActions, static action => string.Equals(action.Tool, "system_ports_list", StringComparison.OrdinalIgnoreCase)
+                                                            && string.Equals(action.SuggestedArguments["computer_name"], "dc03.contoso.com", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(chain.NextActions, static action => string.Equals(action.Tool, "system_service_list", StringComparison.OrdinalIgnoreCase)
+                                                            && string.Equals(action.SuggestedArguments["computer_name"], "dc03.contoso.com", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
