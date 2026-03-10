@@ -91,6 +91,16 @@ internal sealed partial class ChatServiceSession {
         return TryGetContinuationToolSubset(threadId, userRequest, allDefinitions, out subset);
     }
 
+    internal string BuildPlannerContextAugmentedRequestForTesting(
+        string threadId,
+        string requestText,
+        IReadOnlyList<ToolDefinition> definitions) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(requestText);
+        ArgumentNullException.ThrowIfNull(definitions);
+        return BuildPlannerContextAugmentedRequest(threadId, requestText, definitions);
+    }
+
     internal (
         string UserRequest,
         string UserIntent,

@@ -290,6 +290,63 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildPlannerContextAugmentedRequest_UsesStructuredNextActionHintsWithoutCheckpoint() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "ad_monitoring_probe_run",
+                "Run AD monitoring probe.",
+                ToolSchema.Object(("probe_kind", ToolSchema.String("Probe kind."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "ad_ldap_diagnostics",
+                "Run LDAP diagnostics.",
+                ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                })
+        };
+        var toolCalls = new List<IntelligenceX.Chat.Abstractions.Protocol.ToolCallDto> {
+            new() { CallId = "call-ldap", Name = "ad_monitoring_probe_run" }
+        };
+        var toolOutputs = new List<IntelligenceX.Chat.Abstractions.Protocol.ToolOutputDto> {
+            new() {
+                CallId = "call-ldap",
+                Ok = true,
+                Output = """
+                         {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"arguments":{"domain_controller":"ad0.contoso.com"}}]}
+                         """
+            }
+        };
+
+        session.RememberStructuredNextActionCarryoverForTesting(
+            "thread-planner-carryover",
+            toolDefinitions,
+            toolCalls,
+            toolOutputs,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+                ["ad_ldap_diagnostics"] = false
+            });
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            "thread-planner-carryover",
+            "can you check ldap certificates now?",
+            toolDefinitions);
+
+        Assert.Contains("ix:planner-context:v1", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_pack_ids: active_directory", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_tool_names: ad_ldap_diagnostics", augmented, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildToolRoutingSearchText_IncludesSchemaTokens() {
         var definition = new ToolDefinition(
             "eventlog_top_events",
@@ -954,6 +1011,81 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(selected, tool => string.Equals(tool.Name, "system_hardware_summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_PrefersStructuredNextActionHintsProjectedIntoPlannerContext() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "ad_monitoring_probe_run",
+            "Run AD monitoring probe.",
+            ToolSchema.Object(("probe_kind", ToolSchema.String("Probe kind."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "ad_ldap_diagnostics",
+            "Run LDAP diagnostics.",
+            ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
+
+        session.RememberStructuredNextActionCarryoverForTesting(
+            "thread-planner-candidates-carryover",
+            definitions,
+            new List<IntelligenceX.Chat.Abstractions.Protocol.ToolCallDto> {
+                new() { CallId = "call-ldap", Name = "ad_monitoring_probe_run" }
+            },
+            new List<IntelligenceX.Chat.Abstractions.Protocol.ToolOutputDto> {
+                new() {
+                    CallId = "call-ldap",
+                    Ok = true,
+                    Output = """
+                             {"ok":true,"next_actions":[{"tool":"ad_ldap_diagnostics","mutating":false,"arguments":{"domain_controller":"ad0.contoso.com"}}]}
+                             """
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+                ["ad_ldap_diagnostics"] = false
+            });
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            "thread-planner-candidates-carryover",
+            "can you check ldap certificates now?",
+            definitions);
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
+            null,
+            new object?[] {
+                definitions,
+                augmented,
+                4,
+                ToolOrchestrationCatalog.Build(definitions)
+            }));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -33,25 +33,48 @@ internal sealed partial class ChatServiceSession {
         }
 
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
-        if (normalizedThreadId.Length == 0 || !TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint)) {
+        if (normalizedThreadId.Length == 0) {
+            return normalizedRequest;
+        }
+
+        var hasCheckpoint = TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint);
+        var (
+            structuredPreferredPackIds,
+            structuredPreferredToolNames,
+            structuredHandoffTargetPackIds,
+            structuredHandoffTargetToolNames) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, definitions);
+        if (!hasCheckpoint
+            && structuredPreferredPackIds.Length == 0
+            && structuredPreferredToolNames.Length == 0
+            && structuredHandoffTargetPackIds.Length == 0
+            && structuredHandoffTargetToolNames.Length == 0) {
             return normalizedRequest;
         }
 
         var preferredPackIds = NormalizeDistinctStrings(
-            (checkpoint.PriorAnswerPlanPreferredPackIds ?? Array.Empty<string>())
+            (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredPackIds : Array.Empty<string>())
+            .Concat(structuredPreferredPackIds)
             .Select(static packId => NormalizePackId(packId))
             .Where(static packId => packId.Length > 0),
             MaxPlannerContextPackIds);
         var preferredToolNames = NormalizeDistinctStrings(
-            checkpoint.PriorAnswerPlanPreferredToolNames ?? Array.Empty<string>(),
+            (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredToolNames : Array.Empty<string>())
+            .Concat(structuredPreferredToolNames),
             MaxPlannerContextToolNames);
 
         var handoffSourceToolNames = NormalizeDistinctStrings(
-            (checkpoint.PriorAnswerPlanPreferredToolNames ?? Array.Empty<string>())
-            .Concat(checkpoint.RecentToolNames ?? Array.Empty<string>())
-            .Concat(checkpoint.CapabilityHealthyToolNames ?? Array.Empty<string>()),
+            (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredToolNames : Array.Empty<string>())
+            .Concat(hasCheckpoint ? checkpoint.RecentToolNames : Array.Empty<string>())
+            .Concat(hasCheckpoint ? checkpoint.CapabilityHealthyToolNames : Array.Empty<string>())
+            .Concat(structuredPreferredToolNames),
             MaxPlannerContextToolNames);
-        var (handoffTargetPackIds, handoffTargetToolNames) = CollectPlannerHandoffTargets(handoffSourceToolNames);
+        var (derivedHandoffTargetPackIds, derivedHandoffTargetToolNames) = CollectPlannerHandoffTargets(handoffSourceToolNames);
+        var handoffTargetPackIds = NormalizeDistinctStrings(
+            derivedHandoffTargetPackIds.Concat(structuredHandoffTargetPackIds),
+            MaxPlannerContextHandoffTargets);
+        var handoffTargetToolNames = NormalizeDistinctStrings(
+            derivedHandoffTargetToolNames.Concat(structuredHandoffTargetToolNames),
+            MaxPlannerContextHandoffTargets);
 
         var matchingSkills = ResolvePlannerMatchingSkills(
             normalizedRequest,
@@ -61,14 +84,14 @@ internal sealed partial class ChatServiceSession {
             handoffTargetPackIds,
             handoffTargetToolNames);
 
-        if (!checkpoint.PriorAnswerPlanRequiresLiveExecution
-            && checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0
+        if ((!hasCheckpoint || !checkpoint.PriorAnswerPlanRequiresLiveExecution)
+            && (!hasCheckpoint || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0)
             && preferredPackIds.Length == 0
             && preferredToolNames.Length == 0
             && handoffTargetPackIds.Length == 0
             && handoffTargetToolNames.Length == 0
             && matchingSkills.Length == 0
-            && !checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse) {
+            && (!hasCheckpoint || !checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse)) {
             return normalizedRequest;
         }
 
@@ -78,8 +101,8 @@ internal sealed partial class ChatServiceSession {
         builder.AppendLine("[Planner context]");
         builder.AppendLine(PlannerContextMarker);
         builder.Append("requires_live_execution: ")
-            .AppendLine(checkpoint.PriorAnswerPlanRequiresLiveExecution ? "true" : "false");
-        if (checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0) {
+            .AppendLine(hasCheckpoint && checkpoint.PriorAnswerPlanRequiresLiveExecution ? "true" : "false");
+        if (hasCheckpoint && checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0) {
             builder.Append("missing_live_evidence: ")
                 .AppendLine(checkpoint.PriorAnswerPlanMissingLiveEvidence);
         }
@@ -110,8 +133,32 @@ internal sealed partial class ChatServiceSession {
         }
 
         builder.Append("allow_cached_evidence_reuse: ")
-            .AppendLine(checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse ? "true" : "false");
+            .AppendLine(hasCheckpoint && checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse ? "true" : "false");
         return builder.ToString().TrimEnd();
+    }
+
+    private (string[] PreferredPackIds, string[] PreferredToolNames, string[] HandoffTargetPackIds, string[] HandoffTargetToolNames)
+        ResolvePlannerStructuredNextActionHints(string normalizedThreadId, IReadOnlyList<ToolDefinition> definitions) {
+        if (normalizedThreadId.Length == 0
+            || definitions is null
+            || definitions.Count == 0
+            || !TryGetStructuredNextActionCarryover(normalizedThreadId, out var snapshot, out _)
+            || snapshot.Mutability == ActionMutability.Mutating
+            || !TryGetToolDefinitionByName(definitions, snapshot.ToolName, out var toolDefinition)) {
+            return (Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        var preferredToolNames = NormalizeDistinctStrings(new[] { snapshot.ToolName }, MaxPlannerContextToolNames);
+        var packId = ResolveToolPackId(toolDefinition, _toolOrchestrationCatalog);
+        var preferredPackIds = packId.Length == 0
+            ? Array.Empty<string>()
+            : NormalizeDistinctStrings(new[] { packId }, MaxPlannerContextPackIds);
+        var (handoffTargetPackIds, handoffTargetToolNames) = CollectPlannerHandoffTargets(preferredToolNames);
+        return (
+            preferredPackIds,
+            preferredToolNames,
+            handoffTargetPackIds,
+            handoffTargetToolNames);
     }
 
     private (string[] TargetPackIds, string[] TargetToolNames) CollectPlannerHandoffTargets(IReadOnlyList<string> sourceToolNames) {
