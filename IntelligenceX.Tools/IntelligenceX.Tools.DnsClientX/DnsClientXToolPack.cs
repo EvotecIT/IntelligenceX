@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.DnsClientX;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.DnsClientX;
 /// <summary>
 /// DnsClientX tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class DnsClientXToolPack : IToolPack {
+public sealed class DnsClientXToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly DnsClientXToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,9 @@ public sealed class DnsClientXToolPack : IToolPack {
     public void Register(ToolRegistry registry) {
         registry.RegisterDnsClientXPack(_options);
     }
-}
 
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryDnsClientXExtensions.GetRegisteredToolCatalog(_options);
+    }
+}

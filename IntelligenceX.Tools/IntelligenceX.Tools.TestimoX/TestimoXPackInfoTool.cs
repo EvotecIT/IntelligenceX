@@ -12,10 +12,10 @@ namespace IntelligenceX.Tools.TestimoX;
 public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "testimox_pack_info",
-        "Return TestimoX pack capabilities, output contract, and recommended usage patterns. Call this first when planning rule-based diagnostics.",
-        ToolSchema.Object().NoAdditionalProperties());
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "testimox_pack_info",
+        description: "Return TestimoX pack capabilities, output contract, and recommended usage patterns. Call this first when planning rule-based diagnostics.",
+        packId: "testimox");
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TestimoXPackInfoTool"/> class.

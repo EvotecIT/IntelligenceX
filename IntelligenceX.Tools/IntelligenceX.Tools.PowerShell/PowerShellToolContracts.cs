@@ -1,10 +1,19 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.PowerShell;
 
 internal static class PowerShellToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["powershell_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["powershell_environment_discover"] = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+            ["powershell_hosts"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["powershell_run"] = ToolRoutingTaxonomy.RoleOperational
+        };
+
     private static readonly string[] SetupHintKeys = {
         "host",
         "host_name",
@@ -45,7 +54,7 @@ internal static class PowerShellToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "powershell",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
             DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : PowerShellSignalTokens,
@@ -56,69 +65,39 @@ internal static class PowerShellToolContracts {
     }
 
     private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Setup;
-        }
-
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
-        }
-
-        return new ToolSetupContract {
-            IsSetupAware = true,
-            SetupToolName = "powershell_environment_discover",
-            Requirements = new[] {
-                new ToolSetupRequirement {
-                    RequirementId = "powershell_host_connectivity",
-                    Kind = ToolSetupRequirementKinds.Connectivity,
-                    IsRequired = true,
-                    HintKeys = SetupHintKeys
-                }
-            },
-            SetupHintKeys = SetupHintKeys
-        };
+        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRequiredSetup(
+                setupToolName: "powershell_environment_discover",
+                requirementId: "powershell_host_connectivity",
+                requirementKind: ToolSetupRequirementKinds.Connectivity,
+                setupHintKeys: SetupHintKeys));
     }
 
     private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
+        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            definition,
+            routing.Role,
+            () => {
+                if (definition.WriteGovernance?.IsWriteCapable == true) {
+                    return ToolContractDefaults.CreateNoRetryRecovery(
+                        recoveryToolNames: new[] { "powershell_environment_discover" });
+                }
 
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Recovery;
-        }
-
-        if (definition.WriteGovernance?.IsWriteCapable == true) {
-            return new ToolRecoveryContract {
-                IsRecoveryAware = true,
-                SupportsTransientRetry = false,
-                MaxRetryAttempts = 0,
-                RecoveryToolNames = new[] { "powershell_environment_discover" }
-            };
-        }
-
-        return new ToolRecoveryContract {
-            IsRecoveryAware = true,
-            SupportsTransientRetry = true,
-            MaxRetryAttempts = 1,
-            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed" },
-            RecoveryToolNames = new[] { "powershell_environment_discover", "powershell_hosts" }
-        };
+                return ToolContractDefaults.CreateRecovery(
+                    supportsTransientRetry: true,
+                    maxRetryAttempts: 1,
+                    retryableErrorCodes: new[] { "timeout", "query_failed", "probe_failed" },
+                    recoveryToolNames: new[] { "powershell_environment_discover", "powershell_hosts" });
+            });
     }
 
-    private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "powershell_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (string.Equals(toolName, "powershell_environment_discover", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleEnvironmentDiscover;
-        }
-
-        if (string.Equals(toolName, "powershell_hosts", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        return ToolRoutingTaxonomy.RoleOperational;
+    private static string ResolveRole(string toolName, string? existingRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: existingRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
+            packDisplayName: "PowerShell");
     }
 }

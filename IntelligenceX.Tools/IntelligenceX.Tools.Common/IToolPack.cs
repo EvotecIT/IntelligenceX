@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Tools.Common;
@@ -17,3 +18,22 @@ public interface IToolPack {
     void Register(ToolRegistry registry);
 }
 
+/// <summary>
+/// Optional pack-owned tool catalog projection used by hosts to avoid duplicating pack metadata inference.
+/// </summary>
+public interface IToolPackCatalogProvider {
+    /// <summary>
+    /// Returns the normalized tool catalog published by this pack.
+    /// </summary>
+    IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog();
+}
+
+/// <summary>
+/// Optional runtime option key provider used to map host bootstrap option bags onto pack option instances.
+/// </summary>
+public interface IToolPackRuntimeOptionTarget {
+    /// <summary>
+    /// Returns normalized runtime option keys owned by this options type.
+    /// </summary>
+    IReadOnlyList<string> RuntimeOptionKeys { get; }
+}

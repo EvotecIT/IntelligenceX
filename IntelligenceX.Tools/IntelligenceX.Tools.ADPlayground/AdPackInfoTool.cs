@@ -12,35 +12,31 @@ namespace IntelligenceX.Tools.ADPlayground;
 public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "ad_pack_info",
-        "Return Active Directory pack capabilities, output contract, and recommended usage patterns. Call this first when planning AD investigations.",
-        ToolSchema.Object().NoAdditionalProperties(),
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "ad_pack_info",
+        description: "Return Active Directory pack capabilities, output contract, and recommended usage patterns. Call this first when planning AD investigations.",
+        packId: "active_directory",
         category: "active_directory",
         tags: new[] {
             "pack:active_directory",
             "domain_family:ad_domain",
             "domain_signals:dc,ldap,gpo,kerberos,replication,sysvol,netlogon,ntds,forest,trust,active_directory,adplayground"
         },
-        routing: new ToolRoutingContract {
-            IsRoutingAware = true,
-            PackId = "active_directory",
-            DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
-            DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd,
-            DomainSignalTokens = new[] {
-                "dc",
-                "ldap",
-                "gpo",
-                "kerberos",
-                "replication",
-                "sysvol",
-                "netlogon",
-                "ntds",
-                "forest",
-                "trust",
-                "active_directory",
-                "adplayground"
-            }
+        domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+        domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdAd,
+        domainSignalTokens: new[] {
+            "dc",
+            "ldap",
+            "gpo",
+            "kerberos",
+            "replication",
+            "sysvol",
+            "netlogon",
+            "ntds",
+            "forest",
+            "trust",
+            "active_directory",
+            "adplayground"
         });
 
     /// <summary>

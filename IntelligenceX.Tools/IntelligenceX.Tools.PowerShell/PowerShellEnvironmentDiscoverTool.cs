@@ -12,10 +12,11 @@ namespace IntelligenceX.Tools.PowerShell;
 public sealed class PowerShellEnvironmentDiscoverTool : PowerShellToolBase, ITool {
     private sealed record EnvironmentDiscoverRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "powershell_environment_discover",
-        "Discover IX.PowerShell runtime hosts (pwsh/windows_powershell/cmd) and execution policy (enabled/read-write options). Call this before powershell_run.",
-        ToolSchema.Object().NoAdditionalProperties());
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreateEnvironmentDiscoverDefinition(
+        toolName: "powershell_environment_discover",
+        description: "Discover IX.PowerShell runtime hosts (pwsh/windows_powershell/cmd) and execution policy (enabled/read-write options). Call this before powershell_run.",
+        parameters: ToolSchema.Object().NoAdditionalProperties(),
+        packId: "powershell");
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PowerShellEnvironmentDiscoverTool"/> class.

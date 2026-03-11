@@ -39,8 +39,33 @@ public sealed class TestimoXCatalogToolsTests {
             .EnumerateArray()
             .First();
         Assert.Equal("dashboard-auto", firstJob.GetProperty("job_key").GetString());
+        Assert.Equal("dashboard-auto", firstJob.GetProperty("report_key").GetString());
         Assert.Equal("Success", firstJob.GetProperty("status").GetString());
         Assert.Equal(42, firstJob.GetProperty("history_entries").GetInt32());
+    }
+
+    [Fact]
+    public async Task TestimoXReportJobHistoryTool_ShouldAcceptReportKeyAlias() {
+        using var fixture = CreateMonitoringHistoryFixture();
+        var options = new TestimoXToolOptions();
+        options.AllowedHistoryRoots.Add(fixture.RootDirectory);
+        var tool = new TestimoXReportJobHistoryTool(options);
+        var arguments = new JsonObject()
+            .Add("history_directory", fixture.HistoryDirectory)
+            .Add("report_key", "dashboard-auto");
+
+        var json = await tool.InvokeAsync(arguments, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(1, root.GetProperty("returned_count").GetInt32());
+        var firstJob = root.GetProperty("jobs")
+            .EnumerateArray()
+            .First();
+        Assert.Equal("dashboard-auto", firstJob.GetProperty("job_key").GetString());
+        Assert.Equal("dashboard-auto", firstJob.GetProperty("report_key").GetString());
     }
 
     [Fact]

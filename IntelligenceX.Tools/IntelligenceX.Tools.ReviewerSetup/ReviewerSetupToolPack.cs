@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.ReviewerSetup;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.ReviewerSetup;
 /// <summary>
 /// Reviewer setup tool pack (guidance-first).
 /// </summary>
-public sealed class ReviewerSetupToolPack : IToolPack {
+public sealed class ReviewerSetupToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly ReviewerSetupToolOptions _options;
 
     /// <summary>
@@ -30,5 +31,10 @@ public sealed class ReviewerSetupToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterReviewerSetupPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryReviewerSetupExtensions.GetRegisteredToolCatalog(_options);
     }
 }

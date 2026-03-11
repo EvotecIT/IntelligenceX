@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.EventLog;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.EventLog;
 /// <summary>
 /// Event log tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class EventLogToolPack : IToolPack {
+public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly EventLogToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,10 @@ public sealed class EventLogToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterEventLogPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(_options);
     }
 }

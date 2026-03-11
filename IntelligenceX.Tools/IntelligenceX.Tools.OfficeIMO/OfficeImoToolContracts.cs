@@ -1,10 +1,17 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.OfficeIMO;
 
 internal static class OfficeImoToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["officeimo_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["officeimo_read"] = ToolRoutingTaxonomy.RoleOperational
+        };
+
     private static readonly string[] SetupHintKeys = {
         "path",
         "recurse",
@@ -31,11 +38,13 @@ internal static class OfficeImoToolContracts {
         var definition = tool.Definition;
         var routing = BuildRouting(definition);
         var setup = BuildSetup(definition, routing);
+        var handoff = BuildHandoff(definition);
         var recovery = BuildRecovery(definition, routing);
         var updatedDefinition = ToolDefinitionOverlay.WithContracts(
             definition: definition,
             routing: routing,
             setup: setup,
+            handoff: handoff,
             recovery: recovery);
         return ToolDefinitionOverlay.WithDefinition(tool, updatedDefinition);
     }
@@ -49,7 +58,7 @@ internal static class OfficeImoToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "officeimo",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
             DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : OfficeImoSignalTokens,
@@ -60,51 +69,47 @@ internal static class OfficeImoToolContracts {
     }
 
     private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Setup;
+        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRequiredSetup(
+                setupToolName: "officeimo_pack_info",
+                requirementId: "officeimo_path_access",
+                requirementKind: ToolSetupRequirementKinds.Capability,
+                setupHintKeys: SetupHintKeys));
+    }
+
+    private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {
+        if (string.Equals(definition.Name, "officeimo_read", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "filesystem",
+                    targetToolName: "fs_read",
+                    reason: "Promote normalized document extraction into raw source file inspection when the original file is needed.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("files[]", "path")
+                    })
+            });
         }
 
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
-        }
-
-        return new ToolSetupContract {
-            IsSetupAware = true,
-            SetupToolName = "officeimo_pack_info",
-            Requirements = new[] {
-                new ToolSetupRequirement {
-                    RequirementId = "officeimo_path_access",
-                    Kind = ToolSetupRequirementKinds.Capability,
-                    IsRequired = true,
-                    HintKeys = SetupHintKeys
-                }
-            },
-            SetupHintKeys = SetupHintKeys
-        };
+        return definition.Handoff;
     }
 
     private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
-
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Recovery;
-        }
-
-        return new ToolRecoveryContract {
-            IsRecoveryAware = true,
-            SupportsTransientRetry = true,
-            MaxRetryAttempts = 1,
-            RetryableErrorCodes = new[] { "io_error", "access_denied", "timeout", "parse_failed" }
-        };
+        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRecovery(
+                supportsTransientRetry: true,
+                maxRetryAttempts: 1,
+                retryableErrorCodes: new[] { "io_error", "access_denied", "timeout", "parse_failed" }));
     }
 
-    private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "officeimo_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        return ToolRoutingTaxonomy.RoleOperational;
+    private static string ResolveRole(string toolName, string? existingRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: existingRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
+            packDisplayName: "OfficeIMO");
     }
 }

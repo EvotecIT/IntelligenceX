@@ -13,36 +13,32 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
     private sealed record PackInfoRequest;
     private readonly PackInfoAdapter _adapter;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "domaindetective_pack_info",
-        "Return DomainDetective pack capabilities, output contract, and recommended usage patterns.",
-        ToolSchema.Object().NoAdditionalProperties(),
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "domaindetective_pack_info",
+        description: "Return DomainDetective pack capabilities, output contract, and recommended usage patterns.",
+        packId: "domaindetective",
         category: "dns",
         tags: new[] {
             "pack:domaindetective",
             "domain_family:public_domain",
             "domain_signals:dns,mx,spf,dmarc,dkim,ns,dnssec,caa,whois,mta_sts,bimi,domaindetective,domain_detective"
         },
-        routing: new ToolRoutingContract {
-            IsRoutingAware = true,
-            PackId = "domaindetective",
-            DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
-            DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic,
-            DomainSignalTokens = new[] {
-                "dns",
-                "mx",
-                "spf",
-                "dmarc",
-                "dkim",
-                "ns",
-                "dnssec",
-                "caa",
-                "whois",
-                "mta_sts",
-                "bimi",
-                "domaindetective",
-                "domain_detective"
-            }
+        domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyPublic,
+        domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdPublic,
+        domainSignalTokens: new[] {
+            "dns",
+            "mx",
+            "spf",
+            "dmarc",
+            "dkim",
+            "ns",
+            "dnssec",
+            "caa",
+            "whois",
+            "mta_sts",
+            "bimi",
+            "domaindetective",
+            "domain_detective"
         });
 
     /// <summary>

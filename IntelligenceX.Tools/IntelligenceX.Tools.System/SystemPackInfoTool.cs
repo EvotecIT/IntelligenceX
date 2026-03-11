@@ -13,10 +13,10 @@ namespace IntelligenceX.Tools.System;
 public sealed class SystemPackInfoTool : SystemToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "system_pack_info",
-        "Return system pack capabilities, output contract, and recommended usage patterns. Call this first when planning system diagnostics.",
-        ToolSchema.Object().NoAdditionalProperties());
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "system_pack_info",
+        description: "Return system pack capabilities, output contract, and recommended usage patterns. Call this first when planning system diagnostics.",
+        packId: "system");
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemPackInfoTool"/> class.

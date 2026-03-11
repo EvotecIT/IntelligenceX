@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.System;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.System;
 /// <summary>
 /// System tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class SystemToolPack : IToolPack {
+public sealed class SystemToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly SystemToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,10 @@ public sealed class SystemToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterSystemPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistrySystemExtensions.GetRegisteredToolCatalog(_options);
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.Email;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.Email;
 /// <summary>
 /// Email tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class EmailToolPack : IToolPack {
+public sealed class EmailToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly EmailToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,10 @@ public sealed class EmailToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterEmailPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryEmailExtensions.GetRegisteredToolCatalog(_options);
     }
 }

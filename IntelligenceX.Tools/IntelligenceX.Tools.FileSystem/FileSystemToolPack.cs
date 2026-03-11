@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.FileSystem;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.FileSystem;
 /// <summary>
 /// File system tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class FileSystemToolPack : IToolPack {
+public sealed class FileSystemToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly FileSystemToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,10 @@ public sealed class FileSystemToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterFileSystemPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryFileSystemExtensions.GetRegisteredToolCatalog(_options);
     }
 }

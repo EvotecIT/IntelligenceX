@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -12,7 +13,9 @@ using IntelligenceX.Tools.DomainDetective;
 using IntelligenceX.Tools.Email;
 using IntelligenceX.Tools.EventLog;
 using IntelligenceX.Tools.FileSystem;
+using IntelligenceX.Tools.OfficeIMO;
 using IntelligenceX.Tools.PowerShell;
+using IntelligenceX.Tools.ReviewerSetup;
 using IntelligenceX.Tools.System;
 using IntelligenceX.Tools.TestimoX;
 using Xunit;
@@ -161,6 +164,7 @@ public class ToolDefinitionContractTests {
     [InlineData("ad", "active_directory")]
     [InlineData("adplayground", "active_directory")]
     [InlineData("event-logs", "eventlog")]
+    [InlineData("eventviewerx", "eventlog")]
     [InlineData("testimoxpack", "testimox")]
     [InlineData("reviewer setup", "reviewer_setup")]
     [InlineData("my-pack", "my_pack")]
@@ -520,6 +524,162 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void FileSystemPack_ShouldExposeSemanticRoutingRoles_AndLocalReadHandoffs() {
+        var registry = new ToolRegistry();
+        registry.RegisterFileSystemPack(new FileSystemToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRoutingRole(definitionsByName, "fs_list", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "fs_search", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "fs_read", ToolRoutingTaxonomy.RoleOperational);
+
+        var fsListHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["fs_list"].Handoff);
+        Assert.Contains(
+            fsListHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "entries[].path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired));
+
+        var fsSearchHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["fs_search"].Handoff);
+        Assert.Contains(
+            fsSearchHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "matches[].path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+    }
+
+    [Fact]
+    public void EventLogPack_ShouldExposeEvtxArtifactAndAdHandoffs() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRoutingRole(definitionsByName, "eventlog_evtx_find", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "eventlog_evtx_security_summary", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "eventlog_evtx_query", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "eventlog_evtx_stats", ToolRoutingTaxonomy.RoleDiagnostic);
+
+        var evtxFindHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["eventlog_evtx_find"].Handoff);
+        Assert.Contains(
+            evtxFindHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_evtx_query", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "files[].path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+        Assert.Contains(
+            evtxFindHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "files[].path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+        Assert.Contains(
+            evtxFindHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_evtx_stats", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "files[].path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+
+        var evtxSecuritySummaryHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["eventlog_evtx_security_summary"].Handoff);
+        Assert.Contains(
+            evtxSecuritySummaryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "ad_handoff_prepare", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "meta/entity_handoff", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "entity_handoff", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+        Assert.Contains(
+            evtxSecuritySummaryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "meta/entity_handoff/computer_candidates/0/value", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "domain_controller", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired));
+
+        var evtxQueryRecovery = Assert.IsType<ToolRecoveryContract>(definitionsByName["eventlog_evtx_query"].Recovery);
+        Assert.Contains("eventlog_channels_list", evtxQueryRecovery.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("eventlog_channel_list", evtxQueryRecovery.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EventLogPack_DefaultSetupAndRecoveryHelpers_ShouldResolveToRegisteredTools() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in definitionsByName.Values.Where(static definition =>
+                     definition.Name.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase))) {
+            if (definition.Setup is ToolSetupContract setup && !string.IsNullOrWhiteSpace(setup.SetupToolName)) {
+                Assert.True(
+                    definitionsByName.ContainsKey(setup.SetupToolName),
+                    $"EventLog setup helper '{setup.SetupToolName}' for '{definition.Name}' is not a registered tool.");
+                Assert.DoesNotContain("eventlog_channel_list", setup.SetupToolName, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (definition.Recovery is not ToolRecoveryContract recovery) {
+                continue;
+            }
+
+            foreach (var recoveryToolName in recovery.RecoveryToolNames.Where(static name => !string.IsNullOrWhiteSpace(name))) {
+                Assert.True(
+                    definitionsByName.ContainsKey(recoveryToolName),
+                    $"EventLog recovery helper '{recoveryToolName}' for '{definition.Name}' is not a registered tool.");
+                Assert.DoesNotContain("eventlog_channel_list", recoveryToolName, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public void OfficeImoPack_ShouldExposeLocalSourceReadHandoff() {
+        var registry = new ToolRegistry();
+        registry.RegisterOfficeImoPack(new OfficeImoToolOptions());
+        registry.RegisterFileSystemPack(new FileSystemToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRoutingRole(definitionsByName, "officeimo_read", ToolRoutingTaxonomy.RoleOperational);
+
+        var officeReadHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["officeimo_read"].Handoff);
+        Assert.Contains(
+            officeReadHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "files[]", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+    }
+
+    [Fact]
     public void PowerShellPack_ShouldExposeRuntimeToolNames() {
         var registry = new ToolRegistry();
         registry.RegisterPowerShellPack(new PowerShellToolOptions {
@@ -534,6 +694,161 @@ public class ToolDefinitionContractTests {
         Assert.Contains("powershell_environment_discover", names);
         Assert.Contains("powershell_hosts", names);
         Assert.Contains("powershell_run", names);
+    }
+
+    [Fact]
+    public void ActiveDirectoryPack_ShouldExposeSemanticRoutingRoles_ForRepresentativeTools() {
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterSystemPack(new SystemToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRoutingRole(definitionsByName, "ad_search", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "ad_object_resolve", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "ad_ldap_query", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "ad_spn_search", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "ad_domain_statistics", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "ad_spn_stats", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "ad_password_policy", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "ad_groups_list", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "ad_search_facets", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "ad_trust", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "ad_object_get", ToolRoutingTaxonomy.RoleOperational);
+        AssertRoutingRole(definitionsByName, "ad_handoff_prepare", ToolRoutingTaxonomy.RoleOperational);
+
+        var environmentDiscoverHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["ad_environment_discover"].Handoff);
+        Assert.Contains(
+            environmentDiscoverHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 2
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "context/domain_controller", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired)
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "domain_controllers/0/value", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired));
+        Assert.Contains(
+            environmentDiscoverHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_metrics_summary", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 2
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "context/domain_controller", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired)
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "domain_controllers/0/value", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired));
+    }
+
+    [Fact]
+    public void TestimoXPacks_ShouldExposeSemanticRoutingRoles_ForRepresentativeTools() {
+        var registry = new ToolRegistry();
+        registry.RegisterTestimoXPack(new TestimoXToolOptions { Enabled = true });
+        registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions { Enabled = true });
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRoutingRole(definitionsByName, "testimox_rules_list", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "testimox_source_query", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "testimox_baseline_crosswalk", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "testimox_rules_run", ToolRoutingTaxonomy.RoleOperational);
+        AssertRoutingIntent(definitionsByName, "testimox_run_summary", "security_posture", "act_domain_scope_security_posture");
+        AssertRoutingRole(definitionsByName, "testimox_analytics_diagnostics_get", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "testimox_history_query", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "testimox_report_job_history", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "testimox_report_data_snapshot_get", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingRole(definitionsByName, "testimox_report_snapshot_get", ToolRoutingTaxonomy.RoleResolver);
+        AssertRoutingIntent(definitionsByName, "testimox_history_query", "monitoring_artifacts", "act_domain_scope_monitoring_artifacts");
+
+        var runSummaryHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["testimox_run_summary"].Handoff);
+        Assert.Contains(
+            runSummaryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            runSummaryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            runSummaryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_live_stats", StringComparison.OrdinalIgnoreCase));
+
+        var analyticsDiagnosticsHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["testimox_analytics_diagnostics_get"].Handoff);
+        Assert.Contains(
+            analyticsDiagnosticsHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "snapshot_path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            analyticsDiagnosticsHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "slow_probes[].target", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            analyticsDiagnosticsHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_live_stats", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "slow_probes[].target", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "machine_name", StringComparison.OrdinalIgnoreCase)));
+
+        var historyQueryHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["testimox_history_query"].Handoff);
+        Assert.Contains(
+            historyQueryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            historyQueryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_live_stats", StringComparison.OrdinalIgnoreCase));
+
+        var reportJobHistoryHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["testimox_report_job_history"].Handoff);
+        Assert.Contains(
+            reportJobHistoryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "testimox_analytics", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "testimox_report_data_snapshot_get", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 2
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "history_directory", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "history_directory", StringComparison.OrdinalIgnoreCase))
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "jobs[].report_key", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "report_key", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            reportJobHistoryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "testimox_analytics", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "testimox_report_snapshot_get", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 2
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "history_directory", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "history_directory", StringComparison.OrdinalIgnoreCase))
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "jobs[].report_key", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "report_key", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            reportJobHistoryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "jobs[].report_path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -719,7 +1034,7 @@ public class ToolDefinitionContractTests {
         Assert.Contains("fallback_hint_keys:history_directory,bucket_kind,start_utc,end_utc,root_probe_names,probe_name_contains", historyQuery.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("monitoring", reportJobHistory.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("reporting", reportJobHistory.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("fallback_hint_keys:history_directory,job_key,since_utc,statuses", reportJobHistory.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("fallback_hint_keys:history_directory,job_key,report_key,since_utc,statuses", reportJobHistory.Tags, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -757,6 +1072,67 @@ public class ToolDefinitionContractTests {
         Assert.Contains("reachability", dnsPing.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("domain_posture", domainSummary.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("reachability", networkProbe.Tags, StringComparer.OrdinalIgnoreCase);
+
+        var dnsQueryHandoff = Assert.IsType<ToolHandoffContract>(dnsQuery.Handoff);
+        Assert.Contains(
+            dnsQueryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "domaindetective", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 2
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "query/name", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "domain", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired)
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "query/endpoint", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "dns_endpoint", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired));
+
+        var dnsPingHandoff = Assert.IsType<ToolHandoffContract>(dnsPing.Handoff);
+        Assert.Contains(
+            dnsPingHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "domaindetective", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 2
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "probed_targets/0", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "host", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired)
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "timeout_ms", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "timeout_ms", StringComparison.OrdinalIgnoreCase)
+                                && !binding.IsRequired));
+
+        var domainSummaryHandoff = Assert.IsType<ToolHandoffContract>(domainSummary.Handoff);
+        Assert.Contains(
+            domainSummaryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "domain", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "domain_name", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+        Assert.Contains(
+            domainSummaryHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "ad_directory_discovery_diagnostics", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "domain", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "forest_name", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
+
+        var networkProbeHandoff = Assert.IsType<ToolHandoffContract>(networkProbe.Handoff);
+        Assert.Contains(
+            networkProbeHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "host", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "domain_controller", StringComparison.OrdinalIgnoreCase)
+                                && binding.IsRequired));
     }
 
     [Fact]
@@ -773,7 +1149,7 @@ public class ToolDefinitionContractTests {
         Assert.Contains("domain_family:ad_domain", adPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("domain_signals:dc,ldap,gpo,kerberos,replication,sysvol,netlogon,ntds,forest,trust,active_directory,adplayground", adPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("domain_family:ad_domain", eventLogPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("domain_signals:eventlog,security,kerberos,gpo,ad_domain,dc", eventLogPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("domain_signals:eventlog,eventviewerx,security,kerberos,gpo,ad_domain,dc", eventLogPackInfo.Tags, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -816,6 +1192,382 @@ public class ToolDefinitionContractTests {
             expectedFamily: ToolSelectionMetadata.DomainIntentFamilyPublic,
             expectedActionId: ToolSelectionMetadata.DomainIntentActionIdPublic,
             expectedSignalToken: "dmarc");
+    }
+
+    [Fact]
+    public void PackInfoToolDefinitions_ShouldDeclareExplicitPackInfoRoutingMetadataBeforeRegistration() {
+        var definitions = new ToolDefinition[] {
+            new AdPackInfoTool(new ActiveDirectoryToolOptions()).Definition,
+            new EventLogPackInfoTool(new EventLogToolOptions()).Definition,
+            new DnsClientXPackInfoTool(new DnsClientXToolOptions()).Definition,
+            new DomainDetectivePackInfoTool(new DomainDetectiveToolOptions()).Definition,
+            new SystemPackInfoTool(new SystemToolOptions()).Definition,
+            new FileSystemPackInfoTool(new FileSystemToolOptions()).Definition,
+            new EmailPackInfoTool(new EmailToolOptions()).Definition,
+            new PowerShellPackInfoTool(new PowerShellToolOptions()).Definition,
+            new OfficeImoPackInfoTool(new OfficeImoToolOptions()).Definition,
+            new TestimoXPackInfoTool(new TestimoXToolOptions()).Definition,
+            new TestimoXAnalyticsPackInfoTool(new TestimoXToolOptions()).Definition,
+            new ReviewerSetupPackInfoTool(new ReviewerSetupToolOptions()).Definition
+        };
+
+        foreach (var definition in definitions) {
+            var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
+            Assert.True(routing.IsRoutingAware);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+            Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, routing.Role, ignoreCase: true);
+            Assert.False(string.IsNullOrWhiteSpace(routing.PackId));
+        }
+    }
+
+    [Fact]
+    public void CreatePackInfoDefinition_ShouldNormalizePackIdAndDeclareExplicitPackInfoRouting() {
+        var definition = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+            toolName: "sample_pack_info",
+            description: "Sample pack info",
+            packId: "adplayground",
+            category: "active_directory",
+            tags: new[] { "pack:active_directory" },
+            domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+            domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdAd,
+            domainSignalTokens: new[] { "dc" });
+
+        var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
+        Assert.Equal("active_directory", routing.PackId, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, routing.Role, ignoreCase: true);
+        Assert.Equal("object", definition.Parameters!.GetString("type"));
+        Assert.False(definition.Parameters.GetBoolean("additionalProperties", defaultValue: true));
+    }
+
+    [Fact]
+    public void CreateEnvironmentDiscoverDefinition_ShouldNormalizePackIdAndDeclareExplicitEnvironmentDiscoverRouting() {
+        var definition = ToolPackDefinitionFactory.CreateEnvironmentDiscoverDefinition(
+            toolName: "sample_environment_discover",
+            description: "Sample environment discovery",
+            parameters: ToolSchema.Object(("domain_controller", ToolSchema.String())).NoAdditionalProperties(),
+            packId: "adplayground",
+            domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+            domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdAd,
+            domainSignalTokens: new[] { "dc" });
+
+        var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
+        Assert.Equal("active_directory", routing.PackId, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.RoleEnvironmentDiscover, routing.Role, ignoreCase: true);
+        Assert.Equal("object", definition.Parameters!.GetString("type"));
+        Assert.False(definition.Parameters.GetBoolean("additionalProperties", defaultValue: true));
+    }
+
+    [Fact]
+    public void EnvironmentDiscoverToolDefinitions_ShouldDeclareExplicitEnvironmentDiscoverRoutingMetadataBeforeRegistration() {
+        var definitions = new ToolDefinition[] {
+            new AdEnvironmentDiscoverTool(new ActiveDirectoryToolOptions()).Definition,
+            new PowerShellEnvironmentDiscoverTool(new PowerShellToolOptions()).Definition
+        };
+
+        foreach (var definition in definitions) {
+            var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
+            Assert.True(routing.IsRoutingAware);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
+            Assert.Equal(ToolRoutingTaxonomy.RoleEnvironmentDiscover, routing.Role, ignoreCase: true);
+            Assert.False(string.IsNullOrWhiteSpace(routing.PackId));
+        }
+    }
+
+    [Fact]
+    public void ToolContractDefaults_ShouldPreserveExplicitContracts_AndSkipPackInfoFallbacks() {
+        var explicitSetup = new ToolSetupContract {
+            IsSetupAware = true,
+            SetupHintKeys = new[] { "path" }
+        };
+        var explicitRecovery = new ToolRecoveryContract {
+            IsRecoveryAware = true,
+            SupportsTransientRetry = true,
+            MaxRetryAttempts = 1,
+            RetryableErrorCodes = new[] { "timeout" }
+        };
+        var explicitDefinition = new ToolDefinition(
+            name: "sample_probe",
+            description: "Sample probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            setup: explicitSetup,
+            recovery: explicitRecovery);
+
+        var preservedSetup = ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            explicitDefinition,
+            ToolRoutingTaxonomy.RoleOperational,
+            () => ToolContractDefaults.CreateHintOnlySetup(new[] { "fallback" }));
+        var preservedRecovery = ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            explicitDefinition,
+            ToolRoutingTaxonomy.RoleOperational,
+            () => ToolContractDefaults.CreateNoRetryRecovery());
+
+        Assert.Same(explicitSetup, preservedSetup);
+        Assert.Same(explicitRecovery, preservedRecovery);
+
+        var packInfoDefinition = new ToolDefinition(
+            name: "sample_pack_info",
+            description: "Sample pack info",
+            parameters: ToolSchema.Object().NoAdditionalProperties());
+
+        var packInfoSetup = ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            packInfoDefinition,
+            ToolRoutingTaxonomy.RolePackInfo,
+            () => throw new InvalidOperationException("Pack info setup fallback should not run."));
+        var packInfoRecovery = ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            packInfoDefinition,
+            ToolRoutingTaxonomy.RolePackInfo,
+            () => throw new InvalidOperationException("Pack info recovery fallback should not run."));
+
+        Assert.Null(packInfoSetup);
+        Assert.Null(packInfoRecovery);
+    }
+
+    [Fact]
+    public void ToolContractDefaults_ShouldCreateStandardSetupAndRecoveryContracts() {
+        var setup = ToolContractDefaults.CreateSetup(
+            setupToolName: "system_info",
+            requirements: new[] {
+                ToolContractDefaults.CreateRequirement(
+                    requirementId: "system_host_access",
+                    requirementKind: ToolSetupRequirementKinds.Connectivity,
+                    hintKeys: new[] { "machine_name" }),
+                ToolContractDefaults.CreateRequirement(
+                    requirementId: "system_permissions",
+                    requirementKind: ToolSetupRequirementKinds.Capability,
+                    hintKeys: new[] { "computer_name", "machine_name" })
+            },
+            setupHintKeys: new[] { "computer_name", "machine_name" });
+        var recovery = ToolContractDefaults.CreateRecovery(
+            supportsTransientRetry: true,
+            maxRetryAttempts: 1,
+            retryableErrorCodes: new[] { "timeout", "query_failed" },
+            recoveryToolNames: new[] { "system_info" },
+            supportsAlternateEngines: true,
+            alternateEngineIds: new[] { "cim", "wmi" });
+
+        Assert.True(setup.IsSetupAware);
+        Assert.Equal("system_info", setup.SetupToolName);
+        Assert.Equal(2, setup.Requirements.Count);
+        Assert.Equal("system_host_access", setup.Requirements[0].RequirementId);
+        Assert.Equal(ToolSetupRequirementKinds.Connectivity, setup.Requirements[0].Kind);
+        Assert.Equal(new[] { "machine_name" }, setup.Requirements[0].HintKeys);
+        Assert.Equal("system_permissions", setup.Requirements[1].RequirementId);
+        Assert.Equal(ToolSetupRequirementKinds.Capability, setup.Requirements[1].Kind);
+        Assert.Equal(new[] { "computer_name", "machine_name" }, setup.SetupHintKeys);
+
+        Assert.True(recovery.IsRecoveryAware);
+        Assert.True(recovery.SupportsTransientRetry);
+        Assert.Equal(1, recovery.MaxRetryAttempts);
+        Assert.Equal(new[] { "timeout", "query_failed" }, recovery.RetryableErrorCodes);
+        Assert.Equal(new[] { "system_info" }, recovery.RecoveryToolNames);
+        Assert.True(recovery.SupportsAlternateEngines);
+        Assert.Equal(new[] { "cim", "wmi" }, recovery.AlternateEngineIds);
+
+        var handoff = ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "filesystem",
+                targetToolName: "fs_read",
+                reason: "Inspect the raw file.",
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("files[].path", "path"),
+                    ToolContractDefaults.CreateBinding("meta/source_hash", "expected_hash", isRequired: false, transformId: "trim")
+                })
+        });
+
+        Assert.True(handoff.IsHandoffAware);
+        var route = Assert.Single(handoff.OutboundRoutes);
+        Assert.Equal("filesystem", route.TargetPackId);
+        Assert.Equal("fs_read", route.TargetToolName);
+        Assert.Equal("Inspect the raw file.", route.Reason);
+        Assert.Equal(2, route.Bindings.Count);
+        Assert.Equal("files[].path", route.Bindings[0].SourceField);
+        Assert.Equal("path", route.Bindings[0].TargetArgument);
+        Assert.True(route.Bindings[0].IsRequired);
+        Assert.Equal("meta/source_hash", route.Bindings[1].SourceField);
+        Assert.Equal("expected_hash", route.Bindings[1].TargetArgument);
+        Assert.False(route.Bindings[1].IsRequired);
+        Assert.Equal("trim", route.Bindings[1].TransformId);
+
+        var adRoutes = ToolContractDefaults.CreateActiveDirectoryEntityHandoffRoutes(
+            entityHandoffSourceField: "meta/entity_handoff",
+            entityHandoffReason: "Normalize identities.",
+            scopeDiscoverySourceField: "meta/entity_handoff/computer_candidates/0/value",
+            scopeDiscoveryReason: "Discover AD scope.",
+            scopeDiscoveryIsRequired: false);
+        Assert.Equal(2, adRoutes.Length);
+        Assert.Equal("active_directory", adRoutes[0].TargetPackId);
+        Assert.Equal("ad_handoff_prepare", adRoutes[0].TargetToolName);
+        Assert.Equal("meta/entity_handoff", Assert.Single(adRoutes[0].Bindings).SourceField);
+        Assert.Equal("entity_handoff", Assert.Single(adRoutes[0].Bindings).TargetArgument);
+        Assert.True(Assert.Single(adRoutes[0].Bindings).IsRequired);
+        Assert.Equal("ad_scope_discovery", adRoutes[1].TargetToolName);
+        Assert.Equal("meta/entity_handoff/computer_candidates/0/value", Assert.Single(adRoutes[1].Bindings).SourceField);
+        Assert.Equal("domain_controller", Assert.Single(adRoutes[1].Bindings).TargetArgument);
+        Assert.False(Assert.Single(adRoutes[1].Bindings).IsRequired);
+
+        var remoteHostRoutes = ToolContractDefaults.CreateRemoteHostFollowUpRoutes(
+            sourceField: "rows[].target",
+            systemReason: "Inspect the host.",
+            eventLogReason: "Inspect host logs.",
+            isRequired: false);
+        Assert.Equal(2, remoteHostRoutes.Length);
+        Assert.Equal("system", remoteHostRoutes[0].TargetPackId);
+        Assert.Equal("system_info", remoteHostRoutes[0].TargetToolName);
+        Assert.Equal("rows[].target", Assert.Single(remoteHostRoutes[0].Bindings).SourceField);
+        Assert.Equal("computer_name", Assert.Single(remoteHostRoutes[0].Bindings).TargetArgument);
+        Assert.False(Assert.Single(remoteHostRoutes[0].Bindings).IsRequired);
+        Assert.Equal("eventlog", remoteHostRoutes[1].TargetPackId);
+        Assert.Equal("eventlog_live_stats", remoteHostRoutes[1].TargetToolName);
+        Assert.Equal("rows[].target", Assert.Single(remoteHostRoutes[1].Bindings).SourceField);
+        Assert.Equal("machine_name", Assert.Single(remoteHostRoutes[1].Bindings).TargetArgument);
+        Assert.False(Assert.Single(remoteHostRoutes[1].Bindings).IsRequired);
+
+        var sharedTargetRoute = ToolContractDefaults.CreateSharedTargetRoute(
+            targetPackId: "system",
+            targetToolName: "system_info",
+            reason: "Inspect with fallback sources.",
+            targetArgument: "computer_name",
+            sourceFields: new[] { "primary/value", "fallback/value" },
+            isRequired: false);
+        Assert.Equal("system", sharedTargetRoute.TargetPackId);
+        Assert.Equal("system_info", sharedTargetRoute.TargetToolName);
+        Assert.Equal(2, sharedTargetRoute.Bindings.Count);
+        Assert.Equal("primary/value", sharedTargetRoute.Bindings[0].SourceField);
+        Assert.Equal("computer_name", sharedTargetRoute.Bindings[0].TargetArgument);
+        Assert.False(sharedTargetRoute.Bindings[0].IsRequired);
+        Assert.Equal("fallback/value", sharedTargetRoute.Bindings[1].SourceField);
+        Assert.Equal("computer_name", sharedTargetRoute.Bindings[1].TargetArgument);
+        Assert.False(sharedTargetRoute.Bindings[1].IsRequired);
+
+        var sharedTargetRoutes = ToolContractDefaults.CreateSharedTargetRoutes(
+            targetPackId: "system",
+            targetArgument: "computer_name",
+            sourceFields: new[] { "primary/value", "fallback/value" },
+            routeDescriptors: new[] {
+                ("system_info", "Inspect the host."),
+                ("system_metrics_summary", "Inspect runtime telemetry.")
+            },
+            isRequired: false);
+        Assert.Equal(2, sharedTargetRoutes.Length);
+        Assert.Equal("system_info", sharedTargetRoutes[0].TargetToolName);
+        Assert.Equal("system_metrics_summary", sharedTargetRoutes[1].TargetToolName);
+        Assert.Equal(2, sharedTargetRoutes[0].Bindings.Count);
+        Assert.Equal("primary/value", sharedTargetRoutes[0].Bindings[0].SourceField);
+        Assert.Equal("fallback/value", sharedTargetRoutes[0].Bindings[1].SourceField);
+
+        var systemCatalogRoutes = SystemRemoteHostFollowUpCatalog.CreateComputerTargetRoutes(
+            sourceFields: new[] { "context/domain_controller", "domain_controllers/0/value" },
+            primaryReasonOverride: "Inspect discovered domain controllers.",
+            isRequired: false);
+        Assert.NotEmpty(systemCatalogRoutes);
+        Assert.Equal("system_info", systemCatalogRoutes[0].TargetToolName);
+        Assert.Equal("Inspect discovered domain controllers.", systemCatalogRoutes[0].Reason);
+        Assert.Equal("system_metrics_summary", systemCatalogRoutes[2].TargetToolName);
+        Assert.Equal("context/domain_controller", systemCatalogRoutes[0].Bindings[0].SourceField);
+        Assert.Equal("domain_controllers/0/value", systemCatalogRoutes[0].Bindings[1].SourceField);
+    }
+
+    [Fact]
+    public void SystemRemoteHostFollowUpCatalog_ShouldReferenceRegisteredSystemTools() {
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+
+        var names = new HashSet<string>(
+            registry.GetDefinitions().Select(static definition => definition.Name),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var descriptor in SystemRemoteHostFollowUpCatalog.ComputerTargetRouteDescriptors) {
+            Assert.Contains(descriptor.TargetToolName, names);
+        }
+    }
+
+    [Fact]
+    public void ToolRoutingRoleResolver_ShouldPreferExplicitRoleAndValidateFallbacks() {
+        var explicitRole = ToolRoutingRoleResolver.ResolveExplicitOrFallback(
+            explicitRole: ToolRoutingTaxonomy.RoleResolver,
+            fallbackRole: ToolRoutingTaxonomy.RoleDiagnostic,
+            packDisplayName: "Synthetic");
+        Assert.Equal(ToolRoutingTaxonomy.RoleResolver, explicitRole, ignoreCase: true);
+
+        var fallbackRole = ToolRoutingRoleResolver.ResolveExplicitOrFallback(
+            explicitRole: null,
+            fallbackRole: ToolRoutingTaxonomy.RoleDiagnostic,
+            packDisplayName: "Synthetic");
+        Assert.Equal(ToolRoutingTaxonomy.RoleDiagnostic, fallbackRole, ignoreCase: true);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ToolRoutingRoleResolver.ResolveExplicitOrFallback(
+            explicitRole: "not_a_role",
+            fallbackRole: ToolRoutingTaxonomy.RoleDiagnostic,
+            packDisplayName: "Synthetic"));
+        Assert.Contains("invalid", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(typeof(AdPackInfoTool), "IntelligenceX.Tools.ADPlayground.ActiveDirectoryToolContracts", "ad_domain_info", "diagnostic")]
+    [InlineData(typeof(FileSystemPackInfoTool), "IntelligenceX.Tools.FileSystem.FileSystemToolContracts", "fs_list", "operational")]
+    [InlineData(typeof(EmailPackInfoTool), "IntelligenceX.Tools.Email.EmailToolContracts", "email_smtp_probe", "operational")]
+    [InlineData(typeof(DnsClientXPackInfoTool), "IntelligenceX.Tools.DnsClientX.DnsClientXToolContracts", "dnsclientx_query", "diagnostic")]
+    [InlineData(typeof(DomainDetectivePackInfoTool), "IntelligenceX.Tools.DomainDetective.DomainDetectiveToolContracts", "domaindetective_checks_catalog", "operational")]
+    [InlineData(typeof(OfficeImoPackInfoTool), "IntelligenceX.Tools.OfficeIMO.OfficeImoToolContracts", "officeimo_read", "diagnostic")]
+    [InlineData(typeof(PowerShellPackInfoTool), "IntelligenceX.Tools.PowerShell.PowerShellToolContracts", "powershell_run", "diagnostic")]
+    [InlineData(typeof(TestimoXPackInfoTool), "IntelligenceX.Tools.TestimoX.TestimoXToolContracts", "testimox_rules_list", "operational")]
+    [InlineData(typeof(TestimoXAnalyticsPackInfoTool), "IntelligenceX.Tools.TestimoX.TestimoXAnalyticsToolContracts", "testimox_report_snapshot_get", "operational")]
+    public void InternalToolContracts_ShouldPreferExplicitRoleOverPackFallback(
+        Type assemblyMarkerType,
+        string contractTypeName,
+        string toolName,
+        string explicitRole) {
+        var definition = new ToolDefinition(
+            name: toolName,
+            description: "Explicit role override probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "custom_probe",
+                Role = explicitRole
+            });
+
+        var appliedDefinition = ApplyInternalToolContract(assemblyMarkerType, contractTypeName, definition);
+        var routing = Assert.IsType<ToolRoutingContract>(appliedDefinition.Routing);
+        Assert.Equal(explicitRole, routing.Role, ignoreCase: true);
+    }
+
+    [Fact]
+    public void ToolRoutingRoleResolver_ShouldRequireDeclaredRoleWhenExplicitRoleMissing() {
+        var ex = Assert.Throws<InvalidOperationException>(() => ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: null,
+            toolName: "unclassified_probe",
+            declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            packDisplayName: "Synthetic"));
+        Assert.Contains("must declare an explicit routing role", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(typeof(AdPackInfoTool), "IntelligenceX.Tools.ADPlayground.ActiveDirectoryToolContracts", "ad_unclassified_probe")]
+    [InlineData(typeof(FileSystemPackInfoTool), "IntelligenceX.Tools.FileSystem.FileSystemToolContracts", "fs_unclassified_probe")]
+    [InlineData(typeof(EmailPackInfoTool), "IntelligenceX.Tools.Email.EmailToolContracts", "email_unclassified_probe")]
+    [InlineData(typeof(DnsClientXPackInfoTool), "IntelligenceX.Tools.DnsClientX.DnsClientXToolContracts", "dnsclientx_unclassified_probe")]
+    [InlineData(typeof(DomainDetectivePackInfoTool), "IntelligenceX.Tools.DomainDetective.DomainDetectiveToolContracts", "domaindetective_unclassified_probe")]
+    [InlineData(typeof(OfficeImoPackInfoTool), "IntelligenceX.Tools.OfficeIMO.OfficeImoToolContracts", "officeimo_unclassified_probe")]
+    [InlineData(typeof(PowerShellPackInfoTool), "IntelligenceX.Tools.PowerShell.PowerShellToolContracts", "powershell_unclassified_probe")]
+    [InlineData(typeof(TestimoXPackInfoTool), "IntelligenceX.Tools.TestimoX.TestimoXToolContracts", "testimox_unclassified_probe")]
+    [InlineData(typeof(TestimoXAnalyticsPackInfoTool), "IntelligenceX.Tools.TestimoX.TestimoXAnalyticsToolContracts", "testimox_analytics_unclassified_probe")]
+    public void InternalToolContracts_ShouldRejectUnclassifiedToolNamesWithoutExplicitRole(
+        Type assemblyMarkerType,
+        string contractTypeName,
+        string toolName) {
+        var definition = new ToolDefinition(
+            name: toolName,
+            description: "Unclassified role probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties());
+
+        var ex = Assert.Throws<TargetInvocationException>(() => ApplyInternalToolContract(assemblyMarkerType, contractTypeName, definition));
+        var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.Contains("must declare an explicit routing role", inner.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(toolName, inner.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -918,6 +1670,30 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void SystemToolContracts_ShouldRejectUnclassifiedToolNamesWithoutExplicitRole() {
+        var definition = new ToolDefinition(
+            name: "system_unclassified_probe",
+            description: "System unclassified probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties());
+
+        var ex = Assert.Throws<InvalidOperationException>(() => SystemToolContracts.Apply(new StubTool(definition)));
+        Assert.Contains("must declare an explicit routing role", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("system_unclassified_probe", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void EventLogToolContracts_ShouldRejectUnclassifiedToolNamesWithoutExplicitRole() {
+        var definition = new ToolDefinition(
+            name: "eventlog_unclassified_probe",
+            description: "EventLog unclassified probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties());
+
+        var ex = Assert.Throws<InvalidOperationException>(() => EventLogToolContracts.Apply(new StubTool(definition)));
+        Assert.Contains("must declare an explicit routing role", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_unclassified_probe", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Register_ShouldRejectConflictingDomainIntentActionIdsForSameFamily() {
         var firstDefinition = new ToolDefinition(
             name: "custom_ad_pack_a",
@@ -962,10 +1738,41 @@ public class ToolDefinitionContractTests {
         Assert.Contains(expectedSignalToken, routing.DomainSignalTokens, StringComparer.OrdinalIgnoreCase);
     }
 
+    private static void AssertRoutingRole(
+        IReadOnlyDictionary<string, ToolDefinition> definitionsByName,
+        string toolName,
+        string expectedRole) {
+        Assert.True(definitionsByName.TryGetValue(toolName, out var definition), $"Missing tool '{toolName}'.");
+        var routing = Assert.IsType<ToolRoutingContract>(definition!.Routing);
+        Assert.Equal(expectedRole, routing.Role, ignoreCase: true);
+    }
+
+    private static void AssertRoutingIntent(
+        IReadOnlyDictionary<string, ToolDefinition> definitionsByName,
+        string toolName,
+        string expectedFamily,
+        string expectedActionId) {
+        Assert.True(definitionsByName.TryGetValue(toolName, out var definition), $"Missing tool '{toolName}'.");
+        var routing = Assert.IsType<ToolRoutingContract>(definition!.Routing);
+        Assert.Equal(expectedFamily, routing.DomainIntentFamily);
+        Assert.Equal(expectedActionId, routing.DomainIntentActionId);
+    }
+
     private static void AssertSingleTaxonomyTag(IReadOnlyList<string> tags, string prefix) {
         Assert.Equal(
             1,
             tags.Count(tag => tag.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static ToolDefinition ApplyInternalToolContract(Type assemblyMarkerType, string contractTypeName, ToolDefinition definition) {
+        var contractType = assemblyMarkerType.Assembly.GetType(contractTypeName, throwOnError: true)!;
+        var applyMethod = contractType.GetMethod(
+            "Apply",
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(applyMethod);
+
+        var appliedTool = Assert.IsAssignableFrom<ITool>(applyMethod!.Invoke(null, new object[] { new StubTool(definition) }));
+        return appliedTool.Definition;
     }
 
     private sealed class StubTool : ITool {

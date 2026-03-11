@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.ADPlayground;
 
 /// <summary>
 /// Safety and connection options for Active Directory tools.
 /// </summary>
-public sealed class ActiveDirectoryToolOptions {
+public sealed class ActiveDirectoryToolOptions : IToolPackRuntimeOptionTarget {
+    private static readonly IReadOnlyList<string> RuntimeOptionKeyValues = new[] { "active_directory", "adplayground" };
+
     /// <summary>
     /// Optional domain controller hostname (if not specified, the underlying implementation may use defaults).
     /// </summary>
@@ -36,4 +39,7 @@ public sealed class ActiveDirectoryToolOptions {
             throw new ArgumentOutOfRangeException(nameof(MaxResults), "MaxResults must be positive.");
         }
     }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 }
