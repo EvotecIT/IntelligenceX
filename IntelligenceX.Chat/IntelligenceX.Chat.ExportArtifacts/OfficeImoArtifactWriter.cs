@@ -10,11 +10,6 @@ namespace IntelligenceX.Chat.ExportArtifacts;
 /// OfficeIMO-backed document writers used by chat export flows.
 /// </summary>
 public static partial class OfficeImoArtifactWriter {
-    private const int MinDocxVisualMaxWidthPx = 320;
-    private const int MaxDocxVisualMaxWidthPx = 2000;
-    private const int DefaultDocxVisualMaxWidthPx = 760;
-    private static readonly Lazy<bool> PreservesGroupedDefinitionLikeParagraphsLazy = new(DetectGroupedDefinitionLikeParagraphSupport);
-
     /// <summary>
     /// Writes tabular rows to an Excel workbook using OfficeIMO.Excel.
     /// </summary>
@@ -91,52 +86,12 @@ public static partial class OfficeImoArtifactWriter {
         IReadOnlyList<string>? allowedImageDirectories = null,
         int? docxVisualMaxWidthPx = null) {
         var safeMarkdown = string.IsNullOrWhiteSpace(markdown) ? "# Transcript\n" : markdown;
-        var options = new MarkdownToWordOptions {
-            FontFamily = "Calibri",
-            AllowLocalImages = allowedImageDirectories is { Count: > 0 },
-            PreferNarrativeSingleLineDefinitions = true,
-            FitImagesToContextWidth = true,
-            MaxImageWidthPercentOfContent = 100d
-        };
-        ApplyMarkdownImageSizingOptions(options, docxVisualMaxWidthPx);
-        if (allowedImageDirectories is { Count: > 0 }) {
-            for (var i = 0; i < allowedImageDirectories.Count; i++) {
-                var directory = allowedImageDirectories[i];
-                if (string.IsNullOrWhiteSpace(directory)) {
-                    continue;
-                }
-
-                if (!options.AllowedImageDirectories.Contains(directory)) {
-                    options.AllowedImageDirectories.Add(directory);
-                }
-            }
-        }
+        var options = OfficeImoWordMarkdownRuntimeContract.CreateTranscriptMarkdownToWordOptions(
+            allowedImageDirectories,
+            docxVisualMaxWidthPx);
 
         using var document = safeMarkdown.LoadFromMarkdown(options);
         document.Save(outputPath);
-    }
-
-    private static void ApplyMarkdownImageSizingOptions(MarkdownToWordOptions options, int? docxVisualMaxWidthPx) {
-        var normalizedWidth = NormalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx);
-        options.FitImagesToPageContentWidth = true;
-        options.MaxImageWidthPixels = normalizedWidth;
-    }
-
-    private static int NormalizeDocxVisualMaxWidthPx(int? value) {
-        if (!value.HasValue) {
-            return DefaultDocxVisualMaxWidthPx;
-        }
-
-        var normalized = value.Value;
-        if (normalized < MinDocxVisualMaxWidthPx) {
-            return MinDocxVisualMaxWidthPx;
-        }
-
-        if (normalized > MaxDocxVisualMaxWidthPx) {
-            return MaxDocxVisualMaxWidthPx;
-        }
-
-        return normalized;
     }
 
     private static IReadOnlyList<string> BuildAllowedImageDirectories(IReadOnlyList<string>? additionalDirectories) {
@@ -206,7 +161,7 @@ public static partial class OfficeImoArtifactWriter {
     internal static string NormalizeTranscriptMarkdownForDocx(string markdown) {
         return TranscriptMarkdownContract.PrepareTranscriptMarkdownForDocx(
             markdown,
-            PreservesGroupedDefinitionLikeParagraphsLazy.Value);
+            OfficeImoWordMarkdownRuntimeContract.PreservesGroupedDefinitionLikeParagraphs());
     }
 
     internal static string NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(string markdown) {
@@ -286,35 +241,4 @@ public static partial class OfficeImoArtifactWriter {
 
         return value;
     }
-
-    private static bool DetectGroupedDefinitionLikeParagraphSupport() {
-        try {
-            const string sampleMarkdown = """
-                # Transcript
-
-                Status: healthy
-                Impact: none
-                """;
-
-            using var document = sampleMarkdown.LoadFromMarkdown(new MarkdownToWordOptions {
-                PreferNarrativeSingleLineDefinitions = true
-            });
-
-            var bodyParagraphs = new List<string>();
-            foreach (var paragraph in document.Paragraphs) {
-                var text = paragraph.Text ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(text) || string.Equals(text, "Transcript", StringComparison.Ordinal)) {
-                    continue;
-                }
-
-                bodyParagraphs.Add(text);
-            }
-
-            return bodyParagraphs.Contains("Status: healthy", StringComparer.Ordinal)
-                   && bodyParagraphs.Contains("Impact: none", StringComparer.Ordinal);
-        } catch {
-            return false;
-        }
-    }
-
 }

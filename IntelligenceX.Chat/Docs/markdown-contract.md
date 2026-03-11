@@ -55,6 +55,8 @@ It owns:
 
 `OfficeImoArtifactWriter` owns DOCX writer concerns only.
 
+`OfficeImoWordMarkdownRuntimeContract` in `ExportArtifacts` owns OfficeIMO Word converter capability probing and baseline transcript converter options.
+
 It should be limited to:
 
 - Word converter options
