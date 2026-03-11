@@ -76,3 +76,5 @@ Before merging package-dependent OfficeIMO updates into IntelligenceX:
 - package-mode validation should pass against the exact OfficeIMO versions we plan to publish
 - any remaining OfficeIMO-specific behavior should be documented and intentional
 - renderer/runtime capability probing should stay isolated from transcript content normalization
+
+See [markdown-package-readiness.md](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/Docs/markdown-package-readiness.md) for the current validation baseline and the final package-adoption gate.
