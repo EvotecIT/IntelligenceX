@@ -23,6 +23,11 @@ This stage is for LLM/history artifacts such as:
 
 This stage is App-owned because it repairs transcript history before render/export formatting.
 
+The App entrypoint for this stage is `TranscriptMarkdownPreparation`, which now also owns:
+
+- persisted transcript repair during conversation load
+- streaming preview normalization for in-progress assistant deltas
+
 ### 2. Shared transcript markdown contract
 
 `TranscriptMarkdownContract` in `IntelligenceX.Chat.ExportArtifacts` is the shared normalization layer used by multiple consumers.

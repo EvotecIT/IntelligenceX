@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.App.Rendering;
 
 namespace IntelligenceX.Chat.App;
@@ -195,7 +196,7 @@ internal sealed class AssistantStreamingState {
             return _normalizedPreviewCache;
         }
 
-        _normalizedPreviewCache = TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(_buffer.ToString());
+        _normalizedPreviewCache = TranscriptMarkdownPreparation.PrepareStreamingPreview(_buffer.ToString());
         _normalizedPreviewDirty = false;
         return _normalizedPreviewCache;
     }
