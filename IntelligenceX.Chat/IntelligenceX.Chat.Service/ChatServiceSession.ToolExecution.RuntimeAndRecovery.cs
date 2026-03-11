@@ -347,9 +347,9 @@ internal sealed partial class ChatServiceSession {
 
         for (var attemptIndex = 0; attemptIndex < profile.MaxAttempts; attemptIndex++) {
             var output = await ExecuteToolAttemptAsync(tool, currentCall, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
-            if (TryResolveTrackedAlternateEngineId(currentCall, toolDefinition, profile, out var trackedAlternateEngineId)) {
-                RememberAlternateEngineOutcome(threadId, currentCall.Name, trackedAlternateEngineId, output);
-            }
+            var trackedAlternateEngineId = TryResolveTrackedAlternateEngineId(currentCall, toolDefinition, profile, out var resolvedTrackedAlternateEngineId)
+                ? resolvedTrackedAlternateEngineId
+                : string.Empty;
             if (!projectionFallbackAttempted
                 && TryBuildProjectionArgsFallbackCall(currentCall, output, out var fallbackCall, out var fallbackInfo)) {
                 projectionFallbackAttempted = true;
@@ -359,8 +359,16 @@ internal sealed partial class ChatServiceSession {
                 var fallbackOutput = await ExecuteToolAttemptAsync(tool, currentCall, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
                 output = AttachProjectionFallbackMetadata(fallbackOutput, fallbackInfo);
                 if (output.Ok is true) {
+                    if (trackedAlternateEngineId.Length > 0) {
+                        RememberAlternateEngineOutcome(threadId, currentCall.Name, trackedAlternateEngineId, output);
+                    }
+
                     return output;
                 }
+            }
+
+            if (trackedAlternateEngineId.Length > 0) {
+                RememberAlternateEngineOutcome(threadId, currentCall.Name, trackedAlternateEngineId, output);
             }
 
             var shouldRetry = ShouldRetryToolCall(output, profile, attemptIndex);
@@ -386,7 +394,6 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            preferredAutomaticFallbackPending = false;
             if (!shouldRetry) {
                 return output;
             }
