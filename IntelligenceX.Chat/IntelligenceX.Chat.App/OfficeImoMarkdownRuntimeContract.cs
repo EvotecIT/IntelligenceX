@@ -135,19 +135,23 @@ internal static class OfficeImoMarkdownRuntimeContract {
             : null;
 
         object? result;
-        if (method is not null) {
-            // Passing null intentionally requests the preset's default "no explicit baseHref" behavior,
-            // which matches the non-reflective CreateChatStrictMinimal() fallback path.
-            result = method.Invoke(null, [null]);
-        } else {
-            method = methodName == "CreateChatStrictMinimalMarkdigCompatible"
-                ? CreateChatStrictMinimalMarkdigCompatibleParameterless
-                : null;
-            if (method is null) {
-                return false;
-            }
+        try {
+            if (method is not null) {
+                // Passing null intentionally requests the preset's default "no explicit baseHref" behavior,
+                // which matches the non-reflective CreateChatStrictMinimal() fallback path.
+                result = method.Invoke(null, [null]);
+            } else {
+                method = methodName == "CreateChatStrictMinimalMarkdigCompatible"
+                    ? CreateChatStrictMinimalMarkdigCompatibleParameterless
+                    : null;
+                if (method is null) {
+                    return false;
+                }
 
-            result = method.Invoke(null, null);
+                result = method.Invoke(null, null);
+            }
+        } catch (TargetInvocationException) {
+            return false;
         }
 
         if (result is not MarkdownRendererOptions resolved) {
@@ -161,7 +165,14 @@ internal static class OfficeImoMarkdownRuntimeContract {
     private static bool TryApplyMarkdigCompatibleReaderOptions(MarkdownRendererOptions options) {
         ArgumentNullException.ThrowIfNull(options);
 
-        if (CreateMarkdigCompatibleReaderOptions?.Invoke(null, null) is not MarkdownReaderOptions readerOptions) {
+        MarkdownReaderOptions readerOptions;
+        try {
+            if (CreateMarkdigCompatibleReaderOptions?.Invoke(null, null) is not MarkdownReaderOptions resolved) {
+                return false;
+            }
+
+            readerOptions = resolved;
+        } catch (TargetInvocationException) {
             return false;
         }
 
