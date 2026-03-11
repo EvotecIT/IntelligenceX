@@ -31,7 +31,7 @@ jobs:
         # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
         # When public, use GitHub-hosted runners by default.
         runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_ENABLE_WINDOWS_SELF_HOSTED == 'true' && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","Windows"]' || '["windows-latest"]') }}
-        timeout-minutes: 20
+        timeout-minutes: 30
         steps:
             - name: Checkout code
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
