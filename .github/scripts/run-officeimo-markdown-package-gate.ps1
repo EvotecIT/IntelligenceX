@@ -10,7 +10,7 @@ $packageModeProperty = '-p:UseLocalOfficeImoCheckout=false'
 $skipSidecarBuildProperty = '-p:SkipChatServiceSidecarBuild=true'
 $filter = 'FullyQualifiedName~TranscriptMarkdownContractTests|FullyQualifiedName~TranscriptMarkdownContractIntegrationTests|FullyQualifiedName~OfficeImoMarkdownRuntimeContractTests|FullyQualifiedName~OfficeImoMarkdownInputNormalizationRuntimeContractTests|FullyQualifiedName~LocalExportArtifactWriterTests'
 
-Write-Host 'Running OfficeIMO markdown package-mode gate...'
+Write-Output 'Running OfficeIMO markdown package-mode gate...'
 
 function Assert-PackageMode($projectPath) {
     $effectiveMode = dotnet msbuild $projectPath -nologo -getProperty:UseLocalOfficeImoCheckout $packageModeProperty $skipSidecarBuildProperty
