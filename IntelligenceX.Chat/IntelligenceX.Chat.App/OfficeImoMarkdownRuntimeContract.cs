@@ -12,6 +12,28 @@ namespace IntelligenceX.Chat.App;
 internal static class OfficeImoMarkdownRuntimeContract {
     private static readonly Version MinimumMarkdownRendererVersion = new(0, 1, 9);
     private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 5, 12);
+    private static readonly Type PresetsType = typeof(MarkdownRendererPresets);
+    private static readonly Type? MarkdownReaderOptionsType = Type.GetType(
+        "OfficeIMO.Markdown.MarkdownReaderOptions, OfficeIMO.Markdown",
+        throwOnError: false);
+    private static readonly MethodInfo? CreateChatStrictMinimalMarkdigCompatibleWithBaseHref = PresetsType.GetMethod(
+        "CreateChatStrictMinimalMarkdigCompatible",
+        BindingFlags.Public | BindingFlags.Static,
+        binder: null,
+        types: [typeof(string)],
+        modifiers: null);
+    private static readonly MethodInfo? CreateChatStrictMinimalMarkdigCompatibleParameterless = PresetsType.GetMethod(
+        "CreateChatStrictMinimalMarkdigCompatible",
+        BindingFlags.Public | BindingFlags.Static,
+        binder: null,
+        types: Type.EmptyTypes,
+        modifiers: null);
+    private static readonly MethodInfo? CreateMarkdigCompatibleReaderOptions = MarkdownReaderOptionsType?.GetMethod(
+        "CreateMarkdigCompatible",
+        BindingFlags.Public | BindingFlags.Static,
+        binder: null,
+        types: Type.EmptyTypes,
+        modifiers: null);
 
     /// <summary>
     /// Enables optional vis-network support when the loaded renderer exposes it.
@@ -108,24 +130,19 @@ internal static class OfficeImoMarkdownRuntimeContract {
 
     private static bool TryInvokeRendererPreset(string methodName, out MarkdownRendererOptions options) {
         options = null!;
-        var presetsType = typeof(MarkdownRendererPresets);
-        var method = presetsType.GetMethod(
-            methodName,
-            BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: [typeof(string)],
-            modifiers: null);
+        MethodInfo? method = methodName == "CreateChatStrictMinimalMarkdigCompatible"
+            ? CreateChatStrictMinimalMarkdigCompatibleWithBaseHref
+            : null;
 
         object? result;
         if (method is not null) {
+            // Passing null intentionally requests the preset's default "no explicit baseHref" behavior,
+            // which matches the non-reflective CreateChatStrictMinimal() fallback path.
             result = method.Invoke(null, [null]);
         } else {
-            method = presetsType.GetMethod(
-                methodName,
-                BindingFlags.Public | BindingFlags.Static,
-                binder: null,
-                types: Type.EmptyTypes,
-                modifiers: null);
+            method = methodName == "CreateChatStrictMinimalMarkdigCompatible"
+                ? CreateChatStrictMinimalMarkdigCompatibleParameterless
+                : null;
             if (method is null) {
                 return false;
             }
@@ -144,17 +161,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
     private static bool TryApplyMarkdigCompatibleReaderOptions(MarkdownRendererOptions options) {
         ArgumentNullException.ThrowIfNull(options);
 
-        var createMethod = Type.GetType(
-                "OfficeIMO.Markdown.MarkdownReaderOptions, OfficeIMO.Markdown",
-                throwOnError: false)?
-            .GetMethod(
-                "CreateMarkdigCompatible",
-                BindingFlags.Public | BindingFlags.Static,
-                binder: null,
-                types: Type.EmptyTypes,
-                modifiers: null);
-
-        if (createMethod?.Invoke(null, null) is not MarkdownReaderOptions readerOptions) {
+        if (CreateMarkdigCompatibleReaderOptions?.Invoke(null, null) is not MarkdownReaderOptions readerOptions) {
             return false;
         }
 
