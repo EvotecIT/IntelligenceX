@@ -181,15 +181,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private void AppendStartupBootstrapSummaryFromPolicy() {
-        var telemetry = _sessionPolicy?.StartupBootstrap;
-        if (telemetry is null) {
+        if (!ShouldAppendStartupBootstrapSummary(_sessionPolicy)) {
             return;
         }
 
-        if (!IsStartupBootstrapSignalWorthy(telemetry)) {
-            return;
-        }
-
+        var telemetry = _sessionPolicy!.StartupBootstrap!;
         var phases = telemetry.Phases ?? Array.Empty<SessionStartupBootstrapPhaseTelemetryDto>();
         var phaseSignature = phases.Length == 0
             ? string.Empty
@@ -225,6 +221,22 @@ public sealed partial class MainWindow : Window {
         }
 
         AppendSystem(string.Join(Environment.NewLine, BuildStartupBootstrapSummaryLines(telemetry)));
+    }
+
+    internal static bool ShouldAppendStartupBootstrapSummary(SessionPolicyDto? policy) {
+        var telemetry = policy?.StartupBootstrap;
+        if (telemetry is null) {
+            return false;
+        }
+
+        if (!IsStartupBootstrapSignalWorthy(telemetry)) {
+            return false;
+        }
+
+        return !string.Equals(
+            ResolveStartupBootstrapCacheModeTokenFromPolicy(policy),
+            "persisted_preview",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     internal static bool IsStartupBootstrapSignalWorthy(SessionStartupBootstrapTelemetryDto telemetry) {

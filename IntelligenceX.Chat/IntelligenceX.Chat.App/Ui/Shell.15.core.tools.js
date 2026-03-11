@@ -306,6 +306,14 @@
     }
 
     var packs = state.options.packs || [];
+    var startupDiagnostics = state.options && state.options.startupDiagnostics;
+    var startupCacheDiag = startupDiagnostics && startupDiagnostics.cache && typeof startupDiagnostics.cache === "object"
+      ? startupDiagnostics.cache
+      : null;
+    var showPersistedPreviewNotice = !filter
+      && normalizeBool(state.options && state.options.toolsLoading)
+      && startupCacheDiag
+      && String(startupCacheDiag.mode || "").toLowerCase() === "persisted_preview";
     for (var p = 0; p < packs.length; p++) {
       var policyPack = packs[p] || {};
       var policyPackId = normalizePackId(policyPack.id);
@@ -327,7 +335,6 @@
       var startupContext = typeof parseStartupStatusContext === "function"
         ? parseStartupStatusContext(String(state.status || ""))
         : null;
-      var startupDiagnostics = state.options && state.options.startupDiagnostics;
       var metadataSyncDiagnostics = startupDiagnostics && startupDiagnostics.metadataSync && typeof startupDiagnostics.metadataSync === "object"
         ? startupDiagnostics.metadataSync
         : null;
@@ -360,6 +367,23 @@
         toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>No tools registered</div></div>";
       }
       return;
+    }
+
+    if (showPersistedPreviewNotice) {
+      var previewNotice = document.createElement("div");
+      previewNotice.className = "options-item";
+
+      var previewTitle = document.createElement("div");
+      previewTitle.className = "options-item-title";
+      previewTitle.textContent = "Showing startup preview";
+      previewNotice.appendChild(previewTitle);
+
+      var previewDetail = document.createElement("div");
+      previewDetail.className = "options-item-sub";
+      previewDetail.textContent = "Final tool catalog is still loading, so pack and tool counts may increase automatically.";
+      previewNotice.appendChild(previewDetail);
+
+      toolsEl.appendChild(previewNotice);
     }
 
     order.sort(function(a, b) {

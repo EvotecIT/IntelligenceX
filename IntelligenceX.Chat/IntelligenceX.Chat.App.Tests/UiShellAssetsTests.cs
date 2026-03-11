@@ -104,6 +104,8 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("Metadata recovery rerun is queued.", toolsScript, StringComparison.Ordinal);
         Assert.Contains("Waiting for sign-in before loading tools...", toolsScript, StringComparison.Ordinal);
         Assert.Contains("Syncing tool packs in background...", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("Showing startup preview", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("Final tool catalog is still loading, so pack and tool counts may increase automatically.", toolsScript, StringComparison.Ordinal);
         Assert.Contains("if (Array.isArray(nextState.statusTimeline)) {", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.hasExplicitUnauthenticatedProbeSnapshot = nextState.hasExplicitUnauthenticatedProbeSnapshot;", renderingScript, StringComparison.Ordinal);
