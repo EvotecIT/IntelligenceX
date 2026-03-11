@@ -89,6 +89,23 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
+    /// Verifies reflective reader-option copying skips incompatible property types instead of throwing under version skew.
+    /// </summary>
+    [Fact]
+    public void CopyReaderOption_Skips_Incompatible_Property_Types() {
+        var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
+        var method = contractType!.GetMethod(
+            "CopyReaderOption",
+            BindingFlags.Static | BindingFlags.NonPublic);
+
+        var target = new FakeReaderOptionsWithStringSchemes();
+        var exception = Record.Exception(() => method!.Invoke(null, [target, "AllowedUrlSchemes", new[] { "http", "https" }]));
+
+        Assert.Null(exception);
+        Assert.Equal("unchanged", target.AllowedUrlSchemes);
+    }
+
+    /// <summary>
     /// Verifies package-mode version pins match the published OfficeIMO packages required by the app contract.
     /// </summary>
     [Fact]
@@ -106,5 +123,9 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
         var method = contractType!.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         return (string)(method!.Invoke(null, null) ?? string.Empty);
+    }
+
+    private sealed class FakeReaderOptionsWithStringSchemes {
+        public string AllowedUrlSchemes { get; set; } = "unchanged";
     }
 }

@@ -177,6 +177,19 @@ internal static class OfficeImoMarkdownRuntimeContract {
             return;
         }
 
+        if (value is null) {
+            if (property.PropertyType.IsValueType && Nullable.GetUnderlyingType(property.PropertyType) is null) {
+                return;
+            }
+
+            property.SetValue(target, null);
+            return;
+        }
+
+        if (!property.PropertyType.IsInstanceOfType(value)) {
+            return;
+        }
+
         property.SetValue(target, value);
     }
 }
