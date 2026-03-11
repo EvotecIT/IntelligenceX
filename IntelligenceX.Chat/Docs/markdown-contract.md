@@ -69,6 +69,11 @@ It should be limited to:
 
 It should not become the main place where transcript markdown semantics are decided.
 
+The OfficeIMO markdown runtime diagnostics are currently surfaced through:
+
+- startup renderer diagnostics in the App host
+- transcript forensic export snapshots
+
 ## Merge Criteria For OfficeIMO Packaging
 
 Before merging package-dependent OfficeIMO updates into IntelligenceX:
