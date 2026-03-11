@@ -14,7 +14,7 @@ permissions:
 env:
   # Pinned to a release-hub-enabled PowerForge commit for this release stack.
   POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
-  POWERFORGE_REF: 42d61a88f5196f570b9afbc56e068eaa583ac9f4
+  POWERFORGE_REF: 33d759d8e13b3b8b709789156fcedda7fe0ca4df
 
 jobs:
   website-build:
