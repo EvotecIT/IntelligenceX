@@ -1,19 +1,18 @@
-using IntelligenceX.Chat.App;
 using System.Reflection;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
-/// Verifies markdown renderer option defaults used by the desktop chat host.
+/// Verifies markdown renderer option defaults owned by the OfficeIMO runtime contract.
 /// </summary>
 public sealed class ChatMarkdownOptionsTests {
     /// <summary>
     /// Ensures strict minimal safety defaults remain in place while Mermaid is enabled.
     /// </summary>
     [Fact]
-    public void Create_EnablesVisualsAndKeepsMinimalStrictGuards() {
-        var options = ChatMarkdownOptions.Create();
+    public void CreateTranscriptRendererOptions_EnablesVisualsAndKeepsMinimalStrictGuards() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
 
         Assert.True(options.Mermaid.Enabled);
         Assert.True(options.Chart.Enabled);
@@ -26,9 +25,9 @@ public sealed class ChatMarkdownOptionsTests {
     /// Ensures each options instance is independent so per-call mutations cannot leak across callers.
     /// </summary>
     [Fact]
-    public void Create_ReturnsIndependentOptionInstances() {
-        var first = ChatMarkdownOptions.Create();
-        var second = ChatMarkdownOptions.Create();
+    public void CreateTranscriptRendererOptions_ReturnsIndependentOptionInstances() {
+        var first = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var second = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
 
         first.Mermaid.Enabled = false;
 
@@ -39,8 +38,8 @@ public sealed class ChatMarkdownOptionsTests {
     /// Ensures optional vis-network support is enabled when the referenced OfficeIMO renderer exposes it.
     /// </summary>
     [Fact]
-    public void Create_EnablesOptionalNetworkSupport_WhenSupported() {
-        var options = ChatMarkdownOptions.Create();
+    public void CreateTranscriptRendererOptions_EnablesOptionalNetworkSupport_WhenSupported() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var property = options.GetType().GetProperty("Network", BindingFlags.Instance | BindingFlags.Public);
         var networkOptions = property?.GetValue(options);
         var enabledProperty = networkOptions?.GetType().GetProperty("Enabled", BindingFlags.Instance | BindingFlags.Public);

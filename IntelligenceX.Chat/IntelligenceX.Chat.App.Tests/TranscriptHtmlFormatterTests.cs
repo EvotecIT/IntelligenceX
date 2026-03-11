@@ -16,7 +16,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersMermaidFenceAsMermaidBlockWhenEnabled() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 19, 14, 41, 2, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
@@ -44,7 +44,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_PreservesMermaidUpgradeCompatibility_ForTranscriptStyleDiagramReply() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 7, 23, 8, 26, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
@@ -80,7 +80,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_SupportsIxChartViaRendererExtensionOrHostRuntime() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 9, 12, 45, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
@@ -110,7 +110,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_SupportsIxNetworkViaRendererExtensionOrHostRuntime() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 9, 16, 22, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
@@ -140,7 +140,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_UpgradesLegacyJsonNetworkFenceForHistoricalTranscriptMessages() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 9, 19, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """

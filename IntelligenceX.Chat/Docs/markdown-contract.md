@@ -51,8 +51,6 @@ It owns:
 - optional runtime capability probing such as vis-network enablement
 - runtime/package diagnostics for loaded OfficeIMO assemblies
 
-`ChatMarkdownOptions` is a thin compatibility wrapper over this contract.
-
 ### 4. DOCX adaptation
 
 `OfficeImoArtifactWriter` owns DOCX writer concerns only.

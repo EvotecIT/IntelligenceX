@@ -39,7 +39,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     /// </summary>
     [Fact]
     public void TryEnableOptionalRendererNetworkSupport_ReturnsExpectedCapabilityState() {
-        var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
+        var contractType = typeof(OfficeImoMarkdownRuntimeContract);
         var method = contractType!.GetMethod(
             "TryEnableOptionalRendererNetworkSupport",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
@@ -64,7 +64,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     /// </summary>
     [Fact]
     public void CreateTranscriptRendererOptions_EnablesExpectedVisualDefaults() {
-        var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
+        var contractType = typeof(OfficeImoMarkdownRuntimeContract);
         var method = contractType!.GetMethod(
             "CreateTranscriptRendererOptions",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
@@ -93,7 +93,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     private static string InvokeContractMethod(string methodName) {
-        var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
+        var contractType = typeof(OfficeImoMarkdownRuntimeContract);
         var method = contractType!.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         return (string)(method!.Invoke(null, null) ?? string.Empty);
     }
