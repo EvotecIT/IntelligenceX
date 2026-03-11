@@ -32,6 +32,15 @@ public sealed class HostRuntimeSelfReportTests {
         Assert.True(result);
     }
 
+    [Theory]
+    [InlineData("What models should I deploy for log parsing?")]
+    [InlineData("What tooling should I install for this workspace?")]
+    public void LooksLikeCompactRuntimeSelfReportQuestion_ReturnsFalseForGenericOperationalWords(string userText) {
+        var result = RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
     [Fact]
     public void BuildCompactRuntimeSelfReportInput_EmbedsExactRuntimeFacts() {
         var toolDefinitions = new List<ToolDefinition> {

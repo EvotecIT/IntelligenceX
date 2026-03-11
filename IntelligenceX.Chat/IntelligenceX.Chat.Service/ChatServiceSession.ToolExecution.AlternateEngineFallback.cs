@@ -372,7 +372,11 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            clone.Add(key, pair.Value);
+            if (TryCloneRecoveryHelperArgumentValue(pair.Value, out var clonedValue)) {
+                clone.Add(key, clonedValue);
+            } else {
+                clone.Add(key, pair.Value);
+            }
         }
 
         return clone;

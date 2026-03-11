@@ -1041,10 +1041,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
             assistantDraft: "I can continue the same diagnostics.",
             hasToolActivity: true,
             reviewPassNumber: 1,
-            maxReviewPasses: 2);
+            maxReviewPasses: 2,
+            rememberedExecutionBackends: new[] { "system_service_list=cim", "eventlog_live_query=native" });
 
         Assert.Contains("Remembered successful execution backends:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("system_service_list=cim, eventlog_live_query=native", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildResponseQualityReviewPrompt_DoesNotReadRememberedExecutionBackendsImplicitlyFromRequestText() {
+        var prompt = ChatServiceSession.BuildResponseQualityReviewPrompt(
+            userRequest: """
+                [Working memory checkpoint]
+                ix:working-memory:v1
+                recent_tool_execution_backends: system_service_list=cim
+                follow_up: continue
+                """,
+            assistantDraft: "I can continue the same diagnostics.",
+            hasToolActivity: true,
+            reviewPassNumber: 1,
+            maxReviewPasses: 2);
+
+        Assert.DoesNotContain("Remembered successful execution backends:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("system_service_list=cim", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

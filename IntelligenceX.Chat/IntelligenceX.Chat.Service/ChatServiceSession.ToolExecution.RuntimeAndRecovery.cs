@@ -514,20 +514,26 @@ internal sealed partial class ChatServiceSession {
             var helperToolName = orderedHelperToolNames[i];
 
             if (!TryBuildRecoveryHelperInvocation(failedCall, helperToolName, out var helperTool, out var helperCall)) {
+                Trace.TraceInformation($"Recovery helper skipped: helper='{helperToolName}' failed_tool='{failedCall.Name}'.");
                 continue;
             }
 
             if (TryBuildDomainIntentHostScopeGuardrailOutput(threadId, userRequest, helperCall, out _)) {
+                Trace.TraceInformation($"Recovery helper blocked by domain guardrail: helper='{helperCall.Name}' failed_tool='{failedCall.Name}'.");
                 continue;
             }
 
+            Trace.TraceInformation($"Recovery helper executing: helper='{helperCall.Name}' failed_tool='{failedCall.Name}' attempted_call_id='{failedCall.CallId}'.");
             var helperOutput = await ExecuteToolAttemptAsync(helperTool, helperCall, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
             if (IsSuccessfulToolOutput(helperOutput)) {
                 ClearHostBootstrapFailure(threadId, helperCall.Name);
+                Trace.TraceInformation($"Recovery helper succeeded: helper='{helperCall.Name}' failed_tool='{failedCall.Name}'.");
                 return;
             }
 
             RememberHostBootstrapFailure(threadId, helperCall.Name, HostBootstrapFailureKindRecoveryHelper, helperOutput);
+            Trace.TraceWarning(
+                $"Recovery helper failed: helper='{helperCall.Name}' failed_tool='{failedCall.Name}' error_code='{helperOutput.ErrorCode}' error='{helperOutput.Error}'.");
         }
     }
 

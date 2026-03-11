@@ -301,16 +301,27 @@ internal sealed partial class ChatServiceSession {
         return ContainsQuestionSignal(draft) && draft.Length <= 2400;
     }
 
-    internal static string BuildResponseQualityReviewPrompt(string userRequest, string assistantDraft, bool hasToolActivity, int reviewPassNumber,
-        int maxReviewPasses) {
+    internal static string BuildResponseQualityReviewPrompt(
+        string userRequest,
+        string assistantDraft,
+        bool hasToolActivity,
+        int reviewPassNumber,
+        int maxReviewPasses,
+        IReadOnlyList<string>? rememberedExecutionBackends = null) {
         var requestText = TrimForPrompt(userRequest, 520);
         var draftText = TrimForPrompt(ResolveReviewedAssistantDraft(assistantDraft).VisibleText, 1600);
         var toolActivityHint = hasToolActivity ? "present" : "none";
-        var rememberedExecutionBackends = ReadRememberedToolExecutionBackendHintsFromRequestText(userRequest);
-        var rememberedExecutionBackendsBlock = rememberedExecutionBackends.Length == 0
+        var rememberedBackendHints = rememberedExecutionBackends is { Count: > 0 }
+            ? rememberedExecutionBackends
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Select(static value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : Array.Empty<string>();
+        var rememberedExecutionBackendsBlock = rememberedBackendHints.Length == 0
             ? string.Empty
             : "Remembered successful execution backends:\n"
-              + string.Join(", ", rememberedExecutionBackends)
+              + string.Join(", ", rememberedBackendHints)
               + ".\n\n";
         var pass = Math.Max(1, reviewPassNumber);
         var maxPasses = Math.Max(pass, maxReviewPasses);

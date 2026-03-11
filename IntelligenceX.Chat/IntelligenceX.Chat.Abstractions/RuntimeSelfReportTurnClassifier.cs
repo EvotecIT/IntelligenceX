@@ -14,6 +14,10 @@ public static class RuntimeSelfReportTurnClassifier {
     private const int ShortRuntimeQuestionTokenLimit = 5;
     private const int GenericQuestionLongLetterTokenLength = 10;
     private const int RuntimeCueAffixLengthLimit = 2;
+    private static readonly string[] RuntimeCueBlockedAffixes = {
+        "s",
+        "es"
+    };
     private static readonly string[] RuntimeCueWords = {
         "model",
         "runtime",
@@ -133,6 +137,13 @@ public static class RuntimeSelfReportTurnClassifier {
 
         for (var i = cueWord.Length; i < normalized.Length; i++) {
             if (!char.IsLetter(normalized[i])) {
+                return false;
+            }
+        }
+
+        var affix = normalized[cueWord.Length..];
+        for (var i = 0; i < RuntimeCueBlockedAffixes.Length; i++) {
+            if (string.Equals(affix, RuntimeCueBlockedAffixes[i], StringComparison.OrdinalIgnoreCase)) {
                 return false;
             }
         }
