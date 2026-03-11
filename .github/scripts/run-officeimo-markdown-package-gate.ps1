@@ -11,10 +11,23 @@ $filter = 'FullyQualifiedName~TranscriptMarkdownContractTests|FullyQualifiedName
 
 Write-Host 'Running OfficeIMO markdown package-mode gate...'
 
-dotnet restore $exportArtifactsProject $packageModeProperty
+function Assert-PackageMode($projectPath) {
+    $effectiveMode = dotnet msbuild $projectPath -nologo -getProperty:UseLocalOfficeImoCheckout $packageModeProperty
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    if (($effectiveMode | Out-String).Trim() -ne 'false') {
+        Write-Error "Expected UseLocalOfficeImoCheckout=false for $projectPath but got '$effectiveMode'."
+        exit 1
+    }
+}
+
+Assert-PackageMode $exportArtifactsProject
+Assert-PackageMode $appTestsProject
+
+dotnet restore $exportArtifactsProject $packageModeProperty --force-evaluate
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-dotnet restore $appTestsProject $packageModeProperty
+dotnet restore $appTestsProject $packageModeProperty --force-evaluate
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 dotnet build $exportArtifactsProject $packageModeProperty --configuration Release --no-restore
