@@ -732,6 +732,22 @@ public sealed class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
+    /// Ensures the DOCX runtime contract owns the baseline transcript converter options used by the writer.
+    /// </summary>
+    [Fact]
+    public void CreateTranscriptMarkdownToWordOptions_ConfiguresNarrativeAndImageDefaults() {
+        var options = OfficeImoWordMarkdownRuntimeContract.CreateTranscriptMarkdownToWordOptions(
+            ["C:\\allowed-a", "C:\\allowed-b"],
+            2500);
+
+        Assert.True(options.PreferNarrativeSingleLineDefinitions);
+        Assert.Equal(100d, options.MaxImageWidthPercentOfContent);
+        Assert.Equal(2000, options.MaxImageWidthPixels);
+        Assert.Contains("C:\\allowed-a", options.AllowedImageDirectories);
+        Assert.Contains("C:\\allowed-b", options.AllowedImageDirectories);
+    }
+
+    /// <summary>
     /// Ensures invalid visual fences remain as raw code and are not materialized into images.
     /// </summary>
     [Fact]
