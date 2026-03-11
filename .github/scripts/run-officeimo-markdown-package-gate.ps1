@@ -14,10 +14,7 @@ $filter = @(
     'FullyQualifiedName~CreateTranscriptRendererOptions_EnablesExpectedVisualDefaults'
     'FullyQualifiedName~NormalizeForTranscriptCleanup_NormalizesOrderedListParenMarkers'
     'FullyQualifiedName~NormalizeForTranscriptCleanup_DoesNotMutateFencedCode'
-    'FullyQualifiedName~RenderAndExportPreparation_ShareCoreNormalization_WhenNoExportOnlyCleanupIsNeeded'
-    'FullyQualifiedName~ExportAndDocxPreparation_KeepSharedContentWhileApplyingExplicitDocxDifferences'
     'FullyQualifiedName~CreateTranscriptMarkdownToWordOptions_ConfiguresNarrativeAndImageDefaults'
-    'FullyQualifiedName~ExportTranscript_Docx_SanitizesCachedEvidenceMarkersBeforeWriter'
 ) -join '|'
 
 Write-Output 'Running OfficeIMO markdown package-mode gate...'
