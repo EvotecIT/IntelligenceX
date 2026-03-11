@@ -8,7 +8,17 @@ $appTestsProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Ap
 
 $packageModeProperty = '-p:UseLocalOfficeImoCheckout=false'
 $skipSidecarBuildProperty = '-p:SkipChatServiceSidecarBuild=true'
-$filter = 'FullyQualifiedName~TranscriptMarkdownContractTests|FullyQualifiedName~TranscriptMarkdownContractIntegrationTests|FullyQualifiedName~OfficeImoMarkdownRuntimeContractTests|FullyQualifiedName~OfficeImoMarkdownInputNormalizationRuntimeContractTests|FullyQualifiedName~LocalExportArtifactWriterTests'
+$filter = @(
+    'FullyQualifiedName~TranscriptMarkdownContractTests'
+    'FullyQualifiedName~TranscriptMarkdownContractIntegrationTests'
+    'FullyQualifiedName~OfficeImoMarkdownRuntimeContractTests'
+    'FullyQualifiedName~OfficeImoMarkdownInputNormalizationRuntimeContractTests'
+    'FullyQualifiedName~OfficeImoWordMarkdownRuntimeContractTests'
+    'FullyQualifiedName~CreateTranscriptMarkdownToWordOptions_ConfiguresNarrativeAndImageDefaults'
+    'FullyQualifiedName~ExportTranscript_Docx_SanitizesCachedEvidenceMarkersBeforeWriter'
+    'FullyQualifiedName~WriteDocxTranscript_RendersSingleLineDefinitionsAsNarrativeText'
+    'FullyQualifiedName~WriteDocxTranscript_PreservesGroupedDefinitionLikeBlocks'
+) -join '|'
 
 Write-Output 'Running OfficeIMO markdown package-mode gate...'
 
