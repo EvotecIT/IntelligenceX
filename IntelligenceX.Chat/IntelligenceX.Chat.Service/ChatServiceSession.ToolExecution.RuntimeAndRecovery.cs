@@ -365,6 +365,7 @@ internal sealed partial class ChatServiceSession {
 
             var shouldRetry = ShouldRetryToolCall(output, profile, attemptIndex);
             if (!shouldRetry
+                && !IsSuccessfulToolOutput(output)
                 && preferredAutomaticFallbackPending
                 && !preferredAutomaticFallbackAttempted
                 && TryBuildAutomaticAlternateEngineRetryCall(
