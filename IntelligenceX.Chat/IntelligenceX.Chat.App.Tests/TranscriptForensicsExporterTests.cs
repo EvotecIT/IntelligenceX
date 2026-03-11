@@ -15,7 +15,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void Build_CapturesLiveAndPersistedSnapshotsSeparately() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 6, 28, DateTimeKind.Local);
         var liveMessages = new List<(string Role, string Text, DateTime Time, string? Model)> {
             ("Assistant", """
@@ -69,7 +69,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void Build_TreatsPersistedUnspecifiedTimestampAsUtc() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var persistedTimestamp = new DateTime(2026, 3, 8, 18, 6, 28, DateTimeKind.Unspecified);
         var bundle = TranscriptForensicsExporter.Build(
             "default",
@@ -100,7 +100,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void Build_SkipsMessagesThatNormalizeToBlankAcrossArtifacts() {
-        var options = ChatMarkdownOptions.Create();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 10, 0, DateTimeKind.Local);
         var bundle = TranscriptForensicsExporter.Build(
             "default",

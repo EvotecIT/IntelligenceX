@@ -711,7 +711,7 @@ public sealed partial class MainWindow : Window {
     /// </summary>
     public MainWindow() {
         StartupLog.Write("MainWindow.ctor enter");
-        _markdownOptions = ChatMarkdownOptions.Create();
+        _markdownOptions = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         StartupLogRendererDiagnostics();
         Title = "IntelligenceX Chat";
         _debugMode = VerboseServiceLogs;

@@ -80,7 +80,7 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
         var html = TranscriptHtmlFormatter.FormatSingleMessageForExport(
             "Assistant",
             markdown,
-            ChatMarkdownOptions.Create());
+            OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions());
 
         Assert.Contains("<li>First check</li>", html, StringComparison.Ordinal);
         Assert.Contains("<li>Second check</li>", html, StringComparison.Ordinal);
