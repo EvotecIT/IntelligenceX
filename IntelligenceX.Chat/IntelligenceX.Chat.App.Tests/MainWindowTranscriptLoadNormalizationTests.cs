@@ -1,17 +1,13 @@
 using System;
-using System.Reflection;
+using IntelligenceX.Chat.App.Markdown;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
-/// Covers persisted transcript normalization applied when conversations are loaded from state.
+/// Covers App-owned transcript normalization entrypoints used when conversations are loaded or previews stream in.
 /// </summary>
 public sealed class MainWindowTranscriptLoadNormalizationTests {
-    private static readonly MethodInfo NormalizePersistedTranscriptTextMethod =
-        typeof(MainWindow).GetMethod("NormalizePersistedTranscriptText", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("NormalizePersistedTranscriptText method not found.");
-
     /// <summary>
     /// Ensures assistant transcript artifacts are normalized before they are re-persisted.
     /// </summary>
@@ -19,7 +15,7 @@ public sealed class MainWindowTranscriptLoadNormalizationTests {
     public void NormalizePersistedTranscriptText_RepairsAssistantArtifactsBeforePersistence() {
         var input = "- LDAP/LDAPS across all DCs **healthy on FQDN endpoints for all 5 servers*";
 
-        var repaired = InvokeNormalizePersistedTranscriptText("Assistant", input, out var wasRepaired);
+        var repaired = TranscriptMarkdownPreparation.NormalizePersistedTranscriptText("Assistant", input, out var wasRepaired);
 
         Assert.True(wasRepaired);
         Assert.Equal("- LDAP/LDAPS across all DCs **healthy on FQDN endpoints for all 5 servers**", repaired);
@@ -32,16 +28,29 @@ public sealed class MainWindowTranscriptLoadNormalizationTests {
     public void NormalizePersistedTranscriptText_DoesNotRewriteUserMarkdown() {
         var input = "- LDAP/LDAPS across all DCs **healthy on FQDN endpoints for all 5 servers*";
 
-        var repaired = InvokeNormalizePersistedTranscriptText("User", input, out var wasRepaired);
+        var repaired = TranscriptMarkdownPreparation.NormalizePersistedTranscriptText("User", input, out var wasRepaired);
 
         Assert.False(wasRepaired);
         Assert.Equal(input, repaired);
     }
 
-    private static string InvokeNormalizePersistedTranscriptText(string role, string text, out bool repaired) {
-        var args = new object?[] { role, text, null };
-        var result = Assert.IsType<string>(NormalizePersistedTranscriptTextMethod.Invoke(null, args));
-        repaired = Assert.IsType<bool>(args[2]);
-        return result;
+    /// <summary>
+    /// Ensures streaming-preview normalization stays reachable through the App-owned entrypoint instead of direct normalizer calls.
+    /// </summary>
+    [Fact]
+    public void PrepareStreamingPreview_RepairsSignalFlowTypographyArtifacts() {
+        var input = string.Join('\n', [
+            "- Signal **Catalog count includes hidden/disabled/deprecated rules -> **Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**",
+            "- TestimoX rules available ****359****"
+        ]);
+
+        var preview = TranscriptMarkdownPreparation.PrepareStreamingPreview(input);
+
+        var expected = string.Join('\n', [
+            "- Signal **Catalog count includes hidden/disabled/deprecated rules** -> **Why it matters:** external/custom rules can drift or disappear between hosts -> **Next action:** break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.",
+            "- TestimoX rules available **359**"
+        ]);
+
+        Assert.Equal(expected, preview);
     }
 }
