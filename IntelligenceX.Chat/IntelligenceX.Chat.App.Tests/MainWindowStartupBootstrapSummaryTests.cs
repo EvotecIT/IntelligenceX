@@ -155,4 +155,42 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
 
         Assert.Equal("miss", mode);
     }
+
+    /// <summary>
+    /// Suppresses full transcript bootstrap summaries while the app is still showing a persisted preview catalog.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendStartupBootstrapSummary_ReturnsFalseForPersistedPreviewPolicy() {
+        var policy = CreatePolicy(
+            startupBootstrap: new SessionStartupBootstrapTelemetryDto {
+                TotalMs = 13100,
+                PackLoadMs = 13000,
+                Tools = 187,
+                PacksLoaded = 10
+            },
+            startupWarnings: new[] {
+                "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues."
+            });
+
+        var shouldAppend = MainWindow.ShouldAppendStartupBootstrapSummary(policy);
+
+        Assert.False(shouldAppend);
+    }
+
+    /// <summary>
+    /// Keeps real bootstrap summaries for non-preview startup states so final rebuilt catalogs still surface timing details.
+    /// </summary>
+    [Fact]
+    public void ShouldAppendStartupBootstrapSummary_ReturnsTrueForSignalWorthyFinalPolicy() {
+        var policy = CreatePolicy(new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 18100,
+            PackLoadMs = 17700,
+            Tools = 235,
+            PacksLoaded = 11
+        });
+
+        var shouldAppend = MainWindow.ShouldAppendStartupBootstrapSummary(policy);
+
+        Assert.True(shouldAppend);
+    }
 }
