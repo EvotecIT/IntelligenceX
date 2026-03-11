@@ -60,6 +60,25 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
+    /// Verifies the central runtime contract creates the same chat-safe renderer defaults used by the app shell.
+    /// </summary>
+    [Fact]
+    public void CreateTranscriptRendererOptions_EnablesExpectedVisualDefaults() {
+        var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
+        var method = contractType!.GetMethod(
+            "CreateTranscriptRendererOptions",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+
+        var options = Assert.IsType<MarkdownRendererOptions>(method!.Invoke(null, null));
+
+        Assert.True(options.Mermaid.Enabled);
+        Assert.True(options.Chart.Enabled);
+        Assert.False(options.Math.Enabled);
+        Assert.False(options.EnableCodeCopyButtons);
+        Assert.False(options.EnableTableCopyButtons);
+    }
+
+    /// <summary>
     /// Verifies package-mode version pins match the published OfficeIMO packages required by the app contract.
     /// </summary>
     [Fact]
