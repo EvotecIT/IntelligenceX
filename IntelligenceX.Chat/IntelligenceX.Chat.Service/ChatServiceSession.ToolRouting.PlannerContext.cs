@@ -24,6 +24,7 @@ internal sealed partial class ChatServiceSession {
         string[] StructuredNextActionSourceToolNames,
         string StructuredNextActionReason,
         double? StructuredNextActionConfidence,
+        string[] PreferredExecutionBackends,
         string[] HandoffTargetPackIds,
         string[] HandoffTargetToolNames,
         string ContinuationSourceTool,
@@ -81,6 +82,10 @@ internal sealed partial class ChatServiceSession {
             .Concat(structuredPreferredToolNames),
             MaxPlannerContextToolNames);
         var sourceToolNames = NormalizeDistinctStrings(structuredSourceToolNames, MaxPlannerContextSourceTools);
+        var preferredExecutionBackends = CollectThreadToolExecutionBackendHints(
+            normalizedThreadId,
+            preferredToolNames,
+            hasCheckpoint ? checkpoint.RecentToolNames : Array.Empty<string>());
 
         var handoffSourceToolNames = NormalizeDistinctStrings(
             (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredToolNames : Array.Empty<string>())
@@ -110,6 +115,7 @@ internal sealed partial class ChatServiceSession {
             && (!hasCheckpoint || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0)
             && preferredPackIds.Length == 0
             && preferredToolNames.Length == 0
+            && preferredExecutionBackends.Length == 0
             && sourceToolNames.Length == 0
             && structuredNextActionReason.Length == 0
             && !structuredNextActionConfidence.HasValue
@@ -158,6 +164,11 @@ internal sealed partial class ChatServiceSession {
         if (structuredNextActionConfidence.HasValue) {
             builder.Append("structured_next_action_confidence: ")
                 .AppendLine(structuredNextActionConfidence.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (preferredExecutionBackends.Length > 0) {
+            builder.Append("preferred_execution_backends: ")
+                .AppendLine(string.Join(", ", preferredExecutionBackends));
         }
 
         if (handoffTargetPackIds.Length > 0) {
@@ -403,6 +414,7 @@ internal sealed partial class ChatServiceSession {
             StructuredNextActionSourceToolNames: Array.Empty<string>(),
             StructuredNextActionReason: string.Empty,
             StructuredNextActionConfidence: null,
+            PreferredExecutionBackends: Array.Empty<string>(),
             HandoffTargetPackIds: Array.Empty<string>(),
             HandoffTargetToolNames: Array.Empty<string>(),
             ContinuationSourceTool: string.Empty,
@@ -422,6 +434,7 @@ internal sealed partial class ChatServiceSession {
         var structuredNextActionSourceToolNames = Array.Empty<string>();
         var structuredNextActionReason = string.Empty;
         double? structuredNextActionConfidence = null;
+        var preferredExecutionBackends = Array.Empty<string>();
         var handoffTargetPackIds = Array.Empty<string>();
         var handoffTargetToolNames = Array.Empty<string>();
         var continuationSourceTool = string.Empty;
@@ -515,6 +528,14 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (TryParseStructuredKeyValueLine(trimmed, "preferred_execution_backends", out var preferredExecutionBackendsValue)) {
+                preferredExecutionBackends = NormalizeStructuredMetadataCsv(
+                    preferredExecutionBackendsValue,
+                    static value => NormalizeToolExecutionBackendHint(value),
+                    MaxToolExecutionBackendHints);
+                continue;
+            }
+
             if (TryParseStructuredKeyValueLine(trimmed, "handoff_target_pack_ids", out var handoffTargetPackIdsValue)) {
                 handoffTargetPackIds = NormalizeStructuredMetadataCsv(
                     handoffTargetPackIdsValue,
@@ -570,6 +591,7 @@ internal sealed partial class ChatServiceSession {
             StructuredNextActionSourceToolNames: structuredNextActionSourceToolNames,
             StructuredNextActionReason: structuredNextActionReason,
             StructuredNextActionConfidence: structuredNextActionConfidence,
+            PreferredExecutionBackends: preferredExecutionBackends,
             HandoffTargetPackIds: handoffTargetPackIds,
             HandoffTargetToolNames: handoffTargetToolNames,
             ContinuationSourceTool: continuationSourceTool,
@@ -578,6 +600,34 @@ internal sealed partial class ChatServiceSession {
             MatchingSkills: matchingSkills,
             AllowCachedEvidenceReuse: allowCachedEvidenceReuse);
         return sawMarker && parsedAnyStructuredValue;
+    }
+
+    private static string[] ReadRememberedToolExecutionBackendHintsFromRequestText(string requestText) {
+        var raw = requestText ?? string.Empty;
+        if (raw.Length == 0
+            || (raw.IndexOf("preferred_execution_backends", StringComparison.OrdinalIgnoreCase) < 0
+                && raw.IndexOf("recent_tool_execution_backends", StringComparison.OrdinalIgnoreCase) < 0)) {
+            return Array.Empty<string>();
+        }
+
+        var rememberedHints = new List<string>(MaxToolExecutionBackendHints * 2);
+        using var reader = new StringReader(raw);
+        while (reader.ReadLine() is { } line) {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0) {
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "preferred_execution_backends", out var hintsValue)
+                || TryParseStructuredKeyValueLine(trimmed, "recent_tool_execution_backends", out hintsValue)) {
+                rememberedHints.AddRange(NormalizeStructuredMetadataCsv(
+                    hintsValue,
+                    static value => NormalizeToolExecutionBackendHint(value),
+                    MaxToolExecutionBackendHints));
+            }
+        }
+
+        return NormalizeDistinctStrings(rememberedHints, MaxToolExecutionBackendHints);
     }
 
     private static string NormalizeContinuationConfidence(string? value) {

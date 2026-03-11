@@ -11,7 +11,13 @@ public static class RuntimeSelfReportTurnClassifier {
     private const int RuntimeQuestionTokenLimit = 18;
     private const int CompactRuntimeQuestionLengthLimit = 72;
     private const int CompactRuntimeQuestionTokenLimit = 7;
+    private const int ShortRuntimeQuestionTokenLimit = 5;
     private const int GenericQuestionLongLetterTokenLength = 10;
+    private const int RuntimeCueAffixLengthLimit = 2;
+    private static readonly string[] RuntimeCueBlockedAffixes = {
+        "s",
+        "es"
+    };
     private static readonly string[] RuntimeCueWords = {
         "model",
         "runtime",
@@ -46,7 +52,7 @@ public static class RuntimeSelfReportTurnClassifier {
             return false;
         }
 
-        if (tokens.Count <= 3) {
+        if (tokens.Count <= ShortRuntimeQuestionTokenLimit) {
             return !LooksLikeConcreteQuestionLead(tokens);
         }
 
@@ -103,7 +109,7 @@ public static class RuntimeSelfReportTurnClassifier {
         for (var i = 0; i < tokens.Count; i++) {
             var token = tokens[i];
             for (var j = 0; j < RuntimeCueWords.Length; j++) {
-                if (string.Equals(token, RuntimeCueWords[j], StringComparison.OrdinalIgnoreCase)) {
+                if (IsRuntimeCueToken(token, RuntimeCueWords[j])) {
                     matches++;
                     break;
                 }
@@ -111,6 +117,38 @@ public static class RuntimeSelfReportTurnClassifier {
         }
 
         return matches;
+    }
+
+    private static bool IsRuntimeCueToken(string? token, string cueWord) {
+        var normalized = (token ?? string.Empty).Trim();
+        if (normalized.Length == 0 || cueWord.Length == 0) {
+            return false;
+        }
+
+        if (string.Equals(normalized, cueWord, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (!normalized.StartsWith(cueWord, StringComparison.OrdinalIgnoreCase)
+            || normalized.Length <= cueWord.Length
+            || normalized.Length > cueWord.Length + RuntimeCueAffixLengthLimit) {
+            return false;
+        }
+
+        for (var i = cueWord.Length; i < normalized.Length; i++) {
+            if (!char.IsLetter(normalized[i])) {
+                return false;
+            }
+        }
+
+        var affix = normalized[cueWord.Length..];
+        for (var i = 0; i < RuntimeCueBlockedAffixes.Length; i++) {
+            if (string.Equals(affix, RuntimeCueBlockedAffixes[i], StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static List<string> CollectLetterDigitTokens(string text, int maxTokens) {

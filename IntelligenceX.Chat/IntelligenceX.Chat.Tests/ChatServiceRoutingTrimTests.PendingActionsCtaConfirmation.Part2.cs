@@ -278,6 +278,57 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ExpandContinuationUserRequest_ResolvesStructuredActionSelectionPayloadByStoredPendingActionId() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_disable_user
+            title: Disable account
+            request: Disable user evotec\john and return confirmation.
+            mutating: true
+            reply: /act act_disable_user
+            """;
+        var input = """
+            {"IX_Action_Selection":{"ActionId":"act_disable_user","Title":"Different title","Request":"Different request","Mutating":"false"}}
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(expanded);
+        var selection = doc.RootElement.GetProperty("ix_action_selection");
+        Assert.Equal("act_disable_user", selection.GetProperty("id").GetString());
+        Assert.Equal("Disable account", selection.GetProperty("title").GetString());
+        Assert.Equal("Disable user evotec\\john and return confirmation.", selection.GetProperty("request").GetString());
+        Assert.True(selection.GetProperty("mutating").GetBoolean());
+    }
+
+    [Fact]
+    public void ExpandContinuationUserRequest_DoesNotResolveStructuredActionSelectionPayloadWhenStoredIdIsUnknown() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var assistantDraft = """
+            [Action]
+            ix:action:v1
+            id: act_failed4625
+            title: Failed logons (4625)
+            request: Run failed logons report.
+            mutating: false
+            reply: /act act_failed4625
+            """;
+        var input = """
+            {"ix_action_selection":{"id":"act_unknown","title":"Failed logons (4625)","request":"Run failed logons report.","mutating":false}}
+            """;
+
+        RememberPendingActionsMethod.Invoke(session, new object?[] { "thread-001", assistantDraft });
+        var result = ExpandContinuationUserRequestMethod.Invoke(session, new object?[] { "thread-001", input });
+        var expanded = Assert.IsType<string>(result);
+
+        Assert.Equal(input, expanded);
+    }
+
+    [Fact]
     public void RememberPendingActions_NoMarkerOrFallbackChoices_ClearsExistingActionContext() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var actionDraft = """

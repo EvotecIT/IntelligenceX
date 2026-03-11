@@ -333,6 +333,398 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
+    public void ResolveRetryProfile_ProjectsDeclaredRecoveryHelperNames() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_inventory_probe",
+            BuildRecoveryAwareDefinition(
+                "custom_inventory_probe",
+                maxRetryAttempts: 1,
+                new[] { " system_context ", "system_context", "eventlog_context" },
+                "timeout",
+                "transport_unavailable"));
+
+        Assert.Equal(new[] { "system_context", "eventlog_context" }, profile.RecoveryToolNames);
+    }
+
+    [Fact]
+    public void ResolveRetryProfile_ProjectsDeclaredAlternateEngineIds() {
+        var profile = InvokeResolveRetryProfile(
+            "system_inventory_probe",
+            BuildRecoveryAwareDefinition(
+                "system_inventory_probe",
+                maxRetryAttempts: 1,
+                recoveryToolNames: null,
+                alternateEngineIds: new[] { " cim ", "wmi", "cim" },
+                retryableErrorCodes: new[] { "timeout", "transport_unavailable" }));
+
+        Assert.Equal(new[] { "cim", "wmi" }, profile.AlternateEngineIds);
+    }
+
+    [Fact]
+    public void TryBuildAlternateEngineFallbackCall_UsesExplicitEngineSelectorArgumentAndSkipsCurrentEngine() {
+        var definition = BuildRecoveryAwareDefinition(
+            "system_inventory_probe",
+            maxRetryAttempts: 1,
+            recoveryToolNames: null,
+            alternateEngineIds: new[] { "cim", "wmi" },
+            retryableErrorCodes: new[] { "timeout", "transport_unavailable" },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("computer_name", new JsonObject().Add("type", "string"))
+                    .Add("engine", new JsonObject().Add("type", "string"))));
+        var profile = InvokeResolveRetryProfile("system_inventory_probe", definition);
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "cim");
+        var call = new ToolCall(
+            callId: "call-engine-1",
+            name: definition.Name,
+            input: JsonLite.Serialize(arguments),
+            arguments: arguments,
+            raw: new JsonObject());
+
+        var built = ChatServiceSession.TryBuildAlternateEngineFallbackCallForTesting(
+            call,
+            definition,
+            profile,
+            out var fallbackCall,
+            out var selectedEngineId);
+
+        Assert.True(built);
+        Assert.Equal("wmi", selectedEngineId);
+        Assert.NotNull(fallbackCall.Arguments);
+        Assert.Equal("srv-01", fallbackCall.Arguments!.GetString("computer_name"));
+        Assert.Equal("wmi", fallbackCall.Arguments.GetString("engine"));
+    }
+
+    [Fact]
+    public void TryBuildAlternateEngineFallbackCall_DoesNotReuseNonEngineTransportArgument() {
+        var definition = BuildRecoveryAwareDefinition(
+            "ad_replication_summary",
+            maxRetryAttempts: 1,
+            recoveryToolNames: null,
+            alternateEngineIds: new[] { "rpc", "smtp" },
+            retryableErrorCodes: new[] { "timeout", "transport_unavailable" },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("transport", new JsonObject().Add("type", "string"))));
+        var profile = InvokeResolveRetryProfile("ad_replication_summary", definition);
+        var arguments = new JsonObject().Add("transport", "rpc");
+        var call = new ToolCall(
+            callId: "call-engine-2",
+            name: definition.Name,
+            input: JsonLite.Serialize(arguments),
+            arguments: arguments,
+            raw: new JsonObject());
+
+        var built = ChatServiceSession.TryBuildAlternateEngineFallbackCallForTesting(
+            call,
+            definition,
+            profile,
+            out _,
+            out _);
+
+        Assert.False(built);
+    }
+
+    [Fact]
+    public void TryBuildAlternateEngineFallbackCall_SkipsAlternateEnginesNotDeclaredBySelectorEnum() {
+        var definition = BuildRecoveryAwareDefinition(
+            "system_inventory_probe",
+            maxRetryAttempts: 1,
+            recoveryToolNames: null,
+            alternateEngineIds: new[] { "cim", "wmi" },
+            retryableErrorCodes: new[] { "timeout", "transport_unavailable" },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("computer_name", new JsonObject().Add("type", "string"))
+                    .Add("engine", new JsonObject()
+                        .Add("type", "string")
+                        .Add("enum", new JsonArray().Add("auto").Add("wmi")))));
+        var profile = InvokeResolveRetryProfile("system_inventory_probe", definition);
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            callId: "call-engine-3",
+            name: definition.Name,
+            input: JsonLite.Serialize(arguments),
+            arguments: arguments,
+            raw: new JsonObject());
+
+        var built = ChatServiceSession.TryBuildAlternateEngineFallbackCallForTesting(
+            call,
+            definition,
+            profile,
+            out var fallbackCall,
+            out var selectedEngineId);
+
+        Assert.True(built);
+        Assert.Equal("wmi", selectedEngineId);
+        Assert.Equal("wmi", fallbackCall.Arguments!.GetString("engine"));
+    }
+
+    [Fact]
+    public void TryBuildAlternateEngineFallbackCall_DoesNotBuildWhenContractEnginesAreOutsideSelectorEnum() {
+        var definition = BuildRecoveryAwareDefinition(
+            "system_inventory_probe",
+            maxRetryAttempts: 1,
+            recoveryToolNames: null,
+            alternateEngineIds: new[] { "cim", "wmi" },
+            retryableErrorCodes: new[] { "timeout", "transport_unavailable" },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("computer_name", new JsonObject().Add("type", "string"))
+                    .Add("engine", new JsonObject()
+                        .Add("type", "string")
+                        .Add("enum", new JsonArray().Add("auto").Add("native")))));
+        var profile = InvokeResolveRetryProfile("system_inventory_probe", definition);
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            callId: "call-engine-4",
+            name: definition.Name,
+            input: JsonLite.Serialize(arguments),
+            arguments: arguments,
+            raw: new JsonObject());
+
+        var built = ChatServiceSession.TryBuildAlternateEngineFallbackCallForTesting(
+            call,
+            definition,
+            profile,
+            out _,
+            out _);
+
+        Assert.False(built);
+    }
+
+    [Fact]
+    public void TryBuildPreferredHealthyAlternateEngineCall_PrefersHealthyEngineWhenCurrentSelectionIsAuto() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definition = BuildRecoveryAwareDefinition(
+            "system_inventory_probe",
+            maxRetryAttempts: 2,
+            recoveryToolNames: null,
+            alternateEngineIds: new[] { "wmi", "cim" },
+            retryableErrorCodes: new[] { "timeout", "transport_unavailable" },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("computer_name", new JsonObject().Add("type", "string"))
+                    .Add("engine", new JsonObject()
+                        .Add("type", "string")
+                        .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))));
+        var profile = InvokeResolveRetryProfile("system_inventory_probe", definition);
+        session.RememberAlternateEngineFailureForTesting("thread-pref", definition.Name, "wmi");
+        session.RememberAlternateEngineSuccessForTesting("thread-pref", definition.Name, "cim");
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            callId: "call-engine-prefer-1",
+            name: definition.Name,
+            input: JsonLite.Serialize(arguments),
+            arguments: arguments,
+            raw: new JsonObject());
+
+        var built = session.TryBuildPreferredHealthyAlternateEngineCallForTesting(
+            "thread-pref",
+            call,
+            definition,
+            profile,
+            out var preferredCall,
+            out var selectedEngineId);
+
+        Assert.True(built);
+        Assert.Equal("cim", selectedEngineId);
+        Assert.Equal("cim", preferredCall.Arguments!.GetString("engine"));
+    }
+
+    [Fact]
+    public void TryBuildPreferredHealthyAlternateEngineCall_DoesNotOverrideExplicitEngineSelection() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definition = BuildRecoveryAwareDefinition(
+            "system_inventory_probe",
+            maxRetryAttempts: 2,
+            recoveryToolNames: null,
+            alternateEngineIds: new[] { "wmi", "cim" },
+            retryableErrorCodes: new[] { "timeout", "transport_unavailable" },
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("computer_name", new JsonObject().Add("type", "string"))
+                    .Add("engine", new JsonObject()
+                        .Add("type", "string")
+                        .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))));
+        var profile = InvokeResolveRetryProfile("system_inventory_probe", definition);
+        session.RememberAlternateEngineSuccessForTesting("thread-explicit", definition.Name, "cim");
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "wmi");
+        var call = new ToolCall(
+            callId: "call-engine-prefer-2",
+            name: definition.Name,
+            input: JsonLite.Serialize(arguments),
+            arguments: arguments,
+            raw: new JsonObject());
+
+        var built = session.TryBuildPreferredHealthyAlternateEngineCallForTesting(
+            "thread-explicit",
+            call,
+            definition,
+            profile,
+            out _,
+            out _);
+
+        Assert.False(built);
+    }
+
+    [Fact]
+    public void OrderAlternateEngineIdsByHealthForTesting_IgnoresExpiredSuccessTimestamps() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var expiredTicks = DateTime.UtcNow.AddHours(-2).Ticks;
+        var freshTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+
+        session.RememberAlternateEngineSuccessForTesting("thread-order-success", "system_inventory_probe", "cim", expiredTicks);
+        session.RememberAlternateEngineSuccessForTesting("thread-order-success", "system_inventory_probe", "wmi", freshTicks);
+
+        var ordered = session.OrderAlternateEngineIdsByHealthForTesting(
+            "thread-order-success",
+            "system_inventory_probe",
+            new[] { "cim", "wmi" });
+
+        Assert.Equal(new[] { "wmi", "cim" }, ordered);
+    }
+
+    [Fact]
+    public void OrderAlternateEngineIdsByHealthForTesting_IgnoresExpiredFailureTimestampsAfterRestart() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-alt-engine-health-expired-failure-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+
+        try {
+            var expiredTicks = DateTime.UtcNow.AddHours(-2).Ticks;
+            var session1 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            session1.RememberAlternateEngineFailureForTesting(
+                "thread-order-failure",
+                "system_inventory_probe",
+                "wmi",
+                seenUtcTicks: expiredTicks);
+
+            var session2 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var ordered = session2.OrderAlternateEngineIdsByHealthForTesting(
+                "thread-order-failure",
+                "system_inventory_probe",
+                new[] { "wmi", "cim" });
+
+            Assert.Equal(new[] { "wmi", "cim" }, ordered);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
+    }
+
+    [Fact]
+    public void TryBuildRecoveryHelperArgumentsForTesting_ClonesCopiedJsonValues() {
+        var nestedSource = new JsonObject(StringComparer.Ordinal)
+            .Add("computer_name", "srv-01");
+        var sourceArguments = new JsonObject(StringComparer.Ordinal)
+            .Add("computer", nestedSource);
+        var failedCall = new ToolCall(
+            callId: "call-recovery-clone",
+            name: "system_inventory_probe",
+            input: JsonLite.Serialize(sourceArguments),
+            arguments: sourceArguments,
+            raw: new JsonObject(StringComparer.Ordinal));
+        var helperDefinition = new ToolDefinition(
+            "system_context",
+            description: "helper",
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("computer", new JsonObject().Add("type", "object")))
+                .Add("required", new JsonArray().Add("computer")));
+
+        var built = ChatServiceSession.TryBuildRecoveryHelperArgumentsForTesting(
+            failedCall,
+            helperDefinition,
+            out var helperArguments);
+
+        Assert.True(built);
+        var helperComputer = Assert.IsType<JsonObject>(helperArguments.GetObject("computer"));
+        Assert.NotSame(nestedSource, helperComputer);
+        Assert.Equal("srv-01", helperComputer.GetString("computer_name"));
+
+        nestedSource.Add("computer_name", "srv-02");
+
+        Assert.Equal("srv-01", helperComputer.GetString("computer_name"));
+    }
+
+    [Fact]
+    public void ShouldAttemptRecoveryHelperTools_AttemptsForStructuredTransportFailureWhenHelpersDeclared() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_inventory_probe",
+            BuildRecoveryAwareDefinition(
+                "custom_inventory_probe",
+                maxRetryAttempts: 1,
+                new[] { "system_context" },
+                "timeout",
+                "transport_unavailable"));
+        var output = new ToolOutputDto {
+            CallId = "call-recovery-1",
+            Output = "{\"error\":\"Service temporarily unavailable.\"}",
+            Ok = false,
+            ErrorCode = "transport_unavailable",
+            Error = "Service temporarily unavailable.",
+            IsTransient = true
+        };
+
+        var shouldAttempt = ChatServiceSession.ShouldAttemptRecoveryHelperToolsForTesting(output, profile);
+
+        Assert.True(shouldAttempt);
+    }
+
+    [Fact]
+    public void ShouldAttemptRecoveryHelperTools_DoesNotAttemptForPermanentFailure() {
+        var profile = InvokeResolveRetryProfile(
+            "custom_inventory_probe",
+            BuildRecoveryAwareDefinition(
+                "custom_inventory_probe",
+                maxRetryAttempts: 1,
+                new[] { "system_context" },
+                "timeout",
+                "transport_unavailable"));
+        var output = new ToolOutputDto {
+            CallId = "call-recovery-2",
+            Output = "{\"error\":\"Unauthorized.\"}",
+            Ok = false,
+            ErrorCode = "permission_denied",
+            Error = "Unauthorized.",
+            IsTransient = true
+        };
+
+        var shouldAttempt = ChatServiceSession.ShouldAttemptRecoveryHelperToolsForTesting(output, profile);
+
+        Assert.False(shouldAttempt);
+    }
+
+    [Fact]
     public void ShouldRetryToolCall_DoesNotRetryDomainScopeGuardrailFailure() {
         var profile = InvokeResolveRetryProfile(
             "ad_replication_summary",
@@ -685,15 +1077,41 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     private static ToolDefinition BuildRecoveryAwareDefinition(string toolName, int maxRetryAttempts, params string[] retryableErrorCodes) {
+        return BuildRecoveryAwareDefinition(toolName, maxRetryAttempts, recoveryToolNames: null, alternateEngineIds: null, retryableErrorCodes: retryableErrorCodes);
+    }
+
+    private static ToolDefinition BuildRecoveryAwareDefinition(
+        string toolName,
+        int maxRetryAttempts,
+        string[]? recoveryToolNames,
+        params string[] retryableErrorCodes) {
+        return BuildRecoveryAwareDefinition(
+            toolName,
+            maxRetryAttempts,
+            recoveryToolNames,
+            alternateEngineIds: null,
+            retryableErrorCodes: retryableErrorCodes);
+    }
+
+    private static ToolDefinition BuildRecoveryAwareDefinition(
+        string toolName,
+        int maxRetryAttempts,
+        string[]? recoveryToolNames,
+        string[]? alternateEngineIds,
+        string[] retryableErrorCodes,
+        JsonObject? parameters = null) {
         return new ToolDefinition(
             name: toolName,
             description: "Contract-driven retry policy test definition.",
-            parameters: null,
+            parameters: parameters,
             recovery: new ToolRecoveryContract {
                 IsRecoveryAware = true,
                 SupportsTransientRetry = true,
                 MaxRetryAttempts = maxRetryAttempts,
-                RetryableErrorCodes = retryableErrorCodes
+                RetryableErrorCodes = retryableErrorCodes,
+                RecoveryToolNames = recoveryToolNames ?? Array.Empty<string>(),
+                SupportsAlternateEngines = alternateEngineIds is { Length: > 0 },
+                AlternateEngineIds = alternateEngineIds ?? Array.Empty<string>()
             });
     }
 

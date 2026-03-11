@@ -26,6 +26,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
     private static readonly MethodInfo ResolveDomainIntentClarificationStorePathMethod =
         typeof(ChatServiceSession).GetMethod("ResolveDomainIntentClarificationStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ResolveDomainIntentClarificationStorePath not found.");
+    private static readonly MethodInfo ResolvePackPreflightStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolvePackPreflightStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolvePackPreflightStorePath not found.");
+    private static readonly MethodInfo ResolveHostBootstrapFailureStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveHostBootstrapFailureStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveHostBootstrapFailureStorePath not found.");
+    private static readonly MethodInfo ResolveAlternateEngineHealthStorePathMethod =
+        typeof(ChatServiceSession).GetMethod("ResolveAlternateEngineHealthStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ResolveAlternateEngineHealthStorePath not found.");
     private static readonly MethodInfo ResolveWeightedSubsetStorePathMethod =
         typeof(ChatServiceSession).GetMethod("ResolveWeightedSubsetStorePath", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ResolveWeightedSubsetStorePath not found.");
@@ -107,6 +116,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 session1,
                 new object?[] { threadId, carryoverToolDefinitions, carryoverToolCalls, carryoverToolOutputs, carryoverMutabilityHints });
             session1.RememberPendingDomainIntentClarificationRequestForTesting(threadId);
+            session1.RememberPackPreflightToolsForTesting(threadId, new[] { "ad_pack_info" });
+            session1.RememberHostBootstrapFailureForTesting(threadId, "ad_pack_info", "pack_preflight");
             session1.RememberRecoveredThreadAliasForTesting("legacy-thread", threadId);
             session1.RememberPlannerThreadContextForTesting("active-thread", "planner-thread", DateTime.UtcNow.Ticks);
             session1.SetToolRoutingStatsForTesting(
@@ -130,12 +141,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var userIntentPath = Assert.IsType<string>(ResolveUserIntentStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var domainIntentPath = Assert.IsType<string>(ResolveDomainIntentStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var domainClarificationPath = Assert.IsType<string>(ResolveDomainIntentClarificationStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var packPreflightPath = Assert.IsType<string>(ResolvePackPreflightStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var hostBootstrapFailurePath = Assert.IsType<string>(ResolveHostBootstrapFailureStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            var alternateEngineHealthPath = Assert.IsType<string>(ResolveAlternateEngineHealthStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var weightedSubsetPath = Assert.IsType<string>(ResolveWeightedSubsetStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var structuredNextActionPath = Assert.IsType<string>(ResolveStructuredNextActionStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var threadRecoveryAliasPath = Assert.IsType<string>(ResolveThreadRecoveryAliasStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var plannerThreadContextPath = Assert.IsType<string>(ResolvePlannerThreadContextStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var toolRoutingStatsPath = Assert.IsType<string>(ResolveToolRoutingStatsStorePathMethod.Invoke(session1, Array.Empty<object>()));
             var workingMemoryPath = Assert.IsType<string>(ResolveWorkingMemoryCheckpointStorePathMethod.Invoke(session1, Array.Empty<object>()));
+            Directory.CreateDirectory(Path.GetDirectoryName(alternateEngineHealthPath)!);
+            File.WriteAllText(alternateEngineHealthPath, "{}");
 
             ClearToolRoutingCachesMethod.Invoke(session1, Array.Empty<object>());
 
@@ -143,6 +159,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.False(File.Exists(userIntentPath));
             Assert.False(File.Exists(domainIntentPath));
             Assert.False(File.Exists(domainClarificationPath));
+            Assert.False(File.Exists(packPreflightPath));
+            Assert.False(File.Exists(hostBootstrapFailurePath));
+            Assert.False(File.Exists(alternateEngineHealthPath));
             Assert.False(File.Exists(weightedSubsetPath));
             Assert.False(File.Exists(structuredNextActionPath));
             Assert.False(File.Exists(threadRecoveryAliasPath));

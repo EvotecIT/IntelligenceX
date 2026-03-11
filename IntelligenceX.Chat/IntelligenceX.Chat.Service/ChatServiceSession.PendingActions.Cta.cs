@@ -9,6 +9,8 @@ internal sealed partial class ChatServiceSession {
     private const int MaxCompactCallToActionTokenCount = 8;
     private const int MaxCompactCallToActionTokenScan = 12;
     private const int MaxPendingActionCallToActionTokens = 6;
+    private const int MaxInlinePendingActionCallToActionSuffixTokens = 3;
+    private const int MinInlinePendingActionCallToActionSuffixTokens = 2;
 
     private static string NormalizeCompactCallToActionToken(string text) {
         // Assistant CTAs often appear in prose with trailing ':' / ';' (including fullwidth variants) that users
@@ -32,10 +34,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         var phrases = ExtractQuotedPhrases(draft);
-        if (phrases.Count == 0) {
-            return Array.Empty<string>();
-        }
-
         var tokens = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < phrases.Count; i++) {
@@ -57,6 +55,10 @@ internal sealed partial class ChatServiceSession {
             if (tokens.Count >= MaxPendingActionCallToActionTokens) {
                 break;
             }
+        }
+
+        if (tokens.Count < MaxPendingActionCallToActionTokens) {
+            ExtractUnquotedPendingActionCallToActionTokens(draft, tokens, seen);
         }
 
         return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
@@ -122,6 +124,103 @@ internal sealed partial class ChatServiceSession {
             if (string.Equals(request, token, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
+
+            if (ContainsPhraseWithBoundaries(request, token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void ExtractUnquotedPendingActionCallToActionTokens(
+        string assistantContext,
+        List<string> tokens,
+        HashSet<string> seen) {
+        var lines = SplitLines(assistantContext);
+        for (var i = 0; i < lines.Count && tokens.Count < MaxPendingActionCallToActionTokens; i++) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0) {
+                continue;
+            }
+
+            if (line.StartsWith("[Action]", StringComparison.Ordinal)
+                || line.StartsWith("ix:action:v1", StringComparison.OrdinalIgnoreCase)) {
+                break;
+            }
+
+            if (TryAddStandalonePendingActionCallToActionToken(line, i, lines, tokens, seen)) {
+                continue;
+            }
+
+            TryAddInlinePendingActionCallToActionTokens(line, tokens, seen);
+        }
+    }
+
+    private static bool TryAddStandalonePendingActionCallToActionToken(
+        string line,
+        int lineIndex,
+        IReadOnlyList<string> lines,
+        List<string> tokens,
+        HashSet<string> seen) {
+        if (lineIndex <= 0 || !PreviousNonEmptyPendingActionLineEndsWithColon(lines, lineIndex)) {
+            return false;
+        }
+
+        return TryAddPendingActionCallToActionToken(line, tokens, seen);
+    }
+
+    private static void TryAddInlinePendingActionCallToActionTokens(
+        string line,
+        List<string> tokens,
+        HashSet<string> seen) {
+        for (var i = 0; i < line.Length && tokens.Count < MaxPendingActionCallToActionTokens; i++) {
+            if (!IsCallToActionComma(line[i])) {
+                continue;
+            }
+
+            var clause = NormalizeCompactCallToActionToken(line[..i]);
+            if (!LooksLikeCompactCallToActionToken(clause)) {
+                continue;
+            }
+
+            var parts = clause.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < MinInlinePendingActionCallToActionSuffixTokens) {
+                continue;
+            }
+
+            var maxSuffixTokens = Math.Min(MaxInlinePendingActionCallToActionSuffixTokens, parts.Length);
+            for (var suffixTokenCount = MinInlinePendingActionCallToActionSuffixTokens;
+                 suffixTokenCount <= maxSuffixTokens && tokens.Count < MaxPendingActionCallToActionTokens;
+                 suffixTokenCount++) {
+                var start = parts.Length - suffixTokenCount;
+                var candidate = string.Join(" ", parts, start, suffixTokenCount);
+                TryAddPendingActionCallToActionToken(candidate, tokens, seen);
+            }
+        }
+    }
+
+    private static bool TryAddPendingActionCallToActionToken(
+        string candidate,
+        List<string> tokens,
+        HashSet<string> seen) {
+        var token = NormalizeCompactCallToActionToken(candidate);
+        if (!LooksLikeCompactCallToActionToken(token) || !seen.Add(token)) {
+            return false;
+        }
+
+        tokens.Add(token);
+        return true;
+    }
+
+    private static bool PreviousNonEmptyPendingActionLineEndsWithColon(IReadOnlyList<string> lines, int currentLineIndex) {
+        for (var i = currentLineIndex - 1; i >= 0; i--) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0) {
+                continue;
+            }
+
+            return IsCallToActionColon(line[^1]);
         }
 
         return false;

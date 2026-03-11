@@ -506,7 +506,7 @@ public static partial class ToolPackGuidance {
     private static readonly string[] RemoteHostArgumentNames = {
         "computer_name", "domain_controller", "server", "targets"
     };
-    private static readonly string[] MutatingActionArgumentNames = { "send", "dry_run", "confirm", "execute", "apply", "force", "enable", "disable", "allow_write" };
+    private static readonly IReadOnlyList<string> MutatingActionArgumentNames = ToolMutabilityHintNames.CanonicalMutatingActionArguments;
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
         ToolAuthenticationArgumentNames.CanonicalArguments;
 

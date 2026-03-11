@@ -212,6 +212,11 @@ public sealed record ToolOrchestrationCatalogEntry {
     public string RecoveryContractId { get; init; } = string.Empty;
 
     /// <summary>
+    /// Number of declared recovery helper tools.
+    /// </summary>
+    public int RecoveryToolCount { get; init; }
+
+    /// <summary>
     /// Normalized retryable error codes.
     /// </summary>
     public IReadOnlyList<string> RetryableErrorCodes { get; init; } = Array.Empty<string>();
@@ -220,6 +225,11 @@ public sealed record ToolOrchestrationCatalogEntry {
     /// Normalized alternate engine identifiers.
     /// </summary>
     public IReadOnlyList<string> AlternateEngineIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Normalized recovery helper tool names.
+    /// </summary>
+    public IReadOnlyList<string> RecoveryToolNames { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -370,6 +380,7 @@ public sealed class ToolOrchestrationCatalog {
             }
             var retryableErrorCodes = NormalizeDistinctTokens(recovery?.RetryableErrorCodes);
             var alternateEngineIds = NormalizeDistinctTokens(recovery?.AlternateEngineIds);
+            var recoveryToolNames = NormalizeDistinctTokens(recovery?.RecoveryToolNames);
             var alternateEngineCount = alternateEngineIds.Length;
             var normalizedSetupRequirementIds = NormalizeDistinctTokens(setupRequirementIds);
             var normalizedSetupRequirementKinds = NormalizeDistinctTokens(setupRequirementKinds);
@@ -396,6 +407,7 @@ public sealed class ToolOrchestrationCatalog {
                                   && (normalizedRecoveryContractId.Length > 0
                                       || retryableErrorCodes.Length > 0
                                       || alternateEngineCount > 0
+                                      || recoveryToolNames.Length > 0
                                       || supportsTransientRetry
                                       || supportsAlternateEngines
                                       || maxRetryAttempts > 0);
@@ -434,8 +446,10 @@ public sealed class ToolOrchestrationCatalog {
                 SupportsAlternateEngines = supportsAlternateEngines,
                 AlternateEngineCount = alternateEngineCount,
                 RecoveryContractId = normalizedRecoveryContractId,
+                RecoveryToolCount = recoveryToolNames.Length,
                 RetryableErrorCodes = FreezeStringList(retryableErrorCodes),
-                AlternateEngineIds = FreezeStringList(alternateEngineIds)
+                AlternateEngineIds = FreezeStringList(alternateEngineIds),
+                RecoveryToolNames = FreezeStringList(recoveryToolNames)
             };
         }
 

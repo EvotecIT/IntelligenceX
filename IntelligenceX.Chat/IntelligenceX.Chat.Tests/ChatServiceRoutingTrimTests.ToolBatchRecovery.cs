@@ -291,6 +291,44 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.False(isMutating);
     }
 
+    [Theory]
+    [InlineData("send")]
+    [InlineData("execute")]
+    [InlineData("apply")]
+    [InlineData("disable")]
+    public void BuildMutatingToolHintsByName_DetectsCanonicalMutatingSchemaArguments(string argumentName) {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add(argumentName, new JsonObject().Add("type", "boolean")));
+        var definitions = new List<ToolDefinition> {
+            new("ops_write_probe", "Write probe", schema)
+        };
+
+        var result = BuildMutatingToolHintsByNameMethod.Invoke(null, new object?[] { definitions });
+        var hints = Assert.IsAssignableFrom<IReadOnlyDictionary<string, bool>>(result);
+
+        Assert.True(hints.TryGetValue("ops_write_probe", out var isMutating));
+        Assert.True(isMutating);
+    }
+
+    [Fact]
+    public void BuildMutatingToolHintsByName_DetectsWriteGovernanceMetadataSchemaArgumentsAsMutating() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add(ToolWriteGovernanceArgumentNames.OperationId, new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new("ops_write_probe", "Write probe", schema)
+        };
+
+        var result = BuildMutatingToolHintsByNameMethod.Invoke(null, new object?[] { definitions });
+        var hints = Assert.IsAssignableFrom<IReadOnlyDictionary<string, bool>>(result);
+
+        Assert.True(hints.TryGetValue("ops_write_probe", out var isMutating));
+        Assert.True(isMutating);
+    }
+
     [Fact]
     public async Task ExecuteToolWithStatusAsync_DoesNotEmitHeartbeatAfterCancellation() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
@@ -377,6 +415,900 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task ExecuteToolAsync_UsesDeclaredRecoveryHelperBeforeRetry() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var mainAttempts = 0;
+        var helperAttempts = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            BuildOperationalRecoveryAwareDefinition(
+                "computerx_probe",
+                recoveryToolNames: new[] { "system_context" },
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string")))
+                    .Add("required", new JsonArray().Add("computer_name"))),
+            (_, _) => {
+                var attempt = Interlocked.Increment(ref mainAttempts);
+                if (attempt == 1) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "transport_unavailable",
+                        error: "Remote transport is temporarily unavailable.",
+                        isTransient: true));
+                }
+
+                return Task.FromResult("""{"ok":true,"meta":{"attempt":2}}""");
+            }));
+        registry.Register(new StubTool(
+            BuildReadOnlyHelperDefinition(
+                "system_context",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string")))
+                    .Add("required", new JsonArray().Add("computer_name"))),
+            (arguments, _) => {
+                Interlocked.Increment(ref helperAttempts);
+                Assert.NotNull(arguments);
+                Assert.Equal("srv-01", arguments!.GetString("computer_name"));
+                return Task.FromResult("""{"ok":true,"meta":{"context":"refreshed"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject().Add("computer_name", "srv-01");
+        var call = new ToolCall(
+            "call_main",
+            "computerx_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(2, mainAttempts);
+        Assert.Equal(1, helperAttempts);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_SkipsDeclaredRecoveryHelperWhenRequiredArgumentsAreMissing() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var mainAttempts = 0;
+        var helperAttempts = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            BuildOperationalRecoveryAwareDefinition(
+                "computerx_probe",
+                recoveryToolNames: new[] { "system_context" },
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string")))),
+            (_, _) => {
+                var attempt = Interlocked.Increment(ref mainAttempts);
+                if (attempt == 1) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "transport_unavailable",
+                        error: "Remote transport is temporarily unavailable.",
+                        isTransient: true));
+                }
+
+                return Task.FromResult("""{"ok":true}""");
+            }));
+        registry.Register(new StubTool(
+            BuildReadOnlyHelperDefinition(
+                "system_context",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("domain_name", new JsonObject().Add("type", "string")))
+                    .Add("required", new JsonArray().Add("domain_name"))),
+            (_, _) => {
+                Interlocked.Increment(ref helperAttempts);
+                return Task.FromResult("""{"ok":true}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject().Add("computer_name", "srv-01");
+        var call = new ToolCall(
+            "call_main_missing_args",
+            "computerx_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(2, mainAttempts);
+        Assert.Equal(0, helperAttempts);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_SkipsDeclaredRecoveryHelperWhenHelperIsWriteCapable() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var mainAttempts = 0;
+        var helperAttempts = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            BuildOperationalRecoveryAwareDefinition(
+                "computerx_probe",
+                recoveryToolNames: new[] { "system_context" }),
+            (_, _) => {
+                var attempt = Interlocked.Increment(ref mainAttempts);
+                if (attempt == 1) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "transport_unavailable",
+                        error: "Remote transport is temporarily unavailable.",
+                        isTransient: true));
+                }
+
+                return Task.FromResult("""{"ok":true}""");
+            }));
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_context",
+                description: "write helper",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("send", new JsonObject().Add("type", "boolean"))
+                        .Add("allow_write", new JsonObject().Add("type", "boolean")))
+                    .WithWriteGovernanceMetadata(),
+                writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue(
+                    intentArgumentName: "send",
+                    confirmationArgumentName: "allow_write"),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "test_pack",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+                }),
+            (_, _) => {
+                Interlocked.Increment(ref helperAttempts);
+                return Task.FromResult("""{"ok":true}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var call = new ToolCall("call_main_write_helper", "computerx_probe", null, null, new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(2, mainAttempts);
+        Assert.Equal(0, helperAttempts);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_PrefersHealthyAlternateRecoveryHelperAndStopsAfterFirstSuccessfulBootstrap() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetToolRoutingStatsForTesting(new Dictionary<string, (long LastUsedUtcTicks, long LastSuccessUtcTicks)>(StringComparer.OrdinalIgnoreCase) {
+            ["system_context_local"] = (DateTime.UtcNow.Ticks, DateTime.UtcNow.Ticks)
+        });
+
+        var mainAttempts = 0;
+        var remoteHelperAttempts = 0;
+        var localHelperAttempts = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            BuildOperationalRecoveryAwareDefinition(
+                "computerx_probe",
+                recoveryToolNames: new[] { "system_context_remote", "system_context_local" },
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string")))
+                    .Add("required", new JsonArray().Add("computer_name"))),
+            (_, _) => {
+                var attempt = Interlocked.Increment(ref mainAttempts);
+                if (attempt == 1) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "transport_unavailable",
+                        error: "Remote transport is temporarily unavailable.",
+                        isTransient: true));
+                }
+
+                return Task.FromResult("""{"ok":true}""");
+            }));
+        registry.Register(new StubTool(
+            BuildReadOnlyHelperDefinition(
+                "system_context_remote",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string")))
+                    .Add("required", new JsonArray().Add("computer_name"))),
+            (_, _) => {
+                Interlocked.Increment(ref remoteHelperAttempts);
+                return Task.FromResult(ToolOutputEnvelope.Error(
+                    errorCode: "transport_unavailable",
+                    error: "Remote helper is still unavailable.",
+                    isTransient: true));
+            }));
+        registry.Register(new StubTool(
+            BuildReadOnlyHelperDefinition(
+                "system_context_local",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string")))
+                    .Add("required", new JsonArray().Add("computer_name"))),
+            (arguments, _) => {
+                Interlocked.Increment(ref localHelperAttempts);
+                Assert.NotNull(arguments);
+                Assert.Equal("srv-01", arguments!.GetString("computer_name"));
+                return Task.FromResult("""{"ok":true,"meta":{"context":"local"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject().Add("computer_name", "srv-01");
+        var call = new ToolCall(
+            "call_main_health_pref",
+            "computerx_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(2, mainAttempts);
+        Assert.Equal(0, remoteHelperAttempts);
+        Assert.Equal(1, localHelperAttempts);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_ReroutesToAlternateEngineWhenSchemaExplicitlySupportsIt() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var mainAttempts = 0;
+        var seenEngines = new List<string>();
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject().Add("type", "string"))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "cim", "wmi" }
+                }),
+            (arguments, _) => {
+                Interlocked.Increment(ref mainAttempts);
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                seenEngines.Add(engine);
+                if (!string.Equals(engine, "wmi", StringComparison.OrdinalIgnoreCase)) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "transport_unavailable",
+                        error: "Primary engine transport is unavailable.",
+                        isTransient: true));
+                }
+
+                return Task.FromResult("""{"ok":true,"meta":{"engine":"wmi"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "cim");
+        var call = new ToolCall(
+            "call_main_alt_engine",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(2, mainAttempts);
+        Assert.Equal(new[] { "cim", "wmi" }, seenEngines);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_TriesNextAlternateEngineWhenFirstAlternateFails() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var mainAttempts = 0;
+        var seenEngines = new List<string>();
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 2,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                }),
+            (arguments, _) => {
+                Interlocked.Increment(ref mainAttempts);
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                seenEngines.Add(engine);
+                if (string.Equals(engine, "cim", StringComparison.OrdinalIgnoreCase)) {
+                    return Task.FromResult("""{"ok":true,"meta":{"engine":"cim"}}""");
+                }
+
+                return Task.FromResult(ToolOutputEnvelope.Error(
+                    errorCode: "transport_unavailable",
+                    error: "Selected engine transport is unavailable.",
+                    isTransient: true));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            "call_main_alt_engine_chain",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(3, mainAttempts);
+        Assert.Equal(new[] { "auto", "wmi", "cim" }, seenEngines);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_PrefersPersistedHealthyAlternateEngineAfterRestart() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-alt-engine-health-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var firstRunEngines = new List<string>();
+        var secondRunEngines = new List<string>();
+
+        try {
+            var definition = new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 2,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                });
+
+            var session1 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var registry1 = new ToolRegistry();
+            registry1.Register(new StubTool(
+                definition,
+                (arguments, _) => {
+                    var engine = arguments?.GetString("engine") ?? string.Empty;
+                    firstRunEngines.Add(engine);
+                    if (string.Equals(engine, "cim", StringComparison.OrdinalIgnoreCase)) {
+                        return Task.FromResult("""{"ok":true,"meta":{"engine":"cim"}}""");
+                    }
+
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "transport_unavailable",
+                        error: "Selected engine transport is unavailable.",
+                        isTransient: true));
+                }));
+            SetSessionRegistry(session1, registry1);
+
+            var firstArguments = new JsonObject()
+                .Add("computer_name", "srv-01")
+                .Add("engine", "auto");
+            var firstCall = new ToolCall(
+                "call_main_alt_engine_seed",
+                "system_inventory_probe",
+                JsonLite.Serialize(firstArguments),
+                firstArguments,
+                new JsonObject());
+
+            var firstOutput = await session1.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", firstCall, 5, CancellationToken.None);
+
+            Assert.True(firstOutput.Ok is true);
+            Assert.Equal(new[] { "auto", "wmi", "cim" }, firstRunEngines);
+
+            var session2 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var registry2 = new ToolRegistry();
+            registry2.Register(new StubTool(
+                definition,
+                (arguments, _) => {
+                    var engine = arguments?.GetString("engine") ?? string.Empty;
+                    secondRunEngines.Add(engine);
+                    if (string.Equals(engine, "cim", StringComparison.OrdinalIgnoreCase)) {
+                        return Task.FromResult("""{"ok":true,"meta":{"engine":"cim"}}""");
+                    }
+
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "transport_unavailable",
+                        error: "Selected engine transport is unavailable.",
+                        isTransient: true));
+                }));
+            SetSessionRegistry(session2, registry2);
+
+            var secondArguments = new JsonObject()
+                .Add("computer_name", "srv-01")
+                .Add("engine", "auto");
+            var secondCall = new ToolCall(
+                "call_main_alt_engine_reuse",
+                "system_inventory_probe",
+                JsonLite.Serialize(secondArguments),
+                secondArguments,
+                new JsonObject());
+
+            var secondOutput = await session2.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", secondCall, 5, CancellationToken.None);
+
+            Assert.True(secondOutput.Ok is true);
+            Assert.Equal(new[] { "cim" }, secondRunEngines);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_RetriesAutomaticBackendSelectionWhenPreferredHealthyBackendFailsPermanently() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberAlternateEngineSuccessForTesting("thread-001", "system_inventory_probe", "cim");
+        var seenEngines = new List<string>();
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                }),
+            (arguments, _) => {
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                seenEngines.Add(engine);
+                if (string.Equals(engine, "cim", StringComparison.OrdinalIgnoreCase)) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "permission_denied",
+                        error: "CIM backend denied access.",
+                        isTransient: false));
+                }
+
+                return Task.FromResult("""{"ok":true,"meta":{"engine":"auto"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            "call_main_alt_engine_auto_retry",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(new[] { "cim", "auto" }, seenEngines);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_DoesNotRetryAutomaticBackendSelectionAfterSuccessfulPreferredBackend() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberAlternateEngineSuccessForTesting("thread-001", "system_inventory_probe", "cim");
+        var seenEngines = new List<string>();
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                }),
+            (arguments, _) => {
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                seenEngines.Add(engine);
+                return Task.FromResult("""{"ok":true,"meta":{"engine":"cim"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            "call_main_alt_engine_auto_skip",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(new[] { "cim" }, seenEngines);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_KeepsAutomaticBackendFallbackPendingAcrossPreferredBackendRetries() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberAlternateEngineSuccessForTesting("thread-001", "system_inventory_probe", "cim");
+        var seenEngines = new List<string>();
+        var preferredAttempts = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 2,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "cim" }
+                }),
+            (arguments, _) => {
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                seenEngines.Add(engine);
+                if (string.Equals(engine, "cim", StringComparison.OrdinalIgnoreCase)) {
+                    var attempt = Interlocked.Increment(ref preferredAttempts);
+                    return Task.FromResult(attempt == 1
+                        ? ToolOutputEnvelope.Error(
+                            errorCode: "transport_unavailable",
+                            error: "CIM transport is temporarily unavailable.",
+                            isTransient: true)
+                        : ToolOutputEnvelope.Error(
+                            errorCode: "permission_denied",
+                            error: "CIM backend denied access.",
+                            isTransient: false));
+                }
+
+                return Task.FromResult("""{"ok":true,"meta":{"engine":"auto"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            "call_main_alt_engine_auto_retry_after_retries",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(new[] { "cim", "cim", "auto" }, seenEngines);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsync_RecordsAlternateEngineHealthFromProjectionRecoveredResult() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberAlternateEngineSuccessForTesting(
+            "thread-001",
+            "system_inventory_probe",
+            "wmi",
+            DateTime.UtcNow.AddHours(-2).Ticks);
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))
+                        .Add("columns", new JsonObject()
+                            .Add("type", "array"))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                }),
+            (arguments, _) => {
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                var hasColumns = arguments?.TryGetValue("columns", out var columnsValue) == true && columnsValue is not null;
+                if (string.Equals(engine, "cim", StringComparison.OrdinalIgnoreCase) && hasColumns) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "invalid_argument",
+                        error: "columns contains unsupported value 'display_name'.",
+                        isTransient: false));
+                }
+
+                return Task.FromResult("""{"ok":true,"meta":{"engine":"cim"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "cim")
+            .Add("columns", new JsonArray().Add("display_name"));
+        var call = new ToolCall(
+            "call_main_alt_engine_projection_recover",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(
+            new[] { "cim", "wmi" },
+            session.OrderAlternateEngineIdsByHealthForTesting("thread-001", "system_inventory_probe", new[] { "wmi", "cim" }));
+    }
+
+    [Fact]
+    public async Task ExecuteToolWithStatusAsync_EmitsPreferredHealthyAlternateEngineStatus() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberAlternateEngineSuccessForTesting("thread-001", "system_inventory_probe", "cim");
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                }),
+            (arguments, _) => {
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                Assert.Equal("cim", engine);
+                return Task.FromResult("""{"ok":true}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var executeToolWithStatusMethod = typeof(ChatServiceSession).GetMethod(
+            "ExecuteToolWithStatusAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(executeToolWithStatusMethod);
+
+        using var outputStream = new MemoryStream();
+        using var writer = new StreamWriter(outputStream, new UTF8Encoding(false), leaveOpen: true) {
+            AutoFlush = true
+        };
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            "call_status_alt_pref",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var taskObj = executeToolWithStatusMethod!.Invoke(
+            session,
+            new object?[] { writer, "req-status-1", "thread-001", call, 5, "Check srv-01 health.", CancellationToken.None });
+        var task = Assert.IsAssignableFrom<Task<ToolOutputDto>>(taskObj);
+
+        var output = await task;
+        Assert.True(output.Ok is true);
+
+        writer.Flush();
+        var statusOutput = Encoding.UTF8.GetString(outputStream.ToArray());
+        Assert.Contains("remembered healthy backend", statusOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cim", statusOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteToolWithStatusAsync_EmitsAlternateEngineRetryStatus() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var attempts = 0;
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                }),
+            (arguments, _) => {
+                Interlocked.Increment(ref attempts);
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                if (string.Equals(engine, "wmi", StringComparison.OrdinalIgnoreCase)) {
+                    return Task.FromResult("""{"ok":true}""");
+                }
+
+                return Task.FromResult(ToolOutputEnvelope.Error(
+                    errorCode: "transport_unavailable",
+                    error: "Primary engine transport is unavailable.",
+                    isTransient: true));
+            }));
+        SetSessionRegistry(session, registry);
+
+        var executeToolWithStatusMethod = typeof(ChatServiceSession).GetMethod(
+            "ExecuteToolWithStatusAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(executeToolWithStatusMethod);
+
+        using var outputStream = new MemoryStream();
+        using var writer = new StreamWriter(outputStream, new UTF8Encoding(false), leaveOpen: true) {
+            AutoFlush = true
+        };
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            "call_status_alt_retry",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var taskObj = executeToolWithStatusMethod!.Invoke(
+            session,
+            new object?[] { writer, "req-status-2", "thread-001", call, 5, "Check srv-01 health.", CancellationToken.None });
+        var task = Assert.IsAssignableFrom<Task<ToolOutputDto>>(taskObj);
+
+        var output = await task;
+        Assert.True(output.Ok is true);
+        Assert.Equal(2, attempts);
+
+        writer.Flush();
+        var statusOutput = Encoding.UTF8.GetString(outputStream.ToArray());
+        Assert.Contains("Retrying with alternate backend", statusOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wmi", statusOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task FinalizeToolBatchHeartbeatAsync_PreservesPrimaryFailureWhenHeartbeatAlsoFails() {
         using var cts = new CancellationTokenSource();
         var heartbeatTask = Task.FromException(new InvalidOperationException("heartbeat-failure"));
@@ -411,15 +1343,12 @@ public sealed partial class ChatServiceRoutingTrimTests {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 
         public StubTool(string name, Func<JsonObject?, CancellationToken, Task<string>> invoke) {
-            Definition = new ToolDefinition(
-                name,
-                description: "stub",
-                routing: new ToolRoutingContract {
-                    IsRoutingAware = true,
-                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
-                    PackId = "test_pack",
-                    Role = ToolRoutingTaxonomy.RoleOperational
-                });
+            Definition = BuildOperationalRecoveryAwareDefinition(name, recoveryToolNames: null);
+            _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
+        }
+
+        public StubTool(ToolDefinition definition, Func<JsonObject?, CancellationToken, Task<string>> invoke) {
+            Definition = definition ?? throw new ArgumentNullException(nameof(definition));
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 
@@ -428,5 +1357,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             return _invoke(arguments, cancellationToken);
         }
+    }
+
+    private static ToolDefinition BuildOperationalRecoveryAwareDefinition(
+        string name,
+        string[]? recoveryToolNames,
+        JsonObject? parameters = null) {
+        return new ToolDefinition(
+            name,
+            description: "stub",
+            parameters: parameters,
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "test_pack",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                SupportsTransientRetry = true,
+                MaxRetryAttempts = 1,
+                RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                RecoveryToolNames = recoveryToolNames ?? Array.Empty<string>()
+            });
+    }
+
+    private static ToolDefinition BuildReadOnlyHelperDefinition(string name, JsonObject? parameters = null) {
+        return new ToolDefinition(
+            name,
+            description: "helper",
+            parameters: parameters,
+            writeGovernance: new ToolWriteGovernanceContract { IsWriteCapable = false },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "test_pack",
+                Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+            });
     }
 }

@@ -92,7 +92,8 @@ internal static class PowerShellToolContracts {
             return new ToolRecoveryContract {
                 IsRecoveryAware = true,
                 SupportsTransientRetry = false,
-                MaxRetryAttempts = 0
+                MaxRetryAttempts = 0,
+                RecoveryToolNames = new[] { "powershell_environment_discover" }
             };
         }
 
@@ -100,7 +101,8 @@ internal static class PowerShellToolContracts {
             IsRecoveryAware = true,
             SupportsTransientRetry = true,
             MaxRetryAttempts = 1,
-            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed" }
+            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed" },
+            RecoveryToolNames = new[] { "powershell_environment_discover", "powershell_hosts" }
         };
     }
 

@@ -91,6 +91,9 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
 
     // Optional override for where the chat service persists pending-action proposals (for /act <id> rehydration).
     // When unset, the service uses a LocalAppData-based default path.
+    // Other file-backed chat-state stores are derived as sibling files under the same directory and
+    // assume single-process ownership of that state directory; sharing one state path across multiple
+    // chat-service processes is currently unsupported.
     public string? PendingActionsStorePath { get; set; }
 
     public static ServiceOptions Parse(string[] args, out string? error) {

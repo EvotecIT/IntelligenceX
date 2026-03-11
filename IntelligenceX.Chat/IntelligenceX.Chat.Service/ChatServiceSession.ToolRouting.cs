@@ -317,6 +317,46 @@ internal sealed partial class ChatServiceSession {
         return dominantShare < DomainIntentClarificationMaxDominantShare;
     }
 
+    private static bool ShouldRequestDomainIntentClarificationBeforeRouting(
+        bool weightedToolRouting,
+        bool executionContractApplies,
+        bool compactFollowUpTurn,
+        bool hasPreferredDomainIntentFamily,
+        bool hasFreshPendingActionContext,
+        string userRequest,
+        DomainIntentFamilyAvailability availability,
+        IReadOnlyList<ToolDefinition>? availableDefinitions) {
+        if (!weightedToolRouting || executionContractApplies || !availability.HasMixedFamilies) {
+            return false;
+        }
+
+        var normalizedRequest = (userRequest ?? string.Empty).Trim();
+        if (normalizedRequest.Length == 0 || ShouldSkipWeightedRouting(normalizedRequest)) {
+            return false;
+        }
+
+        var requestAssessment = AssessDomainIntentRequest(normalizedRequest, availableDefinitions);
+        if (requestAssessment.HasResolvedFamily) {
+            return false;
+        }
+
+        // Use the broader mixed-technical check here so ambiguous AD/public wording
+        // triggers clarification before weighted routing or execution spends turns.
+        var hasMixedTechnicalSignals = HasMixedTechnicalDomainIntentSignals(normalizedRequest, availableDefinitions);
+
+        if (ShouldSuppressDomainIntentClarificationForCompactFollowUp(
+                compactFollowUpTurn,
+                hasPreferredDomainIntentFamily,
+                hasFreshPendingActionContext,
+                requestAssessment.HasConflictingSignals || hasMixedTechnicalSignals)) {
+            return false;
+        }
+
+        return requestAssessment.HasConflictingSignals
+               || hasMixedTechnicalSignals
+               || !string.IsNullOrWhiteSpace(requestAssessment.AmbiguousDomainTarget);
+    }
+
     private static bool HasMixedDomainIntentFamilyCoverage(IReadOnlyList<ToolDefinition> definitions) {
         return ResolveDomainIntentFamilyAvailability(definitions).HasMixedFamilies;
     }
@@ -988,7 +1028,7 @@ internal sealed partial class ChatServiceSession {
             sb.Append(targetClause);
             sb.AppendLine(". I just need to know which side you want:");
         } else {
-            sb.AppendLine("I can check that. I just need one quick scope choice so I run the right kind of checks:");
+            sb.AppendLine("I can check that. I just need to know which side you want so I run the right kind of checks:");
         }
         sb.AppendLine();
         for (var i = 0; i < options.Count; i++) {

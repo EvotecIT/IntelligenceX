@@ -261,11 +261,44 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // This anchored variant is for affinity/preference resets only. We require
+        // an explicit domain or tool anchor so generic mixed jargon does not wipe
+        // remembered scope before the user identifies the target.
+        if (!HasTechnicalDomainSignalAnchor(normalized)) {
+            return false;
+        }
+
         var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
         var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
                            || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
         var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
         return hasAdSignals && hasPublicSignals;
+    }
+
+    private static bool HasMixedTechnicalDomainIntentSignals(string text, IReadOnlyList<ToolDefinition>? availableDefinitions) {
+        var normalized = NormalizeCompactText(text);
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        // This unanchored variant is intentionally broader: it catches mixed AD vs
+        // public technical language early so we can clarify scope before spending
+        // additional model/tool turns on an ambiguous route.
+        var lexicon = ResolveDomainIntentSignalLexicon(availableDefinitions);
+        var hasAdSignals = ContainsAnyDomainSignalToken(normalized, lexicon.AdSignals)
+                           || ContainsDomainSignalAcronymToken(normalized, DomainIntentAcronymTokenAd);
+        var hasPublicSignals = ContainsAnyDomainSignalToken(normalized, lexicon.PublicSignals);
+        return hasAdSignals && hasPublicSignals;
+    }
+
+    private static bool HasTechnicalDomainSignalAnchor(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return ExtractDomainLikeTokens(normalized).Count > 0
+               || ExtractExplicitRequestedToolNames(normalized).Length > 0;
     }
 
     private readonly record struct DomainIntentSignalLexicon(

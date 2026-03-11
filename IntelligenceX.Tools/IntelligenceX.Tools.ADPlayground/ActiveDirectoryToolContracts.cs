@@ -226,7 +226,8 @@ internal static class ActiveDirectoryToolContracts {
             IsRecoveryAware = true,
             SupportsTransientRetry = true,
             MaxRetryAttempts = 1,
-            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed", "discovery_failed", "transport_unavailable" }
+            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed", "discovery_failed", "transport_unavailable" },
+            RecoveryToolNames = new[] { "ad_environment_discover" }
         };
     }
 

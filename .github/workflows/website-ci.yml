@@ -14,7 +14,7 @@ permissions:
 env:
   # Pinned to a release-hub-enabled PowerForge commit for this release stack.
   POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
-  POWERFORGE_REF: 42d61a88f5196f570b9afbc56e068eaa583ac9f4
+  POWERFORGE_REF: 33d759d8e13b3b8b709789156fcedda7fe0ca4df
 
 jobs:
   website-build:
@@ -38,8 +38,10 @@ jobs:
           ref: ${{ env.POWERFORGE_REF }}
           path: PSPublishModule
 
-      - name: Build PowerForge.Web.Cli
-        run: dotnet build PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj -c Release
+      - name: Restore and build PowerForge.Web.Cli
+        run: |
+          dotnet restore PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj --force-evaluate
+          dotnet build PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj -c Release --no-restore
 
       - name: Initialize Playwright cache directory
         shell: bash

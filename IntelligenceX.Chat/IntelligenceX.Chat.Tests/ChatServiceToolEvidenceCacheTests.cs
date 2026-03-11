@@ -182,6 +182,58 @@ public sealed class ChatServiceToolEvidenceCacheTests {
     }
 
     [Fact]
+    public void ToolEvidenceCache_RehydratesExecutionBackendAfterServiceRestart() {
+        var (_, pendingActionsStorePath, persistenceDirectory) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        try {
+            var writerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var calls = new[] {
+                new ToolCallDto {
+                    CallId = "call-1",
+                    Name = "system_service_list",
+                    ArgumentsJson = "{\"engine\":\"cim\"}"
+                }
+            };
+            var outputs = new[] {
+                new ToolOutputDto {
+                    CallId = "call-1",
+                    Ok = true,
+                    Output = "{\"services\":[{\"name\":\"wuauserv\"}]}",
+                    SummaryMarkdown = "Listed Windows services.",
+                    MetaJson = "{\"engine_preference\":\"cim\"}"
+                }
+            };
+
+            writerSession.RememberThreadToolEvidenceForTesting(
+                threadId: "thread-restart-backend",
+                toolCalls: calls,
+                toolOutputs: outputs,
+                mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+            var readerSession = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var built = readerSession.TryBuildToolEvidenceFallbackTextForTesting(
+                "thread-restart-backend",
+                "repeat latest services check",
+                out var text);
+
+            Assert.True(built);
+            Assert.Contains("#### system_service_list (backend: cim)", text, StringComparison.Ordinal);
+        } finally {
+            try {
+                if (Directory.Exists(persistenceDirectory)) {
+                    Directory.Delete(persistenceDirectory, recursive: true);
+                }
+            } catch {
+                // Best effort cleanup only.
+            }
+        }
+    }
+
+    [Fact]
     public void ToolEvidenceCache_DoesNotReuseUnrelatedEvidenceWhenRequestHasNoTokenMatches() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var calls = new[] {

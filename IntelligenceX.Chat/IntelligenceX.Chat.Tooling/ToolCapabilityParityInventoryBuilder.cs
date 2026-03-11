@@ -2,51 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using ADPlayground.Monitoring.Diagnostics;
-using ADPlayground.Monitoring.History;
-using ADPlayground.Monitoring.Probes;
-using ADPlayground.Monitoring.Probes.DirectoryHealth;
-using ComputerX.Bios;
-using ComputerX.Boot;
-using ComputerX.Certificates;
-using ComputerX.Credentials;
-using ComputerX.Diagnostics;
-using ComputerX.Devices;
-using ComputerX.Features;
-using ComputerX.Firewall;
-using ComputerX.Hardware;
-using ComputerX.Identity;
-using ComputerX.InstalledApplications;
-using ComputerX.Network;
-using ComputerX.Office;
-using ComputerX.Ports;
-using ComputerX.Processes;
-using ComputerX.Privacy;
-using ComputerX.Rdp;
-using ComputerX.Runtime;
-using ComputerX.ScheduledTasks;
-using ComputerX.Security.BitLocker;
-using ComputerX.SecurityPolicy;
-using ComputerX.Services;
-using ComputerX.Smb;
-using ComputerX.Storage;
-using ComputerX.Time;
-using ComputerX.Updates;
-using ComputerX.ExploitProtection;
-using ComputerX.Browsers;
-using ComputerX.Backup;
-using ComputerX.AppControl;
-using ComputerX.Audit;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
-using ComputerX.RemoteAccess;
-using TestimoX.Baselines;
-using TestimoX.Baselines.Crosswalk;
-using TestimoX.Execution;
-using TestimoX.Providers;
-using ADPlayground.Monitoring.Reporting;
-using ComputerX.PlatformSecurity;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -80,87 +38,6 @@ public static class ToolCapabilityParityInventoryBuilder {
     public const string PackUnavailableStatus = "pack_unavailable";
 
     private const int MaxMissingCapabilities = 12;
-    private static readonly CapabilityExpectation[] ComputerXReadOnlyExpectations = {
-        CapabilityExpectation.ForRemoteTool("remote_runtime_summary", "system_info", static () => HasComputerNameProperty<SystemRuntimeQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_process_inventory", "system_process_list", static () => HasComputerNameProperty<ProcessListQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_network_adapter_inventory", "system_network_adapters", static () => HasComputerNameProperty<NetworkAdapterInventoryQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_port_inventory", "system_ports_list", static () => HasComputerNameProperty<PortInventoryQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_service_inventory", "system_service_list", static () => HasComputerNameProperty<ServiceListQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_scheduled_task_inventory", "system_scheduled_tasks_list", static () => HasComputerNameProperty<TaskSchedulerListQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_firewall_rule_inventory", "system_firewall_rules", static () => HasComputerNameProperty<FirewallRuleListQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_firewall_profile_inventory", "system_firewall_profiles", static () => HasComputerNameProperty<FirewallProfileListQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_local_identity_inventory", "system_local_identity_inventory", static () => HasComputerNameProperty<LocalIdentityInventoryQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_security_options", "system_security_options", static () => HasStaticMethod(typeof(SecurityOptionsQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_rdp_posture", "system_rdp_posture", static () => HasStaticMethod(typeof(RdpPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_smb_posture", "system_smb_posture", static () => HasStaticMethod(typeof(SmbConfigQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_boot_configuration", "system_boot_configuration", static () => HasStaticMethod(typeof(BootOptionsQuery), "Query")),
-        CapabilityExpectation.ForRemoteTool("remote_bios_summary", "system_bios_summary", static () => HasStaticMethod(typeof(Bios), "Get") || HasStaticMethod(typeof(Bios), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_time_sync", "system_time_sync", static () => HasRemoteQueryMethod(typeof(TimeSync), "QueryRemoteStatusAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_bitlocker_status", "system_bitlocker_status", static () => HasStaticMethod(typeof(BitLocker), "Get") || HasStaticMethod(typeof(BitLocker), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_privacy_posture", "system_privacy_posture", static () => HasStaticMethod(typeof(PrivacyPosture), "Get") || HasStaticMethod(typeof(PrivacyPosture), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_exploit_protection", "system_exploit_protection", static () => HasStaticMethod(typeof(ExploitProtection), "Get") || HasStaticMethod(typeof(ExploitProtection), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_office_posture", "system_office_posture", static () => HasStaticMethod(typeof(OfficePosture), "Get") || HasStaticMethod(typeof(OfficePosture), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_browser_posture", "system_browser_posture", static () => HasStaticMethod(typeof(BrowserPosture), "Get") || HasStaticMethod(typeof(BrowserPosture), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_backup_posture", "system_backup_posture", static () => HasStaticMethod(typeof(Backup), "Get") || HasStaticMethod(typeof(Backup), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_tls_posture", "system_tls_posture", static () => HasStaticMethod(typeof(TlsPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_winrm_posture", "system_winrm_posture", static () => HasStaticMethod(typeof(WinRmPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_powershell_logging_posture", "system_powershell_logging_posture", static () => HasStaticMethod(typeof(PsLoggingPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_platform_security_posture", "system_platform_security_posture", static () => HasStaticMethod(typeof(global::ComputerX.PlatformSecurity.PlatformSecurity), "Get") || HasStaticMethod(typeof(global::ComputerX.PlatformSecurity.PlatformSecurity), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_app_control_posture", "system_app_control_posture", static () => HasStaticMethod(typeof(AppControl), "Get") || HasStaticMethod(typeof(AppControl), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_remote_access_posture", "system_remote_access_posture", static () => HasRemoteAccessQueryContract()),
-        CapabilityExpectation.ForRemoteTool("remote_uac_posture", "system_uac_posture", static () => HasStaticMethod(typeof(UacPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_ldap_policy_posture", "system_ldap_policy_posture", static () => HasStaticMethod(typeof(LdapPolicyQuery), "GetClient") && HasStaticMethod(typeof(LdapPolicyQuery), "GetServer")),
-        CapabilityExpectation.ForRemoteTool("remote_network_client_posture", "system_network_client_posture", static () => HasStaticMethod(typeof(NetworkClientPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_account_policy_posture", "system_account_policy_posture", static () => HasStaticMethod(typeof(AccountPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_interactive_logon_posture", "system_interactive_logon_posture", static () => HasStaticMethod(typeof(InteractiveLogonPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_audit_options", "system_audit_options", static () => HasStaticMethod(typeof(AuditOptionsQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_builtin_accounts", "system_builtin_accounts", static () => HasStaticMethod(typeof(BuiltinAccountsQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_device_guard_posture", "system_device_guard_posture", static () => HasStaticMethod(typeof(DeviceGuardPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_defender_asr_posture", "system_defender_asr_posture", static () => HasStaticMethod(typeof(DefenderAsrPolicyQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_windows_update_client_status", "system_windows_update_client_status", static () => HasStaticMethod(typeof(WindowsUpdateClientStatusQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_windows_update_telemetry", "system_windows_update_telemetry", static () => HasStaticMethod(typeof(WindowsUpdateTelemetryQuery), "Get")),
-        CapabilityExpectation.ForRemoteTool("remote_certificate_posture", "system_certificate_posture", static () => HasStaticMethod(typeof(CertificatePosture), "Get") || HasStaticMethod(typeof(CertificatePosture), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_credential_posture", "system_credential_posture", static () => HasStaticMethod(typeof(CredentialPosture), "Get") || HasStaticMethod(typeof(CredentialPosture), "GetAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_installed_applications", "system_installed_applications", static () => HasStaticMethod(typeof(InstalledApplications), "Query")),
-        CapabilityExpectation.ForRemoteTool("remote_updates_installed", "system_updates_installed", static () => HasStaticMethod(typeof(Updates), "GetInstalledAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_patch_compliance", "system_patch_compliance", static () => HasStaticMethod(typeof(Updates), "GetInstalledAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_logical_disks", "system_logical_disks_list", static () => HasComputerNameProperty<LogicalDiskInventoryQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_disk_inventory", "system_disks_list", static () => HasComputerNameProperty<DiskInventoryQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_device_inventory", "system_devices_summary", static () => HasComputerNameProperty<DeviceInventoryQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_hardware_summary", "system_hardware_summary", static () => HasComputerNameProperty<HardwareSummaryQueryRequest>()),
-        CapabilityExpectation.ForRemoteTool("remote_metrics_summary", "system_metrics_summary", static () => HasRemoteQueryMethod(typeof(SystemMetrics), "QueryRemoteAsync")),
-        CapabilityExpectation.ForRemoteTool("remote_feature_inventory", "system_features_list", static () => HasComputerNameProperty<FeatureInventoryQueryRequest>())
-    };
-
-    private static readonly CapabilityExpectation[] TestimoXCoreReadOnlyExpectations = {
-        CapabilityExpectation.ForTool("baseline_catalog", "testimox_baselines_list", static () => typeof(BaselineListEntry) is not null),
-        CapabilityExpectation.ForTool("baseline_compare", "testimox_baseline_compare", static () => typeof(BaselineComparisonRow) is not null),
-        CapabilityExpectation.ForTool("profile_catalog", "testimox_profiles_list", static () => typeof(RuleSelectionProfileInfo) is not null),
-        CapabilityExpectation.ForTool("rule_inventory", "testimox_rule_inventory", static () => typeof(RuleInventoryEntry) is not null),
-        CapabilityExpectation.ForTool("source_provenance", "testimox_source_query", static () => typeof(RuleOverview) is not null),
-        CapabilityExpectation.ForTool("baseline_crosswalk", "testimox_baseline_crosswalk", static () => typeof(RuleCrosswalkReport) is not null),
-        CapabilityExpectation.ForTool("run_catalog", "testimox_runs_list", static () => typeof(ToolingRuleRunRequest) is not null),
-        CapabilityExpectation.ForTool("run_summary", "testimox_run_summary", static () => typeof(ToolingRuleRunRequest) is not null),
-        CapabilityExpectation.ForTool("rule_catalog", "testimox_rules_list", static () => typeof(ToolingRuleDiscoveryRequest) is not null),
-        CapabilityExpectation.ForTool("rule_execution", "testimox_rules_run", static () => typeof(ToolingRuleRunRequest) is not null)
-    };
-
-    private static readonly CapabilityExpectation[] TestimoXAnalyticsReadOnlyExpectations = {
-        CapabilityExpectation.ForTool("analytics_diagnostics", "testimox_analytics_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
-        CapabilityExpectation.ForTool("probe_index_status", "testimox_probe_index_status", static () => typeof(ProbeIndexStatusEntry) is not null),
-        CapabilityExpectation.ForTool("maintenance_window_history", "testimox_maintenance_window_history", static () => typeof(MaintenanceWindowHistoryEntry) is not null),
-        CapabilityExpectation.ForTool("report_data_snapshot", "testimox_report_data_snapshot_get", static () => typeof(MonitoringReportDataSnapshot) is not null),
-        CapabilityExpectation.ForTool("report_snapshot", "testimox_report_snapshot_get", static () => typeof(MonitoringReportSnapshot) is not null),
-        CapabilityExpectation.ForTool("monitoring_history", "testimox_history_query", static () => typeof(MonitoringAvailabilityRollupSample) is not null),
-        CapabilityExpectation.ForTool("report_job_history", "testimox_report_job_history", static () => typeof(MonitoringReportJobSummary) is not null),
-    };
-
-    private static readonly CapabilityExpectation[] AdMonitoringReadOnlyExpectations = {
-        CapabilityExpectation.ForTool("service_heartbeat", "ad_monitoring_service_heartbeat_get", static () => typeof(MonitoringServiceHeartbeatSnapshot) is not null),
-        CapabilityExpectation.ForTool("diagnostics_snapshot", "ad_monitoring_diagnostics_get", static () => typeof(MonitoringDiagnosticsSnapshot) is not null),
-        CapabilityExpectation.ForTool("metrics_snapshot", "ad_monitoring_metrics_get", static () => typeof(MonitoringMetricsSnapshot) is not null),
-        CapabilityExpectation.ForTool("dashboard_state", "ad_monitoring_dashboard_state_get", static () => typeof(MonitoringDashboardAutoGenerateSnapshot) is not null)
-    };
 
     /// <summary>
     /// Builds the phase-1 parity inventory. Returns an empty array when no live tool definitions are available.
@@ -337,9 +214,7 @@ public static class ToolCapabilityParityInventoryBuilder {
         }
 
         var surfacedKinds = DiscoverSurfacedAdMonitoringProbeKinds(definitionNames, definitionsByPackId);
-        var availableReadOnlyExpectations = AdMonitoringReadOnlyExpectations
-            .Where(static expectation => expectation.IsAvailable())
-            .ToArray();
+        var availableReadOnlyExpectations = BuildAvailableExpectations(ToolCapabilityParityCatalog.AdMonitoringReadOnlyExpectations);
         var surfacedReadOnlyCapabilities = availableReadOnlyExpectations
             .Where(expectation => expectation.IsSurfaced(BuildDefinitionsByName(definitionsByPackId.TryGetValue(packId, out var packDefinitions) ? packDefinitions : Array.Empty<ToolDefinition>())))
             .Select(static expectation => expectation.CapabilityId)
@@ -364,9 +239,7 @@ public static class ToolCapabilityParityInventoryBuilder {
             return null;
         }
 
-        var availableExpectations = ComputerXReadOnlyExpectations
-            .Where(static expectation => expectation.IsAvailable())
-            .ToArray();
+        var availableExpectations = BuildAvailableExpectations(ToolCapabilityParityCatalog.ComputerXReadOnlyExpectations);
         if (availableExpectations.Length == 0) {
             return CreateStatusEntry(
                 engineId: "computerx",
@@ -404,9 +277,7 @@ public static class ToolCapabilityParityInventoryBuilder {
             return null;
         }
 
-        var availableExpectations = TestimoXCoreReadOnlyExpectations
-            .Where(static expectation => expectation.IsAvailable())
-            .ToArray();
+        var availableExpectations = BuildAvailableExpectations(ToolCapabilityParityCatalog.TestimoXCoreReadOnlyExpectations);
         if (availableExpectations.Length == 0) {
             return CreateStatusEntry(
                 engineId: "testimox",
@@ -444,9 +315,7 @@ public static class ToolCapabilityParityInventoryBuilder {
             return null;
         }
 
-        var availableExpectations = TestimoXAnalyticsReadOnlyExpectations
-            .Where(static expectation => expectation.IsAvailable())
-            .ToArray();
+        var availableExpectations = BuildAvailableExpectations(ToolCapabilityParityCatalog.TestimoXAnalyticsReadOnlyExpectations);
         if (availableExpectations.Length == 0) {
             return CreateStatusEntry(
                 engineId: "testimox_analytics",
@@ -483,7 +352,9 @@ public static class ToolCapabilityParityInventoryBuilder {
             return null;
         }
 
-        var sourceAvailable = typeof(PowerShellRuleProvider) is not null;
+        var sourceAvailable = HasType(
+            ToolCapabilityParityCatalog.TestimoXPowerShellProviderTypeName,
+            ToolCapabilityParityCatalog.TestimoXAssemblyName);
         if (!sourceAvailable) {
             return null;
         }
@@ -538,6 +409,54 @@ public static class ToolCapabilityParityInventoryBuilder {
         return definitionsByPackId.TryGetValue(packId, out var definitions)
             ? definitions.Count
             : 0;
+    }
+
+    private static CapabilityExpectation[] BuildAvailableExpectations(IReadOnlyList<ToolCapabilityParityExpectationDescriptor> descriptors) {
+        if (descriptors is not { Count: > 0 }) {
+            return Array.Empty<CapabilityExpectation>();
+        }
+
+        var expectations = new List<CapabilityExpectation>(descriptors.Count);
+        for (var i = 0; i < descriptors.Count; i++) {
+            var descriptor = descriptors[i];
+            if (!IsSourceContractAvailable(descriptor)) {
+                continue;
+            }
+
+            expectations.Add(CreateCapabilityExpectation(descriptor));
+        }
+
+        return expectations.Count == 0 ? Array.Empty<CapabilityExpectation>() : expectations.ToArray();
+    }
+
+    private static CapabilityExpectation CreateCapabilityExpectation(ToolCapabilityParityExpectationDescriptor descriptor) {
+        Func<IReadOnlyDictionary<string, ToolDefinition>, bool> isSurfaced = descriptor.SurfaceContractKind switch {
+            ToolCapabilityParitySurfaceContractKind.ToolPresent =>
+                definitionsByName => definitionsByName.ContainsKey((descriptor.ToolName ?? string.Empty).Trim()),
+            ToolCapabilityParitySurfaceContractKind.ToolParameterPresent =>
+                definitionsByName => HasToolParameter(definitionsByName, (descriptor.ToolName ?? string.Empty).Trim(), descriptor.SurfaceParameterName),
+            _ => static _ => false
+        };
+
+        return new CapabilityExpectation(
+            CapabilityId: descriptor.CapabilityId,
+            IsSurfaced: isSurfaced);
+    }
+
+    private static bool IsSourceContractAvailable(ToolCapabilityParityExpectationDescriptor descriptor) {
+        return descriptor.SourceContractKind switch {
+            ToolCapabilityParitySourceContractKind.TypeExists =>
+                HasType(descriptor.TypeName, descriptor.AssemblyName),
+            ToolCapabilityParitySourceContractKind.PublicInstanceProperty =>
+                HasPublicInstanceProperty(descriptor.TypeName, descriptor.PropertyName, descriptor.AssemblyName),
+            ToolCapabilityParitySourceContractKind.PublicStaticMethod =>
+                HasPublicStaticMethod(descriptor.TypeName, descriptor.MethodNames.FirstOrDefault() ?? string.Empty, descriptor.AssemblyName),
+            ToolCapabilityParitySourceContractKind.AnyPublicStaticMethod =>
+                HasAnyPublicStaticMethod(descriptor.TypeName, descriptor.AssemblyName, descriptor.MethodNames?.ToArray() ?? Array.Empty<string>()),
+            ToolCapabilityParitySourceContractKind.AllPublicStaticMethods =>
+                HasAllPublicStaticMethods(descriptor.TypeName, descriptor.AssemblyName, descriptor.MethodNames?.ToArray() ?? Array.Empty<string>()),
+            _ => false
+        };
     }
 
     private static SessionCapabilityParityEntryDto CreateCapabilityEntry(
@@ -595,9 +514,17 @@ public static class ToolCapabilityParityInventoryBuilder {
     }
 
     private static string[] DiscoverAdMonitoringProbeKinds() {
-        var assembly = typeof(ProbeDefinition).Assembly;
-        var baseType = typeof(ProbeDefinition);
-        var directoryBaseType = typeof(DirectoryHealthProbeDefinitionBase);
+        var baseType = TryResolveType(
+            ToolCapabilityParityCatalog.AdMonitoringProbeDefinitionTypeName,
+            ToolCapabilityParityCatalog.AdMonitoringAssemblyName);
+        var directoryBaseType = TryResolveType(
+            ToolCapabilityParityCatalog.AdMonitoringDirectoryHealthProbeDefinitionBaseTypeName,
+            ToolCapabilityParityCatalog.AdMonitoringAssemblyName);
+        if (baseType is null || directoryBaseType is null) {
+            return Array.Empty<string>();
+        }
+
+        var assembly = baseType.Assembly;
         try {
             return assembly.GetTypes()
                 .Where(type => !type.IsAbstract && baseType.IsAssignableFrom(type))
@@ -650,22 +577,77 @@ public static class ToolCapabilityParityInventoryBuilder {
             maxItems: 0);
     }
 
-    private static bool HasComputerNameProperty<TRequest>() {
-        return typeof(TRequest).GetProperty("ComputerName", BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase) is not null;
+    private static bool HasType(string fullTypeName, string assemblyName) {
+        return TryResolveType(fullTypeName, assemblyName) is not null;
     }
 
-    private static bool HasRemoteQueryMethod(Type type, string methodName) {
-        return type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase) is not null;
+    private static bool HasPublicInstanceProperty(string fullTypeName, string propertyName, string assemblyName) {
+        var type = TryResolveType(fullTypeName, assemblyName);
+        return type?.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase) is not null;
     }
 
-    private static bool HasRemoteAccessQueryContract() {
-        Type facadeType = typeof(global::ComputerX.RemoteAccess.RemoteAccess);
-        return HasStaticMethod(facadeType, nameof(global::ComputerX.RemoteAccess.RemoteAccess.Get))
-            || HasStaticMethod(facadeType, nameof(global::ComputerX.RemoteAccess.RemoteAccess.GetAsync));
+    private static bool HasPublicStaticMethod(string fullTypeName, string methodName, string assemblyName) {
+        var type = TryResolveType(fullTypeName, assemblyName);
+        return type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase) is not null;
     }
 
-    private static bool HasStaticMethod(Type type, string methodName) {
-        return type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase) is not null;
+    private static bool HasAnyPublicStaticMethod(string fullTypeName, string assemblyName, params string[] methodNames) {
+        if (methodNames is null || methodNames.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < methodNames.Length; i++) {
+            if (HasPublicStaticMethod(fullTypeName, methodNames[i], assemblyName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasAllPublicStaticMethods(string fullTypeName, string assemblyName, params string[] methodNames) {
+        if (methodNames is null || methodNames.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < methodNames.Length; i++) {
+            if (!HasPublicStaticMethod(fullTypeName, methodNames[i], assemblyName)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static Type? TryResolveType(string fullTypeName, string assemblyName) {
+        var normalizedTypeName = (fullTypeName ?? string.Empty).Trim();
+        var normalizedAssemblyName = (assemblyName ?? string.Empty).Trim();
+        if (normalizedTypeName.Length == 0) {
+            return null;
+        }
+
+        if (normalizedAssemblyName.Length > 0) {
+            var assemblyQualifiedName = normalizedTypeName + ", " + normalizedAssemblyName;
+            var directlyResolved = Type.GetType(assemblyQualifiedName, throwOnError: false);
+            if (directlyResolved is not null) {
+                return directlyResolved;
+            }
+        }
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies()) {
+            var loadedAssemblyName = (assembly.GetName().Name ?? string.Empty).Trim();
+            if (normalizedAssemblyName.Length > 0
+                && !string.Equals(loadedAssemblyName, normalizedAssemblyName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var resolved = assembly.GetType(normalizedTypeName, throwOnError: false, ignoreCase: false);
+            if (resolved is not null) {
+                return resolved;
+            }
+        }
+
+        return null;
     }
 
     private static bool HasToolParameter(IReadOnlyDictionary<string, ToolDefinition> definitionsByName, string toolName, string parameterName) {
@@ -732,20 +714,5 @@ public static class ToolCapabilityParityInventoryBuilder {
 
     private readonly record struct CapabilityExpectation(
         string CapabilityId,
-        Func<IReadOnlyDictionary<string, ToolDefinition>, bool> IsSurfaced,
-        Func<bool> IsAvailable) {
-        public static CapabilityExpectation ForTool(string capabilityId, string toolName, Func<bool> isAvailable) {
-            return new CapabilityExpectation(
-                CapabilityId: capabilityId,
-                IsSurfaced: definitionsByName => definitionsByName.ContainsKey((toolName ?? string.Empty).Trim()),
-                IsAvailable: isAvailable ?? throw new ArgumentNullException(nameof(isAvailable)));
-        }
-
-        public static CapabilityExpectation ForRemoteTool(string capabilityId, string toolName, Func<bool> isAvailable) {
-            return new CapabilityExpectation(
-                CapabilityId: capabilityId,
-                IsSurfaced: definitionsByName => HasToolParameter(definitionsByName, (toolName ?? string.Empty).Trim(), "computer_name"),
-                IsAvailable: isAvailable ?? throw new ArgumentNullException(nameof(isAvailable)));
-        }
-    }
+        Func<IReadOnlyDictionary<string, ToolDefinition>, bool> IsSurfaced);
 }

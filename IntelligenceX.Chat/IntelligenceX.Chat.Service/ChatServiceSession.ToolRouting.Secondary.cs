@@ -229,7 +229,7 @@ internal sealed partial class ChatServiceSession {
             selected.Add(definition);
         }
 
-        var minSelection = Math.Min(allDefinitions.Count, Math.Max(8, Math.Min(limit, 12)));
+        var minSelection = Math.Min(allDefinitions.Count, Math.Min(limit, 12));
         EnsureExplicitRequestedToolsSelected(explicitRequestedToolNames, allDefinitions, selected, selectedNames, limit);
         if (selected.Count >= minSelection) {
             return selected;
@@ -440,7 +440,9 @@ internal sealed partial class ChatServiceSession {
                 sb.Append("Missing live evidence: ").AppendLine(plannerContext.MissingLiveEvidence);
             }
         }
-        if (plannerContext.PreferredPackIds.Length > 0 || plannerContext.PreferredToolNames.Length > 0) {
+        if (plannerContext.PreferredPackIds.Length > 0
+            || plannerContext.PreferredToolNames.Length > 0
+            || plannerContext.PreferredExecutionBackends.Length > 0) {
             sb.AppendLine();
             sb.AppendLine("Planner preferences:");
             if (plannerContext.PreferredPackIds.Length > 0) {
@@ -458,6 +460,10 @@ internal sealed partial class ChatServiceSession {
             if (plannerContext.StructuredNextActionConfidence.HasValue) {
                 sb.Append("Structured next-action confidence: ")
                     .AppendLine(plannerContext.StructuredNextActionConfidence.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            if (plannerContext.PreferredExecutionBackends.Length > 0) {
+                sb.Append("Preferred execution backends: ")
+                    .AppendLine(string.Join(", ", plannerContext.PreferredExecutionBackends));
             }
         }
         if (plannerContext.HandoffTargetPackIds.Length > 0 || plannerContext.HandoffTargetToolNames.Length > 0) {
@@ -952,7 +958,9 @@ internal sealed partial class ChatServiceSession {
         int DelayBaseMs,
         bool RetryOnTimeout,
         bool RetryOnTransport,
-        IReadOnlyList<string> RetryableErrorCodes);
+        IReadOnlyList<string> RetryableErrorCodes,
+        IReadOnlyList<string> RecoveryToolNames,
+        IReadOnlyList<string> AlternateEngineIds);
 
     internal void RememberPlannerThreadContextForTesting(string activeThreadId, string plannerThreadId, long seenUtcTicks) {
         RememberPlannerThreadContext(activeThreadId, plannerThreadId, seenUtcTicks);

@@ -221,6 +221,7 @@ internal sealed partial class ChatServiceSession {
                 reviewPassesUsed: reviewPassesUsed,
                 maxReviewPasses: maxReviewPasses)) {
             var nextReviewPass = reviewPassesUsed + 1;
+            var rememberedExecutionBackends = ReadRememberedToolExecutionBackendHintsFromRequestText(userRequest);
             return NoExtractedFinalizeReviewDecision.ResponseQualityReview(
                 reason: "response_quality_review",
                 prompt: BuildResponseQualityReviewPrompt(
@@ -228,7 +229,8 @@ internal sealed partial class ChatServiceSession {
                     assistantDraft: assistantDraft,
                     hasToolActivity: hasToolActivity,
                     reviewPassNumber: nextReviewPass,
-                    maxReviewPasses: maxReviewPasses),
+                    maxReviewPasses: maxReviewPasses,
+                    rememberedExecutionBackends: rememberedExecutionBackends),
                 reviewPassNumber: nextReviewPass);
         }
 

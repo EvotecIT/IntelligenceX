@@ -241,7 +241,7 @@ public partial class ToolSchemaSnapshotTests {
 
         yield return new object[] {
             "system_service_list",
-            new[] { "computer_name", "name_contains", "status", "max_services", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "computer_name", "engine", "name_contains", "status", "max_services", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
         };
 

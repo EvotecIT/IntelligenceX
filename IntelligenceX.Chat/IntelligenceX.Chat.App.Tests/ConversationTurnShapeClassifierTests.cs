@@ -170,6 +170,19 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures short non-English model questions with inflected borrowed cue words still enter runtime-introspection mode.
+    /// </summary>
+    [Theory]
+    [InlineData("Jakiego modelu uzywasz?")]
+    [InlineData("Z jakiego modelu korzystasz?")]
+    [InlineData("¿Que modelo usas?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForShortInflectedModelAsk(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
     /// Ensures compact runtime self-report asks can be tightened into a shorter answer mode.
     /// </summary>
     [Fact]
@@ -252,6 +265,8 @@ public sealed class ConversationTurnShapeClassifierTests {
     [InlineData("What model: gpt-5?")]
     [InlineData("What model_name are you using?")]
     [InlineData("What `model` are you using?")]
+    [InlineData("Jakiego modelu uzywasz?")]
+    [InlineData("¿Que modelo usas?")]
     [InlineData("What model are you using?")]
     [InlineData("Can you use the DNS/AD tool output to check replication errors?")]
     [InlineData("This model is wrong for the job")]
@@ -268,6 +283,7 @@ public sealed class ConversationTurnShapeClassifierTests {
     [Theory]
     [InlineData("What model/tools for DNS/AD?")]
     [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("Jakiego modelu uzywasz?")]
     [InlineData("What model and tools are you using right now?")]
     [InlineData("Can you use the DNS/AD tool output to check replication errors?")]
     public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_StaysAlignedWithSharedRuntimeClassifier(string userText) {

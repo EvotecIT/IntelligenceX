@@ -24,6 +24,13 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const string DomainScopeHostGuardrailErrorCode = "domain_scope_host_guardrail";
+    private static readonly string[] RecoveryHelperErrorCodeHints = {
+        "probe",
+        "discovery",
+        "connect",
+        "unreachable"
+    };
+    private delegate Task ToolExecutionStatusWriter(string status, ToolCall call, string message);
 
     private static string BuildToolRoundStartedMessage(int roundNumber, int maxRounds, int callCount, bool parallelTools, bool allowMutatingParallel) {
         var round = Math.Max(1, roundNumber);
@@ -119,6 +126,33 @@ internal sealed partial class ChatServiceSession {
         return $"Still running {label} ({Math.Max(1, elapsedSeconds)}s)...";
     }
 
+    private static string BuildPreferredAlternateEngineStatusMessage(string engineId) {
+        var normalizedEngineId = (engineId ?? string.Empty).Trim();
+        if (normalizedEngineId.Length == 0) {
+            normalizedEngineId = "alternate";
+        }
+
+        return $"Using remembered healthy backend '{normalizedEngineId}' for this tool call.";
+    }
+
+    private static string BuildAlternateEngineRetryStatusMessage(string engineId) {
+        var normalizedEngineId = (engineId ?? string.Empty).Trim();
+        if (normalizedEngineId.Length == 0) {
+            normalizedEngineId = "alternate";
+        }
+
+        return $"Retrying with alternate backend '{normalizedEngineId}'.";
+    }
+
+    private static string BuildAutomaticAlternateEngineRetryStatusMessage(string engineId) {
+        var normalizedEngineId = (engineId ?? string.Empty).Trim();
+        if (normalizedEngineId.Length == 0) {
+            normalizedEngineId = "remembered";
+        }
+
+        return $"Backend '{normalizedEngineId}' failed; retrying with automatic backend selection.";
+    }
+
     private static int CountFailedToolOutputs(IReadOnlyList<ToolOutputDto> outputs) {
         if (outputs.Count == 0) {
             return 0;
@@ -145,7 +179,20 @@ internal sealed partial class ChatServiceSession {
                 toolCallId: call.CallId)
             .ConfigureAwait(false);
         var sw = Stopwatch.StartNew();
-        var executeTask = ExecuteToolAsync(threadId, userRequest, call, toolTimeoutSeconds, cancellationToken);
+        var executeTask = ExecuteToolAsync(
+            threadId,
+            userRequest,
+            call,
+            toolTimeoutSeconds,
+            cancellationToken,
+            (status, statusCall, message) => TryWriteStatusAsync(
+                writer,
+                requestId,
+                threadId,
+                status: status,
+                toolName: statusCall.Name,
+                toolCallId: statusCall.CallId,
+                message: message));
         var cancellationTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         var canceledByTurn = false;
         while (!executeTask.IsCompleted) {
@@ -251,7 +298,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private async Task<ToolOutputDto> ExecuteToolAsync(string threadId, string userRequest, ToolCall call, int toolTimeoutSeconds,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken, ToolExecutionStatusWriter? statusWriter = null) {
         if (!_registry.TryGet(call.Name, out var tool)) {
             var output = ToolOutputEnvelope.Error(
                 errorCode: "tool_not_registered",
@@ -274,9 +321,35 @@ internal sealed partial class ChatServiceSession {
         var profile = ResolveRetryProfile(toolDefinition);
         var currentCall = call;
         var projectionFallbackAttempted = false;
+        var attemptedAlternateEngineIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var recoveryHelperAttempted = false;
+        var preferredAutomaticFallbackPending = false;
+        var preferredAutomaticFallbackAttempted = false;
+        var preferredAlternateEngineId = string.Empty;
         ToolOutputDto? lastFailure = null;
+        if (TryBuildPreferredHealthyAlternateEngineCall(
+                threadId,
+                currentCall,
+                toolDefinition,
+                profile,
+                out var preferredAlternateEngineCall,
+                out preferredAlternateEngineId)) {
+            attemptedAlternateEngineIds.Add(preferredAlternateEngineId);
+            currentCall = preferredAlternateEngineCall;
+            preferredAutomaticFallbackPending = true;
+            await TryWriteToolExecutionTransitionStatusAsync(
+                    statusWriter,
+                    ChatStatusCodes.ToolCall,
+                    currentCall,
+                    BuildPreferredAlternateEngineStatusMessage(preferredAlternateEngineId))
+                .ConfigureAwait(false);
+        }
+
         for (var attemptIndex = 0; attemptIndex < profile.MaxAttempts; attemptIndex++) {
             var output = await ExecuteToolAttemptAsync(tool, currentCall, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+            var trackedAlternateEngineId = TryResolveTrackedAlternateEngineId(currentCall, toolDefinition, profile, out var resolvedTrackedAlternateEngineId)
+                ? resolvedTrackedAlternateEngineId
+                : string.Empty;
             if (!projectionFallbackAttempted
                 && TryBuildProjectionArgsFallbackCall(currentCall, output, out var fallbackCall, out var fallbackInfo)) {
                 projectionFallbackAttempted = true;
@@ -286,15 +359,70 @@ internal sealed partial class ChatServiceSession {
                 var fallbackOutput = await ExecuteToolAttemptAsync(tool, currentCall, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
                 output = AttachProjectionFallbackMetadata(fallbackOutput, fallbackInfo);
                 if (output.Ok is true) {
+                    if (trackedAlternateEngineId.Length > 0) {
+                        RememberAlternateEngineOutcome(threadId, currentCall.Name, trackedAlternateEngineId, output);
+                    }
+
                     return output;
                 }
             }
 
-            if (!ShouldRetryToolCall(output, profile, attemptIndex)) {
+            if (trackedAlternateEngineId.Length > 0) {
+                RememberAlternateEngineOutcome(threadId, currentCall.Name, trackedAlternateEngineId, output);
+            }
+
+            var shouldRetry = ShouldRetryToolCall(output, profile, attemptIndex);
+            if (!shouldRetry
+                && !IsSuccessfulToolOutput(output)
+                && preferredAutomaticFallbackPending
+                && !preferredAutomaticFallbackAttempted
+                && TryBuildAutomaticAlternateEngineRetryCall(
+                    call,
+                    currentCall,
+                    toolDefinition,
+                    profile,
+                    out var automaticAlternateEngineCall)) {
+                preferredAutomaticFallbackAttempted = true;
+                preferredAutomaticFallbackPending = false;
+                currentCall = automaticAlternateEngineCall;
+                await TryWriteToolExecutionTransitionStatusAsync(
+                        statusWriter,
+                        ChatStatusCodes.ToolCall,
+                        currentCall,
+                        BuildAutomaticAlternateEngineRetryStatusMessage(preferredAlternateEngineId))
+                    .ConfigureAwait(false);
+                continue;
+            }
+
+            if (!shouldRetry) {
                 return output;
             }
 
             lastFailure = output;
+            if (TryBuildAlternateEngineFallbackCall(
+                    threadId,
+                    currentCall,
+                    toolDefinition,
+                    profile,
+                    attemptedAlternateEngineIds,
+                    out var alternateEngineCall,
+                    out var selectedAlternateEngineId)) {
+                attemptedAlternateEngineIds.Add(selectedAlternateEngineId);
+                currentCall = alternateEngineCall;
+                await TryWriteToolExecutionTransitionStatusAsync(
+                        statusWriter,
+                        ChatStatusCodes.ToolCall,
+                        currentCall,
+                        BuildAlternateEngineRetryStatusMessage(selectedAlternateEngineId))
+                    .ConfigureAwait(false);
+                continue;
+            }
+
+            if (ShouldAttemptRecoveryHelperTools(output, profile, recoveryHelperAttempted)) {
+                recoveryHelperAttempted = true;
+                await ExecuteRecoveryHelperToolsAsync(threadId, userRequest, currentCall, profile, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+            }
+
             if (profile.DelayBaseMs > 0) {
                 var delayMs = Math.Min(800, profile.DelayBaseMs * (attemptIndex + 1));
                 try {
@@ -306,6 +434,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         return lastFailure ?? await ExecuteToolAttemptAsync(tool, call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static Task TryWriteToolExecutionTransitionStatusAsync(
+        ToolExecutionStatusWriter? statusWriter,
+        string status,
+        ToolCall call,
+        string message) {
+        if (statusWriter is null || string.IsNullOrWhiteSpace(message)) {
+            return Task.CompletedTask;
+        }
+
+        return statusWriter(status, call, message);
     }
 
 
@@ -357,6 +497,149 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
+    private async Task ExecuteRecoveryHelperToolsAsync(
+        string threadId,
+        string userRequest,
+        ToolCall failedCall,
+        ToolRetryProfile profile,
+        int toolTimeoutSeconds,
+        CancellationToken cancellationToken) {
+        if (profile.RecoveryToolNames is not { Count: > 0 }) {
+            return;
+        }
+
+        var suppressedHelperToolNames = SnapshotRecentHostBootstrapFailureToolNames(threadId);
+        var orderedHelperToolNames = OrderBootstrapToolNamesByHealth(profile.RecoveryToolNames, suppressedHelperToolNames);
+        for (var i = 0; i < orderedHelperToolNames.Length; i++) {
+            var helperToolName = orderedHelperToolNames[i];
+
+            if (!TryBuildRecoveryHelperInvocation(failedCall, helperToolName, out var helperTool, out var helperCall)) {
+                Trace.TraceInformation($"Recovery helper skipped: helper='{helperToolName}' failed_tool='{failedCall.Name}'.");
+                continue;
+            }
+
+            if (TryBuildDomainIntentHostScopeGuardrailOutput(threadId, userRequest, helperCall, out _)) {
+                Trace.TraceInformation($"Recovery helper blocked by domain guardrail: helper='{helperCall.Name}' failed_tool='{failedCall.Name}'.");
+                continue;
+            }
+
+            Trace.TraceInformation($"Recovery helper executing: helper='{helperCall.Name}' failed_tool='{failedCall.Name}' attempted_call_id='{failedCall.CallId}'.");
+            var helperOutput = await ExecuteToolAttemptAsync(helperTool, helperCall, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
+            if (IsSuccessfulToolOutput(helperOutput)) {
+                ClearHostBootstrapFailure(threadId, helperCall.Name);
+                Trace.TraceInformation($"Recovery helper succeeded: helper='{helperCall.Name}' failed_tool='{failedCall.Name}'.");
+                return;
+            }
+
+            RememberHostBootstrapFailure(threadId, helperCall.Name, HostBootstrapFailureKindRecoveryHelper, helperOutput);
+            Trace.TraceWarning(
+                $"Recovery helper failed: helper='{helperCall.Name}' failed_tool='{failedCall.Name}' error_code='{helperOutput.ErrorCode}' error='{helperOutput.Error}'.");
+        }
+    }
+
+    private bool TryBuildRecoveryHelperInvocation(ToolCall failedCall, string? helperToolName, out ITool helperTool, out ToolCall helperCall) {
+        helperTool = default!;
+        helperCall = default!;
+
+        var normalizedHelperToolName = (helperToolName ?? string.Empty).Trim();
+        if (normalizedHelperToolName.Length == 0
+            || string.Equals(normalizedHelperToolName, failedCall.Name, StringComparison.OrdinalIgnoreCase)
+            || !_registry.TryGet(normalizedHelperToolName, out helperTool)
+            || !_registry.TryGetDefinition(normalizedHelperToolName, out var helperDefinition)
+            || helperDefinition is null
+            || helperDefinition.WriteGovernance?.IsWriteCapable == true
+            || !TryBuildRecoveryHelperArguments(failedCall, helperDefinition, out var helperArguments)) {
+            return false;
+        }
+
+        var callId = BuildHostGeneratedToolCallId("host_recovery_helper", normalizedHelperToolName);
+        var serializedArguments = JsonLite.Serialize(helperArguments);
+        var raw = new JsonObject(StringComparer.Ordinal)
+            .Add("type", "tool_call")
+            .Add("call_id", callId)
+            .Add("name", normalizedHelperToolName)
+            .Add("arguments", serializedArguments);
+
+        helperCall = new ToolCall(
+            callId: callId,
+            name: normalizedHelperToolName,
+            input: serializedArguments,
+            arguments: helperArguments,
+            raw: raw);
+        return true;
+    }
+
+    private static bool TryBuildRecoveryHelperArguments(ToolCall failedCall, ToolDefinition helperDefinition, out JsonObject helperArguments) {
+        helperArguments = new JsonObject(StringComparer.Ordinal);
+        if (helperDefinition?.Parameters is null) {
+            return true;
+        }
+
+        var sourceArguments = ResolveRecoveryHelperSourceArguments(failedCall);
+        var properties = helperDefinition.Parameters.GetObject("properties");
+        if (sourceArguments is not null && properties is not null) {
+            foreach (var property in properties) {
+                if (sourceArguments.TryGetValue(property.Key, out var value)
+                    && value is not null
+                    && TryCloneRecoveryHelperArgumentValue(value, out var clonedValue)) {
+                    helperArguments.Add(property.Key, clonedValue);
+                }
+            }
+        }
+
+        var required = helperDefinition.Parameters.GetArray("required");
+        if (required is not { Count: > 0 }) {
+            return true;
+        }
+
+        for (var i = 0; i < required.Count; i++) {
+            var requiredName = (required[i]?.AsString() ?? string.Empty).Trim();
+            if (requiredName.Length == 0) {
+                continue;
+            }
+
+            if (!helperArguments.TryGetValue(requiredName, out _)) {
+                helperArguments = new JsonObject(StringComparer.Ordinal);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryCloneRecoveryHelperArgumentValue(JsonValue value, out JsonValue clonedValue) {
+        clonedValue = JsonValue.Null;
+        try {
+            var serialized = JsonLite.Serialize(value);
+            var parsed = JsonLite.Parse(serialized);
+            if (parsed is null) {
+                return false;
+            }
+
+            clonedValue = parsed;
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private static JsonObject? ResolveRecoveryHelperSourceArguments(ToolCall failedCall) {
+        if (failedCall.Arguments is not null) {
+            return failedCall.Arguments;
+        }
+
+        var input = (failedCall.Input ?? string.Empty).Trim();
+        if (input.Length == 0) {
+            return null;
+        }
+
+        try {
+            return JsonLite.Parse(input)?.AsObject();
+        } catch {
+            return null;
+        }
+    }
+
     private static bool ShouldRetryToolCall(ToolOutputDto output, ToolRetryProfile profile, int attemptIndex) {
         // attemptIndex is zero-based current attempt. We can only retry when there is another slot left.
         if (attemptIndex + 1 >= profile.MaxAttempts) {
@@ -397,6 +680,38 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
         return output.IsTransient is true;
+    }
+
+    private static bool ShouldAttemptRecoveryHelperTools(ToolOutputDto output, ToolRetryProfile profile, bool recoveryHelperAttempted) {
+        if (recoveryHelperAttempted
+            || profile.RecoveryToolNames is not { Count: > 0 }
+            || output.Ok is true
+            || string.Equals(output.ErrorCode, "tool_not_registered", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(output.ErrorCode, DomainScopeHostGuardrailErrorCode, StringComparison.OrdinalIgnoreCase)
+            || IsLikelyPermanentToolFailure(output)) {
+            return false;
+        }
+
+        var normalizedCode = NormalizeRetryableErrorCode(output.ErrorCode);
+        if (normalizedCode.Length == 0) {
+            return false;
+        }
+
+        if (string.Equals(normalizedCode, "timeout", StringComparison.OrdinalIgnoreCase)) {
+            return profile.RetryOnTimeout;
+        }
+
+        if (IsTransportRetryableCode(normalizedCode)) {
+            return profile.RetryOnTransport;
+        }
+
+        for (var i = 0; i < RecoveryHelperErrorCodeHints.Length; i++) {
+            if (normalizedCode.Contains(RecoveryHelperErrorCodeHints[i], StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsLikelyPermanentToolFailure(ToolOutputDto output) {
@@ -554,10 +869,14 @@ internal sealed partial class ChatServiceSession {
                 DelayBaseMs: 0,
                 RetryOnTimeout: false,
                 RetryOnTransport: false,
-                RetryableErrorCodes: Array.Empty<string>());
+                RetryableErrorCodes: Array.Empty<string>(),
+                RecoveryToolNames: NormalizeRecoveryToolNames(recovery?.RecoveryToolNames),
+                AlternateEngineIds: NormalizeAlternateEngineIds(recovery));
         }
 
         var retryableCodes = NormalizeRetryableErrorCodes(recovery.RetryableErrorCodes);
+        var recoveryToolNames = NormalizeRecoveryToolNames(recovery.RecoveryToolNames);
+        var alternateEngineIds = NormalizeAlternateEngineIds(recovery);
         var retryOnTimeout = retryableCodes.Any(static code => IsTimeoutRetryableCode(code));
         var retryOnTransport = retryableCodes.Any(static code => IsTransportRetryableCode(code));
         var maxAttempts = Math.Clamp(recovery.MaxRetryAttempts + 1, 2, 6);
@@ -567,7 +886,9 @@ internal sealed partial class ChatServiceSession {
             DelayBaseMs: delayBaseMs,
             RetryOnTimeout: retryOnTimeout,
             RetryOnTransport: retryOnTransport,
-            RetryableErrorCodes: retryableCodes);
+            RetryableErrorCodes: retryableCodes,
+            RecoveryToolNames: recoveryToolNames,
+            AlternateEngineIds: alternateEngineIds);
     }
 
     private static string[] NormalizeRetryableErrorCodes(IReadOnlyList<string>? values) {
@@ -579,6 +900,44 @@ internal sealed partial class ChatServiceSession {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < values.Count; i++) {
             var token = NormalizeRetryableErrorCode(values[i]);
+            if (token.Length == 0 || !seen.Add(token)) {
+                continue;
+            }
+
+            normalized.Add(token);
+        }
+
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
+    }
+
+    private static string[] NormalizeRecoveryToolNames(IReadOnlyList<string>? values) {
+        if (values is null || values.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(values.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var token = (values[i] ?? string.Empty).Trim();
+            if (token.Length == 0 || !seen.Add(token)) {
+                continue;
+            }
+
+            normalized.Add(token);
+        }
+
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
+    }
+
+    private static string[] NormalizeAlternateEngineIds(ToolRecoveryContract? recovery) {
+        if (recovery is not { SupportsAlternateEngines: true } || recovery.AlternateEngineIds.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(recovery.AlternateEngineIds.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < recovery.AlternateEngineIds.Count; i++) {
+            var token = (recovery.AlternateEngineIds[i] ?? string.Empty).Trim();
             if (token.Length == 0 || !seen.Add(token)) {
                 continue;
             }

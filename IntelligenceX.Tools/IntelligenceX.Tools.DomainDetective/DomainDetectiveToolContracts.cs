@@ -159,7 +159,8 @@ internal static class DomainDetectiveToolContracts {
                 IsRecoveryAware = true,
                 SupportsTransientRetry = true,
                 MaxRetryAttempts = 2,
-                RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" }
+                RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" },
+                RecoveryToolNames = new[] { "domaindetective_checks_catalog" }
             };
         }
 
@@ -168,7 +169,8 @@ internal static class DomainDetectiveToolContracts {
                 IsRecoveryAware = true,
                 SupportsTransientRetry = true,
                 MaxRetryAttempts = 1,
-                RetryableErrorCodes = new[] { "probe_failed", "timeout", "transport_unavailable" }
+                RetryableErrorCodes = new[] { "probe_failed", "timeout", "transport_unavailable" },
+                RecoveryToolNames = new[] { "domaindetective_checks_catalog" }
             };
         }
 

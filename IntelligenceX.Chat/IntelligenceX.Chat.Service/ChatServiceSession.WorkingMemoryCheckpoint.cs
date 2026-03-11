@@ -246,6 +246,15 @@ internal sealed partial class ChatServiceSession {
                 .AppendLine(checkpoint.RecentEvidenceSnippets[i]);
         }
 
+        var recentToolExecutionBackends = CollectThreadToolExecutionBackendHints(
+            normalizedThreadId,
+            checkpoint.PriorAnswerPlanPreferredToolNames,
+            checkpoint.RecentToolNames);
+        if (recentToolExecutionBackends.Length > 0) {
+            builder.Append("recent_tool_execution_backends: ")
+                .AppendLine(string.Join(", ", recentToolExecutionBackends));
+        }
+
         if (checkpoint.PriorAnswerPlanUserGoal.Length > 0) {
             builder.Append("prior_answer_plan_user_goal: ").AppendLine(checkpoint.PriorAnswerPlanUserGoal);
         }
@@ -747,6 +756,7 @@ internal sealed partial class ChatServiceSession {
     private static string BuildWorkingMemoryEvidenceSnippet(ToolOutputDto output) {
         var summary = (output.SummaryMarkdown ?? string.Empty).Trim();
         var snippet = summary.Length > 0 ? summary : BuildToolEvidenceSnippet(output.Output ?? string.Empty);
+        snippet = DecorateToolEvidenceSnippetWithBackend(snippet, ResolveToolExecutionBackend(output.MetaJson));
         if (snippet.Length > MaxWorkingMemoryEvidenceChars) {
             snippet = snippet.Substring(0, MaxWorkingMemoryEvidenceChars).TrimEnd() + "...";
         }
@@ -1397,6 +1407,24 @@ internal sealed partial class ChatServiceSession {
             Array.Empty<ToolCallDto>(),
             Array.Empty<ToolOutputDto>(),
             new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    internal void RememberWorkingMemoryCheckpointFromToolOutputsForTesting(
+        string threadId,
+        string userIntent,
+        string routedUserRequest,
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName = null) {
+        RememberWorkingMemoryCheckpoint(
+            threadId,
+            userIntent,
+            routedUserRequest,
+            TurnAnswerPlan.None(),
+            toolCalls,
+            toolOutputs,
+            mutatingToolHintsByName
+            ?? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
     }
 
     internal bool TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(

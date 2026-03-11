@@ -108,6 +108,7 @@ internal sealed partial class ChatServiceSession {
         out string missingLiveEvidence,
         out string[] preferredPackIds,
         out string[] preferredToolNames,
+        out string[] preferredExecutionBackends,
         out string[] handoffTargetPackIds,
         out string[] handoffTargetToolNames,
         out string continuationSourceTool,
@@ -120,6 +121,7 @@ internal sealed partial class ChatServiceSession {
         missingLiveEvidence = context.MissingLiveEvidence;
         preferredPackIds = context.PreferredPackIds;
         preferredToolNames = context.PreferredToolNames;
+        preferredExecutionBackends = context.PreferredExecutionBackends;
         handoffTargetPackIds = context.HandoffTargetPackIds;
         handoffTargetToolNames = context.HandoffTargetToolNames;
         continuationSourceTool = context.ContinuationSourceTool;
@@ -341,10 +343,51 @@ internal sealed partial class ChatServiceSession {
         return HasConflictingDomainIntentSignals(userRequest);
     }
 
+    internal static bool HasMixedTechnicalDomainIntentSignalsForTesting(
+        string userRequest,
+        IReadOnlyList<ToolDefinition> availableDefinitions) {
+        return HasMixedTechnicalDomainIntentSignals(userRequest, availableDefinitions);
+    }
+
     internal static bool ShouldForceDomainIntentClarificationForConflictingSignalsForTesting(
         string userRequest,
         IReadOnlyList<ToolDefinition> allDefinitions) {
         return ShouldForceDomainIntentClarificationForConflictingSignals(userRequest, allDefinitions);
+    }
+
+    internal static bool ShouldRequestDomainIntentClarificationBeforeRoutingForTesting(
+        bool weightedToolRouting,
+        bool executionContractApplies,
+        bool compactFollowUpTurn,
+        bool hasPreferredDomainIntentFamily,
+        bool hasFreshPendingActionContext,
+        string userRequest,
+        bool hasAdFamily,
+        bool hasPublicFamily,
+        IReadOnlyList<ToolDefinition> availableDefinitions) {
+        return ShouldRequestDomainIntentClarificationBeforeRouting(
+            weightedToolRouting,
+            executionContractApplies,
+            compactFollowUpTurn,
+            hasPreferredDomainIntentFamily,
+            hasFreshPendingActionContext,
+            userRequest,
+            new DomainIntentFamilyAvailability(
+                HasAd: hasAdFamily,
+                HasPublic: hasPublicFamily,
+                Families: BuildFamilies(hasAdFamily, hasPublicFamily)),
+            availableDefinitions);
+
+        static string[] BuildFamilies(bool hasAdFamily, bool hasPublicFamily) {
+            var families = new List<string>(2);
+            if (hasAdFamily) {
+                families.Add(DomainIntentFamilyAd);
+            }
+            if (hasPublicFamily) {
+                families.Add(DomainIntentFamilyPublic);
+            }
+            return families.ToArray();
+        }
     }
 
     internal static bool ShouldSuppressDomainIntentClarificationForCompactFollowUpForTesting(
@@ -412,6 +455,114 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolDefinition> availableDefinitions,
         out string family) {
         return TryResolvePendingDomainIntentClarificationSelection(threadId, userRequest, availableDefinitions, out family);
+    }
+
+    internal void RememberPackPreflightToolsForTesting(string threadId, IReadOnlyList<string> toolNames, long? seenUtcTicks = null) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return;
+        }
+
+        var normalizedToolNames = NormalizeDistinctStrings(
+            (toolNames ?? Array.Empty<string>())
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .Select(static name => name.Trim()),
+            MaxRememberedPackPreflightToolNames);
+        if (normalizedToolNames.Length == 0) {
+            return;
+        }
+
+        var resolvedSeenUtcTicks = seenUtcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks);
+        lock (_toolRoutingContextLock) {
+            _packPreflightToolNamesByThreadId[normalizedThreadId] = normalizedToolNames;
+            _packPreflightSeenUtcTicks[normalizedThreadId] = resolvedSeenUtcTicks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+
+        PersistPackPreflightSnapshot(normalizedThreadId, normalizedToolNames, resolvedSeenUtcTicks);
+    }
+
+    internal string[] GetRememberedPackPreflightToolsForTesting(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        return SnapshotRememberedPackPreflightTools(normalizedThreadId).OrderBy(static name => name, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    internal string ResolvePackPreflightStorePathForTesting() {
+        return ResolvePackPreflightStorePath();
+    }
+
+    internal void RememberHostBootstrapFailureForTesting(
+        string threadId,
+        string toolName,
+        string failureKind,
+        string? errorCode = "tool_timeout",
+        string? error = "Host bootstrap tool failed.",
+        long? seenUtcTicks = null) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        var normalizedFailureKind = NormalizeHostBootstrapFailureKind(failureKind);
+        if (normalizedThreadId.Length == 0 || normalizedToolName.Length == 0 || normalizedFailureKind.Length == 0) {
+            return;
+        }
+
+        PersistHostBootstrapFailureSnapshot(
+            normalizedThreadId,
+            new HostBootstrapFailureSnapshot(
+                ToolName: normalizedToolName,
+                FailureKind: normalizedFailureKind,
+                ErrorCode: NormalizeHostBootstrapFailureText(errorCode, maxLength: 128),
+                Error: NormalizeHostBootstrapFailureText(error, maxLength: 280),
+                SeenUtcTicks: seenUtcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks)));
+    }
+
+    internal string[] GetRecentHostBootstrapFailureToolNamesForTesting(string threadId) {
+        return SnapshotRecentHostBootstrapFailureToolNames(threadId).OrderBy(static name => name, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    internal string ResolveHostBootstrapFailureStorePathForTesting() {
+        return ResolveHostBootstrapFailureStorePath();
+    }
+
+    internal void RememberAlternateEngineSuccessForTesting(
+        string threadId,
+        string toolName,
+        string engineId,
+        long? seenUtcTicks = null) {
+        var output = new ToolOutputDto {
+            CallId = "alt-engine-success",
+            Output = """{"ok":true}""",
+            Ok = true
+        };
+        RememberAlternateEngineOutcome(threadId, toolName, engineId, output, seenUtcTicks);
+    }
+
+    internal void RememberAlternateEngineFailureForTesting(
+        string threadId,
+        string toolName,
+        string engineId,
+        string? errorCode = "transport_unavailable",
+        string? error = "Alternate engine failed.",
+        long? seenUtcTicks = null) {
+        var output = new ToolOutputDto {
+            CallId = "alt-engine-failure",
+            Output = """{"ok":false}""",
+            Ok = false,
+            ErrorCode = errorCode,
+            Error = error,
+            IsTransient = true
+        };
+        RememberAlternateEngineOutcome(threadId, toolName, engineId, output, seenUtcTicks);
+    }
+
+    internal string ResolveAlternateEngineHealthStorePathForTesting() {
+        return ResolveAlternateEngineHealthStorePath();
+    }
+
+    internal string[] OrderAlternateEngineIdsByHealthForTesting(
+        string threadId,
+        string toolName,
+        IReadOnlyList<string> candidateEngineIds) {
+        return OrderAlternateEngineIdsByHealth(threadId, toolName, candidateEngineIds);
     }
 
     internal static string BuildDomainIntentClarificationTextForTesting(bool hasAdFamily, bool hasPublicFamily) {

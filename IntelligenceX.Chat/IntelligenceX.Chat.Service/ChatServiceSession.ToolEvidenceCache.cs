@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Tools;
 using JsonValueKind = System.Text.Json.JsonValueKind;
 
 namespace IntelligenceX.Chat.Service;
@@ -12,6 +13,11 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string CachedToolEvidenceMarker = "ix:cached-tool-evidence:v1";
     private const int CachedEvidenceAskCoverageMinTokenLength = 6;
+    private const int MaxToolEvidenceBackendChars = 48;
+    private const int MaxToolExecutionBackendHints = 4;
+    private const string ToolExecutionBackendSnippetLabel = "backend";
+    private const string ToolExecutionBackendHintFieldSeparator = "=";
+    private static readonly string[] ToolExecutionBackendPreferenceMetaKeys = { "engine_preference", "backend_preference" };
     private static readonly Regex ExplicitRequestedToolNameRegex = new(
         @"\b[a-z][a-z0-9]*(?:(?:\\?[_-])[a-z0-9]+)+\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
@@ -22,6 +28,7 @@ internal sealed partial class ChatServiceSession {
         string ArgumentsJson,
         string Output,
         string SummaryMarkdown,
+        string ExecutionBackend,
         long SeenUtcTicks);
 
     private readonly record struct ToolEvidenceCandidate(
@@ -100,6 +107,7 @@ internal sealed partial class ChatServiceSession {
                     ArgumentsJson: contract.ArgumentsJson,
                     Output: payload,
                     SummaryMarkdown: summary,
+                    ExecutionBackend: ResolveToolExecutionBackend(output.MetaJson),
                     SeenUtcTicks: nowTicks);
             }
 
@@ -278,7 +286,7 @@ internal sealed partial class ChatServiceSession {
                 ? entry.SummaryMarkdown
                 : BuildToolEvidenceSnippet(entry.Output);
             sb.AppendLine();
-            sb.Append("#### ").AppendLine(entry.ToolName);
+            sb.Append("#### ").AppendLine(BuildToolEvidenceHeading(entry.ToolName, entry.ExecutionBackend));
             AppendMarkdownBlock(sb, snippet);
         }
 
@@ -478,6 +486,7 @@ internal sealed partial class ChatServiceSession {
     private string BuildCachedEvidenceAskCoverageText(string threadId, ThreadToolEvidenceEntry entry) {
         var sb = new StringBuilder(1024);
         AppendCachedEvidenceAskCoverageSegment(sb, entry.ToolName);
+        AppendCachedEvidenceAskCoverageSegment(sb, entry.ExecutionBackend);
         AppendCachedEvidenceAskCoverageSegment(sb, entry.ArgumentsJson);
         AppendCachedEvidenceAskCoverageSegment(sb, entry.SummaryMarkdown);
         AppendCachedEvidenceAskCoverageSegment(sb, entry.Output);
@@ -581,6 +590,36 @@ internal sealed partial class ChatServiceSession {
         return normalized.Length == 0 ? "(no summary available)" : normalized;
     }
 
+    private static string BuildToolEvidenceHeading(string toolName, string executionBackend) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        var normalizedBackend = NormalizeToolExecutionBackend(executionBackend);
+        if (normalizedBackend.Length == 0) {
+            return normalizedToolName;
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{normalizedToolName} ({ToolExecutionBackendSnippetLabel}: {normalizedBackend})");
+    }
+
+    private static string DecorateToolEvidenceSnippetWithBackend(string snippet, string executionBackend) {
+        var normalizedSnippet = (snippet ?? string.Empty).Trim();
+        var normalizedBackend = NormalizeToolExecutionBackend(executionBackend);
+        if (normalizedBackend.Length == 0) {
+            return normalizedSnippet;
+        }
+
+        if (normalizedSnippet.Length == 0) {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"[{ToolExecutionBackendSnippetLabel}: {normalizedBackend}]");
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"[{ToolExecutionBackendSnippetLabel}: {normalizedBackend}] {normalizedSnippet}");
+    }
+
     private static void AppendMarkdownBlock(StringBuilder sb, string markdown) {
         var normalized = (markdown ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Trim();
         if (normalized.Length == 0) {
@@ -630,6 +669,175 @@ internal sealed partial class ChatServiceSession {
 
         var normalizedArgs = NormalizeArgumentsJsonForReplayContract(argumentsJson);
         return normalizedToolName.ToLowerInvariant() + "|" + normalizedArgs;
+    }
+
+    private static string ResolveToolExecutionBackend(string? metaJson) {
+        var normalizedMetaJson = (metaJson ?? string.Empty).Trim();
+        if (normalizedMetaJson.Length == 0
+            || normalizedMetaJson[0] != '{') {
+            return string.Empty;
+        }
+
+        try {
+            using var doc = JsonDocument.Parse(normalizedMetaJson, ActionSelectionJsonOptions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) {
+                return string.Empty;
+            }
+
+            if (TryReadToolExecutionBackend(doc.RootElement, out var backend)) {
+                return backend;
+            }
+
+            if (doc.RootElement.TryGetProperty("meta", out var nestedMeta)
+                && nestedMeta.ValueKind == JsonValueKind.Object
+                && TryReadToolExecutionBackend(nestedMeta, out backend)) {
+                return backend;
+            }
+        } catch (JsonException) {
+            // Best-effort only.
+        }
+
+        return string.Empty;
+    }
+
+    private static bool TryReadToolExecutionBackend(JsonElement metadata, out string backend) {
+        backend = string.Empty;
+        if (metadata.ValueKind != JsonValueKind.Object) {
+            return false;
+        }
+
+        for (var i = 0; i < ToolExecutionBackendPreferenceMetaKeys.Length; i++) {
+            if (!TryReadToolExecutionBackendProperty(metadata, ToolExecutionBackendPreferenceMetaKeys[i], out backend)) {
+                continue;
+            }
+
+            return true;
+        }
+
+        for (var i = 0; i < ToolAlternateEngineSelectorNames.CanonicalSelectorArguments.Count; i++) {
+            if (!TryReadToolExecutionBackendProperty(
+                    metadata,
+                    ToolAlternateEngineSelectorNames.CanonicalSelectorArguments[i],
+                    out backend)) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryReadToolExecutionBackendProperty(JsonElement metadata, string propertyName, out string backend) {
+        backend = string.Empty;
+        if (!metadata.TryGetProperty(propertyName, out var property)
+            || property.ValueKind != JsonValueKind.String) {
+            return false;
+        }
+
+        backend = NormalizeToolExecutionBackend(property.GetString());
+        return backend.Length > 0;
+    }
+
+    private static string NormalizeToolExecutionBackend(string? backend) {
+        var normalized = (backend ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (normalized.IndexOfAny(new[] { '\r', '\n', '\t' }) >= 0) {
+            normalized = normalized.Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal)
+                .Replace("\t", " ", StringComparison.Ordinal)
+                .Trim();
+        }
+
+        if (normalized.Length > MaxToolEvidenceBackendChars) {
+            normalized = normalized.Substring(0, MaxToolEvidenceBackendChars).TrimEnd();
+        }
+
+        return normalized;
+    }
+
+    private string[] CollectThreadToolExecutionBackendHints(
+        string threadId,
+        IReadOnlyList<string>? preferredToolNames,
+        IReadOnlyList<string>? recentToolNames) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
+
+        var preferredNames = new HashSet<string>(
+            NormalizeDistinctStrings(
+                (preferredToolNames ?? Array.Empty<string>())
+                .Concat(recentToolNames ?? Array.Empty<string>()),
+                maxItems: MaxToolEvidenceEntriesPerThread),
+            StringComparer.OrdinalIgnoreCase);
+        var nowUtc = DateTime.UtcNow;
+
+        lock (_threadToolEvidenceLock) {
+            if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature) || bySignature.Count == 0) {
+                return Array.Empty<string>();
+            }
+
+            var candidates = new List<(string Hint, bool Preferred, long SeenUtcTicks)>(bySignature.Count);
+            var seenHints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in bySignature.Values) {
+                if (entry.ToolName.Length == 0
+                    || entry.ExecutionBackend.Length == 0
+                    || !TryGetUtcDateTimeFromTicks(entry.SeenUtcTicks, out var seenUtc)
+                    || nowUtc - seenUtc > ThreadToolEvidenceContextMaxAge) {
+                    continue;
+                }
+
+                var hint = BuildToolExecutionBackendHint(entry.ToolName, entry.ExecutionBackend);
+                if (hint.Length == 0 || !seenHints.Add(hint)) {
+                    continue;
+                }
+
+                candidates.Add((hint, preferredNames.Contains(entry.ToolName), entry.SeenUtcTicks));
+            }
+
+            if (candidates.Count == 0) {
+                return Array.Empty<string>();
+            }
+
+            return candidates
+                .OrderByDescending(static candidate => candidate.Preferred)
+                .ThenByDescending(static candidate => candidate.SeenUtcTicks)
+                .Select(static candidate => candidate.Hint)
+                .Take(MaxToolExecutionBackendHints)
+                .ToArray();
+        }
+    }
+
+    private static string BuildToolExecutionBackendHint(string toolName, string executionBackend) {
+        var normalizedToolName = NormalizeToolNameForAnswerPlan(toolName);
+        var normalizedBackend = NormalizeToolExecutionBackend(executionBackend);
+        if (normalizedToolName.Length == 0 || normalizedBackend.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalizedToolName + ToolExecutionBackendHintFieldSeparator + normalizedBackend;
+    }
+
+    private static string NormalizeToolExecutionBackendHint(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var separator = normalized.IndexOf(ToolExecutionBackendHintFieldSeparator, StringComparison.Ordinal);
+        if (separator <= 0 || separator >= normalized.Length - 1) {
+            return string.Empty;
+        }
+
+        return BuildToolExecutionBackendHint(
+            normalized[..separator],
+            normalized[(separator + ToolExecutionBackendHintFieldSeparator.Length)..]);
     }
 
     private static string[] ExtractExplicitRequestedToolNames(string userRequest) {
