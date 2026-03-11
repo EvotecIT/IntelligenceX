@@ -227,20 +227,6 @@ internal static partial class TranscriptMarkdownNormalizer {
 
     private static int InlineCodePlaceholderCounter;
 
-    private static readonly Lazy<OfficeImoInputNormalizationBridge?> OfficeImoInputNormalizationBridgeLazy =
-        new(CreateOfficeImoInputNormalizationBridge);
-    private static readonly string[] OfficeImoInputNormalizationPropertyNames = [
-        "NormalizeLooseStrongDelimiters",
-        "NormalizeTightStrongBoundaries",
-        "NormalizeOrderedListMarkerSpacing",
-        "NormalizeOrderedListParenMarkers",
-        "NormalizeOrderedListCaretArtifacts",
-        "NormalizeTightParentheticalSpacing",
-        "NormalizeNestedStrongDelimiters",
-        "NormalizeTightArrowStrongBoundaries",
-        "NormalizeTightColonSpacing"
-    ];
-
     public static string NormalizeForRendering(string? text) {
         var normalized = text ?? string.Empty;
         if (normalized.Length == 0) {

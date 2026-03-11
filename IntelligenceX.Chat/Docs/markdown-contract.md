@@ -28,6 +28,8 @@ The App entrypoint for this stage is `TranscriptMarkdownPreparation`, which now 
 - persisted transcript repair during conversation load
 - streaming preview normalization for in-progress assistant deltas
 
+`TranscriptMarkdownNormalizer` may also delegate to `OfficeImoMarkdownInputNormalizationRuntimeContract` when a compatible `OfficeIMO.Markdown` input normalizer is available at runtime.
+
 ### 2. Shared transcript markdown contract
 
 `TranscriptMarkdownContract` in `IntelligenceX.Chat.ExportArtifacts` is the shared normalization layer used by multiple consumers.
