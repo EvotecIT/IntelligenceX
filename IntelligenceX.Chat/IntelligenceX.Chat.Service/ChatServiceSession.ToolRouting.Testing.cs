@@ -533,7 +533,7 @@ internal sealed partial class ChatServiceSession {
             Output = """{"ok":true}""",
             Ok = true
         };
-        RememberAlternateEngineOutcome(threadId, toolName, engineId, output);
+        RememberAlternateEngineOutcome(threadId, toolName, engineId, output, seenUtcTicks);
     }
 
     internal void RememberAlternateEngineFailureForTesting(
@@ -541,7 +541,8 @@ internal sealed partial class ChatServiceSession {
         string toolName,
         string engineId,
         string? errorCode = "transport_unavailable",
-        string? error = "Alternate engine failed.") {
+        string? error = "Alternate engine failed.",
+        long? seenUtcTicks = null) {
         var output = new ToolOutputDto {
             CallId = "alt-engine-failure",
             Output = """{"ok":false}""",
@@ -550,11 +551,18 @@ internal sealed partial class ChatServiceSession {
             Error = error,
             IsTransient = true
         };
-        RememberAlternateEngineOutcome(threadId, toolName, engineId, output);
+        RememberAlternateEngineOutcome(threadId, toolName, engineId, output, seenUtcTicks);
     }
 
     internal string ResolveAlternateEngineHealthStorePathForTesting() {
         return ResolveAlternateEngineHealthStorePath();
+    }
+
+    internal string[] OrderAlternateEngineIdsByHealthForTesting(
+        string threadId,
+        string toolName,
+        IReadOnlyList<string> candidateEngineIds) {
+        return OrderAlternateEngineIdsByHealth(threadId, toolName, candidateEngineIds);
     }
 
     internal static string BuildDomainIntentClarificationTextForTesting(bool hasAdFamily, bool hasPublicFamily) {

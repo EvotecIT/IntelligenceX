@@ -61,7 +61,7 @@ internal sealed partial class ChatServiceSession {
         return ResolveDefaultAlternateEngineHealthStorePath();
     }
 
-    private void RememberAlternateEngineOutcome(string threadId, string toolName, string engineId, ToolOutputDto output) {
+    private void RememberAlternateEngineOutcome(string threadId, string toolName, string engineId, ToolOutputDto output, long? seenUtcTicks = null) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         var normalizedToolName = (toolName ?? string.Empty).Trim();
         var normalizedEngineId = NormalizeAlternateEngineHealthToken(engineId);
@@ -69,20 +69,21 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var nowTicks = DateTime.UtcNow.Ticks;
+        var isSuccess = IsSuccessfulToolOutput(output);
+        var nowTicks = seenUtcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks);
         PersistAlternateEngineHealthSnapshot(
             normalizedThreadId,
             new AlternateEngineHealthSnapshot(
                 ToolName: normalizedToolName,
                 EngineId: normalizedEngineId,
-                ErrorCode: IsSuccessfulToolOutput(output)
+                ErrorCode: isSuccess
                     ? string.Empty
                     : NormalizeAlternateEngineHealthText(output.ErrorCode, maxLength: 128),
-                Error: IsSuccessfulToolOutput(output)
+                Error: isSuccess
                     ? string.Empty
                     : NormalizeAlternateEngineHealthText(output.Error, maxLength: 280),
-                LastSuccessUtcTicks: IsSuccessfulToolOutput(output) ? nowTicks : 0,
-                LastFailureUtcTicks: IsSuccessfulToolOutput(output) ? 0 : nowTicks));
+                LastSuccessUtcTicks: isSuccess ? nowTicks : 0,
+                LastFailureUtcTicks: isSuccess ? 0 : nowTicks));
     }
 
     private string[] OrderAlternateEngineIdsByHealth(
@@ -173,9 +174,21 @@ internal sealed partial class ChatServiceSession {
             return new Dictionary<string, AlternateEngineHealthSnapshot>(StringComparer.OrdinalIgnoreCase);
         }
 
-        return entries
-            .Where(entry => string.Equals(entry.ToolName, normalizedToolName, StringComparison.OrdinalIgnoreCase))
-            .ToDictionary(static entry => entry.EngineId, StringComparer.OrdinalIgnoreCase);
+        var snapshotsByEngineId = new Dictionary<string, AlternateEngineHealthSnapshot>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < entries.Length; i++) {
+            var entry = entries[i];
+            if (!string.Equals(entry.ToolName, normalizedToolName, StringComparison.OrdinalIgnoreCase)
+                || entry.EngineId.Length == 0) {
+                continue;
+            }
+
+            if (!snapshotsByEngineId.TryGetValue(entry.EngineId, out var existing)
+                || Math.Max(entry.LastSuccessUtcTicks, entry.LastFailureUtcTicks) > Math.Max(existing.LastSuccessUtcTicks, existing.LastFailureUtcTicks)) {
+                snapshotsByEngineId[entry.EngineId] = entry;
+            }
+        }
+
+        return snapshotsByEngineId;
     }
 
     private static string NormalizeAlternateEngineHealthToken(string? value) {
@@ -364,23 +377,39 @@ internal sealed partial class ChatServiceSession {
             }
 
             var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(directory)) {
+            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory)) {
                 Directory.CreateDirectory(directory);
             }
 
             var json = JsonSerializer.Serialize(store, AlternateEngineHealthStoreJsonOptions);
-            tmp = path + ".tmp";
-            File.WriteAllText(tmp, json, Encoding.UTF8);
-            File.Copy(tmp, path, overwrite: true);
+            var fileName = Path.GetFileName(path);
+            var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
+            tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);
+
+            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+                TryHardenPendingActionsStoreAclNoThrow(tmp);
+                using var writer = new StreamWriter(fs, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                writer.Write(json);
+                writer.Flush();
+                fs.Flush(true);
+            }
+
+            if (File.Exists(path)) {
+                File.Replace(tmp, path, null, ignoreMetadataErrors: true);
+            } else {
+                File.Move(tmp, path);
+            }
+
+            TryHardenPendingActionsStoreAclNoThrow(path);
         } catch (Exception ex) {
             Trace.TraceWarning($"Alternate engine health store write failed: {ex.GetType().Name}: {ex.Message}");
         } finally {
-            try {
-                if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
+            if (!string.IsNullOrWhiteSpace(tmp) && File.Exists(tmp)) {
+                try {
                     File.Delete(tmp);
+                } catch {
+                    // Best effort only.
                 }
-            } catch {
-                // best effort only
             }
         }
     }

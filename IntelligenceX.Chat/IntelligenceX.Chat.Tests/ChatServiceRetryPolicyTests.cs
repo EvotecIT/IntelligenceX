@@ -587,6 +587,60 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
+    public void OrderAlternateEngineIdsByHealthForTesting_IgnoresExpiredSuccessTimestamps() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var expiredTicks = DateTime.UtcNow.AddHours(-2).Ticks;
+        var freshTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+
+        session.RememberAlternateEngineSuccessForTesting("thread-order-success", "system_inventory_probe", "cim", expiredTicks);
+        session.RememberAlternateEngineSuccessForTesting("thread-order-success", "system_inventory_probe", "wmi", freshTicks);
+
+        var ordered = session.OrderAlternateEngineIdsByHealthForTesting(
+            "thread-order-success",
+            "system_inventory_probe",
+            new[] { "cim", "wmi" });
+
+        Assert.Equal(new[] { "wmi", "cim" }, ordered);
+    }
+
+    [Fact]
+    public void OrderAlternateEngineIdsByHealthForTesting_IgnoresExpiredFailureTimestampsAfterRestart() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-alt-engine-health-expired-failure-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+
+        try {
+            var expiredTicks = DateTime.UtcNow.AddHours(-2).Ticks;
+            var session1 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            session1.RememberAlternateEngineFailureForTesting(
+                "thread-order-failure",
+                "system_inventory_probe",
+                "wmi",
+                seenUtcTicks: expiredTicks);
+
+            var session2 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var ordered = session2.OrderAlternateEngineIdsByHealthForTesting(
+                "thread-order-failure",
+                "system_inventory_probe",
+                new[] { "wmi", "cim" });
+
+            Assert.Equal(new[] { "wmi", "cim" }, ordered);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
+    }
+
+    [Fact]
     public void ShouldAttemptRecoveryHelperTools_AttemptsForStructuredTransportFailureWhenHelpersDeclared() {
         var profile = InvokeResolveRetryProfile(
             "custom_inventory_probe",
