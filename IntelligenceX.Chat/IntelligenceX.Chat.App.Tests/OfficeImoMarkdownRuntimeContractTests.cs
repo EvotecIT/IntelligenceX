@@ -35,6 +35,18 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
+    /// Verifies DOCX runtime diagnostics advertise the current minimum supported package version.
+    /// </summary>
+    [Fact]
+    public void DescribeWordMarkdownContract_ReportsMinimumPublishedVersion() {
+        var description = InvokeContractMethod("DescribeWordMarkdownContract");
+
+        Assert.Contains("OfficeIMO.Word.Markdown", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=1.0.6", description, StringComparison.Ordinal);
+        Assert.Contains("status=", description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Verifies renderer option capability probing only enables network support when the runtime exposes it.
     /// </summary>
     [Fact]

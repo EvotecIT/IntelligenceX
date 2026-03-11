@@ -166,7 +166,8 @@ internal static class TranscriptForensicsExporter {
     private static TranscriptForensicsRendererSnapshot BuildRendererSnapshot() {
         return new TranscriptForensicsRendererSnapshot {
             MarkdownRendererAssembly = OfficeImoMarkdownRuntimeContract.DescribeMarkdownRendererContract(),
-            MarkdownAssembly = OfficeImoMarkdownRuntimeContract.DescribeMarkdownContract()
+            MarkdownAssembly = OfficeImoMarkdownRuntimeContract.DescribeMarkdownContract(),
+            WordMarkdownAssembly = OfficeImoMarkdownRuntimeContract.DescribeWordMarkdownContract()
         };
     }
 
@@ -192,6 +193,7 @@ internal sealed class TranscriptForensicsBundle {
 internal sealed class TranscriptForensicsRendererSnapshot {
     public string MarkdownRendererAssembly { get; set; } = string.Empty;
     public string MarkdownAssembly { get; set; } = string.Empty;
+    public string WordMarkdownAssembly { get; set; } = string.Empty;
 }
 
 internal sealed class TranscriptForensicsConversationSnapshot {

@@ -11,6 +11,7 @@ namespace IntelligenceX.Chat.App;
 internal static class OfficeImoMarkdownRuntimeContract {
     private static readonly Version MinimumMarkdownRendererVersion = new(0, 1, 9);
     private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 5, 12);
+    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 6);
     private static readonly Lazy<PropertyInfo?> NetworkPropertyLazy = new(
         () => typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public));
 
@@ -70,6 +71,20 @@ internal static class OfficeImoMarkdownRuntimeContract {
             "OfficeIMO.Markdown",
             MinimumMarkdownVersionForNormalizationPresets,
             "input normalization presets");
+    }
+
+    /// <summary>
+    /// Describes the loaded markdown-to-word assembly against the minimum supported package contract.
+    /// </summary>
+    public static string DescribeWordMarkdownContract() {
+        var wordMarkdownAssembly = Type.GetType(
+            "OfficeIMO.Word.Markdown.MarkdownToWordOptions, OfficeIMO.Word.Markdown",
+            throwOnError: false)?.Assembly;
+        return DescribeAssemblyContract(
+            wordMarkdownAssembly,
+            "OfficeIMO.Word.Markdown",
+            MinimumWordMarkdownVersion,
+            "transcript markdown-to-word conversion");
     }
 
     private static string DescribeAssemblyContract(
