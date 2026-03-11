@@ -225,7 +225,7 @@ internal static partial class WizardRunner {
                 AuthStore = new FileAuthBundleStore(authPath)
             };
             using var service = new ChatGptUsageService(options);
-            var report = await service.GetReportAsync(includeEvents, CancellationToken.None).ConfigureAwait(false);
+            var report = await service.GetReportAsync(includeEvents, cancellationToken: CancellationToken.None).ConfigureAwait(false);
             TrySaveCache(report.Snapshot);
             RenderUsage(report);
         } catch (Exception ex) {

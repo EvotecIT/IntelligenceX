@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.OpenAI.AppServer;
@@ -8,6 +9,7 @@ using IntelligenceX.OpenAI.Native;
 using IntelligenceX.OpenAI.Transport;
 using IntelligenceX.Rpc;
 using IntelligenceX.Telemetry;
+using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Utils;
 
 namespace IntelligenceX.OpenAI;
@@ -26,6 +28,7 @@ public sealed class IntelligenceXClient : IDisposable
     private string? _defaultWorkingDirectory;
     private string? _defaultApprovalPolicy;
     private SandboxPolicy? _defaultSandboxPolicy;
+    private IDisposable? _usageTelemetrySession;
 
     private IntelligenceXClient(IOpenAITransport transport, string defaultModel, string? workingDirectory, string? approvalPolicy, SandboxPolicy? sandboxPolicy) {
         _transport = transport;
@@ -54,6 +57,10 @@ public sealed class IntelligenceXClient : IDisposable
     /// Raised when an RPC call completes.
     /// </summary>
     public event EventHandler<RpcCallCompletedEventArgs>? RpcCallCompleted;
+    /// <summary>
+    /// Raised when a chat turn completes, including optional usage metadata.
+    /// </summary>
+    public event EventHandler<IntelligenceXTurnCompletedEventArgs>? TurnCompleted;
     /// <summary>
     /// Raised when a login flow starts.
     /// </summary>
@@ -121,10 +128,16 @@ public sealed class IntelligenceXClient : IDisposable
                 break;
         }
         var wrapper = new IntelligenceXClient(transport, options.DefaultModel, options.DefaultWorkingDirectory, options.DefaultApprovalPolicy, options.DefaultSandboxPolicy);
-        if (options.AutoInitialize) {
-            await wrapper.InitializeAsync(options.ClientInfo, cancellationToken).ConfigureAwait(false);
+        try {
+            if (options.AutoInitialize) {
+                await wrapper.InitializeAsync(options.ClientInfo, cancellationToken).ConfigureAwait(false);
+            }
+            wrapper._usageTelemetrySession = InternalIxUsageTelemetrySession.TryCreate(wrapper, options);
+            return wrapper;
+        } catch {
+            wrapper.Dispose();
+            throw;
         }
-        return wrapper;
     }
 
     /// <summary>
@@ -360,8 +373,19 @@ public sealed class IntelligenceXClient : IDisposable
             }
         }
 
-        return await _transport.StartTurnAsync(_currentThreadId!, input, options, cwd, approval, sandbox, cancellationToken)
-            .ConfigureAwait(false);
+        var startedAtUtc = DateTimeOffset.UtcNow;
+        var stopwatch = Stopwatch.StartNew();
+        try {
+            var turn = await _transport.StartTurnAsync(_currentThreadId!, input, options, cwd, approval, sandbox, cancellationToken)
+                .ConfigureAwait(false);
+            stopwatch.Stop();
+            RaiseTurnCompleted(_currentThreadId!, options, model, cwd, startedAtUtc, stopwatch.Elapsed, turn, success: true, error: null);
+            return turn;
+        } catch (Exception ex) {
+            stopwatch.Stop();
+            RaiseTurnCompleted(_currentThreadId!, options, model, cwd, startedAtUtc, stopwatch.Elapsed, turn: null, success: false, error: ex);
+            throw;
+        }
     }
 
     /// <summary>
@@ -423,11 +447,35 @@ public sealed class IntelligenceXClient : IDisposable
 
     private void OnRpcCallStarted(object? sender, RpcCallStartedEventArgs args) => RpcCallStarted?.Invoke(this, args);
     private void OnRpcCallCompleted(object? sender, RpcCallCompletedEventArgs args) => RpcCallCompleted?.Invoke(this, args);
+    private void RaiseTurnCompleted(string threadId, Chat.ChatOptions options, string model, string? workingDirectory,
+        DateTimeOffset startedAtUtc, TimeSpan duration, TurnInfo? turn, bool success, Exception? error) {
+        var completedAtUtc = startedAtUtc + duration;
+        var surface = NormalizeOptional(options.TelemetrySurface) ?? "chat";
+        var feature = NormalizeOptional(options.TelemetryFeature);
+        TurnCompleted?.Invoke(this, new IntelligenceXTurnCompletedEventArgs(
+            threadId,
+            model,
+            _transport.Kind,
+            startedAtUtc,
+            completedAtUtc,
+            workingDirectory,
+            options.Workspace,
+            feature,
+            surface,
+            turn,
+            success,
+            error));
+    }
     private void OnLoginStarted(object? sender, LoginEventArgs args) => LoginStarted?.Invoke(this, args);
     private void OnLoginCompleted(object? sender, LoginEventArgs args) => LoginCompleted?.Invoke(this, args);
     private void OnProtocolLineReceived(object? sender, string line) => ProtocolLineReceived?.Invoke(this, line);
     private void OnStandardErrorReceived(object? sender, string line) => StandardErrorReceived?.Invoke(this, line);
     private void OnDeltaReceived(object? sender, string text) => DeltaReceived?.Invoke(this, text);
+
+    private static string? NormalizeOptional(string? value) {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
 
     private void EnsureFileSafety(Chat.ChatInput input, Chat.ChatOptions options) {
         var paths = input.GetImagePaths();
@@ -455,6 +503,8 @@ public sealed class IntelligenceXClient : IDisposable
     /// Disposes the client and underlying transport.
     /// </summary>
     public void Dispose() {
+        _usageTelemetrySession?.Dispose();
+        _usageTelemetrySession = null;
         _transport.DeltaReceived -= OnDeltaReceived;
         _transport.RpcCallStarted -= OnRpcCallStarted;
         _transport.RpcCallCompleted -= OnRpcCallCompleted;
@@ -471,6 +521,8 @@ public sealed class IntelligenceXClient : IDisposable
     /// </summary>
     /// <returns>A value task that completes when the operation finishes.</returns>
     public ValueTask DisposeAsync() {
+        _usageTelemetrySession?.Dispose();
+        _usageTelemetrySession = null;
         _transport.DeltaReceived -= OnDeltaReceived;
         _transport.RpcCallStarted -= OnRpcCallStarted;
         _transport.RpcCallCompleted -= OnRpcCallCompleted;
@@ -487,6 +539,8 @@ public sealed class IntelligenceXClient : IDisposable
     /// </summary>
     /// <returns>A task that completes when the operation finishes.</returns>
     public Task DisposeAsync() {
+        _usageTelemetrySession?.Dispose();
+        _usageTelemetrySession = null;
         _transport.DeltaReceived -= OnDeltaReceived;
         _transport.RpcCallStarted -= OnRpcCallStarted;
         _transport.RpcCallCompleted -= OnRpcCallCompleted;

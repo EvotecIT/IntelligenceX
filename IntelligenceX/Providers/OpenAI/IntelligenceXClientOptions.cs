@@ -62,6 +62,30 @@ public sealed class IntelligenceXClientOptions {
     /// Default sandbox policy used by the app-server.
     /// </summary>
     public SandboxPolicy? DefaultSandboxPolicy { get; set; }
+    /// <summary>
+    /// Enables persistent usage telemetry for IntelligenceX-owned turns.
+    /// </summary>
+    public bool EnableUsageTelemetry { get; set; }
+    /// <summary>
+    /// Optional SQLite database path used for usage telemetry persistence.
+    /// </summary>
+    public string? UsageTelemetryDatabasePath { get; set; }
+    /// <summary>
+    /// Optional machine identifier stored with usage telemetry events.
+    /// </summary>
+    public string? UsageTelemetryMachineId { get; set; }
+    /// <summary>
+    /// Optional account label stored with usage telemetry events.
+    /// </summary>
+    public string? UsageTelemetryAccountLabel { get; set; }
+    /// <summary>
+    /// Optional provider account identifier stored with usage telemetry events.
+    /// </summary>
+    public string? UsageTelemetryProviderAccountId { get; set; }
+    /// <summary>
+    /// Optional logical source path used for the usage telemetry root.
+    /// </summary>
+    public string? UsageTelemetrySourcePath { get; set; }
 
     /// <summary>
     /// Validates the configuration and throws on invalid values.

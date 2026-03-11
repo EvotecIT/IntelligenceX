@@ -61,6 +61,24 @@ internal sealed class ChatGptUsageClient : IDisposable {
         return result;
     }
 
+    public async Task<ChatGptDailyTokenUsageBreakdown> GetDailyTokenUsageBreakdownAsync(string baseUrl, string accessToken, string? accountId,
+        string? userAgent, CancellationToken cancellationToken) {
+        var normalized = NormalizeBaseUrl(baseUrl, out var style);
+        var url = BuildDailyTokenUsageBreakdownUrl(normalized, style);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        ApplyHeaders(request, accessToken, accountId, userAgent);
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var payload = await ReadAsStringAsync(response.Content, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) {
+            throw new InvalidOperationException($"ChatGPT daily token usage request failed ({(int)response.StatusCode}): {payload}");
+        }
+        var obj = JsonLite.Parse(payload)?.AsObject();
+        if (obj is null) {
+            throw new InvalidOperationException("Invalid ChatGPT daily token usage response.");
+        }
+        return ChatGptDailyTokenUsageBreakdown.FromJson(obj);
+    }
+
     private static string NormalizeBaseUrl(string baseUrl, out ChatGptUsagePathStyle style) {
         var normalized = string.IsNullOrWhiteSpace(baseUrl) ? string.Empty : baseUrl.Trim();
         while (normalized.EndsWith("/", StringComparison.Ordinal)) {
@@ -87,6 +105,12 @@ internal sealed class ChatGptUsageClient : IDisposable {
         return style == ChatGptUsagePathStyle.ChatGptApi
             ? $"{baseUrl}/wham/usage/credit-usage-events"
             : $"{baseUrl}/api/codex/usage/credit-usage-events";
+    }
+
+    private static string BuildDailyTokenUsageBreakdownUrl(string baseUrl, ChatGptUsagePathStyle style) {
+        return style == ChatGptUsagePathStyle.ChatGptApi
+            ? $"{baseUrl}/wham/usage/daily-token-usage-breakdown"
+            : $"{baseUrl}/api/codex/usage/daily-token-usage-breakdown";
     }
 
     private static void ApplyHeaders(HttpRequestMessage request, string accessToken, string? accountId, string? userAgent) {

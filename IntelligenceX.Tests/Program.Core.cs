@@ -452,6 +452,24 @@ internal static partial class Program {
         AssertEqual(true, snapshot.Credits!.HasCredits, "credits has");
     }
 
+    private static void TestChatGptDailyTokenBreakdownParse() {
+        const string json = "{"
+            + "\"data\":["
+            + "{\"date\":\"2026-02-11\",\"product_surface_usage_values\":{\"cli\":68.83791802054532,\"desktop_app\":29.919877293184527,\"unknown\":1.2422046862701568}},"
+            + "{\"date\":\"2026-02-12\",\"product_surface_usage_values\":{\"cli\":22.660396778946094,\"desktop_app\":19.6835455811419,\"unknown\":1.3118327312357463}}"
+            + "],"
+            + "\"units\":\"percent\""
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "daily breakdown json");
+        var breakdown = ChatGptDailyTokenUsageBreakdown.FromJson(obj!);
+        AssertEqual("percent", breakdown.Units, "daily breakdown units");
+        AssertEqual(2, breakdown.Data.Count, "daily breakdown row count");
+        AssertEqual("2026-02-11", breakdown.Data[0].Date, "daily breakdown first date");
+        AssertEqual(68.83791802054532, breakdown.Data[0].ProductSurfaceUsageValues["cli"], "daily breakdown cli");
+        AssertEqual(100.0, Math.Round(breakdown.Data[0].Total, 6), "daily breakdown total");
+    }
+
     private static void TestChatGptUsageCacheInvalidJson() {
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-usage-{Guid.NewGuid():N}.json");
         try {
@@ -532,6 +550,27 @@ internal static partial class Program {
         AssertEqual("acct-123", result!.NativeOptions.AuthAccountId, "EasySession auth account id");
     }
 
+    private static void TestEasySessionBuildClientOptionsCarriesUsageTelemetrySettings() {
+        var options = new EasySessionOptions {
+            EnableUsageTelemetry = true,
+            UsageTelemetryDatabasePath = Path.Combine(Path.GetTempPath(), "ix-telemetry-options", "usage.db"),
+            UsageTelemetryMachineId = "machine-a",
+            UsageTelemetryAccountLabel = "personal",
+            UsageTelemetryProviderAccountId = "acct-telemetry",
+            UsageTelemetrySourcePath = "ix://internal/personal"
+        };
+        var method = typeof(EasySession).GetMethod("BuildClientOptions", BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "EasySession.BuildClientOptions telemetry method");
+        var result = method!.Invoke(null, new object?[] { options }) as IntelligenceXClientOptions;
+        AssertNotNull(result, "EasySession telemetry client options");
+        AssertEqual(true, result!.EnableUsageTelemetry, "EasySession telemetry enabled");
+        AssertEqual(options.UsageTelemetryDatabasePath, result.UsageTelemetryDatabasePath, "EasySession telemetry db");
+        AssertEqual("machine-a", result.UsageTelemetryMachineId, "EasySession telemetry machine");
+        AssertEqual("personal", result.UsageTelemetryAccountLabel, "EasySession telemetry account label");
+        AssertEqual("acct-telemetry", result.UsageTelemetryProviderAccountId, "EasySession telemetry provider account");
+        AssertEqual("ix://internal/personal", result.UsageTelemetrySourcePath, "EasySession telemetry source path");
+    }
+
 #if !NET472
     private static void TestUsageOptionsParseAccountId() {
         var cliAssembly = typeof(global::IntelligenceX.Cli.Program).Assembly;
@@ -559,6 +598,20 @@ internal static partial class Program {
         AssertNotNull(bySurfaceProp, "UsageOptions.BySurface property");
         var bySurface = bySurfaceProp!.GetValue(parsed) is bool value && value;
         AssertEqual(true, bySurface, "UsageOptions by surface");
+    }
+
+    private static void TestUsageOptionsParseDailyBreakdown() {
+        var cliAssembly = typeof(global::IntelligenceX.Cli.Program).Assembly;
+        var usageOptionsType = cliAssembly.GetType("IntelligenceX.Cli.Usage.UsageOptions", throwOnError: true);
+        AssertNotNull(usageOptionsType, "UsageOptions type daily breakdown");
+        var parseMethod = usageOptionsType!.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static);
+        AssertNotNull(parseMethod, "UsageOptions.Parse method daily breakdown");
+        var parsed = parseMethod!.Invoke(null, new object[] { new[] { "--daily-breakdown", "--json" } });
+        AssertNotNull(parsed, "UsageOptions parsed instance daily breakdown");
+        var dailyBreakdownProp = usageOptionsType.GetProperty("DailyBreakdown", BindingFlags.Public | BindingFlags.Instance);
+        AssertNotNull(dailyBreakdownProp, "UsageOptions.DailyBreakdown property");
+        var dailyBreakdown = dailyBreakdownProp!.GetValue(parsed) is bool value && value;
+        AssertEqual(true, dailyBreakdown, "UsageOptions daily breakdown");
     }
 
     private static void TestUsageSurfaceSummaryJsonBuckets() {

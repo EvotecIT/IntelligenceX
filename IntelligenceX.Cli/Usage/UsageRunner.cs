@@ -20,6 +20,7 @@ internal static class UsageRunner {
         Console.WriteLine("Options:");
         Console.WriteLine("  --events              Include credit usage events");
         Console.WriteLine("  --by-surface          Include grouped usage totals by product surface");
+        Console.WriteLine("  --daily-breakdown     Include daily token usage breakdown");
         Console.WriteLine("  --json                Print JSON output");
         Console.WriteLine("  --no-cache            Do not write usage cache");
         Console.WriteLine("  --account-id <id>      Select a specific ChatGPT account id");
@@ -56,10 +57,11 @@ internal static class UsageRunner {
 
             using var service = new ChatGptUsageService(nativeOptions);
             var includeEventsForFetch = options.IncludeEvents || options.BySurface;
-            var report = await service.GetReportAsync(includeEventsForFetch, CancellationToken.None).ConfigureAwait(false);
+            var report = await service.GetReportAsync(includeEventsForFetch, options.DailyBreakdown, CancellationToken.None)
+                .ConfigureAwait(false);
 
             if (options.Json) {
-                var jsonObject = BuildJsonOutput(report, options.IncludeEvents, options.BySurface);
+                var jsonObject = BuildJsonOutput(report, options.IncludeEvents, options.BySurface, options.DailyBreakdown);
                 var json = JsonLite.Serialize(JsonValue.From(jsonObject));
                 Console.WriteLine(json);
             } else {
@@ -69,6 +71,9 @@ internal static class UsageRunner {
                 }
                 if (options.BySurface) {
                     PrintSurfaceSummary(report.Events);
+                }
+                if (options.DailyBreakdown) {
+                    PrintDailyBreakdown(report.DailyBreakdown);
                 }
             }
             if (!options.NoCache) {
@@ -85,7 +90,7 @@ internal static class UsageRunner {
         }
     }
 
-    private static JsonObject BuildJsonOutput(ChatGptUsageReport report, bool includeEvents, bool bySurface) {
+    private static JsonObject BuildJsonOutput(ChatGptUsageReport report, bool includeEvents, bool bySurface, bool dailyBreakdown) {
         var json = new JsonObject()
             .Add("usage", report.Snapshot.ToJson());
         if (includeEvents) {
@@ -93,6 +98,9 @@ internal static class UsageRunner {
         }
         if (bySurface) {
             json.Add("surfaceSummary", BuildSurfaceSummaryJsonArray(report.Events));
+        }
+        if (dailyBreakdown && report.DailyBreakdown is not null) {
+            json.Add("dailyBreakdown", report.DailyBreakdown.ToJson());
         }
         return json;
     }
@@ -210,6 +218,32 @@ internal static class UsageRunner {
         }
     }
 
+    private static void PrintDailyBreakdown(ChatGptDailyTokenUsageBreakdown? dailyBreakdown) {
+        if (dailyBreakdown is null || dailyBreakdown.Data.Count == 0) {
+            Console.WriteLine("Daily token breakdown: none");
+            return;
+        }
+
+        var units = string.IsNullOrWhiteSpace(dailyBreakdown.Units) ? string.Empty : $" ({dailyBreakdown.Units})";
+        Console.WriteLine($"Daily token breakdown{units}:");
+        foreach (var day in dailyBreakdown.Data) {
+            var surfaces = day.ProductSurfaceUsageValues
+                .Where(static pair => Math.Abs(pair.Value) > 0)
+                .OrderByDescending(static pair => pair.Value)
+                .ThenBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(pair => $"{pair.Key} {pair.Value.ToString("0.####", CultureInfo.InvariantCulture)}")
+                .ToArray();
+
+            if (surfaces.Length == 0) {
+                Console.WriteLine($"  - {day.Date}: total 0");
+                continue;
+            }
+
+            var total = day.Total.ToString("0.####", CultureInfo.InvariantCulture);
+            Console.WriteLine($"  - {day.Date}: total {total} | {string.Join(" | ", surfaces)}");
+        }
+    }
+
     private static IReadOnlyList<KeyValuePair<string, SurfaceUsageBucket>> BuildSurfaceSummary(
         IReadOnlyList<ChatGptCreditUsageEvent> events) {
         var buckets = new Dictionary<string, SurfaceUsageBucket>(StringComparer.OrdinalIgnoreCase);
@@ -316,6 +350,7 @@ internal static class UsageRunner {
 internal sealed class UsageOptions {
     public bool IncludeEvents { get; set; }
     public bool BySurface { get; set; }
+    public bool DailyBreakdown { get; set; }
     public bool Json { get; set; }
     public bool ShowHelp { get; set; }
     public bool NoCache { get; set; }
@@ -338,6 +373,9 @@ internal sealed class UsageOptions {
                     break;
                 case "--by-surface":
                     options.BySurface = true;
+                    break;
+                case "--daily-breakdown":
+                    options.DailyBreakdown = true;
                     break;
                 case "--json":
                     options.Json = true;
