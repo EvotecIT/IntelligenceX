@@ -620,6 +620,10 @@ public class ToolDefinitionContractTests {
                                 string.Equals(binding.SourceField, "meta/entity_handoff/computer_candidates/0/value", StringComparison.OrdinalIgnoreCase)
                                 && string.Equals(binding.TargetArgument, "domain_controller", StringComparison.OrdinalIgnoreCase)
                                 && !binding.IsRequired));
+
+        var evtxQueryRecovery = Assert.IsType<ToolRecoveryContract>(definitionsByName["eventlog_evtx_query"].Recovery);
+        Assert.Contains("eventlog_channels_list", evtxQueryRecovery.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("eventlog_channel_list", evtxQueryRecovery.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
