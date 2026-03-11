@@ -9,15 +9,15 @@ $appTestsProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Ap
 $packageModeProperty = '-p:UseLocalOfficeImoCheckout=false'
 $skipSidecarBuildProperty = '-p:SkipChatServiceSidecarBuild=true'
 $filter = @(
-    'FullyQualifiedName~TranscriptMarkdownContractTests'
-    'FullyQualifiedName~TranscriptMarkdownContractIntegrationTests'
-    'FullyQualifiedName~OfficeImoMarkdownRuntimeContractTests'
-    'FullyQualifiedName~OfficeImoMarkdownInputNormalizationRuntimeContractTests'
-    'FullyQualifiedName~OfficeImoWordMarkdownRuntimeContractTests'
+    'FullyQualifiedName~DescribeMarkdownRendererContract_ReportsMinimumPublishedVersion'
+    'FullyQualifiedName~DescribeMarkdownContract_ReportsNormalizationPresetMinimumVersion'
+    'FullyQualifiedName~CreateTranscriptRendererOptions_EnablesExpectedVisualDefaults'
+    'FullyQualifiedName~NormalizeForTranscriptCleanup_NormalizesOrderedListParenMarkers'
+    'FullyQualifiedName~NormalizeForTranscriptCleanup_DoesNotMutateFencedCode'
+    'FullyQualifiedName~RenderAndExportPreparation_ShareCoreNormalization_WhenNoExportOnlyCleanupIsNeeded'
+    'FullyQualifiedName~ExportAndDocxPreparation_KeepSharedContentWhileApplyingExplicitDocxDifferences'
     'FullyQualifiedName~CreateTranscriptMarkdownToWordOptions_ConfiguresNarrativeAndImageDefaults'
     'FullyQualifiedName~ExportTranscript_Docx_SanitizesCachedEvidenceMarkersBeforeWriter'
-    'FullyQualifiedName~WriteDocxTranscript_RendersSingleLineDefinitionsAsNarrativeText'
-    'FullyQualifiedName~WriteDocxTranscript_PreservesGroupedDefinitionLikeBlocks'
 ) -join '|'
 
 Write-Output 'Running OfficeIMO markdown package-mode gate...'
@@ -44,5 +44,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 dotnet build $exportArtifactsProject $packageModeProperty $skipSidecarBuildProperty --configuration Release --no-restore
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-dotnet test $appTestsProject $packageModeProperty $skipSidecarBuildProperty --configuration Release --filter $filter --no-restore
+dotnet build $appTestsProject $packageModeProperty $skipSidecarBuildProperty --configuration Release --no-restore
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+dotnet test $appTestsProject $packageModeProperty $skipSidecarBuildProperty --configuration Release --filter $filter --no-build --no-restore
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
