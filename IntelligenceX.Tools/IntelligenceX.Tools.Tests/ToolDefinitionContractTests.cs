@@ -627,6 +627,36 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void EventLogPack_DefaultSetupAndRecoveryHelpers_ShouldResolveToRegisteredTools() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in definitionsByName.Values.Where(static definition =>
+                     definition.Name.StartsWith("eventlog_", StringComparison.OrdinalIgnoreCase))) {
+            if (definition.Setup is ToolSetupContract setup && !string.IsNullOrWhiteSpace(setup.SetupToolName)) {
+                Assert.True(
+                    definitionsByName.ContainsKey(setup.SetupToolName),
+                    $"EventLog setup helper '{setup.SetupToolName}' for '{definition.Name}' is not a registered tool.");
+                Assert.DoesNotContain("eventlog_channel_list", setup.SetupToolName, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (definition.Recovery is not ToolRecoveryContract recovery) {
+                continue;
+            }
+
+            foreach (var recoveryToolName in recovery.RecoveryToolNames.Where(static name => !string.IsNullOrWhiteSpace(name))) {
+                Assert.True(
+                    definitionsByName.ContainsKey(recoveryToolName),
+                    $"EventLog recovery helper '{recoveryToolName}' for '{definition.Name}' is not a registered tool.");
+                Assert.DoesNotContain("eventlog_channel_list", recoveryToolName, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
     public void OfficeImoPack_ShouldExposeLocalSourceReadHandoff() {
         var registry = new ToolRegistry();
         registry.RegisterOfficeImoPack(new OfficeImoToolOptions());

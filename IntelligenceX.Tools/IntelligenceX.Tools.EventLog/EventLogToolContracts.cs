@@ -6,10 +6,12 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.EventLog;
 
 internal static class EventLogToolContracts {
+    private const string ChannelListToolName = "eventlog_channels_list";
+
     private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
             ["eventlog_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
-            ["eventlog_channels_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            [ChannelListToolName] = ToolRoutingTaxonomy.RoleDiagnostic,
             ["eventlog_providers_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
             ["eventlog_named_events_catalog"] = ToolRoutingTaxonomy.RoleDiagnostic,
             ["eventlog_named_events_query"] = ToolRoutingTaxonomy.RoleResolver,
@@ -88,7 +90,7 @@ internal static class EventLogToolContracts {
             definition,
             routing.Role,
             () => ToolContractDefaults.CreateRequiredSetup(
-                setupToolName: "eventlog_channels_list",
+                setupToolName: ChannelListToolName,
                 requirementId: "eventlog_channel_access",
                 requirementKind: ToolSetupRequirementKinds.Connectivity,
                 setupHintKeys: SetupHintKeys));
@@ -158,7 +160,7 @@ internal static class EventLogToolContracts {
                     retryableErrorCodes: supportsRetry
                         ? new[] { "timeout", "query_failed", "probe_failed", "transport_unavailable" }
                         : Array.Empty<string>(),
-                    recoveryToolNames: new[] { "eventlog_channels_list" });
+                    recoveryToolNames: new[] { ChannelListToolName });
             });
     }
 
