@@ -2,12 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using IntelligenceX.Chat.Abstractions.Policy;
 using Microsoft.UI.Xaml;
 
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private static readonly Regex StartupToolHealthWarningPattern = new(
+        @"^\[(?<kind>tool health(?: notice)?)\]\[(?<source>[^\]]+)\]\[(?<pack>[^\]]+)\]\s+(?<tool>\S+)\s+failed\s+\((?<code>[^)]+)\):\s*(?<message>.+)$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static string NormalizeRequestId(string? requestId) {
         return (requestId ?? string.Empty).Trim();
@@ -169,7 +173,7 @@ public sealed partial class MainWindow : Window {
             $"Found {toolHealthWarnings.Length} startup tool health warning(s):"
         };
         for (var i = 0; i < shown.Length; i++) {
-            lines.Add("- " + shown[i].Trim());
+            lines.Add("- " + FormatStartupToolHealthWarningForDisplay(shown[i], _sessionPolicy?.Packs));
         }
         if (toolHealthWarnings.Length > shown.Length) {
             lines.Add($"- +{toolHealthWarnings.Length - shown.Length} more");
@@ -178,6 +182,100 @@ public sealed partial class MainWindow : Window {
         lines.Add("Check the runtime policy panel for the full startup warning list.");
 
         AppendSystem(string.Join(Environment.NewLine, lines));
+    }
+
+    internal static string FormatStartupToolHealthWarningForDisplay(string? warning, ToolPackInfoDto[]? packs = null) {
+        var normalized = (warning ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "Startup tool health probe failed.";
+        }
+
+        var match = StartupToolHealthWarningPattern.Match(normalized);
+        if (!match.Success) {
+            return normalized;
+        }
+
+        var packId = match.Groups["pack"].Value;
+        var source = match.Groups["source"].Value;
+        var toolName = match.Groups["tool"].Value;
+        var errorCode = match.Groups["code"].Value;
+        var message = match.Groups["message"].Value;
+
+        var packLabel = ResolveStartupToolHealthPackLabel(packId, packs);
+        var sourceLabel = ResolveStartupToolHealthSourceLabel(source);
+        var title = sourceLabel.Length == 0
+            ? packLabel
+            : packLabel + " (" + sourceLabel + ")";
+
+        var summary = BuildStartupToolHealthIssueSummary(toolName, errorCode, message);
+        return "**" + title + "** " + summary;
+    }
+
+    private static string ResolveStartupToolHealthPackLabel(string? packId, ToolPackInfoDto[]? packs) {
+        var normalizedPackId = (packId ?? string.Empty).Trim();
+        if (packs is { Length: > 0 } && normalizedPackId.Length > 0) {
+            for (var i = 0; i < packs.Length; i++) {
+                var candidate = packs[i];
+                if (!string.Equals((candidate.Id ?? string.Empty).Trim(), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                var candidateName = (candidate.Name ?? string.Empty).Trim();
+                if (candidateName.Length > 0) {
+                    return candidateName;
+                }
+            }
+        }
+
+        if (normalizedPackId.Length == 0) {
+            return "Unknown pack";
+        }
+
+        var parts = normalizedPackId
+            .Split(new[] { '_', '-', '.' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(static part => part.Length == 0
+                ? string.Empty
+                : part.Length == 1
+                    ? part.ToUpperInvariant()
+                    : char.ToUpperInvariant(part[0]) + part[1..])
+            .Where(static part => part.Length > 0)
+            .ToArray();
+
+        return parts.Length == 0 ? normalizedPackId : string.Join(" ", parts);
+    }
+
+    private static string ResolveStartupToolHealthSourceLabel(string? source) {
+        var normalized = (source ?? string.Empty).Trim();
+        return normalized.ToLowerInvariant() switch {
+            "builtin" => "Core",
+            "open_source" => "Open",
+            "closed_source" => "Private",
+            _ => string.Empty
+        };
+    }
+
+    private static string BuildStartupToolHealthIssueSummary(string? toolName, string? errorCode, string? message) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        var normalizedErrorCode = (errorCode ?? string.Empty).Trim();
+        var normalizedMessage = (message ?? string.Empty).Trim();
+        if (normalizedMessage.Length == 0) {
+            normalizedMessage = "Probe failed.";
+        }
+
+        if (string.Equals(normalizedErrorCode, "smoke_invalid_argument", StringComparison.OrdinalIgnoreCase)) {
+            return "startup smoke check needs input selection: " + normalizedMessage;
+        }
+
+        if (string.Equals(normalizedErrorCode, "smoke_not_configured", StringComparison.OrdinalIgnoreCase)) {
+            return "startup smoke check is not configured: " + normalizedMessage;
+        }
+
+        var toolLabel = normalizedToolName.Length == 0 ? "startup probe" : normalizedToolName + " startup probe";
+        if (normalizedErrorCode.Length == 0) {
+            return toolLabel + " failed: " + normalizedMessage;
+        }
+
+        return toolLabel + " failed (" + normalizedErrorCode + "): " + normalizedMessage;
     }
 
     private void AppendStartupBootstrapSummaryFromPolicy() {

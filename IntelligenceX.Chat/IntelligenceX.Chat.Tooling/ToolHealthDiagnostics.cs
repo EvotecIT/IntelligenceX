@@ -252,7 +252,9 @@ public static class ToolHealthDiagnostics {
                 continue;
             }
 
-            if (IsPackInfoDefinition(definition, requireExplicitPackInfoRole: false) || HasRequiredArguments(definition)) {
+            if (IsPackInfoDefinition(definition, requireExplicitPackInfoRole: false)
+                || HasRequiredArguments(definition)
+                || ToolSelectionMetadata.RequiresSelectionForFallback(definition)) {
                 continue;
             }
 

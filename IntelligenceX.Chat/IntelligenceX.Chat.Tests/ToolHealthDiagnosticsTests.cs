@@ -285,6 +285,38 @@ public sealed class ToolHealthDiagnosticsTests {
     }
 
     [Fact]
+    public async Task ProbeAsync_DoesNotRunSmoke_WhenToolRequiresSelectionForFallback() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_smoke",
+            static (_, _) => Task.FromResult("""{"ok":false,"error_code":"should_not_run","error":"Smoke should skip selector-gated tools."}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            },
+            tags: new[] {
+                "fallback:requires_selection",
+                "fallback_selection_keys:target"
+            }));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Null(result.ErrorCode);
+    }
+
+    [Fact]
     public async Task ProbeAsync_ReturnsTimeout_WhenProbeExceedsDeadline() {
         var registry = new ToolRegistry();
         registry.Register(new StubTool("ad_pack_info", static async (_, token) => {
@@ -412,14 +444,15 @@ public sealed class ToolHealthDiagnosticsTests {
             string name,
             Func<JsonObject?, CancellationToken, Task<string>> invoke,
             ToolRoutingContract? routing = null,
-            JsonObject? parameters = null) {
+            JsonObject? parameters = null,
+            IReadOnlyList<string>? tags = null) {
             var effectiveRouting = routing ?? new ToolRoutingContract {
                 IsRoutingAware = true,
                 RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
                 PackId = ResolveDefaultPackId(name),
                 Role = ToolRoutingTaxonomy.RoleOperational
             };
-            Definition = new ToolDefinition(name, description: "stub", parameters: parameters, routing: effectiveRouting);
+            Definition = new ToolDefinition(name, description: "stub", parameters: parameters, tags: tags, routing: effectiveRouting);
             _invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
         }
 
