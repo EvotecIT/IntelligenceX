@@ -80,12 +80,12 @@ public static class ToolMutabilityHintNames {
 
         return ContainsExactHint(normalized, CanonicalMutatingActionArguments)
                || ContainsExactHint(normalized, ToolWriteGovernanceArgumentNames.CanonicalSchemaMetadataArguments)
-               || normalized.Contains("read_write", StringComparison.Ordinal)
-               || normalized.Contains("readwrite", StringComparison.Ordinal)
-               || normalized.Contains("danger", StringComparison.Ordinal)
-               || normalized.Contains("mutat", StringComparison.Ordinal)
-               || normalized.Contains("state_change", StringComparison.Ordinal)
-               || normalized.Contains("destruct", StringComparison.Ordinal);
+               || normalized.IndexOf("read_write", StringComparison.Ordinal) >= 0
+               || normalized.IndexOf("readwrite", StringComparison.Ordinal) >= 0
+               || normalized.IndexOf("danger", StringComparison.Ordinal) >= 0
+               || normalized.IndexOf("mutat", StringComparison.Ordinal) >= 0
+               || normalized.IndexOf("state_change", StringComparison.Ordinal) >= 0
+               || normalized.IndexOf("destruct", StringComparison.Ordinal) >= 0;
     }
 
     /// <summary>

@@ -903,6 +903,68 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public async Task ExecuteToolAsync_RetriesAutomaticBackendSelectionWhenPreferredHealthyBackendFailsPermanently() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.RememberAlternateEngineSuccessForTesting("thread-001", "system_inventory_probe", "cim");
+        var seenEngines = new List<string>();
+
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            new ToolDefinition(
+                "system_inventory_probe",
+                description: "alternate engine probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject()
+                        .Add("computer_name", new JsonObject().Add("type", "string"))
+                        .Add("engine", new JsonObject()
+                            .Add("type", "string")
+                            .Add("enum", new JsonArray().Add("auto").Add("wmi").Add("cim")))),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RetryableErrorCodes = new[] { "timeout", "transport_unavailable" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" }
+                }),
+            (arguments, _) => {
+                var engine = arguments?.GetString("engine") ?? string.Empty;
+                seenEngines.Add(engine);
+                if (string.Equals(engine, "cim", StringComparison.OrdinalIgnoreCase)) {
+                    return Task.FromResult(ToolOutputEnvelope.Error(
+                        errorCode: "permission_denied",
+                        error: "CIM backend denied access.",
+                        isTransient: false));
+                }
+
+                return Task.FromResult("""{"ok":true,"meta":{"engine":"auto"}}""");
+            }));
+        SetSessionRegistry(session, registry);
+
+        var arguments = new JsonObject()
+            .Add("computer_name", "srv-01")
+            .Add("engine", "auto");
+        var call = new ToolCall(
+            "call_main_alt_engine_auto_retry",
+            "system_inventory_probe",
+            JsonLite.Serialize(arguments),
+            arguments,
+            new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting("thread-001", "Check srv-01 health.", call, 5, CancellationToken.None);
+
+        Assert.True(output.Ok is true);
+        Assert.Equal(new[] { "cim", "auto" }, seenEngines);
+    }
+
+    [Fact]
     public async Task ExecuteToolWithStatusAsync_EmitsPreferredHealthyAlternateEngineStatus() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberAlternateEngineSuccessForTesting("thread-001", "system_inventory_probe", "cim");

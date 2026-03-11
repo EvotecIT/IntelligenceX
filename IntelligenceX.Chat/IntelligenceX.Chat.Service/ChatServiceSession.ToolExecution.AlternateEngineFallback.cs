@@ -50,7 +50,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var preferredArguments = CloneToolArguments(sourceArguments);
-        preferredArguments.Add(selectorArgumentName, selectedEngineId);
+        preferredArguments[selectorArgumentName] = JsonValue.From(selectedEngineId);
         var preferredInput = JsonLite.Serialize(preferredArguments);
         preferredCall = new ToolCall(call.CallId, call.Name, preferredInput, preferredArguments, call.Raw);
         return true;
@@ -170,9 +170,46 @@ internal sealed partial class ChatServiceSession {
         }
 
         var fallbackArguments = CloneToolArguments(sourceArguments);
-        fallbackArguments.Add(selectorArgumentName, selectedEngineId);
+        fallbackArguments[selectorArgumentName] = JsonValue.From(selectedEngineId);
         var fallbackInput = JsonLite.Serialize(fallbackArguments);
         fallbackCall = new ToolCall(call.CallId, call.Name, fallbackInput, fallbackArguments, call.Raw);
+        return true;
+    }
+
+    private static bool TryBuildAutomaticAlternateEngineRetryCall(
+        ToolCall originalCall,
+        ToolCall currentCall,
+        ToolDefinition? definition,
+        ToolRetryProfile profile,
+        out ToolCall automaticCall) {
+        automaticCall = originalCall;
+
+        if (definition?.Parameters is null || profile.AlternateEngineIds.Count == 0) {
+            return false;
+        }
+
+        if (!TryResolveAlternateEngineSelectorArgumentName(definition, out var selectorArgumentName, out _)) {
+            return false;
+        }
+
+        if (!TryParseToolCallArgumentsFromInput(originalCall.Input, out var parsedOriginalArguments)) {
+            parsedOriginalArguments = null!;
+        }
+
+        if (!TryParseToolCallArgumentsFromInput(currentCall.Input, out var parsedCurrentArguments)) {
+            parsedCurrentArguments = null!;
+        }
+
+        var originalArguments = originalCall.Arguments ?? parsedOriginalArguments;
+        var currentArguments = currentCall.Arguments ?? parsedCurrentArguments;
+        if (!IsImplicitAlternateEngineSelection(ReadAlternateEngineSelectorValue(originalArguments, selectorArgumentName))
+            || IsImplicitAlternateEngineSelection(ReadAlternateEngineSelectorValue(currentArguments, selectorArgumentName))) {
+            return false;
+        }
+
+        var automaticArguments = CloneToolArguments(originalArguments);
+        var automaticInput = JsonLite.Serialize(automaticArguments);
+        automaticCall = new ToolCall(originalCall.CallId, originalCall.Name, automaticInput, automaticArguments, originalCall.Raw);
         return true;
     }
 

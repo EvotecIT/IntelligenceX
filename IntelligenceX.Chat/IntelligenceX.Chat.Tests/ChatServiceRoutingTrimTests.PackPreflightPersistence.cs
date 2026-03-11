@@ -15,6 +15,10 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
+    private static readonly MethodInfo RememberSuccessfulPackPreflightCallsMethod =
+        typeof(ChatServiceSession).GetMethod("RememberSuccessfulPackPreflightCalls", BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RememberSuccessfulPackPreflightCalls not found.");
+
     private static readonly MethodInfo RememberFailedPackPreflightCallsMethod =
         typeof(ChatServiceSession).GetMethod("RememberFailedPackPreflightCalls", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("RememberFailedPackPreflightCalls not found.");
@@ -276,5 +280,85 @@ public sealed partial class ChatServiceRoutingTrimTests {
         RememberFailedPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-pack-helper-persist", preflightCalls, outputs });
 
         Assert.Equal(new[] { "customx_recovery_discover" }, session.GetRecentHostBootstrapFailureToolNamesForTesting("thread-pack-helper-persist"));
+    }
+
+    [Fact]
+    public void RememberSuccessfulPackPreflightCalls_RemembersHostGeneratedRecoveryHelpersForLaterTurns() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-chat-pack-helper-success-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        const string threadId = "thread-pack-helper-success";
+
+        try {
+            var session1 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var registry1 = new ToolRegistry();
+            registry1.Register(new PreflightStubTool(
+                "customx_pack_probe",
+                CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RolePackInfo)));
+            registry1.Register(new PreflightStubTool(
+                "customx_health_scan",
+                CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    RecoveryToolNames = new[] { "customx_recovery_discover" }
+                }));
+            registry1.Register(new PreflightStubTool(
+                "customx_recovery_discover",
+                CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleDiagnostic)));
+            SetSessionRegistry(session1, registry1);
+
+            var extractedCalls = new List<ToolCall> {
+                new("call_operational_recovery_success", "customx_health_scan", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+            };
+
+            var result1 = BuildHostPackPreflightCallsMethod.Invoke(session1, new object?[] { threadId, registry1.GetDefinitions(), extractedCalls });
+            var preflightCalls1 = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result1);
+            var helperCall = Assert.Single(preflightCalls1, call => string.Equals(call.Name, "customx_recovery_discover", StringComparison.OrdinalIgnoreCase));
+            var outputs = new[] {
+                new ToolOutputDto {
+                    CallId = helperCall.CallId,
+                    Output = """{"ok":true}""",
+                    Ok = true
+                }
+            };
+
+            RememberSuccessfulPackPreflightCallsMethod.Invoke(session1, new object?[] { threadId, preflightCalls1, outputs });
+
+            var session2 = new ChatServiceSession(
+                new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
+                Stream.Null);
+            var registry2 = new ToolRegistry();
+            registry2.Register(new PreflightStubTool(
+                "customx_pack_probe",
+                CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RolePackInfo)));
+            registry2.Register(new PreflightStubTool(
+                "customx_health_scan",
+                CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    RecoveryToolNames = new[] { "customx_recovery_discover" }
+                }));
+            registry2.Register(new PreflightStubTool(
+                "customx_recovery_discover",
+                CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleDiagnostic)));
+            SetSessionRegistry(session2, registry2);
+
+            var result2 = BuildHostPackPreflightCallsMethod.Invoke(session2, new object?[] { threadId, registry2.GetDefinitions(), extractedCalls });
+            var preflightCalls2 = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result2);
+
+            Assert.Equal(new[] { "customx_pack_probe", "customx_recovery_discover" }, session2.GetRememberedPackPreflightToolsForTesting(threadId));
+            Assert.Single(preflightCalls2);
+            Assert.Equal("customx_pack_probe", preflightCalls2[0].Name);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best effort test cleanup only.
+            }
+        }
     }
 }

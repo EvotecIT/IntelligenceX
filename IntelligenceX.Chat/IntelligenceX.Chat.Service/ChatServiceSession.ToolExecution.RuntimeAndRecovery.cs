@@ -144,6 +144,15 @@ internal sealed partial class ChatServiceSession {
         return $"Retrying with alternate backend '{normalizedEngineId}'.";
     }
 
+    private static string BuildAutomaticAlternateEngineRetryStatusMessage(string engineId) {
+        var normalizedEngineId = (engineId ?? string.Empty).Trim();
+        if (normalizedEngineId.Length == 0) {
+            normalizedEngineId = "remembered";
+        }
+
+        return $"Backend '{normalizedEngineId}' failed; retrying with automatic backend selection.";
+    }
+
     private static int CountFailedToolOutputs(IReadOnlyList<ToolOutputDto> outputs) {
         if (outputs.Count == 0) {
             return 0;
@@ -314,6 +323,9 @@ internal sealed partial class ChatServiceSession {
         var projectionFallbackAttempted = false;
         var attemptedAlternateEngineIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var recoveryHelperAttempted = false;
+        var preferredAutomaticFallbackPending = false;
+        var preferredAutomaticFallbackAttempted = false;
+        var preferredAlternateEngineId = string.Empty;
         ToolOutputDto? lastFailure = null;
         if (TryBuildPreferredHealthyAlternateEngineCall(
                 threadId,
@@ -321,9 +333,10 @@ internal sealed partial class ChatServiceSession {
                 toolDefinition,
                 profile,
                 out var preferredAlternateEngineCall,
-                out var preferredAlternateEngineId)) {
+                out preferredAlternateEngineId)) {
             attemptedAlternateEngineIds.Add(preferredAlternateEngineId);
             currentCall = preferredAlternateEngineCall;
+            preferredAutomaticFallbackPending = true;
             await TryWriteToolExecutionTransitionStatusAsync(
                     statusWriter,
                     ChatStatusCodes.ToolCall,
@@ -350,7 +363,30 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            if (!ShouldRetryToolCall(output, profile, attemptIndex)) {
+            var shouldRetry = ShouldRetryToolCall(output, profile, attemptIndex);
+            if (!shouldRetry
+                && preferredAutomaticFallbackPending
+                && !preferredAutomaticFallbackAttempted
+                && TryBuildAutomaticAlternateEngineRetryCall(
+                    call,
+                    currentCall,
+                    toolDefinition,
+                    profile,
+                    out var automaticAlternateEngineCall)) {
+                preferredAutomaticFallbackAttempted = true;
+                preferredAutomaticFallbackPending = false;
+                currentCall = automaticAlternateEngineCall;
+                await TryWriteToolExecutionTransitionStatusAsync(
+                        statusWriter,
+                        ChatStatusCodes.ToolCall,
+                        currentCall,
+                        BuildAutomaticAlternateEngineRetryStatusMessage(preferredAlternateEngineId))
+                    .ConfigureAwait(false);
+                continue;
+            }
+
+            preferredAutomaticFallbackPending = false;
+            if (!shouldRetry) {
                 return output;
             }
 

@@ -245,7 +245,7 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
-        var successfulPreflightToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var successfulBootstrapToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < executedCalls.Count; i++) {
             var call = executedCalls[i];
             var callId = (call.CallId ?? string.Empty).Trim();
@@ -253,14 +253,14 @@ internal sealed partial class ChatServiceSession {
             if (callId.Length == 0
                 || callName.Length == 0
                 || !successfulCallIds.Contains(callId)
-                || !IsHostPackPreflightToolName(callName)) {
+                || ResolveHostBootstrapFailureKind(callId, callName).Length == 0) {
                 continue;
             }
 
-            successfulPreflightToolNames.Add(callName);
+            successfulBootstrapToolNames.Add(callName);
         }
 
-        if (successfulPreflightToolNames.Count == 0) {
+        if (successfulBootstrapToolNames.Count == 0) {
             return;
         }
 
@@ -278,7 +278,7 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            foreach (var successfulName in successfulPreflightToolNames) {
+            foreach (var successfulName in successfulBootstrapToolNames) {
                 updated.Add(successfulName);
             }
 
