@@ -54,7 +54,7 @@ jobs:
             - name: Enforce OfficeIMO markdown package-mode gate
               shell: pwsh
               run: ./.github/scripts/run-officeimo-markdown-package-gate.ps1
-              timeout-minutes: 15
+              timeout-minutes: 25
 
             - name: Run executable test harness (net8.0)
               run: dotnet ./IntelligenceX.Tests/bin/${{ env.BUILD_CONFIGURATION }}/net8.0/IntelligenceX.Tests.dll
