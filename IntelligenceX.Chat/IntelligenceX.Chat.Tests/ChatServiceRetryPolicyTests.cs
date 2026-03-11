@@ -641,6 +641,42 @@ public sealed class ChatServiceRetryPolicyTests {
     }
 
     [Fact]
+    public void TryBuildRecoveryHelperArgumentsForTesting_ClonesCopiedJsonValues() {
+        var nestedSource = new JsonObject(StringComparer.Ordinal)
+            .Add("computer_name", "srv-01");
+        var sourceArguments = new JsonObject(StringComparer.Ordinal)
+            .Add("computer", nestedSource);
+        var failedCall = new ToolCall(
+            callId: "call-recovery-clone",
+            name: "system_inventory_probe",
+            input: JsonLite.Serialize(sourceArguments),
+            arguments: sourceArguments,
+            raw: new JsonObject(StringComparer.Ordinal));
+        var helperDefinition = new ToolDefinition(
+            "system_context",
+            description: "helper",
+            parameters: new JsonObject()
+                .Add("type", "object")
+                .Add("properties", new JsonObject()
+                    .Add("computer", new JsonObject().Add("type", "object")))
+                .Add("required", new JsonArray().Add("computer")));
+
+        var built = ChatServiceSession.TryBuildRecoveryHelperArgumentsForTesting(
+            failedCall,
+            helperDefinition,
+            out var helperArguments);
+
+        Assert.True(built);
+        var helperComputer = Assert.IsType<JsonObject>(helperArguments.GetObject("computer"));
+        Assert.NotSame(nestedSource, helperComputer);
+        Assert.Equal("srv-01", helperComputer.GetString("computer_name"));
+
+        nestedSource.Add("computer_name", "srv-02");
+
+        Assert.Equal("srv-01", helperComputer.GetString("computer_name"));
+    }
+
+    [Fact]
     public void ShouldAttemptRecoveryHelperTools_AttemptsForStructuredTransportFailureWhenHelpersDeclared() {
         var profile = InvokeResolveRetryProfile(
             "custom_inventory_probe",

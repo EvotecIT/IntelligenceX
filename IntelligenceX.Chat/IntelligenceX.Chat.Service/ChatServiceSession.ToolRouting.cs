@@ -340,6 +340,8 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        // Use the broader mixed-technical check here so ambiguous AD/public wording
+        // triggers clarification before weighted routing or execution spends turns.
         var hasMixedTechnicalSignals = HasMixedTechnicalDomainIntentSignals(normalizedRequest, availableDefinitions);
 
         if (ShouldSuppressDomainIntentClarificationForCompactFollowUp(

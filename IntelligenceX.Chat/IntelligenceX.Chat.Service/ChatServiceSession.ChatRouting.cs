@@ -114,6 +114,8 @@ internal sealed partial class ChatServiceSession {
             routedUserRequest);
         var structuredCompactFollowUpTurn = continuationContractDetected && compactFollowUpTurn;
         var domainIntentSignalRequest = userRequest;
+        // Use the anchored conflict check here so remembered family affinity is only
+        // cleared when the mixed request is tied to a concrete domain/tool target.
         var conflictingDomainSignals = domainIntentFamilyAvailability.HasMixedFamilies
                                        && HasConflictingDomainIntentSignals(domainIntentSignalRequest, fullToolDefs);
         if (conflictingDomainSignals) {

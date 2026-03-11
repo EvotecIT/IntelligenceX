@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
@@ -105,5 +106,12 @@ internal sealed partial class ChatServiceSession {
         int toolTimeoutSeconds,
         CancellationToken cancellationToken) {
         return ExecuteToolAsync(threadId, userRequest, call, toolTimeoutSeconds, cancellationToken);
+    }
+
+    internal static bool TryBuildRecoveryHelperArgumentsForTesting(
+        ToolCall failedCall,
+        ToolDefinition helperDefinition,
+        out JsonObject helperArguments) {
+        return TryBuildRecoveryHelperArguments(failedCall, helperDefinition, out helperArguments);
     }
 }

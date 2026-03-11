@@ -566,8 +566,10 @@ internal sealed partial class ChatServiceSession {
         var properties = helperDefinition.Parameters.GetObject("properties");
         if (sourceArguments is not null && properties is not null) {
             foreach (var property in properties) {
-                if (sourceArguments.TryGetValue(property.Key, out var value) && value is not null) {
-                    helperArguments.Add(property.Key, value);
+                if (sourceArguments.TryGetValue(property.Key, out var value)
+                    && value is not null
+                    && TryCloneRecoveryHelperArgumentValue(value, out var clonedValue)) {
+                    helperArguments.Add(property.Key, clonedValue);
                 }
             }
         }
@@ -590,6 +592,22 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
+    }
+
+    private static bool TryCloneRecoveryHelperArgumentValue(JsonValue value, out JsonValue clonedValue) {
+        clonedValue = JsonValue.Null;
+        try {
+            var serialized = JsonLite.Serialize(value);
+            var parsed = JsonLite.Parse(serialized);
+            if (parsed is null) {
+                return false;
+            }
+
+            clonedValue = parsed;
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     private static JsonObject? ResolveRecoveryHelperSourceArguments(ToolCall failedCall) {
