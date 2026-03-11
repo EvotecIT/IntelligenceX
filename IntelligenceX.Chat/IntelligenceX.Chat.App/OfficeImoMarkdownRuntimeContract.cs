@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using OfficeIMO.Markdown;
 using OfficeIMO.MarkdownRenderer;
 
 namespace IntelligenceX.Chat.App;
@@ -33,6 +34,20 @@ internal static class OfficeImoMarkdownRuntimeContract {
 
         enabledProperty.SetValue(networkOptions, true);
         return true;
+    }
+
+    /// <summary>
+    /// Creates a strict minimal renderer preset and upgrades it to Markdig-compatible reader behavior when the loaded OfficeIMO runtime exposes that capability.
+    /// </summary>
+    /// <param name="options">Resolved renderer options.</param>
+    /// <returns><see langword="true"/> when Markdig-compatible reader behavior was enabled through the runtime surface.</returns>
+    public static bool TryCreateMarkdigCompatibleChatStrictMinimal(out MarkdownRendererOptions options) {
+        if (TryInvokeRendererPreset("CreateChatStrictMinimalMarkdigCompatible", out options)) {
+            return true;
+        }
+
+        options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        return TryApplyMarkdigCompatibleReaderOptions(options);
     }
 
     /// <summary>
@@ -89,5 +104,79 @@ internal static class OfficeImoMarkdownRuntimeContract {
         } catch {
             return "(dynamic)";
         }
+    }
+
+    private static bool TryInvokeRendererPreset(string methodName, out MarkdownRendererOptions options) {
+        options = null!;
+        var presetsType = typeof(MarkdownRendererPresets);
+        var method = presetsType.GetMethod(
+            methodName,
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: [typeof(string)],
+            modifiers: null);
+
+        object? result;
+        if (method is not null) {
+            result = method.Invoke(null, [null]);
+        } else {
+            method = presetsType.GetMethod(
+                methodName,
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+            if (method is null) {
+                return false;
+            }
+
+            result = method.Invoke(null, null);
+        }
+
+        if (result is not MarkdownRendererOptions resolved) {
+            return false;
+        }
+
+        options = resolved;
+        return true;
+    }
+
+    private static bool TryApplyMarkdigCompatibleReaderOptions(MarkdownRendererOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var createMethod = Type.GetType(
+                "OfficeIMO.Markdown.MarkdownReaderOptions, OfficeIMO.Markdown",
+                throwOnError: false)?
+            .GetMethod(
+                "CreateMarkdigCompatible",
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+
+        if (createMethod?.Invoke(null, null) is not MarkdownReaderOptions readerOptions) {
+            return false;
+        }
+
+        var current = options.ReaderOptions;
+        CopyReaderOption(readerOptions, "HtmlBlocks", current.HtmlBlocks);
+        CopyReaderOption(readerOptions, "InlineHtml", current.InlineHtml);
+        CopyReaderOption(readerOptions, "DisallowFileUrls", current.DisallowFileUrls);
+        CopyReaderOption(readerOptions, "AllowDataUrls", current.AllowDataUrls);
+        CopyReaderOption(readerOptions, "AllowProtocolRelativeUrls", current.AllowProtocolRelativeUrls);
+        CopyReaderOption(readerOptions, "RestrictUrlSchemes", current.RestrictUrlSchemes);
+        CopyReaderOption(readerOptions, "AllowedUrlSchemes", current.AllowedUrlSchemes);
+
+        options.ReaderOptions = readerOptions;
+        return true;
+    }
+
+    private static void CopyReaderOption(object target, string propertyName, object? value) {
+        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property?.CanWrite != true) {
+            return;
+        }
+
+        property.SetValue(target, value);
     }
 }

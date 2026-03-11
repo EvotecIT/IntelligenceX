@@ -11,7 +11,7 @@ internal static class ChatMarkdownOptions {
     /// </summary>
     public static MarkdownRendererOptions Create() {
         // Preset factory returns a fresh options object per call; this mutation is call-local.
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        _ = OfficeImoMarkdownRuntimeContract.TryCreateMarkdigCompatibleChatStrictMinimal(out var options);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
         OfficeImoMarkdownRuntimeContract.TryEnableOptionalRendererNetworkSupport(options);

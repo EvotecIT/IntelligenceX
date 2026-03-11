@@ -1,4 +1,5 @@
 using IntelligenceX.Chat.App;
+using OfficeIMO.MarkdownRenderer;
 using System.Reflection;
 using Xunit;
 
@@ -20,6 +21,25 @@ public sealed class ChatMarkdownOptionsTests {
         Assert.False(options.Math.Enabled);
         Assert.False(options.EnableCodeCopyButtons);
         Assert.False(options.EnableTableCopyButtons);
+    }
+
+    /// <summary>
+    /// Ensures the chat host adopts Markdig-compatible reader behavior whenever the loaded OfficeIMO runtime exposes it.
+    /// </summary>
+    [Fact]
+    public void Create_UsesMarkdigCompatibleReaderBehavior_WhenRuntimeSupportsIt() {
+        var options = ChatMarkdownOptions.Create();
+        var usedCapability = InvokeMarkdigCompatibleFactory();
+
+        if (!usedCapability) {
+            return;
+        }
+
+        Assert.False(options.ReaderOptions.Callouts);
+        Assert.False(options.ReaderOptions.TaskLists);
+        Assert.False(options.ReaderOptions.AutolinkUrls);
+        Assert.False(options.ReaderOptions.AutolinkWwwUrls);
+        Assert.False(options.ReaderOptions.AutolinkEmails);
     }
 
     /// <summary>
@@ -49,5 +69,17 @@ public sealed class ChatMarkdownOptionsTests {
         }
 
         Assert.True((bool)(enabledProperty.GetValue(networkOptions) ?? false));
+    }
+
+    private static bool InvokeMarkdigCompatibleFactory() {
+        var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
+        var method = contractType!.GetMethod(
+            "TryCreateMarkdigCompatibleChatStrictMinimal",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var args = new object?[] { null };
+        var enabled = (bool)(method!.Invoke(null, args) ?? false);
+        var created = Assert.IsType<MarkdownRendererOptions>(args[0]);
+        Assert.NotNull(created);
+        return enabled;
     }
 }

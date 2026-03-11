@@ -60,6 +60,35 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
+    /// Verifies the runtime contract can upgrade chat renderer defaults to Markdig-compatible reader behavior when the OfficeIMO runtime exposes it.
+    /// </summary>
+    [Fact]
+    public void TryCreateMarkdigCompatibleChatStrictMinimal_ReturnsOptionsAndCapabilityState() {
+        var contractType = typeof(ChatMarkdownOptions).Assembly.GetType("IntelligenceX.Chat.App.OfficeImoMarkdownRuntimeContract", throwOnError: true);
+        var method = contractType!.GetMethod(
+            "TryCreateMarkdigCompatibleChatStrictMinimal",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+
+        var args = new object?[] { null };
+        var enabled = (bool)(method!.Invoke(null, args) ?? false);
+        var options = Assert.IsType<MarkdownRendererOptions>(args[0]);
+
+        Assert.False(options.Math.Enabled);
+        Assert.False(options.EnableCodeCopyButtons);
+        Assert.False(options.EnableTableCopyButtons);
+
+        if (!enabled) {
+            return;
+        }
+
+        Assert.False(options.ReaderOptions.Callouts);
+        Assert.False(options.ReaderOptions.TaskLists);
+        Assert.False(options.ReaderOptions.AutolinkUrls);
+        Assert.False(options.ReaderOptions.AutolinkWwwUrls);
+        Assert.False(options.ReaderOptions.AutolinkEmails);
+    }
+
+    /// <summary>
     /// Verifies package-mode version pins match the published OfficeIMO packages required by the app contract.
     /// </summary>
     [Fact]
