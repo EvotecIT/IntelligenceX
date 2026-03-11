@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.TestimoX;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.TestimoX;
 /// <summary>
 /// TestimoX analytics/history artifact pack (self-describing + self-registering).
 /// </summary>
-public sealed class TestimoXAnalyticsToolPack : IToolPack {
+public sealed class TestimoXAnalyticsToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly TestimoXToolOptions _options;
 
     /// <summary>
@@ -30,5 +31,10 @@ public sealed class TestimoXAnalyticsToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterTestimoXAnalyticsPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryTestimoXAnalyticsExtensions.GetRegisteredToolCatalog(_options);
     }
 }

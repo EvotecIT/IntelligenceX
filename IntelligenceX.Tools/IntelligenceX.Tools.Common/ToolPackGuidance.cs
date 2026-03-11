@@ -248,10 +248,188 @@ public sealed class ToolPackToolRoutingModel {
 }
 
 /// <summary>
+/// Normalized outbound handoff edge derived from tool-owned handoff contracts.
+/// </summary>
+public sealed class ToolPackToolHandoffEdgeModel {
+    /// <summary>
+    /// Target pack id for this handoff edge.
+    /// </summary>
+    public string TargetPackId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional target tool name for this handoff edge.
+    /// </summary>
+    public string TargetToolName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional target routing role for this handoff edge.
+    /// </summary>
+    public string TargetRole { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Number of bindings declared by this route.
+    /// </summary>
+    public int BindingCount { get; init; }
+
+    /// <summary>
+    /// Normalized source-to-target binding pairs ("source->target").
+    /// Duplicate pairs are preserved to keep declared contract multiplicity.
+    /// </summary>
+    public IReadOnlyList<string> BindingPairs { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Structured setup, handoff, and recovery contract projection for model-side orchestration.
+/// </summary>
+public sealed class ToolPackToolOrchestrationModel {
+    /// <summary>
+    /// Normalized pack identifier.
+    /// </summary>
+    public string PackId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Routing role token.
+    /// </summary>
+    public string Role { get; init; } = ToolRoutingTaxonomy.RoleOperational;
+
+    /// <summary>
+    /// Routing source token.
+    /// </summary>
+    public string RoutingSource { get; init; } = ToolRoutingTaxonomy.SourceExplicit;
+
+    /// <summary>
+    /// Indicates whether tool exposes routing-aware metadata.
+    /// </summary>
+    public bool IsRoutingAware { get; init; }
+
+    /// <summary>
+    /// Optional domain intent family token.
+    /// </summary>
+    public string DomainIntentFamily { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional domain intent action id token.
+    /// </summary>
+    public string DomainIntentActionId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Indicates whether tool is setup-aware.
+    /// </summary>
+    public bool IsSetupAware { get; init; }
+
+    /// <summary>
+    /// Number of distinct normalized setup requirement (<c>id</c>, <c>kind</c>) pairs.
+    /// </summary>
+    public int SetupRequirementCount { get; init; }
+
+    /// <summary>
+    /// Optional setup helper tool name.
+    /// </summary>
+    public string SetupToolName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional setup contract identifier.
+    /// </summary>
+    public string SetupContractId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Normalized setup requirement identifiers.
+    /// </summary>
+    public IReadOnlyList<string> SetupRequirementIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Normalized setup requirement kinds.
+    /// </summary>
+    public IReadOnlyList<string> SetupRequirementKinds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Normalized setup hint keys (contract + requirement-level hints).
+    /// </summary>
+    public IReadOnlyList<string> SetupHintKeys { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates whether tool declares outbound handoff routes.
+    /// </summary>
+    public bool IsHandoffAware { get; init; }
+
+    /// <summary>
+    /// Number of declared outbound handoff routes.
+    /// </summary>
+    public int HandoffRouteCount { get; init; }
+
+    /// <summary>
+    /// Number of declared outbound handoff bindings across all routes.
+    /// Duplicate normalized binding pairs are counted when explicitly declared.
+    /// </summary>
+    public int HandoffBindingCount { get; init; }
+
+    /// <summary>
+    /// Optional handoff contract identifier.
+    /// </summary>
+    public string HandoffContractId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Normalized outbound handoff edges.
+    /// </summary>
+    public IReadOnlyList<ToolPackToolHandoffEdgeModel> HandoffEdges { get; init; } = Array.Empty<ToolPackToolHandoffEdgeModel>();
+
+    /// <summary>
+    /// Indicates whether tool declares effective recovery behavior in normalized projection.
+    /// </summary>
+    public bool IsRecoveryAware { get; init; }
+
+    /// <summary>
+    /// Indicates support for transient retry.
+    /// </summary>
+    public bool SupportsTransientRetry { get; init; }
+
+    /// <summary>
+    /// Maximum retry attempts for transient failures.
+    /// </summary>
+    public int MaxRetryAttempts { get; init; }
+
+    /// <summary>
+    /// Indicates support for alternate internal engines.
+    /// </summary>
+    public bool SupportsAlternateEngines { get; init; }
+
+    /// <summary>
+    /// Number of declared alternate internal engines.
+    /// </summary>
+    public int AlternateEngineCount { get; init; }
+
+    /// <summary>
+    /// Optional recovery contract identifier.
+    /// </summary>
+    public string RecoveryContractId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Number of declared recovery helper tools.
+    /// </summary>
+    public int RecoveryToolCount { get; init; }
+
+    /// <summary>
+    /// Normalized retryable error codes.
+    /// </summary>
+    public IReadOnlyList<string> RetryableErrorCodes { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Normalized alternate engine identifiers.
+    /// </summary>
+    public IReadOnlyList<string> AlternateEngineIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Normalized recovery helper tool names.
+    /// </summary>
+    public IReadOnlyList<string> RecoveryToolNames { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
 /// Tool-level catalog entry for pack guidance.
 /// </summary>
 public sealed class ToolPackToolCatalogEntryModel {
     private ToolPackToolRoutingModel _routing = new();
+    private ToolPackToolOrchestrationModel _orchestration = new();
 
     /// <summary>
     /// Tool name as registered in the runtime tool registry.
@@ -311,6 +489,14 @@ public sealed class ToolPackToolCatalogEntryModel {
     /// Structured capability hints inferred from tool arguments.
     /// </summary>
     public ToolPackToolTraitsModel Traits { get; init; } = new();
+
+    /// <summary>
+    /// Structured orchestration metadata projected from tool-owned contracts.
+    /// </summary>
+    public ToolPackToolOrchestrationModel Orchestration {
+        get => _orchestration;
+        init => _orchestration = ToolPackGuidance.NormalizeOrchestrationContract(value);
+    }
 
     /// <summary>
     /// Indicates whether tool can perform write/mutating operations.
@@ -501,10 +687,26 @@ public static partial class ToolPackGuidance {
     private static readonly string[] TimeRangeArgumentNames = { "start_time_utc", "end_time_utc", "since_utc", "before_utc", "reference_time_utc" };
     private static readonly string[] DynamicAttributeArgumentNames = { "attributes", "include_raw", "include_operational_attributes", "include_computed_flags", "include_security_descriptor" };
     private static readonly string[] TargetScopeArgumentNames = {
-        "domain_controller", "search_base_dn", "path", "folder", "channel", "provider_name", "computer_name", "server"
+        "domain_name",
+        "forest_name",
+        "domain_controller",
+        "search_base_dn",
+        "path",
+        "folder",
+        "channel",
+        "provider_name",
+        "computer_name",
+        "machine_name",
+        "machine_names",
+        "server"
     };
     private static readonly string[] RemoteHostArgumentNames = {
-        "computer_name", "domain_controller", "server", "targets"
+        "computer_name",
+        "machine_name",
+        "machine_names",
+        "domain_controller",
+        "server",
+        "targets"
     };
     private static readonly IReadOnlyList<string> MutatingActionArgumentNames = ToolMutabilityHintNames.CanonicalMutatingActionArguments;
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
@@ -512,6 +714,11 @@ public static partial class ToolPackGuidance {
 
     internal static ToolPackToolRoutingModel NormalizeRoutingContract(ToolPackToolRoutingModel? routing) {
         return NormalizeRouting(routing);
+    }
+
+    internal static ToolPackToolOrchestrationModel NormalizeOrchestrationContract(
+        ToolPackToolOrchestrationModel? orchestration) {
+        return NormalizeOrchestration(orchestration);
     }
 
     internal static IReadOnlyList<ToolPackToolCatalogEntryModel> NormalizeToolCatalogContract(
@@ -642,6 +849,7 @@ public static partial class ToolPackGuidance {
                 SupportsTableViewProjection = supportsTableView,
                 IsPackInfoTool = enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
                 Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView),
+                Orchestration = BuildToolOrchestration(enrichedDefinition),
                 IsWriteCapable = enrichedDefinition.WriteGovernance?.IsWriteCapable ?? false,
                 RequiresWriteGovernance = enrichedDefinition.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
                 WriteGovernanceContractId = string.IsNullOrWhiteSpace(enrichedDefinition.WriteGovernance?.GovernanceContractId)

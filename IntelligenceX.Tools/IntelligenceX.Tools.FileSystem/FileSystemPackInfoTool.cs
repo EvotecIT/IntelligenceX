@@ -12,10 +12,10 @@ namespace IntelligenceX.Tools.FileSystem;
 public sealed class FileSystemPackInfoTool : FileSystemToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "fs_pack_info",
-        "Return filesystem pack capabilities, allowed-root behavior, output contract, and recommended usage patterns.",
-        ToolSchema.Object().NoAdditionalProperties());
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "fs_pack_info",
+        description: "Return filesystem pack capabilities, allowed-root behavior, output contract, and recommended usage patterns.",
+        packId: "filesystem");
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileSystemPackInfoTool"/> class.

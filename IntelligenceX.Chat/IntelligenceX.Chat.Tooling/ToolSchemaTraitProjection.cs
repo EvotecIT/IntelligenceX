@@ -35,10 +35,26 @@ public readonly record struct ToolSchemaTraits(
 public static class ToolSchemaTraitProjection {
     private static readonly string[] TableViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
     private static readonly string[] TargetScopeArgumentNames = {
-        "domain_controller", "search_base_dn", "path", "folder", "channel", "provider_name", "computer_name", "server"
+        "domain_name",
+        "forest_name",
+        "domain_controller",
+        "search_base_dn",
+        "path",
+        "folder",
+        "channel",
+        "provider_name",
+        "computer_name",
+        "machine_name",
+        "machine_names",
+        "server"
     };
     private static readonly string[] RemoteHostArgumentNames = {
-        "computer_name", "domain_controller", "server", "targets"
+        "computer_name",
+        "machine_name",
+        "machine_names",
+        "domain_controller",
+        "server",
+        "targets"
     };
 
     /// <summary>

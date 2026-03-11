@@ -1,10 +1,19 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.DomainDetective;
 
 internal static class DomainDetectiveToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["domaindetective_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["domaindetective_checks_catalog"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["domaindetective_domain_summary"] = ToolRoutingTaxonomy.RoleOperational,
+            ["domaindetective_network_probe"] = ToolRoutingTaxonomy.RoleDiagnostic
+        };
+
     private static readonly string[] DomainSignalTokens = {
         "dns",
         "mx",
@@ -47,7 +56,7 @@ internal static class DomainDetectiveToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "domaindetective",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
             DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : DomainSignalTokens,
@@ -58,138 +67,86 @@ internal static class DomainDetectiveToolContracts {
     }
 
     private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Setup;
-        }
-
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
-        }
-
-        return new ToolSetupContract {
-            IsSetupAware = true,
-            SetupToolName = "domaindetective_checks_catalog",
-            Requirements = new[] {
-                new ToolSetupRequirement {
-                    RequirementId = "public_dns_connectivity",
-                    Kind = ToolSetupRequirementKinds.Connectivity,
-                    IsRequired = true,
-                    HintKeys = new[] { "domain", "host", "dns_endpoint", "timeout_ms" }
-                }
-            },
-            SetupHintKeys = new[] { "domain", "checks", "dns_endpoint", "host", "timeout_ms" }
-        };
+        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRequiredSetup(
+                setupToolName: "domaindetective_checks_catalog",
+                requirementId: "public_dns_connectivity",
+                requirementKind: ToolSetupRequirementKinds.Connectivity,
+                setupHintKeys: new[] { "domain", "checks", "dns_endpoint", "host", "timeout_ms" },
+                requirementHintKeys: new[] { "domain", "host", "dns_endpoint", "timeout_ms" }));
     }
 
     private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {
         if (string.Equals(definition.Name, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolHandoffContract {
-                IsHandoffAware = true,
-                OutboundRoutes = new[] {
-                    new ToolHandoffRoute {
-                        TargetPackId = "active_directory",
-                        TargetToolName = "ad_scope_discovery",
-                        Reason = "Escalate directory-scoped investigations into explicit AD scope discovery.",
-                        Bindings = new[] {
-                            new ToolHandoffBinding {
-                                SourceField = "domain",
-                                TargetArgument = "domain_name",
-                                IsRequired = true
-                            }
-                        }
-                    },
-                    new ToolHandoffRoute {
-                        TargetPackId = "active_directory",
-                        TargetToolName = "ad_directory_discovery_diagnostics",
-                        Reason = "Follow up on directory-focused domain issues with AD discovery diagnostics.",
-                        Bindings = new[] {
-                            new ToolHandoffBinding {
-                                SourceField = "domain",
-                                TargetArgument = "forest_name",
-                                IsRequired = true
-                            }
-                        }
-                    }
-                }
-            };
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "active_directory",
+                    targetToolName: "ad_scope_discovery",
+                    reason: "Escalate directory-scoped investigations into explicit AD scope discovery.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("domain", "domain_name")
+                    }),
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "active_directory",
+                    targetToolName: "ad_directory_discovery_diagnostics",
+                    reason: "Follow up on directory-focused domain issues with AD discovery diagnostics.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("domain", "forest_name")
+                    })
+            });
         }
 
         if (string.Equals(definition.Name, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolHandoffContract {
-                IsHandoffAware = true,
-                OutboundRoutes = new[] {
-                    new ToolHandoffRoute {
-                        TargetPackId = "active_directory",
-                        TargetToolName = "ad_scope_discovery",
-                        Reason = "Use host evidence as an AD domain-controller hint when intent shifts to directory diagnostics.",
-                        Bindings = new[] {
-                            new ToolHandoffBinding {
-                                SourceField = "host",
-                                TargetArgument = "domain_controller",
-                                IsRequired = true
-                            }
-                        }
-                    }
-                }
-            };
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "active_directory",
+                    targetToolName: "ad_scope_discovery",
+                    reason: "Use host evidence as an AD domain-controller hint when intent shifts to directory diagnostics.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("host", "domain_controller")
+                    })
+            });
         }
 
         return definition.Handoff;
     }
 
     private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
+        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            definition,
+            routing.Role,
+            () => {
+                if (string.Equals(definition.Name, "domaindetective_checks_catalog", StringComparison.OrdinalIgnoreCase)) {
+                    return ToolContractDefaults.CreateNoRetryRecovery();
+                }
 
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Recovery;
-        }
+                if (string.Equals(definition.Name, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)) {
+                    return ToolContractDefaults.CreateRecovery(
+                        supportsTransientRetry: true,
+                        maxRetryAttempts: 2,
+                        retryableErrorCodes: new[] { "timeout", "query_failed", "transport_unavailable" },
+                        recoveryToolNames: new[] { "domaindetective_checks_catalog" });
+                }
 
-        if (string.Equals(definition.Name, "domaindetective_checks_catalog", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolRecoveryContract {
-                IsRecoveryAware = true,
-                SupportsTransientRetry = false,
-                MaxRetryAttempts = 0
-            };
-        }
+                if (string.Equals(definition.Name, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
+                    return ToolContractDefaults.CreateRecovery(
+                        supportsTransientRetry: true,
+                        maxRetryAttempts: 1,
+                        retryableErrorCodes: new[] { "probe_failed", "timeout", "transport_unavailable" },
+                        recoveryToolNames: new[] { "domaindetective_checks_catalog" });
+                }
 
-        if (string.Equals(definition.Name, "domaindetective_domain_summary", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolRecoveryContract {
-                IsRecoveryAware = true,
-                SupportsTransientRetry = true,
-                MaxRetryAttempts = 2,
-                RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" },
-                RecoveryToolNames = new[] { "domaindetective_checks_catalog" }
-            };
-        }
-
-        if (string.Equals(definition.Name, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolRecoveryContract {
-                IsRecoveryAware = true,
-                SupportsTransientRetry = true,
-                MaxRetryAttempts = 1,
-                RetryableErrorCodes = new[] { "probe_failed", "timeout", "transport_unavailable" },
-                RecoveryToolNames = new[] { "domaindetective_checks_catalog" }
-            };
-        }
-
-        return definition.Recovery;
+                return definition.Recovery;
+            });
     }
 
-    private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "domaindetective_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (string.Equals(toolName, "domaindetective_checks_catalog", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (string.Equals(toolName, "domaindetective_network_probe", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        return ToolRoutingTaxonomy.RoleOperational;
+    private static string ResolveRole(string toolName, string? existingRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: existingRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
+            packDisplayName: "DomainDetective");
     }
 }

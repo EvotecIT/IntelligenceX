@@ -1,10 +1,18 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.DnsClientX;
 
 internal static class DnsClientXToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["dnsclientx_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["dnsclientx_query"] = ToolRoutingTaxonomy.RoleResolver,
+            ["dnsclientx_ping"] = ToolRoutingTaxonomy.RoleDiagnostic
+        };
+
     private static readonly string[] DomainSignalTokens = {
         "dns",
         "mx",
@@ -47,7 +55,7 @@ internal static class DnsClientXToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "dnsclientx",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
             DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : DomainSignalTokens,
@@ -58,125 +66,73 @@ internal static class DnsClientXToolContracts {
     }
 
     private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Setup;
-        }
-
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
-        }
-
-        return new ToolSetupContract {
-            IsSetupAware = true,
-            SetupToolName = "dnsclientx_ping",
-            Requirements = new[] {
-                new ToolSetupRequirement {
-                    RequirementId = "dns_resolver_connectivity",
-                    Kind = ToolSetupRequirementKinds.Connectivity,
-                    IsRequired = true,
-                    HintKeys = new[] { "endpoint", "timeout_ms" }
-                }
-            },
-            SetupHintKeys = new[] { "target", "targets", "name", "type", "endpoint", "timeout_ms" }
-        };
+        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRequiredSetup(
+                setupToolName: "dnsclientx_ping",
+                requirementId: "dns_resolver_connectivity",
+                requirementKind: ToolSetupRequirementKinds.Connectivity,
+                setupHintKeys: new[] { "target", "targets", "name", "type", "endpoint", "timeout_ms" },
+                requirementHintKeys: new[] { "endpoint", "timeout_ms" }));
     }
 
     private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {
         if (string.Equals(definition.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolHandoffContract {
-                IsHandoffAware = true,
-                OutboundRoutes = new[] {
-                    new ToolHandoffRoute {
-                        TargetPackId = "domaindetective",
-                        TargetToolName = "domaindetective_domain_summary",
-                        Reason = "Promote resolver-level DNS evidence into domain posture checks.",
-                        Bindings = new[] {
-                            new ToolHandoffBinding {
-                                SourceField = "query/name",
-                                TargetArgument = "domain",
-                                IsRequired = true
-                            },
-                            new ToolHandoffBinding {
-                                SourceField = "query/endpoint",
-                                TargetArgument = "dns_endpoint",
-                                IsRequired = false
-                            }
-                        }
-                    }
-                }
-            };
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "domaindetective",
+                    targetToolName: "domaindetective_domain_summary",
+                    reason: "Promote resolver-level DNS evidence into domain posture checks.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("query/name", "domain"),
+                        ToolContractDefaults.CreateBinding("query/endpoint", "dns_endpoint", isRequired: false)
+                    })
+            });
         }
 
         if (string.Equals(definition.Name, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolHandoffContract {
-                IsHandoffAware = true,
-                OutboundRoutes = new[] {
-                    new ToolHandoffRoute {
-                        TargetPackId = "domaindetective",
-                        TargetToolName = "domaindetective_network_probe",
-                        Reason = "Escalate host-level reachability checks to richer network probes when needed.",
-                        Bindings = new[] {
-                            new ToolHandoffBinding {
-                                SourceField = "probed_targets/0",
-                                TargetArgument = "host",
-                                IsRequired = true
-                            },
-                            new ToolHandoffBinding {
-                                SourceField = "timeout_ms",
-                                TargetArgument = "timeout_ms",
-                                IsRequired = false
-                            }
-                        }
-                    }
-                }
-            };
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "domaindetective",
+                    targetToolName: "domaindetective_network_probe",
+                    reason: "Escalate host-level reachability checks to richer network probes when needed.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("probed_targets/0", "host"),
+                        ToolContractDefaults.CreateBinding("timeout_ms", "timeout_ms", isRequired: false)
+                    })
+            });
         }
 
         return definition.Handoff;
     }
 
     private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition) {
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
+        var routingRole = definition.Routing?.Role;
+        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            definition,
+            routingRole,
+            () => {
+                if (string.Equals(definition.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)) {
+                    return ToolContractDefaults.CreateRecovery(
+                        supportsTransientRetry: true,
+                        maxRetryAttempts: 2,
+                        retryableErrorCodes: new[] { "timeout", "query_failed", "transport_unavailable" });
+                }
 
-        if (string.Equals(definition.Name, "dnsclientx_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return definition.Recovery;
-        }
+                if (string.Equals(definition.Name, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)) {
+                    return ToolContractDefaults.CreateNoRetryRecovery();
+                }
 
-        if (string.Equals(definition.Name, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolRecoveryContract {
-                IsRecoveryAware = true,
-                SupportsTransientRetry = true,
-                MaxRetryAttempts = 2,
-                RetryableErrorCodes = new[] { "timeout", "query_failed", "transport_unavailable" }
-            };
-        }
-
-        if (string.Equals(definition.Name, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolRecoveryContract {
-                IsRecoveryAware = true,
-                SupportsTransientRetry = false,
-                MaxRetryAttempts = 0
-            };
-        }
-
-        return definition.Recovery;
+                return definition.Recovery;
+            });
     }
 
-    private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "dnsclientx_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (string.Equals(toolName, "dnsclientx_query", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        if (string.Equals(toolName, "dnsclientx_ping", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        return ToolRoutingTaxonomy.RoleOperational;
+    private static string ResolveRole(string toolName, string? existingRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: existingRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
+            packDisplayName: "DnsClientX");
     }
 }

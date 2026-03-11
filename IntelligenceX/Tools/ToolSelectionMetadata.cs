@@ -80,6 +80,7 @@ public static class ToolSelectionMetadata {
         "domaindetective",
         "dnsclientx",
         "eventlog",
+        "eventviewerx",
         "testimox"
     };
 
@@ -556,6 +557,11 @@ public static class ToolSelectionMetadata {
                 break;
             case "eventlog":
                 AddAlias("event_log");
+                AddAlias("eventviewerx");
+                break;
+            case "eventviewerx":
+                AddAlias("eventlog");
+                AddAlias("event_log");
                 break;
             case "domaindetective":
                 AddAlias("domain_detective");
@@ -620,6 +626,12 @@ public static class ToolSelectionMetadata {
                 break;
             case "eventlog":
                 AddToken("event_log");
+                AddToken("eventviewer_x");
+                break;
+            case "eventviewerx":
+                AddToken("eventlog");
+                AddToken("event_log");
+                AddToken("eventviewer_x");
                 break;
             case "domaindetective":
                 AddToken("domain_detective");
@@ -1677,6 +1689,7 @@ public static class ToolSelectionMetadata {
             "adplayground" => "active_directory",
             "eventlog" => "eventlog",
             "eventlogs" => "eventlog",
+            "eventviewerx" => "eventlog",
             "system" => "system",
             "computerx" => "system",
             "wsl" => "system",

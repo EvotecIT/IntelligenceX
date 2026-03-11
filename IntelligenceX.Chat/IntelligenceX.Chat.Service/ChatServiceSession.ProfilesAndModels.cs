@@ -715,7 +715,7 @@ internal sealed partial class ChatServiceSession {
         var definitions = registry.GetDefinitions();
         var toolDefinitions = BuildToolDefinitionDtosFromRegistryDefinitions(definitions);
         Volatile.Write(ref _cachedToolDefinitions, toolDefinitions);
-        _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, bootstrapResult.Packs);
         _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
         _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
         registryFinalizeStopwatch.Stop();

@@ -87,6 +87,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("dc.contoso.local", adBag!["DomainController"]);
         Assert.Equal("DC=contoso,DC=local", adBag["DefaultSearchBaseDn"]);
         Assert.Equal(2222, Assert.IsType<int>(adBag["MaxResults"]));
+        Assert.False(options.PackRuntimeOptionBag.ContainsKey("adplayground"));
 
         Assert.True(options.PackRuntimeOptionBag.TryGetValue("powershell", out var powershellBag));
         Assert.NotNull(powershellBag);
@@ -348,6 +349,24 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void ResolvePackRuntimeOptionKeys_IncludesOptionOwnedAliases() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ResolvePackRuntimeOptionKeys",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(object), typeof(Type), typeof(string) },
+            modifiers: null);
+        Assert.NotNull(method);
+
+        var keys = Assert.IsAssignableFrom<IReadOnlyList<string>>(method!.Invoke(
+            null,
+            new object?[] { new SyntheticRuntimeOptionTarget(), typeof(TestPack), null }));
+
+        Assert.Contains("*", keys, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("synthetic_runtime_target", keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacks_IncludesOfficeImoPack_ByDefault() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
             DisabledPackIds = DisableDefaultsExcept("officeimo"),
@@ -586,6 +605,10 @@ public sealed class ToolPackBootstrapMetadataTests {
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DisabledPackIds { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> EnabledPackIds { get; init; } = Array.Empty<string>();
+    }
+
+    private sealed class SyntheticRuntimeOptionTarget : IToolPackRuntimeOptionTarget {
+        public IReadOnlyList<string> RuntimeOptionKeys => new[] { "synthetic_runtime_target" };
     }
 
     private sealed class TestPack : IToolPack {

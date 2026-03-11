@@ -35,17 +35,34 @@ public sealed class AdEnvironmentDiscoverTool : ActiveDirectoryToolBase, ITool {
             new(Array.Empty<string>(), Array.Empty<string>(), Array.Empty<DomainControllerSourceReceipt>(), Array.Empty<string>());
     }
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "ad_environment_discover",
-        "Discover Active Directory context (forest/domain/domain controllers/base DN) and return effective scope hints for follow-up tools.",
-        ToolSchema.Object(
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreateEnvironmentDiscoverDefinition(
+        toolName: "ad_environment_discover",
+        description: "Discover Active Directory context (forest/domain/domain controllers/base DN) and return effective scope hints for follow-up tools.",
+        parameters: ToolSchema.Object(
                 ("domain_controller", ToolSchema.String("Optional domain controller override (host/FQDN).")),
                 ("search_base_dn", ToolSchema.String("Optional search base DN override.")),
                 ("include_domain_controllers", ToolSchema.Boolean("When true, include discovered domain controller candidates. Default true.")),
                 ("max_domain_controllers", ToolSchema.Integer("Maximum discovered domain controllers returned (capped). Default 20.")),
                 ("include_forest_domains", ToolSchema.Boolean("When true, fan out domain-controller discovery across discovered forest domains. Default true.")),
                 ("include_trusts", ToolSchema.Boolean("When true, include trusted-forest domains while fanning out discovery. Default false.")))
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        packId: "active_directory",
+        domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+        domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdAd,
+        domainSignalTokens: new[] {
+            "dc",
+            "ldap",
+            "gpo",
+            "kerberos",
+            "replication",
+            "sysvol",
+            "netlogon",
+            "ntds",
+            "forest",
+            "trust",
+            "active_directory",
+            "adplayground"
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdEnvironmentDiscoverTool"/> class.

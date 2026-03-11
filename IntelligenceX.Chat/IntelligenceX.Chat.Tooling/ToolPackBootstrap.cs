@@ -344,7 +344,6 @@ public static partial class ToolPackBootstrap {
     internal const string PackSourceClosedSource = "closed_source";
     internal const string PackOptionKeyGlobal = "*";
     internal const string PackOptionKeyActiveDirectory = "active_directory";
-    internal const string PackOptionKeyAdPlayground = "adplayground";
     internal const string PackOptionKeyPowerShell = "powershell";
     internal const string PackOptionKeyEmail = "email";
     internal const string PackOptionKeyReviewerSetup = "reviewer_setup";
@@ -438,11 +437,6 @@ public static partial class ToolPackBootstrap {
                 ["DefaultSearchBaseDn"] = options.AdDefaultSearchBaseDn,
                 ["MaxResults"] = options.AdMaxResults > 0 ? options.AdMaxResults : 1000,
                 ["AllowedMonitoringRoots"] = options.AllowedRoots?.ToArray() ?? Array.Empty<string>()
-            },
-            [PackOptionKeyAdPlayground] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
-                ["DomainController"] = options.AdDomainController,
-                ["DefaultSearchBaseDn"] = options.AdDefaultSearchBaseDn,
-                ["MaxResults"] = options.AdMaxResults > 0 ? options.AdMaxResults : 1000
             },
             [PackOptionKeyPowerShell] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
                 ["Enabled"] = true,

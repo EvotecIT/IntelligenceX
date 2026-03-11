@@ -31,7 +31,8 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
         "List monitoring report generation jobs from an allowed monitoring history directory.",
         ToolSchema.Object(
                 ("history_directory", ToolSchema.String("Monitoring history directory to inspect (must be inside AllowedHistoryRoots and contain monitoring.sqlite).")),
-                ("job_key", ToolSchema.String("Optional exact report job key filter.")),
+                ("job_key", ToolSchema.String("Optional exact report job key filter (this key is also emitted as report_key for snapshot follow-up).")),
+                ("report_key", ToolSchema.String("Optional alias for job_key when following snapshot-oriented report flows.")),
                 ("since_utc", ToolSchema.String("Optional ISO-8601 UTC lower bound for started_utc.")),
                 ("statuses", ToolSchema.Array(ToolSchema.String("Monitoring report job status.").Enum(StatusNames), "Optional status filters (any-match).")),
                 ("page_size", ToolSchema.Integer("Optional number of jobs to return in this page.")),
@@ -47,7 +48,7 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
             "reporting",
             "fallback:requires_selection",
             "fallback_selection_keys:history_directory",
-            "fallback_hint_keys:history_directory,job_key,since_utc,statuses"
+            "fallback_hint_keys:history_directory,job_key,report_key,since_utc,statuses"
         });
 
     /// <summary>
@@ -75,6 +76,14 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
             }
 
             var jobKey = reader.OptionalString("job_key");
+            var reportKey = reader.OptionalString("report_key");
+            if (!string.IsNullOrWhiteSpace(jobKey)
+                && !string.IsNullOrWhiteSpace(reportKey)
+                && !string.Equals(jobKey, reportKey, StringComparison.OrdinalIgnoreCase)) {
+                return ToolRequestBindingResult<ReportJobHistoryRequest>.Failure("job_key and report_key must match when both are provided.");
+            }
+
+            var effectiveJobKey = !string.IsNullOrWhiteSpace(reportKey) ? reportKey : jobKey;
             if (!ToolTime.TryParseUtcOptional(reader.OptionalString("since_utc"), out var sinceUtc, out var timeError)) {
                 return ToolRequestBindingResult<ReportJobHistoryRequest>.Failure($"since_utc: {timeError}");
             }
@@ -91,7 +100,7 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
 
             return ToolRequestBindingResult<ReportJobHistoryRequest>.Success(new ReportJobHistoryRequest(
                 HistoryDirectory: historyDirectory,
-                JobKey: jobKey,
+                JobKey: effectiveJobKey,
                 SinceUtc: sinceUtc,
                 StatusFilter: statusFilter,
                 PageSize: pageSize,
@@ -149,6 +158,7 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
             .Select(static job => new ReportJobHistoryRow(
                 JobId: job.JobId,
                 JobKey: job.JobKey,
+                ReportKey: job.JobKey,
                 Trigger: job.Trigger ?? string.Empty,
                 ReportPath: job.ReportPath ?? string.Empty,
                 Status: job.Status.ToString(),
@@ -277,6 +287,7 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
     private sealed record ReportJobHistoryRow(
         string JobId,
         string JobKey,
+        string ReportKey,
         string Trigger,
         string ReportPath,
         string Status,

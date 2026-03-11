@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.PowerShell;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.PowerShell;
 /// <summary>
 /// IX.PowerShell tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class PowerShellToolPack : IToolPack {
+public sealed class PowerShellToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly PowerShellToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,10 @@ public sealed class PowerShellToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterPowerShellPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryPowerShellExtensions.GetRegisteredToolCatalog(_options);
     }
 }

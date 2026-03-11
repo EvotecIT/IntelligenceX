@@ -1,10 +1,20 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.Email;
 
 internal static class EmailToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["email_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["email_imap_search"] = ToolRoutingTaxonomy.RoleResolver,
+            ["email_imap_get"] = ToolRoutingTaxonomy.RoleOperational,
+            ["email_smtp_probe"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["email_smtp_send"] = ToolRoutingTaxonomy.RoleOperational
+        };
+
     private static readonly string[] SetupHintKeys = {
         "folder",
         "query",
@@ -46,7 +56,7 @@ internal static class EmailToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "email",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
             DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : EmailSignalTokens,
@@ -57,71 +67,41 @@ internal static class EmailToolContracts {
     }
 
     private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Setup;
-        }
-
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
-        }
-
-        return new ToolSetupContract {
-            IsSetupAware = true,
-            SetupToolName = "email_pack_info",
-            Requirements = new[] {
-                new ToolSetupRequirement {
-                    RequirementId = "email_account_authentication",
-                    Kind = ToolSetupRequirementKinds.Authentication,
-                    IsRequired = true,
-                    HintKeys = SetupHintKeys
-                }
-            },
-            SetupHintKeys = SetupHintKeys
-        };
+        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRequiredSetup(
+                setupToolName: "email_pack_info",
+                requirementId: "email_account_authentication",
+                requirementKind: ToolSetupRequirementKinds.Authentication,
+                setupHintKeys: SetupHintKeys));
     }
 
     private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
+        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            definition,
+            routing.Role,
+            () => {
+                if (definition.WriteGovernance?.IsWriteCapable == true) {
+                    return ToolContractDefaults.CreateNoRetryRecovery();
+                }
 
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Recovery;
-        }
+                var supportsRetry = string.Equals(definition.Name, "email_imap_search", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(definition.Name, "email_imap_get", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(definition.Name, "email_smtp_probe", StringComparison.OrdinalIgnoreCase);
 
-        if (definition.WriteGovernance?.IsWriteCapable == true) {
-            return new ToolRecoveryContract {
-                IsRecoveryAware = true,
-                SupportsTransientRetry = false,
-                MaxRetryAttempts = 0
-            };
-        }
-
-        var supportsRetry = string.Equals(definition.Name, "email_imap_search", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(definition.Name, "email_imap_get", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(definition.Name, "email_smtp_probe", StringComparison.OrdinalIgnoreCase);
-
-        return new ToolRecoveryContract {
-            IsRecoveryAware = true,
-            SupportsTransientRetry = supportsRetry,
-            MaxRetryAttempts = supportsRetry ? 1 : 0,
-            RetryableErrorCodes = supportsRetry ? new[] { "timeout", "query_failed", "connection_failed" } : Array.Empty<string>()
-        };
+                return ToolContractDefaults.CreateRecovery(
+                    supportsTransientRetry: supportsRetry,
+                    maxRetryAttempts: supportsRetry ? 1 : 0,
+                    retryableErrorCodes: supportsRetry ? new[] { "timeout", "query_failed", "connection_failed" } : Array.Empty<string>());
+            });
     }
 
-    private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "email_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (string.Equals(toolName, "email_smtp_probe", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (string.Equals(toolName, "email_imap_search", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        return ToolRoutingTaxonomy.RoleOperational;
+    private static string ResolveRole(string toolName, string? existingRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: existingRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
+            packDisplayName: "Email");
     }
 }

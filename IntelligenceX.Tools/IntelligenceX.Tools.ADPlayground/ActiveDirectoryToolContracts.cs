@@ -1,10 +1,141 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.ADPlayground;
 
 internal static class ActiveDirectoryToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["ad_environment_discover"] = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+            ["ad_scope_discovery"] = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+            ["ad_forest_discover"] = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+            ["ad_directory_discovery_diagnostics"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_ldap_diagnostics"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_monitoring_probe_catalog"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_monitoring_probe_run"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_monitoring_service_heartbeat_get"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_monitoring_diagnostics_get"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_monitoring_metrics_get"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_monitoring_dashboard_state_get"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_dns_server_config"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_dns_zone_config"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_dns_zone_security"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_dns_delegation"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_dns_scavenging"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_gpo_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_changes"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_health"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_permission_read"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_permission_administrative"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_permission_consistency"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_permission_unknown"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_permission_root"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_permission_report"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_inventory_health"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_duplicates"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_blocked_inheritance"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_ou_link_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_redirect"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_gpo_integrity"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_wmi_filters"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_wsus_configuration"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_domain_info"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_forest_functional"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_ds_heuristics"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_laps_schema_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_azuread_sso"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_domain_statistics"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_domain_container_defaults"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_domain_controller_facts"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_domain_controller_security"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_dc_fleet_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_registration_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_domain_controllers"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_fsmo_roles"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_client_server_auth_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_legacy_cve_exposure"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_firewall_profiles"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_time_service_configuration"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_llmnr_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_wdigest_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_winrm_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_proxy_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_schannel_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_terminal_services_redirection_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_terminal_services_timeout_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_name_resolution_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_lsa_protection_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_net_session_hardening_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_limit_blank_password_use_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_pku2u_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_hardened_paths_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_kdc_proxy_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_kerberos_pac_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_powershell_logging_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_no_lm_hash_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_ntlm_restrictions_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_restrict_ntlm_configuration"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_logon_ux_uac_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_deny_logon_rights_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_defender_asr_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_everyone_includes_anonymous_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_enable_delegation_privilege_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_lan_manager_settings"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_machine_account_quota"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_duplicate_accounts"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_ou_protection"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_laps_coverage"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_kerberos_crypto_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_spn_search"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_spn_stats"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_spn_hygiene"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_groups_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_whoami"] = ToolRoutingTaxonomy.RoleOperational,
+            ["ad_recycle_bin_lifetime"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_object_get"] = ToolRoutingTaxonomy.RoleOperational,
+            ["ad_object_resolve"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_handoff_prepare"] = ToolRoutingTaxonomy.RoleOperational,
+            ["ad_delegation_audit"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_privileged_groups_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_domain_admins_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_stale_accounts"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_never_logged_in_accounts"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_service_account_usage"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_kds_root_keys"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_admin_count_report"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_krbtgt_health"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_ldap_query"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_ldap_query_paged"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_replication_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_replication_connections"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_replication_status"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_password_policy"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_password_policy_rollup"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_password_policy_length"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_schema_version"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_null_session_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_shadow_credentials_risk"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_dc_shadow_indicators"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_dangerous_extended_rights"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_smartcard_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_pki_templates"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_pki_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_sites"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_subnets"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_site_links"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_site_coverage"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_trust"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_system_state_backup"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_search_facets"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["ad_search"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_group_members"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_group_members_resolved"] = ToolRoutingTaxonomy.RoleResolver,
+            ["ad_users_expired"] = ToolRoutingTaxonomy.RoleDiagnostic
+        };
+
     private static readonly string[] DomainSignalTokens = {
         "dc",
         "ldap",
@@ -53,7 +184,7 @@ internal static class ActiveDirectoryToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "active_directory",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
             DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : DomainSignalTokens,
@@ -64,33 +195,13 @@ internal static class ActiveDirectoryToolContracts {
     }
 
     private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Setup;
-        }
-
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
-        }
-
-        return new ToolSetupContract {
-            IsSetupAware = true,
-            SetupToolName = "ad_environment_discover",
-            Requirements = new[] {
-                new ToolSetupRequirement {
-                    RequirementId = "ad_directory_context",
-                    Kind = ToolSetupRequirementKinds.Configuration,
-                    IsRequired = true,
-                    HintKeys = SetupHintKeys
-                },
-                new ToolSetupRequirement {
-                    RequirementId = "ad_ldap_connectivity",
-                    Kind = ToolSetupRequirementKinds.Connectivity,
-                    IsRequired = true,
-                    HintKeys = new[] { "domain_controller", "domain_name", "forest_name" }
-                }
-            },
-            SetupHintKeys = SetupHintKeys
-        };
+        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateSetup(
+                setupToolName: "ad_environment_discover",
+                requirements: BuildDefaultSetupRequirements(),
+                setupHintKeys: SetupHintKeys));
     }
 
     private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {
@@ -121,146 +232,64 @@ internal static class ActiveDirectoryToolContracts {
             return definition.Handoff;
         }
 
-        return new ToolHandoffContract {
-            IsHandoffAware = true,
-            OutboundRoutes = new[] {
-                new ToolHandoffRoute {
-                    TargetPackId = "active_directory",
-                    TargetToolName = "ad_object_resolve",
-                    Reason = "Use normalized identities from handoff payload for batched AD object resolution.",
-                    Bindings = new[] {
-                        new ToolHandoffBinding {
-                            SourceField = "target_arguments/ad_object_resolve/identities",
-                            TargetArgument = "identities",
-                            IsRequired = true
-                        }
-                    }
-                },
-                new ToolHandoffRoute {
-                    TargetPackId = "active_directory",
-                    TargetToolName = "ad_scope_discovery",
-                    Reason = "Use discovered domain hints to bootstrap AD scope before resolution calls.",
-                    Bindings = new[] {
-                        new ToolHandoffBinding {
-                            SourceField = "target_arguments/ad_scope_discovery/domain_name",
-                            TargetArgument = "domain_name",
-                            IsRequired = false
-                        },
-                        new ToolHandoffBinding {
-                            SourceField = "target_arguments/ad_scope_discovery/include_domain_controllers",
-                            TargetArgument = "include_domain_controllers",
-                            IsRequired = false
-                        }
-                    }
-                }
-            }
-        };
+        return ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "active_directory",
+                targetToolName: "ad_object_resolve",
+                reason: "Use normalized identities from handoff payload for batched AD object resolution.",
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("target_arguments/ad_object_resolve/identities", "identities")
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "active_directory",
+                targetToolName: "ad_scope_discovery",
+                reason: "Use discovered domain hints to bootstrap AD scope before resolution calls.",
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("target_arguments/ad_scope_discovery/domain_name", "domain_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("target_arguments/ad_scope_discovery/include_domain_controllers", "include_domain_controllers", isRequired: false)
+                })
+        });
     }
 
     private static ToolHandoffContract CreateSystemHostPivotHandoff(
         string primarySourceField,
         string fallbackSourceField,
         string reason) {
-        return new ToolHandoffContract {
-            IsHandoffAware = true,
-            OutboundRoutes = new[] {
-                CreateSystemHandoffRoute("system_info", reason, primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_time_sync", "Pivot into remote time-sync posture for discovered AD hosts when probe output points to NTP/time skew follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_metrics_summary", "Pivot into remote memory/runtime telemetry for the discovered AD host.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_hardware_summary", "Pivot into remote hardware inventory for the discovered AD host.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_logical_disks_list", "Pivot into remote logical-disk inspection for the discovered AD host.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_windows_update_client_status", "Pivot into remote low-privilege Windows Update/WSUS client status for the discovered AD host.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_windows_update_telemetry", "Pivot into remote Windows Update freshness and reboot telemetry for the discovered AD host.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_backup_posture", "Pivot into remote backup/recovery posture when the discovered AD host needs shadow-copy or restore coverage checks.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_office_posture", "Pivot into remote Office macro/Protected View posture when the discovered AD host needs application hardening follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_browser_posture", "Pivot into remote browser policy posture when the discovered AD host needs endpoint hardening follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_tls_posture", "Pivot into remote TLS/SChannel posture when the discovered AD host needs protocol or cipher-hardening follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_winrm_posture", "Pivot into remote WinRM posture when the discovered AD host needs remote-management hardening follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_powershell_logging_posture", "Pivot into remote PowerShell logging posture when the discovered AD host needs script auditing or logging-policy follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_uac_posture", "Pivot into remote UAC posture when the discovered AD host needs elevation-hardening follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_ldap_policy_posture", "Pivot into remote LDAP signing/channel-binding posture when the discovered AD host needs host policy follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_network_client_posture", "Pivot into remote network-client hardening posture when the discovered AD host needs name-resolution or redirect-policy follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_account_policy_posture", "Pivot into remote account password/lockout posture when the discovered AD host needs effective host account-policy follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_interactive_logon_posture", "Pivot into remote interactive logon posture when the discovered AD host needs console-logon policy follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_device_guard_posture", "Pivot into remote Device Guard posture when the discovered AD host needs virtualization-security follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_defender_asr_posture", "Pivot into remote Defender ASR posture when the discovered AD host needs host attack-surface reduction follow-up.", primarySourceField, fallbackSourceField),
-                CreateSystemHandoffRoute("system_certificate_posture", "Pivot into remote certificate-store posture only when the follow-up is about machine certificate stores or trust-store posture on the discovered AD host.", primarySourceField, fallbackSourceField)
-            }
-        };
-    }
-
-    private static ToolHandoffRoute CreateSystemHandoffRoute(
-        string targetToolName,
-        string reason,
-        string primarySourceField,
-        string fallbackSourceField) {
-        return new ToolHandoffRoute {
-            TargetPackId = "system",
-            TargetToolName = targetToolName,
-            Reason = reason,
-            Bindings = new[] {
-                new ToolHandoffBinding {
-                    SourceField = primarySourceField,
-                    TargetArgument = "computer_name",
-                    IsRequired = false
-                },
-                new ToolHandoffBinding {
-                    SourceField = fallbackSourceField,
-                    TargetArgument = "computer_name",
-                    IsRequired = false
-                }
-            }
-        };
+        return ToolContractDefaults.CreateHandoff(SystemRemoteHostFollowUpCatalog.CreateComputerTargetRoutes(
+            sourceFields: new[] { primarySourceField, fallbackSourceField },
+            primaryReasonOverride: reason,
+            isRequired: false));
     }
 
     private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
+        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRecovery(
+                supportsTransientRetry: true,
+                maxRetryAttempts: 1,
+                retryableErrorCodes: new[] { "timeout", "query_failed", "probe_failed", "discovery_failed", "transport_unavailable" },
+                recoveryToolNames: new[] { "ad_environment_discover" }));
+    }
 
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Recovery;
-        }
-
-        return new ToolRecoveryContract {
-            IsRecoveryAware = true,
-            SupportsTransientRetry = true,
-            MaxRetryAttempts = 1,
-            RetryableErrorCodes = new[] { "timeout", "query_failed", "probe_failed", "discovery_failed", "transport_unavailable" },
-            RecoveryToolNames = new[] { "ad_environment_discover" }
+    private static IReadOnlyList<ToolSetupRequirement> BuildDefaultSetupRequirements() {
+        return new[] {
+            ToolContractDefaults.CreateRequirement(
+                requirementId: "ad_directory_context",
+                requirementKind: ToolSetupRequirementKinds.Configuration,
+                hintKeys: SetupHintKeys),
+            ToolContractDefaults.CreateRequirement(
+                requirementId: "ad_ldap_connectivity",
+                requirementKind: ToolSetupRequirementKinds.Connectivity,
+                hintKeys: new[] { "domain_controller", "domain_name", "forest_name" })
         };
     }
 
-    private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "ad_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (string.Equals(toolName, "ad_environment_discover", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_forest_discover", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleEnvironmentDiscover;
-        }
-
-        if (string.Equals(toolName, "ad_directory_discovery_diagnostics", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_probe_catalog", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_service_heartbeat_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_diagnostics_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_metrics_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_dashboard_state_get", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (string.Equals(toolName, "ad_dns_server_config", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_zone_config", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_zone_security", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_delegation", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_scavenging", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        return ToolRoutingTaxonomy.RoleOperational;
+    private static string ResolveRole(string toolName, string? existingRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: existingRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
+            packDisplayName: "Active Directory");
     }
 }

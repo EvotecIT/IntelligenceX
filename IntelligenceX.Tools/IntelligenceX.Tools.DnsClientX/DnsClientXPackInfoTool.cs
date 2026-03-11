@@ -13,36 +13,32 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
     private sealed record PackInfoRequest;
     private readonly PackInfoAdapter _adapter;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "dnsclientx_pack_info",
-        "Return DnsClientX pack capabilities, output contract, and recommended usage patterns.",
-        ToolSchema.Object().NoAdditionalProperties(),
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "dnsclientx_pack_info",
+        description: "Return DnsClientX pack capabilities, output contract, and recommended usage patterns.",
+        packId: "dnsclientx",
         category: "dns",
         tags: new[] {
             "pack:dnsclientx",
             "domain_family:public_domain",
             "domain_signals:dns,mx,spf,dmarc,dkim,ns,dnssec,caa,whois,mta_sts,bimi,dnsclientx,dns_client_x"
         },
-        routing: new ToolRoutingContract {
-            IsRoutingAware = true,
-            PackId = "dnsclientx",
-            DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
-            DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic,
-            DomainSignalTokens = new[] {
-                "dns",
-                "mx",
-                "spf",
-                "dmarc",
-                "dkim",
-                "ns",
-                "dnssec",
-                "caa",
-                "whois",
-                "mta_sts",
-                "bimi",
-                "dnsclientx",
-                "dns_client_x"
-            }
+        domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyPublic,
+        domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdPublic,
+        domainSignalTokens: new[] {
+            "dns",
+            "mx",
+            "spf",
+            "dmarc",
+            "dkim",
+            "ns",
+            "dnssec",
+            "caa",
+            "whois",
+            "mta_sts",
+            "bimi",
+            "dnsclientx",
+            "dns_client_x"
         });
 
     /// <summary>

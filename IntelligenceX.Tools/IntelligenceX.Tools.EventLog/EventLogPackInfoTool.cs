@@ -13,30 +13,26 @@ namespace IntelligenceX.Tools.EventLog;
 public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "eventlog_pack_info",
-        "Return event log pack capabilities, output contract, and recommended usage patterns. Call this first when planning event investigations.",
-        ToolSchema.Object()
-            .NoAdditionalProperties(),
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "eventlog_pack_info",
+        description: "Return event log pack capabilities, output contract, and recommended usage patterns. Call this first when planning event investigations.",
+        packId: "eventlog",
         category: "eventlog",
         tags: new[] {
             "pack:eventlog",
             "domain_family:ad_domain",
-            "domain_signals:eventlog,security,kerberos,gpo,ad_domain,dc"
+            "domain_signals:eventlog,eventviewerx,security,kerberos,gpo,ad_domain,dc"
         },
-        routing: new ToolRoutingContract {
-            IsRoutingAware = true,
-            PackId = "eventlog",
-            DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
-            DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd,
-            DomainSignalTokens = new[] {
-                "eventlog",
-                "security",
-                "kerberos",
-                "gpo",
-                "ad_domain",
-                "dc"
-            }
+        domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+        domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdAd,
+        domainSignalTokens: new[] {
+            "eventlog",
+            "eventviewerx",
+            "security",
+            "kerberos",
+            "gpo",
+            "ad_domain",
+            "dc"
         });
 
     /// <summary>

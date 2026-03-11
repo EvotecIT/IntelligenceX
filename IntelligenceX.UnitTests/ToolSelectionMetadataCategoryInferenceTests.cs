@@ -261,9 +261,27 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
+        public void GetNormalizedPackAliases_ShouldIncludeEventViewerXAlias_ForEventLogPack() {
+            var aliases = ToolSelectionMetadata.GetNormalizedPackAliases("eventlog");
+
+            Assert.Contains("eventlog", aliases, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("eventviewerx", aliases, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void GetPackSearchTokens_ShouldIncludeDisplayAliases_ForEventLogPack() {
+            var tokens = ToolSelectionMetadata.GetPackSearchTokens("eventlog");
+
+            Assert.Contains("eventlog", tokens, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("eventviewerx", tokens, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("eventviewer_x", tokens, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void IsKnownCompoundPackRoutingCompact_ShouldRecognizeKnownCompactsOnly() {
             Assert.True(ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact("domaindetective"));
             Assert.True(ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact("dnsclientx"));
+            Assert.True(ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact("eventviewerx"));
             Assert.False(ToolSelectionMetadata.IsKnownCompoundPackRoutingCompact("custompack"));
         }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.DomainDetective;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.DomainDetective;
 /// <summary>
 /// DomainDetective tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class DomainDetectiveToolPack : IToolPack {
+public sealed class DomainDetectiveToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly DomainDetectiveToolOptions _options;
 
     /// <summary>
@@ -30,5 +31,10 @@ public sealed class DomainDetectiveToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterDomainDetectivePack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryDomainDetectiveExtensions.GetRegisteredToolCatalog(_options);
     }
 }

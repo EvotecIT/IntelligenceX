@@ -1,10 +1,19 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.FileSystem;
 
 internal static class FileSystemToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["fs_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["fs_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["fs_read"] = ToolRoutingTaxonomy.RoleOperational,
+            ["fs_search"] = ToolRoutingTaxonomy.RoleResolver
+        };
+
     private static readonly string[] SetupHintKeys = {
         "path",
         "folder",
@@ -26,11 +35,13 @@ internal static class FileSystemToolContracts {
         var definition = tool.Definition;
         var routing = BuildRouting(definition);
         var setup = BuildSetup(definition, routing);
+        var handoff = BuildHandoff(definition);
         var recovery = BuildRecovery(definition, routing);
         var updatedDefinition = ToolDefinitionOverlay.WithContracts(
             definition: definition,
             routing: routing,
             setup: setup,
+            handoff: handoff,
             recovery: recovery);
         return ToolDefinitionOverlay.WithDefinition(tool, updatedDefinition);
     }
@@ -44,7 +55,7 @@ internal static class FileSystemToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "filesystem",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
             DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : FileSystemSignalTokens,
@@ -55,59 +66,59 @@ internal static class FileSystemToolContracts {
     }
 
     private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Setup;
+        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRequiredSetup(
+                setupToolName: "fs_list",
+                requirementId: "filesystem_path_access",
+                requirementKind: ToolSetupRequirementKinds.Capability,
+                setupHintKeys: SetupHintKeys));
+    }
+
+    private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {
+        if (string.Equals(definition.Name, "fs_list", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "filesystem",
+                    targetToolName: "fs_read",
+                    reason: "Promote listed file entries into direct local content inspection.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("entries[].path", "path", isRequired: false)
+                    })
+            });
         }
 
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
+        if (string.Equals(definition.Name, "fs_search", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "filesystem",
+                    targetToolName: "fs_read",
+                    reason: "Promote content search matches into direct local file inspection.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("matches[].path", "path")
+                    })
+            });
         }
 
-        return new ToolSetupContract {
-            IsSetupAware = true,
-            SetupToolName = "fs_list",
-            Requirements = new[] {
-                new ToolSetupRequirement {
-                    RequirementId = "filesystem_path_access",
-                    Kind = ToolSetupRequirementKinds.Capability,
-                    IsRequired = true,
-                    HintKeys = SetupHintKeys
-                }
-            },
-            SetupHintKeys = SetupHintKeys
-        };
+        return definition.Handoff;
     }
 
     private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
-
-        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
-            return definition.Recovery;
-        }
-
-        return new ToolRecoveryContract {
-            IsRecoveryAware = true,
-            SupportsTransientRetry = true,
-            MaxRetryAttempts = 1,
-            RetryableErrorCodes = new[] { "io_error", "access_denied", "timeout", "query_failed" }
-        };
+        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
+            definition,
+            routing.Role,
+            () => ToolContractDefaults.CreateRecovery(
+                supportsTransientRetry: true,
+                maxRetryAttempts: 1,
+                retryableErrorCodes: new[] { "io_error", "access_denied", "timeout", "query_failed" }));
     }
 
-    private static string ResolveRole(string toolName) {
-        if (string.Equals(toolName, "fs_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (string.Equals(toolName, "fs_search", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        if (string.Equals(toolName, "fs_list", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        return ToolRoutingTaxonomy.RoleOperational;
+    private static string ResolveRole(string toolName, string? existingRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: existingRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
+            packDisplayName: "FileSystem");
     }
 }

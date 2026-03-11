@@ -274,6 +274,115 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
+    public void CatalogFromTools_ShouldProjectOrchestrationContracts() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "custom_pack_info",
+                "Custom pack info",
+                ToolSchema.Object(("machine_name", ToolSchema.String())).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "CustomX",
+                    Role = ToolRoutingTaxonomy.RolePackInfo,
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "Act_Custom_Scope"
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "custom_setup",
+                    SetupHintKeys = new[] { "needs_auth" },
+                    Requirements = new[] {
+                        new ToolSetupRequirement {
+                            RequirementId = "auth.session",
+                            Kind = ToolSetupRequirementKinds.Authentication,
+                            HintKeys = new[] { "auth_required" }
+                        }
+                    }
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "DnsClientX",
+                            TargetToolName = "dns_lookup",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding { SourceField = "Host", TargetArgument = "Target" }
+                            }
+                        }
+                    }
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 3,
+                    RetryableErrorCodes = new[] { "timeout", "query_failed" },
+                    SupportsAlternateEngines = true,
+                    AlternateEngineIds = new[] { "wmi", "cim" },
+                    RecoveryToolNames = new[] { "custom_discover_scope", "custom_pack_info" }
+                }))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.NotNull(item.Orchestration);
+        Assert.Equal("customx", item.Orchestration.PackId);
+        Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, item.Orchestration.Role);
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, item.Orchestration.RoutingSource);
+        Assert.True(item.Orchestration.IsRoutingAware);
+        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, item.Orchestration.DomainIntentFamily);
+        Assert.Equal("act_custom_scope", item.Orchestration.DomainIntentActionId);
+        Assert.True(item.Orchestration.IsSetupAware);
+        Assert.Equal(1, item.Orchestration.SetupRequirementCount);
+        Assert.Equal(ToolSetupContract.DefaultContractId, item.Orchestration.SetupContractId);
+        Assert.Equal("custom_setup", item.Orchestration.SetupToolName);
+        Assert.Equal(new[] { "auth.session" }, item.Orchestration.SetupRequirementIds);
+        Assert.Equal(new[] { ToolSetupRequirementKinds.Authentication }, item.Orchestration.SetupRequirementKinds);
+        Assert.Equal(new[] { "auth_required", "needs_auth" }, item.Orchestration.SetupHintKeys);
+        Assert.True(item.Orchestration.IsHandoffAware);
+        Assert.Equal(1, item.Orchestration.HandoffRouteCount);
+        Assert.Equal(1, item.Orchestration.HandoffBindingCount);
+        Assert.Equal(ToolHandoffContract.DefaultContractId, item.Orchestration.HandoffContractId);
+        var handoffEdge = Assert.Single(item.Orchestration.HandoffEdges);
+        Assert.Equal("dnsclientx", handoffEdge.TargetPackId);
+        Assert.Equal("dns_lookup", handoffEdge.TargetToolName);
+        Assert.Equal(ToolRoutingTaxonomy.RoleOperational, handoffEdge.TargetRole);
+        Assert.Equal(1, handoffEdge.BindingCount);
+        Assert.Equal(new[] { "host->target" }, handoffEdge.BindingPairs);
+        Assert.True(item.Orchestration.IsRecoveryAware);
+        Assert.True(item.Orchestration.SupportsTransientRetry);
+        Assert.Equal(3, item.Orchestration.MaxRetryAttempts);
+        Assert.Equal(ToolRecoveryContract.DefaultContractId, item.Orchestration.RecoveryContractId);
+        Assert.True(item.Orchestration.SupportsAlternateEngines);
+        Assert.Equal(2, item.Orchestration.AlternateEngineCount);
+        Assert.Equal(2, item.Orchestration.RecoveryToolCount);
+        Assert.Equal(new[] { "query_failed", "timeout" }, item.Orchestration.RetryableErrorCodes);
+        Assert.Equal(new[] { "cim", "wmi" }, item.Orchestration.AlternateEngineIds);
+        Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, item.Orchestration.RecoveryToolNames);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldRecognizeEventLogRemoteMachineArguments_AsRemoteHostTraits() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "eventlog_live_query",
+                "Live Event Log query",
+                ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Remote machine.")),
+                        ("machine_names", ToolSchema.Array(ToolSchema.String("Remote machines."))),
+                        ("channel", ToolSchema.String("Event log channel.")))
+                    .NoAdditionalProperties(),
+                category: "eventlog"))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.True(item.Traits.SupportsTargetScoping);
+        Assert.Equal(new[] { "channel", "machine_name", "machine_names" }, item.Traits.TargetScopeArguments);
+        Assert.True(item.Traits.SupportsRemoteHostTargeting);
+        Assert.Equal(new[] { "machine_name", "machine_names" }, item.Traits.RemoteHostArguments);
+    }
+
+    [Fact]
     public void CatalogFromTools_ShouldInferCategoryAndSelectionTags() {
         var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
             new StubTool(new ToolDefinition(

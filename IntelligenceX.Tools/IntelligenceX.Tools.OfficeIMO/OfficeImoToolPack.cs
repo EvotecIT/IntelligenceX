@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.OfficeIMO;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.OfficeIMO;
 /// <summary>
 /// OfficeIMO tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class OfficeImoToolPack : IToolPack {
+public sealed class OfficeImoToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly OfficeImoToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,10 @@ public sealed class OfficeImoToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterOfficeImoPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(_options);
     }
 }

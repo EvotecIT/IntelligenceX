@@ -12,10 +12,10 @@ namespace IntelligenceX.Tools.PowerShell;
 public sealed class PowerShellPackInfoTool : PowerShellToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "powershell_pack_info",
-        "Return IX.PowerShell pack capabilities, output contract, and safe usage guidance (pwsh/windows_powershell/cmd). Call this first when planning shell execution.",
-        ToolSchema.Object().NoAdditionalProperties());
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "powershell_pack_info",
+        description: "Return IX.PowerShell pack capabilities, output contract, and safe usage guidance (pwsh/windows_powershell/cmd). Call this first when planning shell execution.",
+        packId: "powershell");
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PowerShellPackInfoTool"/> class.

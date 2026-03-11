@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.ADPlayground;
@@ -6,7 +7,7 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// <summary>
 /// Active Directory tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class ActiveDirectoryToolPack : IToolPack {
+public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvider {
     private readonly ActiveDirectoryToolOptions _options;
 
     /// <summary>
@@ -31,5 +32,10 @@ public sealed class ActiveDirectoryToolPack : IToolPack {
     /// <inheritdoc />
     public void Register(ToolRegistry registry) {
         registry.RegisterActiveDirectoryPack(_options);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+        return ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(_options);
     }
 }

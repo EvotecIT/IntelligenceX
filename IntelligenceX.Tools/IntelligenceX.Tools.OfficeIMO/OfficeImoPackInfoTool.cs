@@ -12,10 +12,10 @@ namespace IntelligenceX.Tools.OfficeIMO;
 public sealed class OfficeImoPackInfoTool : OfficeImoToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "officeimo_pack_info",
-        "Return OfficeIMO ingestion pack capabilities, allowed-root behavior, output contract, and recommended usage patterns.",
-        ToolSchema.Object().NoAdditionalProperties());
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "officeimo_pack_info",
+        description: "Return OfficeIMO ingestion pack capabilities, allowed-root behavior, output contract, and recommended usage patterns.",
+        packId: "officeimo");
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OfficeImoPackInfoTool"/> class.

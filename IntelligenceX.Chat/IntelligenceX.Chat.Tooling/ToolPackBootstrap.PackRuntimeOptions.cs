@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -27,7 +28,7 @@ public static partial class ToolPackBootstrap {
             return;
         }
 
-        var packKeys = ResolvePackRuntimeOptionKeys(packType, explicitPackKey);
+        var packKeys = ResolvePackRuntimeOptionKeys(options, packType, explicitPackKey);
         var effectiveProperties = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var packKey in packKeys) {
@@ -53,6 +54,10 @@ public static partial class ToolPackBootstrap {
     }
 
     internal static IReadOnlyList<string> ResolvePackRuntimeOptionKeys(Type packType, string? explicitPackKey = null) {
+        return ResolvePackRuntimeOptionKeys(options: null, packType, explicitPackKey);
+    }
+
+    internal static IReadOnlyList<string> ResolvePackRuntimeOptionKeys(object? options, Type packType, string? explicitPackKey = null) {
         if (packType is null) {
             throw new ArgumentNullException(nameof(packType));
         }
@@ -62,6 +67,11 @@ public static partial class ToolPackBootstrap {
 
         AddPackOptionKey(keys, seen, PackOptionKeyGlobal);
         AddPackOptionKey(keys, seen, packType.Assembly.GetName().Name);
+        if (options is IToolPackRuntimeOptionTarget runtimeOptionTarget) {
+            foreach (var runtimeOptionKey in runtimeOptionTarget.RuntimeOptionKeys ?? Array.Empty<string>()) {
+                AddPackOptionKey(keys, seen, runtimeOptionKey);
+            }
+        }
 
         var namespaceValue = packType.Namespace ?? string.Empty;
         const string toolsNamespacePrefix = "IntelligenceX.Tools.";
@@ -134,16 +144,6 @@ public static partial class ToolPackBootstrap {
 
         if (seen.Add(normalized)) {
             keys.Add(normalized);
-        }
-
-        if (string.Equals(normalized, PackOptionKeyActiveDirectory, StringComparison.OrdinalIgnoreCase)) {
-            if (seen.Add(PackOptionKeyAdPlayground)) {
-                keys.Add(PackOptionKeyAdPlayground);
-            }
-        } else if (string.Equals(normalized, PackOptionKeyAdPlayground, StringComparison.OrdinalIgnoreCase)) {
-            if (seen.Add(PackOptionKeyActiveDirectory)) {
-                keys.Add(PackOptionKeyActiveDirectory);
-            }
         }
     }
 

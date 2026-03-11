@@ -12,10 +12,10 @@ namespace IntelligenceX.Tools.Email;
 public sealed class EmailPackInfoTool : EmailToolBase, ITool {
     private sealed record PackInfoRequest;
 
-    private static readonly ToolDefinition DefinitionValue = new(
-        "email_pack_info",
-        "Return email pack capabilities, configuration hints, output contract, and recommended usage patterns.",
-        ToolSchema.Object().NoAdditionalProperties());
+    private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
+        toolName: "email_pack_info",
+        description: "Return email pack capabilities, configuration hints, output contract, and recommended usage patterns.",
+        packId: "email");
 
     /// <summary>
     /// Initializes a new instance of the <see cref="EmailPackInfoTool"/> class.

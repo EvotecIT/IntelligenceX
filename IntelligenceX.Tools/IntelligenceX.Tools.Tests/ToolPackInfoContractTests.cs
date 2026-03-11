@@ -104,6 +104,8 @@ public class ToolPackInfoContractTests {
                 Assert.True(isPackInfo.ValueKind == JsonValueKind.True || isPackInfo.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("traits", out var traits));
                 Assert.Equal(JsonValueKind.Object, traits.ValueKind);
+                Assert.True(entry.TryGetProperty("orchestration", out var orchestration));
+                Assert.Equal(JsonValueKind.Object, orchestration.ValueKind);
                 Assert.True(entry.TryGetProperty("is_write_capable", out var isWriteCapable));
                 Assert.True(isWriteCapable.ValueKind == JsonValueKind.True || isWriteCapable.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("requires_write_governance", out var requiresWriteGovernance));
@@ -151,6 +153,7 @@ public class ToolPackInfoContractTests {
                 Assert.Equal(expectedCatalogEntry.SupportsTableViewProjection, supportsProjection.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.IsPackInfoTool, isPackInfo.GetBoolean());
                 AssertTraitDetails(traits, expectedCatalogEntry.Traits);
+                AssertOrchestrationDetails(orchestration, expectedCatalogEntry.Orchestration);
                 Assert.Equal(expectedCatalogEntry.IsWriteCapable, isWriteCapable.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.RequiresWriteGovernance, requiresWriteGovernance.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.WriteGovernanceContractId, writeGovernanceContractId.GetString());
@@ -738,6 +741,62 @@ public class ToolPackInfoContractTests {
         Assert.Equal(
             expectedTraits.AuthenticationArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
             ReadStringArray(actualTraits.GetProperty("authentication_arguments")));
+    }
+
+    private static void AssertOrchestrationDetails(JsonElement actualOrchestration, ToolPackToolOrchestrationModel expectedOrchestration) {
+        Assert.Equal(expectedOrchestration.PackId, actualOrchestration.GetProperty("pack_id").GetString());
+        Assert.Equal(expectedOrchestration.Role, actualOrchestration.GetProperty("role").GetString());
+        Assert.Equal(expectedOrchestration.RoutingSource, actualOrchestration.GetProperty("routing_source").GetString());
+        Assert.Equal(expectedOrchestration.IsRoutingAware, actualOrchestration.GetProperty("is_routing_aware").GetBoolean());
+        Assert.Equal(expectedOrchestration.DomainIntentFamily, actualOrchestration.GetProperty("domain_intent_family").GetString());
+        Assert.Equal(expectedOrchestration.DomainIntentActionId, actualOrchestration.GetProperty("domain_intent_action_id").GetString());
+        Assert.Equal(expectedOrchestration.IsSetupAware, actualOrchestration.GetProperty("is_setup_aware").GetBoolean());
+        Assert.Equal(expectedOrchestration.SetupRequirementCount, actualOrchestration.GetProperty("setup_requirement_count").GetInt32());
+        Assert.Equal(expectedOrchestration.SetupToolName, actualOrchestration.GetProperty("setup_tool_name").GetString());
+        Assert.Equal(expectedOrchestration.SetupContractId, actualOrchestration.GetProperty("setup_contract_id").GetString());
+        Assert.Equal(
+            expectedOrchestration.SetupRequirementIds.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualOrchestration.GetProperty("setup_requirement_ids")));
+        Assert.Equal(
+            expectedOrchestration.SetupRequirementKinds.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualOrchestration.GetProperty("setup_requirement_kinds")));
+        Assert.Equal(
+            expectedOrchestration.SetupHintKeys.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualOrchestration.GetProperty("setup_hint_keys")));
+        Assert.Equal(expectedOrchestration.IsHandoffAware, actualOrchestration.GetProperty("is_handoff_aware").GetBoolean());
+        Assert.Equal(expectedOrchestration.HandoffRouteCount, actualOrchestration.GetProperty("handoff_route_count").GetInt32());
+        Assert.Equal(expectedOrchestration.HandoffBindingCount, actualOrchestration.GetProperty("handoff_binding_count").GetInt32());
+        Assert.Equal(expectedOrchestration.HandoffContractId, actualOrchestration.GetProperty("handoff_contract_id").GetString());
+
+        var actualHandoffEdges = actualOrchestration.GetProperty("handoff_edges");
+        Assert.Equal(JsonValueKind.Array, actualHandoffEdges.ValueKind);
+        Assert.Equal(expectedOrchestration.HandoffEdges.Count, actualHandoffEdges.GetArrayLength());
+        for (var i = 0; i < expectedOrchestration.HandoffEdges.Count; i++) {
+            var expectedEdge = expectedOrchestration.HandoffEdges[i];
+            var actualEdge = actualHandoffEdges[i];
+            Assert.Equal(expectedEdge.TargetPackId, actualEdge.GetProperty("target_pack_id").GetString());
+            Assert.Equal(expectedEdge.TargetToolName, actualEdge.GetProperty("target_tool_name").GetString());
+            Assert.Equal(expectedEdge.TargetRole, actualEdge.GetProperty("target_role").GetString());
+            Assert.Equal(expectedEdge.BindingCount, actualEdge.GetProperty("binding_count").GetInt32());
+            Assert.Equal(expectedEdge.BindingPairs, ReadStringArrayPreserveOrder(actualEdge.GetProperty("binding_pairs")));
+        }
+
+        Assert.Equal(expectedOrchestration.IsRecoveryAware, actualOrchestration.GetProperty("is_recovery_aware").GetBoolean());
+        Assert.Equal(expectedOrchestration.SupportsTransientRetry, actualOrchestration.GetProperty("supports_transient_retry").GetBoolean());
+        Assert.Equal(expectedOrchestration.MaxRetryAttempts, actualOrchestration.GetProperty("max_retry_attempts").GetInt32());
+        Assert.Equal(expectedOrchestration.SupportsAlternateEngines, actualOrchestration.GetProperty("supports_alternate_engines").GetBoolean());
+        Assert.Equal(expectedOrchestration.AlternateEngineCount, actualOrchestration.GetProperty("alternate_engine_count").GetInt32());
+        Assert.Equal(expectedOrchestration.RecoveryContractId, actualOrchestration.GetProperty("recovery_contract_id").GetString());
+        Assert.Equal(expectedOrchestration.RecoveryToolCount, actualOrchestration.GetProperty("recovery_tool_count").GetInt32());
+        Assert.Equal(
+            expectedOrchestration.RetryableErrorCodes.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualOrchestration.GetProperty("retryable_error_codes")));
+        Assert.Equal(
+            expectedOrchestration.AlternateEngineIds.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualOrchestration.GetProperty("alternate_engine_ids")));
+        Assert.Equal(
+            expectedOrchestration.RecoveryToolNames.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
+            ReadStringArray(actualOrchestration.GetProperty("recovery_tool_names")));
     }
 
     private sealed record PackCase(
