@@ -199,6 +199,39 @@ public sealed class ToolOrchestrationCatalogTests {
     }
 
     [Fact]
+    public void Build_NormalizesInvalidPackOwnedRoleOrSource_ToAllowedRoutingTaxonomyValues() {
+        var definition = CreateDefinition(
+            name: "custom_resolver_query",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceInferred,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleResolver
+            });
+
+        var packCatalogEntry = new ToolPackToolCatalogEntryModel {
+            Name = "custom_resolver_query",
+            Description = "Resolver query",
+            Orchestration = new ToolPackToolOrchestrationModel {
+                PackId = "customx",
+                Role = "totally_invalid_role",
+                RoutingSource = "totally_invalid_source",
+                IsRoutingAware = true
+            }
+        };
+
+        var catalog = ToolOrchestrationCatalog.Build(
+            new[] { definition },
+            new IToolPack[] { new SyntheticCatalogPack("customx", packCatalogEntry) });
+
+        Assert.True(catalog.TryGetEntry("custom_resolver_query", out var entry));
+        Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.Role);
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, entry.RoutingSource);
+        Assert.DoesNotContain("invalid", entry.Role, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("invalid", entry.RoutingSource, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Build_GetByPackAndRole_IsCaseInsensitive_ForPackAndRoleArguments() {
         var catalog = ToolOrchestrationCatalog.Build(new[] {
             CreateDefinition(

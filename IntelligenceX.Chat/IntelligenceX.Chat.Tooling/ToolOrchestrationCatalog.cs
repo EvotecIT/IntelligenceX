@@ -309,19 +309,15 @@ public sealed class ToolOrchestrationCatalog {
                 : NormalizePackId(routing?.PackId);
             var schemaTraits = ToolSchemaTraitProjection.Project(definition);
 
-            var role = packOwnedOrchestration is not null && packOwnedOrchestration.Role.Length > 0
-                ? NormalizeToken(packOwnedOrchestration.Role)
-                : NormalizeToken(routing?.Role);
-            if (!ToolRoutingTaxonomy.IsAllowedRole(role)) {
-                role = ToolRoutingTaxonomy.RoleOperational;
-            }
+            var role = NormalizeAllowedRoleOrDefault(
+                preferred: packOwnedOrchestration?.Role,
+                fallback: routing?.Role,
+                defaultValue: ToolRoutingTaxonomy.RoleOperational);
 
-            var routingSource = packOwnedOrchestration is not null && packOwnedOrchestration.RoutingSource.Length > 0
-                ? NormalizeToken(packOwnedOrchestration.RoutingSource)
-                : NormalizeToken(routing?.RoutingSource);
-            if (!ToolRoutingTaxonomy.IsAllowedSource(routingSource)) {
-                routingSource = ToolRoutingTaxonomy.SourceExplicit;
-            }
+            var routingSource = NormalizeAllowedSourceOrDefault(
+                preferred: packOwnedOrchestration?.RoutingSource,
+                fallback: routing?.RoutingSource,
+                defaultValue: ToolRoutingTaxonomy.SourceExplicit);
 
             var family = packOwnedOrchestration is not null && packOwnedOrchestration.DomainIntentFamily.Length > 0
                 ? NormalizeToken(packOwnedOrchestration.DomainIntentFamily)
@@ -345,8 +341,6 @@ public sealed class ToolOrchestrationCatalog {
 
             entriesByToolName[toolName] = mergedEntry with {
                 PackId = packId.Length > 0 ? packId : mergedEntry.PackId,
-                Role = role.Length > 0 ? role : mergedEntry.Role,
-                RoutingSource = routingSource.Length > 0 ? routingSource : mergedEntry.RoutingSource,
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = actionId
             };
@@ -604,11 +598,13 @@ public sealed class ToolOrchestrationCatalog {
                 BindingCount = Math.Max(0, edge.BindingCount),
                 BindingPairs = FreezeStringList(edge.BindingPairs.Select(static pair => NormalizeToken(pair)).Where(static pair => pair.Length > 0).ToArray())
             }).ToArray());
+        var mergedRole = NormalizeAllowedRoleOrFallback(orchestration.Role, fallbackEntry.Role);
+        var mergedRoutingSource = NormalizeAllowedSourceOrFallback(orchestration.RoutingSource, fallbackEntry.RoutingSource);
 
         return fallbackEntry with {
             PackId = orchestration.PackId.Length > 0 ? NormalizePackId(orchestration.PackId) : fallbackEntry.PackId,
-            Role = orchestration.Role.Length > 0 ? NormalizeToken(orchestration.Role) : fallbackEntry.Role,
-            RoutingSource = orchestration.RoutingSource.Length > 0 ? NormalizeToken(orchestration.RoutingSource) : fallbackEntry.RoutingSource,
+            Role = mergedRole,
+            RoutingSource = mergedRoutingSource,
             IsRoutingAware = orchestration.IsRoutingAware || fallbackEntry.IsRoutingAware,
             SupportsTargetScoping = traits?.SupportsTargetScoping == true || fallbackEntry.SupportsTargetScoping,
             TargetScopeArguments = targetScopeArguments,
@@ -722,6 +718,36 @@ public sealed class ToolOrchestrationCatalog {
 
     private static string NormalizePackId(string? value) {
         return ToolPackBootstrap.NormalizePackId(value);
+    }
+
+    private static string NormalizeAllowedRoleOrFallback(string? candidate, string fallback) {
+        var normalized = NormalizeToken(candidate);
+        return ToolRoutingTaxonomy.IsAllowedRole(normalized) ? normalized : fallback;
+    }
+
+    private static string NormalizeAllowedRoleOrDefault(string? preferred, string? fallback, string defaultValue) {
+        var normalizedPreferred = NormalizeToken(preferred);
+        if (ToolRoutingTaxonomy.IsAllowedRole(normalizedPreferred)) {
+            return normalizedPreferred;
+        }
+
+        var normalizedFallback = NormalizeToken(fallback);
+        return ToolRoutingTaxonomy.IsAllowedRole(normalizedFallback) ? normalizedFallback : defaultValue;
+    }
+
+    private static string NormalizeAllowedSourceOrFallback(string? candidate, string fallback) {
+        var normalized = NormalizeToken(candidate);
+        return ToolRoutingTaxonomy.IsAllowedSource(normalized) ? normalized : fallback;
+    }
+
+    private static string NormalizeAllowedSourceOrDefault(string? preferred, string? fallback, string defaultValue) {
+        var normalizedPreferred = NormalizeToken(preferred);
+        if (ToolRoutingTaxonomy.IsAllowedSource(normalizedPreferred)) {
+            return normalizedPreferred;
+        }
+
+        var normalizedFallback = NormalizeToken(fallback);
+        return ToolRoutingTaxonomy.IsAllowedSource(normalizedFallback) ? normalizedFallback : defaultValue;
     }
 
     private static string NormalizeToken(string? value, string fallback = "") {
