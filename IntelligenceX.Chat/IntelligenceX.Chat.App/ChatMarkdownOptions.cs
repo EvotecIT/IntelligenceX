@@ -9,12 +9,5 @@ internal static class ChatMarkdownOptions {
     /// <summary>
     /// Creates strict markdown options with visual runtime support enabled for transcript rendering.
     /// </summary>
-    public static MarkdownRendererOptions Create() {
-        // Preset factory returns a fresh options object per call; this mutation is call-local.
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
-        options.Mermaid.Enabled = true;
-        options.Chart.Enabled = true;
-        OfficeImoMarkdownRuntimeContract.TryEnableOptionalRendererNetworkSupport(options);
-        return options;
-    }
+    public static MarkdownRendererOptions Create() => OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
 }

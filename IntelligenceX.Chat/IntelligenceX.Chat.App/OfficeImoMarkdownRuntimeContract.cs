@@ -11,6 +11,20 @@ namespace IntelligenceX.Chat.App;
 internal static class OfficeImoMarkdownRuntimeContract {
     private static readonly Version MinimumMarkdownRendererVersion = new(0, 1, 9);
     private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 5, 12);
+    private static readonly Lazy<PropertyInfo?> NetworkPropertyLazy = new(
+        () => typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public));
+
+    /// <summary>
+    /// Creates transcript renderer options using the central OfficeIMO runtime contract.
+    /// </summary>
+    public static MarkdownRendererOptions CreateTranscriptRendererOptions() {
+        // Preset factory returns a fresh options object per call; these mutations are call-local.
+        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        options.Mermaid.Enabled = true;
+        options.Chart.Enabled = true;
+        TryEnableOptionalRendererNetworkSupport(options);
+        return options;
+    }
 
     /// <summary>
     /// Enables optional vis-network support when the loaded renderer exposes it.
@@ -20,9 +34,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
     public static bool TryEnableOptionalRendererNetworkSupport(MarkdownRendererOptions options) {
         ArgumentNullException.ThrowIfNull(options);
 
-        var networkProperty = typeof(MarkdownRendererOptions).GetProperty(
-            "Network",
-            BindingFlags.Instance | BindingFlags.Public);
+        var networkProperty = NetworkPropertyLazy.Value;
         var networkOptions = networkProperty?.GetValue(options);
         var enabledProperty = networkOptions?.GetType().GetProperty(
             "Enabled",

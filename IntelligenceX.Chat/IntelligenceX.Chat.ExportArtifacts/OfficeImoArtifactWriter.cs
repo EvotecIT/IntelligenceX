@@ -204,16 +204,13 @@ public static partial class OfficeImoArtifactWriter {
     }
 
     internal static string NormalizeTranscriptMarkdownForDocx(string markdown) {
-        var normalized = TranscriptTypographyNormalizer.NormalizeMarkdownOutsideFencedCodeBlocks(markdown);
-        if (!PreservesGroupedDefinitionLikeParagraphsLazy.Value) {
-            normalized = NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(normalized);
-        }
-
-        return normalized;
+        return TranscriptMarkdownContract.PrepareTranscriptMarkdownForDocx(
+            markdown,
+            PreservesGroupedDefinitionLikeParagraphsLazy.Value);
     }
 
     internal static string NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(string markdown) {
-        return TranscriptTypographyNormalizer.SeparateAdjacentDefinitionLikeLinesOutsideFencedCodeBlocks(markdown);
+        return TranscriptMarkdownContract.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown);
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {
