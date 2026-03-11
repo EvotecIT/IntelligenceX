@@ -361,4 +361,61 @@ public sealed partial class ChatServiceRoutingTrimTests {
             }
         }
     }
+
+    [Fact]
+    public void RememberSuccessfulPackPreflightCalls_RemovesCurrentRoundBootstrapFailuresFromRememberedSet() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-pack-preflight-prune-failures";
+
+        session.RememberPackPreflightToolsForTesting(threadId, new[] { "customx_pack_probe", "customx_recovery_discover" });
+
+        var executedCalls = new[] {
+            new ToolCall("call_pack_probe_prune", "customx_pack_probe", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal)),
+            new ToolCall("call_recovery_prune", "customx_recovery_discover", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call_pack_probe_prune",
+                Output = """{"ok":false}""",
+                Ok = false,
+                ErrorCode = "transport_unavailable",
+                Error = "Pack probe failed.",
+                IsTransient = true
+            },
+            new ToolOutputDto {
+                CallId = "call_recovery_prune",
+                Output = """{"ok":true}""",
+                Ok = true
+            }
+        };
+
+        RememberSuccessfulPackPreflightCallsMethod.Invoke(session, new object?[] { threadId, executedCalls, outputs });
+
+        Assert.Equal(new[] { "customx_recovery_discover" }, session.GetRememberedPackPreflightToolsForTesting(threadId));
+    }
+
+    [Fact]
+    public void RememberSuccessfulPackPreflightCalls_ClearsFailuresOnlyForCurrentSuccesses() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-pack-preflight-clear-success-only";
+
+        session.RememberPackPreflightToolsForTesting(threadId, new[] { "customx_pack_probe", "customx_recovery_discover" });
+        session.RememberHostBootstrapFailureForTesting(threadId, "customx_pack_probe", "pack_preflight");
+        session.RememberHostBootstrapFailureForTesting(threadId, "customx_recovery_discover", "recovery_helper");
+
+        var executedCalls = new[] {
+            new ToolCall("call_recovery_success_only", "customx_recovery_discover", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call_recovery_success_only",
+                Output = """{"ok":true}""",
+                Ok = true
+            }
+        };
+
+        RememberSuccessfulPackPreflightCallsMethod.Invoke(session, new object?[] { threadId, executedCalls, outputs });
+
+        Assert.Equal(new[] { "customx_pack_probe" }, session.GetRecentHostBootstrapFailureToolNamesForTesting(threadId));
+    }
 }

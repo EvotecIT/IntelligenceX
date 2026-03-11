@@ -241,10 +241,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        if (successfulCallIds.Count == 0) {
-            return;
-        }
-
+        var executedBootstrapToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var successfulBootstrapToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < executedCalls.Count; i++) {
             var call = executedCalls[i];
@@ -252,15 +249,17 @@ internal sealed partial class ChatServiceSession {
             var callName = (call.Name ?? string.Empty).Trim();
             if (callId.Length == 0
                 || callName.Length == 0
-                || !successfulCallIds.Contains(callId)
                 || ResolveHostBootstrapFailureKind(callId, callName).Length == 0) {
                 continue;
             }
 
-            successfulBootstrapToolNames.Add(callName);
+            executedBootstrapToolNames.Add(callName);
+            if (successfulCallIds.Contains(callId)) {
+                successfulBootstrapToolNames.Add(callName);
+            }
         }
 
-        if (successfulBootstrapToolNames.Count == 0) {
+        if (executedBootstrapToolNames.Count == 0) {
             return;
         }
 
@@ -272,7 +271,7 @@ internal sealed partial class ChatServiceSession {
                 && existingNames is { Length: > 0 }) {
                 for (var i = 0; i < existingNames.Length; i++) {
                     var existingName = (existingNames[i] ?? string.Empty).Trim();
-                    if (existingName.Length > 0) {
+                    if (existingName.Length > 0 && !executedBootstrapToolNames.Contains(existingName)) {
                         updated.Add(existingName);
                     }
                 }
@@ -287,14 +286,19 @@ internal sealed partial class ChatServiceSession {
                 .Take(MaxRememberedPackPreflightToolNames)
                 .ToArray();
             snapshotSeenUtcTicks = DateTime.UtcNow.Ticks;
-            _packPreflightToolNamesByThreadId[normalizedThreadId] = snapshotToolNames;
-            _packPreflightSeenUtcTicks[normalizedThreadId] = snapshotSeenUtcTicks;
+            if (snapshotToolNames.Length == 0) {
+                _packPreflightToolNamesByThreadId.Remove(normalizedThreadId);
+                _packPreflightSeenUtcTicks.Remove(normalizedThreadId);
+            } else {
+                _packPreflightToolNamesByThreadId[normalizedThreadId] = snapshotToolNames;
+                _packPreflightSeenUtcTicks[normalizedThreadId] = snapshotSeenUtcTicks;
+            }
             TrimWeightedRoutingContextsNoLock();
         }
 
         PersistPackPreflightSnapshot(normalizedThreadId, snapshotToolNames, snapshotSeenUtcTicks);
-        for (var i = 0; i < snapshotToolNames.Length; i++) {
-            ClearHostBootstrapFailure(normalizedThreadId, snapshotToolNames[i]);
+        foreach (var successfulToolName in successfulBootstrapToolNames) {
+            ClearHostBootstrapFailure(normalizedThreadId, successfulToolName);
         }
     }
 
