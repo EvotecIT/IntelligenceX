@@ -64,9 +64,15 @@ It should be limited to:
 - Word converter options
 - image allow-listing and sizing
 - converter capability probes
+- runtime/package diagnostics for loaded OfficeIMO Word markdown assemblies
 - invoking the shared transcript markdown contract for DOCX preparation
 
 It should not become the main place where transcript markdown semantics are decided.
+
+The OfficeIMO markdown runtime diagnostics are currently surfaced through:
+
+- startup renderer diagnostics in the App host
+- transcript forensic export snapshots
 
 ## Merge Criteria For OfficeIMO Packaging
 
