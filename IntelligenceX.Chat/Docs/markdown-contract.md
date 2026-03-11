@@ -64,6 +64,7 @@ It should be limited to:
 - Word converter options
 - image allow-listing and sizing
 - converter capability probes
+- runtime/package diagnostics for loaded OfficeIMO Word markdown assemblies
 - invoking the shared transcript markdown contract for DOCX preparation
 
 It should not become the main place where transcript markdown semantics are decided.
