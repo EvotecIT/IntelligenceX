@@ -4,7 +4,7 @@ This document tracks whether `IntelligenceX.Chat` is ready to adopt and freeze a
 
 ## Current Baseline
 
-The currently pinned package versions in [Directory.Build.props](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/Directory.Build.props) are:
+The currently pinned package versions in [Directory.Build.props](../Directory.Build.props) are:
 
 - `OfficeIMO.Markdown` = `0.5.12`
 - `OfficeIMO.MarkdownRenderer` = `0.1.9`
@@ -13,11 +13,11 @@ The currently pinned package versions in [Directory.Build.props](/C:/Support/Git
 
 ## What Is Already Cleaned Up
 
-- App transcript normalization entrypoints are centralized in [TranscriptMarkdownPreparation.cs](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/IntelligenceX.Chat.App/Markdown/TranscriptMarkdownPreparation.cs).
-- Shared transcript content normalization is centralized in [TranscriptMarkdownContract.cs](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/IntelligenceX.Chat.ExportArtifacts/TranscriptMarkdownContract.cs).
-- OfficeIMO renderer/runtime probing is centralized in [OfficeImoMarkdownRuntimeContract.cs](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/IntelligenceX.Chat.App/OfficeImoMarkdownRuntimeContract.cs).
-- OfficeIMO Word converter/runtime probing is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
-- OfficeIMO input-normalizer probing is isolated in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
+- App transcript normalization entrypoints are centralized in [TranscriptMarkdownPreparation.cs](../IntelligenceX.Chat.App/Markdown/TranscriptMarkdownPreparation.cs).
+- Shared transcript content normalization is centralized in [TranscriptMarkdownContract.cs](../IntelligenceX.Chat.ExportArtifacts/TranscriptMarkdownContract.cs).
+- OfficeIMO renderer/runtime probing is centralized in [OfficeImoMarkdownRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownRuntimeContract.cs).
+- OfficeIMO Word converter/runtime probing is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](../IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
+- OfficeIMO input-normalizer probing is isolated in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
 
 ## Package-Mode Validation
 
@@ -44,7 +44,7 @@ Before publishing and then merging a package-adoption PR, all of the following s
 - App render, markdown export, and DOCX export still go through the intended shared markdown contract.
 - Package-mode validation passes against the exact versions we plan to publish.
 - The new package-adoption PR does not reintroduce mixed ownership between transcript cleanup, renderer probing, and DOCX adaptation.
-- Any intentional OfficeIMO-specific behavior used by `IntelligenceX` is documented in [markdown-contract.md](/C:/Support/Github/IntelligenceX/IntelligenceX.Chat/Docs/markdown-contract.md).
+- Any intentional OfficeIMO-specific behavior used by `IntelligenceX` is documented in [markdown-contract.md](markdown-contract.md).
 
 ## What Still Needs To Happen
 
