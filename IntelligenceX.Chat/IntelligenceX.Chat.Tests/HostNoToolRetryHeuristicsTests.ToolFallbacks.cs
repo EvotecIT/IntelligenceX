@@ -103,8 +103,7 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("machine_name"));
 
         var targets = repaired.Arguments?.GetArray("targets");
-        Assert.NotNull(targets);
-        Assert.Empty(targets!);
+        Assert.Null(targets);
     }
 
     [Fact]
@@ -134,6 +133,29 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         Assert.Equal(2, targetsArray!.Count);
         Assert.Equal("AD0.ad.evotec.xyz", targetsArray[0]?.AsString());
         Assert.Equal("AD1.ad.evotec.xyz", targetsArray[1]?.AsString());
+    }
+
+    [Fact]
+    public void ApplyKnownHostTargetFallbacks_RemovesConflictingAliasKeysWhenRepairingSelectedTarget() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("target", new JsonObject().Add("type", "string"))
+                .Add("targets", new JsonObject()
+                    .Add("type", "array")
+                    .Add("items", new JsonObject().Add("type", "string")))
+                .Add("query", new JsonObject().Add("type", "string")));
+        var definition = new ToolDefinition("dnsclientx_ping", parameters: schema);
+        var call = BuildToolCall("call_1", "dnsclientx_ping", """{"target":"","targets":[],"query":"dc"}""");
+
+        var repaired = InvokeApplyKnownHostTargetFallbacks(
+            call,
+            definition,
+            new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.Equal("dc", repaired.Arguments?.GetString("query"));
+        Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("target"));
+        Assert.Null(repaired.Arguments?.GetArray("targets"));
     }
 
     [Fact]
