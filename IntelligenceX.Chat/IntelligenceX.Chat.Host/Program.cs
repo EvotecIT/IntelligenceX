@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
@@ -76,16 +78,23 @@ internal static partial class Program {
                 BuildRuntimePolicyOptions(options),
                 warning => CollectPackWarning(startupPackWarnings, warning));
             var startupRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(startupRuntimePolicyContext);
-            var packs = BuildPacks(options, startupRuntimePolicyContext, warning => CollectPackWarning(startupPackWarnings, warning));
-            var startupRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
+            var startupBootstrapResult = BuildPackBootstrapResult(
+                options,
+                startupRuntimePolicyContext,
+                warning => CollectPackWarning(startupPackWarnings, warning));
+            var packs = startupBootstrapResult.Packs;
+            var startupRegistryContext = BuildHostToolRegistry(
                 packs,
                 requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
             WritePolicyBanner(
                 options,
                 packs,
+                startupBootstrapResult.PackAvailability,
+                startupBootstrapResult.PluginAvailability,
                 startupRuntimePolicyContext,
                 startupRuntimePolicyDiagnostics,
-                startupRoutingCatalogDiagnostics,
+                startupRegistryContext.RoutingCatalogDiagnostics,
+                startupRegistryContext.OrchestrationCatalog,
                 startupPackWarnings);
             Console.WriteLine();
 
@@ -115,6 +124,10 @@ internal static partial class Program {
         ToolRegistry? registry = null;
         ReplSession? session = null;
         string? runtimeInstructions = null;
+        IReadOnlyList<ToolPackAvailabilityInfo> runtimePackAvailability = Array.Empty<ToolPackAvailabilityInfo>();
+        IReadOnlyList<ToolPluginAvailabilityInfo> runtimePluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>();
+        ToolRoutingCatalogDiagnostics? runtimeRoutingCatalogDiagnostics = null;
+        ToolOrchestrationCatalog? runtimeOrchestrationCatalog = null;
 
         Action<string> statusWriter = status => {
             // Keep progress lines visually distinct from assistant output.
@@ -128,7 +141,11 @@ internal static partial class Program {
             var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(
                 BuildRuntimePolicyOptions(options),
                 warning => CollectPackWarning(runtimePackWarnings, warning));
-            var nextPacks = BuildPacks(options, runtimePolicyContext, warning => CollectPackWarning(runtimePackWarnings, warning));
+            var nextBootstrapResult = BuildPackBootstrapResult(
+                options,
+                runtimePolicyContext,
+                warning => CollectPackWarning(runtimePackWarnings, warning));
+            var nextPacks = nextBootstrapResult.Packs;
             var clientOptions = new IntelligenceXClientOptions {
                 TransportKind = options.OpenAITransport,
                 DefaultModel = options.Model
@@ -184,12 +201,19 @@ internal static partial class Program {
                 throw;
             }
 
-            var nextRegistry = new ToolRegistry {
-                RequireExplicitRoutingMetadata = runtimePolicyContext.Options.RequireExplicitRoutingMetadata
-            };
-            ToolPackBootstrap.RegisterAll(nextRegistry, nextPacks);
+            var nextRegistryContext = BuildHostToolRegistry(
+                nextPacks,
+                runtimePolicyContext.Options.RequireExplicitRoutingMetadata);
+            var nextRegistry = nextRegistryContext.Registry;
             var runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(nextRegistry, runtimePolicyContext);
-            var runtimeRoutingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(nextRegistry);
+            var nextRoutingCatalogDiagnostics = nextRegistryContext.RoutingCatalogDiagnostics;
+            var runtimeCapabilitySnapshot = BuildHostCapabilitySnapshot(
+                options.AllowedRoots.Count,
+                nextRegistry.GetDefinitions(),
+                nextBootstrapResult.PackAvailability,
+                nextBootstrapResult.PluginAvailability,
+                nextRoutingCatalogDiagnostics,
+                nextRegistryContext.OrchestrationCatalog);
             var nextSession = new ReplSession(nextClient, nextRegistry, options, runtimeInstructions, statusWriter);
 
             if (client is not null) {
@@ -204,15 +228,27 @@ internal static partial class Program {
             client = nextClient;
             registry = nextRegistry;
             session = nextSession;
+            runtimePackAvailability = nextBootstrapResult.PackAvailability;
+            runtimePluginAvailability = nextBootstrapResult.PluginAvailability;
+            runtimeRoutingCatalogDiagnostics = nextRoutingCatalogDiagnostics;
+            runtimeOrchestrationCatalog = nextRegistryContext.OrchestrationCatalog;
 
             Console.WriteLine($"Registered tools: {registry.GetDefinitions().Count}");
-            if (runtimePackWarnings.Count > 0) {
-                foreach (var warning in runtimePackWarnings) {
+            var formattedRuntimePackWarnings = BuildFormattedPackWarnings(runtimePackWarnings, runtimePackAvailability);
+            if (formattedRuntimePackWarnings.Count > 0) {
+                foreach (var warning in formattedRuntimePackWarnings) {
                     Console.WriteLine($"[pack warning] {warning}");
                 }
             }
-            Console.WriteLine($"Routing catalog: {ToolRoutingCatalogDiagnosticsBuilder.FormatSummary(runtimeRoutingCatalogDiagnostics)}");
-            var runtimeRoutingWarnings = ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(runtimeRoutingCatalogDiagnostics, maxWarnings: 12);
+            Console.WriteLine($"Routing catalog: {ToolRoutingCatalogDiagnosticsBuilder.FormatSummary(nextRoutingCatalogDiagnostics)}");
+            Console.WriteLine($"Capability snapshot: {FormatCapabilitySnapshotSummary(runtimeCapabilitySnapshot)}");
+            var runtimeCapabilityHighlights = BuildCapabilitySnapshotHighlights(runtimeCapabilitySnapshot);
+            if (runtimeCapabilityHighlights.Count > 0) {
+                foreach (var highlight in runtimeCapabilityHighlights) {
+                    Console.WriteLine($"[capability] {highlight}");
+                }
+            }
+            var runtimeRoutingWarnings = ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(nextRoutingCatalogDiagnostics, maxWarnings: 12);
             if (runtimeRoutingWarnings.Count > 0) {
                 foreach (var warning in runtimeRoutingWarnings) {
                     Console.WriteLine($"[routing warning] {warning}");
@@ -224,7 +260,7 @@ internal static partial class Program {
                 $"explicit_routing_required={(runtimePolicyDiagnostics.RequireExplicitRoutingMetadata ? "on" : "off")}, " +
                 $"auth_preset={ToolRuntimePolicyBootstrap.FormatAuthenticationRuntimePreset(runtimePolicyDiagnostics.AuthenticationPreset)}");
 
-            Console.WriteLine("Commands: /help, /tools, /toolhealth [filters], /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
+            Console.WriteLine("Commands: /help, /tools, /toolsjson, /toolhealth [filters], /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
             Console.WriteLine();
         }
 
@@ -262,9 +298,38 @@ internal static partial class Program {
                             WriteHelp();
                             continue;
                         case "/tools":
-                            foreach (var def in registry!.GetDefinitions()) {
-                                var id = options.ShowToolIds ? $" ({def.Name})" : string.Empty;
-                                Console.WriteLine($"- {GetToolDisplayName(def.Name)}{id}: {def.Description}");
+                            if (runtimeRoutingCatalogDiagnostics is not null && runtimeOrchestrationCatalog is not null) {
+                                var toolInspectionLines = BuildToolsInspectionLines(
+                                    options.AllowedRoots.Count,
+                                    registry!.GetDefinitions(),
+                                    runtimePackAvailability,
+                                    runtimePluginAvailability,
+                                    runtimeRoutingCatalogDiagnostics,
+                                    runtimeOrchestrationCatalog,
+                                    options.ShowToolIds);
+                                foreach (var toolInspectionLine in toolInspectionLines) {
+                                    Console.WriteLine(toolInspectionLine);
+                                }
+                            } else {
+                                foreach (var def in registry!.GetDefinitions()) {
+                                    var id = options.ShowToolIds ? $" ({def.Name})" : string.Empty;
+                                    Console.WriteLine($"- {GetToolDisplayName(def.Name)}{id}: {def.Description}");
+                                }
+                            }
+                            continue;
+                        case "/toolsjson":
+                            if (runtimeRoutingCatalogDiagnostics is not null && runtimeOrchestrationCatalog is not null) {
+                                var exportMessage = BuildHostToolsExportMessage(
+                                    options.AllowedRoots.Count,
+                                    registry!.GetDefinitions(),
+                                    runtimePackAvailability,
+                                    runtimePluginAvailability,
+                                    runtimeRoutingCatalogDiagnostics,
+                                    runtimeOrchestrationCatalog);
+                                var exportJson = JsonSerializer.Serialize(exportMessage, ChatServiceJsonContext.Default.ToolListMessage);
+                                Console.WriteLine(exportJson);
+                            } else {
+                                Console.WriteLine("{\"kind\":\"response\",\"requestId\":\"host.toolsjson\",\"tools\":[]}");
                             }
                             continue;
                         case "/toolhealth":
@@ -318,16 +383,23 @@ internal static partial class Program {
                                         BuildRuntimePolicyOptions(options),
                                         warning => CollectPackWarning(profilePackWarnings, warning));
                                     var profileRuntimePolicyDiagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(profileRuntimePolicyContext);
-                                    var profilePacks = BuildPacks(options, profileRuntimePolicyContext, warning => CollectPackWarning(profilePackWarnings, warning));
-                                    var profileRoutingCatalogDiagnostics = BuildRoutingCatalogDiagnostics(
+                                    var profileBootstrapResult = BuildPackBootstrapResult(
+                                        options,
+                                        profileRuntimePolicyContext,
+                                        warning => CollectPackWarning(profilePackWarnings, warning));
+                                    var profilePacks = profileBootstrapResult.Packs;
+                                    var profileRegistryContext = BuildHostToolRegistry(
                                         profilePacks,
                                         requireExplicitRoutingMetadata: options.RequireExplicitRoutingMetadata);
                                     WritePolicyBanner(
                                         options,
                                         profilePacks,
+                                        profileBootstrapResult.PackAvailability,
+                                        profileBootstrapResult.PluginAvailability,
                                         profileRuntimePolicyContext,
                                         profileRuntimePolicyDiagnostics,
-                                        profileRoutingCatalogDiagnostics,
+                                        profileRegistryContext.RoutingCatalogDiagnostics,
+                                        profileRegistryContext.OrchestrationCatalog,
                                         profilePackWarnings);
                                     Console.WriteLine();
 
@@ -589,7 +661,8 @@ internal static partial class Program {
         Console.WriteLine("  -h, --help              Show help.");
         Console.WriteLine();
         Console.WriteLine("REPL commands:");
-        Console.WriteLine("  /help, /tools, /toolhealth [filters], /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
+        Console.WriteLine("  /help, /tools, /toolsjson, /toolhealth [filters], /roots, /profiles, /profile <name>, /models, /model <name>, /favorites, /favorite <model>, /unfavorite <model>, /compare <p1,p2,...> -- <prompt>, /exit");
+        Console.WriteLine("  /toolsjson emits the lightweight tool catalog/autonomy snapshot as JSON.");
         Console.WriteLine("  /toolhealth filters: open|closed|private|builtin|pack:<id> (repeatable)");
     }
 

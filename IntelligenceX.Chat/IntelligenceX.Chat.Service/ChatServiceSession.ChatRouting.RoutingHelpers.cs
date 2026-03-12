@@ -502,10 +502,22 @@ internal sealed partial class ChatServiceSession {
         var candidateLimit = Math.Clamp(Math.Max(limit * 3, minCandidateLimit), minCandidateLimit, Math.Min(definitions.Count, 96));
         var focusTokens = ResolveWeightedRoutingFocusTokens(requestText, Array.Empty<string>());
         _ = TryReadPlannerContextFromRequestText(requestText, out var plannerContext);
+        var (derivedHandoffTargetPackIds, derivedHandoffTargetToolNames) =
+            DerivePlannerHandoffTargetsFromContext(plannerContext, toolOrchestrationCatalog);
         var preferredToolNames = new HashSet<string>(plannerContext.PreferredToolNames, StringComparer.OrdinalIgnoreCase);
-        var handoffTargetToolNames = new HashSet<string>(plannerContext.HandoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetToolNames = new HashSet<string>(
+            plannerContext.HandoffTargetToolNames.Concat(derivedHandoffTargetToolNames),
+            StringComparer.OrdinalIgnoreCase);
         var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
-        var handoffTargetPackIds = new HashSet<string>(plannerContext.HandoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetPackIds = new HashSet<string>(
+            plannerContext.HandoffTargetPackIds.Concat(derivedHandoffTargetPackIds),
+            StringComparer.OrdinalIgnoreCase);
+        var prefersRemoteCapableTools = HasRemoteHostRoutingHint(requestText, plannerContext);
+        var prefersCrossPackContinuation =
+            handoffTargetPackIds.Count > 0
+            || handoffTargetToolNames.Count > 0
+            || plannerContext.StructuredNextActionSourceToolNames.Length > 0
+            || plannerContext.ContinuationSourceTool.Length > 0;
         if (focusTokens.Length == 0) {
             if (preferredToolNames.Count == 0
                 && handoffTargetToolNames.Count == 0
@@ -534,6 +546,12 @@ internal sealed partial class ChatServiceSession {
             }
             if (handoffTargetPackIds.Contains(packId)) {
                 priority += 200;
+            }
+            if (prefersRemoteCapableTools && ToolSupportsRemoteHostTargeting(definition, toolOrchestrationCatalog)) {
+                priority += PlannerRemoteCapablePriorityBoost;
+            }
+            if (prefersCrossPackContinuation && ToolSupportsCrossPackHandoff(definition, toolOrchestrationCatalog)) {
+                priority += PlannerCrossPackContinuationPriorityBoost;
             }
             for (var t = 0; t < focusTokens.Length; t++) {
                 var token = focusTokens[t];
@@ -618,10 +636,22 @@ internal sealed partial class ChatServiceSession {
         var routingTokens = TokenizeRoutingTokens(userRequest, maxTokens: 16);
         var focusTokens = ResolveWeightedRoutingFocusTokens(requestText, routingTokens);
         _ = TryReadPlannerContextFromRequestText(requestText, out var plannerContext);
+        var (derivedHandoffTargetPackIds, derivedHandoffTargetToolNames) =
+            DerivePlannerHandoffTargetsFromContext(plannerContext, _toolOrchestrationCatalog);
         var preferredToolNames = new HashSet<string>(plannerContext.PreferredToolNames, StringComparer.OrdinalIgnoreCase);
-        var handoffTargetToolNames = new HashSet<string>(plannerContext.HandoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetToolNames = new HashSet<string>(
+            plannerContext.HandoffTargetToolNames.Concat(derivedHandoffTargetToolNames),
+            StringComparer.OrdinalIgnoreCase);
         var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
-        var handoffTargetPackIds = new HashSet<string>(plannerContext.HandoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
+        var handoffTargetPackIds = new HashSet<string>(
+            plannerContext.HandoffTargetPackIds.Concat(derivedHandoffTargetPackIds),
+            StringComparer.OrdinalIgnoreCase);
+        var prefersRemoteCapableTools = HasRemoteHostRoutingHint(requestText, plannerContext);
+        var prefersCrossPackContinuation =
+            handoffTargetPackIds.Count > 0
+            || handoffTargetToolNames.Count > 0
+            || plannerContext.StructuredNextActionSourceToolNames.Length > 0
+            || plannerContext.ContinuationSourceTool.Length > 0;
         var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
         var focusTokenSupport = focusTokens.Length == 0 ? Array.Empty<int>() : new int[focusTokens.Length];
         string[]? toolSearchTexts = null;
@@ -695,6 +725,14 @@ internal sealed partial class ChatServiceSession {
             if (handoffTargetPackIds.Contains(packId)) {
                 score += 3d;
             }
+            var remoteCapableBoost = prefersRemoteCapableTools && ToolSupportsRemoteHostTargeting(definition, _toolOrchestrationCatalog)
+                ? WeightedRoutingRemoteCapableScoreBoost
+                : 0d;
+            score += remoteCapableBoost;
+            var crossPackContinuationBoost = prefersCrossPackContinuation && ToolSupportsCrossPackHandoff(definition, _toolOrchestrationCatalog)
+                ? WeightedRoutingCrossPackContinuationScoreBoost
+                : 0d;
+            score += crossPackContinuationBoost;
 
             if (routingTokens.Length > 0) {
                 var searchText = toolSearchTexts?[i] ?? BuildToolRoutingSearchText(definition);
@@ -753,7 +791,9 @@ internal sealed partial class ChatServiceSession {
                 ExplicitToolMatch: explicitToolMatch,
                 TokenHits: tokenHits,
                 FocusTokenHits: focusTokenHits,
-                Adjustment: adjustment));
+                Adjustment: adjustment,
+                RemoteCapableBoost: remoteCapableBoost,
+                CrossPackContinuationBoost: crossPackContinuationBoost));
         }
 
         if (!hasSignal) {
@@ -860,6 +900,109 @@ internal sealed partial class ChatServiceSession {
                 target.Add(tokens[t]);
             }
         }
+    }
+
+    private static bool HasRemoteHostRoutingHint(string requestText, PlannerContextMetadata plannerContext) {
+        return !string.IsNullOrWhiteSpace(TryExtractHostHintFromUserRequest(ExtractPrimaryUserRequest(requestText)))
+               || !string.IsNullOrWhiteSpace(TryExtractHostHintFromUserRequest(plannerContext.MissingLiveEvidence))
+               || !string.IsNullOrWhiteSpace(TryExtractHostHintFromUserRequest(plannerContext.StructuredNextActionReason))
+               || !string.IsNullOrWhiteSpace(TryExtractHostHintFromUserRequest(requestText));
+    }
+
+    private static (string[] TargetPackIds, string[] TargetToolNames) DerivePlannerHandoffTargetsFromContext(
+        PlannerContextMetadata plannerContext,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (toolOrchestrationCatalog is null || toolOrchestrationCatalog.Count == 0) {
+            return (Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        var sourceToolNames = NormalizeDistinctStrings(
+            plannerContext.StructuredNextActionSourceToolNames
+                .Concat(new[] { plannerContext.ContinuationSourceTool }),
+            MaxPlannerContextHandoffTargets);
+        if (sourceToolNames.Length == 0) {
+            return (Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        var targetPackIds = new List<string>();
+        var targetToolNames = new List<string>();
+        for (var i = 0; i < sourceToolNames.Length; i++) {
+            var sourceToolName = (sourceToolNames[i] ?? string.Empty).Trim();
+            if (sourceToolName.Length == 0 || !toolOrchestrationCatalog.TryGetEntry(sourceToolName, out var entry)) {
+                continue;
+            }
+
+            for (var e = 0; e < entry.HandoffEdges.Count; e++) {
+                var edge = entry.HandoffEdges[e];
+                var targetPackId = NormalizePackId(edge.TargetPackId);
+                if (targetPackId.Length > 0) {
+                    targetPackIds.Add(targetPackId);
+                }
+
+                var targetToolName = NormalizeToolNameForAnswerPlan(edge.TargetToolName);
+                if (targetToolName.Length > 0) {
+                    targetToolNames.Add(targetToolName);
+                }
+            }
+        }
+
+        return (
+            NormalizeDistinctStrings(targetPackIds, MaxPlannerContextHandoffTargets),
+            NormalizeDistinctStrings(targetToolNames, MaxPlannerContextHandoffTargets));
+    }
+
+    private static bool ToolSupportsRemoteHostTargeting(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return false;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            return entry.SupportsRemoteHostTargeting
+                   || entry.RemoteHostArguments.Count > 0
+                   || string.Equals(entry.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var schemaTraits = ToolSchemaTraitProjection.Project(definition);
+        return schemaTraits.SupportsRemoteHostTargeting
+               || string.Equals(schemaTraits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ToolSupportsCrossPackHandoff(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return false;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            if (!entry.IsHandoffAware || entry.HandoffEdges.Count == 0) {
+                return false;
+            }
+
+            for (var i = 0; i < entry.HandoffEdges.Count; i++) {
+                var targetPackId = NormalizePackId(entry.HandoffEdges[i].TargetPackId);
+                if (targetPackId.Length > 0 && !string.Equals(targetPackId, entry.PackId, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        var sourcePackId = NormalizePackId(definition.Routing?.PackId);
+        var routes = definition.Handoff?.OutboundRoutes;
+        if (definition.Handoff?.IsHandoffAware != true || routes is not { Count: > 0 }) {
+            return false;
+        }
+
+        for (var i = 0; i < routes.Count; i++) {
+            var targetPackId = NormalizePackId(routes[i]?.TargetPackId);
+            if (targetPackId.Length > 0 && !string.Equals(targetPackId, sourcePackId, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static WeightedRoutingSelectionDiagnostics ResolveWeightedRoutingSelectionDiagnostics(

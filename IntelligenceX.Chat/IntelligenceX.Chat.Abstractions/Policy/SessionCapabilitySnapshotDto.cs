@@ -72,6 +72,11 @@ public sealed record SessionCapabilitySnapshotDto {
     public string? RemoteReachabilityMode { get; init; }
 
     /// <summary>
+    /// Aggregate autonomy surface derived from enabled packs and orchestration contracts.
+    /// </summary>
+    public SessionCapabilityAutonomySummaryDto? Autonomy { get; init; }
+
+    /// <summary>
     /// Phase-1 read-only parity inventory derived from live pack surfaces and upstream engines.
     /// </summary>
     public SessionCapabilityParityEntryDto[] ParityEntries { get; init; } = Array.Empty<SessionCapabilityParityEntryDto>();

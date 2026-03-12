@@ -30,43 +30,24 @@ internal sealed partial class ChatServiceSession {
         ToolRuntimePolicyDiagnostics runtimePolicy, ToolRoutingCatalogDiagnostics? routingCatalog = null,
         IReadOnlyList<string>? connectedRuntimeSkills = null,
         IReadOnlyList<string>? healthyToolNames = null, string? remoteReachabilityMode = null,
+        ToolOrchestrationCatalog? orchestrationCatalog = null,
         SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
-        var packList = new List<ToolPackInfoDto>();
-        foreach (var pack in packAvailability) {
-            var normalizedDisabledReason = string.IsNullOrWhiteSpace(pack.DisabledReason)
-                ? null
-                : pack.DisabledReason.Trim();
-            packList.Add(new ToolPackInfoDto {
-                Id = pack.Id,
-                Name = ResolvePackDisplayName(pack.Id, pack.Name),
-                Description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
-                Tier = MapTier(pack.Tier),
-                Enabled = pack.Enabled,
-                DisabledReason = pack.Enabled ? null : normalizedDisabledReason,
-                IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
-                SourceKind = MapSourceKind(pack.SourceKind, pack.Id)
-            });
-        }
-        packList.Sort(static (a, b) => {
-            var byName = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
-            if (byName != 0) {
-                return byName;
-            }
-
-            return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
-        });
+        var packList = BuildPackPolicyList(packAvailability, orchestrationCatalog);
 
         var pluginList = MapPluginPolicyList(pluginAvailability, packAvailability);
 
-        var dangerousEnabled = packList.Exists(static p => p.Enabled && (p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite));
+        var dangerousEnabled = Array.Exists(
+            packList,
+            static p => p.Enabled && (p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite));
         var resolvedCapabilitySnapshot = capabilitySnapshot ?? BuildCapabilitySnapshot(
             options,
             toolDefinitions: null,
             packAvailability,
             pluginAvailability,
             routingCatalog,
+            orchestrationCatalog,
             connectedRuntimeSkills,
             healthyToolNames,
             remoteReachabilityMode);
@@ -110,6 +91,12 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
+    private static ToolPackInfoDto[] BuildPackPolicyList(
+        IEnumerable<ToolPackAvailabilityInfo> packAvailability,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
+        return ToolCatalogExportBuilder.BuildPackInfoDtos(packAvailability, orchestrationCatalog);
+    }
+
     private static PluginInfoDto[] MapPluginPolicyList(
         IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         IEnumerable<ToolPackAvailabilityInfo> packAvailability) {
@@ -122,9 +109,9 @@ internal sealed partial class ChatServiceSession {
             foreach (var pack in packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()) {
                 pluginList.Add(new PluginInfoDto {
                     Id = pack.Id,
-                    Name = ResolvePackDisplayName(pack.Id, pack.Name),
+                    Name = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name),
                     Origin = pack.SourceKind,
-                    SourceKind = MapSourceKind(pack.SourceKind, pack.Id),
+                    SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind, pack.Id),
                     DefaultEnabled = pack.Enabled,
                     Enabled = pack.Enabled,
                     DisabledReason = pack.Enabled ? null : pack.DisabledReason,
@@ -141,7 +128,7 @@ internal sealed partial class ChatServiceSession {
                     Name = plugin.Name,
                     Version = string.IsNullOrWhiteSpace(plugin.Version) ? null : plugin.Version.Trim(),
                     Origin = string.IsNullOrWhiteSpace(plugin.Origin) ? "unknown" : plugin.Origin.Trim(),
-                    SourceKind = MapSourceKind(plugin.SourceKind, plugin.Id),
+                    SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(plugin.SourceKind, plugin.Id),
                     DefaultEnabled = plugin.DefaultEnabled,
                     Enabled = plugin.Enabled,
                     DisabledReason = plugin.Enabled ? null : plugin.DisabledReason,
@@ -161,41 +148,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static SessionRoutingCatalogDiagnosticsDto? MapRoutingCatalogDiagnostics(ToolRoutingCatalogDiagnostics? diagnostics) {
-        if (diagnostics is null) {
-            return null;
-        }
-
-        var familyActions = diagnostics.FamilyActions;
-        var mappedFamilyActions = familyActions.Count == 0
-            ? Array.Empty<SessionRoutingFamilyActionSummaryDto>()
-            : familyActions
-                .Select(static item => new SessionRoutingFamilyActionSummaryDto {
-                    Family = item.Family,
-                    ActionId = item.ActionId,
-                    ToolCount = Math.Max(0, item.ToolCount)
-                })
-                .ToArray();
-
-        return new SessionRoutingCatalogDiagnosticsDto {
-            TotalTools = Math.Max(0, diagnostics.TotalTools),
-            RoutingAwareTools = Math.Max(0, diagnostics.RoutingAwareTools),
-            ExplicitRoutingTools = Math.Max(0, diagnostics.ExplicitRoutingTools),
-            InferredRoutingTools = Math.Max(0, diagnostics.InferredRoutingTools),
-            MissingRoutingContractTools = Math.Max(0, diagnostics.MissingRoutingContractTools),
-            MissingPackIdTools = Math.Max(0, diagnostics.MissingPackIdTools),
-            MissingRoleTools = Math.Max(0, diagnostics.MissingRoleTools),
-            SetupAwareTools = Math.Max(0, diagnostics.SetupAwareTools),
-            HandoffAwareTools = Math.Max(0, diagnostics.HandoffAwareTools),
-            RecoveryAwareTools = Math.Max(0, diagnostics.RecoveryAwareTools),
-            DomainFamilyTools = Math.Max(0, diagnostics.DomainFamilyTools),
-            ExpectedDomainFamilyMissingTools = Math.Max(0, diagnostics.ExpectedDomainFamilyMissingTools),
-            DomainFamilyMissingActionTools = Math.Max(0, diagnostics.DomainFamilyMissingActionTools),
-            ActionWithoutFamilyTools = Math.Max(0, diagnostics.ActionWithoutFamilyTools),
-            FamilyActionConflictFamilies = Math.Max(0, diagnostics.FamilyActionConflictFamilies),
-            IsHealthy = diagnostics.IsHealthy,
-            IsExplicitRoutingReady = diagnostics.IsExplicitRoutingReady,
-            FamilyActions = mappedFamilyActions
-        };
+        return ToolCatalogExportBuilder.BuildRoutingCatalogDiagnosticsDto(diagnostics);
     }
 
     private static ToolRuntimePolicyOptions BuildRuntimePolicyOptions(ServiceOptions options) {
@@ -236,33 +189,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
-    }
-
-    private static CapabilityTier MapTier(ToolCapabilityTier tier) {
-        return tier switch {
-            ToolCapabilityTier.ReadOnly => CapabilityTier.ReadOnly,
-            ToolCapabilityTier.SensitiveRead => CapabilityTier.SensitiveRead,
-            ToolCapabilityTier.DangerousWrite => CapabilityTier.DangerousWrite,
-            _ => CapabilityTier.SensitiveRead
-        };
-    }
-
-    private static string ResolvePackDisplayName(string? descriptorId, string? fallbackName) {
-        var packId = NormalizePackId(descriptorId);
-        if (!string.IsNullOrWhiteSpace(fallbackName)) {
-            return fallbackName.Trim();
-        }
-
-        return packId;
-    }
-
-    private static ToolPackSourceKind MapSourceKind(string? sourceKind, string descriptorId) {
-        var normalized = ToolPackBootstrap.NormalizeSourceKind(sourceKind, descriptorId);
-        return normalized switch {
-            "builtin" => ToolPackSourceKind.Builtin,
-            "closed_source" => ToolPackSourceKind.ClosedSource,
-            _ => ToolPackSourceKind.OpenSource
-        };
     }
 
     private static string NormalizePackId(string? descriptorId) {

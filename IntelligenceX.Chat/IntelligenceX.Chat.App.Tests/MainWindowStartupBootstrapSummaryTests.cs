@@ -41,13 +41,13 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
             PacksLoaded = 10,
             PacksDisabled = 1,
             Phases = new[] {
-                new SessionStartupBootstrapPhaseTelemetryDto { Id = "runtime_policy", Label = "runtime policy", DurationMs = 50, Order = 1 },
-                new SessionStartupBootstrapPhaseTelemetryDto { Id = "bootstrap_options", Label = "bootstrap options", DurationMs = 30, Order = 2 },
-                new SessionStartupBootstrapPhaseTelemetryDto { Id = "pack_load", Label = "pack load", DurationMs = 800, Order = 3 },
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRuntimePolicyId, 50, 1),
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseBootstrapOptionsId, 30, 2),
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackLoadId, 800, 3),
                 new SessionStartupBootstrapPhaseTelemetryDto { Id = "registry_build", Label = "registry build", DurationMs = 120, Order = 4 }
             },
-            SlowestPhaseId = "pack_load",
-            SlowestPhaseLabel = "pack load",
+            SlowestPhaseId = StartupBootstrapContracts.PhasePackLoadId,
+            SlowestPhaseLabel = StartupBootstrapContracts.PhasePackLoadLabel,
             SlowestPhaseMs = 800
         };
 
@@ -79,7 +79,7 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
     public void BuildStartupBootstrapStatusDetail_IncludesTotalAndSlowestPhase() {
         var telemetry = new SessionStartupBootstrapTelemetryDto {
             TotalMs = 1800,
-            SlowestPhaseLabel = "pack register",
+            SlowestPhaseLabel = StartupBootstrapContracts.PhasePackRegisterLabel,
             SlowestPhaseMs = 1200
         };
 
@@ -106,18 +106,13 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
         var policy = CreatePolicy(new SessionStartupBootstrapTelemetryDto {
             TotalMs = 42,
             Phases = new[] {
-                new SessionStartupBootstrapPhaseTelemetryDto {
-                    Id = "cache_hit",
-                    Label = "cache hit",
-                    DurationMs = 42,
-                    Order = 1
-                }
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseCacheHitId, 42, 1)
             }
         });
 
         var mode = MainWindow.ResolveStartupBootstrapCacheModeTokenFromPolicy(policy);
 
-        Assert.Equal("hit", mode);
+        Assert.Equal(StartupBootstrapContracts.CacheModeHit, mode);
     }
 
     /// <summary>
@@ -127,11 +122,11 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
     public void ResolveStartupBootstrapCacheModeTokenFromPolicy_ReturnsPersistedPreviewForPreviewWarning() {
         var policy = CreatePolicy(
             startupBootstrap: null,
-            startupWarnings: new[] { "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues." });
+            startupWarnings: new[] { StartupBootstrapWarningBuilder.BuildPersistedPreviewRestoredSummary() });
 
         var mode = MainWindow.ResolveStartupBootstrapCacheModeTokenFromPolicy(policy);
 
-        Assert.Equal("persisted_preview", mode);
+        Assert.Equal(StartupBootstrapContracts.CacheModePersistedPreview, mode);
     }
 
     /// <summary>
@@ -142,18 +137,13 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
         var policy = CreatePolicy(new SessionStartupBootstrapTelemetryDto {
             TotalMs = 880,
             Phases = new[] {
-                new SessionStartupBootstrapPhaseTelemetryDto {
-                    Id = "pack_load",
-                    Label = "pack load",
-                    DurationMs = 700,
-                    Order = 1
-                }
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackLoadId, 700, 1)
             }
         });
 
         var mode = MainWindow.ResolveStartupBootstrapCacheModeTokenFromPolicy(policy);
 
-        Assert.Equal("miss", mode);
+        Assert.Equal(StartupBootstrapContracts.CacheModeMiss, mode);
     }
 
     /// <summary>
@@ -169,7 +159,7 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
                 PacksLoaded = 10
             },
             startupWarnings: new[] {
-                "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues."
+                StartupBootstrapWarningBuilder.BuildPersistedPreviewRestoredSummary()
             });
 
         var shouldAppend = MainWindow.ShouldAppendStartupBootstrapSummary(policy);

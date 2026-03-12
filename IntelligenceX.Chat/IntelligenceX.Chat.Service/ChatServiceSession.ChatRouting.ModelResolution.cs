@@ -213,10 +213,10 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void AppendRuntimeCapabilityHandshake(StringBuilder runtimeIdentity) {
-        AppendCapabilitySnapshotPromptBlock(runtimeIdentity, BuildRuntimeCapabilitySnapshot());
+        AppendCapabilitySnapshotPromptBlock(runtimeIdentity, BuildRuntimeCapabilitySnapshot(), _routingCatalogDiagnostics);
         var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
         var bootstrapState = _servingPersistedToolingBootstrapPreview
-            ? "persisted_preview"
+            ? StartupBootstrapContracts.CacheModePersistedPreview
             : startupToolingBootstrapTask is { IsCompletedSuccessfully: true }
                 ? "ready"
                 : startupToolingBootstrapTask is { IsCompleted: true }

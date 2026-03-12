@@ -77,7 +77,7 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("required: log_name", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("args: ", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("traits: table_view_projection", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("traits: execution(local_or_remote), table_view_projection", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -104,8 +104,63 @@ public sealed class ChatServicePlannerPromptTests {
             4
         }));
 
+        Assert.Contains("pack: system", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("role: operational", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("execution(local_or_remote)", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("target_scoping(search_base_dn, computer_name)", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("remote_host_targeting(computer_name)", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesSetupRecoveryAndHandoffContractHints() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "eventlog_timeline_query",
+                "Query event timeline from a host.",
+                ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Remote machine.")),
+                        ("channel", ToolSchema.String("Channel.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_channels_list"
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "machine_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    RecoveryToolNames = new[] { "eventlog_channels_list" }
+                })
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "inspect timeline on the same domain controller and continue into host diagnostics",
+            definitions,
+            4
+        }));
+
+        Assert.Contains("setup: eventlog_channels_list", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("recovery: eventlog_channels_list", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("handoff: system/system_info", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -543,8 +598,74 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.Contains("remote_host_targeting", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("target_scope", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("execution local_or_remote", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("computer_name", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("search_base_dn", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesExplicitRoutingRoleTokens() {
+        var definition = new ToolDefinition(
+            "eventlog_pack_info",
+            "Describe event log pack guidance.",
+            ToolSchema.Object().NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            });
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("role pack_info", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("role:pack_info", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesSetupRecoveryAndHandoffTokens() {
+        var definition = new ToolDefinition(
+            "eventlog_timeline_query",
+            "Query event timeline from a host.",
+            ToolSchema.Object(
+                    ("machine_name", ToolSchema.String("Remote machine.")),
+                    ("channel", ToolSchema.String("Channel.")))
+                .NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupToolName = "eventlog_channels_list"
+            },
+            handoff: new ToolHandoffContract {
+                IsHandoffAware = true,
+                OutboundRoutes = new[] {
+                    new ToolHandoffRoute {
+                        TargetPackId = "system",
+                        TargetToolName = "system_metrics_summary",
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "machine_name",
+                                TargetArgument = "computer_name"
+                            }
+                        }
+                    }
+                }
+            },
+            recovery: new ToolRecoveryContract {
+                IsRecoveryAware = true,
+                RecoveryToolNames = new[] { "eventlog_channels_list" }
+            });
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("setup_tool eventlog_channels_list", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("recovery_tool eventlog_channels_list", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("handoff_target system/system_metrics_summary", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1299,6 +1420,159 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_PrefersRemoteCapableToolsWhenHostHintIsPresent() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_local_probe_{i:D2}",
+                "Collect generic local inventory details.",
+                ToolSchema.Object(("path", ToolSchema.String("Path."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "eventlog_timeline_query",
+            "Inspect timeline for a remote host.",
+            ToolSchema.Object(
+                    ("machine_name", ToolSchema.String("Remote machine.")),
+                    ("channel", ToolSchema.String("Channel.")))
+                .NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var selected = ChatServiceSession.BuildModelPlannerCandidatesForTesting(
+            definitions,
+            "continue the investigation on ad0.contoso.com and inspect the event timeline there",
+            4,
+            ToolOrchestrationCatalog.Build(definitions));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_DerivesHandoffTargetsFromSourceToolsInPlannerContext() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "eventlog_timeline_query",
+            "Inspect event timeline on the remote machine.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            handoff: new ToolHandoffContract {
+                IsHandoffAware = true,
+                OutboundRoutes = new[] {
+                    new ToolHandoffRoute {
+                        TargetPackId = "system",
+                        TargetToolName = "system_metrics_summary",
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "machine_name",
+                                TargetArgument = "computer_name"
+                            }
+                        }
+                    }
+                }
+            }));
+        definitions.Add(new ToolDefinition(
+            "system_metrics_summary",
+            "Summarize system metrics for a remote host.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var selected = ChatServiceSession.BuildModelPlannerCandidatesForTesting(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            structured_next_action_source_tools: eventlog_timeline_query
+            allow_cached_evidence_reuse: false
+
+            continue on the same host
+            """,
+            4,
+            ToolOrchestrationCatalog.Build(definitions));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "system_metrics_summary", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_PrefersRemoteCapableToolsWhenHostHintIsPresent() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_local_probe_{i:D2}",
+                "Collect generic local inventory details.",
+                ToolSchema.Object(("path", ToolSchema.String("Path."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "system_metrics_summary",
+            "Summarize system metrics for a remote host.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        var selected = session.SelectWeightedToolSubsetForTesting(
+            definitions,
+            "check cpu and memory on srv-01.contoso.com",
+            8,
+            out var insights);
+
+        Assert.Equal(8, selected.Count);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "system_metrics_summary", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            insights,
+            insight => (insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)?.GetValue(insight)?.ToString() ?? string.Empty)
+                .IndexOf("remote-capable host targeting", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
     [Fact]

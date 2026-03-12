@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Conversation;
 using IntelligenceX.Chat.Client;
@@ -790,6 +791,9 @@ public sealed partial class MainWindow : Window {
                 deferStartupModelProfileSync: ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry));
             if (deferredMetadataPlan.DeferStartupMetadataSync) {
                 _sessionPolicy = null;
+                _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
+                _toolCatalogRoutingCatalog = null;
+                _toolCatalogCapabilitySnapshot = null;
                 RecordStartupBootstrapCacheMode(_sessionPolicy);
                 UpdateStartupMetadataSyncPhase(
                     deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated
@@ -813,6 +817,11 @@ public sealed partial class MainWindow : Window {
                     LogStartupConnectPhase("hello", "begin");
                     var hello = await _client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     _sessionPolicy = hello.Policy;
+                    _toolCatalogPacks = hello.Policy?.Packs is { } helloPacks
+                        ? helloPacks
+                        : Array.Empty<ToolPackInfoDto>();
+                    _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
+                    _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: true);
                     inlineHelloPhaseSucceeded = true;
@@ -820,6 +829,9 @@ public sealed partial class MainWindow : Window {
                 } catch (Exception ex) {
                     LogStartupConnectPhase("hello", "failed");
                     _sessionPolicy = null;
+                    _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
+                    _toolCatalogRoutingCatalog = null;
+                    _toolCatalogCapabilitySnapshot = null;
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: false);
                     if (VerboseServiceLogs || _debugMode) {
@@ -834,7 +846,7 @@ public sealed partial class MainWindow : Window {
                     UpdateStartupMetadataSyncPhase("loading tool catalog");
                     LogStartupConnectPhase("list_tools", "begin");
                     var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
-                    UpdateToolCatalog(toolList.Tools);
+                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.CapabilitySnapshot);
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: true);
                     inlineToolCatalogPhaseSucceeded = true;
                     LogStartupConnectPhase("list_tools", "done");

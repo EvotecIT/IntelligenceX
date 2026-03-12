@@ -1,12 +1,13 @@
 using System;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.Email;
 
 /// <summary>
 /// Shared options for the <c>IntelligenceX.Tools.Email</c> tool pack.
 /// </summary>
-public sealed class EmailToolOptions {
+public sealed class EmailToolOptions : IToolPackRuntimeConfigurable {
     /// <summary>
     /// IMAP account configuration used by IMAP tools.
     /// </summary>
@@ -42,6 +43,20 @@ public sealed class EmailToolOptions {
     /// Maximum number of results returned by list/search operations. Tool calls may cap further.
     /// </summary>
     public int MaxListResults { get; set; } = 50;
+
+    /// <inheritdoc />
+    public void ApplyRuntimeContext(ToolPackRuntimeContext context) {
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (context.AuthenticationProbeStore is not null) {
+            AuthenticationProbeStore = context.AuthenticationProbeStore;
+        }
+
+        RequireSuccessfulSmtpProbeForSend = context.RequireSuccessfulSmtpProbeForSend;
+        if (context.SmtpProbeMaxAgeSeconds > 0) {
+            SmtpProbeMaxAgeSeconds = context.SmtpProbeMaxAgeSeconds;
+        }
+    }
 
     /// <summary>
     /// Validates this options instance.

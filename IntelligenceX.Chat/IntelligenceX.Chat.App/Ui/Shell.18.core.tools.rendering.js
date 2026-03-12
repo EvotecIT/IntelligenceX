@@ -279,6 +279,8 @@
     state.options.memory = nextOptions.memory || state.options.memory;
     state.options.memoryDebug = nextOptions.memoryDebug || null;
     state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;
+    state.options.toolCatalogRoutingCatalog = nextOptions.toolCatalogRoutingCatalog || null;
+    state.options.toolCatalogCapabilitySnapshot = nextOptions.toolCatalogCapabilitySnapshot || null;
     var previousDebug = state.options.debug && typeof state.options.debug === "object"
       ? state.options.debug
       : { showTurnTrace: false, showDraftBubbles: false };

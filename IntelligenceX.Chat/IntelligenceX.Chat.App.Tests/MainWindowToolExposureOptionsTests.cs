@@ -87,4 +87,26 @@ public sealed class MainWindowToolExposureOptionsTests {
         var packId = Assert.Single(result.DisabledPackIds);
         Assert.Equal("pack_a", packId, StringComparer.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Ensures request-time pack compression uses canonical shared Chat pack ids for alias metadata.
+    /// </summary>
+    [Fact]
+    public void BuildToolExposureOverridesForRequest_NormalizesAliasPackIdsToCanonicalContractIds() {
+        var toolStates = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_search_users"] = false,
+            ["ad_search_groups"] = false,
+            ["computer_inventory"] = false
+        };
+        var toolPackIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_search_users"] = "ADPlayground",
+            ["ad_search_groups"] = "Active Directory",
+            ["computer_inventory"] = "ComputerX"
+        };
+
+        var result = MainWindow.BuildToolExposureOverridesForRequest(toolStates, toolPackIds);
+
+        Assert.Empty(result.DisabledTools);
+        Assert.Equal(new[] { "active_directory", "system" }, result.DisabledPackIds);
+    }
 }

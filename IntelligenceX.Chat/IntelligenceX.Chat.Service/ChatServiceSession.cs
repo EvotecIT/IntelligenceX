@@ -164,12 +164,12 @@ internal sealed partial class ChatServiceSession {
             }
 
             descriptorIdsByNormalizedPackId[normalizedPackId] = descriptorId;
-            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(descriptor.Id, descriptor.Name);
+            _packDisplayNamesById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveDisplayName(descriptor.Id, descriptor.Name);
             var description = (descriptor.Description ?? string.Empty).Trim();
             if (description.Length > 0) {
                 _packDescriptionsById[normalizedPackId] = description;
             }
-            _packSourceKindsById[normalizedPackId] = MapSourceKind(descriptor.SourceKind, descriptorId);
+            _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(descriptor.SourceKind, descriptorId);
         }
     }
 
@@ -186,13 +186,13 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            _packDisplayNamesById[normalizedPackId] = ResolvePackDisplayName(pack.Id, pack.Name);
+            _packDisplayNamesById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name);
             var description = (pack.Description ?? string.Empty).Trim();
             if (description.Length > 0) {
                 _packDescriptionsById[normalizedPackId] = description;
             }
 
-            _packSourceKindsById[normalizedPackId] = MapSourceKind(pack.SourceKind, descriptorId);
+            _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind, descriptorId);
         }
     }
 
@@ -380,6 +380,7 @@ internal sealed partial class ChatServiceSession {
                                 connectedRuntimeSkills: _connectedRuntimeSkillInventory,
                                 healthyToolNames: helloCapabilitySnapshot.HealthyTools,
                                 remoteReachabilityMode: helloCapabilitySnapshot.RemoteReachabilityMode,
+                                orchestrationCatalog: _toolOrchestrationCatalog,
                                 capabilitySnapshot: helloCapabilitySnapshot)
                         }, cancellationToken).ConfigureAwait(false);
                         break;

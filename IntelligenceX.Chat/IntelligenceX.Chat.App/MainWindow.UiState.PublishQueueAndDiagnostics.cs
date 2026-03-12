@@ -466,15 +466,16 @@ public sealed partial class MainWindow : Window {
 
         var list = new List<object>(ordered.Count);
         foreach (var pack in ordered) {
-            var normalizedPackId = NormalizePackId(pack.Id);
+            var normalizedPackId = NormalizeRuntimePackId(pack.Id);
             list.Add(new {
                 id = string.IsNullOrWhiteSpace(normalizedPackId) ? pack.Id : normalizedPackId,
-                name = ResolvePackDisplayName(normalizedPackId, pack.Name),
+                name = ToolPackMetadataNormalizer.ResolveDisplayName(normalizedPackId, pack.Name),
                 description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
                 tier = pack.Tier.ToString(),
                 enabled = pack.Enabled,
                 disabledReason = string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
                 isDangerous = pack.IsDangerous,
+                autonomySummary = BuildPackAutonomySummaryState(pack.AutonomySummary),
                 sourceKind = pack.SourceKind switch {
                     ToolPackSourceKind.Builtin => "builtin",
                     ToolPackSourceKind.ClosedSource => "closed_source",
@@ -485,13 +486,29 @@ public sealed partial class MainWindow : Window {
         return list.ToArray();
     }
 
-    private static string ResolvePackDisplayName(string? id, string? fallbackName) {
-        var normalized = NormalizePackId(id);
-        if (!string.IsNullOrWhiteSpace(fallbackName)) {
-            return fallbackName.Trim();
+    private static object? BuildPackAutonomySummaryState(ToolPackAutonomySummaryDto? summary) {
+        if (summary is null) {
+            return null;
         }
 
-        return normalized;
+        return new {
+            totalTools = Math.Max(0, summary.TotalTools),
+            remoteCapableTools = Math.Max(0, summary.RemoteCapableTools),
+            remoteCapableToolNames = summary.RemoteCapableToolNames ?? Array.Empty<string>(),
+            setupAwareTools = Math.Max(0, summary.SetupAwareTools),
+            setupAwareToolNames = summary.SetupAwareToolNames ?? Array.Empty<string>(),
+            handoffAwareTools = Math.Max(0, summary.HandoffAwareTools),
+            handoffAwareToolNames = summary.HandoffAwareToolNames ?? Array.Empty<string>(),
+            recoveryAwareTools = Math.Max(0, summary.RecoveryAwareTools),
+            recoveryAwareToolNames = summary.RecoveryAwareToolNames ?? Array.Empty<string>(),
+            crossPackHandoffTools = Math.Max(0, summary.CrossPackHandoffTools),
+            crossPackHandoffToolNames = summary.CrossPackHandoffToolNames ?? Array.Empty<string>(),
+            crossPackTargetPacks = summary.CrossPackTargetPacks ?? Array.Empty<string>()
+        };
+    }
+
+    private static string ResolvePackDisplayName(string? id, string? fallbackName) {
+        return ToolPackMetadataNormalizer.ResolveDisplayName(id, fallbackName);
     }
 
     private object BuildMemoryState() {
@@ -636,7 +653,7 @@ public sealed partial class MainWindow : Window {
             _toolRoutingConfidence.TryGetValue(name, out var routingConfidence);
             _toolRoutingReason.TryGetValue(name, out var routingReason);
             _toolRoutingScore.TryGetValue(name, out var routingScore);
-            var normalizedPackId = NormalizePackId(packId);
+            var normalizedPackId = NormalizeRuntimePackId(packId);
             var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
             var parameterState = BuildToolParameterState(parameters);
             list.Add(new {

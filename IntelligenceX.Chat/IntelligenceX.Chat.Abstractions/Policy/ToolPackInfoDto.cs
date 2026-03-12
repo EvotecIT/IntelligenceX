@@ -36,4 +36,8 @@ public sealed record ToolPackInfoDto {
     /// Pack provenance classification.
     /// </summary>
     public ToolPackSourceKind SourceKind { get; init; } = ToolPackSourceKind.OpenSource;
+    /// <summary>
+    /// Optional autonomy readiness summary derived from registered tools.
+    /// </summary>
+    public ToolPackAutonomySummaryDto? AutonomySummary { get; init; }
 }

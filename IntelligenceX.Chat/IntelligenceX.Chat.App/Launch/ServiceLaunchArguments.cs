@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.App.Launch;
 
@@ -194,18 +195,7 @@ internal static class ServiceLaunchArguments {
     }
 
     private static string NormalizePackId(string? packId) {
-        var normalized = (packId ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length == 0) {
-            return string.Empty;
-        }
-
-        normalized = normalized
-            .Replace("-", string.Empty, StringComparison.Ordinal)
-            .Replace("_", string.Empty, StringComparison.Ordinal)
-            .Replace(".", string.Empty, StringComparison.Ordinal)
-            .Replace(" ", string.Empty, StringComparison.Ordinal);
-
-        return normalized;
+        return ToolPackMetadataNormalizer.NormalizePackId(packId);
     }
 
     private static void AddKeyValueArg(List<string> args, string key, string? value) {

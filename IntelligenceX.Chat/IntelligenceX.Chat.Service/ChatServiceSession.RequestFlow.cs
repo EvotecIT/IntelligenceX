@@ -50,18 +50,34 @@ internal sealed partial class ChatServiceSession {
         var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
         var startupToolingBootstrapInProgress = startupToolingBootstrapTask is { IsCompleted: false };
         ToolDefinitionDto[] tools;
+        ToolPackInfoDto[] packs;
+        SessionRoutingCatalogDiagnosticsDto? routingCatalog;
+        SessionCapabilitySnapshotDto? capabilitySnapshot;
         if (defs.Count > 0) {
             tools = BuildToolDefinitionDtosFromRegistryDefinitions(defs);
             Volatile.Write(ref _cachedToolDefinitions, tools);
+            packs = BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
+            routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
+            capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
         } else if (!ShouldUseCachedToolCatalogFallbackForListTools(startupToolingBootstrapInProgress)
-                   || !TryGetCachedToolCatalogForListTools(out tools)) {
+                   || !TryGetCachedToolCatalogForListTools(
+                       out tools,
+                       out packs,
+                       out routingCatalog,
+                       out capabilitySnapshot)) {
             tools = Array.Empty<ToolDefinitionDto>();
+            packs = BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
+            routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
+            capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
         }
 
         await WriteAsync(writer, new ToolListMessage {
             Kind = ChatServiceMessageKind.Response,
             RequestId = requestId,
-            Tools = tools
+            Tools = tools,
+            Packs = packs,
+            RoutingCatalog = routingCatalog,
+            CapabilitySnapshot = capabilitySnapshot
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -70,9 +86,24 @@ internal sealed partial class ChatServiceSession {
     }
 
     private bool TryGetCachedToolCatalogForListTools(out ToolDefinitionDto[] tools) {
+        return TryGetCachedToolCatalogForListTools(
+            out tools,
+            out _,
+            out _,
+            out _);
+    }
+
+    private bool TryGetCachedToolCatalogForListTools(
+        out ToolDefinitionDto[] tools,
+        out ToolPackInfoDto[] packs,
+        out SessionRoutingCatalogDiagnosticsDto? routingCatalog,
+        out SessionCapabilitySnapshotDto? capabilitySnapshot) {
         var inMemory = Volatile.Read(ref _cachedToolDefinitions);
         if (inMemory.Length > 0) {
             tools = inMemory;
+            packs = BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
+            routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
+            capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
             return true;
         }
 
@@ -83,11 +114,17 @@ internal sealed partial class ChatServiceSession {
             && _toolingBootstrapCache.TryGetPersistedSnapshot(cacheKey, out var persisted)
             && persisted.ToolDefinitions.Length > 0) {
             tools = persisted.ToolDefinitions;
+            packs = persisted.PackSummaries ?? Array.Empty<ToolPackInfoDto>();
+            routingCatalog = MapRoutingCatalogDiagnostics(persisted.RoutingCatalogDiagnostics);
+            capabilitySnapshot = persisted.CapabilitySnapshot;
             Volatile.Write(ref _cachedToolDefinitions, tools);
             return true;
         }
 
         tools = Array.Empty<ToolDefinitionDto>();
+        packs = Array.Empty<ToolPackInfoDto>();
+        routingCatalog = null;
+        capabilitySnapshot = null;
         return false;
     }
 
@@ -96,51 +133,10 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<ToolDefinitionDto>();
         }
 
-        var tools = new ToolDefinitionDto[definitions.Count];
-        for (var i = 0; i < definitions.Count; i++) {
-            tools[i] = BuildToolDefinitionDto(definitions[i]);
-        }
-
-        return tools;
-    }
-
-    private ToolDefinitionDto BuildToolDefinitionDto(ToolDefinition definition) {
-        var parametersJson = definition.Parameters is null ? "{}" : JsonLite.Serialize(definition.Parameters);
-        var required = ExtractRequiredArguments(parametersJson);
-        var parameters = ExtractToolParameters(parametersJson, required);
-        var packId = string.Empty;
-        if (_toolOrchestrationCatalog.TryGetPackId(definition.Name, out var catalogPackId)) {
-            packId = catalogPackId;
-        }
-
-        string? packName = null;
-        string? packDescription = null;
-        ToolPackSourceKind? packSourceKind = null;
-        if (packId.Length > 0 && _packDisplayNamesById.TryGetValue(packId, out var resolvedPackName)) {
-            packName = resolvedPackName;
-        }
-        if (packId.Length > 0 && _packDescriptionsById.TryGetValue(packId, out var resolvedPackDescription)) {
-            packDescription = resolvedPackDescription;
-        }
-        if (packId.Length > 0 && _packSourceKindsById.TryGetValue(packId, out var resolvedPackSourceKind)) {
-            packSourceKind = resolvedPackSourceKind;
-        }
-
-        return new ToolDefinitionDto {
-            Name = definition.Name,
-            Description = definition.Description ?? string.Empty,
-            DisplayName = ResolveToolDisplayName(definition),
-            Category = ResolveToolListCategory(ResolveToolCategory(definition)),
-            Tags = definition.Tags.Count == 0 ? null : definition.Tags.ToArray(),
-            PackId = packId.Length == 0 ? null : packId,
-            PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
-            PackDescription = string.IsNullOrWhiteSpace(packDescription) ? null : packDescription,
-            PackSourceKind = packSourceKind,
-            IsWriteCapable = definition.WriteGovernance?.IsWriteCapable == true,
-            ParametersJson = parametersJson,
-            RequiredArguments = required,
-            Parameters = parameters
-        };
+        var orchestrationCatalog = _toolOrchestrationCatalog.Count > 0
+            ? _toolOrchestrationCatalog
+            : ToolOrchestrationCatalog.Build(definitions);
+        return ToolCatalogExportBuilder.BuildToolDefinitionDtos(definitions, orchestrationCatalog, _packAvailability);
     }
 
     private async Task HandleInvokeToolAsync(StreamWriter writer, InvokeToolRequest request, CancellationToken cancellationToken) {
@@ -1166,34 +1162,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         ClearActiveThreadId();
-    }
-
-    private static string[] ExtractRequiredArguments(string parametersJson) {
-        if (string.IsNullOrWhiteSpace(parametersJson)) {
-            return Array.Empty<string>();
-        }
-
-        try {
-            using var doc = JsonDocument.Parse(parametersJson);
-            if (!doc.RootElement.TryGetProperty("required", out var required) || required.ValueKind != System.Text.Json.JsonValueKind.Array) {
-                return Array.Empty<string>();
-            }
-
-            var list = new List<string>();
-            foreach (var item in required.EnumerateArray()) {
-                if (item.ValueKind != System.Text.Json.JsonValueKind.String) {
-                    continue;
-                }
-                var value = item.GetString();
-                if (string.IsNullOrWhiteSpace(value)) {
-                    continue;
-                }
-                list.Add(value.Trim());
-            }
-            return list.ToArray();
-        } catch {
-            return Array.Empty<string>();
-        }
     }
 
 }

@@ -225,8 +225,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static string ResolveToolListCategory(string? explicitCategory) {
-        var normalized = NormalizeToolListCategoryToken(explicitCategory);
-        return normalized.Length == 0 ? "other" : normalized;
+        return ToolCatalogExportBuilder.ResolveToolListCategory(explicitCategory);
     }
 
     private static string NormalizeToolListCategoryToken(string? value) {

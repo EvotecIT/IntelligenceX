@@ -178,9 +178,39 @@ public sealed class UiShellAssetsTests {
 
         Assert.Contains("var hasIsExplicitRoutingReady = hasOwn.call(value, \"isExplicitRoutingReady\");", script, StringComparison.Ordinal);
         Assert.Contains("var hasInferredRoutingTools = hasOwn.call(value, \"inferredRoutingTools\");", script, StringComparison.Ordinal);
+        Assert.Contains("var autonomyReadinessHighlightsRaw = Array.isArray(value.autonomyReadinessHighlights) ? value.autonomyReadinessHighlights : [];", script, StringComparison.Ordinal);
+        Assert.Contains("autonomyReadinessHighlights: autonomyReadinessHighlights", script, StringComparison.Ordinal);
+        Assert.Contains("toolCatalogRoutingCatalog: null", script, StringComparison.Ordinal);
+        Assert.Contains("toolCatalogCapabilitySnapshot: null", script, StringComparison.Ordinal);
+        Assert.Contains("var fallbackRoutingCatalog = normalizeRoutingCatalog(state.options ? state.options.toolCatalogRoutingCatalog : null);", script, StringComparison.Ordinal);
+        Assert.Contains("var fallbackCapabilitySnapshot = normalizeCapabilitySnapshot(state.options ? state.options.toolCatalogCapabilitySnapshot : null);", script, StringComparison.Ordinal);
+        Assert.Contains("renderRoutingCatalogPolicy(routingCatalogEl, fallbackRoutingCatalog);", script, StringComparison.Ordinal);
+        Assert.Contains("renderCapabilitySnapshotPolicy(capabilitySnapshotEl, fallbackCapabilitySnapshot);", script, StringComparison.Ordinal);
+        Assert.Contains("function normalizeCapabilitySnapshot(value) {", script, StringComparison.Ordinal);
+        Assert.Contains("function renderCapabilitySnapshotPolicy(host, capabilitySnapshot) {", script, StringComparison.Ordinal);
         Assert.Contains("isExplicitRoutingReady: hasIsExplicitRoutingReady ? value.isExplicitRoutingReady === true : true,", script, StringComparison.Ordinal);
         Assert.Contains("var canDeriveExplicitReadiness = hasMissingRoutingContractTools", script, StringComparison.Ordinal);
         Assert.Contains("if (canDeriveExplicitReadiness && explicitReadinessIssueCount > 0) {", script, StringComparison.Ordinal);
+        Assert.Contains("titleLines.push(\"Autonomy readiness:\");", script, StringComparison.Ordinal);
+        Assert.Contains("lines.push(\"autonomy readiness: \" + routingCatalog.autonomyReadinessHighlights[i]);", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures lightweight tool-catalog bootstrap data includes capability snapshot fallback state,
+    /// so the policy panel can show readiness before the full hello/session policy arrives.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesCapabilitySnapshotPolicyFallbackSurface() {
+        var html = UiShellAssets.Load();
+        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+
+        Assert.Contains("id=\"policyCapabilitySnapshot\"", html, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolCatalogRoutingCatalog = nextOptions.toolCatalogRoutingCatalog || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolCatalogCapabilitySnapshot = nextOptions.toolCatalogCapabilitySnapshot || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("Bootstrap preview", coreScript, StringComparison.Ordinal);
     }
 
     /// <summary>

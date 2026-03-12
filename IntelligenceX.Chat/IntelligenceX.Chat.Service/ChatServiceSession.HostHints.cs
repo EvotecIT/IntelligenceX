@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using IntelligenceX.Chat.Tooling;
 using JsonValueKind = System.Text.Json.JsonValueKind;
 
 namespace IntelligenceX.Chat.Service;
@@ -227,23 +228,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool LooksLikeHostFieldName(string name) {
-        var normalized = (name ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        return normalized.Equals("machine_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("computer_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("host", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("hostname", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("host_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("dns_host_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("dnshostname", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("server", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("server_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domain_controller", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domain_controllers", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domainControllers", StringComparison.OrdinalIgnoreCase);
+        return ToolHostTargeting.IsHostTargetArgumentName(name);
     }
 
     private static void AddHostCandidateFromNode(JsonElement node, HashSet<string> candidates) {

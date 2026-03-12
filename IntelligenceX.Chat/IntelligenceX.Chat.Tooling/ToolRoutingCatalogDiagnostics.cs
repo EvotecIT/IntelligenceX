@@ -80,6 +80,16 @@ public sealed record ToolRoutingCatalogDiagnostics {
     public int RecoveryAwareTools { get; init; }
 
     /// <summary>
+    /// Tools whose schemas support remote host targeting.
+    /// </summary>
+    public int RemoteCapableTools { get; init; }
+
+    /// <summary>
+    /// Tools whose handoff contracts pivot into a different pack.
+    /// </summary>
+    public int CrossPackHandoffTools { get; init; }
+
+    /// <summary>
     /// Tools that declare a non-empty domain intent family.
     /// </summary>
     public required int DomainFamilyTools { get; init; }
@@ -164,6 +174,8 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
         var setupAwareTools = 0;
         var handoffAwareTools = 0;
         var recoveryAwareTools = 0;
+        var remoteCapableTools = 0;
+        var crossPackHandoffTools = 0;
         var domainFamilyTools = 0;
         var expectedDomainFamilyMissingTools = 0;
         var domainFamilyMissingActionTools = 0;
@@ -178,6 +190,7 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             }
 
             var routing = definition.Routing;
+            var schemaTraits = ToolSchemaTraitProjection.Project(definition);
             var family = NormalizeToken(routing?.DomainIntentFamily);
             var actionId = NormalizeToken(routing?.DomainIntentActionId);
             var packId = NormalizeToken(routing?.PackId);
@@ -192,6 +205,12 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             }
             if (definition.Recovery?.IsRecoveryAware == true) {
                 recoveryAwareTools++;
+            }
+            if (schemaTraits.SupportsRemoteHostTargeting) {
+                remoteCapableTools++;
+            }
+            if (HasCrossPackHandoff(definition, packId)) {
+                crossPackHandoffTools++;
             }
 
             if (routing is null) {
@@ -285,6 +304,8 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             SetupAwareTools = setupAwareTools,
             HandoffAwareTools = handoffAwareTools,
             RecoveryAwareTools = recoveryAwareTools,
+            RemoteCapableTools = remoteCapableTools,
+            CrossPackHandoffTools = crossPackHandoffTools,
             DomainFamilyTools = domainFamilyTools,
             ExpectedDomainFamilyMissingTools = expectedDomainFamilyMissingTools,
             DomainFamilyMissingActionTools = domainFamilyMissingActionTools,
@@ -313,6 +334,8 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             $"setup_aware={diagnostics.SetupAwareTools}, " +
             $"handoff_aware={diagnostics.HandoffAwareTools}, " +
             $"recovery_aware={diagnostics.RecoveryAwareTools}, " +
+            $"remote_capable={diagnostics.RemoteCapableTools}, " +
+            $"cross_pack_handoffs={diagnostics.CrossPackHandoffTools}, " +
             $"domain_families={diagnostics.DomainFamilyTools}, " +
             $"expected_family_missing={diagnostics.ExpectedDomainFamilyMissingTools}, " +
             $"missing_action={diagnostics.DomainFamilyMissingActionTools}, " +
@@ -395,12 +418,99 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
         return warnings.Count == 0 ? Array.Empty<string>() : warnings.ToArray();
     }
 
+    /// <summary>
+    /// Builds concise autonomy/readiness notes for operators and planner-facing diagnostics.
+    /// </summary>
+    public static IReadOnlyList<string> BuildAutonomyReadinessHighlights(ToolRoutingCatalogDiagnostics diagnostics, int maxItems = 6) {
+        if (diagnostics is null) {
+            throw new ArgumentNullException(nameof(diagnostics));
+        }
+
+        if (maxItems <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var highlights = new List<string>();
+        AddHighlightIfPositive(
+            highlights,
+            diagnostics.RemoteCapableTools,
+            "remote host-targeting is ready for ",
+            " tool(s).",
+            maxItems);
+        AddHighlightIfPositive(
+            highlights,
+            diagnostics.CrossPackHandoffTools,
+            "cross-pack continuation is ready for ",
+            " tool(s).",
+            maxItems);
+        AddHighlightIfPositive(
+            highlights,
+            diagnostics.SetupAwareTools,
+            "setup helpers are available for ",
+            " tool(s).",
+            maxItems);
+        AddHighlightIfPositive(
+            highlights,
+            diagnostics.RecoveryAwareTools,
+            "recovery helpers are available for ",
+            " tool(s).",
+            maxItems);
+
+        if (highlights.Count < maxItems && diagnostics.IsExplicitRoutingReady) {
+            highlights.Add("explicit routing metadata is ready for strict enforcement.");
+        } else if (highlights.Count < maxItems && diagnostics.InferredRoutingTools > 0) {
+            highlights.Add("explicit routing still depends on inferred metadata for " + diagnostics.InferredRoutingTools + " tool(s).");
+        }
+
+        if (highlights.Count < maxItems
+            && diagnostics.MissingRoutingContractTools == 0
+            && diagnostics.MissingPackIdTools == 0
+            && diagnostics.MissingRoleTools == 0) {
+            highlights.Add("routing contracts, pack ids, and roles are fully populated.");
+        }
+
+        return highlights.Count == 0 ? Array.Empty<string>() : highlights.Take(maxItems).ToArray();
+    }
+
     private static void AddWarningIfPositive(List<string> warnings, int count, string suffix) {
         if (count <= 0) {
             return;
         }
 
         warnings.Add($"{count} {suffix}");
+    }
+
+    private static void AddHighlightIfPositive(
+        List<string> highlights,
+        int count,
+        string prefix,
+        string suffix,
+        int maxItems) {
+        if (count <= 0 || highlights.Count >= maxItems) {
+            return;
+        }
+
+        highlights.Add(prefix + count + suffix);
+    }
+
+    private static bool HasCrossPackHandoff(ToolDefinition definition, string sourcePackId) {
+        var routes = definition.Handoff?.OutboundRoutes;
+        if (routes is null || routes.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < routes.Count; i++) {
+            var targetPackId = NormalizeToken(routes[i]?.TargetPackId);
+            if (targetPackId.Length == 0) {
+                continue;
+            }
+
+            if (!string.Equals(targetPackId, sourcePackId, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeToken(string? value) {

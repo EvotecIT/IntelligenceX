@@ -12,6 +12,8 @@ namespace IntelligenceX.Tools.Common;
 /// </summary>
 public sealed class ToolPackInfoModel {
     private IReadOnlyList<ToolPackToolCatalogEntryModel> _toolCatalog = Array.Empty<ToolPackToolCatalogEntryModel>();
+    private ToolPackAutonomySummaryModel _autonomySummary = new();
+    private bool _autonomySummaryExplicitlySet;
 
     /// <summary>
     /// Pack identifier (for example: <c>active_directory</c>, <c>system</c>).
@@ -73,7 +75,23 @@ public sealed class ToolPackInfoModel {
     /// </summary>
     public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog {
         get => _toolCatalog;
-        init => _toolCatalog = ToolPackGuidance.NormalizeToolCatalogContract(value);
+        init {
+            _toolCatalog = ToolPackGuidance.NormalizeToolCatalogContract(value);
+            if (!_autonomySummaryExplicitlySet) {
+                _autonomySummary = ToolPackGuidance.NormalizeAutonomySummaryContract(summary: null, _toolCatalog);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Derived pack-level autonomy/readiness summary built from the tool catalog.
+    /// </summary>
+    public ToolPackAutonomySummaryModel AutonomySummary {
+        get => _autonomySummary;
+        init {
+            _autonomySummary = ToolPackGuidance.NormalizeAutonomySummaryContract(value, _toolCatalog);
+            _autonomySummaryExplicitlySet = true;
+        }
     }
 
     /// <summary>
@@ -85,6 +103,96 @@ public sealed class ToolPackInfoModel {
     /// Optional free-form additional note.
     /// </summary>
     public string? Note { get; init; }
+}
+
+/// <summary>
+/// Compact pack-level autonomy/readiness summary derived from tool contracts.
+/// </summary>
+public sealed class ToolPackAutonomySummaryModel {
+    private IReadOnlyList<string> _remoteCapableToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _setupAwareToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _handoffAwareToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _recoveryAwareToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _crossPackHandoffToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _crossPackTargetPacks = Array.Empty<string>();
+
+    /// <summary>
+    /// Total number of tools in the pack catalog.
+    /// </summary>
+    public int TotalTools { get; init; }
+
+    /// <summary>
+    /// Number of tools that support local-or-remote execution.
+    /// </summary>
+    public int RemoteCapableTools { get; init; }
+
+    /// <summary>
+    /// Tool names that support local-or-remote execution.
+    /// </summary>
+    public IReadOnlyList<string> RemoteCapableToolNames {
+        get => _remoteCapableToolNames;
+        init => _remoteCapableToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that expose setup-aware metadata.
+    /// </summary>
+    public int SetupAwareTools { get; init; }
+
+    /// <summary>
+    /// Tool names that expose setup-aware metadata.
+    /// </summary>
+    public IReadOnlyList<string> SetupAwareToolNames {
+        get => _setupAwareToolNames;
+        init => _setupAwareToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that expose outbound handoff metadata.
+    /// </summary>
+    public int HandoffAwareTools { get; init; }
+
+    /// <summary>
+    /// Tool names that expose outbound handoff metadata.
+    /// </summary>
+    public IReadOnlyList<string> HandoffAwareToolNames {
+        get => _handoffAwareToolNames;
+        init => _handoffAwareToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that expose recovery-aware metadata.
+    /// </summary>
+    public int RecoveryAwareTools { get; init; }
+
+    /// <summary>
+    /// Tool names that expose recovery-aware metadata.
+    /// </summary>
+    public IReadOnlyList<string> RecoveryAwareToolNames {
+        get => _recoveryAwareToolNames;
+        init => _recoveryAwareToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that declare cross-pack outbound handoff routes.
+    /// </summary>
+    public int CrossPackHandoffTools { get; init; }
+
+    /// <summary>
+    /// Tool names that declare cross-pack outbound handoff routes.
+    /// </summary>
+    public IReadOnlyList<string> CrossPackHandoffToolNames {
+        get => _crossPackHandoffToolNames;
+        init => _crossPackHandoffToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Distinct target pack ids referenced by cross-pack outbound handoff routes.
+    /// </summary>
+    public IReadOnlyList<string> CrossPackTargetPacks {
+        get => _crossPackTargetPacks;
+        init => _crossPackTargetPacks = ToolPackGuidance.NormalizeValueListContract(value);
+    }
 }
 
 /// <summary>
@@ -248,188 +356,10 @@ public sealed class ToolPackToolRoutingModel {
 }
 
 /// <summary>
-/// Normalized outbound handoff edge derived from tool-owned handoff contracts.
-/// </summary>
-public sealed class ToolPackToolHandoffEdgeModel {
-    /// <summary>
-    /// Target pack id for this handoff edge.
-    /// </summary>
-    public string TargetPackId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Optional target tool name for this handoff edge.
-    /// </summary>
-    public string TargetToolName { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Optional target routing role for this handoff edge.
-    /// </summary>
-    public string TargetRole { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Number of bindings declared by this route.
-    /// </summary>
-    public int BindingCount { get; init; }
-
-    /// <summary>
-    /// Normalized source-to-target binding pairs ("source->target").
-    /// Duplicate pairs are preserved to keep declared contract multiplicity.
-    /// </summary>
-    public IReadOnlyList<string> BindingPairs { get; init; } = Array.Empty<string>();
-}
-
-/// <summary>
-/// Structured setup, handoff, and recovery contract projection for model-side orchestration.
-/// </summary>
-public sealed class ToolPackToolOrchestrationModel {
-    /// <summary>
-    /// Normalized pack identifier.
-    /// </summary>
-    public string PackId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Routing role token.
-    /// </summary>
-    public string Role { get; init; } = ToolRoutingTaxonomy.RoleOperational;
-
-    /// <summary>
-    /// Routing source token.
-    /// </summary>
-    public string RoutingSource { get; init; } = ToolRoutingTaxonomy.SourceExplicit;
-
-    /// <summary>
-    /// Indicates whether tool exposes routing-aware metadata.
-    /// </summary>
-    public bool IsRoutingAware { get; init; }
-
-    /// <summary>
-    /// Optional domain intent family token.
-    /// </summary>
-    public string DomainIntentFamily { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Optional domain intent action id token.
-    /// </summary>
-    public string DomainIntentActionId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Indicates whether tool is setup-aware.
-    /// </summary>
-    public bool IsSetupAware { get; init; }
-
-    /// <summary>
-    /// Number of distinct normalized setup requirement (<c>id</c>, <c>kind</c>) pairs.
-    /// </summary>
-    public int SetupRequirementCount { get; init; }
-
-    /// <summary>
-    /// Optional setup helper tool name.
-    /// </summary>
-    public string SetupToolName { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Optional setup contract identifier.
-    /// </summary>
-    public string SetupContractId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Normalized setup requirement identifiers.
-    /// </summary>
-    public IReadOnlyList<string> SetupRequirementIds { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Normalized setup requirement kinds.
-    /// </summary>
-    public IReadOnlyList<string> SetupRequirementKinds { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Normalized setup hint keys (contract + requirement-level hints).
-    /// </summary>
-    public IReadOnlyList<string> SetupHintKeys { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Indicates whether tool declares outbound handoff routes.
-    /// </summary>
-    public bool IsHandoffAware { get; init; }
-
-    /// <summary>
-    /// Number of declared outbound handoff routes.
-    /// </summary>
-    public int HandoffRouteCount { get; init; }
-
-    /// <summary>
-    /// Number of declared outbound handoff bindings across all routes.
-    /// Duplicate normalized binding pairs are counted when explicitly declared.
-    /// </summary>
-    public int HandoffBindingCount { get; init; }
-
-    /// <summary>
-    /// Optional handoff contract identifier.
-    /// </summary>
-    public string HandoffContractId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Normalized outbound handoff edges.
-    /// </summary>
-    public IReadOnlyList<ToolPackToolHandoffEdgeModel> HandoffEdges { get; init; } = Array.Empty<ToolPackToolHandoffEdgeModel>();
-
-    /// <summary>
-    /// Indicates whether tool declares effective recovery behavior in normalized projection.
-    /// </summary>
-    public bool IsRecoveryAware { get; init; }
-
-    /// <summary>
-    /// Indicates support for transient retry.
-    /// </summary>
-    public bool SupportsTransientRetry { get; init; }
-
-    /// <summary>
-    /// Maximum retry attempts for transient failures.
-    /// </summary>
-    public int MaxRetryAttempts { get; init; }
-
-    /// <summary>
-    /// Indicates support for alternate internal engines.
-    /// </summary>
-    public bool SupportsAlternateEngines { get; init; }
-
-    /// <summary>
-    /// Number of declared alternate internal engines.
-    /// </summary>
-    public int AlternateEngineCount { get; init; }
-
-    /// <summary>
-    /// Optional recovery contract identifier.
-    /// </summary>
-    public string RecoveryContractId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Number of declared recovery helper tools.
-    /// </summary>
-    public int RecoveryToolCount { get; init; }
-
-    /// <summary>
-    /// Normalized retryable error codes.
-    /// </summary>
-    public IReadOnlyList<string> RetryableErrorCodes { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Normalized alternate engine identifiers.
-    /// </summary>
-    public IReadOnlyList<string> AlternateEngineIds { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Normalized recovery helper tool names.
-    /// </summary>
-    public IReadOnlyList<string> RecoveryToolNames { get; init; } = Array.Empty<string>();
-}
-
-/// <summary>
 /// Tool-level catalog entry for pack guidance.
 /// </summary>
 public sealed class ToolPackToolCatalogEntryModel {
     private ToolPackToolRoutingModel _routing = new();
-    private ToolPackToolOrchestrationModel _orchestration = new();
 
     /// <summary>
     /// Tool name as registered in the runtime tool registry.
@@ -491,12 +421,19 @@ public sealed class ToolPackToolCatalogEntryModel {
     public ToolPackToolTraitsModel Traits { get; init; } = new();
 
     /// <summary>
-    /// Structured orchestration metadata projected from tool-owned contracts.
+    /// Structured setup contract summary derived from tool metadata.
     /// </summary>
-    public ToolPackToolOrchestrationModel Orchestration {
-        get => _orchestration;
-        init => _orchestration = ToolPackGuidance.NormalizeOrchestrationContract(value);
-    }
+    public ToolPackToolSetupModel Setup { get; init; } = new();
+
+    /// <summary>
+    /// Structured handoff contract summary derived from tool metadata.
+    /// </summary>
+    public ToolPackToolHandoffModel Handoff { get; init; } = new();
+
+    /// <summary>
+    /// Structured recovery contract summary derived from tool metadata.
+    /// </summary>
+    public ToolPackToolRecoveryModel Recovery { get; init; } = new();
 
     /// <summary>
     /// Indicates whether tool can perform write/mutating operations.
@@ -554,6 +491,105 @@ public sealed class ToolPackToolCatalogEntryModel {
 }
 
 /// <summary>
+/// Structured setup contract summary in tool catalog metadata.
+/// </summary>
+public sealed class ToolPackToolSetupModel {
+    /// <summary>
+    /// Indicates whether the tool declares setup-aware metadata.
+    /// </summary>
+    public bool IsSetupAware { get; init; }
+
+    /// <summary>
+    /// Optional setup helper tool.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? SetupToolName { get; init; }
+
+    /// <summary>
+    /// Declared setup requirement identifiers.
+    /// </summary>
+    public IReadOnlyList<string> RequirementIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Declared setup hint keys.
+    /// </summary>
+    public IReadOnlyList<string> HintKeys { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Structured outbound handoff route summary in tool catalog metadata.
+/// </summary>
+public sealed class ToolPackToolHandoffRouteModel {
+    /// <summary>
+    /// Optional target pack id.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? TargetPackId { get; init; }
+
+    /// <summary>
+    /// Optional target tool name.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? TargetToolName { get; init; }
+
+    /// <summary>
+    /// Optional target role.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? TargetRole { get; init; }
+
+    /// <summary>
+    /// Declared binding pairs in <c>source-&gt;target</c> form.
+    /// </summary>
+    public IReadOnlyList<string> BindingPairs { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Structured handoff contract summary in tool catalog metadata.
+/// </summary>
+public sealed class ToolPackToolHandoffModel {
+    /// <summary>
+    /// Indicates whether the tool declares outbound handoff routes.
+    /// </summary>
+    public bool IsHandoffAware { get; init; }
+
+    /// <summary>
+    /// Normalized outbound handoff routes.
+    /// </summary>
+    public IReadOnlyList<ToolPackToolHandoffRouteModel> Routes { get; init; } = Array.Empty<ToolPackToolHandoffRouteModel>();
+}
+
+/// <summary>
+/// Structured recovery contract summary in tool catalog metadata.
+/// </summary>
+public sealed class ToolPackToolRecoveryModel {
+    /// <summary>
+    /// Indicates whether the tool declares recovery-aware metadata.
+    /// </summary>
+    public bool IsRecoveryAware { get; init; }
+
+    /// <summary>
+    /// Indicates whether transient retry is supported.
+    /// </summary>
+    public bool SupportsTransientRetry { get; init; }
+
+    /// <summary>
+    /// Maximum retry attempts for transient failures.
+    /// </summary>
+    public int MaxRetryAttempts { get; init; }
+
+    /// <summary>
+    /// Recovery helper tool names.
+    /// </summary>
+    public IReadOnlyList<string> RecoveryToolNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Retryable error codes when transient retry is enabled.
+    /// </summary>
+    public IReadOnlyList<string> RetryableErrorCodes { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
 /// Input argument hint descriptor in tool catalog metadata.
 /// </summary>
 public sealed class ToolPackToolArgumentModel {
@@ -587,6 +623,11 @@ public sealed class ToolPackToolArgumentModel {
 /// Structured capability hints inferred from tool input schema arguments.
 /// </summary>
 public sealed class ToolPackToolTraitsModel {
+    /// <summary>
+    /// Execution locality classification derived from tool arguments.
+    /// </summary>
+    public string ExecutionScope { get; init; } = "local_only";
+
     /// <summary>
     /// Indicates support for optional table projection arguments (for display-only shaping).
     /// </summary>
@@ -687,38 +728,15 @@ public static partial class ToolPackGuidance {
     private static readonly string[] TimeRangeArgumentNames = { "start_time_utc", "end_time_utc", "since_utc", "before_utc", "reference_time_utc" };
     private static readonly string[] DynamicAttributeArgumentNames = { "attributes", "include_raw", "include_operational_attributes", "include_computed_flags", "include_security_descriptor" };
     private static readonly string[] TargetScopeArgumentNames = {
-        "domain_name",
-        "forest_name",
-        "domain_controller",
-        "search_base_dn",
-        "path",
-        "folder",
-        "channel",
-        "provider_name",
-        "computer_name",
-        "machine_name",
-        "machine_names",
-        "server"
+        "search_base_dn", "path", "folder", "channel", "provider_name"
     };
-    private static readonly string[] RemoteHostArgumentNames = {
-        "computer_name",
-        "machine_name",
-        "machine_names",
-        "domain_controller",
-        "server",
-        "targets"
-    };
+    private static readonly IReadOnlyList<string> RemoteHostArgumentNames = ToolHostTargetArgumentNames.OrderedInputArguments;
     private static readonly IReadOnlyList<string> MutatingActionArgumentNames = ToolMutabilityHintNames.CanonicalMutatingActionArguments;
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
         ToolAuthenticationArgumentNames.CanonicalArguments;
 
     internal static ToolPackToolRoutingModel NormalizeRoutingContract(ToolPackToolRoutingModel? routing) {
         return NormalizeRouting(routing);
-    }
-
-    internal static ToolPackToolOrchestrationModel NormalizeOrchestrationContract(
-        ToolPackToolOrchestrationModel? orchestration) {
-        return NormalizeOrchestration(orchestration);
     }
 
     internal static IReadOnlyList<ToolPackToolCatalogEntryModel> NormalizeToolCatalogContract(
@@ -849,7 +867,9 @@ public static partial class ToolPackGuidance {
                 SupportsTableViewProjection = supportsTableView,
                 IsPackInfoTool = enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
                 Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView),
-                Orchestration = BuildToolOrchestration(enrichedDefinition),
+                Setup = BuildSetup(enrichedDefinition.Setup),
+                Handoff = BuildHandoff(enrichedDefinition.Handoff),
+                Recovery = BuildRecovery(enrichedDefinition.Recovery),
                 IsWriteCapable = enrichedDefinition.WriteGovernance?.IsWriteCapable ?? false,
                 RequiresWriteGovernance = enrichedDefinition.WriteGovernance?.RequiresGovernanceAuthorization ?? false,
                 WriteGovernanceContractId = string.IsNullOrWhiteSpace(enrichedDefinition.WriteGovernance?.GovernanceContractId)
@@ -870,5 +890,108 @@ public static partial class ToolPackGuidance {
         }
 
         return NormalizeToolCatalog(list);
+    }
+
+    private static ToolPackToolSetupModel BuildSetup(ToolSetupContract? contract) {
+        if (contract is null) {
+            return new ToolPackToolSetupModel();
+        }
+
+        var requirementIds = new List<string>();
+        var hintKeys = new List<string>();
+        if (contract.SetupHintKeys is { Count: > 0 }) {
+            for (var i = 0; i < contract.SetupHintKeys.Count; i++) {
+                hintKeys.Add(contract.SetupHintKeys[i]);
+            }
+        }
+        if (contract.Requirements is { Count: > 0 }) {
+            for (var i = 0; i < contract.Requirements.Count; i++) {
+                var requirement = contract.Requirements[i];
+                if (!string.IsNullOrWhiteSpace(requirement?.RequirementId)) {
+                    requirementIds.Add(requirement.RequirementId);
+                }
+
+                if (requirement?.HintKeys is not { Count: > 0 }) {
+                    continue;
+                }
+
+                for (var hintIndex = 0; hintIndex < requirement.HintKeys.Count; hintIndex++) {
+                    hintKeys.Add(requirement.HintKeys[hintIndex]);
+                }
+            }
+        }
+
+        return NormalizeSetupContract(new ToolPackToolSetupModel {
+            IsSetupAware = contract.IsSetupAware,
+            SetupToolName = contract.SetupToolName,
+            RequirementIds = requirementIds,
+            HintKeys = hintKeys
+        });
+    }
+
+    private static ToolPackToolHandoffModel BuildHandoff(ToolHandoffContract? contract) {
+        if (contract is null || contract.OutboundRoutes is not { Count: > 0 }) {
+            return new ToolPackToolHandoffModel();
+        }
+
+        var routes = new List<ToolPackToolHandoffRouteModel>();
+        for (var routeIndex = 0; routeIndex < contract.OutboundRoutes.Count; routeIndex++) {
+            var route = contract.OutboundRoutes[routeIndex];
+            if (route is null) {
+                continue;
+            }
+
+            var bindingPairs = new List<string>();
+            if (route.Bindings is { Count: > 0 }) {
+                for (var bindingIndex = 0; bindingIndex < route.Bindings.Count; bindingIndex++) {
+                    var binding = route.Bindings[bindingIndex];
+                    var source = binding?.SourceField?.Trim();
+                    var target = binding?.TargetArgument?.Trim();
+                    if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target)) {
+                        continue;
+                    }
+
+                    bindingPairs.Add(source + "->" + target);
+                }
+            }
+
+            routes.Add(new ToolPackToolHandoffRouteModel {
+                TargetPackId = route.TargetPackId,
+                TargetToolName = route.TargetToolName,
+                TargetRole = route.TargetRole,
+                BindingPairs = bindingPairs
+            });
+        }
+
+        return NormalizeHandoffContract(new ToolPackToolHandoffModel {
+            IsHandoffAware = contract.IsHandoffAware,
+            Routes = routes
+        });
+    }
+
+    private static ToolPackToolRecoveryModel BuildRecovery(ToolRecoveryContract? contract) {
+        if (contract is null) {
+            return new ToolPackToolRecoveryModel();
+        }
+
+        return NormalizeRecoveryContract(new ToolPackToolRecoveryModel {
+            IsRecoveryAware = contract.IsRecoveryAware,
+            SupportsTransientRetry = contract.SupportsTransientRetry,
+            MaxRetryAttempts = contract.MaxRetryAttempts,
+            RecoveryToolNames = contract.RecoveryToolNames ?? Array.Empty<string>(),
+            RetryableErrorCodes = contract.RetryableErrorCodes ?? Array.Empty<string>()
+        });
+    }
+
+    private static ToolPackToolSetupModel NormalizeSetupContract(ToolPackToolSetupModel? setup) {
+        return NormalizeSetup(setup);
+    }
+
+    private static ToolPackToolHandoffModel NormalizeHandoffContract(ToolPackToolHandoffModel? handoff) {
+        return NormalizeHandoff(handoff);
+    }
+
+    private static ToolPackToolRecoveryModel NormalizeRecoveryContract(ToolPackToolRecoveryModel? recovery) {
+        return NormalizeRecovery(recovery);
     }
 }

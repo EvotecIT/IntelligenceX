@@ -94,6 +94,11 @@ public sealed class ToolCommonCollectionGuardrailTests {
             ToolCatalog = toolCatalog
         };
 
+        var remoteCapableToolNames = new List<string> { "system_info" };
+        var autonomySummary = new ToolPackAutonomySummaryModel {
+            RemoteCapableToolNames = remoteCapableToolNames
+        };
+
         return new[] {
             new GuardCase(
                 ModelType: typeof(ToolRequestBindingResult<RequestModel>),
@@ -237,7 +242,18 @@ public sealed class ToolCommonCollectionGuardrailTests {
                     replaceValue: new ToolPackToolCatalogEntryModel {
                         Name = "y",
                         Description = "y"
-                    }))
+                    })),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.RemoteCapableToolNames),
+                Model: autonomySummary,
+                MutateSource: () => remoteCapableToolNames.Add("system_metrics_summary"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "system_info" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y"))
         };
     }
 

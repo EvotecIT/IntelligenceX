@@ -1,11 +1,12 @@
 using System;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.PowerShell;
 
 /// <summary>
 /// Runtime options for IX.PowerShell tools.
 /// </summary>
-public sealed class PowerShellToolOptions {
+public sealed class PowerShellToolOptions : IToolPackRuntimeConfigurable {
     /// <summary>
     /// Enables runtime command/script execution for this pack.
     /// </summary>
@@ -48,6 +49,18 @@ public sealed class PowerShellToolOptions {
     /// Enables heuristic detection for mutating commands/scripts.
     /// </summary>
     public bool EnableMutationHeuristic { get; set; } = true;
+
+    /// <inheritdoc />
+    public void ApplyRuntimeContext(ToolPackRuntimeContext context) {
+        ArgumentNullException.ThrowIfNull(context);
+
+        Enabled = true;
+        DefaultTimeoutMs = context.PowerShellDefaultTimeoutMs;
+        MaxTimeoutMs = context.PowerShellMaxTimeoutMs;
+        DefaultMaxOutputChars = context.PowerShellDefaultMaxOutputChars;
+        MaxOutputChars = context.PowerShellMaxOutputChars;
+        AllowWrite = context.PowerShellAllowWrite;
+    }
 
     /// <summary>
     /// Validates option values.

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -112,123 +111,6 @@ public sealed class ToolOrchestrationCatalogTests {
         var byPackAndRole = catalog.GetByPackAndRole("customx", ToolRoutingTaxonomy.RolePackInfo);
         Assert.Single(byPackAndRole);
         Assert.Equal("custom_pack_info", byPackAndRole[0].ToolName);
-    }
-
-    [Fact]
-    public void Build_PrefersPackOwnedCatalogContracts_WhenAvailable() {
-        var definition = CreateDefinition(
-            name: "custom_pack_info",
-            routing: new ToolRoutingContract {
-                IsRoutingAware = true,
-                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
-                PackId = "legacy_pack",
-                Role = ToolRoutingTaxonomy.RoleOperational
-            });
-
-        var packCatalogEntry = new ToolPackToolCatalogEntryModel {
-            Name = "custom_pack_info",
-            Description = "Pack info",
-            Traits = new ToolPackToolTraitsModel {
-                SupportsTargetScoping = true,
-                TargetScopeArguments = new[] { "machine_name" },
-                SupportsRemoteHostTargeting = true,
-                RemoteHostArguments = new[] { "machine_name" }
-            },
-            Orchestration = new ToolPackToolOrchestrationModel {
-                PackId = "customx",
-                Role = ToolRoutingTaxonomy.RolePackInfo,
-                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
-                IsRoutingAware = true,
-                DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
-                DomainIntentActionId = "act_custom_scope",
-                IsSetupAware = true,
-                SetupRequirementCount = 1,
-                SetupToolName = "custom_setup",
-                SetupContractId = ToolSetupContract.DefaultContractId,
-                SetupRequirementIds = new[] { "auth.session" },
-                SetupRequirementKinds = new[] { ToolSetupRequirementKinds.Authentication },
-                SetupHintKeys = new[] { "needs_auth" },
-                IsHandoffAware = true,
-                HandoffRouteCount = 1,
-                HandoffBindingCount = 1,
-                HandoffContractId = ToolHandoffContract.DefaultContractId,
-                HandoffEdges = new[] {
-                    new ToolPackToolHandoffEdgeModel {
-                        TargetPackId = "dnsclientx",
-                        TargetToolName = "dns_lookup",
-                        TargetRole = ToolRoutingTaxonomy.RoleOperational,
-                        BindingCount = 1,
-                        BindingPairs = new[] { "host->target" }
-                    }
-                },
-                IsRecoveryAware = true,
-                SupportsTransientRetry = true,
-                MaxRetryAttempts = 3,
-                SupportsAlternateEngines = true,
-                AlternateEngineCount = 2,
-                RecoveryContractId = ToolRecoveryContract.DefaultContractId,
-                RecoveryToolCount = 1,
-                RetryableErrorCodes = new[] { "timeout" },
-                AlternateEngineIds = new[] { "cim", "wmi" },
-                RecoveryToolNames = new[] { "custom_pack_info" }
-            }
-        };
-
-        var catalog = ToolOrchestrationCatalog.Build(
-            new[] { definition },
-            new IToolPack[] { new SyntheticCatalogPack("customx", packCatalogEntry) });
-
-        Assert.True(catalog.TryGetEntry("custom_pack_info", out var entry));
-        Assert.Equal("customx", entry.PackId);
-        Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, entry.Role);
-        Assert.True(entry.IsRoutingAware);
-        Assert.True(entry.SupportsTargetScoping);
-        Assert.Equal(new[] { "machine_name" }, entry.TargetScopeArguments);
-        Assert.True(entry.SupportsRemoteHostTargeting);
-        Assert.Equal(new[] { "machine_name" }, entry.RemoteHostArguments);
-        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, entry.DomainIntentFamily);
-        Assert.Equal("act_custom_scope", entry.DomainIntentActionId);
-        Assert.True(entry.IsSetupAware);
-        Assert.Equal("custom_setup", entry.SetupToolName);
-        Assert.True(entry.IsHandoffAware);
-        Assert.Single(entry.HandoffEdges);
-        Assert.True(entry.IsRecoveryAware);
-        Assert.True(entry.SupportsTransientRetry);
-        Assert.Equal(3, entry.MaxRetryAttempts);
-        Assert.True(entry.SupportsAlternateEngines);
-    }
-
-    [Fact]
-    public void Build_NormalizesInvalidPackOwnedRoleOrSource_ToAllowedRoutingTaxonomyValues() {
-        var definition = CreateDefinition(
-            name: "custom_resolver_query",
-            routing: new ToolRoutingContract {
-                IsRoutingAware = true,
-                RoutingSource = ToolRoutingTaxonomy.SourceInferred,
-                PackId = "customx",
-                Role = ToolRoutingTaxonomy.RoleResolver
-            });
-
-        var packCatalogEntry = new ToolPackToolCatalogEntryModel {
-            Name = "custom_resolver_query",
-            Description = "Resolver query",
-            Orchestration = new ToolPackToolOrchestrationModel {
-                PackId = "customx",
-                Role = "totally_invalid_role",
-                RoutingSource = "totally_invalid_source",
-                IsRoutingAware = true
-            }
-        };
-
-        var catalog = ToolOrchestrationCatalog.Build(
-            new[] { definition },
-            new IToolPack[] { new SyntheticCatalogPack("customx", packCatalogEntry) });
-
-        Assert.True(catalog.TryGetEntry("custom_resolver_query", out var entry));
-        Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.Role);
-        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, entry.RoutingSource);
-        Assert.DoesNotContain("invalid", entry.Role, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("invalid", entry.RoutingSource, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -653,6 +535,7 @@ public sealed class ToolOrchestrationCatalogTests {
         });
 
         Assert.True(catalog.TryGetEntry("system_tls_posture", out var entry));
+        Assert.Equal("local_or_remote", entry.ExecutionScope);
         Assert.True(entry.SupportsTargetScoping);
         Assert.Equal(new[] { "search_base_dn", "computer_name" }, entry.TargetScopeArguments);
         Assert.True(entry.SupportsRemoteHostTargeting);
@@ -660,15 +543,14 @@ public sealed class ToolOrchestrationCatalogTests {
     }
 
     [Fact]
-    public void Build_ProjectsEventLogRemoteMachineTraits_FromMachineNameArguments() {
+    public void Build_ProjectsExecutionScopeForMachineNameRemoteTools() {
         var catalog = ToolOrchestrationCatalog.Build(new[] {
             new ToolDefinition(
                 "eventlog_live_query",
-                "Inspect live event logs on local or remote machines.",
+                "Inspect remote Event Log data.",
                 ToolSchema.Object(
                         ("machine_name", ToolSchema.String("Remote machine.")),
-                        ("machine_names", ToolSchema.Array(ToolSchema.String("Remote machines."))),
-                        ("channel", ToolSchema.String("Event log channel.")))
+                        ("channel", ToolSchema.String("Channel.")))
                     .NoAdditionalProperties(),
                 routing: new ToolRoutingContract {
                     IsRoutingAware = true,
@@ -679,10 +561,11 @@ public sealed class ToolOrchestrationCatalogTests {
         });
 
         Assert.True(catalog.TryGetEntry("eventlog_live_query", out var entry));
+        Assert.Equal("local_or_remote", entry.ExecutionScope);
         Assert.True(entry.SupportsTargetScoping);
-        Assert.Equal(new[] { "channel", "machine_name", "machine_names" }, entry.TargetScopeArguments);
         Assert.True(entry.SupportsRemoteHostTargeting);
-        Assert.Equal(new[] { "machine_name", "machine_names" }, entry.RemoteHostArguments);
+        Assert.Equal(new[] { "machine_name" }, entry.RemoteHostArguments);
+        Assert.Equal(new[] { "channel", "machine_name" }, entry.TargetScopeArguments);
     }
 
     private static ToolDefinition CreateDefinition(
@@ -698,29 +581,5 @@ public sealed class ToolOrchestrationCatalogTests {
             setup: setup,
             handoff: handoff,
             recovery: recovery);
-    }
-
-    private sealed class SyntheticCatalogPack : IToolPack, IToolPackCatalogProvider {
-        private readonly IReadOnlyList<ToolPackToolCatalogEntryModel> _catalog;
-
-        public SyntheticCatalogPack(string id, params ToolPackToolCatalogEntryModel[] catalog) {
-            Descriptor = new ToolPackDescriptor {
-                Id = id,
-                Name = id,
-                Tier = ToolCapabilityTier.ReadOnly,
-                IsDangerous = false,
-                SourceKind = "builtin"
-            };
-            _catalog = catalog;
-        }
-
-        public ToolPackDescriptor Descriptor { get; }
-
-        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
-            return _catalog;
-        }
-
-        public void Register(ToolRegistry registry) {
-        }
     }
 }

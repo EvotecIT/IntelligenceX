@@ -56,6 +56,29 @@ internal sealed partial class ChatServiceSession {
         _routingCatalogDiagnostics = routingCatalogDiagnostics;
     }
 
+    internal void SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog catalog) {
+        ArgumentNullException.ThrowIfNull(catalog);
+        _toolOrchestrationCatalog = catalog;
+    }
+
+    internal IReadOnlyList<ToolDefinition> SelectWeightedToolSubsetForTesting(
+        IReadOnlyList<ToolDefinition> definitions,
+        string requestText,
+        int? maxCandidateTools,
+        out List<object> insights) {
+        var selected = SelectWeightedToolSubset(definitions, requestText, maxCandidateTools, out var rawInsights);
+        insights = rawInsights.Cast<object>().ToList();
+        return selected;
+    }
+
+    internal static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidatesForTesting(
+        IReadOnlyList<ToolDefinition> definitions,
+        string requestText,
+        int limit,
+        ToolOrchestrationCatalog toolOrchestrationCatalog) {
+        return BuildModelPlannerCandidates(definitions, requestText, limit, toolOrchestrationCatalog);
+    }
+
     internal string? BuildTurnInstructionsWithRuntimeIdentityForTesting(string resolvedModel, string? baseInstructions = null) {
         var previousInstructions = _instructions;
         _instructions = baseInstructions;

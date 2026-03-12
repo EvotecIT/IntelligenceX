@@ -523,12 +523,20 @@ internal sealed partial class ChatServiceSession {
             var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 8, out var schemaTraits);
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             var category = ResolvePlannerCategory(definition);
+            var packId = NormalizePackId(definition.Routing?.PackId);
+            var role = ResolvePlannerRole(definition);
             var domainIntentFamily = ResolveDomainIntentFamily(definition);
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
             var traitSummary = ToolSchemaTraitProjection.BuildTraitSummary(schemaTraits);
             sb.Append(i + 1).Append(". ").Append(name);
             if (description.Length > 0) {
                 sb.Append(" :: ").Append(description);
+            }
+            if (packId.Length > 0) {
+                sb.Append(" | pack: ").Append(packId);
+            }
+            if (role.Length > 0) {
+                sb.Append(" | role: ").Append(role);
             }
             if (category.Length > 0) {
                 sb.Append(" | category: ").Append(category);
@@ -548,6 +556,18 @@ internal sealed partial class ChatServiceSession {
             if (traitSummary.Length > 0) {
                 sb.Append(" | traits: ").Append(traitSummary);
             }
+            var setupToolName = (definition.Setup?.SetupToolName ?? string.Empty).Trim();
+            if (setupToolName.Length > 0) {
+                sb.Append(" | setup: ").Append(setupToolName);
+            }
+            var recoveryToolNames = ExtractToolRecoveryHelperNames(definition, maxCount: 2);
+            if (recoveryToolNames.Length > 0) {
+                sb.Append(" | recovery: ").Append(string.Join(", ", recoveryToolNames));
+            }
+            var handoffTargets = ExtractToolHandoffTargets(definition, maxCount: 3);
+            if (handoffTargets.Length > 0) {
+                sb.Append(" | handoff: ").Append(string.Join(", ", handoffTargets));
+            }
             sb.AppendLine();
         }
 
@@ -561,6 +581,15 @@ internal sealed partial class ChatServiceSession {
         }
 
         return (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
+    }
+
+    private static string ResolvePlannerRole(ToolDefinition definition) {
+        var role = (definition.Routing?.Role ?? string.Empty).Trim();
+        if (role.Length > 0) {
+            return role;
+        }
+
+        return (ToolSelectionMetadata.Enrich(definition, toolType: null).Routing?.Role ?? string.Empty).Trim();
     }
 
     private static string[] ExtractPlannerTags(ToolDefinition definition, int maxCount) {
@@ -933,7 +962,9 @@ internal sealed partial class ChatServiceSession {
         bool ExplicitToolMatch,
         int TokenHits,
         int FocusTokenHits,
-        double Adjustment);
+        double Adjustment,
+        double RemoteCapableBoost,
+        double CrossPackContinuationBoost);
 
     private enum ToolRoutingInsightStrategy {
         Unknown = 0,

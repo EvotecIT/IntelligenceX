@@ -6,48 +6,26 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
     internal static string ResolveStartupBootstrapCacheModeTokenFromPolicy(SessionPolicyDto? policy) {
-        if (policy is null) {
-            return "unknown";
-        }
-
-        var bootstrap = policy.StartupBootstrap;
-        if (bootstrap?.Phases is { Length: > 0 } phases) {
-            for (var i = 0; i < phases.Length; i++) {
-                var phaseId = (phases[i].Id ?? string.Empty).Trim();
-                if (string.Equals(phaseId, "cache_hit", StringComparison.OrdinalIgnoreCase)) {
-                    return "hit";
-                }
-            }
-        }
-
-        if (policy.StartupWarnings is { Length: > 0 } warnings) {
-            for (var i = 0; i < warnings.Length; i++) {
-                var warning = warnings[i] ?? string.Empty;
-                if (warning.IndexOf("persisted cache", StringComparison.OrdinalIgnoreCase) >= 0
-                    && warning.IndexOf("preview restored", StringComparison.OrdinalIgnoreCase) >= 0) {
-                    return "persisted_preview";
-                }
-            }
-        }
-
-        return bootstrap is null ? "unknown" : "miss";
+        return policy is null
+            ? StartupBootstrapContracts.CacheModeUnknown
+            : StartupBootstrapContracts.ResolveCacheModeToken(policy.StartupBootstrap, policy.StartupWarnings);
     }
 
     private static int ParseStartupBootstrapCacheMode(string token) {
         return token switch {
-            "hit" => StartupBootstrapCacheModeHit,
-            "miss" => StartupBootstrapCacheModeMiss,
-            "persisted_preview" => StartupBootstrapCacheModePersistedPreview,
+            StartupBootstrapContracts.CacheModeHit => StartupBootstrapCacheModeHit,
+            StartupBootstrapContracts.CacheModeMiss => StartupBootstrapCacheModeMiss,
+            StartupBootstrapContracts.CacheModePersistedPreview => StartupBootstrapCacheModePersistedPreview,
             _ => StartupBootstrapCacheModeUnknown
         };
     }
 
     private static string ResolveStartupBootstrapCacheModeToken(int mode) {
         return mode switch {
-            StartupBootstrapCacheModeHit => "hit",
-            StartupBootstrapCacheModeMiss => "miss",
-            StartupBootstrapCacheModePersistedPreview => "persisted_preview",
-            _ => "unknown"
+            StartupBootstrapCacheModeHit => StartupBootstrapContracts.CacheModeHit,
+            StartupBootstrapCacheModeMiss => StartupBootstrapContracts.CacheModeMiss,
+            StartupBootstrapCacheModePersistedPreview => StartupBootstrapContracts.CacheModePersistedPreview,
+            _ => StartupBootstrapContracts.CacheModeUnknown
         };
     }
 

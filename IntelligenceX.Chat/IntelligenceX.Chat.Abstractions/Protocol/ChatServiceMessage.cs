@@ -287,6 +287,21 @@ public sealed record ToolListMessage : ChatServiceMessage {
     /// Tool definitions registered by the service.
     /// </summary>
     public ToolDefinitionDto[] Tools { get; init; } = Array.Empty<ToolDefinitionDto>();
+
+    /// <summary>
+    /// Pack summaries projected from the current tool inventory.
+    /// </summary>
+    public ToolPackInfoDto[] Packs { get; init; } = Array.Empty<ToolPackInfoDto>();
+
+    /// <summary>
+    /// Structured routing/autonomy diagnostics for the returned tool catalog.
+    /// </summary>
+    public SessionRoutingCatalogDiagnosticsDto? RoutingCatalog { get; init; }
+
+    /// <summary>
+    /// Aggregate capability snapshot projected from the returned tool inventory.
+    /// </summary>
+    public SessionCapabilitySnapshotDto? CapabilitySnapshot { get; init; }
 }
 
 /// <summary>

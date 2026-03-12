@@ -36,6 +36,26 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
     }
 
     [Fact]
+    public void ApplyKnownHostTargetFallbacks_AutofillsMachineNameForRemoteSchemas() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string"))
+                .Add("log_name", new JsonObject().Add("type", "string")));
+        var definition = new ToolDefinition("eventlog_live_query", parameters: schema);
+        var call = BuildToolCall("call_1", "eventlog_live_query", """{"log_name":"System"}""");
+
+        var repaired = InvokeApplyKnownHostTargetFallbacks(
+            call,
+            definition,
+            new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.NotSame(call, repaired);
+        Assert.Equal("System", repaired.Arguments?.GetString("log_name"));
+        Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("machine_name"));
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_PatchesCallsWhenDistinctMachineCoverageMissing() {
         const string request = """
 [Scenario execution contract]

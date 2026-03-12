@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -193,26 +194,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool IsHostScopedArgumentKey(string key) {
-        var normalized = (key ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        return normalized.Equals("machine_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("computer_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("host", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("hostname", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("host_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("dns_host_name", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domain_controller", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domain_controllers", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("domainControllers", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("include_domain_controllers", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("exclude_domain_controllers", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("targets", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("target", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("server", StringComparison.OrdinalIgnoreCase)
-               || normalized.Equals("server_name", StringComparison.OrdinalIgnoreCase);
+        return ToolHostTargeting.IsHostTargetArgumentName(key);
     }
 
     private static string[] CollectHostHintsFromUserRequest(string userRequest) {

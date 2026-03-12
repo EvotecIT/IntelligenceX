@@ -627,7 +627,7 @@ public sealed partial class MainWindow : Window {
         var togglesById = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < _sessionPolicy.Packs.Length; i++) {
             var pack = _sessionPolicy.Packs[i];
-            var normalizedPackId = NormalizePackId(pack.Id);
+            var normalizedPackId = NormalizeRuntimePackId(pack.Id);
             if (normalizedPackId.Length == 0) {
                 continue;
             }

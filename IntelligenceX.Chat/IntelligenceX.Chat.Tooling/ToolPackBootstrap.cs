@@ -459,6 +459,35 @@ public static partial class ToolPackBootstrap {
         return bag;
     }
 
+    internal static ToolPackRuntimeContext BuildRuntimeContext(ToolPackBootstrapOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var effectiveOptionBag = BuildEffectivePackRuntimeOptionBag(options)
+            .ToDictionary(
+                static pair => pair.Key,
+                static pair => (IReadOnlyDictionary<string, object?>)pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+
+        return new ToolPackRuntimeContext {
+            AllowedRoots = options.AllowedRoots?.ToArray() ?? Array.Empty<string>(),
+            AdDomainController = options.AdDomainController,
+            AdDefaultSearchBaseDn = options.AdDefaultSearchBaseDn,
+            AdMaxResults = options.AdMaxResults,
+            ReviewerSetupIncludeMaintenancePath = options.ReviewerSetupIncludeMaintenancePath,
+            PowerShellDefaultTimeoutMs = options.PowerShellDefaultTimeoutMs,
+            PowerShellMaxTimeoutMs = options.PowerShellMaxTimeoutMs,
+            PowerShellDefaultMaxOutputChars = options.PowerShellDefaultMaxOutputChars,
+            PowerShellMaxOutputChars = options.PowerShellMaxOutputChars,
+            PowerShellAllowWrite = options.PowerShellAllowWrite,
+            AuthenticationProbeStore = options.AuthenticationProbeStore,
+            RequireSuccessfulSmtpProbeForSend = options.RequireSuccessfulSmtpProbeForSend,
+            SmtpProbeMaxAgeSeconds = options.SmtpProbeMaxAgeSeconds,
+            RunAsProfilePath = options.RunAsProfilePath,
+            AuthenticationProfilePath = options.AuthenticationProfilePath,
+            EffectivePackRuntimeOptionBag = effectiveOptionBag
+        };
+    }
+
     /// <summary>
     /// Builds the default tool packs (public read-only packs plus optional private packs when available).
     /// </summary>
