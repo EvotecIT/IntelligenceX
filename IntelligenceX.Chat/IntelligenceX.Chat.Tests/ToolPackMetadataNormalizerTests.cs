@@ -18,9 +18,10 @@ public sealed class ToolPackMetadataNormalizerTests {
     }
 
     [Fact]
-    public void ResolveDisplayName_PrefersExplicitName_AndFallsBackToCanonicalId() {
+    public void ResolveDisplayName_PrefersExplicitName_AndFallsBackToHumanFriendlyCanonicalLabel() {
         Assert.Equal("Active Directory", ToolPackMetadataNormalizer.ResolveDisplayName("ad", " Active Directory "));
-        Assert.Equal("active_directory", ToolPackMetadataNormalizer.ResolveDisplayName("ad", null));
+        Assert.Equal("Active Directory", ToolPackMetadataNormalizer.ResolveDisplayName("ad", null));
+        Assert.Equal("Custom Pack", ToolPackMetadataNormalizer.ResolveDisplayName("custom_pack", null));
     }
 
     [Theory]

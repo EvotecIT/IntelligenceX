@@ -265,7 +265,12 @@ public sealed partial class MainWindow {
         }
 
         for (var i = 0; i < packs.Count; i++) {
-            var targets = packs[i].AutonomySummary?.CrossPackTargetPacks;
+            var pack = packs[i];
+            if (!pack.Enabled) {
+                continue;
+            }
+
+            var targets = pack.AutonomySummary?.CrossPackTargetPacks;
             if (targets is not { Length: > 0 }) {
                 continue;
             }
