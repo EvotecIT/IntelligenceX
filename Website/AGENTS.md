@@ -49,3 +49,15 @@ If you don't have the engine repo next to this repo, set:
   - `{{ pf.nav_links "main" }}`
   - `{{ pf.nav_actions }}`
 - Avoid `navigation.menus[0]` (menu ordering can change across sites/profiles).
+
+## FAQ Route Guardrail
+
+- Treat the two FAQ destinations as distinct surfaces with distinct labels:
+  - `/docs/faq/` => `Docs FAQ`
+  - `/faq/` => `Common Questions`
+- Do not reuse the same visible link label for both destinations on the same page, or the website audit can fail with a link-purpose warning.
+
+## Doctor Budget Guardrail
+
+- `maxTotalFiles` in `pipeline.json` intentionally has headroom for normal docs and API growth.
+- If the site approaches that ceiling again, adjust the budget intentionally in the website PR instead of letting small content changes fail unrelated branches.

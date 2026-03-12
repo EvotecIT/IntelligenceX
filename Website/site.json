@@ -222,7 +222,7 @@
           { "Title": "Security & Trust", "Url": "/docs/security/" },
           { "Title": "Showcase", "Url": "/showcase/" },
           { "Title": "Blog", "Url": "/blog/" },
-          { "Title": "FAQ", "Url": "/docs/faq/" },
+          { "Title": "Docs FAQ", "Url": "/docs/faq/" },
           { "Title": "Downloads", "Url": "/downloads/" },
           { "Title": "Changelog", "Url": "/changelog/" },
           { "Title": "GitHub Repository", "Url": "https://github.com/EvotecIT/IntelligenceX", "External": true },
