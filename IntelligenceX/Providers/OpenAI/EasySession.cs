@@ -159,6 +159,8 @@ public sealed class EasySession : IDisposable
             chatOptions.NewThread = options.NewThread;
             chatOptions.Workspace = options.Workspace;
             chatOptions.AllowNetwork = options.AllowNetwork;
+            chatOptions.TelemetryFeature = options.TelemetryFeature;
+            chatOptions.TelemetrySurface = options.TelemetrySurface;
             chatOptions.MaxImageBytes = options.MaxImageBytes;
             chatOptions.Tools = options.Tools;
             chatOptions.ToolChoice = options.ToolChoice;
@@ -227,7 +229,13 @@ public sealed class EasySession : IDisposable
             DefaultModel = options.DefaultModel,
             DefaultWorkingDirectory = options.WorkingDirectory,
             DefaultApprovalPolicy = options.ApprovalPolicy,
-            TransportKind = options.TransportKind
+            TransportKind = options.TransportKind,
+            EnableUsageTelemetry = options.EnableUsageTelemetry,
+            UsageTelemetryDatabasePath = options.UsageTelemetryDatabasePath,
+            UsageTelemetryMachineId = options.UsageTelemetryMachineId,
+            UsageTelemetryAccountLabel = options.UsageTelemetryAccountLabel,
+            UsageTelemetryProviderAccountId = options.UsageTelemetryProviderAccountId,
+            UsageTelemetrySourcePath = options.UsageTelemetrySourcePath
         };
 
         clientOptions.NativeOptions.AuthStore = options.NativeOptions.AuthStore;

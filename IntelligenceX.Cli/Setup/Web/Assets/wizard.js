@@ -734,6 +734,23 @@ function formatAutoDetectOutput(data) {
   (data.checks || []).forEach(check => {
     lines.push(`- [${check.status || 'ok'}] ${check.message || ''}`);
   });
+  if (data.dailyBreakdown && data.dailyBreakdown.data && data.dailyBreakdown.data.length > 0) {
+    lines.push('');
+    lines.push(`Daily token breakdown${data.dailyBreakdown.units ? ` (${data.dailyBreakdown.units})` : ''}:`);
+    data.dailyBreakdown.data.forEach(day => {
+      const values = day.productSurfaceUsageValues || {};
+      const active = Object.entries(values)
+        .filter(([, value]) => typeof value === 'number' && Math.abs(value) > 0)
+        .sort((a, b) => b[1] - a[1]);
+      if (active.length === 0) {
+        lines.push(`- ${day.date || '-'} | total 0`);
+        return;
+      }
+      const total = active.reduce((sum, [, value]) => sum + value, 0);
+      const parts = active.map(([surface, value]) => `${surface} ${value}`);
+      lines.push(`- ${day.date || '-'} | total ${total} | ${parts.join(' | ')}`);
+    });
+  }
   return lines.join('\n');
 }
 
@@ -1999,7 +2016,8 @@ $('checkUsage').addEventListener('click', async () => {
         accountId: (openAiAccountIdInput && openAiAccountIdInput.value.trim())
           ? openAiAccountIdInput.value.trim()
           : openAiAccountId,
-        includeEvents: usageEvents.checked
+        includeEvents: usageEvents.checked,
+        includeDailyBreakdown: usageEvents.checked
       })
     });
     const updated = data.updatedAt ? `Updated: ${data.updatedAt}\n\n` : '';

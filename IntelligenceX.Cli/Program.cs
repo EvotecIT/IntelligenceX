@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Models;
 using IntelligenceX.Cli.Auth;
+using IntelligenceX.Cli.Heatmap;
 using IntelligenceX.Cli.Usage;
 using IntelligenceX.OpenAI.Auth;
 
@@ -49,9 +50,11 @@ internal static partial class Program {
             "manage" => await RunManageWithFallbackAsync(runManage, rest).ConfigureAwait(false),
             "doctor" => await Doctor.DoctorRunner.RunAsync(rest).ConfigureAwait(false),
             "todo" => await Todo.TodoRunner.RunAsync(rest).ConfigureAwait(false),
+            "telemetry" => await Telemetry.TelemetryRunner.RunAsync(rest).ConfigureAwait(false),
             "release" => await RunReleaseAsync(rest).ConfigureAwait(false),
             "models" => await ModelsRunner.RunAsync(rest).ConfigureAwait(false),
             "usage" => await UsageRunner.RunAsync(rest).ConfigureAwait(false),
+            "heatmap" => await HeatmapRunner.RunAsync(rest).ConfigureAwait(false),
             "help" or "-h" or "--help" => PrintHelpReturn(),
             _ => PrintHelpReturn()
         };

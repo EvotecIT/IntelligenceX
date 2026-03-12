@@ -62,6 +62,14 @@ public sealed class EasyChatOptions {
     /// </summary>
     public bool NewThread { get; set; }
     /// <summary>
+    /// Optional feature label used for internal IntelligenceX telemetry.
+    /// </summary>
+    public string? TelemetryFeature { get; set; }
+    /// <summary>
+    /// Optional surface label used for internal IntelligenceX telemetry.
+    /// </summary>
+    public string? TelemetrySurface { get; set; }
+    /// <summary>
     /// Maximum image size in bytes.
     /// </summary>
     public long? MaxImageBytes { get; set; }

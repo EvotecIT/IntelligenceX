@@ -42,17 +42,39 @@ public sealed class ChatGptUsageService : IDisposable {
     }
 
     /// <summary>
+    /// Retrieves daily token usage breakdown by product surface.
+    /// </summary>
+    public Task<ChatGptDailyTokenUsageBreakdown> GetDailyTokenUsageBreakdownAsync(CancellationToken cancellationToken = default) {
+        return GetDailyTokenUsageBreakdownInternalAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Retrieves a combined usage report.
     /// </summary>
     /// <param name="includeEvents">Whether to include credit usage events.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task<ChatGptUsageReport> GetReportAsync(bool includeEvents, CancellationToken cancellationToken = default) {
+    public Task<ChatGptUsageReport> GetReportAsync(bool includeEvents, CancellationToken cancellationToken = default) {
+        return GetReportAsync(includeEvents, includeDailyBreakdown: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Retrieves a combined usage report.
+    /// </summary>
+    /// <param name="includeEvents">Whether to include credit usage events.</param>
+    /// <param name="includeDailyBreakdown">Whether to include daily token usage breakdown.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task<ChatGptUsageReport> GetReportAsync(bool includeEvents, bool includeDailyBreakdown = false,
+        CancellationToken cancellationToken = default) {
         var snapshot = await GetUsageSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
         IReadOnlyList<ChatGptCreditUsageEvent> events = Array.Empty<ChatGptCreditUsageEvent>();
+        ChatGptDailyTokenUsageBreakdown? dailyBreakdown = null;
         if (includeEvents) {
             events = await GetCreditUsageEventsInternalAsync(cancellationToken).ConfigureAwait(false);
         }
-        return new ChatGptUsageReport(snapshot, events);
+        if (includeDailyBreakdown) {
+            dailyBreakdown = await GetDailyTokenUsageBreakdownInternalAsync(cancellationToken).ConfigureAwait(false);
+        }
+        return new ChatGptUsageReport(snapshot, events, dailyBreakdown);
     }
 
     private async Task<ChatGptUsageSnapshot> GetUsageSnapshotInternalAsync(CancellationToken cancellationToken) {
@@ -66,6 +88,14 @@ public sealed class ChatGptUsageService : IDisposable {
         var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);
         var accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
         return await _client.GetCreditUsageEventsAsync(_options.ChatGptApiBaseUrl, bundle.AccessToken, accountId, _options.UserAgent,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<ChatGptDailyTokenUsageBreakdown> GetDailyTokenUsageBreakdownInternalAsync(CancellationToken cancellationToken) {
+        var bundle = await EnsureAuthAsync(cancellationToken).ConfigureAwait(false);
+        var accountId = bundle.AccountId ?? JwtDecoder.TryGetAccountId(bundle.AccessToken);
+        return await _client.GetDailyTokenUsageBreakdownAsync(_options.ChatGptApiBaseUrl, bundle.AccessToken, accountId, _options.UserAgent,
                 cancellationToken)
             .ConfigureAwait(false);
     }

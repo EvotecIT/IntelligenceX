@@ -33,10 +33,10 @@ function Assert-PackageMode($projectPath) {
     }
 }
 
-Assert-PackageMode $exportArtifactsProject
-Assert-PackageMode $appTestsProject
+Assert-PackageMode -projectPath $exportArtifactsProject
+Assert-PackageMode -projectPath $appTestsProject
 
-Invoke-DotNet @('restore', $exportArtifactsProject, $packageModeProperty, $skipSidecarBuildProperty, '--force-evaluate')
-Invoke-DotNet @('restore', $appTestsProject, $packageModeProperty, $skipSidecarBuildProperty, '--force-evaluate')
-Invoke-DotNet @('build', $exportArtifactsProject, $packageModeProperty, $skipSidecarBuildProperty, '--configuration', 'Release', '--no-restore')
-Invoke-DotNet @('build', $appTestsProject, $packageModeProperty, $skipSidecarBuildProperty, '--configuration', 'Release', '--no-restore')
+Invoke-DotNet -Arguments @('restore', $exportArtifactsProject, $packageModeProperty, $skipSidecarBuildProperty, '--force-evaluate')
+Invoke-DotNet -Arguments @('restore', $appTestsProject, $packageModeProperty, $skipSidecarBuildProperty, '--force-evaluate')
+Invoke-DotNet -Arguments @('build', $exportArtifactsProject, $packageModeProperty, $skipSidecarBuildProperty, '--configuration', 'Release', '--no-restore')
+Invoke-DotNet -Arguments @('build', $appTestsProject, $packageModeProperty, $skipSidecarBuildProperty, '--configuration', 'Release', '--no-restore')

@@ -138,6 +138,7 @@ internal sealed partial class WebApi {
         public string? AuthB64Path { get; set; }
         public string? AccountId { get; set; }
         public bool IncludeEvents { get; set; }
+        public bool IncludeDailyBreakdown { get; set; }
         public string? AuthKey { get; set; }
         public string? ChatGptApiBaseUrl { get; set; }
     }
@@ -233,6 +234,7 @@ internal sealed partial class WebApi {
     private sealed class UsageResponse {
         public UsageSnapshot? Usage { get; set; }
         public List<UsageEvent>? Events { get; set; }
+        public UsageDailyBreakdown? DailyBreakdown { get; set; }
         public string? UpdatedAt { get; set; }
     }
 
@@ -343,6 +345,39 @@ internal sealed partial class WebApi {
                     CreditAmount = evt.CreditAmount,
                     UsageId = evt.UsageId
                 });
+            }
+            return result;
+        }
+    }
+
+    private sealed class UsageDailyBreakdown {
+        public string? Units { get; set; }
+        public List<UsageDailyBreakdownDay> Data { get; set; } = new();
+
+        public static UsageDailyBreakdown? From(ChatGptDailyTokenUsageBreakdown? breakdown) {
+            if (breakdown is null) {
+                return null;
+            }
+            var result = new UsageDailyBreakdown {
+                Units = breakdown.Units
+            };
+            foreach (var day in breakdown.Data) {
+                result.Data.Add(UsageDailyBreakdownDay.From(day));
+            }
+            return result;
+        }
+    }
+
+    private sealed class UsageDailyBreakdownDay {
+        public string? Date { get; set; }
+        public Dictionary<string, double> ProductSurfaceUsageValues { get; set; } = new(StringComparer.Ordinal);
+
+        public static UsageDailyBreakdownDay From(ChatGptDailyTokenUsageDay day) {
+            var result = new UsageDailyBreakdownDay {
+                Date = day.Date
+            };
+            foreach (var pair in day.ProductSurfaceUsageValues) {
+                result.ProductSurfaceUsageValues[pair.Key] = pair.Value;
             }
             return result;
         }

@@ -24,6 +24,21 @@ internal static partial class Program {
         return CreateTestClient(transport);
     }
 
+    private static EasySession CreateTestEasySession(IntelligenceXClient client, EasySessionOptions? options = null) {
+        var ctor = typeof(EasySession).GetConstructor(
+            BindingFlags.NonPublic | BindingFlags.Instance,
+            null,
+            new[] { typeof(IntelligenceXClient), typeof(EasySessionOptions) },
+            null);
+        if (ctor is null) {
+            throw new InvalidOperationException("EasySession constructor not found.");
+        }
+        return (EasySession)ctor.Invoke(new object?[] {
+            client,
+            options ?? new EasySessionOptions { Login = EasyLoginMode.None }
+        });
+    }
+
     private static TurnInfo BuildToolCallTurn(params (string CallId, string ToolName)[] calls) {
         if (calls is null || calls.Length == 0) {
             throw new InvalidOperationException("Tool call list cannot be empty.");

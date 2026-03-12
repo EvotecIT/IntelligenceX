@@ -17,15 +17,102 @@ internal static partial class Program {
         failed += Run("Config load invalid JSON", TestConfigLoadInvalidJsonThrows);
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
+        failed += Run("ChatGPT daily token breakdown parse", TestChatGptDailyTokenBreakdownParse);
         failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
         failed += Run("ChatGPT usage cache account path", TestChatGptUsageCacheAccountPath);
         failed += Run("ChatGPT usage cache directory override path", TestChatGptUsageCacheDirectoryOverridePath);
         failed += Run("ChatGPT usage cache trailing separator override path",
             TestChatGptUsageCacheTrailingSeparatorOverridePath);
         failed += Run("EasySession forwards auth account id", TestEasySessionBuildClientOptionsCarriesAuthAccountId);
+        failed += Run("EasySession forwards usage telemetry settings", TestEasySessionBuildClientOptionsCarriesUsageTelemetrySettings);
+        failed += Run("Usage telemetry stable source root id normalizes paths", TestUsageTelemetryStableSourceRootIdNormalizesPaths);
+        failed += Run("Usage telemetry dedupe prefers account session turn", TestUsageTelemetryDedupePrefersAccountSessionTurn);
+        failed += Run("Usage telemetry store merges response duplicates", TestUsageTelemetryStoreMergesResponseDuplicates);
+        failed += Run("Usage telemetry source root store orders roots", TestUsageTelemetrySourceRootStoreOrdersRoots);
+        failed += Run("Usage telemetry sqlite store merges response duplicates", TestUsageTelemetrySqliteStoreMergesResponseDuplicates);
+        failed += Run("Usage telemetry sqlite stores persist across reopen", TestUsageTelemetrySqliteStoresPersistAcrossReopen);
+        failed += Run("Usage telemetry sqlite raw artifact store persists across reopen",
+            TestUsageTelemetrySqliteRawArtifactStorePersistsAcrossReopen);
+        failed += Run("Usage account binding resolver matches source root and raw label",
+            TestUsageAccountBindingResolverMatchesSourceRootAndRawLabel);
+        failed += Run("Usage telemetry import coordinator reimport applies account binding overrides",
+            TestUsageTelemetryImportCoordinatorReimportAppliesAccountBindingOverrides);
+        failed += Run("Usage telemetry sqlite account binding store persists across reopen",
+            TestUsageTelemetrySqliteAccountBindingStorePersistsAcrossReopen);
+        failed += Run("Usage daily aggregate builder groups by provider account model and surface",
+            TestUsageDailyAggregateBuilderGroupsByProviderAccountModelAndSurface);
+        failed += Run("Usage daily aggregate builder can collapse across dimensions",
+            TestUsageDailyAggregateBuilderCanCollapseAcrossDimensions);
+        failed += Run("Usage heatmap document builder builds surface legend and tooltip",
+            TestUsageHeatmapDocumentBuilderBuildsSurfaceLegendAndTooltip);
+        failed += Run("Usage heatmap document builder supports cost metric and year sections",
+            TestUsageHeatmapDocumentBuilderSupportsCostMetricAndYearSections);
+        failed += Run("Usage heatmap document builder pads explicit range",
+            TestUsageHeatmapDocumentBuilderPadsExplicitRange);
+        failed += Run("Usage heatmap document builder supports single range section",
+            TestUsageHeatmapDocumentBuilderSupportsSingleRangeSection);
+        failed += Run("Usage summary builder calculates totals peak and rolling windows",
+            TestUsageSummaryBuilderCalculatesTotalsPeakAndRollingWindows);
+        failed += Run("Usage summary builder builds top breakdowns",
+            TestUsageSummaryBuilderBuildsTopBreakdowns);
+        failed += Run("Usage telemetry overview builder builds cards and heatmaps",
+            TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
+        failed += Run("IntelligenceX client emits turn completed telemetry",
+            TestIntelligenceXClientEmitsTurnCompletedTelemetry);
+        failed += Run("EasySession forwards telemetry labels", TestEasySessionForwardsTelemetryLabels);
+        failed += Run("Internal IX usage recorder writes successful turns to ledger",
+            TestInternalIxUsageRecorderWritesSuccessfulTurnsToLedger);
+        failed += Run("Usage telemetry path resolver honors environment overrides",
+            TestUsageTelemetryPathResolverHonorsEnvironmentOverrides);
+        failed += Run("Usage telemetry path resolver disables when flag off",
+            TestUsageTelemetryPathResolverDisablesWhenFlagOff);
+        failed += Run("Internal IX usage telemetry session persists turns to sqlite",
+            TestInternalIxUsageTelemetrySessionPersistsTurnsToSqlite);
+        failed += Run("Usage telemetry provider registry returns codex adapter", TestUsageTelemetryProviderRegistryReturnsCodexAdapter);
+        failed += Run("Usage telemetry import coordinator registers and imports manual root",
+            TestUsageTelemetryImportCoordinatorRegistersAndImportsManualRoot);
+        failed += Run("Usage telemetry import coordinator imports codex direct file root",
+            TestUsageTelemetryImportCoordinatorImportsCodexDirectFileRoot);
+        failed += Run("Usage telemetry import coordinator discovers codex root from environment",
+            TestUsageTelemetryImportCoordinatorDiscoversCodexRootFromEnvironment);
+        failed += Run("Usage telemetry import coordinator skips unchanged artifacts with raw artifact cache",
+            TestUsageTelemetryImportCoordinatorSkipsUnchangedArtifactsWhenRawArtifactCacheIsPresent);
+        failed += Run("Usage telemetry import coordinator force reimport bypasses artifact cache",
+            TestUsageTelemetryImportCoordinatorForceReimportBypassesArtifactCache);
+        failed += Run("Usage telemetry import coordinator resumes across artifact budgeted runs",
+            TestUsageTelemetryImportCoordinatorCanResumeAcrossArtifactBudgetedRuns);
+        failed += Run("Usage telemetry import coordinator recent-first budget prefers newest artifact",
+            TestUsageTelemetryImportCoordinatorRecentFirstBudgetPrefersNewestArtifact);
+        failed += Run("Usage telemetry import coordinator defers artifact cache commit until adapter succeeds",
+            TestUsageTelemetryImportCoordinatorDoesNotCommitArtifactCacheWhenAdapterFails);
+        failed += Run("Claude session usage adapter deduplicates streaming chunks",
+            TestClaudeSessionUsageAdapterDeduplicatesStreamingChunks);
+        failed += Run("Claude default source root discovery uses environment projects root",
+            TestClaudeDefaultSourceRootDiscoveryUsesEnvironmentProjectsRoot);
+        failed += Run("Usage telemetry import coordinator discovers claude root from environment",
+            TestUsageTelemetryImportCoordinatorDiscoversClaudeRootFromEnvironment);
+        failed += Run("Codex session usage adapter imports exact usage and skips duplicate totals",
+            TestCodexSessionUsageAdapterImportsExactUsageAndSkipsDuplicateTotals);
+        failed += Run("Codex session usage adapter parses last token usage event",
+            TestCodexSessionUsageAdapterParsesLastTokenUsageEvent);
+        failed += Run("Codex session usage adapter falls back to total usage delta when last usage missing",
+            TestCodexSessionUsageAdapterFallsBackToTotalUsageDeltaWhenLastUsageMissing);
+        failed += Run("Codex session usage adapter skips locked files",
+            TestCodexSessionUsageAdapterSkipsLockedFiles);
 #if !NET472
         failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);
         failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
+        failed += Run("Usage options parse daily breakdown", TestUsageOptionsParseDailyBreakdown);
+        failed += Run("Heatmap help routes", TestHeatmapHelpRoutes);
+        failed += Run("Heatmap usage json routes telemetry from sqlite", TestHeatmapUsageJsonRoutesTelemetryFromSqlite);
+        failed += Run("Telemetry help routes", TestTelemetryHelpRoutes);
+        failed += Run("Telemetry usage help routes", TestTelemetryUsageHelpRoutes);
+        failed += Run("Telemetry usage accounts bind and list json", TestTelemetryUsageAccountsBindAndListJson);
+        failed += Run("Telemetry usage roots add and list json", TestTelemetryUsageRootsAddAndListJson);
+        failed += Run("Telemetry usage import and stats json", TestTelemetryUsageImportAndStatsJson);
+        failed += Run("Telemetry usage overview json and export", TestTelemetryUsageOverviewJsonAndExport);
+        failed += Run("Telemetry usage report auto imports and exports", TestTelemetryUsageReportAutoImportsAndExports);
+        failed += Run("Telemetry usage report supports ad hoc recovered path", TestTelemetryUsageReportSupportsAdHocRecoveredPath);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);
         failed += Run("OpenAI model catalog normalizes fast mode suffix", TestOpenAiModelCatalogNormalizesFastModeSuffix);
@@ -33,6 +120,9 @@ internal static partial class Program {
         failed += Run("CLI auth sync-codex missing provider value shows help", TestCliAuthSyncCodexMissingProviderValueShowsHelp);
         failed += Run("CLI models help routes", TestCliModelsHelpRoutes);
 #endif
+        failed += Run("Heatmap SVG renderer emits legend and tooltip", TestHeatmapSvgRendererEmitsLegendAndTooltip);
+        failed += Run("Usage telemetry heatmap document builder builds telemetry document",
+            TestUsageTelemetryHeatmapDocumentBuilderBuildsTelemetryDocument);
         failed += Run("Tool call parsing", TestToolCallParsing);
         failed += Run("Tool call invalid JSON", TestToolCallParsingInvalidJson);
         failed += Run("Tool output input", TestToolOutputInput);
@@ -283,6 +373,12 @@ internal static partial class Program {
         failed += Run("Web setup resolves org-secret verification context", TestWebSetupResolveOrgSecretVerificationContext);
         failed += Run("Web setup resolves org-secret verification context per repo", TestWebSetupResolveOrgSecretVerificationContextPerRepo);
         failed += Run("Web setup subprocess timeout returns promptly", TestWebSetupRunProcessTimeoutReturnsPromptly);
+        failed += Run("GitHub contribution calendar stitches non-overlapping windows",
+            TestGitHubContributionCalendarClientStitchesNonOverlappingWindows);
+        failed += Run("GitHub contribution calendar parses ISO dates deterministically",
+            TestGitHubContributionCalendarClientParsesIsoDatesDeterministically);
+        failed += Run("GitHub contribution calendar treats null user as not found",
+            TestGitHubContributionCalendarClientTreatsNullUserAsNotFound);
         failed += Run("Manage GitHub CLI status token authenticated", TestManageGitHubCliStatusWithTokenIsAuthenticated);
         failed += Run("Manage GitHub CLI status exit code zero authenticated", TestManageGitHubCliStatusExitCodeZeroAuthenticated);
         failed += Run("Manage GitHub CLI status exit code non-zero unauthenticated", TestManageGitHubCliStatusExitCodeNonZeroUnauthenticated);

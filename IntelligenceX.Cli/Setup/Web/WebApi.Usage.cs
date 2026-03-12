@@ -99,7 +99,8 @@ internal sealed partial class WebApi {
             }
 
             using var service = new ChatGptUsageService(options);
-            var report = await service.GetReportAsync(request.IncludeEvents, CancellationToken.None).ConfigureAwait(false);
+            var report = await service.GetReportAsync(request.IncludeEvents, request.IncludeDailyBreakdown, CancellationToken.None)
+                .ConfigureAwait(false);
             TrySaveCache(report.Snapshot);
 
             var response = BuildUsageResponse(report, DateTimeOffset.UtcNow);
@@ -146,6 +147,7 @@ internal sealed partial class WebApi {
         return new UsageResponse {
             Usage = UsageSnapshot.From(report.Snapshot),
             Events = UsageEvent.From(report.Events),
+            DailyBreakdown = UsageDailyBreakdown.From(report.DailyBreakdown),
             UpdatedAt = updatedAt.ToUniversalTime().ToString("u")
         };
     }
