@@ -1,3 +1,8 @@
+---
+title: Reviewer Security and Trust Model
+description: Review the reviewer-specific trust model, GitHub auth modes, and OpenAI secret handling for IntelligenceX onboarding.
+---
+
 # Security and Trust Model
 
 ## Principles

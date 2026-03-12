@@ -1,5 +1,6 @@
 ---
 title: Project Ops Demo Capture Runbook
+description: Produce reliable Project Ops demo captures and screenshots using built-in intelligencex todo workflows and repeatable data.
 slug: demo-capture-runbook
 ---
 

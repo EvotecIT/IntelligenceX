@@ -1,3 +1,8 @@
+---
+title: Project Bootstrap and Sync
+description: Set up a GitHub Project for IntelligenceX triage and keep project fields synced with backlog artifacts and review signals.
+---
+
 # Project Bootstrap and Sync
 
 Use this flow to set up a GitHub Project for triage and keep it continuously synced with IntelligenceX backlog artifacts.

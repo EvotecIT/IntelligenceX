@@ -1,6 +1,6 @@
 ---
 title: IX Tools Overview
-description: Real IntelligenceX tool packs, source model, and how they are loaded in IX Chat and .NET.
+description: Explore IntelligenceX tool packs, source boundaries, and how IX Chat and custom .NET hosts load local tools for diagnostics and automation.
 ---
 
 # IX Tools

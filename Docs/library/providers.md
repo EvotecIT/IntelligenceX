@@ -1,3 +1,8 @@
+---
+title: Providers
+description: Compare IntelligenceX provider transports across native ChatGPT, app-server, compatible HTTP, and Copilot integrations.
+---
+
 # Providers
 
 ## OpenAI (ChatGPT native transport)

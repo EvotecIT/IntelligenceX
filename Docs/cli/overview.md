@@ -1,6 +1,11 @@
+---
+title: IntelligenceX CLI Overview
+description: Use the IntelligenceX CLI for auth, onboarding, reviewer runs, analysis commands, setup web flows, and day-two maintenance across repositories.
+---
+
 # CLI Overview
 
-The CLI (`intelligencex`) handles auth, onboarding, reviewer runs, and utilities like usage/credits.
+The CLI (`intelligencex`) handles auth, onboarding, reviewer runs, analysis commands, and operational utilities like usage and credits.
 
 Quickstart: [CLI Quickstart](/docs/cli/quickstart/)
 

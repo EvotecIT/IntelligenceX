@@ -1,3 +1,8 @@
+---
+title: PowerShell Troubleshooting
+description: Fix common IntelligenceX PowerShell issues around transport startup, auth, module loading, and runtime configuration.
+---
+
 # PowerShell Troubleshooting
 
 Common issues and direct fixes for IntelligenceX PowerShell usage.
@@ -118,4 +123,3 @@ try {
 - [PowerShell Quickstart](/docs/powershell/quickstart/)
 - [PowerShell Cookbook](/docs/powershell/cookbook/)
 - [PowerShell API Reference](/api/powershell/)
-

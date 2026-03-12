@@ -1,3 +1,8 @@
+---
+title: Chat Runtime Modes and Local Providers
+description: Configure IX Chat runtime modes for ChatGPT, Copilot, LM Studio, Azure OpenAI, Ollama, and other OpenAI-compatible providers.
+---
+
 # Chat Runtime Modes (ChatGPT, Copilot, LM Studio, Azure, Other Providers)
 
 IX Chat supports three runtime transports in the desktop app:

@@ -1,3 +1,8 @@
+---
+title: Tool Calling
+description: Add provider-aware tool calling to the IntelligenceX .NET library with ToolRunner, ToolRegistry, and provider-agnostic tool contracts.
+---
+
 # Tool Calling
 
 Native tool calling lets the model request local tool execution and continue the response chain with tool outputs.

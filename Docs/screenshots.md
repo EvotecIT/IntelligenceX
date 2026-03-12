@@ -1,3 +1,8 @@
+---
+title: IntelligenceX Screenshots
+description: Browse IntelligenceX screenshots for CLI and web onboarding configure and verify steps before you set up the reviewer.
+---
+
 # Screenshots
 
 Reference captures for onboarding "Configure" and "Verify" steps across CLI and Web flows.

@@ -1,3 +1,8 @@
+---
+title: Tool Packs
+description: Understand IntelligenceX tool packs, their monorepo layout, packaging model, and how provider-agnostic tool contracts stay stable.
+---
+
 # Tool Packs (Provider-Agnostic)
 
 IntelligenceX tool packs are **optional** libraries that implement `ITool` and can be plugged into any provider/tool-calling loop.

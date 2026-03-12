@@ -1,11 +1,12 @@
 ---
 title: IX Chat Overview
-description: Windows desktop tray application for AI conversations with tool calling support.
+description: Discover IX Chat, the Windows tray app for local AI conversations with runtime switching, persistent threads, and tool calling under your control.
 ---
 
 # IX Chat
 
-IX Chat is a Windows desktop application that lives in your system tray, providing instant access to AI-powered conversations. Built with WinUI 3 and WebView2, it combines a native desktop experience with a modern web-based chat interface.
+IX Chat is a Windows desktop application that lives in your system tray, providing instant access to AI-powered conversations.
+Built with WinUI 3 and WebView2, it combines a native desktop experience with a modern web-based chat interface while keeping credentials and runtime choices on your machine.
 
 ## Production Safety Notice
 

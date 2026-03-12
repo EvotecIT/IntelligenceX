@@ -1,4 +1,11 @@
+---
+title: IntelligenceX FAQ
+description: Get quick answers about IntelligenceX onboarding, zero-trust security, supported providers, platform support, review customization, and GitHub App ownership.
+---
+
 # FAQ
+
+Quick answers for the questions teams usually ask first about trust, setup, supported providers, and how much control they keep.
 
 ## Auth
 

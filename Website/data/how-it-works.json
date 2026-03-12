@@ -11,7 +11,7 @@
   },
   {
     "step": 3,
-    "title": "Get AI Reviews on Every PR",
-    "description": "The reviewer runs automatically in GitHub Actions. Inline comments, summary reviews, or hybrid mode. Auto-resolves stale threads. Configurable strictness and output style."
+    "title": "Run Reviews, Chat, or Local Automation",
+    "description": "Start with reviewer automation in GitHub Actions, then expand into IX Chat, local tool packs, PowerShell scripting, or custom .NET integrations as your workflow grows."
   }
 ]

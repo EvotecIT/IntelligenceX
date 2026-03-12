@@ -1,3 +1,8 @@
+---
+title: .NET Library Quickstart
+description: Start using the IntelligenceX .NET library with native ChatGPT, app-server, compatible HTTP, and Copilot transports.
+---
+
 # .NET Library Quickstart
 
 ## Native ChatGPT (OAuth)

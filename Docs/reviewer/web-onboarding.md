@@ -1,3 +1,8 @@
+---
+title: Web Onboarding Flow
+description: Understand the local web onboarding flow, shared path contract, and apply commands for new setup, auth refresh, cleanup, and maintenance.
+---
+
 # Web Onboarding Flow
 
 This flow runs locally and never uploads tokens to a backend.

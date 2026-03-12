@@ -1,3 +1,8 @@
+---
+title: CLI Install
+description: Install or run the IntelligenceX CLI from source today, and build a local binary when you want a reusable executable.
+---
+
 # CLI Install
 
 The CLI package-manager channels are not published yet.

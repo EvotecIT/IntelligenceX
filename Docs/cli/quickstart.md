@@ -1,3 +1,8 @@
+---
+title: CLI Quickstart
+description: Run the most common IntelligenceX CLI workflows for setup, local PR reviews, thread resolution, and auth export.
+---
+
 # CLI Quickstart
 
 > If `dotnet run` complains about multiple frameworks, add `-f net8.0`.

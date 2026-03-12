@@ -1,5 +1,6 @@
 ---
 title: Project Ops Related Docs
+description: Use this hub to find the main Project Ops docs for overview, demo capture, project setup, monitoring, and operations.
 slug: related-docs
 ---
 

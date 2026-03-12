@@ -1,3 +1,8 @@
+---
+title: Reviewer Static Analysis
+description: See how IntelligenceX static analysis is configured, onboarded, and gated through reviewer.json and curated rule packs.
+---
+
 # Static Analysis
 
 This document describes the current IntelligenceX static analysis model and onboarding flow. Decisions stay centralized in `.intelligencex/reviewer.json`, and analyzer config files are not committed by default.

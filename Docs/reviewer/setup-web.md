@@ -1,3 +1,8 @@
+---
+title: Setup Web UI
+description: Run the local IntelligenceX setup web UI, review the flow, and understand the localhost-only onboarding experience.
+---
+
 # Setup Web UI (Preview)
 
 Run the local setup UI:
