@@ -66,7 +66,7 @@ internal static partial class Program {
             ReplTurnMetricsResult? metricsResult = null;
             Exception? failure = null;
             try {
-                var prompt = BuildScenarioTurnPrompt(turn);
+                var prompt = BuildScenarioTurnPromptForExecution(turn, session.GetToolDefinitionsSnapshot());
                 metricsResult = await session.AskWithMetricsAsync(prompt, cancellationToken).ConfigureAwait(false);
                 WriteTurnResult(metricsResult.Result, options);
             } catch (Exception ex) {
@@ -137,6 +137,14 @@ internal static partial class Program {
     }
 
     private static string BuildScenarioTurnPrompt(ChatScenarioTurn turn) {
+        return BuildScenarioTurnPromptCore(turn, toolDefinitions: null);
+    }
+
+    private static string BuildScenarioTurnPromptForExecution(ChatScenarioTurn turn, IReadOnlyList<ToolDefinition>? toolDefinitions) {
+        return BuildScenarioTurnPromptCore(turn, toolDefinitions);
+    }
+
+    private static string BuildScenarioTurnPromptCore(ChatScenarioTurn turn, IReadOnlyList<ToolDefinition>? toolDefinitions) {
         if (turn is null) {
             return string.Empty;
         }
@@ -153,8 +161,12 @@ internal static partial class Program {
         var requiresNoToolExecution = forbidsAllTools && !requiresToolExecution;
         var requiresTimestampShape = turn.AssertContains.Any(static value => value.Contains("UTC", StringComparison.OrdinalIgnoreCase))
                                      || turn.AssertMatchesRegex.Any(static value => value.Contains(@"\d{4}-\d{2}-\d{2}", StringComparison.Ordinal));
-        var requiresEventLogTool = TurnRequiresToolPrefix(turn, "eventlog_");
         var requiresDomainDetectiveTool = TurnRequiresToolPrefix(turn, "domaindetective_");
+        var requiredToolPatterns = BuildScenarioPromptToolPatterns(turn);
+        var contractHintLines = BuildToolContractPromptHintLines(
+            toolDefinitions: toolDefinitions,
+            toolPatterns: requiredToolPatterns,
+            includeRemoteHostFallbackHint: true);
         if (!requiresToolExecution && !requiresNoToolExecution) {
             return turn.User;
         }
@@ -257,7 +269,7 @@ internal static partial class Program {
         sb.AppendLine("- Do not use blocker-preface phrasing like \"I can do that, but\"; execute best-effort tools first.");
         sb.AppendLine("- When timestamps are requested, use strict ISO-8601 UTC with T and trailing Z (for example 2026-02-24T17:20:10Z), and include the exact uppercase token 'UTC' at least once.");
         sb.AppendLine("- For optional projection arguments (columns/sort_by), use only supported fields; if uncertain, omit projection arguments.");
-        sb.AppendLine("- For eventlog_named_events_query, use names from eventlog_named_events_catalog; if uncertain, prefer eventlog_live_query with explicit event_ids.");
+        AppendScenarioPromptHintLines(sb, contractHintLines);
         if (turn.AssertNoQuestions) {
             sb.AppendLine("- Do not ask any follow-up questions in the final response for this turn.");
             sb.AppendLine("- Do not include question-mark punctuation (`?`, `？`, `¿`, `؟`) anywhere in the final response.");
@@ -266,10 +278,6 @@ internal static partial class Program {
             sb.AppendLine("- Hard requirement: final response must include at least one timestamp matching regex \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2} and include 'UTC'.");
             sb.AppendLine("- If evidence rows are empty, include the queried UTC window boundaries in strict ISO-8601 (T + Z) so timestamp shape is still present.");
             sb.AppendLine("- If the first query returns no matching evidence, automatically broaden lookback once before finalizing.");
-        }
-        if (requiresEventLogTool) {
-            sb.AppendLine("- If Event Log machine_name is missing, default to the first discovered/source DC from prior turns.");
-            sb.AppendLine("- eventlog_pack_info alone is insufficient; execute at least one eventlog_*query* or eventlog_*stats* call in this turn.");
         }
         if (requiresDomainDetectiveTool) {
             sb.AppendLine("- For domaindetective_domain_summary checks[], use only supported check names (for example DNSHEALTH, SOA, NS, MX, SPF, DMARC, DKIM, DNSSEC, TTL, CAA).");
@@ -289,6 +297,43 @@ internal static partial class Program {
         sb.AppendLine("User request:");
         sb.AppendLine(turn.User);
         return sb.ToString();
+    }
+
+    private static IReadOnlyList<string> BuildScenarioPromptToolPatterns(ChatScenarioTurn turn) {
+        var patterns = new List<string>();
+        AddDistinctScenarioPromptToolPatterns(patterns, turn.RequireTools);
+        AddDistinctScenarioPromptToolPatterns(patterns, turn.RequireAnyTools);
+        return patterns;
+    }
+
+    private static void AddDistinctScenarioPromptToolPatterns(List<string> patterns, IReadOnlyList<string> values) {
+        if (values is null || values.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < values.Count; i++) {
+            var candidate = (values[i] ?? string.Empty).Trim();
+            if (candidate.Length == 0 || patterns.Contains(candidate, StringComparer.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            patterns.Add(candidate);
+        }
+    }
+
+    private static void AppendScenarioPromptHintLines(StringBuilder sb, IReadOnlyList<string> lines) {
+        if (lines is null || lines.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < lines.Count; i++) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0) {
+                continue;
+            }
+
+            sb.AppendLine(line);
+        }
     }
 
     private static string FormatScenarioContractBool(bool value) {

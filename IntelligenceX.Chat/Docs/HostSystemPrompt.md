@@ -150,7 +150,7 @@ When the user asks to *visualize*, *diagram*, *graph*, or *map relationships*:
 - When timestamps are requested, use strict ISO-8601 with `T` and trailing `Z` (for example `2026-02-24T17:20:10.5177390Z`) and include the exact uppercase token `UTC` at least once.
 - If evidence is empty, still include the queried time-window boundaries in strict ISO-8601 UTC (`T` + `Z`) so outputs remain timestamp-explicit.
 - For optional table projection arguments (`columns`, `sort_by`), use only supported fields from tool output metadata; if uncertain, omit projection arguments.
-- For `eventlog_named_events_query`, use names from `eventlog_named_events_catalog`; if uncertain, prefer `eventlog_live_query` with explicit `event_ids`.
+- For tools with declared setup helpers, use them to discover valid names/values when uncertain before falling back to looser query shapes.
 - If the user asks for "all groups", call `ad_groups_list` with no filters (or `name_contains="*"`). Prefer increasing `max_results` up to the configured cap before asking questions.
 - If the result is truncated, prefer a best-effort follow-up call using:
   - `search_base_dn` (when the user provides an OU), or

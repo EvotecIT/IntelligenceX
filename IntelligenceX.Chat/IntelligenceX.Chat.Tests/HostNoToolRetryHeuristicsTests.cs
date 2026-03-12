@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -450,6 +451,61 @@ Continue recurring-error analysis across all remaining DCs in this turn.
             knownHostTargets: new[] { "AD0", "AD1" });
 
         Assert.Contains("Known host/DC targets from prior tool inputs in this thread: AD0, AD1.", prompt);
+    }
+
+    [Fact]
+    public void BuildNoToolExecutionRetryPrompt_UsesToolContractsForSetupAndRemoteHints() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "eventlog_named_events_query",
+                description: "Query named event detections.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_named_events_catalog"
+                })
+        };
+
+        var prompt = InvokeBuildNoToolExecutionRetryPrompt(
+            userRequest: "Continue on remaining DCs.",
+            assistantDraft: string.Empty,
+            retryAttempt: 1,
+            knownHostTargets: new[] { "AD0", "AD1" },
+            toolDefinitions: toolDefinitions);
+
+        Assert.Contains("eventlog_named_events_catalog -> eventlog_named_events_query", prompt, StringComparison.Ordinal);
+        Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildNoToolExecutionRetryPrompt_KeepsGenericRemoteHintWithoutKnownHostTargets() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "eventlog_named_events_query",
+                description: "Query named event detections.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        var prompt = InvokeBuildNoToolExecutionRetryPrompt(
+            userRequest: "Continue on remaining DCs.",
+            assistantDraft: string.Empty,
+            retryAttempt: 1,
+            knownHostTargets: Array.Empty<string>(),
+            toolDefinitions: toolDefinitions);
+
+        Assert.Contains("infer it from prior thread context when available", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

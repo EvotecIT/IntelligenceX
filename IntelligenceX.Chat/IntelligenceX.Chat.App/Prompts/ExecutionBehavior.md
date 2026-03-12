@@ -39,7 +39,7 @@
 - If a query returns no matching evidence, still include queried time-window boundaries in strict ISO-8601 UTC (`T` + `Z`) so the response remains timestamp-explicit.
 - If a tool returns empty/invalid projection metadata, retry with a smaller projection and minimal required fields.
 - For optional projection arguments (`columns`, `sort_by`), use only supported fields. If unsure, omit projection arguments instead of risking `invalid_argument`.
-- For `eventlog_named_events_query`, use names from `eventlog_named_events_catalog`; if unsure of names, prefer `eventlog_live_query` with explicit `event_ids`.
+- For tools with declared setup helpers, use them to discover valid names/values when uncertain before falling back to looser query shapes.
 - Do not surface raw tool errors as final output before fallback attempts are exhausted.
 - If a fallback succeeds, present the recovered result directly and briefly note that an alternate retrieval path was used.
 - When follow-up is required, include what was tried and ask only for the minimal missing inputs needed to continue.

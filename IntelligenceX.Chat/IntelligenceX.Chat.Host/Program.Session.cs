@@ -60,6 +60,10 @@ internal static partial class Program {
             _recentHostTargets.Clear();
         }
 
+        internal IReadOnlyList<ToolDefinition> GetToolDefinitionsSnapshot() {
+            return _registry.GetDefinitions();
+        }
+
         public async Task<ReplTurnResult> AskAsync(string text, CancellationToken cancellationToken) {
             var withMetrics = await AskWithMetricsAsync(text, cancellationToken).ConfigureAwait(false);
             return withMetrics.Result;
@@ -186,6 +190,7 @@ internal static partial class Program {
                                 userRequest: text,
                                 assistantDraft: rawFinalText,
                                 retryAttempt: noToolExecutionRetryCount,
+                                toolDefinitions: toolDefs,
                                 knownHostTargets: retryKnownHostTargets);
                         chatOptions.NewThread = false;
                         chatOptions.PreviousResponseId = TryGetResponseId(turn);
