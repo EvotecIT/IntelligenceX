@@ -57,6 +57,12 @@ internal static partial class Program {
             TestUsageSummaryBuilderBuildsTopBreakdowns);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
+        failed += Run("GitHub wrapped html renderer builds shareable page",
+            TestGitHubWrappedHtmlRendererBuildsShareablePage);
+        failed += Run("GitHub wrapped card html renderer builds compact card",
+            TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
+        failed += Run("Usage overview html renderer builds GitHub owner explorer",
+            TestUsageTelemetryOverviewHtmlRendererBuildsGitHubOwnerExplorer);
         failed += Run("IntelligenceX client emits turn completed telemetry",
             TestIntelligenceXClientEmitsTurnCompletedTelemetry);
         failed += Run("EasySession forwards telemetry labels", TestEasySessionForwardsTelemetryLabels);

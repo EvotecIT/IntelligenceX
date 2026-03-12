@@ -256,10 +256,10 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(Path.Combine(exportDir, "surface.svg")), "telemetry overview export surface svg");
             AssertEqual(true, File.Exists(Path.Combine(exportDir, "provider-codex.svg")), "telemetry overview export provider codex svg");
             AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "surface.svg")), "<svg", "telemetry overview export svg content");
-            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "<img src=\"surface.svg\"", "telemetry overview export html surface image");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "<img src=\"surface.light.svg\"", "telemetry overview export html surface image");
             AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "INPUT TOKENS", "telemetry overview export html input tokens");
             AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "MOST USED MODEL", "telemetry overview export html most used model");
-            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "<img src=\"provider-codex.svg\"", "telemetry overview export html provider image");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "<img src=\"provider-codex.light.svg\"", "telemetry overview export html provider image");
         } finally {
             try {
                 if (Directory.Exists(temp)) {
@@ -276,6 +276,7 @@ internal static partial class Program {
         try {
             var codexHome = Path.Combine(tempDir, ".codex");
             var sessionsDir = Path.Combine(codexHome, "sessions");
+            var dbPath = Path.Combine(tempDir, "usage-report.db");
             Directory.CreateDirectory(sessionsDir);
             WriteCodexRolloutFile(
                 Path.Combine(sessionsDir, "rollout-2026-03-11T14-00-00-thread-cli.jsonl"),
@@ -292,6 +293,7 @@ internal static partial class Program {
                 var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
                     new[] {
                         "telemetry", "usage", "report",
+                        "--db", dbPath,
                         "--provider", "codex",
                         "--max-artifacts", "10",
                         "--out-dir", exportDir
@@ -318,6 +320,7 @@ internal static partial class Program {
         var tempDir = CreateUsageTelemetryImportTempDirectory();
         try {
             var recoveredRoot = Path.Combine(tempDir, "Windows.old", "Users", "me", ".codex", "sessions");
+            var dbPath = Path.Combine(tempDir, "usage-report-recovered.db");
             Directory.CreateDirectory(recoveredRoot);
             WriteCodexRolloutFile(
                 Path.Combine(recoveredRoot, "rollout-2026-03-11T14-00-00-thread-cli.jsonl"),
@@ -330,6 +333,7 @@ internal static partial class Program {
             var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
                 new[] {
                     "telemetry", "usage", "report",
+                    "--db", dbPath,
                     "--path", recoveredRoot,
                     "--max-artifacts", "10",
                     "--out-dir", exportDir

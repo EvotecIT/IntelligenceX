@@ -124,6 +124,11 @@ public sealed class UsageSummarySnapshot {
     public List<UsageSummaryBreakdownEntry> ModelBreakdown { get; } = new();
 
     /// <summary>
+    /// Gets the top source-root totals when source-root information is present.
+    /// </summary>
+    public List<UsageSummaryBreakdownEntry> SourceRootBreakdown { get; } = new();
+
+    /// <summary>
     /// Gets the top person totals when person information is present.
     /// </summary>
     public List<UsageSummaryBreakdownEntry> PersonBreakdown { get; } = new();
@@ -265,6 +270,7 @@ public sealed class UsageSummaryBuilder {
         PopulateBreakdown(snapshot.ProviderBreakdown, ordered, effectiveOptions, aggregate => NormalizeOptional(aggregate.ProviderId) ?? "unknown-provider");
         PopulateBreakdown(snapshot.AccountBreakdown, ordered, effectiveOptions, aggregate => NormalizeOptional(aggregate.AccountKey) ?? "unknown-account");
         PopulateBreakdown(snapshot.ModelBreakdown, ordered, effectiveOptions, aggregate => NormalizeOptional(aggregate.Model) ?? "unknown-model");
+        PopulateBreakdown(snapshot.SourceRootBreakdown, ordered, effectiveOptions, aggregate => NormalizeOptional(aggregate.SourceRootId) ?? "unknown-source-root");
         PopulateBreakdown(snapshot.PersonBreakdown, ordered, effectiveOptions, aggregate => NormalizeOptional(aggregate.PersonLabel) ?? "unknown-person");
         PopulateBreakdown(snapshot.SurfaceBreakdown, ordered, effectiveOptions, aggregate => NormalizeOptional(aggregate.Surface) ?? "unknown-surface");
 

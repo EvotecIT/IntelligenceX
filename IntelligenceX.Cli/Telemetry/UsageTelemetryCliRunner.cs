@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Cli.GitHub;
 using IntelligenceX.Json;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Telemetry.Usage.Claude;
@@ -102,6 +103,8 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("                        Repeat to include multiple roots (for example Windows.old backups).");
         Console.WriteLine("  --account <value>     Filter by provider account id or account label");
         Console.WriteLine("  --person <value>      Filter by person label");
+        Console.WriteLine("  --github-user <login> Add a GitHub contribution section for the specified login");
+        Console.WriteLine("  --github-owner <id>   Add a GitHub owner/org scope for repository-impact stats");
         Console.WriteLine("  --metric <name>       tokens|cost|duration|events (default: tokens)");
         Console.WriteLine("  --title <text>        Override the report title");
         Console.WriteLine("  --recent-first        Prefer newer artifacts first during quick scans (default)");
@@ -113,6 +116,8 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("Overview options:");
         Console.WriteLine("  --account <value>     Filter by provider account id or account label");
         Console.WriteLine("  --person <value>      Filter by person label");
+        Console.WriteLine("  --github-user <login> Add a GitHub contribution section for the specified login");
+        Console.WriteLine("  --github-owner <id>   Add a GitHub owner/org scope for repository-impact stats");
         Console.WriteLine("  --metric <name>       tokens|cost|duration|events (default: tokens)");
         Console.WriteLine("  --title <text>        Override the overview title");
         Console.WriteLine("  --discover            Auto-discover provider roots before rendering");
@@ -511,6 +516,12 @@ internal static class UsageTelemetryCliRunner {
             AddIfValue(overviewArgs, "--person", options.PersonFilter);
             AddIfValue(overviewArgs, "--metric", MetricToCliValue(options.Metric));
             AddIfValue(overviewArgs, "--title", options.Title);
+            foreach (var owner in options.GitHubOwners) {
+                AddIfValue(overviewArgs, "--github-owner", owner);
+            }
+            foreach (var user in options.GitHubUsers) {
+                AddIfValue(overviewArgs, "--github-user", user);
+            }
             if (options.RecentFirst) {
                 overviewArgs.Add("--recent-first");
             }
@@ -593,8 +604,10 @@ internal static class UsageTelemetryCliRunner {
             new UsageTelemetryOverviewOptions {
                 Metric = options.Metric,
                 Title = NormalizeOptional(options.Title) ?? BuildOverviewTitle(effectiveProviderId),
-                Subtitle = BuildQuickReportSubtitle(options, dbPath, scanResult)
+                Subtitle = BuildQuickReportSubtitle(options, dbPath, scanResult),
+                SourceRootLabels = BuildSourceRootLabels(sourceRootStore.GetAll())
             });
+        overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
             var outputDirectory = Path.GetFullPath(options.OutputDirectory!);
@@ -641,13 +654,16 @@ internal static class UsageTelemetryCliRunner {
             throw new InvalidOperationException("No telemetry usage events matched the requested overview filters.");
         }
 
+        using var sourceRootStore = new SqliteSourceRootStore(dbPath);
         var overview = new UsageTelemetryOverviewBuilder().Build(
             events,
             new UsageTelemetryOverviewOptions {
                 Metric = options.Metric,
                 Title = NormalizeOptional(options.Title) ?? BuildOverviewTitle(options),
-                Subtitle = BuildOverviewSubtitle(options)
+                Subtitle = BuildOverviewSubtitle(options),
+                SourceRootLabels = BuildSourceRootLabels(sourceRootStore.GetAll())
             });
+        overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
             var outputDirectory = Path.GetFullPath(options.OutputDirectory!);
@@ -683,6 +699,54 @@ internal static class UsageTelemetryCliRunner {
             .Where(record => MatchesPerson(record, options.PersonFilter))
             .OrderBy(record => record.TimestampUtc)
             .ToArray();
+    }
+
+    private static async Task<UsageTelemetryOverviewDocument> AppendGitHubSectionsAsync(
+        UsageTelemetryOverviewDocument overview,
+        IReadOnlyList<string> githubUsers,
+        IReadOnlyList<string> githubOwners) {
+        if (overview is null) {
+            throw new ArgumentNullException(nameof(overview));
+        }
+        if (githubUsers is null || githubUsers.Count == 0) {
+            return overview;
+        }
+
+        var owners = (githubOwners ?? Array.Empty<string>())
+            .Select(NormalizeOptional)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Cast<string>()
+            .ToArray();
+        var sections = overview.ProviderSections.ToList();
+        foreach (var login in githubUsers
+                     .Select(NormalizeOptional)
+                     .Where(static value => !string.IsNullOrWhiteSpace(value))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)!) {
+            sections.Add(await GitHubOverviewSectionBuilder.BuildAsync(login!, owners).ConfigureAwait(false));
+        }
+
+        return new UsageTelemetryOverviewDocument(
+            overview.Title,
+            overview.Subtitle,
+            overview.Metric,
+            overview.Units,
+            overview.Summary,
+            overview.Cards,
+            overview.Heatmaps,
+            sections
+                .OrderBy(static section => ResolveProviderSortOrder(section.ProviderId))
+                .ThenBy(static section => section.Title, StringComparer.OrdinalIgnoreCase)
+                .ToArray());
+    }
+
+    private static int ResolveProviderSortOrder(string providerId) {
+        return NormalizeOptional(providerId)?.ToLowerInvariant() switch {
+            "codex" => 0,
+            "claude" => 1,
+            "github" => 2,
+            _ => 10
+        };
     }
 
     private static async Task DiscoverAndImportForOverviewAsync(string dbPath, OverviewOptions options) {
@@ -1051,26 +1115,117 @@ internal static class UsageTelemetryCliRunner {
             new UTF8Encoding(false));
 
         foreach (var heatmap in overview.Heatmaps) {
+            var lightDocument = CreateThemeVariant(heatmap.Document, darkMode: false);
+            var darkDocument = CreateThemeVariant(heatmap.Document, darkMode: true);
             File.WriteAllText(
                 Path.Combine(outputDirectory, heatmap.Key + ".json"),
                 JsonLite.Serialize(JsonValue.From(heatmap.Document.ToJson())),
                 new UTF8Encoding(false));
             File.WriteAllText(
                 Path.Combine(outputDirectory, heatmap.Key + ".svg"),
-                HeatmapSvgRenderer.Render(heatmap.Document),
+                HeatmapSvgRenderer.Render(lightDocument),
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(outputDirectory, heatmap.Key + ".light.svg"),
+                HeatmapSvgRenderer.Render(lightDocument),
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(outputDirectory, heatmap.Key + ".dark.svg"),
+                HeatmapSvgRenderer.Render(darkDocument),
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(outputDirectory, heatmap.Key + ".html"),
+                UsageTelemetryBreakdownHtmlRenderer.Render(
+                    overview.Title,
+                    heatmap.Key,
+                    heatmap.Label,
+                    heatmap.Document.Subtitle),
                 new UTF8Encoding(false));
         }
 
         foreach (var providerSection in overview.ProviderSections) {
+            var lightDocument = CreateThemeVariant(providerSection.Heatmap, darkMode: false);
+            var darkDocument = CreateThemeVariant(providerSection.Heatmap, darkMode: true);
             File.WriteAllText(
                 Path.Combine(outputDirectory, providerSection.Key + ".json"),
                 JsonLite.Serialize(JsonValue.From(providerSection.Heatmap.ToJson())),
                 new UTF8Encoding(false));
             File.WriteAllText(
                 Path.Combine(outputDirectory, providerSection.Key + ".svg"),
-                HeatmapSvgRenderer.Render(providerSection.Heatmap),
+                HeatmapSvgRenderer.Render(lightDocument),
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(outputDirectory, providerSection.Key + ".light.svg"),
+                HeatmapSvgRenderer.Render(lightDocument),
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(outputDirectory, providerSection.Key + ".dark.svg"),
+                HeatmapSvgRenderer.Render(darkDocument),
                 new UTF8Encoding(false));
         }
+
+        var githubSection = overview.ProviderSections.FirstOrDefault(section =>
+            string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase));
+        if (githubSection is not null) {
+            File.WriteAllText(
+                Path.Combine(outputDirectory, "github-wrapped.html"),
+                GitHubWrappedHtmlRenderer.Render(githubSection),
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(outputDirectory, "github-wrapped-card.html"),
+                GitHubWrappedCardHtmlRenderer.Render(githubSection),
+                new UTF8Encoding(false));
+        }
+    }
+
+    private static HeatmapDocument CreateThemeVariant(HeatmapDocument source, bool darkMode) {
+        var themedPalette = CreateThemeVariant(source.Palette, darkMode);
+        var sections = source.Sections
+            .Select(static section => new HeatmapSection(
+                section.Title,
+                section.Subtitle,
+                section.Days
+                    .Select(static day => new HeatmapDay(day.Date, day.Value, day.Level, day.FillColor, day.Tooltip, day.Breakdown))
+                    .ToArray()))
+            .ToArray();
+        var legend = source.LegendItems
+            .Select(static item => new HeatmapLegendItem(item.Label, item.Color))
+            .ToArray();
+
+        return new HeatmapDocument(
+            source.Title,
+            source.Subtitle,
+            themedPalette,
+            sections,
+            units: source.Units,
+            weekStart: source.WeekStart,
+            showIntensityLegend: source.ShowIntensityLegend,
+            legendLowLabel: source.LegendLowLabel,
+            legendHighLabel: source.LegendHighLabel,
+            legendItems: legend,
+            showDocumentHeader: source.ShowDocumentHeader,
+            showSectionHeaders: source.ShowSectionHeaders,
+            compactWeekdayLabels: source.CompactWeekdayLabels);
+    }
+
+    private static HeatmapPalette CreateThemeVariant(HeatmapPalette source, bool darkMode) {
+        if (darkMode) {
+            return new HeatmapPalette(
+                backgroundColor: "#0f1115",
+                panelColor: "#171b22",
+                textColor: "#f5f7fa",
+                mutedTextColor: "#9aa4b2",
+                emptyColor: "#252b34",
+                intensityColors: source.IntensityColors.ToArray());
+        }
+
+        return new HeatmapPalette(
+            backgroundColor: "#f6f8fa",
+            panelColor: "#ffffff",
+            textColor: "#24292f",
+            mutedTextColor: "#57606a",
+            emptyColor: "#ebedf0",
+            intensityColors: source.IntensityColors.ToArray());
     }
 
     private static bool MatchesProvider(string providerId, string? filter) {
@@ -1078,6 +1233,63 @@ internal static class UsageTelemetryCliRunner {
             return true;
         }
         return string.Equals(providerId, filter.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildSourceRootLabels(IEnumerable<SourceRootRecord> roots) {
+        var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in roots ?? Array.Empty<SourceRootRecord>()) {
+            if (root is null || string.IsNullOrWhiteSpace(root.Id)) {
+                continue;
+            }
+
+            labels[root.Id] = BuildSourceRootLabel(root);
+        }
+
+        return labels;
+    }
+
+    private static string BuildSourceRootLabel(SourceRootRecord root) {
+        var provider = BuildProviderTitle(root.ProviderId);
+        var path = root.Path ?? string.Empty;
+        var normalized = path.Replace('/', '\\');
+        var location = normalized.IndexOf("Windows.old", StringComparison.OrdinalIgnoreCase) >= 0
+            ? "Windows.old"
+            : normalized.StartsWith("ix://", StringComparison.OrdinalIgnoreCase)
+                ? "Internal"
+                : "Current";
+
+        var leaf = Path.GetFileName(normalized.TrimEnd('\\'));
+        if (string.IsNullOrWhiteSpace(leaf)) {
+            leaf = normalized;
+        }
+
+        var parent = Path.GetFileName(Path.GetDirectoryName(normalized.TrimEnd('\\')) ?? string.Empty);
+        if (string.Equals(leaf, "projects", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(parent, ".claude", StringComparison.OrdinalIgnoreCase)) {
+            leaf = ".claude/projects";
+        } else if (string.Equals(leaf, "sessions", StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(parent, ".codex", StringComparison.OrdinalIgnoreCase)) {
+            leaf = ".codex/sessions";
+        }
+
+        if (normalized.StartsWith("ix://", StringComparison.OrdinalIgnoreCase)) {
+            return provider + " · Internal IX";
+        }
+
+        return provider + " · " + location + " (" + leaf + ")";
+    }
+
+    private static string BuildProviderTitle(string? providerId) {
+        return NormalizeOptional(providerId)?.ToLowerInvariant() switch {
+            "codex" => "Codex",
+            "claude" => "Claude",
+            "ix" => "IntelligenceX",
+            "chatgpt" => "ChatGPT",
+            "github" => "GitHub",
+            "lmstudio" => "LM Studio",
+            "ollama" => "Ollama",
+            _ => string.IsNullOrWhiteSpace(providerId) ? "Unknown" : providerId!.Trim()
+        };
     }
 
     private static bool MatchesAccount(UsageEventRecord record, string? filter) {
@@ -1422,6 +1634,8 @@ internal static class UsageTelemetryCliRunner {
         public bool FullImport { get; set; }
         public bool Json { get; set; }
         public List<string> Paths { get; } = new();
+        public List<string> GitHubUsers { get; } = new();
+        public List<string> GitHubOwners { get; } = new();
 
         public static ReportOptions Parse(string[] args) {
             var options = new ReportOptions();
@@ -1441,6 +1655,12 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--person":
                         options.PersonFilter = ReadValue(args, ref i);
+                        break;
+                    case "--github-user":
+                        options.GitHubUsers.Add(ReadValue(args, ref i));
+                        break;
+                    case "--github-owner":
+                        options.GitHubOwners.Add(ReadValue(args, ref i));
                         break;
                     case "--metric":
                         options.Metric = ParseMetric(ReadValue(args, ref i));
@@ -1531,6 +1751,8 @@ internal static class UsageTelemetryCliRunner {
         public bool Force { get; set; }
         public bool SkipAutoImport { get; set; }
         public bool Json { get; set; }
+        public List<string> GitHubUsers { get; } = new();
+        public List<string> GitHubOwners { get; } = new();
 
         public static OverviewOptions Parse(string[] args) {
             var options = new OverviewOptions();
@@ -1547,6 +1769,12 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--person":
                         options.PersonFilter = ReadValue(args, ref i);
+                        break;
+                    case "--github-user":
+                        options.GitHubUsers.Add(ReadValue(args, ref i));
+                        break;
+                    case "--github-owner":
+                        options.GitHubOwners.Add(ReadValue(args, ref i));
                         break;
                     case "--metric":
                         options.Metric = ParseMetric(ReadValue(args, ref i));

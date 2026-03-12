@@ -25,6 +25,7 @@ public enum UsageHeatmapBreakdownDimension {
     Account,
     Person,
     Model,
+    SourceRoot,
     Surface,
 }
 
@@ -145,7 +146,7 @@ public sealed class UsageHeatmapDocumentBuilder {
             .SelectMany(static day => day.BreakdownKeys)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(key => legendByKey.TryGetValue(key!, out var entry)
-                ? new HeatmapLegendItem(entry.Label, entry.Color)
+                ? new HeatmapLegendItem(entry.Key, entry.Label, entry.Color)
                 : null)
             .Where(static item => item is not null)
             .Cast<HeatmapLegendItem>()
@@ -303,6 +304,7 @@ public sealed class UsageHeatmapDocumentBuilder {
                                                       NormalizeOptional(record.ProviderAccountId),
             UsageHeatmapBreakdownDimension.Person => NormalizeOptional(record.PersonLabel),
             UsageHeatmapBreakdownDimension.Model => NormalizeOptional(record.Model),
+            UsageHeatmapBreakdownDimension.SourceRoot => NormalizeOptional(record.SourceRootId),
             UsageHeatmapBreakdownDimension.Surface => NormalizeOptional(record.Surface),
             _ => null
         };

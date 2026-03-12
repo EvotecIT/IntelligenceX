@@ -35,9 +35,16 @@ public sealed class UsageTelemetryOverviewOptions {
     public IReadOnlyList<UsageHeatmapBreakdownDimension>? HeatmapBreakdowns { get; set; } = new[] {
         UsageHeatmapBreakdownDimension.Surface,
         UsageHeatmapBreakdownDimension.Provider,
+        UsageHeatmapBreakdownDimension.Model,
+        UsageHeatmapBreakdownDimension.SourceRoot,
         UsageHeatmapBreakdownDimension.Account,
         UsageHeatmapBreakdownDimension.Person
     };
+
+    /// <summary>
+    /// Gets or sets optional display-label overrides for source roots.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? SourceRootLabels { get; set; }
 
     /// <summary>
     /// Gets or sets the maximum number of legend entries emitted per heatmap.
@@ -128,14 +135,14 @@ public sealed class UsageTelemetryOverviewModelHighlight {
 /// Represents one monthly provider usage point in the overview.
 /// </summary>
 public sealed class UsageTelemetryOverviewMonthlyUsage {
-    public UsageTelemetryOverviewMonthlyUsage(DateTime monthUtc, long totalTokens, int activeDays) {
+    public UsageTelemetryOverviewMonthlyUsage(DateTime monthUtc, long totalValue, int activeDays) {
         MonthUtc = new DateTime(monthUtc.Year, monthUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        TotalTokens = Math.Max(0L, totalTokens);
+        TotalValue = Math.Max(0L, totalValue);
         ActiveDays = Math.Max(0, activeDays);
     }
 
     public DateTime MonthUtc { get; }
-    public long TotalTokens { get; }
+    public long TotalValue { get; }
     public int ActiveDays { get; }
     public string Label => MonthUtc.ToString("MMM", CultureInfo.InvariantCulture);
     public string Key => MonthUtc.ToString("yyyy-MM", CultureInfo.InvariantCulture);
@@ -145,8 +152,122 @@ public sealed class UsageTelemetryOverviewMonthlyUsage {
             .Add("monthUtc", MonthUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
             .Add("key", Key)
             .Add("label", Label)
-            .Add("totalTokens", TotalTokens)
+            .Add("totalValue", TotalValue)
             .Add("activeDays", ActiveDays);
+    }
+}
+
+/// <summary>
+/// Represents one primary provider metric shown in the provider header.
+/// </summary>
+public sealed class UsageTelemetryOverviewSectionMetric {
+    public UsageTelemetryOverviewSectionMetric(
+        string key,
+        string label,
+        string value,
+        string? subtitle,
+        double? ratio,
+        string color) {
+        Key = string.IsNullOrWhiteSpace(key) ? "metric" : key.Trim();
+        Label = string.IsNullOrWhiteSpace(label) ? "Metric" : label.Trim();
+        Value = string.IsNullOrWhiteSpace(value) ? "0" : value.Trim();
+        Subtitle = HeatmapText.NormalizeOptionalText(subtitle);
+        Ratio = ratio.HasValue ? Math.Max(0d, Math.Min(1d, ratio.Value)) : null;
+        Color = string.IsNullOrWhiteSpace(color) ? "#888888" : color.Trim();
+    }
+
+    public string Key { get; }
+    public string Label { get; }
+    public string Value { get; }
+    public string? Subtitle { get; }
+    public double? Ratio { get; }
+    public string Color { get; }
+
+    public JsonObject ToJson() {
+        var obj = new JsonObject()
+            .Add("key", Key)
+            .Add("label", Label)
+            .Add("value", Value)
+            .Add("color", Color);
+        if (!string.IsNullOrWhiteSpace(Subtitle)) {
+            obj.Add("subtitle", Subtitle);
+        }
+        if (Ratio.HasValue) {
+            obj.Add("ratio", Ratio.Value);
+        }
+        return obj;
+    }
+}
+
+/// <summary>
+/// Represents one composition slice inside a provider summary.
+/// </summary>
+public sealed class UsageTelemetryOverviewCompositionItem {
+    public UsageTelemetryOverviewCompositionItem(
+        string key,
+        string label,
+        string value,
+        string? subtitle,
+        double? ratio,
+        string color) {
+        Key = string.IsNullOrWhiteSpace(key) ? "item" : key.Trim();
+        Label = string.IsNullOrWhiteSpace(label) ? "Item" : label.Trim();
+        Value = string.IsNullOrWhiteSpace(value) ? "0" : value.Trim();
+        Subtitle = HeatmapText.NormalizeOptionalText(subtitle);
+        Ratio = ratio.HasValue ? Math.Max(0d, Math.Min(1d, ratio.Value)) : null;
+        Color = string.IsNullOrWhiteSpace(color) ? "#888888" : color.Trim();
+    }
+
+    public string Key { get; }
+    public string Label { get; }
+    public string Value { get; }
+    public string? Subtitle { get; }
+    public double? Ratio { get; }
+    public string Color { get; }
+
+    public JsonObject ToJson() {
+        var obj = new JsonObject()
+            .Add("key", Key)
+            .Add("label", Label)
+            .Add("value", Value)
+            .Add("color", Color);
+        if (!string.IsNullOrWhiteSpace(Subtitle)) {
+            obj.Add("subtitle", Subtitle);
+        }
+        if (Ratio.HasValue) {
+            obj.Add("ratio", Ratio.Value);
+        }
+        return obj;
+    }
+}
+
+/// <summary>
+/// Represents one composition summary card inside a provider section.
+/// </summary>
+public sealed class UsageTelemetryOverviewComposition {
+    public UsageTelemetryOverviewComposition(
+        string title,
+        string copy,
+        IReadOnlyList<UsageTelemetryOverviewCompositionItem> items) {
+        Title = string.IsNullOrWhiteSpace(title) ? "Breakdown" : title.Trim();
+        Copy = string.IsNullOrWhiteSpace(copy) ? string.Empty : copy.Trim();
+        Items = items ?? Array.Empty<UsageTelemetryOverviewCompositionItem>();
+    }
+
+    public string Title { get; }
+    public string Copy { get; }
+    public IReadOnlyList<UsageTelemetryOverviewCompositionItem> Items { get; }
+
+    public JsonObject ToJson() {
+        var obj = new JsonObject()
+            .Add("title", Title)
+            .Add("copy", Copy);
+        var items = new JsonArray();
+        foreach (var item in Items) {
+            items.Add(JsonValue.From(item.ToJson()));
+        }
+        obj.Add("items", items);
+        return obj;
     }
 }
 
@@ -230,6 +351,92 @@ public sealed class UsageTelemetryOverviewApiCostEstimate {
 }
 
 /// <summary>
+/// Represents one row inside a provider-specific insight section.
+/// </summary>
+public sealed class UsageTelemetryOverviewInsightRow {
+    public UsageTelemetryOverviewInsightRow(
+        string label,
+        string value,
+        string? subtitle = null,
+        double? ratio = null,
+        string? href = null) {
+        Label = string.IsNullOrWhiteSpace(label) ? "Item" : label.Trim();
+        Value = string.IsNullOrWhiteSpace(value) ? "0" : value.Trim();
+        Subtitle = HeatmapText.NormalizeOptionalText(subtitle);
+        Ratio = ratio.HasValue ? Math.Max(0d, Math.Min(1d, ratio.Value)) : null;
+        Href = HeatmapText.NormalizeOptionalText(href);
+    }
+
+    public string Label { get; }
+    public string Value { get; }
+    public string? Subtitle { get; }
+    public double? Ratio { get; }
+    public string? Href { get; }
+
+    public JsonObject ToJson() {
+        var obj = new JsonObject()
+            .Add("label", Label)
+            .Add("value", Value);
+        if (!string.IsNullOrWhiteSpace(Subtitle)) {
+            obj.Add("subtitle", Subtitle);
+        }
+        if (Ratio.HasValue) {
+            obj.Add("ratio", Ratio.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(Href)) {
+            obj.Add("href", Href);
+        }
+        return obj;
+    }
+}
+
+/// <summary>
+/// Represents one provider-specific insight section.
+/// </summary>
+public sealed class UsageTelemetryOverviewInsightSection {
+    public UsageTelemetryOverviewInsightSection(
+        string key,
+        string title,
+        string? headline,
+        string? note,
+        IReadOnlyList<UsageTelemetryOverviewInsightRow> rows) {
+        Key = string.IsNullOrWhiteSpace(key) ? "insight" : key.Trim();
+        Title = string.IsNullOrWhiteSpace(title) ? "Insight" : title.Trim();
+        Headline = HeatmapText.NormalizeOptionalText(headline);
+        Note = HeatmapText.NormalizeOptionalText(note);
+        Rows = rows ?? Array.Empty<UsageTelemetryOverviewInsightRow>();
+    }
+
+    public string Key { get; }
+    public string Title { get; }
+    public string? Headline { get; }
+    public string? Note { get; }
+    public IReadOnlyList<UsageTelemetryOverviewInsightRow> Rows { get; }
+
+    public JsonObject ToJson() {
+        var obj = new JsonObject()
+            .Add("key", Key)
+            .Add("title", Title)
+            .Add("rows", ToJsonArray(Rows, static row => row.ToJson()));
+        if (!string.IsNullOrWhiteSpace(Headline)) {
+            obj.Add("headline", Headline);
+        }
+        if (!string.IsNullOrWhiteSpace(Note)) {
+            obj.Add("note", Note);
+        }
+        return obj;
+    }
+
+    private static JsonArray ToJsonArray<T>(IReadOnlyList<T> values, Func<T, JsonObject> projector) {
+        var array = new JsonArray();
+        foreach (var value in values) {
+            array.Add(JsonValue.From(projector(value)));
+        }
+        return array;
+    }
+}
+
+/// <summary>
 /// Represents one provider-specific usage section in the overview.
 /// </summary>
 public sealed class UsageTelemetryOverviewProviderSection {
@@ -239,10 +446,16 @@ public sealed class UsageTelemetryOverviewProviderSection {
         string title,
         string subtitle,
         HeatmapDocument heatmap,
+        IReadOnlyList<UsageTelemetryOverviewSectionMetric> metrics,
+        UsageTelemetryOverviewComposition? composition,
+        IReadOnlyList<UsageTelemetryOverviewCard> spotlightCards,
         long inputTokens,
         long outputTokens,
         long totalTokens,
+        string monthlyUsageTitle,
+        string monthlyUsageUnitsLabel,
         IReadOnlyList<UsageTelemetryOverviewMonthlyUsage> monthlyUsage,
+        IReadOnlyList<UsageTelemetryOverviewInsightSection>? additionalInsights,
         IReadOnlyList<UsageTelemetryOverviewTopModel> topModels,
         UsageTelemetryOverviewApiCostEstimate? apiCostEstimate,
         UsageTelemetryOverviewModelHighlight? mostUsedModel,
@@ -255,10 +468,16 @@ public sealed class UsageTelemetryOverviewProviderSection {
         Title = string.IsNullOrWhiteSpace(title) ? ProviderId : title.Trim();
         Subtitle = string.IsNullOrWhiteSpace(subtitle) ? "No range" : subtitle.Trim();
         Heatmap = heatmap ?? throw new ArgumentNullException(nameof(heatmap));
+        Metrics = metrics ?? Array.Empty<UsageTelemetryOverviewSectionMetric>();
+        Composition = composition;
+        SpotlightCards = spotlightCards ?? Array.Empty<UsageTelemetryOverviewCard>();
         InputTokens = Math.Max(0L, inputTokens);
         OutputTokens = Math.Max(0L, outputTokens);
         TotalTokens = Math.Max(0L, totalTokens);
+        MonthlyUsageTitle = string.IsNullOrWhiteSpace(monthlyUsageTitle) ? "Monthly usage" : monthlyUsageTitle.Trim();
+        MonthlyUsageUnitsLabel = string.IsNullOrWhiteSpace(monthlyUsageUnitsLabel) ? "units" : monthlyUsageUnitsLabel.Trim();
         MonthlyUsage = monthlyUsage ?? Array.Empty<UsageTelemetryOverviewMonthlyUsage>();
+        AdditionalInsights = additionalInsights ?? Array.Empty<UsageTelemetryOverviewInsightSection>();
         TopModels = topModels ?? Array.Empty<UsageTelemetryOverviewTopModel>();
         ApiCostEstimate = apiCostEstimate;
         MostUsedModel = mostUsedModel;
@@ -273,10 +492,16 @@ public sealed class UsageTelemetryOverviewProviderSection {
     public string Title { get; }
     public string Subtitle { get; }
     public HeatmapDocument Heatmap { get; }
+    public IReadOnlyList<UsageTelemetryOverviewSectionMetric> Metrics { get; }
+    public UsageTelemetryOverviewComposition? Composition { get; }
+    public IReadOnlyList<UsageTelemetryOverviewCard> SpotlightCards { get; }
     public long InputTokens { get; }
     public long OutputTokens { get; }
     public long TotalTokens { get; }
+    public string MonthlyUsageTitle { get; }
+    public string MonthlyUsageUnitsLabel { get; }
     public IReadOnlyList<UsageTelemetryOverviewMonthlyUsage> MonthlyUsage { get; }
+    public IReadOnlyList<UsageTelemetryOverviewInsightSection> AdditionalInsights { get; }
     public IReadOnlyList<UsageTelemetryOverviewTopModel> TopModels { get; }
     public UsageTelemetryOverviewApiCostEstimate? ApiCostEstimate { get; }
     public UsageTelemetryOverviewModelHighlight? MostUsedModel { get; }
@@ -291,30 +516,29 @@ public sealed class UsageTelemetryOverviewProviderSection {
             .Add("providerId", ProviderId)
             .Add("title", Title)
             .Add("subtitle", Subtitle)
+            .Add("metrics", ToJsonArray(Metrics, static metric => metric.ToJson()))
+            .Add("spotlightCards", ToJsonArray(SpotlightCards, static card => card.ToJson()))
             .Add("inputTokens", InputTokens)
             .Add("outputTokens", OutputTokens)
             .Add("totalTokens", TotalTokens)
+            .Add("monthlyUsageTitle", MonthlyUsageTitle)
+            .Add("monthlyUsageUnitsLabel", MonthlyUsageUnitsLabel)
             .Add("longestStreakDays", LongestStreakDays)
             .Add("currentStreakDays", CurrentStreakDays)
             .Add("heatmap", Heatmap.ToJson());
 
-        var monthlyUsage = new JsonArray();
-        foreach (var month in MonthlyUsage) {
-            monthlyUsage.Add(JsonValue.From(month.ToJson()));
-        }
-        obj.Add("monthlyUsage", monthlyUsage);
-
-        var topModels = new JsonArray();
-        foreach (var model in TopModels) {
-            topModels.Add(JsonValue.From(model.ToJson()));
-        }
-        obj.Add("topModels", topModels);
+        obj.Add("monthlyUsage", ToJsonArray(MonthlyUsage, static month => month.ToJson()));
+        obj.Add("additionalInsights", ToJsonArray(AdditionalInsights, static insight => insight.ToJson()));
+        obj.Add("topModels", ToJsonArray(TopModels, static model => model.ToJson()));
 
         if (MostUsedModel is not null) {
             obj.Add("mostUsedModel", MostUsedModel.ToJson());
         }
         if (RecentModel is not null) {
             obj.Add("recentModel", RecentModel.ToJson());
+        }
+        if (Composition is not null) {
+            obj.Add("composition", Composition.ToJson());
         }
         if (ApiCostEstimate is not null) {
             obj.Add("apiCostEstimate", ApiCostEstimate.ToJson());
@@ -324,6 +548,14 @@ public sealed class UsageTelemetryOverviewProviderSection {
         }
 
         return obj;
+    }
+
+    private static JsonArray ToJsonArray<T>(IReadOnlyList<T> values, Func<T, JsonObject> projector) {
+        var array = new JsonArray();
+        foreach (var value in values) {
+            array.Add(JsonValue.From(projector(value)));
+        }
+        return array;
     }
 }
 
@@ -409,6 +641,7 @@ public sealed class UsageTelemetryOverviewDocument {
         obj.Add("accountBreakdown", ToJson(summary.AccountBreakdown));
         obj.Add("personBreakdown", ToJson(summary.PersonBreakdown));
         obj.Add("modelBreakdown", ToJson(summary.ModelBreakdown));
+        obj.Add("sourceRootBreakdown", ToJson(summary.SourceRootBreakdown));
         obj.Add("surfaceBreakdown", ToJson(summary.SurfaceBreakdown));
         return obj;
     }
@@ -546,6 +779,8 @@ public sealed class UsageTelemetryOverviewBuilder {
         var inputTokens = events.Sum(static record => record.InputTokens ?? 0L);
         var outputTokens = events.Sum(static record => record.OutputTokens ?? 0L);
         var totalTokens = events.Sum(static record => record.TotalTokens ?? 0L);
+        var metrics = BuildTokenMetrics(inputTokens, outputTokens, totalTokens, providerId);
+        var composition = BuildTokenComposition(inputTokens, outputTokens, totalTokens, providerId);
         var monthlyUsage = BuildMonthlyUsage(events, rangeStartUtc, rangeEndUtc);
         var topModels = BuildTopModels(events, 5);
         var apiCostEstimate = BuildApiCostEstimate(events, 5);
@@ -553,6 +788,7 @@ public sealed class UsageTelemetryOverviewBuilder {
         var recentModel = BuildModelHighlight(FilterToRecentWindow(events, 30));
         var (longestStreakDays, currentStreakDays) = ComputeStreaks(events);
         var note = BuildCoverageNote(events);
+        var spotlightCards = BuildTelemetrySpotlightCards(mostUsedModel, recentModel, longestStreakDays, currentStreakDays);
 
         var heatmap = BuildProviderHeatmap(title, providerId, events, rangeStartUtc, rangeEndUtc);
 
@@ -562,10 +798,16 @@ public sealed class UsageTelemetryOverviewBuilder {
             title: title,
             subtitle: subtitle,
             heatmap: heatmap,
+            metrics: metrics,
+            composition: composition,
+            spotlightCards: spotlightCards,
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             totalTokens: totalTokens,
+            monthlyUsageTitle: "Monthly usage",
+            monthlyUsageUnitsLabel: "tokens",
             monthlyUsage: monthlyUsage,
+            additionalInsights: Array.Empty<UsageTelemetryOverviewInsightSection>(),
             topModels: topModels,
             apiCostEstimate: apiCostEstimate,
             mostUsedModel: mostUsedModel,
@@ -705,6 +947,108 @@ public sealed class UsageTelemetryOverviewBuilder {
             coveredTokens,
             uncoveredTokens,
             topDrivers);
+    }
+
+    private static IReadOnlyList<UsageTelemetryOverviewSectionMetric> BuildTokenMetrics(
+        long inputTokens,
+        long outputTokens,
+        long totalTokens,
+        string providerId) {
+        var accent = ResolveProviderAccentColors(providerId);
+        return new[] {
+            new UsageTelemetryOverviewSectionMetric(
+                "input",
+                "Input tokens",
+                FormatCompact(inputTokens),
+                FormatPercent(inputTokens, totalTokens) + " of section total",
+                ComputeRatio(inputTokens, totalTokens),
+                accent.Input),
+            new UsageTelemetryOverviewSectionMetric(
+                "output",
+                "Output tokens",
+                FormatCompact(outputTokens),
+                FormatPercent(outputTokens, totalTokens) + " of section total",
+                ComputeRatio(outputTokens, totalTokens),
+                accent.Output),
+            new UsageTelemetryOverviewSectionMetric(
+                "total",
+                "Total tokens",
+                FormatCompact(totalTokens),
+                "100% of section total",
+                totalTokens > 0 ? 1d : 0d,
+                accent.Total)
+        };
+    }
+
+    private static UsageTelemetryOverviewComposition? BuildTokenComposition(
+        long inputTokens,
+        long outputTokens,
+        long totalTokens,
+        string providerId) {
+        if (totalTokens <= 0L) {
+            return null;
+        }
+
+        var otherTokens = Math.Max(0L, totalTokens - inputTokens - outputTokens);
+        var accent = ResolveProviderAccentColors(providerId);
+        var items = new List<UsageTelemetryOverviewCompositionItem> {
+            new(
+                "input",
+                "Input",
+                FormatCompact(inputTokens),
+                FormatPercent(inputTokens, totalTokens),
+                ComputeRatio(inputTokens, totalTokens),
+                accent.Input),
+            new(
+                "output",
+                "Output",
+                FormatCompact(outputTokens),
+                FormatPercent(outputTokens, totalTokens),
+                ComputeRatio(outputTokens, totalTokens),
+                accent.Output)
+        };
+
+        if (otherTokens > 0L) {
+            items.Add(new UsageTelemetryOverviewCompositionItem(
+                "other",
+                "Other",
+                FormatCompact(otherTokens),
+                FormatPercent(otherTokens, totalTokens),
+                ComputeRatio(otherTokens, totalTokens),
+                accent.Other));
+        }
+
+        return new UsageTelemetryOverviewComposition(
+            "Token mix",
+            FormatCompact(totalTokens) + " total tokens across this provider section",
+            items);
+    }
+
+    private static IReadOnlyList<UsageTelemetryOverviewCard> BuildTelemetrySpotlightCards(
+        UsageTelemetryOverviewModelHighlight? mostUsedModel,
+        UsageTelemetryOverviewModelHighlight? recentModel,
+        int longestStreakDays,
+        int currentStreakDays) {
+        return new[] {
+            new UsageTelemetryOverviewCard(
+                "most-used-model",
+                "Most Used Model",
+                mostUsedModel is null ? "n/a" : mostUsedModel.Model,
+                mostUsedModel is null ? null : FormatCompact(mostUsedModel.TotalTokens)),
+            new UsageTelemetryOverviewCard(
+                "recent-model",
+                "Recent Use (Last 30 Days)",
+                recentModel is null ? "n/a" : recentModel.Model,
+                recentModel is null ? null : FormatCompact(recentModel.TotalTokens)),
+            new UsageTelemetryOverviewCard(
+                "longest-streak",
+                "Longest Streak",
+                longestStreakDays.ToString(CultureInfo.InvariantCulture) + " days"),
+            new UsageTelemetryOverviewCard(
+                "current-streak",
+                "Current Streak",
+                currentStreakDays.ToString(CultureInfo.InvariantCulture) + " days")
+        };
     }
 
     private static UsageTelemetryApiCostEventEstimate EstimateEventApiCost(UsageEventRecord record) {
@@ -869,6 +1213,14 @@ public sealed class UsageTelemetryOverviewBuilder {
                + "; earlier activity may be under-split.";
     }
 
+    private static double? ComputeRatio(long value, long total) {
+        if (value <= 0L || total <= 0L) {
+            return 0d;
+        }
+
+        return Math.Min(1d, value / (double)total);
+    }
+
     private static IEnumerable<UsageTelemetryOverviewCard> BuildCards(
         UsageSummarySnapshot summary,
         UsageSummaryMetric metric) {
@@ -929,7 +1281,10 @@ public sealed class UsageTelemetryOverviewBuilder {
                     Breakdown = breakdown,
                     Title = title + " - " + label,
                     Subtitle = "by " + key,
-                    LegendLimit = options.LegendLimit
+                    LegendLimit = options.LegendLimit,
+                    BreakdownLabels = breakdown == UsageHeatmapBreakdownDimension.SourceRoot
+                        ? options.SourceRootLabels
+                        : null
                 });
 
             yield return new UsageTelemetryOverviewHeatmap(key, label, document);
@@ -942,6 +1297,7 @@ public sealed class UsageTelemetryOverviewBuilder {
             UsageHeatmapBreakdownDimension.Account => summary.AccountBreakdown.Count > 0,
             UsageHeatmapBreakdownDimension.Person => summary.PersonBreakdown.Count > 0,
             UsageHeatmapBreakdownDimension.Model => summary.ModelBreakdown.Count > 0,
+            UsageHeatmapBreakdownDimension.SourceRoot => summary.SourceRootBreakdown.Count > 0,
             UsageHeatmapBreakdownDimension.Surface => summary.SurfaceBreakdown.Count > 0,
             _ => false
         };
@@ -965,10 +1321,11 @@ public sealed class UsageTelemetryOverviewBuilder {
 
     private static string ResolveBreakdownLabel(UsageHeatmapBreakdownDimension breakdown) {
         return breakdown switch {
-            UsageHeatmapBreakdownDimension.Provider => "By provider",
+            UsageHeatmapBreakdownDimension.Provider => "By telemetry source",
             UsageHeatmapBreakdownDimension.Account => "By account",
             UsageHeatmapBreakdownDimension.Person => "By person",
             UsageHeatmapBreakdownDimension.Model => "By model",
+            UsageHeatmapBreakdownDimension.SourceRoot => "By source root",
             UsageHeatmapBreakdownDimension.Surface => "By surface",
             _ => "Heatmap"
         };
@@ -1057,6 +1414,44 @@ public sealed class UsageTelemetryOverviewBuilder {
         };
     }
 
+    private static ProviderAccentColors ResolveProviderAccentColors(string providerId) {
+        return providerId.Trim().ToLowerInvariant() switch {
+            "claude" => new ProviderAccentColors("#f3ba73", "#fb8c1d", "#c65102", "#e9c89e"),
+            "codex" => new ProviderAccentColors("#98a8ff", "#6268f1", "#2f2a93", "#bcc5ff"),
+            "github" => new ProviderAccentColors("#9be9a8", "#40c463", "#216e39", "#cfe8d2"),
+            _ => new ProviderAccentColors("#9be9a8", "#40c463", "#216e39", "#cfe8d2")
+        };
+    }
+
+    private static string FormatCompact(long value) {
+        if (value <= 0L) {
+            return "0";
+        }
+
+        return FormatCompact((double)value);
+    }
+
+    private static string FormatCompact(double value) {
+        if (value >= 1_000_000_000d) {
+            return (value / 1_000_000_000d).ToString(value >= 10_000_000_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "B";
+        }
+        if (value >= 1_000_000d) {
+            return (value / 1_000_000d).ToString(value >= 10_000_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "M";
+        }
+        if (value >= 1_000d) {
+            return (value / 1_000d).ToString(value >= 10_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "K";
+        }
+        return value.ToString("0", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatPercent(long value, long total) {
+        if (value <= 0L || total <= 0L) {
+            return "0%";
+        }
+
+        return (Math.Min(1d, value / (double)total) * 100d).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+    }
+
     private static string NormalizeKey(string value) {
         var chars = value
             .Trim()
@@ -1069,4 +1464,6 @@ public sealed class UsageTelemetryOverviewBuilder {
     private readonly record struct UsageTelemetryApiPrice(decimal InputUsdPerMillion, decimal? CachedInputUsdPerMillion, decimal OutputUsdPerMillion);
 
     private readonly record struct UsageTelemetryApiCostEventEstimate(string Model, long TotalTokens, decimal EstimatedCostUsd, bool HasKnownPricing);
+
+    private readonly record struct ProviderAccentColors(string Input, string Output, string Total, string Other);
 }

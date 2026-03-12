@@ -39,6 +39,11 @@ public sealed class UsageTelemetryHeatmapOptions {
     /// Gets or sets the maximum number of legend items to emit.
     /// </summary>
     public int LegendLimit { get; set; } = 5;
+
+    /// <summary>
+    /// Gets or sets optional display-label overrides for breakdown keys.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? BreakdownLabels { get; set; }
 }
 
 /// <summary>
@@ -139,6 +144,7 @@ public sealed class UsageTelemetryHeatmapDocumentBuilder {
             UsageHeatmapBreakdownDimension.Account => UsageAggregateDimensions.Account,
             UsageHeatmapBreakdownDimension.Person => UsageAggregateDimensions.Person,
             UsageHeatmapBreakdownDimension.Model => UsageAggregateDimensions.Model,
+            UsageHeatmapBreakdownDimension.SourceRoot => UsageAggregateDimensions.SourceRoot,
             UsageHeatmapBreakdownDimension.Surface => UsageAggregateDimensions.Surface,
             _ => UsageAggregateDimensions.None
         };
@@ -177,6 +183,7 @@ public sealed class UsageTelemetryHeatmapDocumentBuilder {
             UsageHeatmapBreakdownDimension.Account => summary.AccountBreakdown,
             UsageHeatmapBreakdownDimension.Person => summary.PersonBreakdown,
             UsageHeatmapBreakdownDimension.Model => summary.ModelBreakdown,
+            UsageHeatmapBreakdownDimension.SourceRoot => summary.SourceRootBreakdown,
             UsageHeatmapBreakdownDimension.Surface => summary.SurfaceBreakdown,
             _ => Array.Empty<UsageSummaryBreakdownEntry>()
         };
@@ -207,11 +214,25 @@ public sealed class UsageTelemetryHeatmapDocumentBuilder {
 
             result.Add(new UsageHeatmapLegendEntry(
                 key,
-                key,
+                ResolveLegendLabel(key, options.BreakdownLabels),
                 BuildStableColor(key, options.Breakdown)));
         }
 
         return result;
+    }
+
+    private static string ResolveLegendLabel(string key, IReadOnlyDictionary<string, string>? labels) {
+        if (labels is null || labels.Count == 0) {
+            return key;
+        }
+
+        foreach (var pair in labels) {
+            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)) {
+                return string.IsNullOrWhiteSpace(pair.Value) ? key : pair.Value.Trim();
+            }
+        }
+
+        return key;
     }
 
     private static string BuildStableColor(string key, UsageHeatmapBreakdownDimension breakdown) {
