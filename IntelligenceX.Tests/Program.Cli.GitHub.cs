@@ -74,11 +74,13 @@ internal static partial class Program {
             .GetAwaiter()
             .GetResult();
 
-        AssertEqual(2, calls.Count, "github contribution calendar window count");
+        AssertEqual(3, calls.Count, "github contribution calendar window count");
         AssertEqual(new DateTimeOffset(2024, 02, 29, 0, 0, 0, TimeSpan.Zero), calls[0].From, "github contribution calendar first window start");
         AssertEqual(new DateTimeOffset(2025, 02, 27, 0, 0, 0, TimeSpan.Zero), calls[0].To, "github contribution calendar first window end");
         AssertEqual(new DateTimeOffset(2025, 02, 28, 0, 0, 0, TimeSpan.Zero), calls[1].From, "github contribution calendar second window start");
         AssertEqual(new DateTimeOffset(2025, 03, 01, 0, 0, 0, TimeSpan.Zero), calls[1].To, "github contribution calendar second window end");
+        AssertEqual(new DateTimeOffset(2024, 02, 29, 0, 0, 0, TimeSpan.Zero), calls[2].From, "github contribution calendar summary window start");
+        AssertEqual(new DateTimeOffset(2025, 03, 01, 0, 0, 0, TimeSpan.Zero), calls[2].To, "github contribution calendar summary window end");
         AssertEqual(8, calendar.TotalContributions, "github contribution calendar totals use deduped days");
         AssertEqual(4, calendar.Days.Count, "github contribution calendar deduped day count");
         AssertEqual(new DateTime(2024, 02, 29, 0, 0, 0, DateTimeKind.Utc), calendar.Days[0].Date, "github contribution calendar first date");

@@ -57,6 +57,12 @@ internal static partial class Program {
             TestUsageSummaryBuilderBuildsTopBreakdowns);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
+        failed += Run("GitHub wrapped html renderer builds shareable page",
+            TestGitHubWrappedHtmlRendererBuildsShareablePage);
+        failed += Run("GitHub wrapped card html renderer builds compact card",
+            TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
+        failed += Run("Usage overview html renderer builds GitHub owner explorer",
+            TestUsageTelemetryOverviewHtmlRendererBuildsGitHubOwnerExplorer);
         failed += Run("IntelligenceX client emits turn completed telemetry",
             TestIntelligenceXClientEmitsTurnCompletedTelemetry);
         failed += Run("EasySession forwards telemetry labels", TestEasySessionForwardsTelemetryLabels);
@@ -113,6 +119,7 @@ internal static partial class Program {
         failed += Run("Telemetry usage overview json and export", TestTelemetryUsageOverviewJsonAndExport);
         failed += Run("Telemetry usage report auto imports and exports", TestTelemetryUsageReportAutoImportsAndExports);
         failed += Run("Telemetry usage report supports ad hoc recovered path", TestTelemetryUsageReportSupportsAdHocRecoveredPath);
+        failed += Run("Telemetry usage GitHub request planner supports owner-only runs", TestTelemetryUsageBuildGitHubSectionRequestsSupportsOwnerOnlyRuns);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);
         failed += Run("OpenAI model catalog normalizes fast mode suffix", TestOpenAiModelCatalogNormalizesFastModeSuffix);

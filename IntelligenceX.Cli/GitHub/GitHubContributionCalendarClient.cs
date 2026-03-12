@@ -71,7 +71,10 @@ internal sealed class GitHubContributionCalendarClient {
             .Select(static pair => pair.Value));
 
         var totalContributions = days.Sum(static day => day.ContributionCount);
-        return new GitHubContributionCalendar(resolvedLogin, resolvedName, resolvedUrl, totalContributions, days);
+        var summary = days.Count == 0
+            ? new GitHubContributionCollectionSummary()
+            : await GetContributionCollectionSummaryAsync(login, windowStart: NormalizeDay(from), windowEnd: NormalizeDay(to)).ConfigureAwait(false);
+        return new GitHubContributionCalendar(resolvedLogin, resolvedName, resolvedUrl, totalContributions, days, summary);
     }
 
     private async Task<GitHubContributionCalendar> GetContributionCalendarWindowAsync(
@@ -80,6 +83,31 @@ internal sealed class GitHubContributionCalendarClient {
         DateTimeOffset to) {
         var root = await _queryWindowAsync(login, from, to).ConfigureAwait(false);
         return ParseContributionCalendarWindow(login, root);
+    }
+
+    private async Task<GitHubContributionCollectionSummary> GetContributionCollectionSummaryAsync(
+        string login,
+        DateTimeOffset windowStart,
+        DateTimeOffset windowEnd) {
+        var root = await _queryWindowAsync(login, windowStart, windowEnd).ConfigureAwait(false);
+        if (!GitHubGraphQlCli.TryGetProperty(root, "data", out var data) ||
+            !GitHubGraphQlCli.TryGetProperty(data, "user", out var user) ||
+            !GitHubGraphQlCli.TryGetProperty(user, "contributionsCollection", out var collection) ||
+            collection.ValueKind != JsonValueKind.Object) {
+            return new GitHubContributionCollectionSummary();
+        }
+
+        return new GitHubContributionCollectionSummary(
+            commitContributions: ReadInt32(collection, "totalCommitContributions"),
+            issueContributions: ReadInt32(collection, "totalIssueContributions"),
+            pullRequestContributions: ReadInt32(collection, "totalPullRequestContributions"),
+            pullRequestReviewContributions: ReadInt32(collection, "totalPullRequestReviewContributions"),
+            repositoryContributions: ReadInt32(collection, "totalRepositoryContributions"),
+            restrictedContributions: ReadInt32(collection, "restrictedContributionsCount"),
+            repositoriesWithCommits: ReadInt32(collection, "totalRepositoriesWithContributedCommits"),
+            repositoriesWithIssues: ReadInt32(collection, "totalRepositoriesWithContributedIssues"),
+            repositoriesWithPullRequests: ReadInt32(collection, "totalRepositoriesWithContributedPullRequests"),
+            repositoriesWithPullRequestReviews: ReadInt32(collection, "totalRepositoriesWithContributedPullRequestReviews"));
     }
 
     private static async Task<JsonElement> QueryContributionCalendarWindowAsync(
@@ -93,6 +121,16 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
     name
     url
     contributionsCollection(from: $from, to: $to) {
+      restrictedContributionsCount
+      totalCommitContributions
+      totalIssueContributions
+      totalPullRequestContributions
+      totalPullRequestReviewContributions
+      totalRepositoryContributions
+      totalRepositoriesWithContributedCommits
+      totalRepositoriesWithContributedIssues
+      totalRepositoriesWithContributedPullRequests
+      totalRepositoriesWithContributedPullRequestReviews
       contributionCalendar {
         totalContributions
         weeks {
@@ -193,6 +231,16 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
         return new DateTimeOffset(value.UtcDateTime.Date, TimeSpan.Zero);
     }
 
+    private static int ReadInt32(JsonElement obj, string name) {
+        if (GitHubGraphQlCli.TryGetProperty(obj, name, out var value) &&
+            value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt32(out var parsed)) {
+            return parsed;
+        }
+
+        return 0;
+    }
+
     private static bool TryParseGitHubContributionDate(string? value, out DateTime parsedDateUtc) {
         parsedDateUtc = default;
         if (string.IsNullOrWhiteSpace(value)) {
@@ -219,12 +267,14 @@ internal sealed class GitHubContributionCalendar {
         string? name,
         string? profileUrl,
         int totalContributions,
-        IReadOnlyList<GitHubContributionDay> days) {
+        IReadOnlyList<GitHubContributionDay> days,
+        GitHubContributionCollectionSummary? summary = null) {
         Login = login;
         Name = name;
         ProfileUrl = profileUrl;
         TotalContributions = totalContributions;
         Days = days ?? Array.Empty<GitHubContributionDay>();
+        Summary = summary ?? new GitHubContributionCollectionSummary();
     }
 
     public string Login { get; }
@@ -232,6 +282,43 @@ internal sealed class GitHubContributionCalendar {
     public string? ProfileUrl { get; }
     public int TotalContributions { get; }
     public IReadOnlyList<GitHubContributionDay> Days { get; }
+    public GitHubContributionCollectionSummary Summary { get; }
+}
+
+internal sealed class GitHubContributionCollectionSummary {
+    public GitHubContributionCollectionSummary(
+        int commitContributions = 0,
+        int issueContributions = 0,
+        int pullRequestContributions = 0,
+        int pullRequestReviewContributions = 0,
+        int repositoryContributions = 0,
+        int restrictedContributions = 0,
+        int repositoriesWithCommits = 0,
+        int repositoriesWithIssues = 0,
+        int repositoriesWithPullRequests = 0,
+        int repositoriesWithPullRequestReviews = 0) {
+        CommitContributions = Math.Max(0, commitContributions);
+        IssueContributions = Math.Max(0, issueContributions);
+        PullRequestContributions = Math.Max(0, pullRequestContributions);
+        PullRequestReviewContributions = Math.Max(0, pullRequestReviewContributions);
+        RepositoryContributions = Math.Max(0, repositoryContributions);
+        RestrictedContributions = Math.Max(0, restrictedContributions);
+        RepositoriesWithCommits = Math.Max(0, repositoriesWithCommits);
+        RepositoriesWithIssues = Math.Max(0, repositoriesWithIssues);
+        RepositoriesWithPullRequests = Math.Max(0, repositoriesWithPullRequests);
+        RepositoriesWithPullRequestReviews = Math.Max(0, repositoriesWithPullRequestReviews);
+    }
+
+    public int CommitContributions { get; }
+    public int IssueContributions { get; }
+    public int PullRequestContributions { get; }
+    public int PullRequestReviewContributions { get; }
+    public int RepositoryContributions { get; }
+    public int RestrictedContributions { get; }
+    public int RepositoriesWithCommits { get; }
+    public int RepositoriesWithIssues { get; }
+    public int RepositoriesWithPullRequests { get; }
+    public int RepositoriesWithPullRequestReviews { get; }
 }
 
 internal sealed class GitHubContributionDay {

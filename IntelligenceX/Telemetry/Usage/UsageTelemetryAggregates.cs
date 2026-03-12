@@ -35,9 +35,14 @@ public enum UsageAggregateDimensions {
     Model = 1 << 3,
 
     /// <summary>
+    /// Split aggregates by source root.
+    /// </summary>
+    SourceRoot = 1 << 4,
+
+    /// <summary>
     /// Split aggregates by surface.
     /// </summary>
-    Surface = 1 << 4,
+    Surface = 1 << 5,
 }
 
 /// <summary>
@@ -95,6 +100,11 @@ public sealed class UsageDailyAggregateRecord {
     /// Gets or sets the model when model grouping is enabled.
     /// </summary>
     public string? Model { get; set; }
+
+    /// <summary>
+    /// Gets or sets the source-root id when source-root grouping is enabled.
+    /// </summary>
+    public string? SourceRootId { get; set; }
 
     /// <summary>
     /// Gets or sets the surface when surface grouping is enabled.
@@ -179,6 +189,7 @@ public sealed class UsageDailyAggregateBuilder {
                     effectiveOptions.Dimensions.HasFlag(UsageAggregateDimensions.Account) ? NormalizeOptional(usageEvent.AccountLabel) : null,
                     effectiveOptions.Dimensions.HasFlag(UsageAggregateDimensions.Person) ? NormalizeOptional(usageEvent.PersonLabel) : null,
                     effectiveOptions.Dimensions.HasFlag(UsageAggregateDimensions.Model) ? NormalizeOptional(usageEvent.Model) : null,
+                    effectiveOptions.Dimensions.HasFlag(UsageAggregateDimensions.SourceRoot) ? NormalizeOptional(usageEvent.SourceRootId) : null,
                     effectiveOptions.Dimensions.HasFlag(UsageAggregateDimensions.Surface) ? NormalizeOptional(usageEvent.Surface) : null);
                 buckets.Add(key, accumulator);
             }
@@ -195,6 +206,7 @@ public sealed class UsageDailyAggregateBuilder {
             accumulator.ProviderAccountId ??= NormalizeOptional(usageEvent.ProviderAccountId);
             accumulator.AccountLabel ??= NormalizeOptional(usageEvent.AccountLabel);
             accumulator.PersonLabel ??= NormalizeOptional(usageEvent.PersonLabel);
+            accumulator.SourceRootId ??= NormalizeOptional(usageEvent.SourceRootId);
         }
 
         return buckets.Values
@@ -203,6 +215,7 @@ public sealed class UsageDailyAggregateBuilder {
             .ThenBy(static value => value.ProviderId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static value => value.AccountKey, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static value => value.Model, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static value => value.SourceRootId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static value => value.Surface, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -223,6 +236,9 @@ public sealed class UsageDailyAggregateBuilder {
         }
         if (dimensions.HasFlag(UsageAggregateDimensions.Model)) {
             parts.Add(NormalizeOptional(usageEvent.Model) ?? "unknown-model");
+        }
+        if (dimensions.HasFlag(UsageAggregateDimensions.SourceRoot)) {
+            parts.Add(NormalizeOptional(usageEvent.SourceRootId) ?? "unknown-source-root");
         }
         if (dimensions.HasFlag(UsageAggregateDimensions.Surface)) {
             parts.Add(NormalizeOptional(usageEvent.Surface) ?? "unknown-surface");
@@ -294,6 +310,7 @@ public sealed class UsageDailyAggregateBuilder {
             string? accountLabel,
             string? personLabel,
             string? model,
+            string? sourceRootId,
             string? surface) {
             DayUtc = dayUtc;
             ProviderId = providerId;
@@ -302,6 +319,7 @@ public sealed class UsageDailyAggregateBuilder {
             AccountLabel = accountLabel;
             PersonLabel = personLabel;
             Model = model;
+            SourceRootId = sourceRootId;
             Surface = surface;
         }
 
@@ -312,6 +330,7 @@ public sealed class UsageDailyAggregateBuilder {
         public string? AccountLabel { get; set; }
         public string? PersonLabel { get; set; }
         public string? Model { get; }
+        public string? SourceRootId { get; set; }
         public string? Surface { get; }
         public int EventCount { get; set; }
         public long? InputTokens { get; set; }
@@ -331,6 +350,7 @@ public sealed class UsageDailyAggregateBuilder {
                 AccountLabel = AccountLabel,
                 PersonLabel = PersonLabel,
                 Model = Model,
+                SourceRootId = SourceRootId,
                 Surface = Surface,
                 EventCount = EventCount,
                 InputTokens = InputTokens,

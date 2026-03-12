@@ -175,16 +175,23 @@ public sealed class HeatmapDay {
 /// Represents a named legend swatch.
 /// </summary>
 public sealed class HeatmapLegendItem {
-    public HeatmapLegendItem(string label, string color) {
+    public HeatmapLegendItem(string label, string color)
+        : this(label, label, color) {
+    }
+
+    public HeatmapLegendItem(string key, string label, string color) {
+        Key = string.IsNullOrWhiteSpace(key) ? "Item" : key.Trim();
         Label = string.IsNullOrWhiteSpace(label) ? "Item" : label.Trim();
         Color = string.IsNullOrWhiteSpace(color) ? "#999999" : HeatmapText.NormalizeOptionalText(color) ?? "#999999";
     }
 
+    public string Key { get; }
     public string Label { get; }
     public string Color { get; }
 
     public JsonObject ToJson() {
         return new JsonObject()
+            .Add("key", Key)
             .Add("label", Label)
             .Add("color", Color);
     }
