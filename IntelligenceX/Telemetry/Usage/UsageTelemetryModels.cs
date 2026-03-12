@@ -541,6 +541,10 @@ public static class UsageTelemetryIdentity {
         if (trimmed.IndexOf("://", StringComparison.Ordinal) >= 0) {
             return trimmed;
         }
+        if (LooksLikeWindowsAbsolutePath(trimmed)) {
+            return TrimTrailingDirectorySeparators(trimmed.Replace('/', '\\'));
+        }
+
         var normalized = trimmed;
         try {
             normalized = Path.GetFullPath(trimmed);
@@ -548,7 +552,53 @@ public static class UsageTelemetryIdentity {
             // Keep the trimmed input when the locator is not a local filesystem path.
         }
 
-        return normalized.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return TrimTrailingDirectorySeparators(normalized);
+    }
+
+    private static bool LooksLikeWindowsAbsolutePath(string value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        return (value.Length >= 3
+                && char.IsLetter(value[0])
+                && value[1] == ':'
+                && (value[2] == '\\' || value[2] == '/'))
+               || value.StartsWith(@"\\", StringComparison.Ordinal)
+               || value.StartsWith("//", StringComparison.Ordinal);
+    }
+
+    private static string TrimTrailingDirectorySeparators(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return value;
+        }
+
+        var rootLength = GetRootLength(value);
+        var end = value.Length;
+        while (end > rootLength && (value[end - 1] == '\\' || value[end - 1] == '/')) {
+            end--;
+        }
+
+        return end == value.Length ? value : value.Substring(0, end);
+    }
+
+    private static int GetRootLength(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return 0;
+        }
+
+        if (value.Length >= 3
+            && char.IsLetter(value[0])
+            && value[1] == ':'
+            && (value[2] == '\\' || value[2] == '/')) {
+            return 3;
+        }
+
+        if (value.StartsWith(@"\\", StringComparison.Ordinal) || value.StartsWith("//", StringComparison.Ordinal)) {
+            return 2;
+        }
+
+        return value[0] == '/' || value[0] == '\\' ? 1 : 0;
     }
 
     /// <summary>

@@ -347,6 +347,8 @@ public sealed class UsageTelemetryOverviewDocument {
 /// Builds reusable overview snapshots with summary cards plus heatmaps from canonical telemetry events.
 /// </summary>
 public sealed class UsageTelemetryOverviewBuilder {
+    private const int ProviderTrailingWindowDays = 364;
+
     /// <summary>
     /// Builds an overview document from canonical telemetry events.
     /// </summary>
@@ -424,7 +426,7 @@ public sealed class UsageTelemetryOverviewBuilder {
             ? DateTime.UtcNow.Date
             : allEvents[allEvents.Length - 1].TimestampUtc.UtcDateTime.Date;
         var rangeEndUtc = latestDayUtc;
-        var rangeStartUtc = latestDayUtc.AddDays(-364);
+        var rangeStartUtc = latestDayUtc.AddDays(-(ProviderTrailingWindowDays - 1));
         var events = allEvents
             .Where(record => record.TimestampUtc.UtcDateTime.Date >= rangeStartUtc
                              && record.TimestampUtc.UtcDateTime.Date <= rangeEndUtc)
