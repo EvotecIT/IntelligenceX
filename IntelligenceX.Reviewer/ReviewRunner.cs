@@ -32,7 +32,9 @@ internal sealed partial class ReviewRunner {
     private IntelligenceXClientOptions BuildClientOptions() {
         var options = new IntelligenceXClientOptions {
             DefaultModel = _settings.Model,
-            TransportKind = _settings.OpenAITransport
+            TransportKind = _settings.OpenAITransport,
+            EnableUsageTelemetry = true,
+            UsageTelemetryProviderAccountId = _settings.OpenAiAccountId
         };
         options.NativeOptions.AuthAccountId = _settings.OpenAiAccountId;
         if (options.TransportKind == OpenAITransportKind.AppServer) {
@@ -247,7 +249,9 @@ internal sealed partial class ReviewRunner {
             Model = _settings.Model,
             NewThread = true,
             ReasoningEffort = _settings.ReasoningEffort,
-            ReasoningSummary = _settings.ReasoningSummary
+            ReasoningSummary = _settings.ReasoningSummary,
+            TelemetryFeature = "reviewer",
+            TelemetrySurface = "cli"
         };
         try {
             var input = ChatInput.FromText(prompt);

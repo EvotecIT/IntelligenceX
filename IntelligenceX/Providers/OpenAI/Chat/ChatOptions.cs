@@ -37,6 +37,8 @@ public sealed class ChatOptions {
         ApprovalPolicy = other.ApprovalPolicy;
         SandboxPolicy = other.SandboxPolicy?.Clone();
         NewThread = other.NewThread;
+        TelemetryFeature = other.TelemetryFeature;
+        TelemetrySurface = other.TelemetrySurface;
         MaxImageBytes = other.MaxImageBytes;
         RequireWorkspaceForFileAccess = other.RequireWorkspaceForFileAccess;
     }
@@ -115,6 +117,14 @@ public sealed class ChatOptions {
     /// Whether to force a new thread.
     /// </summary>
     public bool NewThread { get; set; }
+    /// <summary>
+    /// Optional feature label used for internal IntelligenceX telemetry.
+    /// </summary>
+    public string? TelemetryFeature { get; set; }
+    /// <summary>
+    /// Optional surface label used for internal IntelligenceX telemetry.
+    /// </summary>
+    public string? TelemetrySurface { get; set; }
     /// <summary>
     /// Maximum allowed image size in bytes.
     /// </summary>
