@@ -117,6 +117,7 @@ Definition of done: you can install/run the tray app, chat, see tool traces, and
 ## Milestone I: Engineering Quality (Typed, AOT-Friendly, Testable)
 - [x] Nullable enabled, warnings as errors, XML docs (where code exists)
 - [x] Keep files reasonably sized (target <= ~700 LOC)
+- [x] Add an OfficeIMO markdown package-mode CI gate so package adoption is validated without a local OfficeIMO checkout
 - [ ] Prefer enums/flags over magic strings in tool outputs where it’s stable
 - [ ] Avoid reflection in hot paths where possible (AOT-friendly patterns)
 - [ ] Add unit tests for tool filters and edge cases (accountExpires, nested groups, paging)

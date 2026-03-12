@@ -26,7 +26,7 @@ jobs:
                     - macos-latest
         name: '${{ matrix.os }}'
         runs-on: ${{ matrix.os }}
-        timeout-minutes: 20
+        timeout-minutes: 30
         steps:
             - name: Checkout code
               uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -45,6 +45,12 @@ jobs:
             - name: Run tests
               run: dotnet test ${{ env.CI_SOLUTION }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal --logger trx --collect:"XPlat Code Coverage"
               timeout-minutes: 10
+
+            - name: Enforce OfficeIMO markdown package-mode gate
+              if: matrix.os == 'windows-latest'
+              shell: pwsh
+              run: pwsh -ExecutionPolicy Bypass -File ./.github/scripts/run-officeimo-markdown-package-gate.ps1
+              timeout-minutes: 25
 
             - name: Enforce write-tool schema helper contract
               if: matrix.os == 'ubuntu-latest'
