@@ -433,7 +433,7 @@
       return execution.scope === "local_only";
     }
     if (localityFilter === "mixed") {
-      return execution.scope === "local_or_remote";
+      return execution.scope === "local_only" || execution.scope === "local_or_remote";
     }
 
     return true;

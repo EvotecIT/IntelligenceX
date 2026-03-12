@@ -770,6 +770,7 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("function toolMatchesLocalityFilter(tool, localityFilter)", script, StringComparison.Ordinal);
         Assert.Contains("var localityFilter = normalizeToolLocalityFilter(state.options.toolLocalityFilter);", script, StringComparison.Ordinal);
         Assert.Contains("tools = tools.filter(function(tool) { return toolMatchesLocalityFilter(tool, localityFilter); });", script, StringComparison.Ordinal);
+        Assert.Contains("return execution.scope === \"local_only\" || execution.scope === \"local_or_remote\";", script, StringComparison.Ordinal);
         Assert.Contains("function resolveToolExecutionBadgeModel(tool)", script, StringComparison.Ordinal);
         Assert.Contains("function summarizePackExecutionLocality(tools)", script, StringComparison.Ordinal);
         Assert.Contains("executionPill.className = \"options-pill options-pill-execution options-pill-execution-\" + execution.status;", script, StringComparison.Ordinal);
