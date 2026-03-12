@@ -1,7 +1,9 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Text;
+using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Visualization.Heatmaps;
 
@@ -16,9 +18,7 @@ public static class UsageTelemetryOverviewHtmlRenderer {
             throw new ArgumentNullException(nameof(overview));
         }
 
-        var sb = new StringBuilder(16 * 1024);
-        var heroCard = overview.Cards.FirstOrDefault();
-        var secondaryCards = overview.Cards.Skip(1).ToArray();
+        var sb = new StringBuilder(24 * 1024);
         sb.AppendLine("<!doctype html>");
         sb.AppendLine("<html lang=\"en\">");
         sb.AppendLine("<head>");
@@ -26,182 +26,215 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
         sb.Append("  <title>").Append(Html(overview.Title)).AppendLine("</title>");
         sb.AppendLine("  <style>");
-        sb.AppendLine("    :root { color-scheme: dark; --bg:#09111a; --bg-2:#111b28; --panel:#101a28; --panel-2:#172335; --panel-3:#1f2c42; --text:#f3f6fb; --muted:#94a3b8; --accent:#8bd450; --accent-2:#38bdf8; --accent-3:#f59e0b; --border:rgba(148,163,184,.18); --shadow:0 22px 60px rgba(0,0,0,.34); }");
-        sb.AppendLine("    * { box-sizing: border-box; }");
-        sb.AppendLine("    body { margin:0; font-family: \"Space Grotesk\", \"Aptos\", \"IBM Plex Sans\", \"Segoe UI\", sans-serif; background: radial-gradient(circle at top left, rgba(56,189,248,.20), transparent 26%), radial-gradient(circle at top right, rgba(139,212,80,.18), transparent 28%), linear-gradient(180deg, var(--bg-2), var(--bg)); color:var(--text); }");
-        sb.AppendLine("    body::before { content:\"\"; position:fixed; inset:0; background-image: linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px); background-size: 28px 28px; opacity:.18; pointer-events:none; }");
-        sb.AppendLine("    .page { position:relative; max-width: 1440px; margin: 0 auto; padding: 32px 24px 56px; }");
-        sb.AppendLine("    .eyebrow { display:inline-flex; gap:8px; align-items:center; padding:8px 12px; border-radius:999px; border:1px solid rgba(139,212,80,.26); background:rgba(139,212,80,.08); color:#dff6c3; font-size:12px; letter-spacing:.12em; text-transform:uppercase; }");
-        sb.AppendLine("    .hero { margin-top:18px; display:grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, .9fr); gap:18px; }");
-        sb.AppendLine("    .hero-panel, .hero-aside, .card, .heatmap, .breakdown { backdrop-filter: blur(10px); }");
-        sb.AppendLine("    .hero-panel { padding:28px; border-radius:28px; border:1px solid var(--border); background:linear-gradient(145deg, rgba(56,189,248,.14), rgba(16,26,40,.95) 34%, rgba(139,212,80,.08)); box-shadow:var(--shadow); }");
-        sb.AppendLine("    h1 { margin:0; font-size: clamp(34px, 5vw, 58px); line-height:1; letter-spacing:-.04em; }");
-        sb.AppendLine("    .subtitle { margin-top:12px; color:var(--muted); font-size:16px; max-width: 72ch; }");
-        sb.AppendLine("    .meta { margin-top: 18px; display:flex; flex-wrap:wrap; gap:10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; }");
-        sb.AppendLine("    .meta-pill { padding:8px 12px; border-radius:999px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); }");
-        sb.AppendLine("    .spotlight { margin-top:28px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:end; }");
-        sb.AppendLine("    .spotlight-label { color:var(--muted); text-transform:uppercase; letter-spacing:.12em; font-size:12px; }");
-        sb.AppendLine("    .spotlight-value { margin-top:10px; font-size: clamp(44px, 7vw, 86px); line-height:.94; font-weight:800; letter-spacing:-.05em; }");
-        sb.AppendLine("    .spotlight-subtitle { margin-top:10px; color:var(--muted); font-size:14px; max-width:32ch; }");
-        sb.AppendLine("    .spotlight-accent { min-width: 180px; padding:18px; border-radius:22px; background:linear-gradient(180deg, rgba(245,158,11,.18), rgba(15,23,42,.5)); border:1px solid rgba(245,158,11,.20); }");
-        sb.AppendLine("    .spotlight-accent strong { display:block; font-size:24px; line-height:1.05; }");
-        sb.AppendLine("    .spotlight-accent span { display:block; margin-top:8px; color:var(--muted); font-size:13px; }");
-        sb.AppendLine("    .hero-aside { padding:18px; border-radius:28px; border:1px solid var(--border); background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)); box-shadow:var(--shadow); }");
-        sb.AppendLine("    .hero-aside-title { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em; }");
-        sb.AppendLine("    .cards { margin-top: 14px; display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }");
-        sb.AppendLine("    .hero-aside .cards { grid-template-columns: 1fr; }");
-        sb.AppendLine("    .card { background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); border:1px solid rgba(255,255,255,.08); border-radius: 22px; padding: 18px; }");
-        sb.AppendLine("    .card-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; }");
-        sb.AppendLine("    .card-value { margin-top: 10px; font-size: 28px; font-weight: 700; line-height: 1.05; }");
-        sb.AppendLine("    .card-subtitle { margin-top: 8px; color: var(--muted); font-size: 13px; }");
-        sb.AppendLine("    .section-head { margin: 42px 0 16px; display:flex; justify-content:space-between; gap:16px; align-items:end; }");
-        sb.AppendLine("    .section-title { margin:0; font-size: 24px; letter-spacing:-.03em; }");
-        sb.AppendLine("    .section-caption { color:var(--muted); font-size:14px; }");
-        sb.AppendLine("    .heatmaps { display:grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 18px; }");
-        sb.AppendLine("    .heatmap { border:1px solid var(--border); border-radius: 24px; overflow:hidden; background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(15,23,42,.7)); box-shadow:var(--shadow); }");
-        sb.AppendLine("    .heatmap-header { padding: 18px 20px 10px; border-bottom:1px solid rgba(255,255,255,.05); background:linear-gradient(180deg, rgba(56,189,248,.10), transparent); }");
-        sb.AppendLine("    .heatmap-label { font-size: 20px; font-weight: 700; letter-spacing:-.02em; }");
-        sb.AppendLine("    .heatmap-caption { margin-top: 6px; color: var(--muted); font-size: 13px; }");
-        sb.AppendLine("    .heatmap-frame { padding: 12px; }");
-        sb.AppendLine("    .heatmap-frame img { display:block; width:100%; height:auto; border-radius: 18px; background:#0b1220; border:1px solid rgba(255,255,255,.05); }");
-        sb.AppendLine("    .breakdowns { margin-top: 8px; display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }");
-        sb.AppendLine("    .breakdown { border:1px solid var(--border); border-radius: 22px; padding: 18px; background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)); box-shadow:var(--shadow); }");
-        sb.AppendLine("    .breakdown h3 { margin:0 0 14px; font-size: 15px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }");
-        sb.AppendLine("    .breakdown-list { display:flex; flex-direction:column; gap:12px; }");
-        sb.AppendLine("    .breakdown-row { display:grid; gap:6px; }");
-        sb.AppendLine("    .breakdown-labels { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }");
-        sb.AppendLine("    .breakdown-name { font-weight:700; }");
-        sb.AppendLine("    .breakdown-value { color:var(--muted); font-size:13px; }");
-        sb.AppendLine("    .breakdown-bar { height:9px; border-radius:999px; background:rgba(255,255,255,.06); overflow:hidden; }");
-        sb.AppendLine("    .breakdown-fill { height:100%; border-radius:999px; background:linear-gradient(90deg, var(--accent-2), var(--accent)); min-width:2px; }");
-        sb.AppendLine("    .empty-note { color: var(--muted); font-size: 13px; }");
-        sb.AppendLine("    .footer-note { margin-top:28px; color:var(--muted); font-size:13px; }");
-        sb.AppendLine("    @media (max-width: 980px) { .hero { grid-template-columns:1fr; } .hero-aside .cards { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); } }");
-        sb.AppendLine("    @media (max-width: 720px) { .page { padding: 18px 14px 32px; } .heatmaps { grid-template-columns: 1fr; } .spotlight { grid-template-columns:1fr; } .spotlight-accent { min-width:0; } }");
+        sb.AppendLine("    :root { --bg:#f2f2f2; --panel:#ffffff; --ink:#152038; --muted:#787878; --line:#e5e5e5; --soft:#ececec; }");
+        sb.AppendLine("    * { box-sizing:border-box; }");
+        sb.AppendLine("    body { margin:0; background:var(--bg); color:var(--ink); font-family:\"Aptos\",\"IBM Plex Sans\",\"Segoe UI\",sans-serif; }");
+        sb.AppendLine("    .page { max-width:1460px; margin:0 auto; padding:36px 38px 48px; }");
+        sb.AppendLine("    .hero { display:flex; justify-content:space-between; gap:24px; align-items:flex-end; margin-bottom:28px; }");
+        sb.AppendLine("    .hero h1 { margin:0; font-size:34px; line-height:1; letter-spacing:-.03em; }");
+        sb.AppendLine("    .hero p { margin:10px 0 0; color:var(--muted); max-width:70ch; font-size:14px; }");
+        sb.AppendLine("    .hero-meta { display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:18px; min-width:420px; }");
+        sb.AppendLine("    .hero-stat { text-align:right; }");
+        sb.AppendLine("    .hero-label, .mini-label, .metric-label, .legend-copy { color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }");
+        sb.AppendLine("    .hero-value { margin-top:4px; font-size:20px; font-weight:800; }");
+        sb.AppendLine("    .provider-section { padding:6px 0 42px; border-top:1px solid transparent; }");
+        sb.AppendLine("    .provider-header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin-bottom:18px; }");
+        sb.AppendLine("    .provider-title { margin:0; font-size:40px; line-height:1; letter-spacing:-.04em; }");
+        sb.AppendLine("    .provider-subtitle { margin-top:8px; color:var(--muted); font-size:14px; }");
+        sb.AppendLine("    .provider-metrics { display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:22px; min-width:420px; }");
+        sb.AppendLine("    .provider-metric { text-align:right; }");
+        sb.AppendLine("    .provider-metric .metric-value { margin-top:4px; font-size:26px; line-height:1; font-weight:800; letter-spacing:-.03em; }");
+        sb.AppendLine("    .provider-heatmap { margin:0; }");
+        sb.AppendLine("    .provider-heatmap img { width:100%; height:auto; display:block; }");
+        sb.AppendLine("    .provider-note { margin:12px 0 0 72px; color:var(--muted); font-size:14px; }");
+        sb.AppendLine("    .provider-legend { display:flex; align-items:center; gap:10px; margin:18px 0 0 48px; }");
+        sb.AppendLine("    .legend-swatch { width:20px; height:20px; border-radius:6px; display:inline-block; background:var(--soft); }");
+        sb.AppendLine("    .provider-footer { display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:28px; margin-top:34px; }");
+        sb.AppendLine("    .mini-card { min-height:72px; }");
+        sb.AppendLine("    .mini-value { margin-top:6px; font-size:24px; line-height:1.15; font-weight:800; letter-spacing:-.03em; }");
+        sb.AppendLine("    .mini-value span { color:var(--muted); font-weight:500; }");
+        sb.AppendLine("    .divider { height:1px; background:var(--line); margin:8px 0 30px; }");
+        sb.AppendLine("    .supporting { margin-top:24px; padding-top:22px; border-top:1px solid var(--line); }");
+        sb.AppendLine("    .supporting h2 { margin:0 0 8px; font-size:18px; letter-spacing:-.02em; }");
+        sb.AppendLine("    .supporting p { margin:0 0 18px; color:var(--muted); font-size:14px; }");
+        sb.AppendLine("    .supporting-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }");
+        sb.AppendLine("    .supporting-card { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:16px; }");
+        sb.AppendLine("    .supporting-card h3 { margin:0 0 8px; font-size:16px; letter-spacing:-.02em; }");
+        sb.AppendLine("    .supporting-card p { margin:0 0 12px; color:var(--muted); font-size:13px; }");
+        sb.AppendLine("    .supporting-card img { width:100%; display:block; border-radius:14px; background:var(--bg); }");
+        sb.AppendLine("    .footnote { margin-top:24px; color:var(--muted); font-size:13px; }");
+        sb.AppendLine("    @media (max-width: 1080px) { .hero, .provider-header { flex-direction:column; align-items:flex-start; } .hero-meta, .provider-metrics { min-width:0; width:100%; } .hero-stat, .provider-metric { text-align:left; } .provider-footer { grid-template-columns:repeat(2,minmax(180px,1fr)); } .provider-note, .provider-legend { margin-left:0; } }");
+        sb.AppendLine("    @media (max-width: 680px) { .page { padding:22px 18px 32px; } .hero-meta, .provider-metrics, .provider-footer { grid-template-columns:1fr; gap:14px; } .provider-title { font-size:32px; } }");
         sb.AppendLine("  </style>");
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
         sb.AppendLine("  <main class=\"page\">");
-        sb.AppendLine("    <div class=\"eyebrow\">Usage telemetry report</div>");
-        sb.AppendLine("    <section class=\"hero\">");
-        sb.AppendLine("      <article class=\"hero-panel\">");
-        sb.Append("        <h1>").Append(Html(overview.Title)).AppendLine("</h1>");
-        if (!string.IsNullOrWhiteSpace(overview.Subtitle)) {
-            sb.Append("        <div class=\"subtitle\">").Append(Html(overview.Subtitle!)).AppendLine("</div>");
-        }
-        sb.AppendLine("        <div class=\"meta\">");
-        sb.Append("          <div class=\"meta-pill\">Metric: ").Append(Html(overview.Metric.ToString())).AppendLine("</div>");
-        sb.Append("          <div class=\"meta-pill\">Units: ").Append(Html(overview.Units)).AppendLine("</div>");
-        sb.Append("          <div class=\"meta-pill\">Range: ").Append(Html(FormatDay(overview.Summary.StartDayUtc))).Append(" -> ").Append(Html(FormatDay(overview.Summary.EndDayUtc))).AppendLine("</div>");
-        sb.AppendLine("        </div>");
-        if (heroCard is not null) {
-            sb.AppendLine("        <div class=\"spotlight\">");
-            sb.AppendLine("          <div>");
-            sb.Append("            <div class=\"spotlight-label\">").Append(Html(heroCard.Label)).AppendLine("</div>");
-            sb.Append("            <div class=\"spotlight-value\">").Append(Html(heroCard.Value)).AppendLine("</div>");
-            if (!string.IsNullOrWhiteSpace(heroCard.Subtitle)) {
-                sb.Append("            <div class=\"spotlight-subtitle\">").Append(Html(heroCard.Subtitle!)).AppendLine("</div>");
-            }
-            sb.AppendLine("          </div>");
-            sb.AppendLine("          <div class=\"spotlight-accent\">");
-            sb.Append("            <strong>").Append(Html(overview.Summary.ActiveDays.ToString("0"))).AppendLine(" active day(s)</strong>");
-            sb.Append("            <span>Peak: ").Append(Html(FormatDay(overview.Summary.PeakDayUtc))).Append(" / ").Append(Html(overview.Summary.PeakValue.ToString("0.##"))).AppendLine("</span>");
-            sb.AppendLine("          </div>");
-            sb.AppendLine("        </div>");
-        }
-        sb.AppendLine("      </article>");
-        sb.AppendLine("      <aside class=\"hero-aside\">");
-        sb.AppendLine("        <div class=\"hero-aside-title\">Quick stats</div>");
-        sb.AppendLine("        <section class=\"cards\">");
-        foreach (var card in secondaryCards) {
-            AppendCard(sb, card, "          ");
-        }
-        sb.AppendLine("        </section>");
-        sb.AppendLine("      </aside>");
-        sb.AppendLine("    </section>");
+        AppendHero(sb, overview);
 
-        sb.AppendLine("    <div class=\"section-head\">");
-        sb.AppendLine("      <div>");
-        sb.AppendLine("        <h2 class=\"section-title\">Heatmaps</h2>");
-        sb.AppendLine("        <div class=\"section-caption\">Daily intensity and dominant breakdown lane from the canonical telemetry ledger.</div>");
-        sb.AppendLine("      </div>");
-        sb.AppendLine("    </div>");
-        sb.AppendLine("    <section class=\"heatmaps\">");
-        foreach (var heatmap in overview.Heatmaps) {
-            sb.AppendLine("      <article class=\"heatmap\">");
-            sb.AppendLine("        <div class=\"heatmap-header\">");
-            sb.Append("          <div class=\"heatmap-label\">").Append(Html(heatmap.Label)).AppendLine("</div>");
-            if (!string.IsNullOrWhiteSpace(heatmap.Document.Subtitle)) {
-                sb.Append("          <div class=\"heatmap-caption\">").Append(Html(heatmap.Document.Subtitle!)).AppendLine("</div>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class=\"heatmap-frame\">");
-            sb.Append("          <img src=\"").Append(Html(heatmap.Key)).Append(".svg\" alt=\"").Append(Html(heatmap.Label)).AppendLine("\">");
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </article>");
+        foreach (var providerSection in overview.ProviderSections) {
+            AppendProviderSection(sb, providerSection);
         }
-        sb.AppendLine("    </section>");
 
-        sb.AppendLine("    <div class=\"section-head\">");
-        sb.AppendLine("      <div>");
-        sb.AppendLine("        <h2 class=\"section-title\">Top Breakdowns</h2>");
-        sb.AppendLine("        <div class=\"section-caption\">Where the volume came from across providers, accounts, people, models, and surfaces.</div>");
-        sb.AppendLine("      </div>");
-        sb.AppendLine("    </div>");
-        sb.AppendLine("    <section class=\"breakdowns\">");
-        AppendBreakdown(sb, "Providers", overview.Summary.ProviderBreakdown, overview.Summary.TotalValue);
-        AppendBreakdown(sb, "Accounts", overview.Summary.AccountBreakdown, overview.Summary.TotalValue);
-        AppendBreakdown(sb, "People", overview.Summary.PersonBreakdown, overview.Summary.TotalValue);
-        AppendBreakdown(sb, "Models", overview.Summary.ModelBreakdown, overview.Summary.TotalValue);
-        AppendBreakdown(sb, "Surfaces", overview.Summary.SurfaceBreakdown, overview.Summary.TotalValue);
-        sb.AppendLine("    </section>");
-        sb.AppendLine("    <div class=\"footer-note\">Built from provider-neutral telemetry events so the same report pipeline can power Codex, Claude, IX-native usage, and future compatible providers.</div>");
+        if (overview.Heatmaps.Count > 0) {
+            sb.AppendLine("    <section class=\"supporting\">");
+            sb.AppendLine("      <h2>Supporting Breakdowns</h2>");
+            sb.AppendLine("      <p>These provider-neutral overlays still ride on the same telemetry ledger, so we can compare surfaces, accounts, people, and models when needed.</p>");
+            sb.AppendLine("      <div class=\"supporting-grid\">");
+            foreach (var heatmap in overview.Heatmaps) {
+                sb.AppendLine("        <article class=\"supporting-card\">");
+                sb.Append("          <h3>").Append(Html(heatmap.Label)).AppendLine("</h3>");
+                if (!string.IsNullOrWhiteSpace(heatmap.Document.Subtitle)) {
+                    sb.Append("          <p>").Append(Html(heatmap.Document.Subtitle!)).AppendLine("</p>");
+                }
+                sb.Append("          <img src=\"").Append(Html(heatmap.Key)).Append(".svg\" alt=\"").Append(Html(heatmap.Label)).AppendLine("\">");
+                sb.AppendLine("        </article>");
+            }
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </section>");
+        }
+
+        sb.AppendLine("    <div class=\"footnote\">Built from the provider-neutral telemetry ledger, so the same report format can work for Codex, Claude, IX-native usage, and future compatible providers.</div>");
         sb.AppendLine("  </main>");
         sb.AppendLine("</body>");
         sb.AppendLine("</html>");
         return sb.ToString();
     }
 
-    private static void AppendCard(StringBuilder sb, UsageTelemetryOverviewCard card, string indent) {
-        sb.AppendLine(indent + "<article class=\"card\">");
-        sb.Append(indent).Append("  <div class=\"card-label\">").Append(Html(card.Label)).AppendLine("</div>");
-        sb.Append(indent).Append("  <div class=\"card-value\">").Append(Html(card.Value)).AppendLine("</div>");
-        if (!string.IsNullOrWhiteSpace(card.Subtitle)) {
-            sb.Append(indent).Append("  <div class=\"card-subtitle\">").Append(Html(card.Subtitle!)).AppendLine("</div>");
+    private static void AppendHero(StringBuilder sb, UsageTelemetryOverviewDocument overview) {
+        sb.AppendLine("    <section class=\"hero\">");
+        sb.AppendLine("      <div>");
+        sb.Append("        <h1>").Append(Html(overview.Title)).AppendLine("</h1>");
+        if (!string.IsNullOrWhiteSpace(overview.Subtitle)) {
+            sb.Append("        <p>").Append(Html(overview.Subtitle!)).AppendLine("</p>");
         }
-        sb.AppendLine(indent + "</article>");
+        sb.AppendLine("      </div>");
+        sb.AppendLine("      <div class=\"hero-meta\">");
+        AppendHeroStat(sb, "Range", FormatRange(overview.Summary.StartDayUtc, overview.Summary.EndDayUtc));
+        AppendHeroStat(sb, "Providers", overview.ProviderSections.Count.ToString(CultureInfo.InvariantCulture));
+        AppendHeroStat(sb, "Total Tokens", FormatCompact(overview.Summary.TotalValue));
+        sb.AppendLine("      </div>");
+        sb.AppendLine("    </section>");
+        sb.AppendLine("    <div class=\"divider\"></div>");
     }
 
-    private static void AppendBreakdown(StringBuilder sb, string title, System.Collections.Generic.IReadOnlyList<IntelligenceX.Telemetry.Usage.UsageSummaryBreakdownEntry> entries, decimal totalValue) {
-        sb.AppendLine("      <article class=\"breakdown\">");
-        sb.Append("        <h3>").Append(Html(title)).AppendLine("</h3>");
-        if (entries.Count == 0) {
-            sb.AppendLine("        <div class=\"empty-note\">No data</div>");
-        } else {
-            var total = totalValue <= 0 ? entries.Max(entry => entry.Value) : totalValue;
-            sb.AppendLine("        <div class=\"breakdown-list\">");
-            foreach (var entry in entries.Take(5)) {
-                var share = total <= 0 ? 0 : Math.Max(0, Math.Min(1, entry.Value / total));
-                sb.AppendLine("          <div class=\"breakdown-row\">");
-                sb.AppendLine("            <div class=\"breakdown-labels\">");
-                sb.Append("              <span class=\"breakdown-name\">").Append(Html(entry.Key)).AppendLine("</span>");
-                sb.Append("              <span class=\"breakdown-value\">").Append(Html(entry.Value.ToString("0.##"))).Append(" • ").Append(Html((share * 100m).ToString("0.#"))).AppendLine("%</span>");
-                sb.AppendLine("            </div>");
-                sb.AppendLine("            <div class=\"breakdown-bar\">");
-                sb.Append("              <div class=\"breakdown-fill\" style=\"width:").Append((share * 100m).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).AppendLine("%\"></div>");
-                sb.AppendLine("            </div>");
-                sb.AppendLine("          </div>");
-            }
-            sb.AppendLine("        </div>");
+    private static void AppendHeroStat(StringBuilder sb, string label, string value) {
+        sb.AppendLine("        <div class=\"hero-stat\">");
+        sb.Append("          <div class=\"hero-label\">").Append(Html(label.ToUpperInvariant())).AppendLine("</div>");
+        sb.Append("          <div class=\"hero-value\">").Append(Html(value)).AppendLine("</div>");
+        sb.AppendLine("        </div>");
+    }
+
+    private static void AppendProviderSection(StringBuilder sb, UsageTelemetryOverviewProviderSection section) {
+        sb.AppendLine("    <section class=\"provider-section\">");
+        sb.AppendLine("      <div class=\"provider-header\">");
+        sb.AppendLine("        <div>");
+        sb.Append("          <h2 class=\"provider-title\">").Append(Html(section.Title)).AppendLine("</h2>");
+        sb.Append("          <div class=\"provider-subtitle\">").Append(Html(section.Subtitle)).AppendLine("</div>");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("        <div class=\"provider-metrics\">");
+        AppendProviderMetric(sb, "Input Tokens", FormatCompact(section.InputTokens));
+        AppendProviderMetric(sb, "Output Tokens", FormatCompact(section.OutputTokens));
+        AppendProviderMetric(sb, "Total Tokens", FormatCompact(section.TotalTokens));
+        sb.AppendLine("        </div>");
+        sb.AppendLine("      </div>");
+        sb.AppendLine("      <figure class=\"provider-heatmap\">");
+        sb.Append("        <img src=\"").Append(Html(section.Key)).Append(".svg\" alt=\"").Append(Html(section.Title)).AppendLine(" usage heatmap\">");
+        sb.AppendLine("      </figure>");
+        if (!string.IsNullOrWhiteSpace(section.Note)) {
+            sb.Append("      <div class=\"provider-note\">").Append(Html(section.Note!)).AppendLine("</div>");
         }
-        sb.AppendLine("      </article>");
+        AppendProviderLegend(sb, section.ProviderId);
+        sb.AppendLine("      <div class=\"provider-footer\">");
+        AppendMiniCard(sb, "Most Used Model", section.MostUsedModel);
+        AppendMiniCard(sb, "Recent Use (Last 30 Days)", section.RecentModel);
+        AppendMiniMetricCard(sb, "Longest Streak", section.LongestStreakDays + " days");
+        AppendMiniMetricCard(sb, "Current Streak", section.CurrentStreakDays + " days");
+        sb.AppendLine("      </div>");
+        sb.AppendLine("    </section>");
+    }
+
+    private static void AppendProviderMetric(StringBuilder sb, string label, string value) {
+        sb.AppendLine("          <div class=\"provider-metric\">");
+        sb.Append("            <div class=\"metric-label\">").Append(Html(label.ToUpperInvariant())).AppendLine("</div>");
+        sb.Append("            <div class=\"metric-value\">").Append(Html(value)).AppendLine("</div>");
+        sb.AppendLine("          </div>");
+    }
+
+    private static void AppendProviderLegend(StringBuilder sb, string providerId) {
+        var palette = ResolveLegendColors(providerId);
+        sb.AppendLine("      <div class=\"provider-legend\">");
+        sb.AppendLine("        <span class=\"legend-copy\">Less</span>");
+        foreach (var color in palette) {
+            sb.Append("        <span class=\"legend-swatch\" style=\"background:").Append(Html(color)).AppendLine("\"></span>");
+        }
+        sb.AppendLine("        <span class=\"legend-copy\">More</span>");
+        sb.AppendLine("      </div>");
+    }
+
+    private static void AppendMiniCard(StringBuilder sb, string label, UsageTelemetryOverviewModelHighlight? highlight) {
+        sb.AppendLine("        <article class=\"mini-card\">");
+        sb.Append("          <div class=\"mini-label\">").Append(Html(label.ToUpperInvariant())).AppendLine("</div>");
+        if (highlight is null) {
+            sb.AppendLine("          <div class=\"mini-value\">n/a</div>");
+        } else {
+            sb.Append("          <div class=\"mini-value\">").Append(Html(highlight.Model)).Append(" <span>(").Append(Html(FormatCompact(highlight.TotalTokens))).AppendLine(")</span></div>");
+        }
+        sb.AppendLine("        </article>");
+    }
+
+    private static void AppendMiniMetricCard(StringBuilder sb, string label, string value) {
+        sb.AppendLine("        <article class=\"mini-card\">");
+        sb.Append("          <div class=\"mini-label\">").Append(Html(label.ToUpperInvariant())).AppendLine("</div>");
+        sb.Append("          <div class=\"mini-value\">").Append(Html(value)).AppendLine("</div>");
+        sb.AppendLine("        </article>");
+    }
+
+    private static string[] ResolveLegendColors(string providerId) {
+        return providerId.Trim().ToLowerInvariant() switch {
+            "claude" => new[] { "#e8e8e8", "#f5d8b0", "#f3ba73", "#fb8c1d", "#c65102" },
+            "codex" => new[] { "#e8e8e8", "#cfd6ff", "#98a8ff", "#6268f1", "#2f2a93" },
+            _ => new[] { "#e8e8e8", "#d6ecd3", "#9be9a8", "#40c463", "#216e39" }
+        };
+    }
+
+    private static string FormatRange(DateTime? startDayUtc, DateTime? endDayUtc) {
+        if (!startDayUtc.HasValue || !endDayUtc.HasValue) {
+            return "n/a";
+        }
+
+        return startDayUtc.Value.ToString("yyyy-MM-dd") + " to " + endDayUtc.Value.ToString("yyyy-MM-dd");
+    }
+
+    private static string FormatCompact(decimal value) {
+        if (value <= 0m) {
+            return "0";
+        }
+
+        return FormatCompact((double)value);
+    }
+
+    private static string FormatCompact(long value) {
+        if (value <= 0L) {
+            return "0";
+        }
+
+        return FormatCompact((double)value);
+    }
+
+    private static string FormatCompact(double value) {
+        if (value >= 1_000_000_000d) {
+            return (value / 1_000_000_000d).ToString(value >= 10_000_000_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "B";
+        }
+        if (value >= 1_000_000d) {
+            return (value / 1_000_000d).ToString(value >= 10_000_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "M";
+        }
+        if (value >= 1_000d) {
+            return (value / 1_000d).ToString(value >= 10_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "K";
+        }
+        return value.ToString("0", CultureInfo.InvariantCulture);
     }
 
     private static string Html(string value) {
         return WebUtility.HtmlEncode(value ?? string.Empty);
-    }
-
-    private static string FormatDay(DateTime? value) {
-        return value.HasValue ? value.Value.ToString("yyyy-MM-dd") : "n/a";
     }
 }

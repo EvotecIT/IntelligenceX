@@ -15,6 +15,8 @@ internal static partial class Program {
                 PersonLabel = "Przemek",
                 Surface = "cli",
                 Model = "gpt-5-codex",
+                InputTokens = 900,
+                OutputTokens = 300,
                 TotalTokens = 1200,
                 TruthLevel = UsageTruthLevel.Exact
             },
@@ -23,6 +25,8 @@ internal static partial class Program {
                 PersonLabel = "Przemek",
                 Surface = "chat",
                 Model = "claude-opus",
+                InputTokens = 410,
+                OutputTokens = 90,
                 TotalTokens = 500,
                 TruthLevel = UsageTruthLevel.Exact
             },
@@ -31,6 +35,8 @@ internal static partial class Program {
                 PersonLabel = "Przemek",
                 Surface = "reviewer",
                 Model = "gpt-5.4",
+                InputTokens = 240,
+                OutputTokens = 60,
                 TotalTokens = 300,
                 TruthLevel = UsageTruthLevel.Exact
             }
@@ -51,8 +57,18 @@ internal static partial class Program {
         AssertEqual("2000", overview.Cards[0].Value, "usage overview total card value");
         AssertEqual("2026-03-10", overview.Cards.Single(card => card.Key == "peak_day").Value, "usage overview peak day card");
         AssertEqual(4, overview.Heatmaps.Count, "usage overview heatmap count");
+        AssertEqual(3, overview.ProviderSections.Count, "usage overview provider section count");
+        AssertEqual("Codex", overview.ProviderSections[0].Title, "usage overview first provider section title");
+        AssertEqual(900L, overview.ProviderSections[0].InputTokens, "usage overview codex input tokens");
+        AssertEqual(300L, overview.ProviderSections[0].OutputTokens, "usage overview codex output tokens");
+        AssertEqual("gpt-5-codex", overview.ProviderSections[0].MostUsedModel?.Model, "usage overview codex most used model");
+        AssertEqual(1, overview.ProviderSections[0].LongestStreakDays, "usage overview codex longest streak");
+        AssertEqual("provider-codex", overview.ProviderSections[0].Key, "usage overview codex section key");
         AssertEqual("surface", overview.Heatmaps[0].Key, "usage overview first heatmap key");
         AssertContainsText(overview.Heatmaps.Single(heatmap => heatmap.Key == "provider").Document.Title, "By provider", "usage overview provider heatmap title");
-        AssertContainsText(JsonLite.Serialize(JsonValue.From(overview.ToJson())), "\"key\":\"person\"", "usage overview json person heatmap");
+        var json = JsonLite.Serialize(JsonValue.From(overview.ToJson()));
+        AssertContainsText(json, "\"key\":\"person\"", "usage overview json person heatmap");
+        AssertContainsText(json, "\"providerSections\":[", "usage overview json provider sections");
+        AssertContainsText(json, "\"title\":\"Codex\"", "usage overview json codex provider section");
     }
 }

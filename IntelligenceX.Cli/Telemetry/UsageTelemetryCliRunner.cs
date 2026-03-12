@@ -661,6 +661,15 @@ internal static class UsageTelemetryCliRunner {
             lines.Add("- " + heatmap.Label + ": " + heatmap.Document.Title);
         }
 
+        if (overview.ProviderSections.Count > 0) {
+            lines.Add("Providers:");
+            foreach (var section in overview.ProviderSections) {
+                lines.Add("- " + section.Title + ": total=" + section.TotalTokens.ToString(CultureInfo.InvariantCulture)
+                          + " input=" + section.InputTokens.ToString(CultureInfo.InvariantCulture)
+                          + " output=" + section.OutputTokens.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -683,6 +692,17 @@ internal static class UsageTelemetryCliRunner {
             File.WriteAllText(
                 Path.Combine(outputDirectory, heatmap.Key + ".svg"),
                 HeatmapSvgRenderer.Render(heatmap.Document),
+                new UTF8Encoding(false));
+        }
+
+        foreach (var providerSection in overview.ProviderSections) {
+            File.WriteAllText(
+                Path.Combine(outputDirectory, providerSection.Key + ".json"),
+                JsonLite.Serialize(JsonValue.From(providerSection.Heatmap.ToJson())),
+                new UTF8Encoding(false));
+            File.WriteAllText(
+                Path.Combine(outputDirectory, providerSection.Key + ".svg"),
+                HeatmapSvgRenderer.Render(providerSection.Heatmap),
                 new UTF8Encoding(false));
         }
     }

@@ -105,6 +105,99 @@ public sealed class UsageTelemetryOverviewHeatmap {
 }
 
 /// <summary>
+/// Represents one ranked model usage callout in a provider overview.
+/// </summary>
+public sealed class UsageTelemetryOverviewModelHighlight {
+    public UsageTelemetryOverviewModelHighlight(string model, long totalTokens) {
+        Model = string.IsNullOrWhiteSpace(model) ? "unknown-model" : model.Trim();
+        TotalTokens = Math.Max(0L, totalTokens);
+    }
+
+    public string Model { get; }
+    public long TotalTokens { get; }
+
+    public JsonObject ToJson() {
+        return new JsonObject()
+            .Add("model", Model)
+            .Add("totalTokens", TotalTokens);
+    }
+}
+
+/// <summary>
+/// Represents one provider-specific usage section in the overview.
+/// </summary>
+public sealed class UsageTelemetryOverviewProviderSection {
+    public UsageTelemetryOverviewProviderSection(
+        string key,
+        string providerId,
+        string title,
+        string subtitle,
+        HeatmapDocument heatmap,
+        long inputTokens,
+        long outputTokens,
+        long totalTokens,
+        UsageTelemetryOverviewModelHighlight? mostUsedModel,
+        UsageTelemetryOverviewModelHighlight? recentModel,
+        int longestStreakDays,
+        int currentStreakDays,
+        string? note) {
+        Key = string.IsNullOrWhiteSpace(key) ? "provider" : key.Trim();
+        ProviderId = string.IsNullOrWhiteSpace(providerId) ? "unknown-provider" : providerId.Trim();
+        Title = string.IsNullOrWhiteSpace(title) ? ProviderId : title.Trim();
+        Subtitle = string.IsNullOrWhiteSpace(subtitle) ? "No range" : subtitle.Trim();
+        Heatmap = heatmap ?? throw new ArgumentNullException(nameof(heatmap));
+        InputTokens = Math.Max(0L, inputTokens);
+        OutputTokens = Math.Max(0L, outputTokens);
+        TotalTokens = Math.Max(0L, totalTokens);
+        MostUsedModel = mostUsedModel;
+        RecentModel = recentModel;
+        LongestStreakDays = Math.Max(0, longestStreakDays);
+        CurrentStreakDays = Math.Max(0, currentStreakDays);
+        Note = HeatmapText.NormalizeOptionalText(note);
+    }
+
+    public string Key { get; }
+    public string ProviderId { get; }
+    public string Title { get; }
+    public string Subtitle { get; }
+    public HeatmapDocument Heatmap { get; }
+    public long InputTokens { get; }
+    public long OutputTokens { get; }
+    public long TotalTokens { get; }
+    public UsageTelemetryOverviewModelHighlight? MostUsedModel { get; }
+    public UsageTelemetryOverviewModelHighlight? RecentModel { get; }
+    public int LongestStreakDays { get; }
+    public int CurrentStreakDays { get; }
+    public string? Note { get; }
+
+    public JsonObject ToJson() {
+        var obj = new JsonObject()
+            .Add("key", Key)
+            .Add("providerId", ProviderId)
+            .Add("title", Title)
+            .Add("subtitle", Subtitle)
+            .Add("inputTokens", InputTokens)
+            .Add("outputTokens", OutputTokens)
+            .Add("totalTokens", TotalTokens)
+            .Add("longestStreakDays", LongestStreakDays)
+            .Add("currentStreakDays", CurrentStreakDays)
+            .Add("heatmap", Heatmap.ToJson());
+
+        if (MostUsedModel is not null) {
+            obj.Add("mostUsedModel", MostUsedModel.ToJson());
+        }
+        if (RecentModel is not null) {
+            obj.Add("recentModel", RecentModel.ToJson());
+        }
+        if (!string.IsNullOrWhiteSpace(Note)) {
+            obj.Add("note", Note);
+        }
+
+        return obj;
+    }
+}
+
+/// <summary>
 /// Represents a reusable overview snapshot backed by canonical telemetry usage data.
 /// </summary>
 public sealed class UsageTelemetryOverviewDocument {
@@ -115,7 +208,8 @@ public sealed class UsageTelemetryOverviewDocument {
         string units,
         UsageSummarySnapshot summary,
         IReadOnlyList<UsageTelemetryOverviewCard> cards,
-        IReadOnlyList<UsageTelemetryOverviewHeatmap> heatmaps) {
+        IReadOnlyList<UsageTelemetryOverviewHeatmap> heatmaps,
+        IReadOnlyList<UsageTelemetryOverviewProviderSection>? providerSections = null) {
         Title = string.IsNullOrWhiteSpace(title) ? "Usage Overview" : title.Trim();
         Subtitle = HeatmapText.NormalizeOptionalText(subtitle);
         Metric = metric;
@@ -123,6 +217,7 @@ public sealed class UsageTelemetryOverviewDocument {
         Summary = summary ?? throw new ArgumentNullException(nameof(summary));
         Cards = cards ?? Array.Empty<UsageTelemetryOverviewCard>();
         Heatmaps = heatmaps ?? Array.Empty<UsageTelemetryOverviewHeatmap>();
+        ProviderSections = providerSections ?? Array.Empty<UsageTelemetryOverviewProviderSection>();
     }
 
     public string Title { get; }
@@ -132,6 +227,7 @@ public sealed class UsageTelemetryOverviewDocument {
     public UsageSummarySnapshot Summary { get; }
     public IReadOnlyList<UsageTelemetryOverviewCard> Cards { get; }
     public IReadOnlyList<UsageTelemetryOverviewHeatmap> Heatmaps { get; }
+    public IReadOnlyList<UsageTelemetryOverviewProviderSection> ProviderSections { get; }
 
     public JsonObject ToJson() {
         var obj = new JsonObject()
@@ -155,6 +251,12 @@ public sealed class UsageTelemetryOverviewDocument {
             heatmaps.Add(JsonValue.From(heatmap.ToJson()));
         }
         obj.Add("heatmaps", heatmaps);
+
+        var providerSections = new JsonArray();
+        foreach (var providerSection in ProviderSections) {
+            providerSections.Add(JsonValue.From(providerSection.ToJson()));
+        }
+        obj.Add("providerSections", providerSections);
 
         return obj;
     }
@@ -251,6 +353,9 @@ public sealed class UsageTelemetryOverviewBuilder {
         var units = ResolveUnitsLabel(effectiveOptions.Metric);
         var cards = BuildCards(summary, effectiveOptions.Metric).ToArray();
         var heatmaps = BuildHeatmaps(eventList, summary, title, effectiveOptions).ToArray();
+        var providerSections = effectiveOptions.Metric == UsageSummaryMetric.TotalTokens
+            ? BuildProviderSections(eventList)
+            : Array.Empty<UsageTelemetryOverviewProviderSection>();
 
         return new UsageTelemetryOverviewDocument(
             title,
@@ -259,7 +364,180 @@ public sealed class UsageTelemetryOverviewBuilder {
             units,
             summary,
             cards,
-            heatmaps);
+            heatmaps,
+            providerSections);
+    }
+
+    private static IReadOnlyList<UsageTelemetryOverviewProviderSection> BuildProviderSections(
+        IReadOnlyList<UsageEventRecord> events) {
+        return events
+            .GroupBy(static record => NormalizeOptional(record.ProviderId) ?? "unknown-provider", StringComparer.OrdinalIgnoreCase)
+            .Select(BuildProviderSection)
+            .OrderByDescending(static section => section.TotalTokens)
+            .ThenBy(static section => section.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static UsageTelemetryOverviewProviderSection BuildProviderSection(
+        IGrouping<string, UsageEventRecord> providerGroup) {
+        var providerId = providerGroup.Key;
+        var events = providerGroup
+            .Where(static record => record is not null)
+            .OrderBy(static record => record.TimestampUtc)
+            .ToArray();
+
+        var title = ResolveProviderTitle(providerId);
+        var subtitle = BuildRangeLabel(
+            events.Length == 0 ? null : events[0].TimestampUtc.UtcDateTime.Date,
+            events.Length == 0 ? null : events[events.Length - 1].TimestampUtc.UtcDateTime.Date);
+        var inputTokens = events.Sum(static record => record.InputTokens ?? 0L);
+        var outputTokens = events.Sum(static record => record.OutputTokens ?? 0L);
+        var totalTokens = events.Sum(static record => record.TotalTokens ?? 0L);
+        var mostUsedModel = BuildModelHighlight(events);
+        var recentModel = BuildModelHighlight(FilterToRecentWindow(events, 30));
+        var (longestStreakDays, currentStreakDays) = ComputeStreaks(events);
+        var note = BuildCoverageNote(events);
+
+        var heatmap = BuildProviderHeatmap(title, providerId, events);
+
+        return new UsageTelemetryOverviewProviderSection(
+            key: "provider-" + NormalizeKey(providerId),
+            providerId: providerId,
+            title: title,
+            subtitle: subtitle,
+            heatmap: heatmap,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            totalTokens: totalTokens,
+            mostUsedModel: mostUsedModel,
+            recentModel: recentModel,
+            longestStreakDays: longestStreakDays,
+            currentStreakDays: currentStreakDays,
+            note: note);
+    }
+
+    private static HeatmapDocument BuildProviderHeatmap(
+        string title,
+        string providerId,
+        IReadOnlyList<UsageEventRecord> events) {
+        var aggregates = new UsageDailyAggregateBuilder().Build(
+            events,
+            new UsageDailyAggregateOptions {
+                Dimensions = UsageAggregateDimensions.None
+            });
+
+        return new UsageHeatmapDocumentBuilder().Build(
+            aggregates,
+            new UsageHeatmapDocumentOptions {
+                Title = title + " activity",
+                Subtitle = null,
+                Units = "tokens",
+                Metric = UsageHeatmapMetric.TotalTokens,
+                BreakdownDimension = UsageHeatmapBreakdownDimension.None,
+                Palette = ResolveProviderPalette(providerId),
+                WeekStart = DayOfWeek.Monday,
+                LegendLowLabel = "Less",
+                LegendHighLabel = "More",
+                ShowIntensityLegend = true,
+                LegendEntries = Array.Empty<UsageHeatmapLegendEntry>(),
+                ShowDocumentHeader = false,
+                ShowSectionHeaders = false,
+                CompactWeekdayLabels = true
+            });
+    }
+
+    private static UsageTelemetryOverviewModelHighlight? BuildModelHighlight(
+        IEnumerable<UsageEventRecord> events) {
+        var candidate = events
+            .GroupBy(static record => NormalizeOptional(record.Model) ?? "unknown-model", StringComparer.OrdinalIgnoreCase)
+            .Select(group => new UsageTelemetryOverviewModelHighlight(
+                group.Key,
+                group.Sum(static record => record.TotalTokens ?? 0L)))
+            .Where(static model => model.TotalTokens > 0L)
+            .OrderByDescending(static model => model.TotalTokens)
+            .ThenBy(static model => model.Model, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+        return candidate;
+    }
+
+    private static IReadOnlyList<UsageEventRecord> FilterToRecentWindow(
+        IReadOnlyList<UsageEventRecord> events,
+        int windowDays) {
+        if (events.Count == 0 || windowDays <= 0) {
+            return Array.Empty<UsageEventRecord>();
+        }
+
+        var endDayUtc = events[events.Count - 1].TimestampUtc.UtcDateTime.Date;
+        var startDayUtc = endDayUtc.AddDays(-(windowDays - 1));
+        return events
+            .Where(record => record.TimestampUtc.UtcDateTime.Date >= startDayUtc)
+            .ToArray();
+    }
+
+    private static (int LongestStreakDays, int CurrentStreakDays) ComputeStreaks(
+        IReadOnlyList<UsageEventRecord> events) {
+        var activeDays = events
+            .GroupBy(static record => record.TimestampUtc.UtcDateTime.Date)
+            .Where(group => group.Sum(static record => record.TotalTokens ?? 0L) > 0L)
+            .Select(static group => group.Key)
+            .OrderBy(static day => day)
+            .ToArray();
+
+        if (activeDays.Length == 0) {
+            return (0, 0);
+        }
+
+        var longest = 1;
+        var current = 1;
+        for (var i = 1; i < activeDays.Length; i++) {
+            if ((activeDays[i] - activeDays[i - 1]).Days == 1) {
+                current++;
+            } else {
+                if (current > longest) {
+                    longest = current;
+                }
+                current = 1;
+            }
+        }
+
+        if (current > longest) {
+            longest = current;
+        }
+
+        var trailing = 1;
+        for (var i = activeDays.Length - 1; i > 0; i--) {
+            if ((activeDays[i] - activeDays[i - 1]).Days == 1) {
+                trailing++;
+            } else {
+                break;
+            }
+        }
+
+        var latestDayUtc = events[events.Count - 1].TimestampUtc.UtcDateTime.Date;
+        var currentStreak = activeDays[activeDays.Length - 1] == latestDayUtc ? trailing : 0;
+        return (longest, currentStreak);
+    }
+
+    private static string? BuildCoverageNote(IReadOnlyList<UsageEventRecord> events) {
+        if (events.Count == 0) {
+            return null;
+        }
+
+        var firstEventDayUtc = events[0].TimestampUtc.UtcDateTime.Date;
+        var firstSplitDayUtc = events
+            .Where(static record => (record.InputTokens ?? 0L) > 0L || (record.OutputTokens ?? 0L) > 0L)
+            .Select(static record => record.TimestampUtc.UtcDateTime.Date)
+            .OrderBy(static day => day)
+            .FirstOrDefault();
+
+        if (firstSplitDayUtc == default || firstSplitDayUtc <= firstEventDayUtc) {
+            return null;
+        }
+
+        return "Full input/output token telemetry starts on "
+               + firstSplitDayUtc.ToString("MMM d", CultureInfo.InvariantCulture)
+               + "; earlier activity may be under-split.";
     }
 
     private static IEnumerable<UsageTelemetryOverviewCard> BuildCards(
@@ -415,5 +693,47 @@ public sealed class UsageTelemetryOverviewBuilder {
     private static string? NormalizeOptional(string? value) {
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static string ResolveProviderTitle(string providerId) {
+        return providerId.Trim().ToLowerInvariant() switch {
+            "claude" => "Claude Code",
+            "codex" => "Codex",
+            "ix" => "IntelligenceX",
+            "chatgpt" => "ChatGPT",
+            "github" => "GitHub",
+            "lmstudio" => "LM Studio",
+            "ollama" => "Ollama",
+            _ => providerId
+        };
+    }
+
+    private static HeatmapPalette ResolveProviderPalette(string providerId) {
+        return providerId.Trim().ToLowerInvariant() switch {
+            "claude" => new HeatmapPalette(
+                backgroundColor: "#f2f2f2",
+                panelColor: "#f2f2f2",
+                textColor: "#162033",
+                mutedTextColor: "#737373",
+                emptyColor: "#e8e8e8",
+                intensityColors: new[] { "#f5d8b0", "#f3ba73", "#fb8c1d", "#c65102" }),
+            "codex" => new HeatmapPalette(
+                backgroundColor: "#f2f2f2",
+                panelColor: "#f2f2f2",
+                textColor: "#162033",
+                mutedTextColor: "#737373",
+                emptyColor: "#e8e8e8",
+                intensityColors: new[] { "#cfd6ff", "#98a8ff", "#6268f1", "#2f2a93" }),
+            _ => HeatmapPalette.GitHubLight()
+        };
+    }
+
+    private static string NormalizeKey(string value) {
+        var chars = value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')
+            .ToArray();
+        return new string(chars).Trim('-');
     }
 }

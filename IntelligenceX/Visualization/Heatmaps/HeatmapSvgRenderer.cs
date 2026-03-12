@@ -38,12 +38,14 @@ public static class HeatmapSvgRenderer {
         var contentWidth = GridLeft + (widestGrid * (CellSize + CellGap)) + 48;
         var width = Math.Max(MinWidth, OuterPadding * 2 + contentWidth);
 
+        var headerHeight = document.ShowDocumentHeader ? HeaderHeight : 24;
         var bodyHeight = 0;
         foreach (var layout in sectionLayouts) {
-            bodyHeight += SectionTitleHeight + MonthLabelHeight + layout.GridHeight + SectionBottomGap;
+            var sectionHeaderHeight = document.ShowSectionHeaders ? SectionTitleHeight : 0;
+            bodyHeight += sectionHeaderHeight + MonthLabelHeight + layout.GridHeight + SectionBottomGap;
         }
         var legendHeight = document.ShowIntensityLegend || document.LegendItems.Count > 0 ? LegendHeight : 0;
-        var height = OuterPadding + HeaderHeight + bodyHeight + legendHeight + OuterPadding;
+        var height = OuterPadding + headerHeight + bodyHeight + legendHeight + OuterPadding;
 
         var panelX = OuterPadding;
         var panelY = OuterPadding;
@@ -57,20 +59,22 @@ public static class HeatmapSvgRenderer {
   <rect x="{panelX}" y="{panelY}" width="{panelWidth}" height="{panelHeight}" rx="{PanelRadius}" fill="{Escape(document.Palette.PanelColor)}" stroke="{Escape(document.Palette.EmptyColor)}" stroke-opacity="0.45" />
 """);
 
-        var titleX = OuterPadding + 20;
-        var currentY = OuterPadding + 34;
-        sb.AppendLine(
-            $"  <text x=\"{titleX}\" y=\"{currentY}\" fill=\"{Escape(document.Palette.TextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"28\" font-weight=\"700\">{Escape(document.Title)}</text>");
-        currentY += 26;
-        if (!string.IsNullOrWhiteSpace(document.Subtitle)) {
+        var currentY = OuterPadding + headerHeight;
+        if (document.ShowDocumentHeader) {
+            var titleX = OuterPadding + 20;
+            var headerY = OuterPadding + 34;
             sb.AppendLine(
-                $"  <text x=\"{titleX}\" y=\"{currentY}\" fill=\"{Escape(document.Palette.MutedTextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"13\">{Escape(document.Subtitle!)}</text>");
+                $"  <text x=\"{titleX}\" y=\"{headerY}\" fill=\"{Escape(document.Palette.TextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"28\" font-weight=\"700\">{Escape(document.Title)}</text>");
+            headerY += 26;
+            if (!string.IsNullOrWhiteSpace(document.Subtitle)) {
+                sb.AppendLine(
+                    $"  <text x=\"{titleX}\" y=\"{headerY}\" fill=\"{Escape(document.Palette.MutedTextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"13\">{Escape(document.Subtitle!)}</text>");
+            }
         }
 
-        currentY = OuterPadding + HeaderHeight;
         foreach (var layout in sectionLayouts) {
             AppendSection(sb, document, layout, currentY);
-            currentY += SectionTitleHeight + MonthLabelHeight + layout.GridHeight + SectionBottomGap;
+            currentY += (document.ShowSectionHeaders ? SectionTitleHeight : 0) + MonthLabelHeight + layout.GridHeight + SectionBottomGap;
         }
 
         if (document.ShowIntensityLegend || document.LegendItems.Count > 0) {
@@ -82,22 +86,26 @@ public static class HeatmapSvgRenderer {
     }
 
     private static void AppendSection(StringBuilder sb, HeatmapDocument document, SectionLayout layout, int y) {
-        var titleY = y;
-        sb.AppendLine(
-            $"  <text x=\"{OuterPadding + 20}\" y=\"{titleY}\" fill=\"{Escape(document.Palette.TextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"16\" font-weight=\"700\">{Escape(layout.Section.Title)}</text>");
-        if (!string.IsNullOrWhiteSpace(layout.Section.Subtitle)) {
+        var sectionHeaderOffset = 0;
+        if (document.ShowSectionHeaders) {
+            var titleY = y;
             sb.AppendLine(
-                $"  <text x=\"{OuterPadding + 20 + 90}\" y=\"{titleY}\" fill=\"{Escape(document.Palette.MutedTextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"13\">{Escape(layout.Section.Subtitle!)}</text>");
+                $"  <text x=\"{OuterPadding + 20}\" y=\"{titleY}\" fill=\"{Escape(document.Palette.TextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"16\" font-weight=\"700\">{Escape(layout.Section.Title)}</text>");
+            if (!string.IsNullOrWhiteSpace(layout.Section.Subtitle)) {
+                sb.AppendLine(
+                    $"  <text x=\"{OuterPadding + 20 + 90}\" y=\"{titleY}\" fill=\"{Escape(document.Palette.MutedTextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"13\">{Escape(layout.Section.Subtitle!)}</text>");
+            }
+            sectionHeaderOffset = SectionTitleHeight;
         }
 
-        var monthLabelY = y + MonthLabelHeight;
+        var monthLabelY = y + sectionHeaderOffset + MonthLabelHeight;
         foreach (var label in layout.MonthLabels) {
             var x = OuterPadding + GridLeft + (label.WeekIndex * (CellSize + CellGap));
             sb.AppendLine(
                 $"  <text x=\"{x}\" y=\"{monthLabelY}\" fill=\"{Escape(document.Palette.MutedTextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"11\">{Escape(label.Label)}</text>");
         }
 
-        var gridTop = y + MonthLabelHeight + 8;
+        var gridTop = y + sectionHeaderOffset + MonthLabelHeight + 8;
         AppendWeekdayLabels(sb, document, gridTop);
 
         var dayLookup = new Dictionary<DateTime, HeatmapDay>();
@@ -136,17 +144,33 @@ public static class HeatmapSvgRenderer {
     }
 
     private static void AppendWeekdayLabels(StringBuilder sb, HeatmapDocument document, int gridTop) {
-        var labels = new[] {
-            (Day: OffsetWeekday(document.WeekStart, 1), Label: "Mon"),
-            (Day: OffsetWeekday(document.WeekStart, 3), Label: "Wed"),
-            (Day: OffsetWeekday(document.WeekStart, 5), Label: "Fri")
-        };
+        var labels = document.CompactWeekdayLabels
+            ? BuildCompactWeekdayLabels(document.WeekStart)
+            : new[] {
+                (Day: OffsetWeekday(document.WeekStart, 1), Label: "Mon"),
+                (Day: OffsetWeekday(document.WeekStart, 3), Label: "Wed"),
+                (Day: OffsetWeekday(document.WeekStart, 5), Label: "Fri")
+            };
         foreach (var label in labels) {
             var row = ResolveRow(label.Day, document.WeekStart);
             var y = gridTop + (row * (CellSize + CellGap)) + WeekdayLabelOffset;
             sb.AppendLine(
                 $"  <text x=\"{OuterPadding + 16}\" y=\"{y}\" fill=\"{Escape(document.Palette.MutedTextColor)}\" font-family=\"Consolas, 'SFMono-Regular', Menlo, monospace\" font-size=\"11\">{label.Label}</text>");
         }
+    }
+
+    private static (DayOfWeek Day, string Label)[] BuildCompactWeekdayLabels(DayOfWeek weekStart) {
+        if (weekStart == DayOfWeek.Monday) {
+            return new[] {
+                (DayOfWeek.Monday, "Mon"),
+                (DayOfWeek.Sunday, "Sun")
+            };
+        }
+
+        return new[] {
+            (weekStart, weekStart.ToString().Substring(0, 3)),
+            (OffsetWeekday(weekStart, 6), OffsetWeekday(weekStart, 6).ToString().Substring(0, 3))
+        };
     }
 
     private static void AppendLegend(StringBuilder sb, HeatmapDocument document, int width, int baselineY) {

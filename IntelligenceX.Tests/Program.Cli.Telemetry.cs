@@ -206,6 +206,8 @@ internal static partial class Program {
                     PersonLabel = "Przemek",
                     Surface = "cli",
                     Model = "gpt-5-codex",
+                    InputTokens = 900,
+                    OutputTokens = 300,
                     TotalTokens = 1200,
                     TruthLevel = UsageTruthLevel.Exact
                 });
@@ -219,6 +221,8 @@ internal static partial class Program {
                     PersonLabel = "Przemek",
                     Surface = "reviewer",
                     Model = "gpt-5.4",
+                    InputTokens = 640,
+                    OutputTokens = 160,
                     TotalTokens = 800,
                     TruthLevel = UsageTruthLevel.Exact
                 });
@@ -234,6 +238,8 @@ internal static partial class Program {
             AssertContainsText(jsonStdout, "\"subtitle\":\"person: Przemek | 2000 tokens | 2 active day(s) | peak 2026-03-10 (1200)\"", "telemetry overview json subtitle");
             AssertContainsText(jsonStdout, "\"key\":\"total\"", "telemetry overview json card");
             AssertContainsText(jsonStdout, "\"key\":\"surface\"", "telemetry overview json heatmap");
+            AssertContainsText(jsonStdout, "\"providerSections\":[", "telemetry overview json provider sections");
+            AssertContainsText(jsonStdout, "\"title\":\"Codex\"", "telemetry overview json codex section");
             AssertEqual(string.Empty, jsonStderr, "telemetry overview json stderr");
 
             var (exportExit, exportStdout, exportStderr) = RunCliDispatchWithCapturedOutput(
@@ -247,8 +253,12 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(Path.Combine(exportDir, "overview.json")), "telemetry overview export overview json");
             AssertEqual(true, File.Exists(Path.Combine(exportDir, "index.html")), "telemetry overview export html");
             AssertEqual(true, File.Exists(Path.Combine(exportDir, "surface.svg")), "telemetry overview export surface svg");
+            AssertEqual(true, File.Exists(Path.Combine(exportDir, "provider-codex.svg")), "telemetry overview export provider codex svg");
             AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "surface.svg")), "<svg", "telemetry overview export svg content");
             AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "<img src=\"surface.svg\"", "telemetry overview export html surface image");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "INPUT TOKENS", "telemetry overview export html input tokens");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "MOST USED MODEL", "telemetry overview export html most used model");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "<img src=\"provider-codex.svg\"", "telemetry overview export html provider image");
         } finally {
             try {
                 if (Directory.Exists(temp)) {

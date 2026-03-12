@@ -21,7 +21,10 @@ public sealed class HeatmapDocument {
         bool showIntensityLegend = true,
         string? legendLowLabel = null,
         string? legendHighLabel = null,
-        IReadOnlyList<HeatmapLegendItem>? legendItems = null) {
+        IReadOnlyList<HeatmapLegendItem>? legendItems = null,
+        bool showDocumentHeader = true,
+        bool showSectionHeaders = true,
+        bool compactWeekdayLabels = false) {
         Title = string.IsNullOrWhiteSpace(title) ? "Heatmap" : title.Trim();
         Subtitle = HeatmapText.NormalizeOptionalText(subtitle);
         Units = HeatmapText.NormalizeOptionalText(units);
@@ -32,6 +35,9 @@ public sealed class HeatmapDocument {
         LegendLowLabel = string.IsNullOrWhiteSpace(legendLowLabel) ? "Less" : HeatmapText.NormalizeOptionalText(legendLowLabel) ?? "Less";
         LegendHighLabel = string.IsNullOrWhiteSpace(legendHighLabel) ? "More" : HeatmapText.NormalizeOptionalText(legendHighLabel) ?? "More";
         LegendItems = legendItems ?? Array.Empty<HeatmapLegendItem>();
+        ShowDocumentHeader = showDocumentHeader;
+        ShowSectionHeaders = showSectionHeaders;
+        CompactWeekdayLabels = compactWeekdayLabels;
     }
 
     public string Title { get; }
@@ -44,6 +50,9 @@ public sealed class HeatmapDocument {
     public string LegendLowLabel { get; }
     public string LegendHighLabel { get; }
     public IReadOnlyList<HeatmapLegendItem> LegendItems { get; }
+    public bool ShowDocumentHeader { get; }
+    public bool ShowSectionHeaders { get; }
+    public bool CompactWeekdayLabels { get; }
 
     public JsonObject ToJson() {
         var obj = new JsonObject()
@@ -52,7 +61,10 @@ public sealed class HeatmapDocument {
             .Add("week_start", WeekStart.ToString())
             .Add("show_intensity_legend", ShowIntensityLegend)
             .Add("legend_low_label", LegendLowLabel)
-            .Add("legend_high_label", LegendHighLabel);
+            .Add("legend_high_label", LegendHighLabel)
+            .Add("show_document_header", ShowDocumentHeader)
+            .Add("show_section_headers", ShowSectionHeaders)
+            .Add("compact_weekday_labels", CompactWeekdayLabels);
 
         if (!string.IsNullOrWhiteSpace(Subtitle)) {
             obj.Add("subtitle", Subtitle);

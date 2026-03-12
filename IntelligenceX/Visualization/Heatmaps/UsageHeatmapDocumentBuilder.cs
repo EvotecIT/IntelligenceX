@@ -53,6 +53,9 @@ public sealed class UsageHeatmapDocumentOptions {
     public bool ShowIntensityLegend { get; set; } = true;
     public int TooltipBreakdownLimit { get; set; } = 4;
     public IReadOnlyList<UsageHeatmapLegendEntry>? LegendEntries { get; set; }
+    public bool ShowDocumentHeader { get; set; } = true;
+    public bool ShowSectionHeaders { get; set; } = true;
+    public bool CompactWeekdayLabels { get; set; }
 }
 
 /// <summary>
@@ -87,7 +90,10 @@ public sealed class UsageHeatmapDocumentBuilder {
                 showIntensityLegend: effectiveOptions.ShowIntensityLegend,
                 legendLowLabel: effectiveOptions.LegendLowLabel,
                 legendHighLabel: effectiveOptions.LegendHighLabel,
-                legendItems: Array.Empty<HeatmapLegendItem>());
+                legendItems: Array.Empty<HeatmapLegendItem>(),
+                showDocumentHeader: effectiveOptions.ShowDocumentHeader,
+                showSectionHeaders: effectiveOptions.ShowSectionHeaders,
+                compactWeekdayLabels: effectiveOptions.CompactWeekdayLabels);
         }
 
         var days = aggregateList
@@ -134,7 +140,10 @@ public sealed class UsageHeatmapDocumentBuilder {
             showIntensityLegend: effectiveOptions.ShowIntensityLegend,
             legendLowLabel: effectiveOptions.LegendLowLabel,
             legendHighLabel: effectiveOptions.LegendHighLabel,
-            legendItems: legendItems);
+            legendItems: legendItems,
+            showDocumentHeader: effectiveOptions.ShowDocumentHeader,
+            showSectionHeaders: effectiveOptions.ShowSectionHeaders,
+            compactWeekdayLabels: effectiveOptions.CompactWeekdayLabels);
     }
 
     private static UsageHeatmapSourceDay BuildDay(
