@@ -69,6 +69,10 @@ internal static partial class Program {
         AssertEqual(13, overview.ProviderSections[0].MonthlyUsage.Count, "usage overview codex monthly usage count");
         AssertEqual("2025-03", overview.ProviderSections[0].MonthlyUsage[0].Key, "usage overview codex monthly usage first key");
         AssertEqual(1200L, overview.ProviderSections[0].MonthlyUsage[12].TotalTokens, "usage overview codex monthly usage last total");
+        AssertEqual(1, overview.ProviderSections[0].TopModels.Count, "usage overview codex top model count");
+        AssertEqual("gpt-5-codex", overview.ProviderSections[0].TopModels[0].Model, "usage overview codex top model");
+        AssertEqual(true, overview.ProviderSections[0].ApiCostEstimate is not null, "usage overview codex api estimate exists");
+        AssertEqual(0.004125m, overview.ProviderSections[0].ApiCostEstimate?.TotalEstimatedCostUsd ?? 0m, "usage overview codex api estimate total");
         AssertEqual(new DateTime(2025, 03, 12), overview.ProviderSections[0].Heatmap.Sections[0].Days[0].Date, "usage overview codex heatmap first padded day");
         AssertEqual(new DateTime(2026, 03, 10), overview.ProviderSections[0].Heatmap.Sections[0].Days[overview.ProviderSections[0].Heatmap.Sections[0].Days.Count - 1].Date, "usage overview codex heatmap last padded day");
         AssertEqual("surface", overview.Heatmaps[0].Key, "usage overview first heatmap key");
@@ -78,5 +82,7 @@ internal static partial class Program {
         AssertContainsText(json, "\"providerSections\":[", "usage overview json provider sections");
         AssertContainsText(json, "\"title\":\"Codex\"", "usage overview json codex provider section");
         AssertContainsText(json, "\"monthlyUsage\":[", "usage overview json provider monthly usage");
+        AssertContainsText(json, "\"topModels\":[", "usage overview json provider top models");
+        AssertContainsText(json, "\"apiCostEstimate\":", "usage overview json provider api estimate");
     }
 }

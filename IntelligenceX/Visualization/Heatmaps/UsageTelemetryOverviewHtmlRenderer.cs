@@ -77,6 +77,18 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("    .mini-card { min-height:72px; padding:14px 16px; border:1px solid var(--line); border-radius:18px; background:#fafafa; }");
         sb.AppendLine("    .mini-value { margin-top:6px; font-size:24px; line-height:1.15; font-weight:800; letter-spacing:-.03em; }");
         sb.AppendLine("    .mini-value span { color:var(--muted); font-weight:500; }");
+        sb.AppendLine("    .provider-insights { display:grid; grid-template-columns:1.15fr .85fr; gap:22px; margin-top:24px; }");
+        sb.AppendLine("    .insight-card { min-height:160px; padding:18px 18px 16px; border:1px solid var(--line); border-radius:20px; background:#fafafa; }");
+        sb.AppendLine("    .insight-title { color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; margin-bottom:12px; }");
+        sb.AppendLine("    .rank-list { display:grid; gap:10px; }");
+        sb.AppendLine("    .rank-row { display:grid; grid-template-columns:32px 1fr auto; gap:12px; align-items:baseline; }");
+        sb.AppendLine("    .rank-index { color:var(--muted); font-size:15px; font-weight:700; }");
+        sb.AppendLine("    .rank-label { font-size:18px; font-weight:700; letter-spacing:-.02em; }");
+        sb.AppendLine("    .rank-value { color:var(--muted); font-size:16px; white-space:nowrap; }");
+        sb.AppendLine("    .estimate-total { display:flex; justify-content:space-between; gap:18px; align-items:flex-end; margin-bottom:12px; }");
+        sb.AppendLine("    .estimate-value { font-size:34px; font-weight:800; letter-spacing:-.04em; line-height:1; }");
+        sb.AppendLine("    .estimate-copy { color:var(--muted); font-size:13px; max-width:28ch; text-align:right; }");
+        sb.AppendLine("    .estimate-note { color:var(--muted); font-size:13px; margin-top:10px; }");
         sb.AppendLine("    .divider { height:1px; background:var(--line); margin:8px 0 30px; }");
         sb.AppendLine("    .supporting { margin-top:24px; padding-top:22px; border-top:1px solid var(--line); }");
         sb.AppendLine("    .supporting h2 { margin:0 0 8px; font-size:18px; letter-spacing:-.02em; }");
@@ -87,7 +99,7 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("    .supporting-card p { margin:0 0 12px; color:var(--muted); font-size:13px; }");
         sb.AppendLine("    .supporting-card img { width:100%; display:block; border-radius:14px; background:var(--bg); }");
         sb.AppendLine("    .footnote { margin-top:24px; color:var(--muted); font-size:13px; }");
-        sb.AppendLine("    @media (max-width: 1080px) { .hero, .provider-header, .provider-token-mix-header { flex-direction:column; align-items:flex-start; } .hero-meta, .provider-metrics { min-width:0; width:100%; } .hero-stat, .provider-metric { text-align:left; } .provider-footer { grid-template-columns:repeat(2,minmax(180px,1fr)); } .provider-note, .provider-legend { margin-left:0; } }");
+        sb.AppendLine("    @media (max-width: 1080px) { .hero, .provider-header, .provider-token-mix-header { flex-direction:column; align-items:flex-start; } .hero-meta, .provider-metrics { min-width:0; width:100%; } .hero-stat, .provider-metric { text-align:left; } .provider-footer { grid-template-columns:repeat(2,minmax(180px,1fr)); } .provider-insights { grid-template-columns:1fr; } .provider-note, .provider-legend { margin-left:0; } }");
         sb.AppendLine("    @media (max-width: 680px) { .page { padding:22px 18px 32px; } .hero-meta, .provider-metrics, .provider-footer { grid-template-columns:1fr; gap:14px; } .provider-title { font-size:32px; } }");
         sb.AppendLine("  </style>");
         sb.AppendLine("</head>");
@@ -178,6 +190,7 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         AppendMiniMetricCard(sb, "Longest Streak", section.LongestStreakDays + " days");
         AppendMiniMetricCard(sb, "Current Streak", section.CurrentStreakDays + " days");
         sb.AppendLine("      </div>");
+        AppendProviderInsights(sb, section);
         sb.AppendLine("      </div>");
         sb.AppendLine("    </section>");
     }
@@ -290,6 +303,83 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("      </div>");
     }
 
+    private static void AppendProviderInsights(StringBuilder sb, UsageTelemetryOverviewProviderSection section) {
+        var hasTopModels = section.TopModels.Count > 0;
+        var hasEstimate = section.ApiCostEstimate is not null;
+        if (!hasTopModels && !hasEstimate) {
+            return;
+        }
+
+        sb.AppendLine("      <div class=\"provider-insights\">");
+        sb.AppendLine("        <article class=\"insight-card\">");
+        sb.AppendLine("          <div class=\"insight-title\">Top models</div>");
+        if (hasTopModels) {
+            sb.AppendLine("          <div class=\"rank-list\">");
+            var rank = 1;
+            foreach (var model in section.TopModels) {
+                sb.AppendLine("            <div class=\"rank-row\">");
+                sb.Append("              <div class=\"rank-index\">").Append(rank.ToString(CultureInfo.InvariantCulture)).AppendLine(".</div>");
+                sb.Append("              <div class=\"rank-label\">").Append(Html(model.Model)).AppendLine("</div>");
+                sb.Append("              <div class=\"rank-value\">")
+                    .Append(Html(FormatCompact(model.TotalTokens)))
+                    .Append(" (")
+                    .Append(Html(model.SharePercent.ToString("0.#", CultureInfo.InvariantCulture)))
+                    .AppendLine("%)</div>");
+                sb.AppendLine("            </div>");
+                rank++;
+            }
+            sb.AppendLine("          </div>");
+        } else {
+            sb.AppendLine("          <div class=\"estimate-note\">No model breakdown available.</div>");
+        }
+        sb.AppendLine("        </article>");
+
+        sb.AppendLine("        <article class=\"insight-card\">");
+        sb.AppendLine("          <div class=\"insight-title\">Estimated API route</div>");
+        AppendApiCostEstimate(sb, section.ApiCostEstimate);
+        sb.AppendLine("        </article>");
+        sb.AppendLine("      </div>");
+    }
+
+    private static void AppendApiCostEstimate(StringBuilder sb, UsageTelemetryOverviewApiCostEstimate? estimate) {
+        if (estimate is null) {
+            sb.AppendLine("          <div class=\"estimate-note\">No model pricing coverage available for this section yet.</div>");
+            return;
+        }
+
+        sb.AppendLine("          <div class=\"estimate-total\">");
+        sb.Append("            <div class=\"estimate-value\">$").Append(Html(FormatCurrencyCompact(estimate.TotalEstimatedCostUsd))).AppendLine("</div>");
+        sb.Append("            <div class=\"estimate-copy\">Estimated from exact token telemetry using current public API rates.</div>");
+        sb.AppendLine("          </div>");
+        if (estimate.TopDrivers.Count > 0) {
+            sb.AppendLine("          <div class=\"rank-list\">");
+            foreach (var driver in estimate.TopDrivers) {
+                sb.AppendLine("            <div class=\"rank-row\">");
+                sb.AppendLine("              <div class=\"rank-index\">$</div>");
+                sb.Append("              <div class=\"rank-label\">").Append(Html(driver.Model)).AppendLine("</div>");
+                sb.Append("              <div class=\"rank-value\">$")
+                    .Append(Html(FormatCurrencyCompact(driver.EstimatedCostUsd)))
+                    .Append(" (")
+                    .Append(Html(driver.SharePercent.ToString("0.#", CultureInfo.InvariantCulture)))
+                    .AppendLine("%)</div>");
+                sb.AppendLine("            </div>");
+            }
+            sb.AppendLine("          </div>");
+        }
+
+        var totalTokens = estimate.CoveredTokens + estimate.UncoveredTokens;
+        var coveredPercent = totalTokens <= 0L ? 0d : estimate.CoveredTokens / (double)totalTokens * 100d;
+        sb.Append("          <div class=\"estimate-note\">Priced coverage: ")
+            .Append(Html(coveredPercent.ToString("0.#", CultureInfo.InvariantCulture)))
+            .Append("% of tokens");
+        if (estimate.UncoveredTokens > 0L) {
+            sb.Append(" (")
+                .Append(Html(FormatCompact(estimate.UncoveredTokens)))
+                .Append(" unpriced)");
+        }
+        sb.AppendLine(".</div>");
+    }
+
     private static void AppendMiniCard(StringBuilder sb, string label, UsageTelemetryOverviewModelHighlight? highlight) {
         sb.AppendLine("        <article class=\"mini-card\">");
         sb.Append("          <div class=\"mini-label\">").Append(Html(label.ToUpperInvariant())).AppendLine("</div>");
@@ -359,6 +449,14 @@ public static class UsageTelemetryOverviewHtmlRenderer {
             return (value / 1_000d).ToString(value >= 10_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "K";
         }
         return value.ToString("0", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCurrencyCompact(decimal value) {
+        if (value >= 1000m) {
+            return (value / 1000m).ToString(value >= 10000m ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "K";
+        }
+
+        return value.ToString(value >= 100m ? "0" : "0.##", CultureInfo.InvariantCulture);
     }
 
     private static string FormatPercent(long value, long total) {
