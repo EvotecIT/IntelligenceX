@@ -49,7 +49,7 @@ jobs:
             - name: Enforce OfficeIMO markdown package-mode gate
               if: matrix.os == 'windows-latest'
               shell: pwsh
-              run: ./.github/scripts/run-officeimo-markdown-package-gate.ps1
+              run: pwsh -ExecutionPolicy Bypass -File ./.github/scripts/run-officeimo-markdown-package-gate.ps1
               timeout-minutes: 25
 
             - name: Enforce write-tool schema helper contract

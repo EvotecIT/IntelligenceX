@@ -10,27 +10,33 @@ $packageModeProperty = '-p:UseLocalOfficeImoCheckout=false'
 $skipSidecarBuildProperty = '-p:SkipChatServiceSidecarBuild=true'
 Write-Output 'Running OfficeIMO markdown package-mode gate...'
 
-function Assert-PackageMode($projectPath) {
-    $effectiveMode = dotnet msbuild $projectPath -nologo -getProperty:UseLocalOfficeImoCheckout $packageModeProperty $skipSidecarBuildProperty
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+function Invoke-DotNet {
+    param(
+        [Parameter(Mandatory)]
+        [string[]] $Arguments
+    )
 
-    if (($effectiveMode | Out-String).Trim() -ne 'false') {
-        Write-Error "Expected UseLocalOfficeImoCheckout=false for $projectPath but got '$effectiveMode'."
-        exit 1
+    & dotnet @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Assert-PackageMode($projectPath) {
+    $effectiveMode = (& dotnet msbuild $projectPath -nologo -getProperty:UseLocalOfficeImoCheckout $packageModeProperty $skipSidecarBuildProperty | Select-Object -Last 1).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet msbuild property lookup failed for $projectPath with exit code $LASTEXITCODE."
+    }
+
+    if ($effectiveMode -ne 'false') {
+        throw "Expected UseLocalOfficeImoCheckout=false for $projectPath but got '$effectiveMode'."
     }
 }
 
 Assert-PackageMode $exportArtifactsProject
 Assert-PackageMode $appTestsProject
 
-dotnet restore $exportArtifactsProject $packageModeProperty $skipSidecarBuildProperty --force-evaluate
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-dotnet restore $appTestsProject $packageModeProperty $skipSidecarBuildProperty --force-evaluate
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-dotnet build $exportArtifactsProject $packageModeProperty $skipSidecarBuildProperty --configuration Release --no-restore
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-dotnet build $appTestsProject $packageModeProperty $skipSidecarBuildProperty --configuration Release --no-restore
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Invoke-DotNet @('restore', $exportArtifactsProject, $packageModeProperty, $skipSidecarBuildProperty, '--force-evaluate')
+Invoke-DotNet @('restore', $appTestsProject, $packageModeProperty, $skipSidecarBuildProperty, '--force-evaluate')
+Invoke-DotNet @('build', $exportArtifactsProject, $packageModeProperty, $skipSidecarBuildProperty, '--configuration', 'Release', '--no-restore')
+Invoke-DotNet @('build', $appTestsProject, $packageModeProperty, $skipSidecarBuildProperty, '--configuration', 'Release', '--no-restore')
