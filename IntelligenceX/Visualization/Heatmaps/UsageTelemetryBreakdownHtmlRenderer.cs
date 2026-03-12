@@ -5,7 +5,7 @@ namespace IntelligenceX.Visualization.Heatmaps;
 
 #pragma warning disable CS1591
 
-public static class UsageTelemetryBreakdownHtmlRenderer {
+internal static class UsageTelemetryBreakdownHtmlRenderer {
     public static string Render(string reportTitle, string breakdownKey, string breakdownLabel, string? subtitle) {
         var safeTitle = string.IsNullOrWhiteSpace(reportTitle) ? "Usage Overview" : reportTitle.Trim();
         var safeLabel = string.IsNullOrWhiteSpace(breakdownLabel) ? "Breakdown" : breakdownLabel.Trim();

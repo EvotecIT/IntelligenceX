@@ -8,7 +8,7 @@ namespace IntelligenceX.Visualization.Heatmaps;
 
 #pragma warning disable CS1591
 
-public static class GitHubWrappedHtmlRenderer {
+internal static class GitHubWrappedHtmlRenderer {
     public static string Render(UsageTelemetryOverviewProviderSection section) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
