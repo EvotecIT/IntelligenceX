@@ -1,3 +1,8 @@
+---
+title: Projects and PR Monitoring
+description: Use IntelligenceX todo commands for GitHub-native project, pull request, and backlog monitoring with maintainer-controlled automation.
+---
+
 # Projects + PR Monitoring
 
 IntelligenceX includes a GitHub-native maintainer control plane for PR and issue backlog monitoring using the `intelligencex todo ...` command family.

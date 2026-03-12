@@ -1,3 +1,8 @@
+---
+title: Project Views and Operations
+description: Manage IntelligenceX project views, checklist planning, triage indexing, and vision checks after project setup.
+---
+
 # Project Views and Operations
 
 This page covers maintainer-facing operations after project setup: view checklist/apply planning, bot-feedback sync, triage index generation, and vision drift checks.

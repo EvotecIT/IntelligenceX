@@ -1,3 +1,8 @@
+---
+title: Workflow YAML vs reviewer.json
+description: Learn where to configure IntelligenceX Reviewer in workflow YAML versus reviewer.json, including precedence, ownership, and override rules.
+---
+
 # Workflow YAML vs reviewer.json
 
 This page explains where to configure IntelligenceX Reviewer, what wins when settings overlap, and how each change affects CI behavior.

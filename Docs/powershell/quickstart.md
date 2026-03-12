@@ -1,3 +1,8 @@
+---
+title: PowerShell Quickstart
+description: Walk through the common IntelligenceX PowerShell flow for connect, auth, chat, MCP status, and runtime configuration.
+---
+
 # PowerShell Quickstart
 
 This quickstart walks through the common IntelligenceX PowerShell flow: connect, authenticate, chat, inspect MCP status, and update runtime configuration.

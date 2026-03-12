@@ -1,3 +1,8 @@
+---
+title: First PR Checklist
+description: Validate the first post-onboarding pull request so IntelligenceX review, analysis, and required checks run end to end.
+---
+
 # First PR Checklist
 
 Use this checklist right after merging your onboarding/setup PR.

@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: Release history and version notes for IntelligenceX
+description: Browse IntelligenceX release history, version notes, and download links generated from GitHub Releases.
 slug: changelog
 collection: pages
 layout: page
@@ -9,6 +9,8 @@ layout: page
 All notable changes to IntelligenceX are documented in the [GitHub Releases](https://github.com/EvotecIT/IntelligenceX/releases).
 
 The sections below are generated from release metadata so this page stays current as new releases are published.
+
+You can also jump straight to [Downloads](/downloads/), [Getting Started](/docs/getting-started/), or the full [Documentation](/docs/) hub if you want install and usage guidance alongside the release history.
 
 <div class="ix-release-cta">
 

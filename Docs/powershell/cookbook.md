@@ -1,3 +1,8 @@
+---
+title: PowerShell Cookbook
+description: Copy practical IntelligenceX PowerShell recipes for bootstrapping sessions, chat, config, MCP, and automation workflows.
+---
+
 # PowerShell Cookbook
 
 Practical PowerShell workflows you can copy, adapt, and run.
@@ -81,4 +86,3 @@ try {
     }
 }
 ```
-

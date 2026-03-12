@@ -1,6 +1,6 @@
 ---
 title: Downloads
-description: Download IntelligenceX desktop builds and release artifacts with platform and release grouping.
+description: Download IntelligenceX release artifacts, browse IX Chat packages by platform or release, and jump into docs, changelog, and setup guides.
 slug: downloads
 collection: pages
 layout: page
@@ -9,12 +9,13 @@ meta.raw_html: true
 
 <p>Download IntelligenceX release assets directly from this page. Source of truth remains <a href="https://github.com/EvotecIT/IntelligenceX/releases">GitHub Releases</a>.</p>
 
-<p>If the cards below show <code>No releases found</code>, no desktop artifacts have been published yet. In the meantime, start with <a href="/docs/getting-started/">Getting Started</a> and project docs.</p>
+<p>If the cards below show <code>No releases found</code>, no desktop artifacts have been published yet. In the meantime, start with <a href="/docs/getting-started/">Getting Started</a>, browse <a href="/docs/">Documentation</a>, or review common setup questions in the <a href="/faq/">FAQ</a>.</p>
 
 <div class="ix-release-links" aria-label="Release resources">
   <a href="/changelog/">Changelog</a>
   <a href="/docs/getting-started/">Install Guide</a>
   <a href="/docs/">Documentation</a>
+  <a href="/faq/">FAQ</a>
 </div>
 
 <div class="ix-release-cta">
@@ -39,3 +40,5 @@ meta.raw_html: true
   <p>Cross-product view for releases that publish more than one package in the same tag.</p>
 {{< release-buttons placement="downloads.all_products" >}}
 </section>
+
+<p>Need release notes or version history? Continue to the <a href="/changelog/">Changelog</a>. Need setup help after downloading? Start with <a href="/docs/getting-started/">Getting Started</a> or <a href="/docs/troubleshooting/">Troubleshooting</a>.</p>

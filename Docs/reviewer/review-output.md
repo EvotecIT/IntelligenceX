@@ -1,3 +1,8 @@
+---
+title: Understanding Reviewer Output
+description: Understand the structure of IntelligenceX reviewer comments, merge blockers, suggestions, and inline findings on pull requests.
+---
+
 # Understanding Reviewer Output
 
 The IntelligenceX reviewer posts a structured Markdown comment on each PR. The sections are intentionally split into merge blockers vs suggestions.

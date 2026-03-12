@@ -1,3 +1,8 @@
+---
+title: Onboarding Wizard
+description: Use the IntelligenceX CLI onboarding wizard to detect the right setup path, connect GitHub, and open a PR with reviewer changes.
+---
+
 # Onboarding Wizard (CLI)
 
 The CLI wizard is the fastest way to set up the reviewer across one or more repositories.

@@ -1,3 +1,8 @@
+---
+title: Reviewer Configuration
+description: Configure IntelligenceX Reviewer with reviewer.json or workflow inputs, including precedence, schema validation, providers, and policy settings.
+---
+
 # Reviewer Configuration
 
 You can configure the reviewer with env vars **or** a repo-local file at `.intelligencex/reviewer.json`.
