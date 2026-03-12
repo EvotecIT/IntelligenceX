@@ -38,19 +38,33 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("    .hero-label, .mini-label, .metric-label, .legend-copy { color:var(--muted); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }");
         sb.AppendLine("    .hero-value { margin-top:4px; font-size:20px; font-weight:800; }");
         sb.AppendLine("    .provider-section { padding:6px 0 42px; border-top:1px solid transparent; }");
+        sb.AppendLine("    .provider-shell { background:linear-gradient(180deg,#ffffff 0%, #fbfbfb 100%); border:1px solid var(--line); border-radius:26px; padding:28px 28px 30px; box-shadow:0 12px 34px rgba(18,24,38,.04); }");
         sb.AppendLine("    .provider-header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin-bottom:18px; }");
         sb.AppendLine("    .provider-title { margin:0; font-size:40px; line-height:1; letter-spacing:-.04em; }");
         sb.AppendLine("    .provider-subtitle { margin-top:8px; color:var(--muted); font-size:14px; }");
         sb.AppendLine("    .provider-metrics { display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:22px; min-width:420px; }");
-        sb.AppendLine("    .provider-metric { text-align:right; }");
+        sb.AppendLine("    .provider-metric { text-align:right; background:#f8f8f8; border:1px solid var(--line); border-radius:18px; padding:16px 16px 14px; }");
         sb.AppendLine("    .provider-metric .metric-value { margin-top:4px; font-size:26px; line-height:1; font-weight:800; letter-spacing:-.03em; }");
-        sb.AppendLine("    .provider-heatmap { margin:0; }");
+        sb.AppendLine("    .provider-metric .metric-copy { margin-top:8px; color:var(--muted); font-size:12px; }");
+        sb.AppendLine("    .metric-bar { margin-top:12px; height:10px; width:100%; background:#e7e7e7; border-radius:999px; overflow:hidden; }");
+        sb.AppendLine("    .metric-fill { height:100%; border-radius:999px; min-width:10px; }");
+        sb.AppendLine("    .provider-token-mix { margin:18px 0 18px; padding:16px 18px; border-radius:20px; background:#f8f8f8; border:1px solid var(--line); }");
+        sb.AppendLine("    .provider-token-mix-header { display:flex; justify-content:space-between; gap:16px; align-items:baseline; margin-bottom:12px; }");
+        sb.AppendLine("    .provider-token-mix-title { font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }");
+        sb.AppendLine("    .provider-token-mix-copy { font-size:13px; color:var(--muted); }");
+        sb.AppendLine("    .provider-token-mix-bar { display:flex; width:100%; height:14px; border-radius:999px; overflow:hidden; background:#ececec; }");
+        sb.AppendLine("    .provider-token-segment { min-width:2px; }");
+        sb.AppendLine("    .provider-token-mix-legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; }");
+        sb.AppendLine("    .provider-token-mix-item { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; }");
+        sb.AppendLine("    .provider-token-mix-item strong { color:var(--ink); font-size:13px; }");
+        sb.AppendLine("    .provider-token-dot { width:10px; height:10px; border-radius:999px; display:inline-block; }");
+        sb.AppendLine("    .provider-heatmap { margin:0; background:#f6f6f6; border:1px solid var(--line); border-radius:24px; padding:14px; }");
         sb.AppendLine("    .provider-heatmap img { width:100%; height:auto; display:block; }");
-        sb.AppendLine("    .provider-note { margin:12px 0 0 72px; color:var(--muted); font-size:14px; }");
-        sb.AppendLine("    .provider-legend { display:flex; align-items:center; gap:10px; margin:18px 0 0 48px; }");
+        sb.AppendLine("    .provider-note { margin:14px 0 0; color:var(--muted); font-size:14px; }");
+        sb.AppendLine("    .provider-legend { display:flex; align-items:center; gap:10px; margin:18px 0 0; }");
         sb.AppendLine("    .legend-swatch { width:20px; height:20px; border-radius:6px; display:inline-block; background:var(--soft); }");
         sb.AppendLine("    .provider-footer { display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:28px; margin-top:34px; }");
-        sb.AppendLine("    .mini-card { min-height:72px; }");
+        sb.AppendLine("    .mini-card { min-height:72px; padding:14px 16px; border:1px solid var(--line); border-radius:18px; background:#fafafa; }");
         sb.AppendLine("    .mini-value { margin-top:6px; font-size:24px; line-height:1.15; font-weight:800; letter-spacing:-.03em; }");
         sb.AppendLine("    .mini-value span { color:var(--muted); font-weight:500; }");
         sb.AppendLine("    .divider { height:1px; background:var(--line); margin:8px 0 30px; }");
@@ -63,7 +77,7 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("    .supporting-card p { margin:0 0 12px; color:var(--muted); font-size:13px; }");
         sb.AppendLine("    .supporting-card img { width:100%; display:block; border-radius:14px; background:var(--bg); }");
         sb.AppendLine("    .footnote { margin-top:24px; color:var(--muted); font-size:13px; }");
-        sb.AppendLine("    @media (max-width: 1080px) { .hero, .provider-header { flex-direction:column; align-items:flex-start; } .hero-meta, .provider-metrics { min-width:0; width:100%; } .hero-stat, .provider-metric { text-align:left; } .provider-footer { grid-template-columns:repeat(2,minmax(180px,1fr)); } .provider-note, .provider-legend { margin-left:0; } }");
+        sb.AppendLine("    @media (max-width: 1080px) { .hero, .provider-header, .provider-token-mix-header { flex-direction:column; align-items:flex-start; } .hero-meta, .provider-metrics { min-width:0; width:100%; } .hero-stat, .provider-metric { text-align:left; } .provider-footer { grid-template-columns:repeat(2,minmax(180px,1fr)); } .provider-note, .provider-legend { margin-left:0; } }");
         sb.AppendLine("    @media (max-width: 680px) { .page { padding:22px 18px 32px; } .hero-meta, .provider-metrics, .provider-footer { grid-template-columns:1fr; gap:14px; } .provider-title { font-size:32px; } }");
         sb.AppendLine("  </style>");
         sb.AppendLine("</head>");
@@ -125,18 +139,21 @@ public static class UsageTelemetryOverviewHtmlRenderer {
     }
 
     private static void AppendProviderSection(StringBuilder sb, UsageTelemetryOverviewProviderSection section) {
+        var accentColors = ResolveProviderAccentColors(section.ProviderId);
         sb.AppendLine("    <section class=\"provider-section\">");
+        sb.AppendLine("      <div class=\"provider-shell\">");
         sb.AppendLine("      <div class=\"provider-header\">");
         sb.AppendLine("        <div>");
         sb.Append("          <h2 class=\"provider-title\">").Append(Html(section.Title)).AppendLine("</h2>");
         sb.Append("          <div class=\"provider-subtitle\">").Append(Html(section.Subtitle)).AppendLine("</div>");
         sb.AppendLine("        </div>");
         sb.AppendLine("        <div class=\"provider-metrics\">");
-        AppendProviderMetric(sb, "Input Tokens", FormatCompact(section.InputTokens));
-        AppendProviderMetric(sb, "Output Tokens", FormatCompact(section.OutputTokens));
-        AppendProviderMetric(sb, "Total Tokens", FormatCompact(section.TotalTokens));
+        AppendProviderMetric(sb, "Input Tokens", FormatCompact(section.InputTokens), section.InputTokens, section.TotalTokens, accentColors.Input);
+        AppendProviderMetric(sb, "Output Tokens", FormatCompact(section.OutputTokens), section.OutputTokens, section.TotalTokens, accentColors.Output);
+        AppendProviderMetric(sb, "Total Tokens", FormatCompact(section.TotalTokens), section.TotalTokens, section.TotalTokens, accentColors.Total);
         sb.AppendLine("        </div>");
         sb.AppendLine("      </div>");
+        AppendProviderTokenMix(sb, section, accentColors);
         sb.AppendLine("      <figure class=\"provider-heatmap\">");
         sb.Append("        <img src=\"").Append(Html(section.Key)).Append(".svg\" alt=\"").Append(Html(section.Title)).AppendLine(" usage heatmap\">");
         sb.AppendLine("      </figure>");
@@ -150,14 +167,67 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         AppendMiniMetricCard(sb, "Longest Streak", section.LongestStreakDays + " days");
         AppendMiniMetricCard(sb, "Current Streak", section.CurrentStreakDays + " days");
         sb.AppendLine("      </div>");
+        sb.AppendLine("      </div>");
         sb.AppendLine("    </section>");
     }
 
-    private static void AppendProviderMetric(StringBuilder sb, string label, string value) {
+    private static void AppendProviderMetric(StringBuilder sb, string label, string value, long metricValue, long totalValue, string fillColor) {
         sb.AppendLine("          <div class=\"provider-metric\">");
         sb.Append("            <div class=\"metric-label\">").Append(Html(label.ToUpperInvariant())).AppendLine("</div>");
         sb.Append("            <div class=\"metric-value\">").Append(Html(value)).AppendLine("</div>");
+        sb.Append("            <div class=\"metric-copy\">").Append(Html(FormatPercent(metricValue, totalValue))).AppendLine(" of section total</div>");
+        sb.AppendLine("            <div class=\"metric-bar\">");
+        sb.Append("              <div class=\"metric-fill\" style=\"width:").Append(Html(FormatPercentValue(metricValue, totalValue))).Append("%; background:").Append(Html(fillColor)).AppendLine(";\"></div>");
+        sb.AppendLine("            </div>");
         sb.AppendLine("          </div>");
+    }
+
+    private static void AppendProviderTokenMix(StringBuilder sb, UsageTelemetryOverviewProviderSection section, ProviderAccentColors colors) {
+        var otherTokens = Math.Max(0L, section.TotalTokens - section.InputTokens - section.OutputTokens);
+        sb.AppendLine("      <div class=\"provider-token-mix\">");
+        sb.AppendLine("        <div class=\"provider-token-mix-header\">");
+        sb.AppendLine("          <div class=\"provider-token-mix-title\">Token mix</div>");
+        sb.Append("          <div class=\"provider-token-mix-copy\">").Append(Html(FormatCompact(section.TotalTokens))).AppendLine(" total tokens across this provider section</div>");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("        <div class=\"provider-token-mix-bar\">");
+        AppendProviderTokenSegment(sb, section.InputTokens, section.TotalTokens, colors.Input);
+        AppendProviderTokenSegment(sb, section.OutputTokens, section.TotalTokens, colors.Output);
+        if (otherTokens > 0) {
+            AppendProviderTokenSegment(sb, otherTokens, section.TotalTokens, colors.Other);
+        }
+        sb.AppendLine("        </div>");
+        sb.AppendLine("        <div class=\"provider-token-mix-legend\">");
+        AppendProviderTokenMixItem(sb, "Input", section.InputTokens, section.TotalTokens, colors.Input);
+        AppendProviderTokenMixItem(sb, "Output", section.OutputTokens, section.TotalTokens, colors.Output);
+        if (otherTokens > 0) {
+            AppendProviderTokenMixItem(sb, "Other", otherTokens, section.TotalTokens, colors.Other);
+        }
+        sb.AppendLine("        </div>");
+        sb.AppendLine("      </div>");
+    }
+
+    private static void AppendProviderTokenSegment(StringBuilder sb, long value, long totalValue, string color) {
+        if (value <= 0 || totalValue <= 0) {
+            return;
+        }
+
+        sb.Append("          <span class=\"provider-token-segment\" style=\"width:")
+            .Append(Html(FormatPercentValue(value, totalValue)))
+            .Append("%; background:")
+            .Append(Html(color))
+            .AppendLine(";\"></span>");
+    }
+
+    private static void AppendProviderTokenMixItem(StringBuilder sb, string label, long value, long totalValue, string color) {
+        sb.Append("          <div class=\"provider-token-mix-item\"><span class=\"provider-token-dot\" style=\"background:")
+            .Append(Html(color))
+            .Append("\"></span>")
+            .Append(Html(label))
+            .Append(": <strong>")
+            .Append(Html(FormatCompact(value)))
+            .Append("</strong> <span>(")
+            .Append(Html(FormatPercent(value, totalValue)))
+            .AppendLine(")</span></div>");
     }
 
     private static void AppendProviderLegend(StringBuilder sb, string providerId) {
@@ -194,6 +264,14 @@ public static class UsageTelemetryOverviewHtmlRenderer {
             "claude" => new[] { "#e8e8e8", "#f5d8b0", "#f3ba73", "#fb8c1d", "#c65102" },
             "codex" => new[] { "#e8e8e8", "#cfd6ff", "#98a8ff", "#6268f1", "#2f2a93" },
             _ => new[] { "#e8e8e8", "#d6ecd3", "#9be9a8", "#40c463", "#216e39" }
+        };
+    }
+
+    private static ProviderAccentColors ResolveProviderAccentColors(string providerId) {
+        return providerId.Trim().ToLowerInvariant() switch {
+            "claude" => new ProviderAccentColors("#f3ba73", "#fb8c1d", "#c65102", "#e9c89e"),
+            "codex" => new ProviderAccentColors("#98a8ff", "#6268f1", "#2f2a93", "#bcc5ff"),
+            _ => new ProviderAccentColors("#9be9a8", "#40c463", "#216e39", "#cfe8d2")
         };
     }
 
@@ -234,7 +312,25 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         return value.ToString("0", CultureInfo.InvariantCulture);
     }
 
+    private static string FormatPercent(long value, long total) {
+        if (value <= 0 || total <= 0) {
+            return "0%";
+        }
+
+        return (Math.Min(1d, value / (double)total) * 100d).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+    }
+
+    private static string FormatPercentValue(long value, long total) {
+        if (value <= 0 || total <= 0) {
+            return "0";
+        }
+
+        return (Math.Min(1d, value / (double)total) * 100d).ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
     private static string Html(string value) {
         return WebUtility.HtmlEncode(value ?? string.Empty);
     }
+
+    private sealed record ProviderAccentColors(string Input, string Output, string Total, string Other);
 }
