@@ -162,6 +162,14 @@ public sealed class UsageTelemetryImportCoordinator {
                            string.Equals(root.ProviderId, providerFilter, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
+        importContext.Progress?.Invoke(new UsageImportProgressUpdate {
+            Phase = "import",
+            ProviderId = providerFilter,
+            Message = roots.Length == 0
+                ? "No telemetry roots matched the current filters"
+                : "Importing " + roots.Length + " telemetry root(s)"
+        });
+
         for (var i = 0; i < roots.Length; i++) {
             cancellationToken.ThrowIfCancellationRequested();
             result.Roots.Add(await ImportRootAsync(roots[i], importContext, cancellationToken).ConfigureAwait(false));
@@ -207,6 +215,15 @@ public sealed class UsageTelemetryImportCoordinator {
             ProviderId = root.ProviderId
         };
 
+        var importContext = context ?? new UsageImportContext();
+        importContext.Progress?.Invoke(new UsageImportProgressUpdate {
+            Phase = "root",
+            ProviderId = root.ProviderId,
+            RootId = root.Id,
+            RootPath = root.Path,
+            Message = "Scanning " + root.ProviderId + " root: " + root.Path
+        });
+
         if (!root.Enabled) {
             result.Message = "Source root is disabled.";
             return result;
@@ -221,11 +238,18 @@ public sealed class UsageTelemetryImportCoordinator {
             return result;
         }
 
-        var importContext = context ?? new UsageImportContext();
         for (var i = 0; i < adapters.Length; i++) {
             cancellationToken.ThrowIfCancellationRequested();
             var adapter = adapters[i];
             result.AdapterIds.Add(adapter.AdapterId);
+            importContext.Progress?.Invoke(new UsageImportProgressUpdate {
+                Phase = "adapter",
+                ProviderId = root.ProviderId,
+                RootId = root.Id,
+                RootPath = root.Path,
+                AdapterId = adapter.AdapterId,
+                Message = "Using " + adapter.AdapterId + " for " + root.Path
+            });
 
             var artifactsBefore = importContext.ArtifactsProcessed;
             var artifactStore = importContext.RawArtifactStore;
@@ -256,6 +280,19 @@ public sealed class UsageTelemetryImportCoordinator {
                 break;
             }
         }
+
+        importContext.Progress?.Invoke(new UsageImportProgressUpdate {
+            Phase = "root-complete",
+            ProviderId = root.ProviderId,
+            RootId = root.Id,
+            RootPath = root.Path,
+            Message = "Imported "
+                      + result.EventsInserted.ToString()
+                      + " new / "
+                      + result.EventsUpdated.ToString()
+                      + " updated event(s) from "
+                      + root.Path
+        });
 
         return result;
     }

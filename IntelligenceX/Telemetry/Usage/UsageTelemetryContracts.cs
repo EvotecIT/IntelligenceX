@@ -183,6 +183,11 @@ public sealed class UsageImportContext {
     public bool ForceReimport { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional progress callback for long-running discovery/import flows.
+    /// </summary>
+    public Action<UsageImportProgressUpdate>? Progress { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether adapters should prefer newer artifacts first.
     /// </summary>
     public bool PreferRecentArtifacts { get; set; }
@@ -232,6 +237,41 @@ public sealed class UsageImportContext {
             }
         }
     }
+}
+
+/// <summary>
+/// Describes one progress update emitted during usage discovery/import.
+/// </summary>
+public sealed class UsageImportProgressUpdate {
+    /// <summary>
+    /// Gets or sets the current high-level phase.
+    /// </summary>
+    public string Phase { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the provider identifier when known.
+    /// </summary>
+    public string? ProviderId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the source-root identifier when known.
+    /// </summary>
+    public string? RootId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the source-root path or locator when known.
+    /// </summary>
+    public string? RootPath { get; set; }
+
+    /// <summary>
+    /// Gets or sets the adapter identifier when known.
+    /// </summary>
+    public string? AdapterId { get; set; }
+
+    /// <summary>
+    /// Gets or sets a human-readable message for the current phase.
+    /// </summary>
+    public string? Message { get; set; }
 }
 
 /// <summary>

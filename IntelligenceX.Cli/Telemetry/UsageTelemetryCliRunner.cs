@@ -11,6 +11,7 @@ using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Telemetry.Usage.Claude;
 using IntelligenceX.Telemetry.Usage.Codex;
 using IntelligenceX.Visualization.Heatmaps;
+using Spectre.Console;
 
 namespace IntelligenceX.Cli.Telemetry;
 
@@ -348,21 +349,38 @@ internal static class UsageTelemetryCliRunner {
         var coordinator = CreateCoordinator(rootStore, eventStore);
 
         if (options.Discover) {
-            await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
+            await RunUsageStatusAsync(
+                "Discovering telemetry roots...",
+                "Discovering telemetry roots...",
+                static _ => Task.CompletedTask,
+                async progress => {
+                    progress("Discovering telemetry roots...");
+                    var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
+                    progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " telemetry root(s)");
+                }).ConfigureAwait(false);
         }
 
-        var result = await coordinator.ImportAllAsync(
-            new UsageImportContext {
-                MachineId = options.MachineId,
-                ParserVersion = options.ParserVersion,
-                AccountResolver = new UsageAccountBindingResolver(bindingStore),
-                RawArtifactStore = rawArtifactStore,
-                PreferRecentArtifacts = options.RecentFirst,
-                MaxArtifacts = options.MaxArtifacts,
-                ForceReimport = options.Force
-            },
-            options.ProviderId,
-            CancellationToken.None).ConfigureAwait(false);
+        var result = new UsageImportBatchResult();
+        await RunUsageStatusAsync(
+            "Importing telemetry usage...",
+            "Importing telemetry usage...",
+            static _ => Task.CompletedTask,
+            async progress => {
+                result = await coordinator.ImportAllAsync(
+                    new UsageImportContext {
+                        MachineId = options.MachineId,
+                        ParserVersion = options.ParserVersion,
+                        AccountResolver = new UsageAccountBindingResolver(bindingStore),
+                        RawArtifactStore = rawArtifactStore,
+                        PreferRecentArtifacts = options.RecentFirst,
+                        MaxArtifacts = options.MaxArtifacts,
+                        ForceReimport = options.Force,
+                        Progress = update => progress(BuildProgressMessage(update))
+                    },
+                    options.ProviderId,
+                    CancellationToken.None).ConfigureAwait(false);
+                progress("Imported " + result.EventsInserted.ToString(CultureInfo.InvariantCulture) + " new event(s)");
+            }).ConfigureAwait(false);
 
         if (options.Json) {
             Console.WriteLine(JsonLite.Serialize(JsonValue.From(ToJson(result))));
@@ -547,17 +565,64 @@ internal static class UsageTelemetryCliRunner {
         using var rawArtifactStore = new SqliteRawArtifactStore(dbPath);
         using var eventStore = new SqliteUsageEventStore(dbPath);
         var coordinator = CreateCoordinator(rootStore, eventStore);
-        await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
-        await coordinator.ImportAllAsync(
-            new UsageImportContext {
-                AccountResolver = new UsageAccountBindingResolver(bindingStore),
-                RawArtifactStore = rawArtifactStore,
-                PreferRecentArtifacts = options.RecentFirst,
-                MaxArtifacts = options.MaxArtifacts,
-                ForceReimport = options.Force
-            },
-            options.ProviderId,
-            CancellationToken.None).ConfigureAwait(false);
+        await RunUsageStatusAsync(
+            "Preparing telemetry report...",
+            "Preparing telemetry report...",
+            static _ => Task.CompletedTask,
+            async progress => {
+                progress("Discovering telemetry roots...");
+                var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
+                progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " telemetry root(s)");
+
+                await coordinator.ImportAllAsync(
+                    new UsageImportContext {
+                        AccountResolver = new UsageAccountBindingResolver(bindingStore),
+                        RawArtifactStore = rawArtifactStore,
+                        PreferRecentArtifacts = options.RecentFirst,
+                        MaxArtifacts = options.MaxArtifacts,
+                        ForceReimport = options.Force,
+                        Progress = update => progress(BuildProgressMessage(update))
+                    },
+                    options.ProviderId,
+                    CancellationToken.None).ConfigureAwait(false);
+
+                progress("Rendering usage report...");
+            }).ConfigureAwait(false);
+    }
+
+    private static string BuildProgressMessage(UsageImportProgressUpdate update) {
+        var message = NormalizeOptional(update.Message);
+        if (!string.IsNullOrWhiteSpace(message)) {
+            return message!;
+        }
+
+        return NormalizeOptional(update.Phase) ?? "Working...";
+    }
+
+    private static async Task RunUsageStatusAsync(
+        string initialStatus,
+        string fallbackStatus,
+        Func<string, Task> plainUpdate,
+        Func<Action<string>, Task> action) {
+        if (Console.IsOutputRedirected || !AnsiConsole.Profile.Capabilities.Ansi) {
+            await plainUpdate(fallbackStatus).ConfigureAwait(false);
+            await action(_ => { }).ConfigureAwait(false);
+            return;
+        }
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .StartAsync(initialStatus, async context => {
+                void Update(string message) {
+                    context.Status(BuildSpectreStatus(message));
+                }
+
+                await action(Update).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+    }
+
+    private static string BuildSpectreStatus(string message) {
+        return Markup.Escape(NormalizeOptional(message) ?? "Working...");
     }
 
     private static UsageTelemetryImportCoordinator CreateCoordinator(
