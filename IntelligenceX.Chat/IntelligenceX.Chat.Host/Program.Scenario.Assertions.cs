@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -450,31 +451,11 @@ internal static partial class Program {
 
     private static IReadOnlyList<string> GetScenarioInputKeyAliases(string inputKey) {
         var key = (inputKey ?? string.Empty).Trim();
-        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (key.Length == 0) {
             return Array.Empty<string>();
         }
 
-        aliases.Add(key);
-        if (string.Equals(key, "machine_name", StringComparison.OrdinalIgnoreCase)) {
-            aliases.Add("domain_controller");
-            aliases.Add("servers");
-            aliases.Add("targets");
-            aliases.Add("target");
-            aliases.Add("host");
-            aliases.Add("server");
-            aliases.Add("computer_name");
-        } else if (string.Equals(key, "domain_controller", StringComparison.OrdinalIgnoreCase)) {
-            aliases.Add("machine_name");
-            aliases.Add("servers");
-            aliases.Add("targets");
-            aliases.Add("target");
-            aliases.Add("host");
-            aliases.Add("server");
-            aliases.Add("computer_name");
-        }
-
-        return aliases.ToArray();
+        return ToolHostTargeting.GetCompatibleArgumentAliases(key);
     }
 
     private static string NormalizeScenarioAssertionInputValue(string inputKey, string value) {
@@ -517,14 +498,7 @@ internal static partial class Program {
     }
 
     private static bool IsHostTargetAliasForAssertion(string key) {
-        return string.Equals(key, "machine_name", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(key, "domain_controller", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(key, "host", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(key, "server", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(key, "target", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(key, "targets", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(key, "servers", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(key, "computer_name", StringComparison.OrdinalIgnoreCase);
+        return ToolHostTargeting.IsHostTargetArgumentName(key);
     }
 
     private static string NormalizeHostTargetCandidateForAssertion(string value) {

@@ -26,6 +26,7 @@ internal sealed partial class ChatServiceSession {
             _packAvailability,
             _pluginAvailability,
             _routingCatalogDiagnostics,
+            _toolOrchestrationCatalog,
             connectedRuntimeSkills: _connectedRuntimeSkillInventory,
             healthyToolNames: ResolveWorkingMemoryCapabilityHealthyToolNames(
                 Array.Empty<string>(),
@@ -39,6 +40,7 @@ internal sealed partial class ChatServiceSession {
         IEnumerable<ToolPackAvailabilityInfo> packAvailability,
         IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
         ToolRoutingCatalogDiagnostics? routingCatalog,
+        ToolOrchestrationCatalog? orchestrationCatalog = null,
         IEnumerable<string>? connectedRuntimeSkills = null,
         IEnumerable<string>? healthyToolNames = null,
         string? remoteReachabilityMode = null) {
@@ -79,6 +81,9 @@ internal sealed partial class ChatServiceSession {
         var healthyTools = NormalizeCapabilitySnapshotHealthyToolNames(healthyToolNames ?? Array.Empty<string>());
         var registeredTools = Math.Max(0, routingCatalog?.TotalTools ?? 0);
         var allowedRootCount = Math.Max(0, options.AllowedRoots.Count);
+        var autonomy = ToolAutonomySummaryBuilder.BuildCapabilityAutonomySummary(
+            packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
+            orchestrationCatalog);
         var parityEntries = ToolCapabilityParityInventoryBuilder.Build(toolDefinitions, packAvailability);
         var parityAttentionCount = parityEntries.Count(static entry =>
             !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.HealthyStatus, StringComparison.OrdinalIgnoreCase)
@@ -100,6 +105,7 @@ internal sealed partial class ChatServiceSession {
             Skills = skills,
             HealthyTools = healthyTools,
             RemoteReachabilityMode = NormalizeCapabilitySnapshotRemoteReachabilityMode(remoteReachabilityMode),
+            Autonomy = autonomy,
             ParityEntries = parityEntries,
             ParityAttentionCount = Math.Max(0, parityAttentionCount),
             ParityMissingCapabilityCount = Math.Max(0, parityMissingCapabilityCount)
@@ -185,7 +191,10 @@ internal sealed partial class ChatServiceSession {
         return normalized.Length == 0 ? null : normalized;
     }
 
-    private static void AppendCapabilitySnapshotPromptBlock(StringBuilder runtimeIdentity, SessionCapabilitySnapshotDto snapshot) {
+    private static void AppendCapabilitySnapshotPromptBlock(
+        StringBuilder runtimeIdentity,
+        SessionCapabilitySnapshotDto snapshot,
+        ToolRoutingCatalogDiagnostics? routingCatalog = null) {
         ArgumentNullException.ThrowIfNull(runtimeIdentity);
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -210,6 +219,30 @@ internal sealed partial class ChatServiceSession {
 
         if (snapshot.HealthyTools.Length > 0) {
             runtimeIdentity.AppendLine("healthy_tools: " + string.Join(", ", snapshot.HealthyTools));
+        }
+        var routingAutonomyReadiness = routingCatalog is null
+            ? Array.Empty<string>()
+            : ToolRoutingCatalogDiagnosticsBuilder.BuildAutonomyReadinessHighlights(routingCatalog, maxItems: 4);
+        if (routingAutonomyReadiness.Count > 0) {
+            runtimeIdentity.AppendLine("routing_autonomy_readiness: " + string.Join(" | ", routingAutonomyReadiness));
+        }
+        if (snapshot.Autonomy is not null) {
+            runtimeIdentity.AppendLine("autonomy_remote_capable_tools: " + snapshot.Autonomy.RemoteCapableToolCount);
+            runtimeIdentity.AppendLine("autonomy_setup_aware_tools: " + snapshot.Autonomy.SetupAwareToolCount);
+            runtimeIdentity.AppendLine("autonomy_handoff_aware_tools: " + snapshot.Autonomy.HandoffAwareToolCount);
+            runtimeIdentity.AppendLine("autonomy_recovery_aware_tools: " + snapshot.Autonomy.RecoveryAwareToolCount);
+            runtimeIdentity.AppendLine("autonomy_cross_pack_handoff_tools: " + snapshot.Autonomy.CrossPackHandoffToolCount);
+            if (snapshot.Autonomy.RemoteCapablePackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_remote_capable_packs: " + string.Join(", ", snapshot.Autonomy.RemoteCapablePackIds));
+            }
+
+            if (snapshot.Autonomy.CrossPackReadyPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_cross_pack_ready_packs: " + string.Join(", ", snapshot.Autonomy.CrossPackReadyPackIds));
+            }
+
+            if (snapshot.Autonomy.CrossPackTargetPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_cross_pack_targets: " + string.Join(", ", snapshot.Autonomy.CrossPackTargetPackIds));
+            }
         }
         if (snapshot.ParityEntries.Length > 0) {
             runtimeIdentity.AppendLine("parity_engine_count: " + snapshot.ParityEntries.Length);

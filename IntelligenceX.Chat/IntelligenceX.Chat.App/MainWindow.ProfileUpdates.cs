@@ -124,7 +124,14 @@ public sealed partial class MainWindow : Window {
         return currentTimestamp;
     }
 
-    private void UpdateToolCatalog(ToolDefinitionDto[] tools) {
+    private void UpdateToolCatalog(
+        ToolDefinitionDto[] tools,
+        SessionRoutingCatalogDiagnosticsDto? routingCatalog = null,
+        ToolPackInfoDto[]? packs = null,
+        SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
+        _toolCatalogPacks = packs ?? Array.Empty<ToolPackInfoDto>();
+        _toolCatalogRoutingCatalog = routingCatalog;
+        _toolCatalogCapabilitySnapshot = capabilitySnapshot;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var tool in tools) {
             if (string.IsNullOrWhiteSpace(tool.Name)) {
@@ -137,12 +144,17 @@ public sealed partial class MainWindow : Window {
             _toolDisplayNames[name] = string.IsNullOrWhiteSpace(tool.DisplayName) ? FormatToolDisplayName(name) : tool.DisplayName.Trim();
             _toolCategories[name] = string.IsNullOrWhiteSpace(tool.Category) ? "other" : tool.Category.Trim();
             if (!string.IsNullOrWhiteSpace(tool.PackId)) {
-                _toolPackIds[name] = tool.PackId.Trim();
+                var normalizedPackId = NormalizeRuntimePackId(tool.PackId);
+                if (normalizedPackId.Length > 0) {
+                    _toolPackIds[name] = normalizedPackId;
+                } else {
+                    _toolPackIds.Remove(name);
+                }
             } else {
                 _toolPackIds.Remove(name);
             }
             if (!string.IsNullOrWhiteSpace(tool.PackName)) {
-                _toolPackNames[name] = ResolvePackDisplayName(tool.PackId, tool.PackName);
+                _toolPackNames[name] = ToolPackMetadataNormalizer.ResolveDisplayName(tool.PackId, tool.PackName);
             } else {
                 _toolPackNames.Remove(name);
             }
@@ -193,16 +205,17 @@ public sealed partial class MainWindow : Window {
     }
 
     private async Task<bool> SetToolPackEnabledAsync(string packId, bool enabled) {
-        var normalizedPackId = NormalizePackId(packId);
-        if (normalizedPackId.Length == 0) {
+        var normalizedUiPackId = NormalizeUiPackId(packId);
+        if (normalizedUiPackId.Length == 0) {
             return false;
         }
 
-        if (FindSessionPackInfo(normalizedPackId) is not null) {
-            return await TryApplyRuntimePackSettingAsync(normalizedPackId, enabled).ConfigureAwait(false);
+        var runtimePackId = NormalizeRuntimePackId(packId);
+        if (runtimePackId.Length > 0 && FindSessionPackInfo(runtimePackId) is not null) {
+            return await TryApplyRuntimePackSettingAsync(runtimePackId, enabled).ConfigureAwait(false);
         }
 
-        return SetToolPackToolStateEnabled(normalizedPackId, enabled);
+        return SetToolPackToolStateEnabled(normalizedUiPackId, enabled);
     }
 
     private bool SetToolPackToolStateEnabled(string normalizedPackId, bool enabled) {
@@ -211,7 +224,7 @@ public sealed partial class MainWindow : Window {
         for (var i = 0; i < names.Count; i++) {
             var toolName = names[i];
             var toolPackId = ResolveToolPackId(toolName);
-            if (!string.Equals(NormalizePackId(toolPackId), normalizedPackId, StringComparison.Ordinal)) {
+            if (!string.Equals(NormalizeUiPackId(toolPackId), normalizedPackId, StringComparison.Ordinal)) {
                 continue;
             }
 
@@ -234,7 +247,7 @@ public sealed partial class MainWindow : Window {
 
         for (var i = 0; i < packs.Length; i++) {
             var pack = packs[i];
-            if (string.Equals(NormalizePackId(pack.Id), normalizedPackId, StringComparison.Ordinal)) {
+            if (string.Equals(NormalizeRuntimePackId(pack.Id), normalizedPackId, StringComparison.Ordinal)) {
                 return pack;
             }
         }
@@ -302,11 +315,14 @@ public sealed partial class MainWindow : Window {
         }
 
         if (_toolPackIds.TryGetValue(toolName, out var explicitPackId) && !string.IsNullOrWhiteSpace(explicitPackId)) {
-            return explicitPackId.Trim();
+            var normalizedPackId = NormalizeRuntimePackId(explicitPackId);
+            if (normalizedPackId.Length > 0) {
+                return normalizedPackId;
+            }
         }
 
         if (_toolCategories.TryGetValue(toolName, out var category) && !string.IsNullOrWhiteSpace(category)) {
-            var fromCategory = NormalizePackId(category);
+            var fromCategory = NormalizeUiPackId(category);
             if (!string.IsNullOrWhiteSpace(fromCategory) && !string.Equals(fromCategory, "other", StringComparison.OrdinalIgnoreCase)) {
                 return fromCategory;
             }
@@ -315,17 +331,15 @@ public sealed partial class MainWindow : Window {
         return "uncategorized";
     }
 
-    private static string NormalizePackId(string? packId) {
-        var normalized = (packId ?? string.Empty).Trim().ToLowerInvariant();
+    private static string NormalizeRuntimePackId(string? packId) {
+        return ToolPackMetadataNormalizer.NormalizePackId(packId);
+    }
+
+    private static string NormalizeUiPackId(string? packId) {
+        var normalized = NormalizeRuntimePackId(packId);
         if (normalized.Length == 0) {
             return string.Empty;
         }
-
-        normalized = normalized
-            .Replace("-", string.Empty, StringComparison.Ordinal)
-            .Replace("_", string.Empty, StringComparison.Ordinal)
-            .Replace(".", string.Empty, StringComparison.Ordinal)
-            .Replace(" ", string.Empty, StringComparison.Ordinal);
 
         if (string.Equals(normalized, "other", StringComparison.Ordinal)) {
             return "uncategorized";
@@ -361,7 +375,7 @@ public sealed partial class MainWindow : Window {
                 continue;
             }
 
-            var packId = (rawPackId ?? string.Empty).Trim();
+            var packId = NormalizeRuntimePackId(rawPackId);
             if (packId.Length == 0) {
                 continue;
             }

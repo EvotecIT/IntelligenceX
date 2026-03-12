@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Host;
@@ -113,5 +116,92 @@ internal static partial class Program {
         if (!sink.Contains(normalized)) {
             sink.Add(normalized);
         }
+    }
+
+    internal static IReadOnlyList<string> BuildUnavailablePackAvailabilityWarnings(IReadOnlyList<ToolPackAvailabilityInfo> packAvailability) {
+        if (packAvailability.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        return StartupUnavailablePackWarningFormatter.BuildEntries(
+                packAvailability,
+                static pack => pack.Id,
+                static pack => pack.Name,
+                static pack => pack.Enabled,
+                static pack => pack.DisabledReason)
+            .OrderBy(static pack => pack.Label, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static pack => pack.Reason, StringComparer.OrdinalIgnoreCase)
+            .Select(static pack => pack.Label + ": " + pack.Reason)
+            .ToArray();
+    }
+
+    internal static IReadOnlyList<string> BuildFormattedPackWarnings(
+        IReadOnlyList<string>? warnings,
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null) {
+        if (warnings is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var formatted = new List<string>(warnings.Count);
+        for (var i = 0; i < warnings.Count; i++) {
+            var line = FormatPackWarningForConsole(warnings[i], packAvailability);
+            if (line.Length == 0 || formatted.Contains(line, StringComparer.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            formatted.Add(line);
+        }
+
+        return formatted;
+    }
+
+    internal static string FormatPackWarningForConsole(
+        string? warning,
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null) {
+        var normalized = (warning ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var displayParts = StartupToolHealthWarningFormatter.BuildDisplayParts(
+            normalized,
+            normalizedPackId => ResolvePackNameFromAvailability(normalizedPackId, packAvailability));
+        if (displayParts is not null) {
+            return displayParts.Value.Title + ": " + displayParts.Value.Summary;
+        }
+
+        if (StartupBootstrapWarningFormatter.TryBuildStatusText(normalized, out var bootstrapStatus, out _)) {
+            return bootstrapStatus;
+        }
+
+        return normalized;
+    }
+
+    private static string ResolvePackNameFromAvailability(
+        string? packId,
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability) {
+        var normalizedPackId = NormalizeHostPackId(packId);
+        if (normalizedPackId.Length == 0 || packAvailability is not { Count: > 0 }) {
+            return string.Empty;
+        }
+
+        for (var i = 0; i < packAvailability.Count; i++) {
+            var candidate = packAvailability[i];
+            if (!string.Equals(NormalizeHostPackId(candidate.Id), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            return (candidate.Name ?? string.Empty).Trim();
+        }
+
+        return string.Empty;
+    }
+
+    private static string NormalizeHostPackId(string? packId) {
+        return StartupToolHealthWarningFormatter.NormalizePackId(packId);
+    }
+
+    private static string ResolveHostPackDisplayLabel(string? packId, string? fallbackName) {
+        return StartupToolHealthWarningFormatter.ResolvePackDisplayLabel(packId, fallbackName);
     }
 }

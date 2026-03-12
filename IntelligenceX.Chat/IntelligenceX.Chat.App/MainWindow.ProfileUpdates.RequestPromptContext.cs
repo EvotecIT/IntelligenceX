@@ -53,6 +53,9 @@ public sealed partial class MainWindow {
         var recentAssistantAskedQuestion = ConversationStyleGuidanceBuilder.HasRecentAssistantQuestion(activeConversation.Messages);
         var capabilitySelfKnowledgeLines = SelectCapabilitySelfKnowledgeLines(
             _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogRoutingCatalog,
+            _toolCatalogCapabilitySnapshot,
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion);
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
@@ -112,12 +115,38 @@ public sealed partial class MainWindow {
         SessionPolicyDto? sessionPolicy,
         bool assistantCapabilityQuestion,
         bool assistantRuntimeIntrospectionQuestion) {
+        return SelectCapabilitySelfKnowledgeLines(
+            sessionPolicy,
+            toolCatalogPacks: null,
+            toolCatalogRoutingCatalog: null,
+            toolCatalogCapabilitySnapshot: null,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion);
+    }
+
+    internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
+        SessionPolicyDto? sessionPolicy,
+        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
+        SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion) {
         if (assistantCapabilityQuestion) {
-            return BuildCapabilitySelfKnowledgeLines(sessionPolicy, runtimeIntrospectionMode: false);
+            return BuildCapabilitySelfKnowledgeLines(
+                sessionPolicy,
+                toolCatalogPacks,
+                toolCatalogRoutingCatalog,
+                toolCatalogCapabilitySnapshot,
+                runtimeIntrospectionMode: false);
         }
 
         if (assistantRuntimeIntrospectionQuestion) {
-            return BuildCapabilitySelfKnowledgeLines(sessionPolicy, runtimeIntrospectionMode: true);
+            return BuildCapabilitySelfKnowledgeLines(
+                sessionPolicy,
+                toolCatalogPacks,
+                toolCatalogRoutingCatalog,
+                toolCatalogCapabilitySnapshot,
+                runtimeIntrospectionMode: true);
         }
 
         return null;

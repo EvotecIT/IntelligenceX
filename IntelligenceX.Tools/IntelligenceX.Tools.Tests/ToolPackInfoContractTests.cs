@@ -57,6 +57,43 @@ public class ToolPackInfoContractTests {
             var catalogNames = ReadCatalogNames(toolCatalog);
             Assert.Equal(actualTools, catalogNames);
 
+            var autonomySummary = root.GetProperty("autonomy_summary");
+            Assert.Equal(JsonValueKind.Object, autonomySummary.ValueKind);
+            Assert.Equal(@case.ExpectedCatalog.Count, autonomySummary.GetProperty("total_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedRemoteCapableTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("remote_capable_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedSetupAwareTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("setup_aware_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedHandoffAwareTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("handoff_aware_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedRecoveryAwareTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("recovery_aware_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedCrossPackHandoffTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("cross_pack_handoff_tools").GetInt32());
+            Assert.Equal(
+                ReadExpectedRemoteCapableToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("remote_capable_tool_names")));
+            Assert.Equal(
+                ReadExpectedSetupAwareToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("setup_aware_tool_names")));
+            Assert.Equal(
+                ReadExpectedHandoffAwareToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("handoff_aware_tool_names")));
+            Assert.Equal(
+                ReadExpectedRecoveryAwareToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("recovery_aware_tool_names")));
+            Assert.Equal(
+                ReadExpectedCrossPackHandoffToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("cross_pack_handoff_tool_names")));
+            Assert.Equal(
+                ReadExpectedCrossPackTargetPacks(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("cross_pack_target_packs")));
+
             var expectedCatalogByName = @case.ExpectedCatalog.ToDictionary(
                 static x => x.Name,
                 StringComparer.OrdinalIgnoreCase);
@@ -104,8 +141,6 @@ public class ToolPackInfoContractTests {
                 Assert.True(isPackInfo.ValueKind == JsonValueKind.True || isPackInfo.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("traits", out var traits));
                 Assert.Equal(JsonValueKind.Object, traits.ValueKind);
-                Assert.True(entry.TryGetProperty("orchestration", out var orchestration));
-                Assert.Equal(JsonValueKind.Object, orchestration.ValueKind);
                 Assert.True(entry.TryGetProperty("is_write_capable", out var isWriteCapable));
                 Assert.True(isWriteCapable.ValueKind == JsonValueKind.True || isWriteCapable.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("requires_write_governance", out var requiresWriteGovernance));
@@ -153,7 +188,6 @@ public class ToolPackInfoContractTests {
                 Assert.Equal(expectedCatalogEntry.SupportsTableViewProjection, supportsProjection.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.IsPackInfoTool, isPackInfo.GetBoolean());
                 AssertTraitDetails(traits, expectedCatalogEntry.Traits);
-                AssertOrchestrationDetails(orchestration, expectedCatalogEntry.Orchestration);
                 Assert.Equal(expectedCatalogEntry.IsWriteCapable, isWriteCapable.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.RequiresWriteGovernance, requiresWriteGovernance.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.WriteGovernanceContractId, writeGovernanceContractId.GetString());
@@ -514,6 +548,44 @@ public class ToolPackInfoContractTests {
         Assert.Contains("ad_ldap_query_paged", primaryTools, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task EventLogPackInfo_ShouldExposeStructuredSetupHandoffAndRecoveryCatalogContracts() {
+        var tool = new EventLogPackInfoTool(new EventLogToolOptions());
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        var toolCatalog = root.GetProperty("tool_catalog");
+        var timelineEntry = toolCatalog
+            .EnumerateArray()
+            .First(static node => string.Equals(node.GetProperty("name").GetString(), "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase));
+
+        var traits = timelineEntry.GetProperty("traits");
+        Assert.Equal("local_or_remote", traits.GetProperty("execution_scope").GetString());
+        Assert.Contains("machine_name", ReadStringArray(traits.GetProperty("remote_host_arguments")), StringComparer.OrdinalIgnoreCase);
+
+        var setup = timelineEntry.GetProperty("setup");
+        Assert.True(setup.GetProperty("is_setup_aware").GetBoolean());
+        Assert.Equal("eventlog_channels_list", setup.GetProperty("setup_tool_name").GetString());
+
+        var handoff = timelineEntry.GetProperty("handoff");
+        Assert.True(handoff.GetProperty("is_handoff_aware").GetBoolean());
+        var routes = handoff.GetProperty("routes").EnumerateArray().ToArray();
+        Assert.Contains(routes, static route =>
+            string.Equals(route.GetProperty("target_pack_id").GetString(), "system", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(route.GetProperty("target_tool_name").GetString(), "system_info", StringComparison.OrdinalIgnoreCase));
+
+        var recovery = timelineEntry.GetProperty("recovery");
+        Assert.True(recovery.GetProperty("is_recovery_aware").GetBoolean());
+        Assert.Contains("eventlog_channels_list", ReadStringArray(recovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+
+        var autonomySummary = root.GetProperty("autonomy_summary");
+        Assert.Contains("eventlog_timeline_query", ReadStringArray(autonomySummary.GetProperty("remote_capable_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_timeline_query", ReadStringArray(autonomySummary.GetProperty("setup_aware_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_timeline_query", ReadStringArray(autonomySummary.GetProperty("cross_pack_handoff_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system", ReadStringArray(autonomySummary.GetProperty("cross_pack_target_packs")), StringComparer.OrdinalIgnoreCase);
+    }
+
     private static PackCase[] BuildPackCases() {
         var adOptions = new ActiveDirectoryToolOptions();
         var eventLogOptions = new EventLogToolOptions();
@@ -704,6 +776,7 @@ public class ToolPackInfoContractTests {
     }
 
     private static void AssertTraitDetails(JsonElement actualTraits, ToolPackToolTraitsModel expectedTraits) {
+        Assert.Equal(expectedTraits.ExecutionScope, actualTraits.GetProperty("execution_scope").GetString());
         Assert.Equal(expectedTraits.SupportsTableViewProjection, actualTraits.GetProperty("supports_table_view_projection").GetBoolean());
         Assert.Equal(expectedTraits.SupportsPaging, actualTraits.GetProperty("supports_paging").GetBoolean());
         Assert.Equal(expectedTraits.SupportsTimeRange, actualTraits.GetProperty("supports_time_range").GetBoolean());
@@ -743,60 +816,87 @@ public class ToolPackInfoContractTests {
             ReadStringArray(actualTraits.GetProperty("authentication_arguments")));
     }
 
-    private static void AssertOrchestrationDetails(JsonElement actualOrchestration, ToolPackToolOrchestrationModel expectedOrchestration) {
-        Assert.Equal(expectedOrchestration.PackId, actualOrchestration.GetProperty("pack_id").GetString());
-        Assert.Equal(expectedOrchestration.Role, actualOrchestration.GetProperty("role").GetString());
-        Assert.Equal(expectedOrchestration.RoutingSource, actualOrchestration.GetProperty("routing_source").GetString());
-        Assert.Equal(expectedOrchestration.IsRoutingAware, actualOrchestration.GetProperty("is_routing_aware").GetBoolean());
-        Assert.Equal(expectedOrchestration.DomainIntentFamily, actualOrchestration.GetProperty("domain_intent_family").GetString());
-        Assert.Equal(expectedOrchestration.DomainIntentActionId, actualOrchestration.GetProperty("domain_intent_action_id").GetString());
-        Assert.Equal(expectedOrchestration.IsSetupAware, actualOrchestration.GetProperty("is_setup_aware").GetBoolean());
-        Assert.Equal(expectedOrchestration.SetupRequirementCount, actualOrchestration.GetProperty("setup_requirement_count").GetInt32());
-        Assert.Equal(expectedOrchestration.SetupToolName, actualOrchestration.GetProperty("setup_tool_name").GetString());
-        Assert.Equal(expectedOrchestration.SetupContractId, actualOrchestration.GetProperty("setup_contract_id").GetString());
-        Assert.Equal(
-            expectedOrchestration.SetupRequirementIds.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
-            ReadStringArray(actualOrchestration.GetProperty("setup_requirement_ids")));
-        Assert.Equal(
-            expectedOrchestration.SetupRequirementKinds.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
-            ReadStringArray(actualOrchestration.GetProperty("setup_requirement_kinds")));
-        Assert.Equal(
-            expectedOrchestration.SetupHintKeys.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
-            ReadStringArray(actualOrchestration.GetProperty("setup_hint_keys")));
-        Assert.Equal(expectedOrchestration.IsHandoffAware, actualOrchestration.GetProperty("is_handoff_aware").GetBoolean());
-        Assert.Equal(expectedOrchestration.HandoffRouteCount, actualOrchestration.GetProperty("handoff_route_count").GetInt32());
-        Assert.Equal(expectedOrchestration.HandoffBindingCount, actualOrchestration.GetProperty("handoff_binding_count").GetInt32());
-        Assert.Equal(expectedOrchestration.HandoffContractId, actualOrchestration.GetProperty("handoff_contract_id").GetString());
+    private static int CountExpectedRemoteCapableTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry =>
+            entry.Traits.SupportsRemoteHostTargeting
+            || entry.Traits.RemoteHostArguments.Count > 0
+            || string.Equals(entry.Traits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase));
+    }
 
-        var actualHandoffEdges = actualOrchestration.GetProperty("handoff_edges");
-        Assert.Equal(JsonValueKind.Array, actualHandoffEdges.ValueKind);
-        Assert.Equal(expectedOrchestration.HandoffEdges.Count, actualHandoffEdges.GetArrayLength());
-        for (var i = 0; i < expectedOrchestration.HandoffEdges.Count; i++) {
-            var expectedEdge = expectedOrchestration.HandoffEdges[i];
-            var actualEdge = actualHandoffEdges[i];
-            Assert.Equal(expectedEdge.TargetPackId, actualEdge.GetProperty("target_pack_id").GetString());
-            Assert.Equal(expectedEdge.TargetToolName, actualEdge.GetProperty("target_tool_name").GetString());
-            Assert.Equal(expectedEdge.TargetRole, actualEdge.GetProperty("target_role").GetString());
-            Assert.Equal(expectedEdge.BindingCount, actualEdge.GetProperty("binding_count").GetInt32());
-            Assert.Equal(expectedEdge.BindingPairs, ReadStringArrayPreserveOrder(actualEdge.GetProperty("binding_pairs")));
-        }
+    private static int CountExpectedSetupAwareTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry => entry.Setup.IsSetupAware);
+    }
 
-        Assert.Equal(expectedOrchestration.IsRecoveryAware, actualOrchestration.GetProperty("is_recovery_aware").GetBoolean());
-        Assert.Equal(expectedOrchestration.SupportsTransientRetry, actualOrchestration.GetProperty("supports_transient_retry").GetBoolean());
-        Assert.Equal(expectedOrchestration.MaxRetryAttempts, actualOrchestration.GetProperty("max_retry_attempts").GetInt32());
-        Assert.Equal(expectedOrchestration.SupportsAlternateEngines, actualOrchestration.GetProperty("supports_alternate_engines").GetBoolean());
-        Assert.Equal(expectedOrchestration.AlternateEngineCount, actualOrchestration.GetProperty("alternate_engine_count").GetInt32());
-        Assert.Equal(expectedOrchestration.RecoveryContractId, actualOrchestration.GetProperty("recovery_contract_id").GetString());
-        Assert.Equal(expectedOrchestration.RecoveryToolCount, actualOrchestration.GetProperty("recovery_tool_count").GetInt32());
-        Assert.Equal(
-            expectedOrchestration.RetryableErrorCodes.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
-            ReadStringArray(actualOrchestration.GetProperty("retryable_error_codes")));
-        Assert.Equal(
-            expectedOrchestration.AlternateEngineIds.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
-            ReadStringArray(actualOrchestration.GetProperty("alternate_engine_ids")));
-        Assert.Equal(
-            expectedOrchestration.RecoveryToolNames.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
-            ReadStringArray(actualOrchestration.GetProperty("recovery_tool_names")));
+    private static int CountExpectedHandoffAwareTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry => entry.Handoff.IsHandoffAware);
+    }
+
+    private static int CountExpectedRecoveryAwareTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry => entry.Recovery.IsRecoveryAware);
+    }
+
+    private static int CountExpectedCrossPackHandoffTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry =>
+            entry.Handoff.Routes.Any(static route => !string.IsNullOrWhiteSpace(route.TargetPackId)));
+    }
+
+    private static string[] ReadExpectedRemoteCapableToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry =>
+                entry.Traits.SupportsRemoteHostTargeting
+                || entry.Traits.RemoteHostArguments.Count > 0
+                || string.Equals(entry.Traits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase))
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedSetupAwareToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.Setup.IsSetupAware)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedHandoffAwareToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.Handoff.IsHandoffAware)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedRecoveryAwareToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.Recovery.IsRecoveryAware)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedCrossPackHandoffToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.Handoff.Routes.Any(static route => !string.IsNullOrWhiteSpace(route.TargetPackId)))
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedCrossPackTargetPacks(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .SelectMany(static entry => entry.Handoff.Routes)
+            .Select(static route => route.TargetPackId)
+            .Where(static packId => !string.IsNullOrWhiteSpace(packId))
+            .Select(static packId => packId!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private sealed record PackCase(

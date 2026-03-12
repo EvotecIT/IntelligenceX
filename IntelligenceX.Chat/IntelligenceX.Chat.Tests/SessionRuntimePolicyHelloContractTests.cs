@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json;
 using System.Linq;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -6,6 +7,7 @@ using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -41,6 +43,8 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             SetupAwareTools = 2,
             HandoffAwareTools = 1,
             RecoveryAwareTools = 3,
+            RemoteCapableTools = 5,
+            CrossPackHandoffTools = 2,
             DomainFamilyTools = 6,
             ExpectedDomainFamilyMissingTools = 0,
             DomainFamilyMissingActionTools = 0,
@@ -117,7 +121,14 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.Equal(2, serializedRoutingCatalog.GetProperty("setupAwareTools").GetInt32());
         Assert.Equal(1, serializedRoutingCatalog.GetProperty("handoffAwareTools").GetInt32());
         Assert.Equal(3, serializedRoutingCatalog.GetProperty("recoveryAwareTools").GetInt32());
+        Assert.Equal(5, serializedRoutingCatalog.GetProperty("remoteCapableTools").GetInt32());
+        Assert.Equal(2, serializedRoutingCatalog.GetProperty("crossPackHandoffTools").GetInt32());
         Assert.Equal(2, serializedRoutingCatalog.GetProperty("familyActions").GetArrayLength());
+        Assert.Equal(6, serializedRoutingCatalog.GetProperty("autonomyReadinessHighlights").GetArrayLength());
+        Assert.Contains(
+            "remote host-targeting",
+            serializedRoutingCatalog.GetProperty("autonomyReadinessHighlights")[0].GetString(),
+            StringComparison.OrdinalIgnoreCase);
         Assert.Equal(
             "act_domain_scope_ad",
             serializedRoutingCatalog
@@ -324,5 +335,128 @@ public sealed class SessionRuntimePolicyHelloContractTests {
             connectedRuntimeSkills: new[] { "repo-search", "task-runner" });
 
         Assert.Equal(new[] { "inventory-test", "network-recon", "repo-search", "task-runner" }, policy.CapabilitySnapshot!.Skills);
+    }
+
+    [Fact]
+    public void BuildSessionPolicy_ProjectsPackAutonomySummaryFromOrchestrationCatalog() {
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "eventlog_timeline_query",
+                description: "Query timeline on a local or remote host.",
+                parameters: ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Remote machine.")),
+                        ("channel", ToolSchema.String("Channel.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_channels_list"
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "machine_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 2,
+                    RecoveryToolNames = new[] { "eventlog_channels_list" }
+                }),
+            new ToolDefinition(
+                name: "eventlog_channels_list",
+                description: "List channels.",
+                parameters: ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions(),
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "eventlog",
+                    Name = "Event Viewer",
+                    SourceKind = "open_source",
+                    Enabled = true
+                }
+            },
+            Array.Empty<ToolPluginAvailabilityInfo>(),
+            Array.Empty<string>(),
+            null,
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            },
+            orchestrationCatalog: ToolOrchestrationCatalog.Build(definitions));
+
+        var pack = Assert.Single(policy.Packs);
+        var autonomySummary = Assert.IsType<ToolPackAutonomySummaryDto>(pack.AutonomySummary);
+
+        Assert.Equal(2, autonomySummary.TotalTools);
+        Assert.Equal(1, autonomySummary.RemoteCapableTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, autonomySummary.RemoteCapableToolNames);
+        Assert.Equal(1, autonomySummary.SetupAwareTools);
+        Assert.Equal(1, autonomySummary.HandoffAwareTools);
+        Assert.Equal(1, autonomySummary.RecoveryAwareTools);
+        Assert.Equal(1, autonomySummary.CrossPackHandoffTools);
+        Assert.Equal(new[] { "system" }, autonomySummary.CrossPackTargetPacks);
+
+        var hello = new HelloMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "req_pack_autonomy",
+            Name = "IntelligenceX.Chat.Service",
+            Version = "1.0.0",
+            ProcessId = "1234",
+            Policy = policy
+        };
+
+        var json = JsonSerializer.Serialize<ChatServiceMessage>(hello, ChatServiceJsonContext.Default.ChatServiceMessage);
+        using var doc = JsonDocument.Parse(json);
+        var serializedSummary = doc.RootElement
+            .GetProperty("policy")
+            .GetProperty("packs")[0]
+            .GetProperty("autonomySummary");
+        var serializedCapabilityAutonomy = doc.RootElement
+            .GetProperty("policy")
+            .GetProperty("capabilitySnapshot")
+            .GetProperty("autonomy");
+
+        Assert.Equal(2, serializedSummary.GetProperty("totalTools").GetInt32());
+        Assert.Equal(1, serializedSummary.GetProperty("remoteCapableTools").GetInt32());
+        Assert.Equal("system", serializedSummary.GetProperty("crossPackTargetPacks")[0].GetString());
+        Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("remoteCapableToolCount").GetInt32());
+        Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("crossPackHandoffToolCount").GetInt32());
+        Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("remoteCapablePackIds")[0].GetString());
     }
 }

@@ -27,6 +27,11 @@ public readonly record struct ToolSchemaTraits(
     /// Indicates whether the schema exposes any remote-host targeting arguments.
     /// </summary>
     public bool SupportsRemoteHostTargeting => RemoteHostArguments?.Count > 0;
+
+    /// <summary>
+    /// Human-readable execution locality classification for planner/routing prompts.
+    /// </summary>
+    public string ExecutionScope => SupportsRemoteHostTargeting ? "local_or_remote" : "local_only";
 }
 
 /// <summary>
@@ -35,26 +40,7 @@ public readonly record struct ToolSchemaTraits(
 public static class ToolSchemaTraitProjection {
     private static readonly string[] TableViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
     private static readonly string[] TargetScopeArgumentNames = {
-        "domain_name",
-        "forest_name",
-        "domain_controller",
-        "search_base_dn",
-        "path",
-        "folder",
-        "channel",
-        "provider_name",
-        "computer_name",
-        "machine_name",
-        "machine_names",
-        "server"
-    };
-    private static readonly string[] RemoteHostArgumentNames = {
-        "computer_name",
-        "machine_name",
-        "machine_names",
-        "domain_controller",
-        "server",
-        "targets"
+        "search_base_dn", "path", "folder", "channel", "provider_name"
     };
 
     /// <summary>
@@ -102,8 +88,10 @@ public static class ToolSchemaTraitProjection {
 
         traits = new ToolSchemaTraits(
             SupportsTableViewProjection: ContainsKnownArgument(allNames, TableViewArgumentNames),
-            TargetScopeArguments: IntersectKnownArguments(allNames, TargetScopeArgumentNames),
-            RemoteHostArguments: IntersectKnownArguments(allNames, RemoteHostArgumentNames));
+            TargetScopeArguments: MergeKnownArguments(
+                IntersectKnownArguments(allNames, TargetScopeArgumentNames),
+                IntersectKnownArguments(allNames, ToolHostTargeting.HostTargetArguments)),
+            RemoteHostArguments: IntersectKnownArguments(allNames, ToolHostTargeting.HostTargetArguments));
 
         return selectedNames is null || selectedNames.Count == 0
             ? Array.Empty<string>()
@@ -147,6 +135,7 @@ public static class ToolSchemaTraitProjection {
     /// <returns>Compact trait summary suitable for planner prompts.</returns>
     public static string BuildTraitSummary(in ToolSchemaTraits traits) {
         var values = new List<string>(capacity: 3);
+        values.Add($"execution({traits.ExecutionScope})");
         if (traits.SupportsTableViewProjection) {
             values.Add("table_view_projection");
         }
@@ -169,10 +158,11 @@ public static class ToolSchemaTraitProjection {
     /// <returns>Additional search text tokens.</returns>
     public static string BuildRoutingSearchAugmentation(in ToolSchemaTraits traits) {
         if (!traits.SupportsTargetScoping && !traits.SupportsRemoteHostTargeting && !traits.SupportsTableViewProjection) {
-            return string.Empty;
+            return " execution " + traits.ExecutionScope;
         }
 
         var sb = new StringBuilder(128);
+        sb.Append(" execution ").Append(traits.ExecutionScope);
         if (traits.SupportsTableViewProjection) {
             sb.Append(" table view projection columns sort_by sort_direction top");
         }
@@ -234,6 +224,35 @@ public static class ToolSchemaTraitProjection {
         }
 
         return result.Count == 0 ? Array.Empty<string>() : result;
+    }
+
+    private static IReadOnlyList<string> MergeKnownArguments(IReadOnlyList<string> first, IReadOnlyList<string> second) {
+        if ((first is null || first.Count == 0) && (second is null || second.Count == 0)) {
+            return Array.Empty<string>();
+        }
+
+        var merged = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AppendDistinct(first, merged, seen);
+        AppendDistinct(second, merged, seen);
+
+        return merged.Count == 0 ? Array.Empty<string>() : merged;
+    }
+
+    private static void AppendDistinct(IReadOnlyList<string>? source, List<string> destination, HashSet<string> seen) {
+        if (source is null || source.Count == 0) {
+            return;
+        }
+
+        for (var i = 0; i < source.Count; i++) {
+            var value = (source[i] ?? string.Empty).Trim();
+            if (value.Length == 0 || !seen.Add(value)) {
+                continue;
+            }
+
+            destination.Add(value);
+        }
     }
 
     private static string NormalizeSchemaToken(string? token) {

@@ -294,12 +294,39 @@
         return true;
       }
 
+      var autonomySummary = packAutonomySummary(packId);
+      var autonomyHaystack = [];
+      if (autonomySummary) {
+        if (Number(autonomySummary.remoteCapableTools || 0) > 0) {
+          autonomyHaystack.push("remote remote-capable");
+        }
+        if (Number(autonomySummary.setupAwareTools || 0) > 0) {
+          autonomyHaystack.push("setup bootstrap preflight");
+        }
+        if (Number(autonomySummary.handoffAwareTools || 0) > 0) {
+          autonomyHaystack.push("handoff pivot");
+        }
+        if (Number(autonomySummary.recoveryAwareTools || 0) > 0) {
+          autonomyHaystack.push("recovery retry");
+        }
+        if (Number(autonomySummary.crossPackHandoffTools || 0) > 0) {
+          autonomyHaystack.push("cross-pack cross pack");
+        }
+        autonomyHaystack.push((autonomySummary.remoteCapableToolNames || []).join(" "));
+        autonomyHaystack.push((autonomySummary.setupAwareToolNames || []).join(" "));
+        autonomyHaystack.push((autonomySummary.handoffAwareToolNames || []).join(" "));
+        autonomyHaystack.push((autonomySummary.recoveryAwareToolNames || []).join(" "));
+        autonomyHaystack.push((autonomySummary.crossPackHandoffToolNames || []).join(" "));
+        autonomyHaystack.push((autonomySummary.crossPackTargetPacks || []).join(" "));
+      }
+
       var haystack = [
         packId || "",
         packDisplayName(packId),
         packDescription(packId),
         packSourceLabel(packSourceKind(packId)),
-        packDisabledReason(packId)
+        packDisabledReason(packId),
+        autonomyHaystack.join(" ")
       ].join(" ").toLowerCase();
 
       return haystack.indexOf(query) >= 0;
@@ -313,7 +340,7 @@
     var showPersistedPreviewNotice = !filter
       && normalizeBool(state.options && state.options.toolsLoading)
       && startupCacheDiag
-      && String(startupCacheDiag.mode || "").toLowerCase() === "persisted_preview";
+      && startupBootstrapCacheModeIsPersistedPreview(startupCacheDiag.mode);
     for (var p = 0; p < packs.length; p++) {
       var policyPack = packs[p] || {};
       var policyPackId = normalizePackId(policyPack.id);
@@ -458,6 +485,7 @@
       summaryRight.className = "options-accordion-summary-right";
 
       var sourceKind = packSourceKind(currentPackId);
+      var autonomySummary = packAutonomySummary(currentPackId);
       var sourceBadge = document.createElement("span");
       sourceBadge.className = "options-pill options-pill-source options-pill-source-" + sourceKind;
       sourceBadge.textContent = packSourceLabel(sourceKind);
@@ -467,6 +495,12 @@
       var meta = document.createElement("span");
       meta.className = "options-accordion-meta";
       meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
+      if (autonomySummary && Number(autonomySummary.remoteCapableTools || 0) > 0) {
+        meta.textContent += " • remote " + String(autonomySummary.remoteCapableTools || 0);
+      }
+      if (autonomySummary) {
+        meta.title = packAutonomySummaryText(currentPackId);
+      }
       summaryRight.appendChild(meta);
 
       var actionableTools = [];
@@ -532,6 +566,29 @@
 
       var body = document.createElement("div");
       body.className = "options-accordion-body";
+      if (autonomySummary) {
+        var autonomyCard = document.createElement("div");
+        autonomyCard.className = "options-item";
+
+        var autonomyTitle = document.createElement("div");
+        autonomyTitle.className = "options-item-title";
+        autonomyTitle.textContent = "Autonomy readiness";
+        autonomyCard.appendChild(autonomyTitle);
+
+        var autonomyDetail = document.createElement("div");
+        autonomyDetail.className = "options-item-sub";
+        autonomyDetail.textContent = packAutonomySummaryText(currentPackId);
+        autonomyCard.appendChild(autonomyDetail);
+
+        if (Array.isArray(autonomySummary.crossPackTargetPacks) && autonomySummary.crossPackTargetPacks.length > 0) {
+          var autonomyPivots = document.createElement("div");
+          autonomyPivots.className = "options-item-sub";
+          autonomyPivots.textContent = "Cross-pack pivots: " + autonomySummary.crossPackTargetPacks.join(", ");
+          autonomyCard.appendChild(autonomyPivots);
+        }
+
+        body.appendChild(autonomyCard);
+      }
       if (groupTools.length === 0) {
         var emptyCard = document.createElement("div");
         emptyCard.className = "options-item";

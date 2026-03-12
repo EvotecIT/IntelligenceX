@@ -50,6 +50,62 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public bool IsWriteCapable { get; init; }
     /// <summary>
+    /// Human-readable execution locality classification.
+    /// </summary>
+    public string ExecutionScope { get; init; } = "local_only";
+    /// <summary>
+    /// Indicates whether the tool supports explicit target scoping.
+    /// </summary>
+    public bool SupportsTargetScoping { get; init; }
+    /// <summary>
+    /// Canonical target-scope arguments projected from the schema.
+    /// </summary>
+    public string[] TargetScopeArguments { get; init; } = System.Array.Empty<string>();
+    /// <summary>
+    /// Indicates whether the tool supports remote-host targeting.
+    /// </summary>
+    public bool SupportsRemoteHostTargeting { get; init; }
+    /// <summary>
+    /// Canonical remote-host arguments projected from the schema.
+    /// </summary>
+    public string[] RemoteHostArguments { get; init; } = System.Array.Empty<string>();
+    /// <summary>
+    /// Indicates whether the tool exposes a setup contract.
+    /// </summary>
+    public bool IsSetupAware { get; init; }
+    /// <summary>
+    /// Optional setup helper tool name.
+    /// </summary>
+    public string? SetupToolName { get; init; }
+    /// <summary>
+    /// Indicates whether the tool exposes outbound handoff routes.
+    /// </summary>
+    public bool IsHandoffAware { get; init; }
+    /// <summary>
+    /// Handoff target pack ids derived from the orchestration catalog.
+    /// </summary>
+    public string[] HandoffTargetPackIds { get; init; } = System.Array.Empty<string>();
+    /// <summary>
+    /// Handoff target tool names derived from the orchestration catalog.
+    /// </summary>
+    public string[] HandoffTargetToolNames { get; init; } = System.Array.Empty<string>();
+    /// <summary>
+    /// Indicates whether the tool exposes recovery behavior.
+    /// </summary>
+    public bool IsRecoveryAware { get; init; }
+    /// <summary>
+    /// Indicates whether transient retry is supported.
+    /// </summary>
+    public bool SupportsTransientRetry { get; init; }
+    /// <summary>
+    /// Maximum retry attempts for transient failures.
+    /// </summary>
+    public int MaxRetryAttempts { get; init; }
+    /// <summary>
+    /// Recovery helper tool names from the orchestration catalog.
+    /// </summary>
+    public string[] RecoveryToolNames { get; init; } = System.Array.Empty<string>();
+    /// <summary>
     /// JSON serialized input schema from the runtime tool definition.
     /// </summary>
     public string ParametersJson { get; init; } = "{}";

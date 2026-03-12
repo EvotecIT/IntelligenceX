@@ -354,25 +354,20 @@ internal static partial class Program {
 
         private static bool TryGetPrimaryHostTargetValue(ToolCall call, out string value) {
             value = string.Empty;
-            if (call.Arguments is null) {
+            if (call.Arguments is null
+                || !ToolHostTargeting.TryReadHostTargetValues(call.Arguments, out var values)
+                || values.Count == 0) {
                 return false;
             }
 
-            var candidateInputKeys = GetScenarioInputKeyAliases("machine_name");
-            for (var keyIndex = 0; keyIndex < candidateInputKeys.Count; keyIndex++) {
-                if (!TryReadToolInputValuesByKey(call.Arguments, candidateInputKeys[keyIndex], out var values) || values.Count == 0) {
+            for (var valueIndex = 0; valueIndex < values.Count; valueIndex++) {
+                var normalized = NormalizeHostTargetCandidate(values[valueIndex]);
+                if (normalized.Length == 0) {
                     continue;
                 }
 
-                for (var valueIndex = 0; valueIndex < values.Count; valueIndex++) {
-                    var normalized = NormalizeHostTargetCandidate(values[valueIndex]);
-                    if (normalized.Length == 0) {
-                        continue;
-                    }
-
-                    value = normalized;
-                    return true;
-                }
+                value = normalized;
+                return true;
             }
 
             return false;
@@ -449,14 +444,7 @@ internal static partial class Program {
         }
 
         private static bool IsHostTargetAlias(string key) {
-            return string.Equals(key, "machine_name", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(key, "domain_controller", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(key, "host", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(key, "server", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(key, "target", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(key, "targets", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(key, "servers", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(key, "computer_name", StringComparison.OrdinalIgnoreCase);
+            return ToolHostTargeting.IsHostTargetArgumentName(key);
         }
 
         private static ToolCall ApplyHostTargetOverride(ToolCall call, ToolDefinition? definition, string hostTarget) {
@@ -504,53 +492,7 @@ internal static partial class Program {
             ToolDefinition? definition,
             out string key,
             out bool keyIsArray) {
-            key = string.Empty;
-            keyIsArray = false;
-            if (call.Arguments is null) {
-                return false;
-            }
-
-            var preferredKeys = new[] {
-                "machine_name",
-                "domain_controller",
-                "host",
-                "server",
-                "computer_name",
-                "target",
-                "targets",
-                "servers"
-            };
-
-            for (var preferredKeyIndex = 0; preferredKeyIndex < preferredKeys.Length; preferredKeyIndex++) {
-                var preferredKey = preferredKeys[preferredKeyIndex];
-                foreach (var pair in call.Arguments) {
-                    if (!string.Equals(pair.Key, preferredKey, StringComparison.OrdinalIgnoreCase)) {
-                        continue;
-                    }
-
-                    key = pair.Key;
-                    keyIsArray = pair.Value?.AsArray() is not null;
-                    return true;
-                }
-            }
-
-            if (definition is null) {
-                return false;
-            }
-
-            for (var preferredKeyIndex = 0; preferredKeyIndex < preferredKeys.Length; preferredKeyIndex++) {
-                var preferredKey = preferredKeys[preferredKeyIndex];
-                if (!ToolDefinitionHasInputProperty(definition, preferredKey)) {
-                    continue;
-                }
-
-                key = preferredKey;
-                keyIsArray = string.Equals(preferredKey, "targets", StringComparison.OrdinalIgnoreCase)
-                             || string.Equals(preferredKey, "servers", StringComparison.OrdinalIgnoreCase);
-                return true;
-            }
-
-            return false;
+            return ToolHostTargeting.TryPickPreferredInputArgument(definition, call.Arguments, out key, out keyIsArray);
         }
 
         private static void AddHostTargetValue(JsonObject arguments, string key, string value, bool asArray) {
@@ -576,18 +518,11 @@ internal static partial class Program {
                 return call;
             }
 
-            var candidateInputKeys = GetScenarioInputKeyAliases("machine_name");
-            for (var keyIndex = 0; keyIndex < candidateInputKeys.Count; keyIndex++) {
-                if (!TryReadToolInputValuesByKey(call.Arguments, candidateInputKeys[keyIndex], out var values) || values.Count == 0) {
-                    continue;
-                }
-
+            if (ToolHostTargeting.TryReadHostTargetValues(call.Arguments, out var values) && values.Count > 0) {
                 return call;
             }
 
-            var supportsTarget = ToolDefinitionHasInputProperty(definition, "target");
-            var supportsTargets = ToolDefinitionHasInputProperty(definition, "targets");
-            if (!supportsTarget && !supportsTargets) {
+            if (!ToolHostTargeting.TryPickPreferredInputArgument(definition, call.Arguments, out var targetKey, out var keyIsArray)) {
                 return call;
             }
 
@@ -612,17 +547,15 @@ internal static partial class Program {
                 patchedArguments.Add(pair.Key, pair.Value);
             }
 
-            if (supportsTarget) {
-                patchedArguments.Add("target", normalizedTargets[0]);
-            }
-
-            if (supportsTargets) {
+            if (keyIsArray) {
                 var targetsArray = new JsonArray();
                 for (var i = 0; i < normalizedTargets.Count; i++) {
                     targetsArray.Add(normalizedTargets[i]);
                 }
 
-                patchedArguments.Add("targets", targetsArray);
+                patchedArguments.Add(targetKey, targetsArray);
+            } else {
+                patchedArguments.Add(targetKey, normalizedTargets[0]);
             }
 
             var patchedInput = JsonLite.Serialize(JsonValue.From(patchedArguments));

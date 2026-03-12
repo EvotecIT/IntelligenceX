@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.FileSystem;
 
 /// <summary>
 /// Safety and output limits for file system tools.
 /// </summary>
-public sealed class FileSystemToolOptions {
+public sealed class FileSystemToolOptions : IToolPackRuntimeConfigurable {
     /// <summary>
     /// Allowed root directories for all operations. When empty, operations are denied.
     /// </summary>
@@ -27,6 +28,20 @@ public sealed class FileSystemToolOptions {
     /// </summary>
     public long MaxSearchFileBytes { get; set; } = 2 * 1024 * 1024;
 
+    /// <inheritdoc />
+    public void ApplyRuntimeContext(ToolPackRuntimeContext context) {
+        ArgumentNullException.ThrowIfNull(context);
+
+        for (var i = 0; i < context.AllowedRoots.Count; i++) {
+            var root = (context.AllowedRoots[i] ?? string.Empty).Trim();
+            if (root.Length == 0 || ContainsOrdinalIgnoreCase(AllowedRoots, root)) {
+                continue;
+            }
+
+            AllowedRoots.Add(root);
+        }
+    }
+
     /// <summary>
     /// Validates options.
     /// </summary>
@@ -41,5 +56,14 @@ public sealed class FileSystemToolOptions {
             throw new ArgumentOutOfRangeException(nameof(MaxSearchFileBytes), "MaxSearchFileBytes must be positive.");
         }
     }
-}
 
+    private static bool ContainsOrdinalIgnoreCase(IReadOnlyList<string> values, string candidate) {
+        for (var i = 0; i < values.Count; i++) {
+            if (string.Equals(values[i], candidate, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

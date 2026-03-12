@@ -115,6 +115,7 @@ Each pack should expose a `*_pack_info` tool with:
 - recommended tool-call sequences (`recommended_flow`, `recommended_flow_steps`)
 - capability catalog (`capabilities`)
 - structured cross-tool entity handoff guidance (`entity_handoffs`)
+- derived pack-level autonomy/readiness summary (`autonomy_summary`) covering remote/setup/handoff/recovery/cross-pack coverage
 - runtime-derived tool catalog (`tool_catalog`) with descriptions, required args, argument hints, and structured `traits` (projection/paging/time-range/dynamic-attributes/scoping/action flags)
 - output-contract guidance (raw payload vs view projection)
 

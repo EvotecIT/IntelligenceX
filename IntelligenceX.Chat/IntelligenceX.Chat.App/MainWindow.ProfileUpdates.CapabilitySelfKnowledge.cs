@@ -6,15 +6,36 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
     internal IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(bool runtimeIntrospectionMode = false) {
-        return BuildCapabilitySelfKnowledgeLines(_sessionPolicy, runtimeIntrospectionMode);
+        return BuildCapabilitySelfKnowledgeLines(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogRoutingCatalog,
+            _toolCatalogCapabilitySnapshot,
+            runtimeIntrospectionMode);
     }
 
     internal static IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(
         SessionPolicyDto? sessionPolicy,
         bool runtimeIntrospectionMode = false) {
+        return BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy,
+            toolCatalogPacks: null,
+            toolCatalogRoutingCatalog: null,
+            toolCatalogCapabilitySnapshot: null,
+            runtimeIntrospectionMode: runtimeIntrospectionMode);
+    }
+
+    internal static IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(
+        SessionPolicyDto? sessionPolicy,
+        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
+        SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot = null,
+        bool runtimeIntrospectionMode = false) {
         var lines = new List<string>();
-        var snapshot = sessionPolicy?.CapabilitySnapshot;
-        var enabledPackNames = BuildEnabledPackDisplayNames(sessionPolicy);
+        var snapshot = sessionPolicy?.CapabilitySnapshot ?? toolCatalogCapabilitySnapshot;
+        var effectivePacks = ResolveCapabilityPacks(sessionPolicy, toolCatalogPacks);
+        var routingCatalog = sessionPolicy?.RoutingCatalog ?? toolCatalogRoutingCatalog;
+        var enabledPackNames = BuildEnabledPackDisplayNames(effectivePacks);
         if (enabledPackNames.Count > 0) {
             lines.Add("Areas you can help with here include " + string.Join(", ", enabledPackNames) + ".");
         }
@@ -30,13 +51,78 @@ public sealed partial class MainWindow {
                 lines.Add("Remote reachability right now is " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
             }
 
+            if (snapshot.Autonomy is not null) {
+                var remoteCapablePackNames = BuildPackDisplayNamesForIds(effectivePacks, snapshot.Autonomy.RemoteCapablePackIds);
+                if (remoteCapablePackNames.Count > 0) {
+                    lines.Add("Remote-ready capability areas currently include " + string.Join(", ", remoteCapablePackNames) + ".");
+                }
+
+                var crossPackTargetNames = BuildPackDisplayNamesForIds(effectivePacks, snapshot.Autonomy.CrossPackTargetPackIds);
+                if (crossPackTargetNames.Count > 0) {
+                    lines.Add("Cross-pack follow-up pivots are live into " + string.Join(", ", crossPackTargetNames) + " when the workflow calls for it.");
+                }
+
+                if (snapshot.Autonomy.SetupAwareToolCount > 0
+                    || snapshot.Autonomy.HandoffAwareToolCount > 0
+                    || snapshot.Autonomy.RecoveryAwareToolCount > 0) {
+                    lines.Add(
+                        "Prefer live contract-guided setup, handoff, and recovery flows when available instead of narrating unsupported manual steps.");
+                }
+            }
+
+            if (snapshot.Autonomy is null && effectivePacks.Count > 0) {
+                var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
+                if (remoteCapablePackNames.Count > 0) {
+                    lines.Add("Remote-ready capability areas currently include " + string.Join(", ", remoteCapablePackNames) + ".");
+                }
+
+                var crossPackTargetNames = BuildCrossPackTargetDisplayNames(effectivePacks);
+                if (crossPackTargetNames.Count > 0) {
+                    lines.Add("Cross-pack follow-up pivots are live into " + string.Join(", ", crossPackTargetNames) + " when the workflow calls for it.");
+                }
+
+                if (HasContractGuidedPackAutonomy(effectivePacks)) {
+                    lines.Add(
+                        "Prefer live contract-guided setup, handoff, and recovery flows when available instead of narrating unsupported manual steps.");
+                }
+            }
+
+            var routingReadinessHighlights = NormalizeRoutingAutonomyHighlights(routingCatalog?.AutonomyReadinessHighlights);
+            if (routingReadinessHighlights.Count > 0) {
+                lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
+            }
+
             if (snapshot.ParityMissingCapabilityCount > 0) {
                 lines.Add($"There are {snapshot.ParityMissingCapabilityCount} upstream read-only capability gaps still not surfaced through chat, so do not promise them as live tools yet.");
             } else if (snapshot.ParityAttentionCount > 0) {
                 lines.Add("Some upstream capability families are intentionally governed or still gated, so keep promises anchored to the live registered tools above.");
             }
-        } else if (enabledPackNames.Count == 0) {
-            lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
+        } else {
+            if (enabledPackNames.Count == 0) {
+                lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
+            } else {
+                lines.Add("You can actively use live session tools when the user wants checks, investigation, or data gathering.");
+
+                var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
+                if (remoteCapablePackNames.Count > 0) {
+                    lines.Add("Remote-ready capability areas currently include " + string.Join(", ", remoteCapablePackNames) + ".");
+                }
+
+                var crossPackTargetNames = BuildCrossPackTargetDisplayNames(effectivePacks);
+                if (crossPackTargetNames.Count > 0) {
+                    lines.Add("Cross-pack follow-up pivots are live into " + string.Join(", ", crossPackTargetNames) + " when the workflow calls for it.");
+                }
+
+                if (HasContractGuidedPackAutonomy(effectivePacks)) {
+                    lines.Add(
+                        "Prefer live contract-guided setup, handoff, and recovery flows when available instead of narrating unsupported manual steps.");
+                }
+            }
+
+            var routingReadinessHighlights = NormalizeRoutingAutonomyHighlights(routingCatalog?.AutonomyReadinessHighlights);
+            if (routingReadinessHighlights.Count > 0) {
+                lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
+            }
         }
 
         if (runtimeIntrospectionMode) {
@@ -55,14 +141,25 @@ public sealed partial class MainWindow {
         return lines;
     }
 
-    private static List<string> BuildEnabledPackDisplayNames(SessionPolicyDto? sessionPolicy) {
+    private static IReadOnlyList<ToolPackInfoDto> ResolveCapabilityPacks(
+        SessionPolicyDto? sessionPolicy,
+        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks) {
+        if (sessionPolicy?.Packs is { Length: > 0 } sessionPacks) {
+            return sessionPacks;
+        }
+
+        return toolCatalogPacks is { Count: > 0 }
+            ? toolCatalogPacks
+            : Array.Empty<ToolPackInfoDto>();
+    }
+
+    private static List<string> BuildEnabledPackDisplayNames(IReadOnlyList<ToolPackInfoDto>? packs) {
         var names = new List<string>();
-        var packs = sessionPolicy?.Packs;
-        if (packs is not { Length: > 0 }) {
+        if (packs is not { Count: > 0 }) {
             return names;
         }
 
-        for (var i = 0; i < packs.Length; i++) {
+        for (var i = 0; i < packs.Count; i++) {
             var pack = packs[i];
             if (!pack.Enabled) {
                 continue;
@@ -70,7 +167,7 @@ public sealed partial class MainWindow {
 
             var displayName = (pack.Name ?? string.Empty).Trim();
             if (displayName.Length == 0) {
-                displayName = NormalizePackId(pack.Id);
+                displayName = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name);
             }
 
             if (displayName.Length > 0 && !ContainsIgnoreCase(names, displayName)) {
@@ -103,6 +200,108 @@ public sealed partial class MainWindow {
         lines.Add("Prefer the enabled areas that best match the user's request instead of listing every area in the session.");
     }
 
+    private static List<string> BuildPackDisplayNamesForIds(IReadOnlyList<ToolPackInfoDto>? packs, IReadOnlyList<string>? packIds) {
+        var names = new List<string>();
+        if (packIds is not { Count: > 0 }) {
+            return names;
+        }
+
+        for (var i = 0; i < packIds.Count; i++) {
+            var normalizedPackId = NormalizeRuntimePackId(packIds[i]);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            var displayName = ResolvePackDisplayName(packs, normalizedPackId);
+            if (displayName.Length > 0 && !ContainsIgnoreCase(names, displayName)) {
+                names.Add(displayName);
+            }
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
+
+    private static string ResolvePackDisplayName(IReadOnlyList<ToolPackInfoDto>? packs, string normalizedPackId) {
+        if (packs is { Count: > 0 }) {
+            for (var i = 0; i < packs.Count; i++) {
+                var pack = packs[i];
+                if (!string.Equals(ToolPackMetadataNormalizer.NormalizePackId(pack.Id), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                return ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name);
+            }
+        }
+
+        return normalizedPackId;
+    }
+
+    private static List<string> BuildRemoteCapablePackDisplayNames(IReadOnlyList<ToolPackInfoDto>? packs) {
+        var packIds = new List<string>();
+        if (packs is not { Count: > 0 }) {
+            return packIds;
+        }
+
+        for (var i = 0; i < packs.Count; i++) {
+            var pack = packs[i];
+            if (!pack.Enabled || pack.AutonomySummary?.RemoteCapableTools <= 0) {
+                continue;
+            }
+
+            var normalizedPackId = NormalizeRuntimePackId(pack.Id);
+            if (normalizedPackId.Length > 0 && !ContainsIgnoreCase(packIds, normalizedPackId)) {
+                packIds.Add(normalizedPackId);
+            }
+        }
+
+        return BuildPackDisplayNamesForIds(packs, packIds);
+    }
+
+    private static List<string> BuildCrossPackTargetDisplayNames(IReadOnlyList<ToolPackInfoDto>? packs) {
+        var targetPackIds = new List<string>();
+        if (packs is not { Count: > 0 }) {
+            return targetPackIds;
+        }
+
+        for (var i = 0; i < packs.Count; i++) {
+            var targets = packs[i].AutonomySummary?.CrossPackTargetPacks;
+            if (targets is not { Length: > 0 }) {
+                continue;
+            }
+
+            for (var j = 0; j < targets.Length; j++) {
+                var normalizedTargetId = NormalizeRuntimePackId(targets[j]);
+                if (normalizedTargetId.Length > 0 && !ContainsIgnoreCase(targetPackIds, normalizedTargetId)) {
+                    targetPackIds.Add(normalizedTargetId);
+                }
+            }
+        }
+
+        return BuildPackDisplayNamesForIds(packs, targetPackIds);
+    }
+
+    private static bool HasContractGuidedPackAutonomy(IReadOnlyList<ToolPackInfoDto>? packs) {
+        if (packs is not { Count: > 0 }) {
+            return false;
+        }
+
+        for (var i = 0; i < packs.Count; i++) {
+            var autonomySummary = packs[i].AutonomySummary;
+            if (autonomySummary is null) {
+                continue;
+            }
+
+            if (autonomySummary.SetupAwareTools > 0
+                || autonomySummary.HandoffAwareTools > 0
+                || autonomySummary.RecoveryAwareTools > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static string DescribeReachabilityMode(string? mode) {
         var normalized = (mode ?? string.Empty).Trim();
         if (normalized.Equals("remote_capable", StringComparison.OrdinalIgnoreCase)) {
@@ -130,5 +329,23 @@ public sealed partial class MainWindow {
         }
 
         return false;
+    }
+
+    private static List<string> NormalizeRoutingAutonomyHighlights(IReadOnlyList<string>? values) {
+        var normalized = new List<string>();
+        if (values is not { Count: > 0 }) {
+            return normalized;
+        }
+
+        for (var i = 0; i < values.Count; i++) {
+            var candidate = (values[i] ?? string.Empty).Trim();
+            if (candidate.Length == 0 || ContainsIgnoreCase(normalized, candidate)) {
+                continue;
+            }
+
+            normalized.Add(candidate);
+        }
+
+        return normalized;
     }
 }

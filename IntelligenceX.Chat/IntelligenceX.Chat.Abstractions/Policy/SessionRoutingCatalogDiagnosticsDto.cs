@@ -57,6 +57,16 @@ public sealed record SessionRoutingCatalogDiagnosticsDto {
     public int RecoveryAwareTools { get; init; }
 
     /// <summary>
+    /// Tools whose schemas support remote host targeting.
+    /// </summary>
+    public int RemoteCapableTools { get; init; }
+
+    /// <summary>
+    /// Tools whose handoff contracts pivot into a different pack.
+    /// </summary>
+    public int CrossPackHandoffTools { get; init; }
+
+    /// <summary>
     /// Tools declaring a non-empty domain intent family.
     /// </summary>
     public int DomainFamilyTools { get; init; }
@@ -95,6 +105,11 @@ public sealed record SessionRoutingCatalogDiagnosticsDto {
     /// Family/action distribution summary.
     /// </summary>
     public SessionRoutingFamilyActionSummaryDto[] FamilyActions { get; init; } = Array.Empty<SessionRoutingFamilyActionSummaryDto>();
+
+    /// <summary>
+    /// Concise autonomy/readiness notes derived from the active routing catalog.
+    /// </summary>
+    public string[] AutonomyReadinessHighlights { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

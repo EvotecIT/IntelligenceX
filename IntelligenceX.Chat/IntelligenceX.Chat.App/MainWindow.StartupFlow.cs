@@ -501,6 +501,11 @@ public sealed partial class MainWindow : Window {
                     helloStopwatch.Stop();
                     helloDuration = helloStopwatch.Elapsed;
                     _sessionPolicy = hello.Policy;
+                    _toolCatalogPacks = hello.Policy?.Packs is { } helloPacks
+                        ? helloPacks
+                        : Array.Empty<ToolPackInfoDto>();
+                    _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
+                    _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, helloAttemptCount, success: true);
                     helloPhaseSucceeded = true;
@@ -532,6 +537,9 @@ public sealed partial class MainWindow : Window {
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
                     _sessionPolicy = null;
+                    _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
+                    _toolCatalogRoutingCatalog = null;
+                    _toolCatalogCapabilitySnapshot = null;
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, helloAttemptCount, success: false);
                     StartupLog.Write(
@@ -599,7 +607,7 @@ public sealed partial class MainWindow : Window {
                     listToolsStopwatch.Stop();
                     toolCatalogDuration = listToolsStopwatch.Elapsed;
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: true);
-                    UpdateToolCatalog(toolList.Tools);
+                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.CapabilitySnapshot);
                     toolCatalogPhaseSucceeded = true;
                     listedToolCount = toolList.Tools?.Length ?? 0;
                     StartupLog.Write("StartupConnect.list_tools done");

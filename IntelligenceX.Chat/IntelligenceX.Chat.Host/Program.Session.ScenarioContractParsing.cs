@@ -759,30 +759,7 @@ internal static partial class Program {
         }
 
         private static bool ToolDefinitionSupportsHostTargetInputs(ToolDefinition definition) {
-            var properties = definition.Parameters?.GetObject("properties");
-            if (properties is null) {
-                return false;
-            }
-
-            var candidateKeys = GetScenarioInputKeyAliases("machine_name");
-            if (candidateKeys.Count == 0) {
-                return false;
-            }
-
-            for (var keyIndex = 0; keyIndex < candidateKeys.Count; keyIndex++) {
-                var key = candidateKeys[keyIndex];
-                if (properties.GetObject(key) is not null) {
-                    return true;
-                }
-
-                foreach (var pair in properties) {
-                    if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase)) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
+            return ToolHostTargeting.ToolSupportsHostTargetInputs(definition);
         }
 
         private static string BuildScenarioContractRepairRetryPrompt(

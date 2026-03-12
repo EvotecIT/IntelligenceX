@@ -95,6 +95,14 @@ public sealed class SystemTimeSyncTool : SystemToolBase, ITool {
             ComputerName: request.Target,
             ReferenceTimeUtc: request.ReferenceUtc.ToString("O"),
             Status: status);
+        var meta = BuildFactsMeta(count: 1, truncated: false, target: request.Target);
+        AddReadOnlyPostureChainingMeta(
+            meta: meta,
+            currentTool: "system_time_sync",
+            targetComputer: request.Target,
+            isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
+            scanned: 1,
+            truncated: false);
 
         return ToolResultV2.OkFactsModel(
             model: model,
@@ -105,7 +113,7 @@ public sealed class SystemTimeSyncTool : SystemToolBase, ITool {
                 ("W32TimeRunning", status.IsW32TimeRunning.ToString()),
                 ("TimeSkewSeconds", status.TimeSkewSeconds.ToString("0.###", CultureInfo.InvariantCulture))
             },
-            meta: null,
+            meta: meta,
             keyHeader: "Field",
             valueHeader: "Value",
             truncated: false,

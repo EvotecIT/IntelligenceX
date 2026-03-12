@@ -1,6 +1,8 @@
 using System;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -20,10 +22,28 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
             CreateDefinition(
                 name: "ad_dc_health",
                 category: "active_directory",
+                parameters: ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Remote host.")))
+                    .NoAdditionalProperties(),
                 routing: new ToolRoutingContract {
                     PackId = "active_directory",
                     DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
                     DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "machine_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
                 }),
             CreateDefinition(
                 name: "dnsclientx_query",
@@ -45,8 +65,10 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Equal(0, diagnostics.MissingPackIdTools);
         Assert.Equal(0, diagnostics.MissingRoleTools);
         Assert.Equal(0, diagnostics.SetupAwareTools);
-        Assert.Equal(0, diagnostics.HandoffAwareTools);
+        Assert.Equal(1, diagnostics.HandoffAwareTools);
         Assert.Equal(0, diagnostics.RecoveryAwareTools);
+        Assert.Equal(1, diagnostics.RemoteCapableTools);
+        Assert.Equal(1, diagnostics.CrossPackHandoffTools);
         Assert.Equal(3, diagnostics.DomainFamilyTools);
         Assert.Equal(0, diagnostics.ExpectedDomainFamilyMissingTools);
         Assert.Equal(0, diagnostics.DomainFamilyMissingActionTools);
@@ -57,12 +79,19 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Contains("tools=3", summary, StringComparison.Ordinal);
         Assert.Contains("routing_explicit=3", summary, StringComparison.Ordinal);
         Assert.Contains("routing_inferred=0", summary, StringComparison.Ordinal);
+        Assert.Contains("remote_capable=1", summary, StringComparison.Ordinal);
+        Assert.Contains("cross_pack_handoffs=1", summary, StringComparison.Ordinal);
         Assert.Contains("conflicts=0", summary, StringComparison.Ordinal);
 
         var familySummaries = ToolRoutingCatalogDiagnosticsBuilder.FormatFamilySummaries(diagnostics, maxItems: 8);
         Assert.Contains(familySummaries, static line => line.Contains("ad_domain", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(familySummaries, static line => line.Contains("public_domain", StringComparison.OrdinalIgnoreCase));
         Assert.Empty(ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(diagnostics));
+        var readiness = ToolRoutingCatalogDiagnosticsBuilder.BuildAutonomyReadinessHighlights(diagnostics, maxItems: 8);
+        Assert.Contains(readiness, static line => line.Contains("remote host-targeting", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("cross-pack continuation", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("strict enforcement", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("fully populated", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -81,6 +110,9 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         var inferredRoutingDefinition = CreateDefinition(
             name: "system_contract_probe",
             category: "system",
+            parameters: ToolSchema.Object(
+                    ("machine_name", ToolSchema.String("Remote machine.")))
+                .NoAdditionalProperties(),
             routing: new ToolRoutingContract {
                 PackId = "system",
                 Role = ToolRoutingTaxonomy.RoleOperational,
@@ -157,6 +189,8 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Equal(1, diagnostics.SetupAwareTools);
         Assert.Equal(1, diagnostics.HandoffAwareTools);
         Assert.Equal(1, diagnostics.RecoveryAwareTools);
+        Assert.Equal(1, diagnostics.RemoteCapableTools);
+        Assert.Equal(1, diagnostics.CrossPackHandoffTools);
         Assert.Equal(3, diagnostics.DomainFamilyTools);
         Assert.Equal(0, diagnostics.ExpectedDomainFamilyMissingTools);
         Assert.Equal(1, diagnostics.DomainFamilyMissingActionTools);
@@ -172,12 +206,19 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Contains(warnings, static line => line.Contains("action id without a domain intent family", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("multiple action ids", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(warnings, static line => line.Contains("conflict ad_domain", StringComparison.OrdinalIgnoreCase));
+        var readiness = ToolRoutingCatalogDiagnosticsBuilder.BuildAutonomyReadinessHighlights(diagnostics, maxItems: 8);
+        Assert.Contains(readiness, static line => line.Contains("remote host-targeting", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("cross-pack continuation", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("setup helpers", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("recovery helpers", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("inferred metadata", StringComparison.OrdinalIgnoreCase));
     }
 
     private static ToolDefinition CreateDefinition(
         string name,
         string? category,
         ToolRoutingContract? routing,
+        JsonObject? parameters = null,
         ToolSetupContract? setup = null,
         ToolHandoffContract? handoff = null,
         ToolRecoveryContract? recovery = null) {
@@ -185,6 +226,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
             name: name,
             description: "test tool",
             category: category,
+            parameters: parameters,
             routing: routing,
             setup: setup,
             handoff: handoff,

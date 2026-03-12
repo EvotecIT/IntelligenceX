@@ -25,6 +25,12 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
                 new ToolPackInfoDto { Id = "eventlog", Name = "Event Viewer", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
                 new ToolPackInfoDto { Id = "dnsclientx", Name = "DnsClientX", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
             },
+            RoutingCatalog = new SessionRoutingCatalogDiagnosticsDto {
+                AutonomyReadinessHighlights = new[] {
+                    "remote host-targeting is ready for 4 tool(s).",
+                    "cross-pack continuation is ready for 2 tool(s)."
+                }
+            },
             CapabilitySnapshot = new SessionCapabilitySnapshotDto {
                 RegisteredTools = 12,
                 EnabledPackCount = 2,
@@ -36,7 +42,17 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
                     new SessionRoutingFamilyActionSummaryDto { Family = "ad_domain", ActionId = "act_ad", ToolCount = 5 }
                 },
                 HealthyTools = new[] { "ad_search", "eventlog_live_query" },
-                RemoteReachabilityMode = "remote_capable"
+                RemoteReachabilityMode = "remote_capable",
+                Autonomy = new SessionCapabilityAutonomySummaryDto {
+                    RemoteCapableToolCount = 4,
+                    SetupAwareToolCount = 1,
+                    HandoffAwareToolCount = 2,
+                    RecoveryAwareToolCount = 1,
+                    CrossPackHandoffToolCount = 1,
+                    RemoteCapablePackIds = new[] { "adplayground", "eventlog" },
+                    CrossPackReadyPackIds = new[] { "adplayground" },
+                    CrossPackTargetPackIds = new[] { "eventlog", "system" }
+                }
             }
         });
 
@@ -46,6 +62,10 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.Contains(lines, line => line.Contains("live session tools", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(lines, line => line.Contains("Recently healthy tool count", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("remote-capable", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Remote-ready capability areas currently include", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Cross-pack follow-up pivots", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("contract-guided setup, handoff, and recovery", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Routing autonomy right now includes", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("few practical examples", StringComparison.OrdinalIgnoreCase));
     }
@@ -192,6 +212,67 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
 
         Assert.Contains(lines, line => line.Contains("still loading", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("invite the task", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures capability self-knowledge can fall back to tool-list pack and routing autonomy when full session policy has not loaded yet.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_FallsBackToToolCatalogAutonomyWhenPolicyUnavailable() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto {
+                    Id = "eventlog",
+                    Name = "Event Viewer",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false,
+                    AutonomySummary = new ToolPackAutonomySummaryDto {
+                        RemoteCapableTools = 2,
+                        SetupAwareTools = 1,
+                        HandoffAwareTools = 1,
+                        RecoveryAwareTools = 1,
+                        CrossPackHandoffTools = 1,
+                        CrossPackTargetPacks = new[] { "system" }
+                    }
+                },
+                new ToolPackInfoDto {
+                    Id = "system",
+                    Name = "System",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false,
+                    AutonomySummary = new ToolPackAutonomySummaryDto {
+                        RemoteCapableTools = 1
+                    }
+                }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 3,
+                EnabledPackCount = 2,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "remote_capable",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            toolCatalogRoutingCatalog: new SessionRoutingCatalogDiagnosticsDto {
+                AutonomyReadinessHighlights = new[] {
+                    "remote host-targeting is ready for 3 tool(s).",
+                    "cross-pack continuation is ready for 1 tool(s)."
+                }
+            });
+
+        Assert.Contains(lines, line => line.Contains("Event Viewer", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("live session tools", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("remote-capable", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Remote-ready capability areas currently include", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Cross-pack follow-up pivots", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("contract-guided setup, handoff, and recovery", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Routing autonomy right now includes", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("still loading", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int FindLineIndex(IReadOnlyList<string> lines, string expectedFragment) {

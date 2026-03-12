@@ -151,6 +151,27 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
+    /// Ensures runtime pack toggle arguments use canonical shared Chat pack ids for alias inputs.
+    /// </summary>
+    [Fact]
+    public void Build_NormalizesRuntimePackToggleAliases_ToCanonicalPackIds() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                PackToggles = new[] {
+                    new ServiceLaunchArguments.PackToggle("ADPlayground", true),
+                    new ServiceLaunchArguments.PackToggle("ComputerX", false),
+                    new ServiceLaunchArguments.PackToggle("fs", true)
+                }
+            });
+
+        Assert.Equal(new[] { "active_directory", "filesystem" }, ExtractArgumentValues(args, "--enable-pack-id"));
+        Assert.Equal(new[] { "system" }, ExtractArgumentValues(args, "--disable-pack-id"));
+    }
+
+    /// <summary>
     /// Ensures unknown transport values are rejected.
     /// </summary>
     [Fact]

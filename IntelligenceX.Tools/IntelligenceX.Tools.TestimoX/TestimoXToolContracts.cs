@@ -1,29 +1,10 @@
 using System;
-using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.TestimoX;
 
 internal static class TestimoXToolContracts {
-    private const string DomainIntentFamily = "security_posture";
-    private const string DomainIntentActionId = "act_domain_scope_security_posture";
-
-    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
-            ["testimox_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
-            ["testimox_runs_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
-            ["testimox_run_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
-            ["testimox_baselines_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
-            ["testimox_baseline_compare"] = ToolRoutingTaxonomy.RoleDiagnostic,
-            ["testimox_profiles_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
-            ["testimox_rule_inventory"] = ToolRoutingTaxonomy.RoleDiagnostic,
-            ["testimox_source_query"] = ToolRoutingTaxonomy.RoleResolver,
-            ["testimox_baseline_crosswalk"] = ToolRoutingTaxonomy.RoleResolver,
-            ["testimox_rules_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
-            ["testimox_rules_run"] = ToolRoutingTaxonomy.RoleOperational
-        };
-
     private static readonly string[] SetupHintKeys = {
         "search_text",
         "categories",
@@ -36,13 +17,8 @@ internal static class TestimoXToolContracts {
         "testimox",
         "testimo",
         "baseline",
-        "assessment",
-        "compliance",
-        "hardening",
         "security",
-        "posture",
-        DomainIntentFamily,
-        DomainIntentActionId
+        "posture"
     };
 
     public static ITool Apply(ITool tool) {
@@ -51,7 +27,7 @@ internal static class TestimoXToolContracts {
         var definition = tool.Definition;
         var routing = BuildRouting(definition);
         var setup = BuildSetup(definition, routing);
-        var handoff = BuildHandoff(definition);
+        var handoff = BuildHandoff(definition, routing);
         var recovery = BuildRecovery(definition, routing);
         var updatedDefinition = ToolDefinitionOverlay.WithContracts(
             definition: definition,
@@ -71,13 +47,9 @@ internal static class TestimoXToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "testimox",
-            Role = ResolveRole(definition.Name, existing?.Role),
-            DomainIntentFamily = string.IsNullOrWhiteSpace(existing?.DomainIntentFamily)
-                ? DomainIntentFamily
-                : existing!.DomainIntentFamily,
-            DomainIntentActionId = string.IsNullOrWhiteSpace(existing?.DomainIntentActionId)
-                ? DomainIntentActionId
-                : existing!.DomainIntentActionId,
+            Role = ResolveRole(definition.Name),
+            DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
+            DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : TestimoXSignalTokens,
             RequiresSelectionForFallback = existing?.RequiresSelectionForFallback ?? false,
             FallbackSelectionKeys = existing?.FallbackSelectionKeys ?? Array.Empty<string>(),
@@ -85,71 +57,175 @@ internal static class TestimoXToolContracts {
         };
     }
 
-    private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {
-        if (string.Equals(definition.Name, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
-            var routes = new List<ToolHandoffRoute> {
-                ToolContractDefaults.CreateRoute(
-                    targetPackId: "active_directory",
-                    targetToolName: "ad_scope_discovery",
-                    reason: "Promote stored TestimoX domain or domain-controller scope into explicit AD scope follow-up.",
-                    bindings: new[] {
-                        ToolContractDefaults.CreateBinding("rows[].domain", "domain_name", isRequired: false),
-                        ToolContractDefaults.CreateBinding("rows[].domain_controller", "domain_controller", isRequired: false)
-                    })
+    private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
+        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Setup;
+        }
+
+        if (string.Equals(definition.Name, "testimox_runs_list", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(definition.Name, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
+            if (definition.Setup is { IsSetupAware: true }) {
+                return definition.Setup;
+            }
+
+            return new ToolSetupContract {
+                IsSetupAware = true,
+                SetupHintKeys = definition.Routing?.FallbackHintKeys?.Count > 0
+                    ? definition.Routing.FallbackHintKeys
+                    : SetupHintKeys
             };
-            routes.AddRange(ToolContractDefaults.CreateRemoteHostFollowUpRoutes(
-                sourceField: "rows[].domain_controller",
-                systemReason: "Promote stored TestimoX domain-controller scope into remote ComputerX host inspection.",
-                eventLogReason: "Promote stored TestimoX domain-controller scope into remote EventViewerX follow-up.",
-                isRequired: false));
-            return ToolContractDefaults.CreateHandoff(routes);
+        }
+
+        if (definition.Setup is { IsSetupAware: true }) {
+            return definition.Setup;
+        }
+
+        return new ToolSetupContract {
+            IsSetupAware = true,
+            SetupToolName = "testimox_rules_list",
+            Requirements = new[] {
+                new ToolSetupRequirement {
+                    RequirementId = "testimox_rules_catalog",
+                    Kind = ToolSetupRequirementKinds.Capability,
+                    IsRequired = true,
+                    HintKeys = SetupHintKeys
+                }
+            },
+            SetupHintKeys = SetupHintKeys
+        };
+    }
+
+    private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
+        if (definition.Recovery is { IsRecoveryAware: true }) {
+            return definition.Recovery;
+        }
+
+        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Recovery;
+        }
+
+        var supportsRetry = string.Equals(definition.Name, "testimox_rules_run", StringComparison.OrdinalIgnoreCase);
+        return new ToolRecoveryContract {
+            IsRecoveryAware = true,
+            SupportsTransientRetry = supportsRetry,
+            MaxRetryAttempts = supportsRetry ? 1 : 0,
+            RetryableErrorCodes = supportsRetry
+                ? new[] { "execution_failed", "timeout", "transport_unavailable" }
+                : Array.Empty<string>(),
+            RecoveryToolNames = new[] { "testimox_rules_list" }
+        };
+    }
+
+    private static ToolHandoffContract? BuildHandoff(ToolDefinition definition, ToolRoutingContract routing) {
+        if (definition.Handoff is { IsHandoffAware: true }) {
+            return definition.Handoff;
+        }
+
+        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Handoff;
+        }
+
+        if (string.Equals(definition.Name, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)) {
+            return CreateScopeAndHostFollowUpHandoff(
+                domainSourceField: "include_domains/0",
+                domainControllerSourceField: "include_domain_controllers/0",
+                adReason: "Promote explicit TestimoX execution scope into AD scope discovery for the same domain/DC set.",
+                systemReason: "Promote explicit TestimoX execution scope into ComputerX-backed remote host diagnostics for the same domain controller.");
+        }
+
+        if (string.Equals(definition.Name, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
+            return CreateScopeAndHostFollowUpHandoff(
+                domainSourceField: "rows/0/domain",
+                domainControllerSourceField: "rows/0/domain_controller",
+                adReason: "Promote stored TestimoX run scope into AD scope discovery before identity or ownership follow-up.",
+                systemReason: "Promote stored TestimoX run domain-controller evidence into ComputerX-backed remote host diagnostics.");
         }
 
         return definition.Handoff;
     }
 
-    private static ToolSetupContract? BuildSetup(ToolDefinition definition, ToolRoutingContract routing) {
-        return ToolContractDefaults.PreserveExplicitSetupOrCreateDefault(
-            definition,
-            routing.Role,
-            () => {
-                if (string.Equals(definition.Name, "testimox_runs_list", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(definition.Name, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
-                    return ToolContractDefaults.CreateHintOnlySetup(
-                        definition.Routing?.FallbackHintKeys?.Count > 0
-                            ? definition.Routing.FallbackHintKeys
-                            : SetupHintKeys);
+    private static ToolHandoffContract CreateScopeAndHostFollowUpHandoff(
+        string domainSourceField,
+        string domainControllerSourceField,
+        string adReason,
+        string systemReason) {
+        return new ToolHandoffContract {
+            IsHandoffAware = true,
+            OutboundRoutes = new[] {
+                new ToolHandoffRoute {
+                    TargetPackId = "active_directory",
+                    TargetToolName = "ad_scope_discovery",
+                    Reason = adReason,
+                    Bindings = new[] {
+                        new ToolHandoffBinding {
+                            SourceField = domainSourceField,
+                            TargetArgument = "domain_name",
+                            IsRequired = false
+                        },
+                        new ToolHandoffBinding {
+                            SourceField = domainControllerSourceField,
+                            TargetArgument = "domain_controller",
+                            IsRequired = false
+                        }
+                    }
+                },
+                new ToolHandoffRoute {
+                    TargetPackId = "system",
+                    TargetToolName = "system_info",
+                    Reason = systemReason,
+                    Bindings = new[] {
+                        new ToolHandoffBinding {
+                            SourceField = domainControllerSourceField,
+                            TargetArgument = "computer_name",
+                            IsRequired = false
+                        }
+                    }
+                },
+                new ToolHandoffRoute {
+                    TargetPackId = "system",
+                    TargetToolName = "system_metrics_summary",
+                    Reason = "Promote TestimoX scope evidence into remote CPU and memory follow-up for the same domain controller.",
+                    Bindings = new[] {
+                        new ToolHandoffBinding {
+                            SourceField = domainControllerSourceField,
+                            TargetArgument = "computer_name",
+                            IsRequired = false
+                        }
+                    }
+                },
+                new ToolHandoffRoute {
+                    TargetPackId = "eventlog",
+                    TargetToolName = "eventlog_channels_list",
+                    Reason = "Promote TestimoX scope evidence into remote Event Log channel discovery for the same domain controller before log triage.",
+                    Bindings = new[] {
+                        new ToolHandoffBinding {
+                            SourceField = domainControllerSourceField,
+                            TargetArgument = "machine_name",
+                            IsRequired = false
+                        }
+                    }
                 }
-
-                return ToolContractDefaults.CreateRequiredSetup(
-                    setupToolName: "testimox_rules_list",
-                    requirementId: "testimox_rules_catalog",
-                    requirementKind: ToolSetupRequirementKinds.Capability,
-                    setupHintKeys: SetupHintKeys);
-            });
+            }
+        };
     }
 
-    private static ToolRecoveryContract? BuildRecovery(ToolDefinition definition, ToolRoutingContract routing) {
-        return ToolContractDefaults.PreserveExplicitRecoveryOrCreateDefault(
-            definition,
-            routing.Role,
-            () => {
-                var supportsRetry = string.Equals(definition.Name, "testimox_rules_run", StringComparison.OrdinalIgnoreCase);
-                return ToolContractDefaults.CreateRecovery(
-                    supportsTransientRetry: supportsRetry,
-                    maxRetryAttempts: supportsRetry ? 1 : 0,
-                    retryableErrorCodes: supportsRetry
-                        ? new[] { "execution_failed", "timeout", "transport_unavailable" }
-                        : Array.Empty<string>(),
-                    recoveryToolNames: new[] { "testimox_rules_list" });
-            });
-    }
+    private static string ResolveRole(string toolName) {
+        if (string.Equals(toolName, "testimox_pack_info", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RolePackInfo;
+        }
 
-    private static string ResolveRole(string toolName, string? existingRole) {
-        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
-            explicitRole: existingRole,
-            toolName: toolName,
-            declaredRolesByToolName: DeclaredRolesByToolName,
-            packDisplayName: "TestimoX");
+        if (string.Equals(toolName, "testimox_baselines_list", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_runs_list", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_baseline_compare", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_profiles_list", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_baseline_crosswalk", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_source_query", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_rule_inventory", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_rules_list", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleDiagnostic;
+        }
+
+        return ToolRoutingTaxonomy.RoleOperational;
     }
 }

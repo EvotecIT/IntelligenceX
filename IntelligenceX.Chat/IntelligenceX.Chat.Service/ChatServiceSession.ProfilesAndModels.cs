@@ -731,36 +731,11 @@ internal sealed partial class ChatServiceSession {
         var totalMs = Math.Max(1, (long)totalStopwatch.Elapsed.TotalMilliseconds);
 
         var startupPhases = new[] {
-            new SessionStartupBootstrapPhaseTelemetryDto {
-                Id = "runtime_policy",
-                Label = "runtime policy",
-                DurationMs = runtimePolicyMs,
-                Order = 1
-            },
-            new SessionStartupBootstrapPhaseTelemetryDto {
-                Id = "bootstrap_options",
-                Label = "bootstrap options",
-                DurationMs = bootstrapOptionsMs,
-                Order = 2
-            },
-            new SessionStartupBootstrapPhaseTelemetryDto {
-                Id = "pack_load",
-                Label = "pack load",
-                DurationMs = packLoadMs,
-                Order = 3
-            },
-            new SessionStartupBootstrapPhaseTelemetryDto {
-                Id = "pack_register",
-                Label = "pack register",
-                DurationMs = packRegisterMs,
-                Order = 4
-            },
-            new SessionStartupBootstrapPhaseTelemetryDto {
-                Id = "registry_finalize",
-                Label = "registry finalize",
-                DurationMs = registryFinalizeMs,
-                Order = 5
-            }
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRuntimePolicyId, runtimePolicyMs, 1),
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseBootstrapOptionsId, bootstrapOptionsMs, 2),
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackLoadId, packLoadMs, 3),
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackRegisterId, packRegisterMs, 4),
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRegistryFinalizeId, registryFinalizeMs, 5)
         };
         var slowestPhase = startupPhases
             .OrderByDescending(static phase => phase.DurationMs)
@@ -778,14 +753,18 @@ internal sealed partial class ChatServiceSession {
         if (totalStopwatch.Elapsed >= TimeSpan.FromMilliseconds(600)) {
             RecordBootstrapWarning(
                 startupWarnings,
-                $"[startup] tooling bootstrap timings total={FormatElapsed(totalStopwatch.Elapsed)} " +
-                $"policy={FormatElapsed(runtimePolicyStopwatch.Elapsed)} " +
-                $"options={FormatElapsed(bootstrapOptionsStopwatch.Elapsed)} " +
-                $"packs={FormatElapsed(packBootstrapStopwatch.Elapsed)} " +
-                $"register={FormatElapsed(packRegisterStopwatch.Elapsed)} " +
-                $"finalize={FormatElapsed(registryFinalizeStopwatch.Elapsed)} " +
-                $"registry={FormatElapsed(registryBuildStopwatch.Elapsed)} " +
-                $"tools={definitions.Count} packsLoaded={bootstrapResult.Packs.Count} packsDisabled={disabledPackCount} pluginRoots={pluginSearchPaths.Length}.");
+                StartupBootstrapWarningBuilder.BuildTimingSummary(
+                    FormatElapsed(totalStopwatch.Elapsed),
+                    FormatElapsed(runtimePolicyStopwatch.Elapsed),
+                    FormatElapsed(bootstrapOptionsStopwatch.Elapsed),
+                    FormatElapsed(packBootstrapStopwatch.Elapsed),
+                    FormatElapsed(packRegisterStopwatch.Elapsed),
+                    FormatElapsed(registryFinalizeStopwatch.Elapsed),
+                    FormatElapsed(registryBuildStopwatch.Elapsed),
+                    definitions.Count,
+                    bootstrapResult.Packs.Count,
+                    disabledPackCount,
+                    pluginSearchPaths.Length));
         }
 
         var warningSummary = SummarizeStartupLoadWarnings(startupWarnings);
@@ -836,6 +815,7 @@ internal sealed partial class ChatServiceSession {
             new ChatServiceToolingBootstrapSnapshot {
                 Registry = registry,
                 ToolDefinitions = toolDefinitions,
+                PackSummaries = BuildPackPolicyList(packAvailability, _toolOrchestrationCatalog),
                 Packs = packs,
                 PackAvailability = packAvailability,
                 PluginAvailability = bootstrapResult.PluginAvailability.ToArray(),
@@ -883,8 +863,10 @@ internal sealed partial class ChatServiceSession {
         var cacheHitMs = Math.Max(1, (long)Math.Round(Math.Max(1, cacheHitElapsed.TotalMilliseconds)));
         var warnings = new List<string>(snapshot.StartupWarnings.Length + 1);
         warnings.AddRange(snapshot.StartupWarnings);
-        warnings.Add(
-            $"[startup] tooling bootstrap cache hit elapsed={cacheHitMs}ms tools={snapshot.StartupBootstrap.Tools} packsLoaded={snapshot.StartupBootstrap.PacksLoaded}.");
+        warnings.Add(StartupBootstrapWarningBuilder.BuildCacheHitSummary(
+            cacheHitMs,
+            snapshot.StartupBootstrap.Tools,
+            snapshot.StartupBootstrap.PacksLoaded));
         _startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 64);
         _startupBootstrap = snapshot.StartupBootstrap with {
             TotalMs = cacheHitMs,
@@ -895,15 +877,10 @@ internal sealed partial class ChatServiceSession {
             RegistryFinalizeMs = 0,
             RegistryMs = cacheHitMs,
             Phases = new[] {
-                new SessionStartupBootstrapPhaseTelemetryDto {
-                    Id = "cache_hit",
-                    Label = "cache hit",
-                    DurationMs = cacheHitMs,
-                    Order = 1
-                }
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseCacheHitId, cacheHitMs, 1)
             },
-            SlowestPhaseId = "cache_hit",
-            SlowestPhaseLabel = "cache hit",
+            SlowestPhaseId = StartupBootstrapContracts.PhaseCacheHitId,
+            SlowestPhaseLabel = StartupBootstrapContracts.PhaseCacheHitLabel,
             SlowestPhaseMs = cacheHitMs
         };
 
@@ -943,8 +920,7 @@ internal sealed partial class ChatServiceSession {
 
         var warnings = new List<string>(snapshot.StartupWarnings.Length + 1);
         warnings.AddRange(snapshot.StartupWarnings);
-        warnings.Add(
-            "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues.");
+        warnings.Add(StartupBootstrapWarningBuilder.BuildPersistedPreviewRestoredSummary());
         _startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 64);
     }
 
@@ -1156,9 +1132,9 @@ internal sealed partial class ChatServiceSession {
                 pluginSegments.Add($"{entry.PluginId}={entry.ElapsedMs}ms (loaded={entry.Loaded}, disabled={entry.Disabled}, failed={entry.Failed})");
             }
 
-            retainedWarnings.Add($"[startup] slow plugin loads top {pluginTopCount}/{orderedPlugins.Length}: {string.Join("; ", pluginSegments)}");
+            retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildSlowPluginLoadsTop(pluginTopCount, orderedPlugins.Length, pluginSegments));
             if (orderedPlugins.Length > pluginTopCount) {
-                retainedWarnings.Add($"[startup] additional slow plugins omitted: {orderedPlugins.Length - pluginTopCount}.");
+                retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildAdditionalSlowPluginsOmitted(orderedPlugins.Length - pluginTopCount));
             }
         }
 
@@ -1176,9 +1152,9 @@ internal sealed partial class ChatServiceSession {
                 packSegments.Add($"{entry.PackId}={entry.ElapsedMs}ms{failedToken}");
             }
 
-            retainedWarnings.Add($"[startup] slow pack loads top {packTopCount}/{orderedPacks.Length}: {string.Join("; ", packSegments)}");
+            retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildSlowPackLoadsTop(packTopCount, orderedPacks.Length, packSegments));
             if (orderedPacks.Length > packTopCount) {
-                retainedWarnings.Add($"[startup] additional slow packs omitted: {orderedPacks.Length - packTopCount}.");
+                retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildAdditionalSlowPacksOmitted(orderedPacks.Length - packTopCount));
             }
         }
 
@@ -1196,9 +1172,9 @@ internal sealed partial class ChatServiceSession {
                 registrationSegments.Add($"{entry.PackId}={entry.ElapsedMs}ms (tools={entry.ToolsRegistered}{failedToken})");
             }
 
-            retainedWarnings.Add($"[startup] slow pack registrations top {registrationTopCount}/{orderedRegistrations.Length}: {string.Join("; ", registrationSegments)}");
+            retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildSlowPackRegistrationsTop(registrationTopCount, orderedRegistrations.Length, registrationSegments));
             if (orderedRegistrations.Length > registrationTopCount) {
-                retainedWarnings.Add($"[startup] additional slow pack registrations omitted: {orderedRegistrations.Length - registrationTopCount}.");
+                retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildAdditionalSlowPackRegistrationsOmitted(orderedRegistrations.Length - registrationTopCount));
             }
         }
 
@@ -1277,8 +1253,7 @@ internal sealed partial class ChatServiceSession {
         processed = Math.Clamp(processed, 0, Math.Max(1, total));
         total = Math.Max(1, total);
 
-        retainedWarnings.Add(
-            $"[startup] plugin load progress: processed {processed}/{total} plugin folders (begin={progressBeginCount}, end={progressEndCount}).");
+        retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildPluginLoadProgressSummary(processed, total, progressBeginCount, progressEndCount));
     }
 
     private static int ResolvePluginProgressProcessed(int progressEndCount, int progressLatestIndex) {
@@ -1307,8 +1282,7 @@ internal sealed partial class ChatServiceSession {
         processed = Math.Clamp(processed, 0, Math.Max(1, total));
         total = Math.Max(1, total);
 
-        retainedWarnings.Add(
-            $"[startup] pack load progress: processed {processed}/{total} bootstrap steps (begin={progressBeginCount}, end={progressEndCount}).");
+        retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildPackLoadProgressSummary(processed, total, progressBeginCount, progressEndCount));
     }
 
     private static int ResolvePackProgressProcessed(int progressEndCount, int progressLatestIndex) {
@@ -1337,8 +1311,7 @@ internal sealed partial class ChatServiceSession {
         processed = Math.Clamp(processed, 0, Math.Max(1, total));
         total = Math.Max(1, total);
 
-        retainedWarnings.Add(
-            $"[startup] pack registration progress: processed {processed}/{total} packs (begin={progressBeginCount}, end={progressEndCount}).");
+        retainedWarnings.Add(StartupBootstrapWarningBuilder.BuildPackRegistrationProgressSummary(processed, total, progressBeginCount, progressEndCount));
     }
 
     private static int ResolvePackRegistrationProgressProcessed(int progressEndCount, int progressLatestIndex) {

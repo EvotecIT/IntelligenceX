@@ -689,6 +689,40 @@
     return "";
   }
 
+  function packAutonomySummary(packId) {
+    var pack = findPackById(packId);
+    if (!pack || !pack.autonomySummary || typeof pack.autonomySummary !== "object") {
+      return null;
+    }
+    return pack.autonomySummary;
+  }
+
+  function packAutonomySummaryText(packId) {
+    var summary = packAutonomySummary(packId);
+    if (!summary) {
+      return "";
+    }
+
+    var segments = [];
+    segments.push("Remote " + String(summary.remoteCapableTools || 0));
+    segments.push("setup " + String(summary.setupAwareTools || 0));
+    segments.push("handoff " + String(summary.handoffAwareTools || 0));
+    segments.push("recovery " + String(summary.recoveryAwareTools || 0));
+    if (Number(summary.crossPackHandoffTools || 0) > 0) {
+      segments.push("cross-pack " + String(summary.crossPackHandoffTools || 0));
+    }
+
+    return segments.join(" | ");
+  }
+
+  function normalizeStartupBootstrapCacheMode(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function startupBootstrapCacheModeIsPersistedPreview(value) {
+    return normalizeStartupBootstrapCacheMode(value) === "persisted_preview";
+  }
+
   function ensureAccordionState(packId) {
     if (!Object.prototype.hasOwnProperty.call(state.expandedToolPacks, packId)) {
       state.expandedToolPacks[packId] = false;

@@ -146,7 +146,7 @@ public class SystemAdMonitoringParityTests {
     }
 
     [Fact]
-    public void ActiveDirectoryDiscoveryTools_ShouldDeclareSystemPivotHandoff() {
+    public void ActiveDirectoryDiscoveryTools_ShouldDeclareSystemAndEventLogPivotHandoff() {
         var registry = new ToolRegistry();
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
 
@@ -162,13 +162,25 @@ public class SystemAdMonitoringParityTests {
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
                             && string.Equals(route.TargetToolName, "system_metrics_summary", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
+            scopeDiscovery.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
             environmentDiscover.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
                             && string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
+            environmentDiscover.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
                             && string.Equals(route.TargetToolName, "system_time_sync", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
+            static route => string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)

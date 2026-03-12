@@ -17,6 +17,11 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const int PlannerRemoteCapablePriorityBoost = 300;
+    private const int PlannerCrossPackContinuationPriorityBoost = 120;
+    private const double WeightedRoutingRemoteCapableScoreBoost = 3.5d;
+    private const double WeightedRoutingCrossPackContinuationScoreBoost = 1.75d;
+
     private IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
         return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
     }
@@ -178,6 +183,12 @@ internal sealed partial class ChatServiceSession {
             }
             if (toolScore.FocusTokenHits > 0) {
                 reasons.Add("unresolved focus match");
+            }
+            if (toolScore.RemoteCapableBoost > 0.01d) {
+                reasons.Add("remote-capable host targeting");
+            }
+            if (toolScore.CrossPackContinuationBoost > 0.01d) {
+                reasons.Add("cross-pack continuation support");
             }
             if (toolScore.Adjustment > 0.2d) {
                 reasons.Add("recent tool success");
@@ -355,6 +366,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         AppendRoutingPackTokens(sb, definition);
+        AppendRoutingRoleTokens(sb, definition);
 
         var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 12, out var schemaTraits);
         for (var i = 0; i < schemaArguments.Length; i++) {
@@ -372,6 +384,42 @@ internal sealed partial class ChatServiceSession {
         var traitSearchAugmentation = ToolSchemaTraitProjection.BuildRoutingSearchAugmentation(schemaTraits);
         if (traitSearchAugmentation.Length > 0) {
             sb.Append(traitSearchAugmentation);
+        }
+
+        var contractSearchAugmentation = BuildContractSearchAugmentation(definition);
+        if (contractSearchAugmentation.Length > 0) {
+            sb.Append(contractSearchAugmentation);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildContractSearchAugmentation(ToolDefinition definition) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        var setupToolName = NormalizeRoutingSearchToken(definition.Setup?.SetupToolName);
+        var recoveryToolNames = ExtractToolRecoveryHelperNames(definition, maxCount: 4);
+        var handoffTargets = ExtractToolHandoffTargets(definition, maxCount: 6);
+        if (setupToolName.Length == 0 && recoveryToolNames.Length == 0 && handoffTargets.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(160);
+        if (setupToolName.Length > 0) {
+            sb.Append(" setup ").Append(setupToolName);
+            sb.Append(" setup_tool ").Append(setupToolName);
+        }
+
+        for (var i = 0; i < recoveryToolNames.Length; i++) {
+            sb.Append(" recovery ").Append(recoveryToolNames[i]);
+            sb.Append(" recovery_tool ").Append(recoveryToolNames[i]);
+        }
+
+        for (var i = 0; i < handoffTargets.Length; i++) {
+            sb.Append(" handoff ").Append(handoffTargets[i]);
+            sb.Append(" handoff_target ").Append(handoffTargets[i]);
         }
 
         return sb.ToString();
@@ -399,6 +447,16 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private static void AppendRoutingRoleTokens(StringBuilder sb, ToolDefinition definition) {
+        var role = (definition.Routing?.Role ?? string.Empty).Trim();
+        if (role.Length == 0) {
+            return;
+        }
+
+        sb.Append(" role ").Append(role);
+        sb.Append(" role:").Append(role);
+    }
+
     private static string ResolveRoutingPackHint(ToolDefinition definition) {
         var routingPackId = NormalizePackId(definition.Routing?.PackId);
         if (routingPackId.Length > 0) {
@@ -414,6 +472,62 @@ internal sealed partial class ChatServiceSession {
 
     private static string[] ExtractToolSchemaRequiredNames(ToolDefinition definition, int maxCount) {
         return ToolSchemaTraitProjection.ReadRequiredNames(definition, maxCount);
+    }
+
+    private static string[] ExtractToolRecoveryHelperNames(ToolDefinition definition, int maxCount) {
+        if (definition?.Recovery?.RecoveryToolNames is not { Count: > 0 } || maxCount <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var names = new List<string>(Math.Min(maxCount, definition.Recovery.RecoveryToolNames.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definition.Recovery.RecoveryToolNames.Count && names.Count < maxCount; i++) {
+            var normalized = NormalizeRoutingSearchToken(definition.Recovery.RecoveryToolNames[i]);
+            if (normalized.Length == 0 || !seen.Add(normalized)) {
+                continue;
+            }
+
+            names.Add(normalized);
+        }
+
+        return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+    }
+
+    private static string[] ExtractToolHandoffTargets(ToolDefinition definition, int maxCount) {
+        if (definition?.Handoff?.OutboundRoutes is not { Count: > 0 } || maxCount <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var targets = new List<string>(Math.Min(maxCount, definition.Handoff.OutboundRoutes.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definition.Handoff.OutboundRoutes.Count && targets.Count < maxCount; i++) {
+            var route = definition.Handoff.OutboundRoutes[i];
+            if (route is null) {
+                continue;
+            }
+
+            var targetPackId = NormalizeRoutingSearchToken(route.TargetPackId);
+            var targetToolName = NormalizeRoutingSearchToken(route.TargetToolName);
+            var targetRole = NormalizeRoutingSearchToken(route.TargetRole);
+            var descriptor = targetPackId.Length > 0 && targetToolName.Length > 0
+                ? targetPackId + "/" + targetToolName
+                : targetPackId.Length > 0 && targetRole.Length > 0
+                    ? targetPackId + "/" + targetRole
+                    : targetToolName.Length > 0
+                        ? targetToolName
+                        : targetPackId;
+            if (descriptor.Length == 0 || !seen.Add(descriptor)) {
+                continue;
+            }
+
+            targets.Add(descriptor);
+        }
+
+        return targets.Count == 0 ? Array.Empty<string>() : targets.ToArray();
+    }
+
+    private static string NormalizeRoutingSearchToken(string? value) {
+        return (value ?? string.Empty).Trim();
     }
 
 }

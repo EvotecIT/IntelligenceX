@@ -433,6 +433,10 @@ public static partial class ToolPackBootstrap {
     }
 
     private static void ConfigurePackOptions(object options, ToolPackBootstrapOptions bootstrapOptions, Type packType) {
+        if (options is IToolPackRuntimeConfigurable configurableOptions) {
+            configurableOptions.ApplyRuntimeContext(BuildRuntimeContext(bootstrapOptions));
+        }
+
         ConfigurePackOptionsFromRuntimeBag(options, bootstrapOptions, packType);
     }
 

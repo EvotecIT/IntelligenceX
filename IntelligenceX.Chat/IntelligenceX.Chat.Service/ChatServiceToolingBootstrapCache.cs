@@ -10,7 +10,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed class ChatServiceToolingBootstrapCache {
-    private const int PersistedSnapshotSchemaVersion = 2;
+    private const int PersistedSnapshotSchemaVersion = 3;
     private const string DefaultPersistedSnapshotFileName = "tooling-bootstrap-cache-v1.json";
     private static readonly JsonSerializerOptions PersistedSnapshotJson = new() {
         PropertyNameCaseInsensitive = true,
@@ -101,6 +101,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
             CacheKey = cacheKey,
             CachedAtUtc = DateTime.UtcNow,
             ToolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>(),
+            PackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>(),
             PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
             PluginAvailability = snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
             StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
@@ -153,6 +154,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
             return snapshot with {
                 CacheKey = normalizedCacheKey,
                 ToolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>(),
+                PackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>(),
                 PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
                 PluginAvailability = snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
                 StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
@@ -207,6 +209,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
 internal sealed record ChatServiceToolingBootstrapSnapshot {
     public required ToolRegistry Registry { get; init; }
     public required ToolDefinitionDto[] ToolDefinitions { get; init; }
+    public required ToolPackInfoDto[] PackSummaries { get; init; }
     public required IToolPack[] Packs { get; init; }
     public required ToolPackAvailabilityInfo[] PackAvailability { get; init; }
     public required ToolPluginAvailabilityInfo[] PluginAvailability { get; init; }
@@ -224,6 +227,7 @@ internal sealed record ChatServiceToolingBootstrapPersistedSnapshot {
     public required string CacheKey { get; init; }
     public DateTime CachedAtUtc { get; init; }
     public required ToolDefinitionDto[] ToolDefinitions { get; init; }
+    public ToolPackInfoDto[] PackSummaries { get; init; } = Array.Empty<ToolPackInfoDto>();
     public required ToolPackAvailabilityInfo[] PackAvailability { get; init; }
     public ToolPluginAvailabilityInfo[] PluginAvailability { get; init; } = Array.Empty<ToolPluginAvailabilityInfo>();
     public required string[] StartupWarnings { get; init; }

@@ -101,6 +101,33 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void ConfigurePackOptions_AppliesRuntimeConfigurableOptionsWithoutChatSidePackKeyMapping() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ConfigurePackOptions",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var options = new RuntimeConfigurableOptions();
+        var bootstrapOptions = new ToolPackBootstrapOptions {
+            AllowedRoots = new[] { "C:/runtime-a", "C:/runtime-b" },
+            AdDomainController = "dc01.contoso.local",
+            AdDefaultSearchBaseDn = "DC=contoso,DC=local",
+            AdMaxResults = 4096
+        };
+
+        method!.Invoke(null, new object[] {
+            options,
+            bootstrapOptions,
+            typeof(RuntimeConfigurablePack)
+        });
+
+        Assert.Equal(new[] { "C:/runtime-a", "C:/runtime-b" }, options.AppliedRoots);
+        Assert.Equal("dc01.contoso.local", options.AppliedDomainController);
+        Assert.Equal("DC=contoso,DC=local", options.AppliedSearchBaseDn);
+        Assert.Equal(4096, options.AppliedMaxResults);
+    }
+
+    [Fact]
     public void NormalizeSourceKind_Throws_WhenSourceKindMissing() {
         Assert.Throws<ArgumentException>(() => ToolPackBootstrap.NormalizeSourceKind(sourceKind: null, descriptorId: "system"));
     }
@@ -704,5 +731,32 @@ public sealed class ToolPackBootstrapMetadataTests {
         }
 
         return disabled.ToArray();
+    }
+
+    private sealed class RuntimeConfigurableOptions : IToolPackRuntimeConfigurable {
+        public string[] AppliedRoots { get; private set; } = Array.Empty<string>();
+        public string AppliedDomainController { get; private set; } = string.Empty;
+        public string AppliedSearchBaseDn { get; private set; } = string.Empty;
+        public int AppliedMaxResults { get; private set; }
+
+        public void ApplyRuntimeContext(ToolPackRuntimeContext context) {
+            AppliedRoots = context.AllowedRoots?.ToArray() ?? Array.Empty<string>();
+            AppliedDomainController = context.AdDomainController ?? string.Empty;
+            AppliedSearchBaseDn = context.AdDefaultSearchBaseDn ?? string.Empty;
+            AppliedMaxResults = context.AdMaxResults;
+        }
+    }
+
+    private sealed class RuntimeConfigurablePack : IToolPack {
+        public ToolPackDescriptor Descriptor => new() {
+            Id = "runtime_configurable",
+            Name = "Runtime configurable",
+            Tier = ToolCapabilityTier.ReadOnly,
+            SourceKind = "builtin"
+        };
+
+        public void Register(ToolRegistry registry) {
+            throw new NotSupportedException();
+        }
     }
 }

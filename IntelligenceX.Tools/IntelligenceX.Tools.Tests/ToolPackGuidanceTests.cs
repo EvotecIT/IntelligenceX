@@ -80,6 +80,8 @@ public class ToolPackGuidanceTests {
         Assert.Equal("host_baseline", model.Capabilities[0].Id);
         Assert.Equal("Baseline host inventory", model.Capabilities[0].Summary);
         Assert.Equal(2, model.RecommendedFlow.Count);
+        Assert.NotNull(model.AutonomySummary);
+        Assert.Equal(2, model.AutonomySummary.TotalTools);
     }
 
     [Fact]
@@ -191,6 +193,7 @@ public class ToolPackGuidanceTests {
         Assert.Equal("string", a.Arguments[0].Type);
         Assert.True(a.Arguments[0].Required);
         Assert.NotNull(a.Traits);
+        Assert.Equal("local_only", a.Traits.ExecutionScope);
         Assert.False(a.Traits.SupportsTableViewProjection);
         Assert.False(a.Traits.SupportsPaging);
         Assert.False(a.Traits.SupportsTimeRange);
@@ -223,6 +226,7 @@ public class ToolPackGuidanceTests {
         Assert.Contains(b.Arguments, static arg => arg.Name == "sort_by" && arg.Type == "string" && !arg.Required);
         Assert.Contains(b.Arguments, static arg => arg.Name == ToolWriteGovernanceArgumentNames.OperationId && arg.Type == "string" && !arg.Required);
         Assert.NotNull(b.Traits);
+        Assert.Equal("local_or_remote", b.Traits.ExecutionScope);
         Assert.True(b.Traits.SupportsTableViewProjection);
         Assert.Equal(new[] { "columns", "sort_by" }, b.Traits.TableViewArguments);
         Assert.True(b.Traits.SupportsPaging);
@@ -325,40 +329,29 @@ public class ToolPackGuidanceTests {
         });
 
         var item = Assert.Single(catalog);
-        Assert.NotNull(item.Orchestration);
-        Assert.Equal("customx", item.Orchestration.PackId);
-        Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, item.Orchestration.Role);
-        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, item.Orchestration.RoutingSource);
-        Assert.True(item.Orchestration.IsRoutingAware);
-        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, item.Orchestration.DomainIntentFamily);
-        Assert.Equal("act_custom_scope", item.Orchestration.DomainIntentActionId);
-        Assert.True(item.Orchestration.IsSetupAware);
-        Assert.Equal(1, item.Orchestration.SetupRequirementCount);
-        Assert.Equal(ToolSetupContract.DefaultContractId, item.Orchestration.SetupContractId);
-        Assert.Equal("custom_setup", item.Orchestration.SetupToolName);
-        Assert.Equal(new[] { "auth.session" }, item.Orchestration.SetupRequirementIds);
-        Assert.Equal(new[] { ToolSetupRequirementKinds.Authentication }, item.Orchestration.SetupRequirementKinds);
-        Assert.Equal(new[] { "auth_required", "needs_auth" }, item.Orchestration.SetupHintKeys);
-        Assert.True(item.Orchestration.IsHandoffAware);
-        Assert.Equal(1, item.Orchestration.HandoffRouteCount);
-        Assert.Equal(1, item.Orchestration.HandoffBindingCount);
-        Assert.Equal(ToolHandoffContract.DefaultContractId, item.Orchestration.HandoffContractId);
-        var handoffEdge = Assert.Single(item.Orchestration.HandoffEdges);
-        Assert.Equal("dnsclientx", handoffEdge.TargetPackId);
+        Assert.Equal("custom_pack_info", item.Name);
+        Assert.True(item.IsPackInfoTool);
+        Assert.Equal("local_or_remote", item.Traits.ExecutionScope);
+        Assert.Contains("machine_name", item.Traits.RemoteHostArguments, StringComparer.OrdinalIgnoreCase);
+        Assert.True(item.Setup.IsSetupAware);
+        Assert.Equal("custom_setup", item.Setup.SetupToolName);
+        Assert.Equal(new[] { "auth.session" }, item.Setup.RequirementIds);
+        Assert.Equal(
+            new[] { "auth_required", "needs_auth" },
+            item.Setup.HintKeys.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
+        Assert.True(item.Handoff.IsHandoffAware);
+        var handoffEdge = Assert.Single(item.Handoff.Routes);
+        Assert.Equal("DnsClientX", handoffEdge.TargetPackId);
         Assert.Equal("dns_lookup", handoffEdge.TargetToolName);
         Assert.Equal(ToolRoutingTaxonomy.RoleOperational, handoffEdge.TargetRole);
-        Assert.Equal(1, handoffEdge.BindingCount);
-        Assert.Equal(new[] { "host->target" }, handoffEdge.BindingPairs);
-        Assert.True(item.Orchestration.IsRecoveryAware);
-        Assert.True(item.Orchestration.SupportsTransientRetry);
-        Assert.Equal(3, item.Orchestration.MaxRetryAttempts);
-        Assert.Equal(ToolRecoveryContract.DefaultContractId, item.Orchestration.RecoveryContractId);
-        Assert.True(item.Orchestration.SupportsAlternateEngines);
-        Assert.Equal(2, item.Orchestration.AlternateEngineCount);
-        Assert.Equal(2, item.Orchestration.RecoveryToolCount);
-        Assert.Equal(new[] { "query_failed", "timeout" }, item.Orchestration.RetryableErrorCodes);
-        Assert.Equal(new[] { "cim", "wmi" }, item.Orchestration.AlternateEngineIds);
-        Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, item.Orchestration.RecoveryToolNames);
+        Assert.Equal(new[] { "host->target" }, handoffEdge.BindingPairs.Select(static value => value.ToLowerInvariant()));
+        Assert.True(item.Recovery.IsRecoveryAware);
+        Assert.True(item.Recovery.SupportsTransientRetry);
+        Assert.Equal(3, item.Recovery.MaxRetryAttempts);
+        Assert.Equal(
+            new[] { "query_failed", "timeout" },
+            item.Recovery.RetryableErrorCodes.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, item.Recovery.RecoveryToolNames);
     }
 
     [Fact]
@@ -438,6 +431,128 @@ public class ToolPackGuidanceTests {
         Assert.Equal("resource", item.Routing.Entity);
         Assert.Equal(ToolRoutingTaxonomy.RiskLow, item.Routing.Risk);
         Assert.Equal(ToolRoutingTaxonomy.SourceInferred, item.Routing.Source);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldProjectSetupHandoffRecoveryAndExpandedRemoteTraits() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "eventlog_timeline_query",
+                "Query event timeline from a remote host.",
+                ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Remote machine.")),
+                        ("channel", ToolSchema.String("Channel.")))
+                    .NoAdditionalProperties(),
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_channels_list",
+                    SetupHintKeys = new[] { "machine_name", "channel" }
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "machine_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 1,
+                    RecoveryToolNames = new[] { "eventlog_channels_list" },
+                    RetryableErrorCodes = new[] { "transport_unavailable" }
+                }))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.Equal("local_or_remote", item.Traits.ExecutionScope);
+        Assert.True(item.Traits.SupportsRemoteHostTargeting);
+        Assert.Contains("machine_name", item.Traits.RemoteHostArguments, StringComparer.OrdinalIgnoreCase);
+        Assert.True(item.Traits.SupportsTargetScoping);
+        Assert.Contains("machine_name", item.Traits.TargetScopeArguments, StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(item.Setup.IsSetupAware);
+        Assert.Equal("eventlog_channels_list", item.Setup.SetupToolName);
+        Assert.Contains("channel", item.Setup.HintKeys, StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(item.Handoff.IsHandoffAware);
+        var route = Assert.Single(item.Handoff.Routes);
+        Assert.Equal("system", route.TargetPackId);
+        Assert.Equal("system_info", route.TargetToolName);
+        Assert.Contains("machine_name->computer_name", route.BindingPairs, StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(item.Recovery.IsRecoveryAware);
+        Assert.True(item.Recovery.SupportsTransientRetry);
+        Assert.Equal(1, item.Recovery.MaxRetryAttempts);
+        Assert.Contains("eventlog_channels_list", item.Recovery.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("transport_unavailable", item.Recovery.RetryableErrorCodes, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Create_ShouldDeriveAutonomySummaryFromToolCatalog() {
+        var model = ToolPackGuidance.Create(
+            pack: "eventlog",
+            engine: "EventViewerX",
+            tools: new[] { "eventlog_pack_info", "eventlog_timeline_query", "eventlog_channels_list" },
+            toolCatalog: new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "eventlog_pack_info",
+                    Description = "Pack info"
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "eventlog_timeline_query",
+                    Description = "Timeline",
+                    Traits = new ToolPackToolTraitsModel {
+                        ExecutionScope = "local_or_remote",
+                        SupportsRemoteHostTargeting = true,
+                        RemoteHostArguments = new[] { "machine_name" }
+                    },
+                    Setup = new ToolPackToolSetupModel {
+                        IsSetupAware = true,
+                        SetupToolName = "eventlog_channels_list"
+                    },
+                    Handoff = new ToolPackToolHandoffModel {
+                        IsHandoffAware = true,
+                        Routes = new[] {
+                            new ToolPackToolHandoffRouteModel {
+                                TargetPackId = "system",
+                                TargetToolName = "system_info",
+                                BindingPairs = new[] { "machine_name->computer_name" }
+                            }
+                        }
+                    },
+                    Recovery = new ToolPackToolRecoveryModel {
+                        IsRecoveryAware = true,
+                        RecoveryToolNames = new[] { "eventlog_channels_list" }
+                    }
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "eventlog_channels_list",
+                    Description = "Channels"
+                }
+            });
+
+        var summary = model.AutonomySummary;
+        Assert.Equal(3, summary.TotalTools);
+        Assert.Equal(1, summary.RemoteCapableTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, summary.RemoteCapableToolNames);
+        Assert.Equal(1, summary.SetupAwareTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, summary.SetupAwareToolNames);
+        Assert.Equal(1, summary.HandoffAwareTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, summary.HandoffAwareToolNames);
+        Assert.Equal(1, summary.RecoveryAwareTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, summary.RecoveryAwareToolNames);
+        Assert.Equal(1, summary.CrossPackHandoffTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, summary.CrossPackHandoffToolNames);
+        Assert.Equal(new[] { "system" }, summary.CrossPackTargetPacks);
     }
 
     [Fact]
@@ -586,6 +701,7 @@ public class ToolPackGuidanceTests {
         Assert.Equal("resource", entry.Routing.Entity);
         Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
         Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+        Assert.Equal(1, model.AutonomySummary.TotalTools);
     }
 
     [Fact]

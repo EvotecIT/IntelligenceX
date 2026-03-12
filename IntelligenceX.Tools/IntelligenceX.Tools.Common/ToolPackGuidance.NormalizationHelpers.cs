@@ -60,6 +60,11 @@ public static partial class ToolPackGuidance {
         var resolvedCapabilities = NormalizeCapabilities(capabilities);
         var resolvedEntityHandoffs = NormalizeEntityHandoffs(entityHandoffs);
         var resolvedToolCatalog = NormalizeToolCatalog(toolCatalog);
+        var resolvedAutonomySummary = NormalizeAutonomySummary(
+            new ToolPackAutonomySummaryModel {
+                TotalTools = resolvedTools.Count
+            },
+            resolvedToolCatalog);
 
         return new ToolPackInfoModel {
             Pack = pack.Trim(),
@@ -83,9 +88,48 @@ public static partial class ToolPackGuidance {
             Capabilities = resolvedCapabilities,
             EntityHandoffs = resolvedEntityHandoffs,
             ToolCatalog = resolvedToolCatalog,
+            AutonomySummary = resolvedAutonomySummary,
             Tools = resolvedTools,
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
         };
+    }
+
+    private static ToolPackAutonomySummaryModel NormalizeAutonomySummary(
+        ToolPackAutonomySummaryModel? summary,
+        IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
+        var derived = BuildAutonomySummary(toolCatalog);
+        if (summary is null) {
+            return derived;
+        }
+
+        var remoteCapableToolNames = NormalizeValueListOrFallback(summary.RemoteCapableToolNames, derived.RemoteCapableToolNames);
+        var setupAwareToolNames = NormalizeValueListOrFallback(summary.SetupAwareToolNames, derived.SetupAwareToolNames);
+        var handoffAwareToolNames = NormalizeValueListOrFallback(summary.HandoffAwareToolNames, derived.HandoffAwareToolNames);
+        var recoveryAwareToolNames = NormalizeValueListOrFallback(summary.RecoveryAwareToolNames, derived.RecoveryAwareToolNames);
+        var crossPackHandoffToolNames = NormalizeValueListOrFallback(summary.CrossPackHandoffToolNames, derived.CrossPackHandoffToolNames);
+        var crossPackTargetPacks = NormalizeValueListOrFallback(summary.CrossPackTargetPacks, derived.CrossPackTargetPacks);
+
+        return new ToolPackAutonomySummaryModel {
+            TotalTools = Math.Max(Math.Max(0, summary.TotalTools), derived.TotalTools),
+            RemoteCapableTools = Math.Max(Math.Max(summary.RemoteCapableTools, derived.RemoteCapableTools), remoteCapableToolNames.Count),
+            RemoteCapableToolNames = remoteCapableToolNames,
+            SetupAwareTools = Math.Max(Math.Max(summary.SetupAwareTools, derived.SetupAwareTools), setupAwareToolNames.Count),
+            SetupAwareToolNames = setupAwareToolNames,
+            HandoffAwareTools = Math.Max(Math.Max(summary.HandoffAwareTools, derived.HandoffAwareTools), handoffAwareToolNames.Count),
+            HandoffAwareToolNames = handoffAwareToolNames,
+            RecoveryAwareTools = Math.Max(Math.Max(summary.RecoveryAwareTools, derived.RecoveryAwareTools), recoveryAwareToolNames.Count),
+            RecoveryAwareToolNames = recoveryAwareToolNames,
+            CrossPackHandoffTools = Math.Max(Math.Max(summary.CrossPackHandoffTools, derived.CrossPackHandoffTools), crossPackHandoffToolNames.Count),
+            CrossPackHandoffToolNames = crossPackHandoffToolNames,
+            CrossPackTargetPacks = crossPackTargetPacks
+        };
+    }
+
+    private static IReadOnlyList<string> NormalizeValueListOrFallback(
+        IEnumerable<string>? values,
+        IReadOnlyList<string> fallback) {
+        var normalized = NormalizeValues(values);
+        return normalized.Count > 0 ? normalized : fallback;
     }
 
     private static IReadOnlyList<string> NormalizeValues(IEnumerable<string>? values, bool distinct = true) {
@@ -218,7 +262,9 @@ public static partial class ToolPackGuidance {
                 SupportsTableViewProjection = entry.SupportsTableViewProjection,
                 IsPackInfoTool = entry.IsPackInfoTool,
                 Traits = NormalizeTraits(entry.Traits),
-                Orchestration = NormalizeOrchestration(entry.Orchestration),
+                Setup = NormalizeSetup(entry.Setup),
+                Handoff = NormalizeHandoff(entry.Handoff),
+                Recovery = NormalizeRecovery(entry.Recovery),
                 IsWriteCapable = entry.IsWriteCapable,
                 RequiresWriteGovernance = entry.RequiresWriteGovernance,
                 WriteGovernanceContractId = string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId)
@@ -250,7 +296,9 @@ public static partial class ToolPackGuidance {
         var pagingArguments = IntersectKnownArguments(names, PagingArgumentNames);
         var timeRangeArguments = IntersectKnownArguments(names, TimeRangeArgumentNames);
         var dynamicAttributeArguments = IntersectKnownArguments(names, DynamicAttributeArgumentNames);
-        var targetScopeArguments = IntersectKnownArguments(names, TargetScopeArgumentNames);
+        var targetScopeArguments = MergeKnownArguments(
+            IntersectKnownArguments(names, TargetScopeArgumentNames),
+            IntersectKnownArguments(names, ToolHostTargetArgumentNames.OrderedInputArguments));
         var remoteHostArguments = IntersectKnownArguments(names, RemoteHostArgumentNames);
         var mutatingActionArguments = IntersectKnownArguments(names, MutatingActionArgumentNames);
         var writeGovernanceMetadataArguments = IntersectKnownArguments(
@@ -259,6 +307,7 @@ public static partial class ToolPackGuidance {
         var authenticationArguments = IntersectKnownArguments(names, AuthenticationArgumentNames);
 
         return new ToolPackToolTraitsModel {
+            ExecutionScope = ResolveExecutionScope(remoteHostArguments.Count > 0),
             SupportsTableViewProjection = supportsTableViewProjection,
             TableViewArguments = projectionArguments,
             SupportsPaging = pagingArguments.Count > 0,
@@ -383,8 +432,10 @@ public static partial class ToolPackGuidance {
         var mutatingActionArguments = NormalizeValues(traits.MutatingActionArguments);
         var writeGovernanceMetadataArguments = NormalizeValues(traits.WriteGovernanceMetadataArguments);
         var authenticationArguments = NormalizeValues(traits.AuthenticationArguments);
+        var supportsRemoteExecution = traits.SupportsRemoteHostTargeting || remoteHostArguments.Count > 0;
 
         return new ToolPackToolTraitsModel {
+            ExecutionScope = NormalizeExecutionScope(traits.ExecutionScope, supportsRemoteExecution),
             SupportsTableViewProjection = traits.SupportsTableViewProjection || projectionArguments.Count > 0,
             TableViewArguments = projectionArguments,
             SupportsPaging = traits.SupportsPaging || pagingArguments.Count > 0,
@@ -406,232 +457,80 @@ public static partial class ToolPackGuidance {
         };
     }
 
-    private static ToolPackToolOrchestrationModel BuildToolOrchestration(ToolDefinition definition) {
-        var routing = definition.Routing;
-        var setup = definition.Setup;
-        var handoff = definition.Handoff;
-        var recovery = definition.Recovery;
+    private static ToolPackAutonomySummaryModel BuildAutonomySummary(IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
+        var catalog = toolCatalog ?? Array.Empty<ToolPackToolCatalogEntryModel>();
+        var remoteCapableToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => IsRemoteCapable(entry.Traits))
+                .Select(static entry => entry.Name));
+        var setupAwareToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.Setup.IsSetupAware)
+                .Select(static entry => entry.Name));
+        var handoffAwareToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.Handoff.IsHandoffAware)
+                .Select(static entry => entry.Name));
+        var recoveryAwareToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.Recovery.IsRecoveryAware)
+                .Select(static entry => entry.Name));
+        var crossPackHandoffToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => HasCrossPackHandoff(entry.Handoff))
+                .Select(static entry => entry.Name));
+        var crossPackTargetPacks = NormalizeValues(
+            catalog
+                .SelectMany(static entry => entry.Handoff.Routes)
+                .Select(static route => route.TargetPackId ?? string.Empty));
 
-        var role = NormalizeRoutingToken(routing?.Role, ToolRoutingTaxonomy.RoleOperational);
-        if (!ToolRoutingTaxonomy.IsAllowedRole(role)) {
-            role = ToolRoutingTaxonomy.RoleOperational;
-        }
-
-        var routingSource = NormalizeRoutingToken(routing?.RoutingSource, ToolRoutingTaxonomy.SourceExplicit);
-        if (!ToolRoutingTaxonomy.IsAllowedSource(routingSource)) {
-            routingSource = ToolRoutingTaxonomy.SourceExplicit;
-        }
-
-        var family = NormalizeLowerToken(routing?.DomainIntentFamily);
-        if (!ToolSelectionMetadata.TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
-            normalizedFamily = string.Empty;
-        }
-
-        var setupRequirementIds = new List<string>();
-        var setupRequirementKinds = new List<string>();
-        var setupRequirementPairs = new List<string>();
-        var setupHintKeys = new List<string>();
-        if (setup?.SetupHintKeys is { Count: > 0 }) {
-            for (var hintIndex = 0; hintIndex < setup.SetupHintKeys.Count; hintIndex++) {
-                setupHintKeys.Add(setup.SetupHintKeys[hintIndex]);
-            }
-        }
-
-        if (setup?.Requirements is { Count: > 0 }) {
-            for (var requirementIndex = 0; requirementIndex < setup.Requirements.Count; requirementIndex++) {
-                var requirement = setup.Requirements[requirementIndex];
-                var requirementId = requirement?.RequirementId ?? string.Empty;
-                var requirementKind = requirement?.Kind ?? string.Empty;
-                setupRequirementIds.Add(requirementId);
-                setupRequirementKinds.Add(requirementKind);
-                var normalizedRequirementId = NormalizeLowerToken(requirementId);
-                var normalizedRequirementKind = NormalizeLowerToken(requirementKind);
-                if (normalizedRequirementId.Length > 0 && normalizedRequirementKind.Length > 0) {
-                    setupRequirementPairs.Add(normalizedRequirementId + "|" + normalizedRequirementKind);
-                }
-
-                if (requirement?.HintKeys is not { Count: > 0 }) {
-                    continue;
-                }
-
-                for (var hintIndex = 0; hintIndex < requirement.HintKeys.Count; hintIndex++) {
-                    setupHintKeys.Add(requirement.HintKeys[hintIndex]);
-                }
-            }
-        }
-
-        var handoffBindingCount = 0;
-        var handoffEdges = new List<ToolPackToolHandoffEdgeModel>();
-        if (handoff?.OutboundRoutes is { Count: > 0 }) {
-            for (var routeIndex = 0; routeIndex < handoff.OutboundRoutes.Count; routeIndex++) {
-                var route = handoff.OutboundRoutes[routeIndex];
-                var bindings = route?.Bindings;
-                if (bindings is null || bindings.Count == 0) {
-                    continue;
-                }
-
-                var bindingPairs = new List<string>(bindings.Count);
-                for (var bindingIndex = 0; bindingIndex < bindings.Count; bindingIndex++) {
-                    var binding = bindings[bindingIndex];
-                    var source = NormalizeLowerToken(binding?.SourceField);
-                    var target = NormalizeLowerToken(binding?.TargetArgument);
-                    if (source.Length == 0 || target.Length == 0) {
-                        continue;
-                    }
-
-                    bindingPairs.Add(source + "->" + target);
-                }
-
-                var normalizedBindingPairs = NormalizeTokensPreserveMultiplicity(bindingPairs);
-                if (normalizedBindingPairs.Count == 0) {
-                    continue;
-                }
-
-                handoffBindingCount += normalizedBindingPairs.Count;
-                handoffEdges.Add(new ToolPackToolHandoffEdgeModel {
-                    TargetPackId = ToolSelectionMetadata.NormalizePackId(route?.TargetPackId),
-                    TargetToolName = NormalizeLowerToken(route?.TargetToolName),
-                    TargetRole = NormalizeLowerToken(route?.TargetRole),
-                    BindingCount = normalizedBindingPairs.Count,
-                    BindingPairs = normalizedBindingPairs
-                });
-            }
-        }
-
-        var retryableErrorCodes = NormalizeDistinctTokens(recovery?.RetryableErrorCodes);
-        var alternateEngineIds = NormalizeDistinctTokens(recovery?.AlternateEngineIds);
-        var recoveryToolNames = NormalizeDistinctTokens(recovery?.RecoveryToolNames);
-        var alternateEngineCount = alternateEngineIds.Count;
-        var normalizedSetupRequirementIds = NormalizeDistinctTokens(setupRequirementIds);
-        var normalizedSetupRequirementKinds = NormalizeDistinctTokens(setupRequirementKinds);
-        var normalizedSetupRequirementPairs = NormalizeDistinctTokens(setupRequirementPairs);
-        var normalizedSetupHintKeys = NormalizeDistinctTokens(setupHintKeys);
-        var normalizedSetupToolName = NormalizeLowerToken(setup?.SetupToolName);
-        var normalizedHandoffEdges = NormalizeHandoffEdges(handoffEdges);
-        var normalizedHandoffContractId = NormalizeLowerToken(handoff?.HandoffContractId);
-        var normalizedRecoveryContractId = NormalizeLowerToken(recovery?.RecoveryContractId);
-        var maxRetryAttempts = Math.Max(0, recovery?.MaxRetryAttempts ?? 0);
-        var supportsTransientRetry = recovery?.SupportsTransientRetry == true;
-        var supportsAlternateEngines = recovery?.SupportsAlternateEngines == true;
-
-        return new ToolPackToolOrchestrationModel {
-            PackId = ToolSelectionMetadata.NormalizePackId(routing?.PackId),
-            Role = role,
-            RoutingSource = routingSource,
-            IsRoutingAware = routing?.IsRoutingAware == true,
-            DomainIntentFamily = normalizedFamily,
-            DomainIntentActionId = NormalizeLowerToken(routing?.DomainIntentActionId),
-            IsSetupAware = setup?.IsSetupAware == true
-                           && (normalizedSetupRequirementPairs.Count > 0
-                               || normalizedSetupHintKeys.Count > 0
-                               || normalizedSetupToolName.Length > 0),
-            SetupRequirementCount = normalizedSetupRequirementPairs.Count,
-            SetupToolName = normalizedSetupToolName,
-            SetupContractId = NormalizeLowerToken(setup?.SetupContractId),
-            SetupRequirementIds = normalizedSetupRequirementIds,
-            SetupRequirementKinds = normalizedSetupRequirementKinds,
-            SetupHintKeys = normalizedSetupHintKeys,
-            IsHandoffAware = handoff?.IsHandoffAware == true && normalizedHandoffEdges.Count > 0,
-            HandoffRouteCount = normalizedHandoffEdges.Count,
-            HandoffBindingCount = handoffBindingCount,
-            HandoffContractId = normalizedHandoffContractId,
-            HandoffEdges = normalizedHandoffEdges,
-            IsRecoveryAware = recovery?.IsRecoveryAware == true
-                              && (normalizedRecoveryContractId.Length > 0
-                                  || retryableErrorCodes.Count > 0
-                                  || alternateEngineCount > 0
-                                  || recoveryToolNames.Count > 0
-                                  || supportsTransientRetry
-                                  || supportsAlternateEngines
-                                  || maxRetryAttempts > 0),
-            SupportsTransientRetry = supportsTransientRetry,
-            MaxRetryAttempts = maxRetryAttempts,
-            SupportsAlternateEngines = supportsAlternateEngines,
-            AlternateEngineCount = alternateEngineCount,
-            RecoveryContractId = normalizedRecoveryContractId,
-            RecoveryToolCount = recoveryToolNames.Count,
-            RetryableErrorCodes = retryableErrorCodes,
-            AlternateEngineIds = alternateEngineIds,
-            RecoveryToolNames = recoveryToolNames
+        return new ToolPackAutonomySummaryModel {
+            TotalTools = catalog.Count,
+            RemoteCapableTools = remoteCapableToolNames.Count,
+            RemoteCapableToolNames = remoteCapableToolNames,
+            SetupAwareTools = setupAwareToolNames.Count,
+            SetupAwareToolNames = setupAwareToolNames,
+            HandoffAwareTools = handoffAwareToolNames.Count,
+            HandoffAwareToolNames = handoffAwareToolNames,
+            RecoveryAwareTools = recoveryAwareToolNames.Count,
+            RecoveryAwareToolNames = recoveryAwareToolNames,
+            CrossPackHandoffTools = crossPackHandoffToolNames.Count,
+            CrossPackHandoffToolNames = crossPackHandoffToolNames,
+            CrossPackTargetPacks = crossPackTargetPacks
         };
     }
 
-    private static ToolPackToolOrchestrationModel NormalizeOrchestration(ToolPackToolOrchestrationModel? orchestration) {
-        if (orchestration is null) {
-            return new ToolPackToolOrchestrationModel();
+    private static string ResolveExecutionScope(bool supportsRemoteExecution) {
+        return supportsRemoteExecution ? "local_or_remote" : "local_only";
+    }
+
+    private static bool IsRemoteCapable(ToolPackToolTraitsModel? traits) {
+        if (traits is null) {
+            return false;
         }
 
-        var role = NormalizeRoutingToken(orchestration.Role, ToolRoutingTaxonomy.RoleOperational);
-        if (!ToolRoutingTaxonomy.IsAllowedRole(role)) {
-            role = ToolRoutingTaxonomy.RoleOperational;
+        if (traits.SupportsRemoteHostTargeting || traits.RemoteHostArguments.Count > 0) {
+            return true;
         }
 
-        var routingSource = NormalizeRoutingToken(orchestration.RoutingSource, ToolRoutingTaxonomy.SourceExplicit);
-        if (!ToolRoutingTaxonomy.IsAllowedSource(routingSource)) {
-            routingSource = ToolRoutingTaxonomy.SourceExplicit;
+        return string.Equals(traits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasCrossPackHandoff(ToolPackToolHandoffModel? handoff) {
+        if (handoff is null || handoff.Routes.Count == 0) {
+            return false;
         }
 
-        var family = NormalizeLowerToken(orchestration.DomainIntentFamily);
-        if (!ToolSelectionMetadata.TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
-            normalizedFamily = string.Empty;
+        return handoff.Routes.Any(static route => !string.IsNullOrWhiteSpace(route.TargetPackId));
+    }
+
+    private static string NormalizeExecutionScope(string? value, bool supportsRemoteExecution) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized is "local_only" or "local_or_remote") {
+            return normalized;
         }
 
-        var setupRequirementIds = NormalizeDistinctTokens(orchestration.SetupRequirementIds);
-        var setupRequirementKinds = NormalizeDistinctTokens(orchestration.SetupRequirementKinds);
-        var setupHintKeys = NormalizeDistinctTokens(orchestration.SetupHintKeys);
-        var setupRequirementCount = Math.Max(
-            Math.Max(0, orchestration.SetupRequirementCount),
-            Math.Max(setupRequirementIds.Count, setupRequirementKinds.Count));
-        var handoffEdges = NormalizeHandoffEdges(orchestration.HandoffEdges);
-        var handoffBindingCount = handoffEdges.Count == 0
-            ? 0
-            : Math.Max(orchestration.HandoffBindingCount, handoffEdges.Sum(static edge => edge.BindingCount));
-        var retryableErrorCodes = NormalizeDistinctTokens(orchestration.RetryableErrorCodes);
-        var alternateEngineIds = NormalizeDistinctTokens(orchestration.AlternateEngineIds);
-        var recoveryToolNames = NormalizeDistinctTokens(orchestration.RecoveryToolNames);
-        var alternateEngineCount = Math.Max(orchestration.AlternateEngineCount, alternateEngineIds.Count);
-        var recoveryToolCount = Math.Max(orchestration.RecoveryToolCount, recoveryToolNames.Count);
-        var maxRetryAttempts = Math.Max(0, orchestration.MaxRetryAttempts);
-
-        return new ToolPackToolOrchestrationModel {
-            PackId = ToolSelectionMetadata.NormalizePackId(orchestration.PackId),
-            Role = role,
-            RoutingSource = routingSource,
-            IsRoutingAware = orchestration.IsRoutingAware,
-            DomainIntentFamily = normalizedFamily,
-            DomainIntentActionId = NormalizeLowerToken(orchestration.DomainIntentActionId),
-            IsSetupAware = orchestration.IsSetupAware
-                           || setupRequirementCount > 0
-                           || setupHintKeys.Count > 0
-                           || !string.IsNullOrWhiteSpace(orchestration.SetupToolName),
-            SetupRequirementCount = setupRequirementCount,
-            SetupToolName = NormalizeLowerToken(orchestration.SetupToolName),
-            SetupContractId = NormalizeLowerToken(orchestration.SetupContractId),
-            SetupRequirementIds = setupRequirementIds,
-            SetupRequirementKinds = setupRequirementKinds,
-            SetupHintKeys = setupHintKeys,
-            IsHandoffAware = orchestration.IsHandoffAware || handoffEdges.Count > 0,
-            HandoffRouteCount = Math.Max(orchestration.HandoffRouteCount, handoffEdges.Count),
-            HandoffBindingCount = handoffBindingCount,
-            HandoffContractId = NormalizeLowerToken(orchestration.HandoffContractId),
-            HandoffEdges = handoffEdges,
-            IsRecoveryAware = orchestration.IsRecoveryAware
-                              || retryableErrorCodes.Count > 0
-                              || alternateEngineIds.Count > 0
-                              || recoveryToolNames.Count > 0
-                              || orchestration.SupportsTransientRetry
-                              || orchestration.SupportsAlternateEngines
-                              || maxRetryAttempts > 0,
-            SupportsTransientRetry = orchestration.SupportsTransientRetry,
-            MaxRetryAttempts = maxRetryAttempts,
-            SupportsAlternateEngines = orchestration.SupportsAlternateEngines || alternateEngineIds.Count > 0,
-            AlternateEngineCount = alternateEngineCount,
-            RecoveryContractId = NormalizeLowerToken(orchestration.RecoveryContractId),
-            RecoveryToolCount = recoveryToolCount,
-            RetryableErrorCodes = retryableErrorCodes,
-            AlternateEngineIds = alternateEngineIds,
-            RecoveryToolNames = recoveryToolNames
-        };
+        return ResolveExecutionScope(supportsRemoteExecution);
     }
 
     private static IReadOnlyList<ToolPackToolArgumentModel> NormalizeArguments(IEnumerable<ToolPackToolArgumentModel>? arguments) {
@@ -788,89 +687,103 @@ public static partial class ToolPackGuidance {
         return ToReadOnlyList(result);
     }
 
-    private static IReadOnlyList<ToolPackToolHandoffEdgeModel> NormalizeHandoffEdges(
-        IEnumerable<ToolPackToolHandoffEdgeModel>? edges) {
-        var list = new List<ToolPackToolHandoffEdgeModel>();
-        foreach (var edge in edges ?? Array.Empty<ToolPackToolHandoffEdgeModel>()) {
-            if (edge is null) {
+    private static IReadOnlyList<string> MergeKnownArguments(IEnumerable<string> primary, IEnumerable<string> secondary) {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var value in primary ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(value)) {
                 continue;
             }
 
-            var bindingPairs = NormalizeTokensPreserveMultiplicity(edge.BindingPairs);
-            if (bindingPairs.Count == 0) {
+            var normalized = value.Trim();
+            if (seen.Add(normalized)) {
+                result.Add(normalized);
+            }
+        }
+
+        foreach (var value in secondary ?? Array.Empty<string>()) {
+            if (string.IsNullOrWhiteSpace(value)) {
                 continue;
             }
 
-            list.Add(new ToolPackToolHandoffEdgeModel {
-                TargetPackId = ToolSelectionMetadata.NormalizePackId(edge.TargetPackId),
-                TargetToolName = NormalizeLowerToken(edge.TargetToolName),
-                TargetRole = NormalizeLowerToken(edge.TargetRole),
-                BindingCount = Math.Max(Math.Max(0, edge.BindingCount), bindingPairs.Count),
+            var normalized = value.Trim();
+            if (seen.Add(normalized)) {
+                result.Add(normalized);
+            }
+        }
+
+        return ToReadOnlyList(result);
+    }
+
+    private static ToolPackToolSetupModel NormalizeSetup(ToolPackToolSetupModel? setup) {
+        if (setup is null) {
+            return new ToolPackToolSetupModel();
+        }
+
+        var requirementIds = NormalizeValues(setup.RequirementIds);
+        var hintKeys = NormalizeValues(setup.HintKeys);
+        var setupToolName = string.IsNullOrWhiteSpace(setup.SetupToolName) ? null : setup.SetupToolName.Trim();
+        return new ToolPackToolSetupModel {
+            IsSetupAware = setup.IsSetupAware || setupToolName is not null || requirementIds.Count > 0 || hintKeys.Count > 0,
+            SetupToolName = setupToolName,
+            RequirementIds = requirementIds,
+            HintKeys = hintKeys
+        };
+    }
+
+    private static ToolPackToolHandoffModel NormalizeHandoff(ToolPackToolHandoffModel? handoff) {
+        if (handoff is null) {
+            return new ToolPackToolHandoffModel();
+        }
+
+        var routes = new List<ToolPackToolHandoffRouteModel>();
+        foreach (var route in handoff.Routes ?? Array.Empty<ToolPackToolHandoffRouteModel>()) {
+            if (route is null) {
+                continue;
+            }
+
+            var targetPackId = string.IsNullOrWhiteSpace(route.TargetPackId) ? null : route.TargetPackId.Trim();
+            var targetToolName = string.IsNullOrWhiteSpace(route.TargetToolName) ? null : route.TargetToolName.Trim();
+            var targetRole = string.IsNullOrWhiteSpace(route.TargetRole) ? null : route.TargetRole.Trim();
+            var bindingPairs = NormalizeValues(route.BindingPairs);
+            if (targetPackId is null && targetToolName is null && targetRole is null && bindingPairs.Count == 0) {
+                continue;
+            }
+
+            routes.Add(new ToolPackToolHandoffRouteModel {
+                TargetPackId = targetPackId,
+                TargetToolName = targetToolName,
+                TargetRole = targetRole,
                 BindingPairs = bindingPairs
             });
         }
 
-        if (list.Count == 0) {
-            return Array.Empty<ToolPackToolHandoffEdgeModel>();
-        }
-
-        list.Sort(static (left, right) => {
-            var packCompare = StringComparer.OrdinalIgnoreCase.Compare(left.TargetPackId, right.TargetPackId);
-            if (packCompare != 0) {
-                return packCompare;
-            }
-
-            var roleCompare = StringComparer.OrdinalIgnoreCase.Compare(left.TargetRole, right.TargetRole);
-            if (roleCompare != 0) {
-                return roleCompare;
-            }
-
-            return StringComparer.OrdinalIgnoreCase.Compare(left.TargetToolName, right.TargetToolName);
-        });
-        return ToReadOnlyList(list);
+        return new ToolPackToolHandoffModel {
+            IsHandoffAware = handoff.IsHandoffAware || routes.Count > 0,
+            Routes = ToReadOnlyList(routes)
+        };
     }
 
-    private static IReadOnlyList<string> NormalizeDistinctTokens(IEnumerable<string>? values) {
-        if (values is null) {
-            return Array.Empty<string>();
+    private static ToolPackToolRecoveryModel NormalizeRecovery(ToolPackToolRecoveryModel? recovery) {
+        if (recovery is null) {
+            return new ToolPackToolRecoveryModel();
         }
 
-        var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var value in values) {
-            var normalized = NormalizeLowerToken(value);
-            if (normalized.Length == 0) {
-                continue;
-            }
-
-            unique.Add(normalized);
-        }
-
-        if (unique.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        var list = unique
-            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        return ToReadOnlyList(list);
-    }
-
-    private static IReadOnlyList<string> NormalizeTokensPreserveMultiplicity(IEnumerable<string>? values) {
-        if (values is null) {
-            return Array.Empty<string>();
-        }
-
-        var list = new List<string>();
-        foreach (var value in values) {
-            var normalized = NormalizeLowerToken(value);
-            if (normalized.Length == 0) {
-                continue;
-            }
-
-            list.Add(normalized);
-        }
-
-        return ToReadOnlyList(list);
+        var recoveryToolNames = NormalizeValues(recovery.RecoveryToolNames);
+        var retryableErrorCodes = NormalizeValues(recovery.RetryableErrorCodes);
+        var maxRetryAttempts = Math.Max(0, recovery.MaxRetryAttempts);
+        return new ToolPackToolRecoveryModel {
+            IsRecoveryAware = recovery.IsRecoveryAware
+                              || recovery.SupportsTransientRetry
+                              || maxRetryAttempts > 0
+                              || recoveryToolNames.Count > 0
+                              || retryableErrorCodes.Count > 0,
+            SupportsTransientRetry = recovery.SupportsTransientRetry,
+            MaxRetryAttempts = maxRetryAttempts,
+            RecoveryToolNames = recoveryToolNames,
+            RetryableErrorCodes = retryableErrorCodes
+        };
     }
 
     private static IReadOnlyList<T> ToReadOnlyList<T>(List<T> source) {
@@ -896,8 +809,13 @@ public static partial class ToolPackGuidance {
         };
     }
 
-    private static string NormalizeLowerToken(string? value) {
-        var normalized = (value ?? string.Empty).Trim();
-        return normalized.Length == 0 ? string.Empty : normalized.ToLowerInvariant();
+    internal static ToolPackAutonomySummaryModel NormalizeAutonomySummaryContract(
+        ToolPackAutonomySummaryModel? summary,
+        IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
+        return NormalizeAutonomySummary(summary, toolCatalog);
+    }
+
+    internal static IReadOnlyList<string> NormalizeValueListContract(IEnumerable<string>? values) {
+        return NormalizeValues(values);
     }
 }

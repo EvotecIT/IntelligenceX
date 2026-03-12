@@ -46,6 +46,8 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" allowed_roots='").Append(snapshot.AllowedRootCount).Append('\'');
         warning.Append(" tooling_available='").Append(snapshot.ToolingAvailable ? "true" : "false").Append('\'');
         warning.Append(" remote_reachability_mode='").Append(snapshot.RemoteReachabilityMode ?? "none").Append('\'');
+        warning.Append(" autonomy_remote_capable_tools='").Append(snapshot.Autonomy?.RemoteCapableToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_cross_pack_handoff_tools='").Append(snapshot.Autonomy?.CrossPackHandoffToolCount ?? 0).Append('\'');
         warning.Append(" skills_marker='").Append(SkillsSnapshotMarker).Append('\'');
         warning.Append(" skill_count='").Append(snapshot.Skills.Length).Append('\'');
         warning.Append(" parity_engine_count='").Append(snapshot.ParityEntries.Length).Append('\'');
@@ -70,6 +72,15 @@ internal sealed partial class ChatServiceSession {
 
         if (snapshot.HealthyTools.Length > 0) {
             warning.Append(" healthy_tools='").Append(string.Join(",", snapshot.HealthyTools)).Append('\'');
+        }
+        if (snapshot.Autonomy?.RemoteCapablePackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_remote_capable_packs='").Append(string.Join(",", snapshot.Autonomy.RemoteCapablePackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.CrossPackReadyPackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_cross_pack_ready_packs='").Append(string.Join(",", snapshot.Autonomy.CrossPackReadyPackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.CrossPackTargetPackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_cross_pack_targets='").Append(string.Join(",", snapshot.Autonomy.CrossPackTargetPackIds)).Append('\'');
         }
         var parityAttention = ToolCapabilityParityInventoryBuilder.BuildAttentionSummaries(snapshot.ParityEntries, maxItems: 3);
         if (parityAttention.Count > 0) {

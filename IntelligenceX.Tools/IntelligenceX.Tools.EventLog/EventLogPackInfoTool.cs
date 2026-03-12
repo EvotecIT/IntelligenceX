@@ -83,6 +83,7 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "Use eventlog_timeline_query to build reusable timeline and correlation views from named-event evidence (no fixed report templates).",
                 "Example local EVTX -> AD flow: eventlog_evtx_find -> eventlog_timeline_query(correlation_profile=identity) -> ad_handoff_prepare -> ad_scope_discovery -> ad_object_resolve.",
                 "Example remote live -> AD flow: eventlog_live_query/eventlog_timeline_query(machine_name) -> ad_handoff_prepare -> ad_scope_discovery -> ad_search.",
+                "Example remote live -> system flow: eventlog_named_events_query/eventlog_timeline_query(machine_name) -> system_info/system_metrics_summary(computer_name) for host-state follow-up.",
                 "For remote live logs, pass machine_name (and optional session_timeout_ms) to eventlog_live_query/eventlog_live_stats.",
                 "For authentication investigations and timeline correlation, use eventlog_named_events_catalog first, then eventlog_timeline_query with named_events/categories and either correlation_profile or explicit correlation_keys.",
                 "For AD identity correlation: call ad_handoff_prepare first, then ad_scope_discovery and ad_search/ad_object_resolve."
@@ -120,6 +121,11 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     goal: "Correlate event identities with AD objects",
                     suggestedTools: new[] { "eventlog_timeline_query", "ad_handoff_prepare", "ad_scope_discovery", "ad_search", "ad_object_resolve" },
                     notes: "Normalize event identities via ad_handoff_prepare before AD lookups to keep correlation flows reusable.")
+                ,
+                ToolPackGuidance.FlowStep(
+                    goal: "Pivot correlated event hosts into remote system diagnostics",
+                    suggestedTools: new[] { "eventlog_named_events_query", "eventlog_timeline_query", "system_info", "system_metrics_summary" },
+                    notes: "Use computer candidates from EventLog handoff metadata to continue with ComputerX-backed host diagnostics.")
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
@@ -147,6 +153,12 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     summary: "Use named-event detections as reusable correlation building blocks across log, timeline, and AD enrichment workflows.",
                     primaryTools: new[] { "eventlog_named_events_catalog", "eventlog_timeline_query", "eventlog_named_events_query", "eventlog_evtx_query", "ad_handoff_prepare" },
                     notes: "Use ad_handoff_prepare + ad_scope_discovery + ad_search/ad_object_resolve in the AD pack for identity enrichment.")
+                ,
+                ToolPackGuidance.Capability(
+                    id: "host_followup_pivots",
+                    summary: "Promote correlated event hosts into remote ComputerX/system follow-up diagnostics.",
+                    primaryTools: new[] { "eventlog_named_events_query", "eventlog_timeline_query", "system_info", "system_metrics_summary" },
+                    notes: "Prefer this when the investigation needs CPU, memory, disk, update, or posture follow-up for the same host.")
             },
             entityHandoffs: new[] {
                 ToolPackGuidance.EntityHandoff(

@@ -30,7 +30,21 @@ public sealed class SessionPolicyContractTests {
                         Enabled = false,
                         DisabledReason = "License expired on 2026-03-31.",
                         IsDangerous = false,
-                        SourceKind = ToolPackSourceKind.ClosedSource
+                        SourceKind = ToolPackSourceKind.ClosedSource,
+                        AutonomySummary = new ToolPackAutonomySummaryDto {
+                            TotalTools = 3,
+                            RemoteCapableTools = 1,
+                            RemoteCapableToolNames = new[] { "testimox_rules_run" },
+                            SetupAwareTools = 1,
+                            SetupAwareToolNames = new[] { "testimox_pack_info" },
+                            HandoffAwareTools = 2,
+                            HandoffAwareToolNames = new[] { "testimox_rules_run", "testimox_run_summary" },
+                            RecoveryAwareTools = 1,
+                            RecoveryAwareToolNames = new[] { "testimox_rules_run" },
+                            CrossPackHandoffTools = 2,
+                            CrossPackHandoffToolNames = new[] { "testimox_rules_run", "testimox_run_summary" },
+                            CrossPackTargetPacks = new[] { "active_directory", "eventlog", "system" }
+                        }
                     }
                 },
                 Plugins = new[] {
@@ -76,20 +90,20 @@ public sealed class SessionPolicyContractTests {
                     PluginProgressTotal = 5,
                     Phases = new[] {
                         new SessionStartupBootstrapPhaseTelemetryDto {
-                            Id = "runtime_policy",
-                            Label = "runtime policy",
+                            Id = StartupBootstrapContracts.PhaseRuntimePolicyId,
+                            Label = StartupBootstrapContracts.PhaseRuntimePolicyLabel,
                             DurationMs = 35,
                             Order = 1
                         },
                         new SessionStartupBootstrapPhaseTelemetryDto {
-                            Id = "pack_load",
-                            Label = "pack load",
+                            Id = StartupBootstrapContracts.PhasePackLoadId,
+                            Label = StartupBootstrapContracts.PhasePackLoadLabel,
                             DurationMs = 3988,
                             Order = 2
                         }
                     },
-                    SlowestPhaseId = "pack_load",
-                    SlowestPhaseLabel = "pack load",
+                    SlowestPhaseId = StartupBootstrapContracts.PhasePackLoadId,
+                    SlowestPhaseLabel = StartupBootstrapContracts.PhasePackLoadLabel,
                     SlowestPhaseMs = 3988
                 },
                 PluginSearchPaths = new[] {
@@ -115,12 +129,24 @@ public sealed class SessionPolicyContractTests {
                     },
                     Skills = new[] { "ad_domain.act_domain_scope_ad" },
                     HealthyTools = new[] { "unit_test_tool" },
-                    RemoteReachabilityMode = "remote_capable"
+                    RemoteReachabilityMode = "remote_capable",
+                    Autonomy = new SessionCapabilityAutonomySummaryDto {
+                        RemoteCapableToolCount = 2,
+                        SetupAwareToolCount = 1,
+                        HandoffAwareToolCount = 2,
+                        RecoveryAwareToolCount = 1,
+                        CrossPackHandoffToolCount = 1,
+                        RemoteCapablePackIds = new[] { "testimox" },
+                        CrossPackReadyPackIds = new[] { "testimox" },
+                        CrossPackTargetPackIds = new[] { "system", "eventlog" }
+                    }
                 },
                 RoutingCatalog = new SessionRoutingCatalogDiagnosticsDto {
                     TotalTools = 8,
                     RoutingAwareTools = 8,
                     MissingRoutingContractTools = 0,
+                    RemoteCapableTools = 2,
+                    CrossPackHandoffTools = 1,
                     DomainFamilyTools = 4,
                     ExpectedDomainFamilyMissingTools = 0,
                     DomainFamilyMissingActionTools = 0,
@@ -138,6 +164,10 @@ public sealed class SessionPolicyContractTests {
                             ActionId = "act_domain_scope_public",
                             ToolCount = 2
                         }
+                    },
+                    AutonomyReadinessHighlights = new[] {
+                        "remote host-targeting is ready for 2 tool(s).",
+                        "cross-pack continuation is ready for 1 tool(s)."
                     }
                 }
             }
@@ -158,6 +188,9 @@ public sealed class SessionPolicyContractTests {
         Assert.Empty(capabilitySnapshot.EnabledPackIds);
         Assert.Empty(capabilitySnapshot.EnabledPluginIds);
         Assert.Equal("unit_test_tool", capabilitySnapshot.HealthyTools[0]);
+        var autonomy = Assert.IsType<SessionCapabilityAutonomySummaryDto>(capabilitySnapshot.Autonomy);
+        Assert.Equal(2, autonomy.RemoteCapableToolCount);
+        Assert.Equal(new[] { "system", "eventlog" }, autonomy.CrossPackTargetPackIds);
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(policy.StartupBootstrap);
         Assert.Equal(4120, startupBootstrap.TotalMs);
         Assert.Equal(3988, startupBootstrap.PackLoadMs);
@@ -169,12 +202,15 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal(5, startupBootstrap.PluginProgressProcessed);
         Assert.Equal(5, startupBootstrap.PluginProgressTotal);
         Assert.Equal(2, startupBootstrap.Phases.Length);
-        Assert.Equal("pack_load", startupBootstrap.SlowestPhaseId);
+        Assert.Equal(StartupBootstrapContracts.PhasePackLoadId, startupBootstrap.SlowestPhaseId);
         Assert.Equal(3988, startupBootstrap.SlowestPhaseMs);
         Assert.False(policy.AllowMutatingParallelToolCalls);
         Assert.Single(policy.Packs);
         Assert.False(policy.Packs[0].Enabled);
         Assert.Equal("License expired on 2026-03-31.", policy.Packs[0].DisabledReason);
+        var autonomySummary = Assert.IsType<ToolPackAutonomySummaryDto>(policy.Packs[0].AutonomySummary);
+        Assert.Equal(3, autonomySummary.TotalTools);
+        Assert.Equal(new[] { "active_directory", "eventlog", "system" }, autonomySummary.CrossPackTargetPacks);
         Assert.Single(policy.Plugins);
         Assert.Equal("ix-testimox", policy.Plugins[0].Id);
         Assert.Equal("C:\\plugins\\testimox\\skills", Assert.Single(policy.Plugins[0].SkillDirectories));
@@ -182,7 +218,10 @@ public sealed class SessionPolicyContractTests {
         var routingCatalog = Assert.IsType<SessionRoutingCatalogDiagnosticsDto>(policy.RoutingCatalog);
         Assert.True(routingCatalog.IsHealthy);
         Assert.Equal(8, routingCatalog.TotalTools);
+        Assert.Equal(2, routingCatalog.RemoteCapableTools);
+        Assert.Equal(1, routingCatalog.CrossPackHandoffTools);
         Assert.Equal(2, routingCatalog.FamilyActions.Length);
         Assert.Equal("ad_domain", routingCatalog.FamilyActions[0].Family);
+        Assert.Equal("remote host-targeting is ready for 2 tool(s).", routingCatalog.AutonomyReadinessHighlights[0]);
     }
 }

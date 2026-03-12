@@ -106,6 +106,8 @@
       profileNames: ["default"],
       activeConversationId: "",
       conversations: [],
+      toolCatalogRoutingCatalog: null,
+      toolCatalogCapabilitySnapshot: null,
       profileApplyMode: "session",
       profile: {
         userName: "",
@@ -1581,7 +1583,9 @@
 
   function buildRoutingStatusChipModel() {
     var policy = (state.options && state.options.policy) || null;
-    var routingCatalog = normalizeRoutingCatalog(policy ? policy.routingCatalog : null);
+    var routingCatalog = normalizeRoutingCatalog(policy && policy.routingCatalog
+      ? policy.routingCatalog
+      : (state.options ? state.options.toolCatalogRoutingCatalog : null));
     if (!routingCatalog) {
       return {
         visible: false,
@@ -1608,6 +1612,13 @@
     titleLines.push("Routing-aware tools: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
     titleLines.push("Routing source: explicit " + routingCatalog.explicitRoutingTools + ", inferred " + routingCatalog.inferredRoutingTools);
     titleLines.push("Contract-aware tools: setup " + routingCatalog.setupAwareTools + ", handoff " + routingCatalog.handoffAwareTools + ", recovery " + routingCatalog.recoveryAwareTools);
+    titleLines.push("Autonomy surface: remote-capable " + routingCatalog.remoteCapableTools + ", cross-pack handoffs " + routingCatalog.crossPackHandoffTools);
+    if (routingCatalog.autonomyReadinessHighlights.length > 0) {
+      titleLines.push("Autonomy readiness:");
+      for (var j = 0; j < routingCatalog.autonomyReadinessHighlights.length; j++) {
+        titleLines.push("- " + routingCatalog.autonomyReadinessHighlights[j]);
+      }
+    }
     titleLines.push("Domain-family tools: " + routingCatalog.domainFamilyTools);
     if (routingCatalog.missingRoutingContractTools > 0) {
       titleLines.push("Missing contracts: " + routingCatalog.missingRoutingContractTools);
@@ -1998,11 +2009,17 @@
     var startupWarningsEl = byId("policyStartupWarnings");
     var pluginRootsEl = byId("policyPluginRoots");
     var routingCatalogEl = byId("policyRoutingCatalog");
+    var capabilitySnapshotEl = byId("policyCapabilitySnapshot");
     policyEl.innerHTML = "";
 
     var p = state.options.policy;
+    var fallbackRoutingCatalog = normalizeRoutingCatalog(state.options ? state.options.toolCatalogRoutingCatalog : null);
+    var fallbackCapabilitySnapshot = normalizeCapabilitySnapshot(state.options ? state.options.toolCatalogCapabilitySnapshot : null);
     if (!p) {
-      policyEl.innerHTML = "<span class='options-k'>Policy</span><span class='options-v'>Not available</span>";
+      var usingToolCatalogPreview = !!fallbackRoutingCatalog || !!fallbackCapabilitySnapshot;
+      policyEl.innerHTML = usingToolCatalogPreview
+        ? "<span class='options-k'>Policy</span><span class='options-v'>Not available</span><span class='options-k'>Bootstrap preview</span><span class='options-v'>Using tool catalog</span>"
+        : "<span class='options-k'>Policy</span><span class='options-v'>Not available</span>";
       if (startupWarningsEl) {
         startupWarningsEl.hidden = true;
         startupWarningsEl.innerHTML = "";
@@ -2012,9 +2029,10 @@
         pluginRootsEl.innerHTML = "";
       }
       if (routingCatalogEl) {
-        routingCatalogEl.hidden = true;
-        routingCatalogEl.innerHTML = "";
-        routingCatalogEl.classList.remove("options-policy-list-warn");
+        renderRoutingCatalogPolicy(routingCatalogEl, fallbackRoutingCatalog);
+      }
+      if (capabilitySnapshotEl) {
+        renderCapabilitySnapshotPolicy(capabilitySnapshotEl, fallbackCapabilitySnapshot);
       }
       return;
     }
@@ -2023,12 +2041,14 @@
     var startupBootstrap = normalizeStartupBootstrap(p.startupBootstrap);
     var pluginSearchPaths = toStringArray(p.pluginSearchPaths);
     var runtimePolicy = normalizeRuntimePolicy(p.runtimePolicy);
-    var routingCatalog = normalizeRoutingCatalog(p.routingCatalog);
+    var routingCatalog = normalizeRoutingCatalog(p && p.routingCatalog ? p.routingCatalog : fallbackRoutingCatalog);
+    var capabilitySnapshot = normalizeCapabilitySnapshot(p && p.capabilitySnapshot ? p.capabilitySnapshot : fallbackCapabilitySnapshot);
     var runtimeNotices = routingCatalog
       ? filterOutRoutingCatalogWarnings(startupWarnings)
       : startupWarnings;
     var routingIssueCount = routingCatalog ? computeRoutingCatalogIssueCount(routingCatalog) : 0;
     var explicitReadinessIssueCount = routingCatalog ? computeExplicitRoutingReadinessIssueCount(routingCatalog) : 0;
+    var capabilityAutonomy = capabilitySnapshot && capabilitySnapshot.autonomy ? capabilitySnapshot.autonomy : null;
     var rows = [
       ["Read-only", p.readOnly ? "Yes" : "No"],
       ["Parallel tools", p.parallelTools ? "Yes" : "No"],
@@ -2042,6 +2062,14 @@
       ["Explicit routing ready", !routingCatalog
         ? "N/A"
         : (routingCatalog.isExplicitRoutingReady ? "Yes" : ("No (" + explicitReadinessIssueCount + ")"))],
+      ["Capability snapshot", !capabilitySnapshot ? "Not available" : "Available"],
+      ["Tooling available", !capabilitySnapshot ? "N/A" : (capabilitySnapshot.toolingAvailable ? "Yes" : "No")],
+      ["Registered tools", !capabilitySnapshot ? "N/A" : String(capabilitySnapshot.registeredTools)],
+      ["Enabled packs", !capabilitySnapshot ? "N/A" : String(capabilitySnapshot.enabledPackCount)],
+      ["Remote reachability", !capabilitySnapshot ? "N/A" : capabilitySnapshot.remoteReachabilityMode],
+      ["Autonomy surface", !capabilityAutonomy
+        ? "N/A"
+        : ("remote-capable " + capabilityAutonomy.remoteCapableToolCount + ", cross-pack " + capabilityAutonomy.crossPackHandoffToolCount)],
       ["Routing families", !routingCatalog ? "N/A" : String(routingCatalog.familyActions.length)],
       ["Plugin roots", pluginSearchPaths.length === 0 ? "None" : String(pluginSearchPaths.length)],
       ["Runtime notices", runtimeNotices.length === 0 ? "None" : String(runtimeNotices.length)],
@@ -2060,6 +2088,7 @@
     }
 
     renderRoutingCatalogPolicy(routingCatalogEl, routingCatalog);
+    renderCapabilitySnapshotPolicy(capabilitySnapshotEl, capabilitySnapshot);
     renderPolicyList(pluginRootsEl, pluginSearchPaths, "Plugin search roots");
     renderPolicyList(startupWarningsEl, runtimeNotices, runtimeNotices.length === 1 ? "Runtime notice" : "Runtime notices");
   }
@@ -2200,24 +2229,8 @@
       + routingCatalog.inferredRoutingTools;
   }
 
-  function normalizeRoutingCatalog(value) {
-    if (!value || typeof value !== "object") {
-      return null;
-    }
-
-    var hasOwn = Object.prototype.hasOwnProperty;
-    var hasIsHealthy = hasOwn.call(value, "isHealthy");
-    var hasIsExplicitRoutingReady = hasOwn.call(value, "isExplicitRoutingReady");
-    var hasMissingRoutingContractTools = hasOwn.call(value, "missingRoutingContractTools");
-    var hasMissingPackIdTools = hasOwn.call(value, "missingPackIdTools");
-    var hasMissingRoleTools = hasOwn.call(value, "missingRoleTools");
-    var hasInferredRoutingTools = hasOwn.call(value, "inferredRoutingTools");
-    var hasExpectedDomainFamilyMissingTools = hasOwn.call(value, "expectedDomainFamilyMissingTools");
-    var hasDomainFamilyMissingActionTools = hasOwn.call(value, "domainFamilyMissingActionTools");
-    var hasActionWithoutFamilyTools = hasOwn.call(value, "actionWithoutFamilyTools");
-    var hasFamilyActionConflictFamilies = hasOwn.call(value, "familyActionConflictFamilies");
-
-    var familyActionsRaw = Array.isArray(value.familyActions) ? value.familyActions : [];
+  function normalizeRoutingFamilyActions(value) {
+    var familyActionsRaw = Array.isArray(value) ? value : [];
     var familyActions = [];
     for (var i = 0; i < familyActionsRaw.length; i++) {
       var item = familyActionsRaw[i];
@@ -2238,6 +2251,42 @@
       });
     }
 
+    return familyActions;
+  }
+
+  function normalizeRoutingCatalog(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    var hasOwn = Object.prototype.hasOwnProperty;
+    var hasIsHealthy = hasOwn.call(value, "isHealthy");
+    var hasIsExplicitRoutingReady = hasOwn.call(value, "isExplicitRoutingReady");
+    var hasMissingRoutingContractTools = hasOwn.call(value, "missingRoutingContractTools");
+    var hasMissingPackIdTools = hasOwn.call(value, "missingPackIdTools");
+    var hasMissingRoleTools = hasOwn.call(value, "missingRoleTools");
+    var hasInferredRoutingTools = hasOwn.call(value, "inferredRoutingTools");
+    var hasExpectedDomainFamilyMissingTools = hasOwn.call(value, "expectedDomainFamilyMissingTools");
+    var hasDomainFamilyMissingActionTools = hasOwn.call(value, "domainFamilyMissingActionTools");
+    var hasActionWithoutFamilyTools = hasOwn.call(value, "actionWithoutFamilyTools");
+    var hasFamilyActionConflictFamilies = hasOwn.call(value, "familyActionConflictFamilies");
+
+    var autonomyReadinessHighlightsRaw = Array.isArray(value.autonomyReadinessHighlights) ? value.autonomyReadinessHighlights : [];
+    var familyActions = normalizeRoutingFamilyActions(value.familyActions);
+    var autonomyReadinessHighlights = [];
+    for (var j = 0; j < autonomyReadinessHighlightsRaw.length; j++) {
+      if (typeof autonomyReadinessHighlightsRaw[j] !== "string") {
+        continue;
+      }
+
+      var readinessHighlight = autonomyReadinessHighlightsRaw[j].trim();
+      if (!readinessHighlight) {
+        continue;
+      }
+
+      autonomyReadinessHighlights.push(readinessHighlight);
+    }
+
     var routingCatalog = {
       totalTools: toNonNegativeInt(value.totalTools),
       routingAwareTools: toNonNegativeInt(value.routingAwareTools),
@@ -2249,6 +2298,8 @@
       setupAwareTools: toNonNegativeInt(value.setupAwareTools),
       handoffAwareTools: toNonNegativeInt(value.handoffAwareTools),
       recoveryAwareTools: toNonNegativeInt(value.recoveryAwareTools),
+      remoteCapableTools: toNonNegativeInt(value.remoteCapableTools),
+      crossPackHandoffTools: toNonNegativeInt(value.crossPackHandoffTools),
       domainFamilyTools: toNonNegativeInt(value.domainFamilyTools),
       expectedDomainFamilyMissingTools: toNonNegativeInt(value.expectedDomainFamilyMissingTools),
       domainFamilyMissingActionTools: toNonNegativeInt(value.domainFamilyMissingActionTools),
@@ -2257,7 +2308,8 @@
       // Keep version-skew payloads neutral by default; derive degraded states only when required counters are present.
       isHealthy: hasIsHealthy ? value.isHealthy === true : true,
       isExplicitRoutingReady: hasIsExplicitRoutingReady ? value.isExplicitRoutingReady === true : true,
-      familyActions: familyActions
+      familyActions: familyActions,
+      autonomyReadinessHighlights: autonomyReadinessHighlights
     };
 
     var canDeriveHealth = hasMissingRoutingContractTools
@@ -2283,6 +2335,44 @@
     return routingCatalog;
   }
 
+  function normalizeCapabilitySnapshot(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    var autonomyRaw = value.autonomy && typeof value.autonomy === "object"
+      ? value.autonomy
+      : null;
+
+    return {
+      registeredTools: toNonNegativeInt(value.registeredTools),
+      enabledPackCount: toNonNegativeInt(value.enabledPackCount),
+      pluginCount: toNonNegativeInt(value.pluginCount),
+      enabledPluginCount: toNonNegativeInt(value.enabledPluginCount),
+      toolingAvailable: value.toolingAvailable === true,
+      allowedRootCount: toNonNegativeInt(value.allowedRootCount),
+      enabledPackIds: toStringArray(value.enabledPackIds),
+      enabledPluginIds: toStringArray(value.enabledPluginIds),
+      routingFamilies: toStringArray(value.routingFamilies),
+      familyActions: normalizeRoutingFamilyActions(value.familyActions),
+      skills: toStringArray(value.skills),
+      healthyTools: toStringArray(value.healthyTools),
+      remoteReachabilityMode: normalizeModeToken(value.remoteReachabilityMode, "unknown"),
+      autonomy: !autonomyRaw ? null : {
+        remoteCapableToolCount: toNonNegativeInt(autonomyRaw.remoteCapableToolCount),
+        setupAwareToolCount: toNonNegativeInt(autonomyRaw.setupAwareToolCount),
+        handoffAwareToolCount: toNonNegativeInt(autonomyRaw.handoffAwareToolCount),
+        recoveryAwareToolCount: toNonNegativeInt(autonomyRaw.recoveryAwareToolCount),
+        crossPackHandoffToolCount: toNonNegativeInt(autonomyRaw.crossPackHandoffToolCount),
+        remoteCapablePackIds: toStringArray(autonomyRaw.remoteCapablePackIds),
+        crossPackReadyPackIds: toStringArray(autonomyRaw.crossPackReadyPackIds),
+        crossPackTargetPackIds: toStringArray(autonomyRaw.crossPackTargetPackIds)
+      },
+      parityAttentionCount: toNonNegativeInt(value.parityAttentionCount),
+      parityMissingCapabilityCount: toNonNegativeInt(value.parityMissingCapabilityCount)
+    };
+  }
+
   function renderRoutingCatalogPolicy(host, routingCatalog) {
     if (!host) {
       return;
@@ -2302,6 +2392,10 @@
     lines.push("routing-aware: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
     lines.push("routing source: explicit " + routingCatalog.explicitRoutingTools + ", inferred " + routingCatalog.inferredRoutingTools);
     lines.push("contract-aware: setup " + routingCatalog.setupAwareTools + ", handoff " + routingCatalog.handoffAwareTools + ", recovery " + routingCatalog.recoveryAwareTools);
+    lines.push("autonomy surface: remote-capable " + routingCatalog.remoteCapableTools + ", cross-pack handoffs " + routingCatalog.crossPackHandoffTools);
+    for (var i = 0; i < routingCatalog.autonomyReadinessHighlights.length; i++) {
+      lines.push("autonomy readiness: " + routingCatalog.autonomyReadinessHighlights[i]);
+    }
     lines.push("domain-family tools: " + routingCatalog.domainFamilyTools);
     if (routingCatalog.missingRoutingContractTools > 0) {
       lines.push("missing contracts: " + routingCatalog.missingRoutingContractTools);
@@ -2335,6 +2429,67 @@
     }
 
     renderPolicyList(host, lines, "Routing catalog");
+  }
+
+  function renderCapabilitySnapshotPolicy(host, capabilitySnapshot) {
+    if (!host) {
+      return;
+    }
+
+    host.innerHTML = "";
+    host.classList.remove("options-policy-list-warn");
+
+    if (!capabilitySnapshot) {
+      host.hidden = true;
+      return;
+    }
+
+    var lines = [];
+    lines.push("tooling available: " + (capabilitySnapshot.toolingAvailable ? "yes" : "no"));
+    lines.push("registered tools: " + capabilitySnapshot.registeredTools);
+    lines.push("enabled packs: " + capabilitySnapshot.enabledPackCount);
+    lines.push("plugins: enabled " + capabilitySnapshot.enabledPluginCount + "/" + capabilitySnapshot.pluginCount);
+    lines.push("allowed roots: " + capabilitySnapshot.allowedRootCount);
+    lines.push("remote reachability: " + capabilitySnapshot.remoteReachabilityMode);
+    lines.push("routing families: " + capabilitySnapshot.routingFamilies.length);
+    if (capabilitySnapshot.skills.length > 0) {
+      lines.push("skills: " + capabilitySnapshot.skills.join(", "));
+    }
+    if (capabilitySnapshot.enabledPackIds.length > 0) {
+      lines.push("enabled pack ids: " + capabilitySnapshot.enabledPackIds.join(", "));
+    }
+    if (capabilitySnapshot.healthyTools.length > 0) {
+      lines.push("healthy tools: " + capabilitySnapshot.healthyTools.length);
+    }
+
+    var autonomy = capabilitySnapshot.autonomy;
+    if (autonomy) {
+      lines.push("autonomy surface: remote-capable " + autonomy.remoteCapableToolCount + ", setup-aware " + autonomy.setupAwareToolCount + ", handoff-aware " + autonomy.handoffAwareToolCount + ", recovery-aware " + autonomy.recoveryAwareToolCount);
+      lines.push("cross-pack handoffs: " + autonomy.crossPackHandoffToolCount);
+      if (autonomy.remoteCapablePackIds.length > 0) {
+        lines.push("remote-capable packs: " + autonomy.remoteCapablePackIds.join(", "));
+      }
+      if (autonomy.crossPackReadyPackIds.length > 0) {
+        lines.push("cross-pack ready packs: " + autonomy.crossPackReadyPackIds.join(", "));
+      }
+      if (autonomy.crossPackTargetPackIds.length > 0) {
+        lines.push("cross-pack target packs: " + autonomy.crossPackTargetPackIds.join(", "));
+      }
+    }
+
+    if (capabilitySnapshot.parityAttentionCount > 0) {
+      lines.push("parity attention: " + capabilitySnapshot.parityAttentionCount);
+    }
+    if (capabilitySnapshot.parityMissingCapabilityCount > 0) {
+      lines.push("parity missing capability: " + capabilitySnapshot.parityMissingCapabilityCount);
+    }
+
+    for (var i = 0; i < capabilitySnapshot.familyActions.length; i++) {
+      var familyAction = capabilitySnapshot.familyActions[i];
+      lines.push("family " + familyAction.family + " -> " + familyAction.actionId + " (" + familyAction.toolCount + ")");
+    }
+
+    renderPolicyList(host, lines, "Capability snapshot");
   }
 
   function filterOutRoutingCatalogWarnings(values) {

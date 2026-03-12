@@ -69,6 +69,52 @@ public sealed class Wave2ToolContractMigrationTests {
 
         AssertRouteToAdHandoffPrepare(namedEvents);
         AssertRouteToAdHandoffPrepare(timeline);
+        AssertRouteToTarget(namedEvents, expectedPackId: "system", expectedToolName: "system_info");
+        AssertRouteToTarget(namedEvents, expectedPackId: "system", expectedToolName: "system_metrics_summary");
+        AssertRouteToTarget(timeline, expectedPackId: "system", expectedToolName: "system_info");
+        AssertRouteToTarget(timeline, expectedPackId: "system", expectedToolName: "system_metrics_summary");
+    }
+
+    [Fact]
+    public void EventLogWave2Tools_ShouldReferenceRegisteredChannelListForSetupAndRecovery() {
+        var definitionsByName = BuildWave2CanonicalDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        var timeline = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_timeline_query"]);
+        var setup = Assert.IsType<ToolSetupContract>(timeline.Setup);
+        var recovery = Assert.IsType<ToolRecoveryContract>(timeline.Recovery);
+
+        Assert.Equal("eventlog_channels_list", setup.SetupToolName, ignoreCase: true);
+        Assert.Contains(recovery.RecoveryToolNames, tool => string.Equals(tool, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SystemWave2HostTools_ShouldDeclareReverseAdAndEventLogHandoffRoutes() {
+        var definitionsByName = BuildWave2CanonicalDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRouteToTarget(definitionsByName["system_info"], expectedPackId: "active_directory", expectedToolName: "ad_scope_discovery");
+        AssertRouteToTarget(definitionsByName["system_info"], expectedPackId: "eventlog", expectedToolName: "eventlog_channels_list");
+        AssertRouteToTarget(definitionsByName["system_metrics_summary"], expectedPackId: "active_directory", expectedToolName: "ad_scope_discovery");
+        AssertRouteToTarget(definitionsByName["system_metrics_summary"], expectedPackId: "eventlog", expectedToolName: "eventlog_channels_list");
+        AssertRouteToTarget(definitionsByName["system_time_sync"], expectedPackId: "active_directory", expectedToolName: "ad_scope_discovery");
+        AssertRouteToTarget(definitionsByName["system_time_sync"], expectedPackId: "eventlog", expectedToolName: "eventlog_channels_list");
+    }
+
+    [Fact]
+    public void TestimoXWave2Tools_ShouldDeclareAdSystemAndEventLogFollowUpRoutes() {
+        var definitionsByName = BuildWave2CanonicalDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRouteToTarget(definitionsByName["testimox_rules_run"], expectedPackId: "active_directory", expectedToolName: "ad_scope_discovery");
+        AssertRouteToTarget(definitionsByName["testimox_rules_run"], expectedPackId: "system", expectedToolName: "system_info");
+        AssertRouteToTarget(definitionsByName["testimox_rules_run"], expectedPackId: "system", expectedToolName: "system_metrics_summary");
+        AssertRouteToTarget(definitionsByName["testimox_rules_run"], expectedPackId: "eventlog", expectedToolName: "eventlog_channels_list");
+
+        AssertRouteToTarget(definitionsByName["testimox_run_summary"], expectedPackId: "active_directory", expectedToolName: "ad_scope_discovery");
+        AssertRouteToTarget(definitionsByName["testimox_run_summary"], expectedPackId: "system", expectedToolName: "system_info");
+        AssertRouteToTarget(definitionsByName["testimox_run_summary"], expectedPackId: "system", expectedToolName: "system_metrics_summary");
+        AssertRouteToTarget(definitionsByName["testimox_run_summary"], expectedPackId: "eventlog", expectedToolName: "eventlog_channels_list");
     }
 
     [Fact]
@@ -151,5 +197,15 @@ public sealed class Wave2ToolContractMigrationTests {
             static route =>
                 string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(route.TargetToolName, "ad_handoff_prepare", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AssertRouteToTarget(ToolDefinition definition, string expectedPackId, string expectedToolName) {
+        var handoff = Assert.IsType<ToolHandoffContract>(definition.Handoff);
+        Assert.True(handoff.IsHandoffAware);
+        Assert.Contains(
+            handoff.OutboundRoutes,
+            route =>
+                string.Equals(route.TargetPackId, expectedPackId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(route.TargetToolName, expectedToolName, StringComparison.OrdinalIgnoreCase));
     }
 }

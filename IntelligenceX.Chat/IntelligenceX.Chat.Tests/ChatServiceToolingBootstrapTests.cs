@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
@@ -94,13 +95,80 @@ public sealed class ChatServiceToolingBootstrapTests {
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(session));
 
         Assert.Equal(5, startupBootstrap.Phases.Length);
-        Assert.Equal("runtime_policy", startupBootstrap.Phases[0].Id);
-        Assert.Equal("pack_load", startupBootstrap.Phases[2].Id);
-        Assert.Equal("pack_register", startupBootstrap.Phases[3].Id);
-        Assert.Equal("registry_finalize", startupBootstrap.Phases[4].Id);
+        Assert.Equal(StartupBootstrapContracts.PhaseRuntimePolicyId, startupBootstrap.Phases[0].Id);
+        Assert.Equal(StartupBootstrapContracts.PhasePackLoadId, startupBootstrap.Phases[2].Id);
+        Assert.Equal(StartupBootstrapContracts.PhasePackRegisterId, startupBootstrap.Phases[3].Id);
+        Assert.Equal(StartupBootstrapContracts.PhaseRegistryFinalizeId, startupBootstrap.Phases[4].Id);
         Assert.True(startupBootstrap.Phases[2].DurationMs >= 1);
         Assert.False(string.IsNullOrWhiteSpace(startupBootstrap.SlowestPhaseId));
         Assert.True(startupBootstrap.SlowestPhaseMs >= 1);
+    }
+
+    [Fact]
+    public void RebuildToolingFromOptions_ProjectsExecutionScopeAndContractMetadataIntoToolDefinitions() {
+        var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField("_cachedToolDefinitions", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildMethod);
+        Assert.NotNull(cachedToolDefinitionsField);
+
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        rebuildMethod!.Invoke(session, Array.Empty<object>());
+
+        var toolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
+        Assert.Contains(
+            toolDefinitions,
+            static item =>
+                item.SupportsRemoteHostTargeting
+                && string.Equals(item.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)
+                && item.RemoteHostArguments.Length > 0);
+
+        var timeline = Assert.Single(toolDefinitions, static item =>
+            string.Equals(item.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase));
+        Assert.True(timeline.IsSetupAware);
+        Assert.Equal("eventlog_channels_list", timeline.SetupToolName);
+        Assert.True(timeline.IsHandoffAware);
+        Assert.Contains("system", timeline.HandoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_info", timeline.HandoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.True(timeline.IsRecoveryAware);
+        Assert.Contains("eventlog_channels_list", timeline.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleListToolsAsync_EmitsRoutingCatalogDiagnosticsAlongsideToolCatalog() {
+        var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        var handleListToolsMethod = typeof(ChatServiceSession).GetMethod("HandleListToolsAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildMethod);
+        Assert.NotNull(handleListToolsMethod);
+
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        rebuildMethod!.Invoke(session, Array.Empty<object>());
+
+        using var memoryStream = new MemoryStream();
+        using var writer = new StreamWriter(memoryStream) { AutoFlush = true };
+        var task = Assert.IsAssignableFrom<Task>(handleListToolsMethod!.Invoke(session, new object?[] {
+            writer,
+            "req_list_tools",
+            CancellationToken.None
+        }));
+        await task;
+
+        memoryStream.Position = 0;
+        using var reader = new StreamReader(memoryStream);
+        var json = await reader.ReadToEndAsync();
+        var parsed = JsonSerializer.Deserialize<ChatServiceMessage>(json, ChatServiceJsonContext.Default.ChatServiceMessage);
+        var message = Assert.IsType<ToolListMessage>(parsed);
+        var routingCatalog = Assert.IsType<SessionRoutingCatalogDiagnosticsDto>(message.RoutingCatalog);
+        var capabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(message.CapabilitySnapshot);
+        Assert.NotEmpty(message.Packs);
+        Assert.Contains(message.Packs, static pack => pack.AutonomySummary is not null);
+
+        Assert.Equal(message.Tools.Length, routingCatalog.TotalTools);
+        Assert.True(capabilitySnapshot.ToolingAvailable);
+        Assert.True(capabilitySnapshot.RegisteredTools >= message.Tools.Length);
+        Assert.NotEmpty(capabilitySnapshot.EnabledPackIds);
+        Assert.True(routingCatalog.RemoteCapableTools > 0);
+        Assert.True(routingCatalog.CrossPackHandoffTools > 0);
+        Assert.NotEmpty(routingCatalog.AutonomyReadinessHighlights);
     }
 
     [Fact]
@@ -130,7 +198,7 @@ public sealed class ChatServiceToolingBootstrapTests {
             rebuildCoreMethod!.Invoke(firstSession, new object?[] { false });
             var firstBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(firstSession));
             Assert.NotEmpty(firstBootstrap.Phases);
-            Assert.NotEqual("cache_hit", firstBootstrap.Phases[0].Id);
+            Assert.NotEqual(StartupBootstrapContracts.PhaseCacheHitId, firstBootstrap.Phases[0].Id);
 
             var secondSession = new ChatServiceSession(new ServiceOptions(), Stream.Null, cache);
             var secondPreviewWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(secondSession));
@@ -141,7 +209,7 @@ public sealed class ChatServiceToolingBootstrapTests {
             rebuildCoreMethod.Invoke(secondSession, new object?[] { false });
             var secondBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField.GetValue(secondSession));
             Assert.Single(secondBootstrap.Phases);
-            Assert.Equal("cache_hit", secondBootstrap.Phases[0].Id);
+            Assert.Equal(StartupBootstrapContracts.PhaseCacheHitId, secondBootstrap.Phases[0].Id);
 
             var secondWarnings = Assert.IsType<string[]>(startupWarningsField.GetValue(secondSession));
             Assert.Contains(secondWarnings, static warning => warning.Contains("tooling bootstrap cache hit", StringComparison.OrdinalIgnoreCase));
@@ -183,6 +251,7 @@ public sealed class ChatServiceToolingBootstrapTests {
                             Description = "unit test tool definition"
                         }
                     },
+                    PackSummaries = Array.Empty<ToolPackInfoDto>(),
                     Packs = Array.Empty<IToolPack>(),
                     PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
                     PluginAvailability = new[] {
@@ -262,6 +331,7 @@ public sealed class ChatServiceToolingBootstrapTests {
                 new ChatServiceToolingBootstrapSnapshot {
                     Registry = new ToolRegistry(),
                     ToolDefinitions = Array.Empty<ToolDefinitionDto>(),
+                    PackSummaries = Array.Empty<ToolPackInfoDto>(),
                     Packs = Array.Empty<IToolPack>(),
                     PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
                     PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
