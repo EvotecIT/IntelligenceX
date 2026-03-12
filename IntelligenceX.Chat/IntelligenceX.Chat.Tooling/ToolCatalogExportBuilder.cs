@@ -51,7 +51,7 @@ public static class ToolCatalogExportBuilder {
                 Enabled = pack.Enabled,
                 DisabledReason = pack.Enabled || string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
                 IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
-                SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind, pack.Id),
+                SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind),
                 AutonomySummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(pack.Id, orchestrationCatalog)
             });
         }
@@ -149,7 +149,7 @@ public static class ToolCatalogExportBuilder {
                 if (packLookup.TryGetValue(resolvedEntry.PackId, out var pack)) {
                     packName = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name);
                     packDescription = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim();
-                    packSourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind, pack.Id);
+                    packSourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind);
                 }
             }
         }

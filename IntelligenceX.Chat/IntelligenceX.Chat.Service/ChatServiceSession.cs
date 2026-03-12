@@ -169,7 +169,7 @@ internal sealed partial class ChatServiceSession {
             if (description.Length > 0) {
                 _packDescriptionsById[normalizedPackId] = description;
             }
-            _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(descriptor.SourceKind, descriptorId);
+            _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(descriptor.SourceKind);
         }
     }
 
@@ -192,7 +192,7 @@ internal sealed partial class ChatServiceSession {
                 _packDescriptionsById[normalizedPackId] = description;
             }
 
-            _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind, descriptorId);
+            _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind);
         }
     }
 

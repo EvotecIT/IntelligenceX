@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
 using Xunit;
@@ -205,5 +206,79 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal(new[] { "filesystem_read" }, disabled);
         Assert.Equal(new[] { "dnsclientx", "active_directory" }, enabledPacks);
         Assert.Equal(new[] { "filesystem" }, disabledPacks);
+    }
+
+    [Fact]
+    public void ToolListMessage_JsonContract_RoundTripsExpandedToolDefinitionMetadata() {
+        var message = new ToolListMessage {
+            Kind = ChatServiceMessageKind.Response,
+            Tools = new[] {
+                new ToolDefinitionDto {
+                    Name = "eventlog_timeline_query",
+                    Description = "Reads event log timeline entries.",
+                    DisplayName = "Event Timeline Query",
+                    Category = "eventlog",
+                    Tags = new[] { "eventlog", "remote", "timeline" },
+                    PackId = "eventlog",
+                    PackName = "Event Log",
+                    PackDescription = "Event log investigation tools.",
+                    PackSourceKind = ToolPackSourceKind.OpenSource,
+                    IsWriteCapable = false,
+                    ExecutionScope = "local_or_remote",
+                    SupportsTargetScoping = true,
+                    TargetScopeArguments = new[] { "channel", "machine_name" },
+                    SupportsRemoteHostTargeting = true,
+                    RemoteHostArguments = new[] { "machine_name", "machine_names" },
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_channels_list",
+                    IsHandoffAware = true,
+                    HandoffTargetPackIds = new[] { "system" },
+                    HandoffTargetToolNames = new[] { "system_info" },
+                    IsRecoveryAware = true,
+                    SupportsTransientRetry = true,
+                    MaxRetryAttempts = 2,
+                    RecoveryToolNames = new[] { "eventlog_channels_list" },
+                    ParametersJson = """{"type":"object"}""",
+                    RequiredArguments = new[] { "machine_name", "channel" },
+                    Parameters = new[] {
+                        new ToolParameterDto {
+                            Name = "machine_name",
+                            Type = "string",
+                            Description = "Remote host name.",
+                            Required = true,
+                            EnumValues = new[] { "dc01", "dc02" },
+                            DefaultJson = "\"dc01\"",
+                            ExampleJson = "\"dc02\""
+                        }
+                    }
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize<ChatServiceMessage>(message, ChatServiceJsonContext.Default.ChatServiceMessage);
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceMessage);
+        var toolList = Assert.IsType<ToolListMessage>(parsed);
+        var tool = Assert.Single(toolList.Tools);
+
+        Assert.Equal("Event Timeline Query", tool.DisplayName);
+        Assert.Equal("eventlog", tool.Category);
+        Assert.Equal(ToolPackSourceKind.OpenSource, tool.PackSourceKind);
+        Assert.Equal("local_or_remote", tool.ExecutionScope);
+        Assert.Equal(new[] { "channel", "machine_name" }, tool.TargetScopeArguments);
+        Assert.Equal(new[] { "machine_name", "machine_names" }, tool.RemoteHostArguments);
+        Assert.True(tool.IsSetupAware);
+        Assert.Equal("eventlog_channels_list", tool.SetupToolName);
+        Assert.True(tool.IsHandoffAware);
+        Assert.Equal(new[] { "system" }, tool.HandoffTargetPackIds);
+        Assert.Equal(new[] { "system_info" }, tool.HandoffTargetToolNames);
+        Assert.True(tool.IsRecoveryAware);
+        Assert.True(tool.SupportsTransientRetry);
+        Assert.Equal(2, tool.MaxRetryAttempts);
+        Assert.Equal(new[] { "eventlog_channels_list" }, tool.RecoveryToolNames);
+        var parameter = Assert.Single(tool.Parameters);
+        Assert.Equal("machine_name", parameter.Name);
+        Assert.Equal(new[] { "dc01", "dc02" }, parameter.EnumValues);
+        Assert.Equal("\"dc01\"", parameter.DefaultJson);
+        Assert.Equal("\"dc02\"", parameter.ExampleJson);
     }
 }
