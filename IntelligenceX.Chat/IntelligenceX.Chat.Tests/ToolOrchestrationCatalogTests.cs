@@ -568,8 +568,71 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(new[] { "channel", "machine_name" }, entry.TargetScopeArguments);
     }
 
+    [Fact]
+    public void Build_PrefersExplicitExecutionContractOverSchemaInference() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            new ToolDefinition(
+                "ad_remote_snapshot",
+                "Query a remote-only AD backend snapshot.",
+                ToolSchema.Object(
+                        ("domain_name", ToolSchema.String("Domain.")),
+                        ("columns", ToolSchema.Array(ToolSchema.String("Columns."))))
+                    .NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    IsExecutionAware = true,
+                    ExecutionScope = ToolExecutionScopes.RemoteOnly,
+                    TargetScopeArguments = new[] { "domain_name" }
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("ad_remote_snapshot", out var entry));
+        Assert.True(entry.IsExecutionAware);
+        Assert.Equal(ToolExecutionContract.DefaultContractId, entry.ExecutionContractId);
+        Assert.Equal(ToolExecutionScopes.RemoteOnly, entry.ExecutionScope);
+        Assert.False(entry.SupportsLocalExecution);
+        Assert.True(entry.SupportsRemoteExecution);
+        Assert.True(entry.SupportsTargetScoping);
+        Assert.Equal(new[] { "domain_name" }, entry.TargetScopeArguments);
+        Assert.False(entry.SupportsRemoteHostTargeting);
+        Assert.Empty(entry.RemoteHostArguments);
+    }
+
+    [Fact]
+    public void Build_ProjectsDomainAndForestTargetScopeTraits() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            new ToolDefinition(
+                "ad_scope_discovery",
+                "Inspect Active Directory scope.",
+                ToolSchema.Object(
+                        ("domain_name", ToolSchema.String("Domain.")),
+                        ("forest_name", ToolSchema.String("Forest.")),
+                        ("domain_controller", ToolSchema.String("Domain controller.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("ad_scope_discovery", out var entry));
+        Assert.Equal("local_or_remote", entry.ExecutionScope);
+        Assert.True(entry.SupportsTargetScoping);
+        Assert.Equal(new[] { "domain_name", "forest_name", "domain_controller" }, entry.TargetScopeArguments);
+        Assert.True(entry.SupportsRemoteHostTargeting);
+        Assert.Equal(new[] { "domain_controller" }, entry.RemoteHostArguments);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
+        ToolExecutionContract? execution = null,
         ToolRoutingContract? routing = null,
         ToolSetupContract? setup = null,
         ToolHandoffContract? handoff = null,
@@ -577,6 +640,7 @@ public sealed class ToolOrchestrationCatalogTests {
         return new ToolDefinition(
             name: name,
             description: "test tool",
+            execution: execution,
             routing: routing,
             setup: setup,
             handoff: handoff,

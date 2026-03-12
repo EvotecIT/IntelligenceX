@@ -354,6 +354,11 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolPackNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolParameterDto[]> _toolParameters = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> _toolWriteCapabilities = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _toolExecutionAwareness = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _toolExecutionContractIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _toolExecutionScopes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _toolSupportsLocalExecution = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _toolSupportsRemoteExecution = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);

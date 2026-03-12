@@ -26,6 +26,7 @@ public sealed class PluginFolderLoaderTests {
         "system",
         "active_directory",
         "testimox",
+        "testimox_analytics",
         "officeimo",
         "dnsclientx",
         "domaindetective",
@@ -1157,10 +1158,21 @@ public sealed class PluginFolderLoaderTests {
     }
 
     public sealed class PluginFolderLoaderOptionsPack : IToolPack {
-        public sealed class PluginOptions {
+        public sealed class PluginOptions : IToolPackRuntimeConfigurable {
             public string? RunAsProfilePath { get; set; }
             public string? AuthenticationProfilePath { get; set; }
             public bool CustomFlag { get; set; }
+
+            public void ApplyRuntimeContext(ToolPackRuntimeContext context) {
+                ArgumentNullException.ThrowIfNull(context);
+
+                RunAsProfilePath = string.IsNullOrWhiteSpace(context.RunAsProfilePath)
+                    ? RunAsProfilePath
+                    : context.RunAsProfilePath.Trim();
+                AuthenticationProfilePath = string.IsNullOrWhiteSpace(context.AuthenticationProfilePath)
+                    ? AuthenticationProfilePath
+                    : context.AuthenticationProfilePath.Trim();
+            }
         }
 
         public static string? LastRunAsProfilePath { get; private set; }

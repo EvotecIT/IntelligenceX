@@ -1632,6 +1632,19 @@
     renderTools();
   });
 
+  var toolLocalityFilters = byId("optToolLocalityFilters");
+  if (toolLocalityFilters) {
+    toolLocalityFilters.addEventListener("click", function(e) {
+      var button = e.target.closest("[data-locality-filter]");
+      if (!button) {
+        return;
+      }
+
+      state.options.toolLocalityFilter = normalizeToolLocalityFilter(button.getAttribute("data-locality-filter"));
+      renderTools();
+    });
+  }
+
   menu.addEventListener("click", function(e) {
     var button = e.target.closest("button[data-cmd]");
     if (!button || button.disabled) {

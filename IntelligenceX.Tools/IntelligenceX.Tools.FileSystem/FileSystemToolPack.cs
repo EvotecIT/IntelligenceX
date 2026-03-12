@@ -26,7 +26,9 @@ public sealed class FileSystemToolPack : IToolPack, IToolPackCatalogProvider {
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Safe-by-default file system reads (restricted to AllowedRoots).",
-        SourceKind = "builtin"
+        SourceKind = "builtin",
+        EngineId = "filesystem",
+        CapabilityTags = new[] { "disk", "filesystem", "local_analysis" }
     };
 
     /// <inheritdoc />

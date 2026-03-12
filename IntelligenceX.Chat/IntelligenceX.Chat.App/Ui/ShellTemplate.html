@@ -409,6 +409,12 @@
           <div class="options-row options-row-tight">
             <input id="optToolFilter" class="options-input options-input-sm" placeholder="Filter tools by name, tag, or category" />
           </div>
+          <div class="options-tools-filter-pills" id="optToolLocalityFilters" role="group" aria-label="Filter tools by execution locality">
+            <button id="optToolLocalityAll" class="options-pill options-pill-action" type="button" data-locality-filter="all">All tools</button>
+            <button id="optToolLocalityRemoteReady" class="options-pill options-pill-action" type="button" data-locality-filter="remote_ready">Remote-ready</button>
+            <button id="optToolLocalityLocalOnly" class="options-pill options-pill-action" type="button" data-locality-filter="local_only">Local-only</button>
+            <button id="optToolLocalityMixed" class="options-pill options-pill-action" type="button" data-locality-filter="mixed">Mixed locality</button>
+          </div>
           <div class="options-list options-tools" id="toolsList"></div>
         </section>
       </div>

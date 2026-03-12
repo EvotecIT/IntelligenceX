@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -29,16 +30,36 @@ internal static class SystemToolContracts {
 
         var definition = tool.Definition;
         var routing = BuildRouting(definition);
+        var execution = BuildExecution(definition, routing);
         var setup = BuildSetup(definition, routing);
         var handoff = BuildHandoff(definition, routing);
         var recovery = BuildRecovery(definition, routing);
         var updatedDefinition = ToolDefinitionOverlay.WithContracts(
             definition: definition,
+            execution: execution,
             routing: routing,
             setup: setup,
             handoff: handoff,
             recovery: recovery);
         return ToolDefinitionOverlay.WithDefinition(tool, updatedDefinition);
+    }
+
+    private static ToolExecutionContract? BuildExecution(ToolDefinition definition, ToolRoutingContract routing) {
+        if (definition.Execution is { IsExecutionAware: true }) {
+            return definition.Execution;
+        }
+
+        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Execution;
+        }
+
+        var traits = ToolExecutionTraitProjection.Project(definition);
+        return new ToolExecutionContract {
+            IsExecutionAware = true,
+            ExecutionScope = traits.ExecutionScope,
+            TargetScopeArguments = traits.TargetScopeArguments,
+            RemoteHostArguments = traits.RemoteHostArguments
+        };
     }
 
     private static ToolRoutingContract BuildRouting(ToolDefinition definition) {
@@ -50,7 +71,7 @@ internal static class SystemToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "system",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
             DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : SystemSignalTokens,
@@ -166,7 +187,23 @@ internal static class SystemToolContracts {
         };
     }
 
-    private static string ResolveRole(string toolName) {
+    private static string ResolveRole(string toolName, string? existingRole) {
+        var inferredRole = TryResolveDeclaredRole(toolName);
+        if (inferredRole.Length == 0) {
+            return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+                explicitRole: existingRole,
+                toolName: toolName,
+                declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                packDisplayName: "System");
+        }
+
+        return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
+            explicitRole: existingRole,
+            fallbackRole: inferredRole,
+            packDisplayName: "System");
+    }
+
+    private static string TryResolveDeclaredRole(string toolName) {
         if (string.Equals(toolName, "system_pack_info", StringComparison.OrdinalIgnoreCase)) {
             return ToolRoutingTaxonomy.RolePackInfo;
         }
@@ -185,6 +222,26 @@ internal static class SystemToolContracts {
             return ToolRoutingTaxonomy.RoleDiagnostic;
         }
 
-        return ToolRoutingTaxonomy.RoleOperational;
+        if (string.Equals(toolName, "system_whoami", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_time_sync", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_audit_options", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_security_options", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_boot_configuration", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_network_adapters", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_firewall_profiles", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_firewall_rules", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_installed_applications", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_builtin_accounts", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_local_identity_inventory", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "system_exploit_protection", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleDiagnostic;
+        }
+
+        if (toolName.StartsWith("system_", StringComparison.OrdinalIgnoreCase)
+            && toolName.IndexOf("unclassified", StringComparison.OrdinalIgnoreCase) < 0) {
+            return ToolRoutingTaxonomy.RoleDiagnostic;
+        }
+
+        return string.Empty;
     }
 }

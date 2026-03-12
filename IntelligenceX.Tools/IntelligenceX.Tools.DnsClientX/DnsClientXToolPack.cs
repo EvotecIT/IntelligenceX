@@ -25,7 +25,9 @@ public sealed class DnsClientXToolPack : IToolPack, IToolPackCatalogProvider {
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Open-source DNS query and connectivity diagnostics.",
-        SourceKind = "open_source"
+        SourceKind = "open_source",
+        EngineId = "dnsclientx",
+        CapabilityTags = new[] { "dns", "network", "remote_analysis" }
     };
 
     /// <inheritdoc />

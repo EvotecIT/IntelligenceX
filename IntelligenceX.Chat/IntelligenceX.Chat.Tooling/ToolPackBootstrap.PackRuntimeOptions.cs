@@ -99,7 +99,7 @@ public static partial class ToolPackBootstrap {
 
     private static Dictionary<string, Dictionary<string, object?>> BuildEffectivePackRuntimeOptionBag(ToolPackBootstrapOptions options) {
         var merged = new Dictionary<string, Dictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
-        MergePackRuntimeOptionBag(merged, BuildLegacyPackRuntimeOptionBag(options));
+        MergePackRuntimeOptionBag(merged, BuildGlobalRuntimeOptionBag(options));
         MergePackRuntimeOptionBag(merged, options.PackRuntimeOptionBag);
         return merged;
     }

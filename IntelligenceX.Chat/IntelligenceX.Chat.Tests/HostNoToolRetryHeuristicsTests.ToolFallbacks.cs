@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -56,6 +57,30 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
     }
 
     [Fact]
+    public void ApplyKnownHostTargetFallbacks_DoesNotAutofillLocalOnlyExecutionContractTools() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string"))
+                .Add("log_name", new JsonObject().Add("type", "string")));
+        var definition = new ToolDefinition(
+            "system_local_trace_query",
+            parameters: schema,
+            execution: new ToolExecutionContract {
+                ExecutionScope = ToolExecutionScopes.LocalOnly
+            });
+        var call = BuildToolCall("call_1", "system_local_trace_query", """{"log_name":"System"}""");
+
+        var repaired = InvokeApplyKnownHostTargetFallbacks(
+            call,
+            definition,
+            new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.Same(call, repaired);
+        Assert.Null(repaired.Arguments?.GetString("machine_name"));
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_PatchesCallsWhenDistinctMachineCoverageMissing() {
         const string request = """
 [Scenario execution contract]
@@ -99,6 +124,46 @@ Continue that failure-signature collection across all remaining DCs in this turn
         Assert.Equal(2, distinct.Count);
         Assert.Contains("localhost", distinct);
         Assert.Contains("AD0", distinct);
+    }
+
+    [Fact]
+    public void ApplyScenarioDistinctHostCoverageFallbacks_DoesNotPatchLocalOnlyExecutionContractTools() {
+        const string request = """
+[Scenario execution contract]
+ix:scenario-execution:v1
+requires_tool_execution: true
+requires_no_tool_execution: false
+min_tool_calls: 2
+required_tools_all: none
+required_tools_any: system_local_trace_query
+distinct_tool_inputs: machine_name>=2
+User request:
+Continue that trace collection across all remaining hosts in this turn.
+""";
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string")));
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_local_trace_query",
+                parameters: schema,
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        };
+        var calls = new List<ToolCall> {
+            BuildToolCall("call_1", "system_local_trace_query", """{"machine_name":"localhost"}"""),
+            BuildToolCall("call_2", "system_local_trace_query", """{"machine_name":"localhost"}""")
+        };
+
+        var repaired = InvokeApplyScenarioDistinctHostCoverageFallbacks(
+            userRequest: request,
+            calls: calls,
+            toolDefinitions: definitions,
+            knownHostTargets: new[] { "AD0", "localhost" });
+
+        Assert.Same(calls, repaired);
     }
 
     [Fact]
@@ -713,6 +778,58 @@ Continue that failure-signature collection across all remaining non-AD0 DCs in t
             baseUrl: null);
 
         Assert.Contains("No response text was produced", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_IncludesLocalOnlyToolingWarning() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "system_local_trace_query",
+                description: "Inspect local traces only.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: string.Empty,
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null,
+            toolDefinitions: toolDefinitions,
+            knownHostTargets: new[] { "AD0", "AD1" });
+
+        Assert.Contains("Tool locality:", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("local-only in this session", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_IncludesRemoteReadyToolingWarning() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "eventlog_live_query",
+                description: "Query remote event logs.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOrRemote
+                })
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: string.Empty,
+            toolCalls: Array.Empty<ToolCall>(),
+            toolOutputs: Array.Empty<ToolOutput>(),
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null,
+            toolDefinitions: toolDefinitions,
+            knownHostTargets: new[] { "AD0" });
+
+        Assert.Contains("Tool locality:", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("remote-ready tools are available", text, StringComparison.OrdinalIgnoreCase);
     }
 
 }

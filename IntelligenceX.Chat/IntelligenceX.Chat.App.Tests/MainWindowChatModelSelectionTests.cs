@@ -224,6 +224,39 @@ public sealed class MainWindowChatModelSelectionTests {
         Assert.Equal("unknown:catalog_loading.", description);
     }
 
+    /// <summary>
+    /// Ensures runtime execution-locality summaries stay explicit when the live tool catalog mixes local-only and remote-ready tools.
+    /// </summary>
+    [Fact]
+    public void DescribeExecutionLocalitySummary_ReportsMixedExecutionCatalog() {
+        var summary = MainWindow.DescribeExecutionLocalitySummary(new ToolCatalogExecutionSummary {
+            ExecutionAwareToolCount = 3,
+            LocalOnlyToolCount = 1,
+            LocalOrRemoteToolCount = 2,
+            LocalOnlyPackIds = new[] { "system" },
+            RemoteCapablePackIds = new[] { "eventlog", "active_directory" }
+        });
+
+        Assert.Contains("mixed locality", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("execution-aware tools=3", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("local-only=1", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("local-or-remote=2", summary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime execution-locality summaries emit stable UI-friendly reason tokens.
+    /// </summary>
+    [Fact]
+    public void DescribeExecutionLocalitySummary_CompactReportsLocalOnlyToken() {
+        var summary = MainWindow.DescribeExecutionLocalitySummary(new ToolCatalogExecutionSummary {
+            ExecutionAwareToolCount = 1,
+            LocalOnlyToolCount = 1,
+            LocalOnlyPackIds = new[] { "system" }
+        }, compact: true);
+
+        Assert.Equal("local_only:execution_aware_tools.", summary);
+    }
+
     private static ModelInfoDto Model(string model, bool isDefault = false, string[]? capabilities = null) {
         return new ModelInfoDto {
             Id = model,

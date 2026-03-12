@@ -26,7 +26,9 @@ public sealed class TestimoXToolPack : IToolPack, IToolPackCatalogProvider {
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "TestimoX rule, profile, baseline, and stored-run diagnostics.",
-        SourceKind = "closed_source"
+        SourceKind = "closed_source",
+        EngineId = "testimox",
+        CapabilityTags = new[] { "configuration", "evidence", "posture", "remote_analysis" }
     };
 
     /// <inheritdoc />

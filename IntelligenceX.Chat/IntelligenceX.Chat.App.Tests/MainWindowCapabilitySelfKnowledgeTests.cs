@@ -316,6 +316,90 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.DoesNotContain(lines, line => line.Contains("Cross-pack follow-up pivots", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Ensures capability self-knowledge describes mixed local-only and remote-ready execution locality from the live tool catalog.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_DescribesMixedExecutionLocalityFromToolCatalog() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto {
+                    Id = "system",
+                    Name = "System",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                },
+                new ToolPackInfoDto {
+                    Id = "eventlog",
+                    Name = "Event Viewer",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 2,
+                EnabledPackCount = 2,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "remote_capable",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            toolCatalogExecutionSummary: new ToolCatalogExecutionSummary {
+                ExecutionAwareToolCount = 2,
+                LocalOnlyToolCount = 1,
+                LocalOrRemoteToolCount = 1,
+                LocalOnlyPackIds = new[] { "system" },
+                RemoteCapablePackIds = new[] { "eventlog" }
+            });
+
+        Assert.Contains(lines, line => line.Contains("Execution locality is mixed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("local-only tools currently include System", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("explicit remote-ready tools currently include Event Viewer", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("execution-aware tools", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures capability self-knowledge warns when the enabled tool catalog is entirely local-only.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_WarnsWhenEnabledCatalogIsLocalOnly() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto {
+                    Id = "system",
+                    Name = "System",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "local_only",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            toolCatalogExecutionSummary: new ToolCatalogExecutionSummary {
+                ExecutionAwareToolCount = 1,
+                LocalOnlyToolCount = 1,
+                LocalOnlyPackIds = new[] { "system" }
+            });
+
+        Assert.Contains(lines, line => line.Contains("currently local-only", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("local-only tools currently include System", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("explicit remote-ready tools", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static int FindLineIndex(IReadOnlyList<string> lines, string expectedFragment) {
         for (var i = 0; i < lines.Count; i++) {
             if (lines[i].Contains(expectedFragment, StringComparison.OrdinalIgnoreCase)) {

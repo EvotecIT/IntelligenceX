@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -51,6 +52,55 @@ public sealed class ToolAutonomySummaryBuilderTests {
         Assert.Contains("active_directory", capabilitySummary.CrossPackReadyPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog", capabilitySummary.CrossPackReadyPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", capabilitySummary.CrossPackTargetPackIds, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildPackAutonomySummary_KeepsExactCounts_WhenPreviewNamesAreTrimmed() {
+        var definitions = Enumerable.Range(1, 20)
+            .Select(index => new ToolDefinition(
+                $"system_metrics_summary_{index}",
+                "Summarize remote system metrics.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Optional host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }))
+            .ToArray();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+
+        var summary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("system", orchestrationCatalog, maxItems: 5);
+
+        Assert.NotNull(summary);
+        Assert.Equal(20, summary!.RemoteCapableTools);
+        Assert.Equal(5, summary.RemoteCapableToolNames.Length);
+    }
+
+    [Fact]
+    public void BuildPackAutonomySummary_DoesNotCountLocalOnlyHostLikeSchemasAsRemoteCapable() {
+        var definitions = new[] {
+            new ToolDefinition(
+                "system_local_trace_query",
+                "Inspect local traces only.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+
+        var summary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("system", orchestrationCatalog);
+
+        Assert.NotNull(summary);
+        Assert.Equal(0, summary!.RemoteCapableTools);
+        Assert.Empty(summary.RemoteCapableToolNames);
     }
 
     private static ToolDefinition[] CreateDefinitions() {

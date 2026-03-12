@@ -282,6 +282,19 @@ internal static partial class Program {
                     .Select(static pack => ToolPackBootstrap.NormalizePackId(pack.Id)),
                 MaxHostCapabilitySnapshotIds);
         }
+        var enabledPackEngineIds = NormalizeDistinctStrings(
+            normalizedPackAvailability
+                .Where(static pack => pack.Enabled)
+                .Select(static pack => ToolPackMetadataNormalizer.NormalizeDescriptorToken(pack.EngineId))
+                .Where(static engineId => engineId.Length > 0),
+            MaxHostCapabilitySnapshotIds);
+        var enabledCapabilityTags = NormalizeDistinctStrings(
+            normalizedPackAvailability
+                .Where(static pack => pack.Enabled)
+                .SelectMany(static pack => pack.CapabilityTags ?? Array.Empty<string>())
+                .Select(static tag => ToolPackMetadataNormalizer.NormalizeDescriptorToken(tag))
+                .Where(static tag => tag.Length > 0),
+            maxItems: 12);
 
         var skills = NormalizeDistinctStrings(
             normalizedPluginAvailability.SelectMany(static plugin => plugin.SkillIds ?? Array.Empty<string>()),
@@ -306,6 +319,8 @@ internal static partial class Program {
             AllowedRootCount = Math.Max(0, allowedRootCount),
             EnabledPackIds = enabledPackIds,
             EnabledPluginIds = enabledPluginIds,
+            EnabledPackEngineIds = enabledPackEngineIds,
+            EnabledCapabilityTags = enabledCapabilityTags,
             RoutingFamilies = routingFamilies,
             FamilyActions = familyActions,
             Skills = skills,
@@ -418,6 +433,14 @@ internal static partial class Program {
 
         if (snapshot.EnabledPluginIds.Length > 0) {
             highlights.Add("enabled plugins: " + string.Join(", ", snapshot.EnabledPluginIds));
+        }
+
+        if (snapshot.EnabledPackEngineIds.Length > 0) {
+            highlights.Add("enabled engines: " + string.Join(", ", snapshot.EnabledPackEngineIds));
+        }
+
+        if (snapshot.EnabledCapabilityTags.Length > 0) {
+            highlights.Add("enabled capability tags: " + string.Join(", ", snapshot.EnabledCapabilityTags));
         }
 
         if (snapshot.RoutingFamilies.Length > 0) {

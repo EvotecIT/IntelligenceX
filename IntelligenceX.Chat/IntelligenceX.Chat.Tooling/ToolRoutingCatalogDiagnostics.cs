@@ -206,7 +206,7 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             if (definition.Recovery?.IsRecoveryAware == true) {
                 recoveryAwareTools++;
             }
-            if (schemaTraits.SupportsRemoteHostTargeting) {
+            if (ToolExecutionScopes.IsRemoteCapable(schemaTraits.ExecutionScope)) {
                 remoteCapableTools++;
             }
             if (HasCrossPackHandoff(definition, packId)) {

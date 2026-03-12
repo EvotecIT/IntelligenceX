@@ -289,17 +289,18 @@ public static partial class ToolPackGuidance {
         return ToReadOnlyList(list);
     }
 
-    private static ToolPackToolTraitsModel BuildToolTraits(IEnumerable<string>? argumentNames, bool supportsTableViewProjection) {
-        var names = NormalizeValues(argumentNames);
+    private static ToolPackToolTraitsModel BuildToolTraits(ToolDefinition definition, bool supportsTableViewProjection) {
+        ArgumentNullException.ThrowIfNull(definition);
 
+        var executionTraits = ToolExecutionTraitProjection.Project(definition);
+        var executionScope = ToolExecutionScopes.Resolve(executionTraits.ExecutionScope, executionTraits.SupportsRemoteHostTargeting);
+        var names = NormalizeValues(ReadToolArgumentNames(definition));
         var projectionArguments = IntersectKnownArguments(names, TableViewArgumentNames);
         var pagingArguments = IntersectKnownArguments(names, PagingArgumentNames);
         var timeRangeArguments = IntersectKnownArguments(names, TimeRangeArgumentNames);
         var dynamicAttributeArguments = IntersectKnownArguments(names, DynamicAttributeArgumentNames);
-        var targetScopeArguments = MergeKnownArguments(
-            IntersectKnownArguments(names, TargetScopeArgumentNames),
-            IntersectKnownArguments(names, ToolHostTargetArgumentNames.OrderedInputArguments));
-        var remoteHostArguments = IntersectKnownArguments(names, RemoteHostArgumentNames);
+        var targetScopeArguments = NormalizeValues(executionTraits.TargetScopeArguments);
+        var remoteHostArguments = NormalizeValues(executionTraits.RemoteHostArguments);
         var mutatingActionArguments = IntersectKnownArguments(names, MutatingActionArgumentNames);
         var writeGovernanceMetadataArguments = IntersectKnownArguments(
             names,
@@ -307,7 +308,13 @@ public static partial class ToolPackGuidance {
         var authenticationArguments = IntersectKnownArguments(names, AuthenticationArgumentNames);
 
         return new ToolPackToolTraitsModel {
-            ExecutionScope = ResolveExecutionScope(remoteHostArguments.Count > 0),
+            IsExecutionAware = definition.Execution?.IsExecutionAware == true,
+            ExecutionContractId = string.IsNullOrWhiteSpace(definition.Execution?.ExecutionContractId)
+                ? null
+                : definition.Execution!.ExecutionContractId.Trim(),
+            ExecutionScope = executionScope,
+            SupportsLocalExecution = !string.Equals(executionScope, ToolExecutionScopes.RemoteOnly, StringComparison.OrdinalIgnoreCase),
+            SupportsRemoteExecution = ToolExecutionScopes.IsRemoteCapable(executionScope),
             SupportsTableViewProjection = supportsTableViewProjection,
             TableViewArguments = projectionArguments,
             SupportsPaging = pagingArguments.Count > 0,
@@ -432,10 +439,20 @@ public static partial class ToolPackGuidance {
         var mutatingActionArguments = NormalizeValues(traits.MutatingActionArguments);
         var writeGovernanceMetadataArguments = NormalizeValues(traits.WriteGovernanceMetadataArguments);
         var authenticationArguments = NormalizeValues(traits.AuthenticationArguments);
-        var supportsRemoteExecution = traits.SupportsRemoteHostTargeting || remoteHostArguments.Count > 0;
+        var supportsRemoteExecution = traits.SupportsRemoteExecution
+            || traits.SupportsRemoteHostTargeting
+            || remoteHostArguments.Count > 0;
+        var executionScope = NormalizeExecutionScope(traits.ExecutionScope, supportsRemoteExecution);
 
         return new ToolPackToolTraitsModel {
-            ExecutionScope = NormalizeExecutionScope(traits.ExecutionScope, supportsRemoteExecution),
+            IsExecutionAware = traits.IsExecutionAware,
+            ExecutionContractId = string.IsNullOrWhiteSpace(traits.ExecutionContractId)
+                ? null
+                : traits.ExecutionContractId.Trim(),
+            ExecutionScope = executionScope,
+            SupportsLocalExecution = traits.SupportsLocalExecution
+                || !string.Equals(executionScope, ToolExecutionScopes.RemoteOnly, StringComparison.OrdinalIgnoreCase),
+            SupportsRemoteExecution = ToolExecutionScopes.IsRemoteCapable(executionScope),
             SupportsTableViewProjection = traits.SupportsTableViewProjection || projectionArguments.Count > 0,
             TableViewArguments = projectionArguments,
             SupportsPaging = traits.SupportsPaging || pagingArguments.Count > 0,
@@ -500,10 +517,6 @@ public static partial class ToolPackGuidance {
         };
     }
 
-    private static string ResolveExecutionScope(bool supportsRemoteExecution) {
-        return supportsRemoteExecution ? "local_or_remote" : "local_only";
-    }
-
     private static bool IsRemoteCapable(ToolPackToolTraitsModel? traits) {
         if (traits is null) {
             return false;
@@ -513,7 +526,7 @@ public static partial class ToolPackGuidance {
             return true;
         }
 
-        return string.Equals(traits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase);
+        return ToolExecutionScopes.IsRemoteCapable(traits.ExecutionScope);
     }
 
     private static bool HasCrossPackHandoff(ToolPackToolHandoffModel? handoff) {
@@ -525,12 +538,27 @@ public static partial class ToolPackGuidance {
     }
 
     private static string NormalizeExecutionScope(string? value, bool supportsRemoteExecution) {
-        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized is "local_only" or "local_or_remote") {
-            return normalized;
+        return ToolExecutionScopes.Resolve(value, supportsRemoteExecution);
+    }
+
+    private static IReadOnlyList<string> ReadToolArgumentNames(ToolDefinition definition) {
+        ArgumentNullException.ThrowIfNull(definition);
+
+        var properties = definition.Parameters?.GetObject("properties");
+        if (properties is null || properties.Count == 0) {
+            return Array.Empty<string>();
         }
 
-        return ResolveExecutionScope(supportsRemoteExecution);
+        var names = new List<string>(properties.Count);
+        foreach (var property in properties) {
+            if (string.IsNullOrWhiteSpace(property.Key)) {
+                continue;
+            }
+
+            names.Add(property.Key.Trim());
+        }
+
+        return names;
     }
 
     private static IReadOnlyList<ToolPackToolArgumentModel> NormalizeArguments(IEnumerable<ToolPackToolArgumentModel>? arguments) {

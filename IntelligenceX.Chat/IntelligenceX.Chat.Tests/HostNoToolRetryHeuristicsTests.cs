@@ -509,6 +509,81 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void BuildNoToolExecutionRetryPrompt_DoesNotEmitRemoteHintForLocalOnlyExecutionContractTool() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "system_local_trace_query",
+                description: "Inspect local traces only.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        };
+
+        var prompt = InvokeBuildNoToolExecutionRetryPrompt(
+            userRequest: "Continue on remaining hosts.",
+            assistantDraft: string.Empty,
+            retryAttempt: 1,
+            knownHostTargets: new[] { "AD0", "AD1" },
+            toolDefinitions: toolDefinitions);
+
+        Assert.DoesNotContain("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildNoToolExecutionRetryPrompt_ExplainsLocalOnlyCatalogForRemoteRequests() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "system_local_trace_query",
+                description: "Inspect local traces only.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        };
+
+        var prompt = InvokeBuildNoToolExecutionRetryPrompt(
+            userRequest: "Continue across remaining DCs.",
+            assistantDraft: string.Empty,
+            retryAttempt: 1,
+            knownHostTargets: new[] { "AD0", "AD1" },
+            toolDefinitions: toolDefinitions);
+
+        Assert.Contains("available tools here are local-only", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not imply remote host/DC collection", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoToolExecutionRetryPrompt_PrefersRemoteReadyToolsWhenCatalogIsMixed() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "system_local_trace_query",
+                description: "Inspect local traces only.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                }),
+            new ToolDefinition(
+                name: "eventlog_live_query",
+                description: "Query remote event logs.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOrRemote
+                })
+        };
+
+        var prompt = InvokeBuildNoToolExecutionRetryPrompt(
+            userRequest: "Continue across remaining DCs.",
+            assistantDraft: string.Empty,
+            retryAttempt: 1,
+            knownHostTargets: new[] { "AD0", "AD1" },
+            toolDefinitions: toolDefinitions);
+
+        Assert.Contains("both local-only and remote-ready tools", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Prefer remote-ready tools for host/DC-targeted work", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildReadOnlyCallCanonicalIndices_DeduplicatesIdenticalReadOnlyCalls() {
         var calls = new List<ToolCall> {
             BuildToolCall("call_1", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}"""),

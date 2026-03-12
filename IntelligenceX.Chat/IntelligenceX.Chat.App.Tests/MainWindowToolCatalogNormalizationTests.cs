@@ -57,6 +57,31 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_toolWriteCapabilities field not found.");
 
+    private static readonly FieldInfo ToolExecutionAwarenessField = typeof(MainWindow).GetField(
+        "_toolExecutionAwareness",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolExecutionAwareness field not found.");
+
+    private static readonly FieldInfo ToolExecutionContractIdsField = typeof(MainWindow).GetField(
+        "_toolExecutionContractIds",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolExecutionContractIds field not found.");
+
+    private static readonly FieldInfo ToolExecutionScopesField = typeof(MainWindow).GetField(
+        "_toolExecutionScopes",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolExecutionScopes field not found.");
+
+    private static readonly FieldInfo ToolSupportsLocalExecutionField = typeof(MainWindow).GetField(
+        "_toolSupportsLocalExecution",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolSupportsLocalExecution field not found.");
+
+    private static readonly FieldInfo ToolSupportsRemoteExecutionField = typeof(MainWindow).GetField(
+        "_toolSupportsRemoteExecution",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolSupportsRemoteExecution field not found.");
+
     private static readonly FieldInfo ToolStatesField = typeof(MainWindow).GetField(
         "_toolStates",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -115,6 +140,57 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         Assert.Equal("filesystem", packIds["fs_scan"]);
     }
 
+    /// <summary>
+    /// Ensures tool catalog ingest preserves execution-locality metadata for downstream UI/self-knowledge surfaces.
+    /// </summary>
+    [Fact]
+    public void UpdateToolCatalog_PreservesExecutionLocalityMetadata() {
+        var window = CreateWindow();
+        var tools = new[] {
+            new ToolDefinitionDto {
+                Name = "eventlog_timeline_query",
+                Description = "Query timeline from a host.",
+                PackId = "eventlog",
+                PackName = "Event Viewer",
+                IsExecutionAware = true,
+                ExecutionContractId = "ix.tool-execution.v1",
+                ExecutionScope = "local_or_remote",
+                SupportsLocalExecution = true,
+                SupportsRemoteExecution = true
+            },
+            new ToolDefinitionDto {
+                Name = "system_local_trace_query",
+                Description = "Inspect local trace data.",
+                PackId = "system",
+                PackName = "System",
+                IsExecutionAware = true,
+                ExecutionContractId = "ix.tool-execution.v1",
+                ExecutionScope = "local_only",
+                SupportsLocalExecution = true,
+                SupportsRemoteExecution = false
+            }
+        };
+
+        InvokeUpdateToolCatalog(window, tools);
+
+        var executionAwareness = Assert.IsType<Dictionary<string, bool>>(ToolExecutionAwarenessField.GetValue(window));
+        var executionContractIds = Assert.IsType<Dictionary<string, string>>(ToolExecutionContractIdsField.GetValue(window));
+        var executionScopes = Assert.IsType<Dictionary<string, string>>(ToolExecutionScopesField.GetValue(window));
+        var supportsLocalExecution = Assert.IsType<Dictionary<string, bool>>(ToolSupportsLocalExecutionField.GetValue(window));
+        var supportsRemoteExecution = Assert.IsType<Dictionary<string, bool>>(ToolSupportsRemoteExecutionField.GetValue(window));
+
+        Assert.True(executionAwareness["eventlog_timeline_query"]);
+        Assert.Equal("ix.tool-execution.v1", executionContractIds["eventlog_timeline_query"]);
+        Assert.Equal("local_or_remote", executionScopes["eventlog_timeline_query"]);
+        Assert.True(supportsLocalExecution["eventlog_timeline_query"]);
+        Assert.True(supportsRemoteExecution["eventlog_timeline_query"]);
+
+        Assert.True(executionAwareness["system_local_trace_query"]);
+        Assert.Equal("local_only", executionScopes["system_local_trace_query"]);
+        Assert.True(supportsLocalExecution["system_local_trace_query"]);
+        Assert.False(supportsRemoteExecution["system_local_trace_query"]);
+    }
+
     private static MainWindow CreateWindow() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         SetField(ToolDescriptionsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -125,6 +201,11 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         SetField(ToolPackNamesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolParametersField, window, new Dictionary<string, ToolParameterDto[]>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolWriteCapabilitiesField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolExecutionAwarenessField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolExecutionContractIdsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolExecutionScopesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolSupportsLocalExecutionField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolSupportsRemoteExecutionField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolStatesField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolRoutingConfidenceField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolRoutingReasonField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));

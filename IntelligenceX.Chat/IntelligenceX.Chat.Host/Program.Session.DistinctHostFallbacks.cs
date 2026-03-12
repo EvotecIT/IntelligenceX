@@ -448,7 +448,7 @@ internal static partial class Program {
         }
 
         private static ToolCall ApplyHostTargetOverride(ToolCall call, ToolDefinition? definition, string hostTarget) {
-            if (call.Arguments is null) {
+            if (call.Arguments is null || !ToolDefinitionSupportsRemoteHostFallback(definition)) {
                 return call;
             }
 
@@ -514,7 +514,7 @@ internal static partial class Program {
                 return call;
             }
 
-            if (!ToolDefinitionSupportsHostTargetInputs(definition)) {
+            if (!ToolDefinitionSupportsRemoteHostFallback(definition)) {
                 return call;
             }
 
@@ -547,15 +547,28 @@ internal static partial class Program {
                 patchedArguments.Add(pair.Key, pair.Value);
             }
 
-            if (keyIsArray) {
-                var targetsArray = new JsonArray();
-                for (var i = 0; i < normalizedTargets.Count; i++) {
-                    targetsArray.Add(normalizedTargets[i]);
+            var supportedHostTargetArguments = ToolHostTargeting.GetSupportedHostTargetArguments(definition);
+            if (supportedHostTargetArguments.Count == 0) {
+                supportedHostTargetArguments = new[] { targetKey };
+            }
+
+            for (var i = 0; i < supportedHostTargetArguments.Count; i++) {
+                var candidateKey = supportedHostTargetArguments[i];
+                if (candidateKey.Length == 0) {
+                    continue;
                 }
 
-                patchedArguments.Add(targetKey, targetsArray);
-            } else {
-                patchedArguments.Add(targetKey, normalizedTargets[0]);
+                if (ToolHostTargetArgumentNames.IsArrayArgument(candidateKey)) {
+                    var targetsArray = new JsonArray();
+                    for (var targetIndex = 0; targetIndex < normalizedTargets.Count; targetIndex++) {
+                        targetsArray.Add(normalizedTargets[targetIndex]);
+                    }
+
+                    patchedArguments.Add(candidateKey, targetsArray);
+                    continue;
+                }
+
+                patchedArguments.Add(candidateKey, normalizedTargets[0]);
             }
 
             var patchedInput = JsonLite.Serialize(JsonValue.From(patchedArguments));

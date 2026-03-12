@@ -4,6 +4,15 @@ using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.App;
 
+internal sealed record ToolCatalogExecutionSummary {
+    public int ExecutionAwareToolCount { get; init; }
+    public int LocalOnlyToolCount { get; init; }
+    public int RemoteOnlyToolCount { get; init; }
+    public int LocalOrRemoteToolCount { get; init; }
+    public string[] LocalOnlyPackIds { get; init; } = Array.Empty<string>();
+    public string[] RemoteCapablePackIds { get; init; } = Array.Empty<string>();
+}
+
 public sealed partial class MainWindow {
     internal IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(bool runtimeIntrospectionMode = false) {
         return BuildCapabilitySelfKnowledgeLines(
@@ -11,6 +20,7 @@ public sealed partial class MainWindow {
             _toolCatalogPacks,
             _toolCatalogRoutingCatalog,
             _toolCatalogCapabilitySnapshot,
+            BuildToolCatalogExecutionSummary(),
             runtimeIntrospectionMode);
     }
 
@@ -22,14 +32,16 @@ public sealed partial class MainWindow {
             toolCatalogPacks: null,
             toolCatalogRoutingCatalog: null,
             toolCatalogCapabilitySnapshot: null,
+            toolCatalogExecutionSummary: null,
             runtimeIntrospectionMode: runtimeIntrospectionMode);
     }
 
     internal static IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(
         SessionPolicyDto? sessionPolicy,
         IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
-        SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog,
+        SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog = null,
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot = null,
+        ToolCatalogExecutionSummary? toolCatalogExecutionSummary = null,
         bool runtimeIntrospectionMode = false) {
         var lines = new List<string>();
         var snapshot = sessionPolicy?.CapabilitySnapshot ?? toolCatalogCapabilitySnapshot;
@@ -50,6 +62,8 @@ public sealed partial class MainWindow {
             if (!string.IsNullOrWhiteSpace(snapshot.RemoteReachabilityMode)) {
                 lines.Add("Remote reachability right now is " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
             }
+
+            AddExecutionLocalityGuidance(lines, effectivePacks, toolCatalogExecutionSummary);
 
             if (snapshot.Autonomy is not null) {
                 var remoteCapablePackNames = BuildPackDisplayNamesForIds(effectivePacks, snapshot.Autonomy.RemoteCapablePackIds);
@@ -102,6 +116,7 @@ public sealed partial class MainWindow {
                 lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
             } else {
                 lines.Add("You can actively use live session tools when the user wants checks, investigation, or data gathering.");
+                AddExecutionLocalityGuidance(lines, effectivePacks, toolCatalogExecutionSummary);
 
                 var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
                 if (remoteCapablePackNames.Count > 0) {
@@ -305,6 +320,167 @@ public sealed partial class MainWindow {
         }
 
         return false;
+    }
+
+    private ToolCatalogExecutionSummary? BuildToolCatalogExecutionSummary() {
+        if (_toolStates.Count == 0) {
+            return null;
+        }
+
+        var executionAwareToolCount = 0;
+        var localOnlyToolCount = 0;
+        var remoteOnlyToolCount = 0;
+        var localOrRemoteToolCount = 0;
+        var localOnlyPackIds = new List<string>();
+        var remoteCapablePackIds = new List<string>();
+
+        foreach (var pair in _toolStates) {
+            if (!pair.Value) {
+                continue;
+            }
+
+            var toolName = (pair.Key ?? string.Empty).Trim();
+            if (toolName.Length == 0) {
+                continue;
+            }
+
+            if (_toolExecutionAwareness.TryGetValue(toolName, out var isExecutionAware) && isExecutionAware) {
+                executionAwareToolCount++;
+            }
+
+            var supportsRemoteExecution = _toolSupportsRemoteExecution.TryGetValue(toolName, out var remoteEnabled) && remoteEnabled;
+            var scope = _toolExecutionScopes.TryGetValue(toolName, out var explicitScope)
+                ? explicitScope
+                : ResolveToolExecutionScope(null, supportsRemoteExecution);
+
+            if (string.Equals(scope, "remote_only", StringComparison.OrdinalIgnoreCase)) {
+                remoteOnlyToolCount++;
+                AddExecutionPackId(remoteCapablePackIds, ResolveToolPackId(toolName));
+                continue;
+            }
+
+            if (string.Equals(scope, "local_or_remote", StringComparison.OrdinalIgnoreCase)) {
+                localOrRemoteToolCount++;
+                AddExecutionPackId(remoteCapablePackIds, ResolveToolPackId(toolName));
+                continue;
+            }
+
+            localOnlyToolCount++;
+            AddExecutionPackId(localOnlyPackIds, ResolveToolPackId(toolName));
+        }
+
+        if (executionAwareToolCount <= 0
+            && localOnlyToolCount <= 0
+            && remoteOnlyToolCount <= 0
+            && localOrRemoteToolCount <= 0) {
+            return null;
+        }
+
+        return new ToolCatalogExecutionSummary {
+            ExecutionAwareToolCount = executionAwareToolCount,
+            LocalOnlyToolCount = localOnlyToolCount,
+            RemoteOnlyToolCount = remoteOnlyToolCount,
+            LocalOrRemoteToolCount = localOrRemoteToolCount,
+            LocalOnlyPackIds = localOnlyPackIds.Count == 0 ? Array.Empty<string>() : localOnlyPackIds.ToArray(),
+            RemoteCapablePackIds = remoteCapablePackIds.Count == 0 ? Array.Empty<string>() : remoteCapablePackIds.ToArray()
+        };
+    }
+
+    private static void AddExecutionPackId(List<string> target, string? packId) {
+        var normalizedPackId = NormalizeRuntimePackId(packId);
+        if (normalizedPackId.Length == 0 || ContainsIgnoreCase(target, normalizedPackId)) {
+            return;
+        }
+
+        target.Add(normalizedPackId);
+    }
+
+    private static void AddExecutionLocalityGuidance(
+        List<string> lines,
+        IReadOnlyList<ToolPackInfoDto>? packs,
+        ToolCatalogExecutionSummary? executionSummary) {
+        if (executionSummary is null) {
+            return;
+        }
+
+        var localOnlyPackNames = BuildPackDisplayNamesForIds(packs, executionSummary.LocalOnlyPackIds);
+        var remoteCapablePackNames = BuildPackDisplayNamesForIds(packs, executionSummary.RemoteCapablePackIds);
+        var hasLocalOnly = executionSummary.LocalOnlyToolCount > 0;
+        var hasRemoteCapable = executionSummary.RemoteOnlyToolCount > 0 || executionSummary.LocalOrRemoteToolCount > 0;
+
+        if (hasLocalOnly && hasRemoteCapable) {
+            lines.Add("Execution locality is mixed across the live tool catalog, so keep host-target claims aligned to the chosen tool instead of assuming every enabled area is remote-ready.");
+        } else if (hasLocalOnly) {
+            lines.Add("Enabled tooling in this catalog is currently local-only, so do not imply remote execution unless a tool explicitly exposes remote reach.");
+        }
+
+        if (localOnlyPackNames.Count > 0) {
+            lines.Add("Capability areas with local-only tools currently include " + string.Join(", ", localOnlyPackNames) + ".");
+        }
+
+        if (remoteCapablePackNames.Count > 0) {
+            lines.Add("Capability areas with explicit remote-ready tools currently include " + string.Join(", ", remoteCapablePackNames) + ".");
+        }
+
+        if (executionSummary.ExecutionAwareToolCount > 0) {
+            lines.Add("Prefer declared execution locality from execution-aware tools over name or category heuristics when deciding whether a task can run locally or remotely.");
+        }
+    }
+
+    internal static string ResolveExecutionLocalityMode(ToolCatalogExecutionSummary? executionSummary) {
+        if (executionSummary is null) {
+            return "unknown";
+        }
+
+        var hasLocalOnly = executionSummary.LocalOnlyToolCount > 0;
+        var hasRemoteCapable = executionSummary.RemoteOnlyToolCount > 0 || executionSummary.LocalOrRemoteToolCount > 0;
+        if (hasLocalOnly && hasRemoteCapable) {
+            return "mixed";
+        }
+
+        if (hasRemoteCapable) {
+            return "remote_ready";
+        }
+
+        if (hasLocalOnly) {
+            return "local_only";
+        }
+
+        return executionSummary.ExecutionAwareToolCount > 0 ? "execution_aware_unspecified" : "unknown";
+    }
+
+    internal static string DescribeExecutionLocalitySummary(ToolCatalogExecutionSummary? executionSummary, bool compact = false) {
+        var mode = ResolveExecutionLocalityMode(executionSummary);
+        if (executionSummary is null) {
+            return compact ? "unknown:catalog_execution_unavailable." : "unknown (execution locality is still loading from the live tool catalog).";
+        }
+
+        if (compact) {
+            return mode switch {
+                "mixed" => "mixed:local_and_remote_tools.",
+                "remote_ready" => "remote_ready:execution_aware_tools.",
+                "local_only" => "local_only:execution_aware_tools.",
+                "execution_aware_unspecified" => "unknown:execution_scope_unspecified.",
+                _ => "unknown:catalog_execution_unavailable."
+            };
+        }
+
+        var suffix = "execution-aware tools="
+                     + executionSummary.ExecutionAwareToolCount.ToString()
+                     + ", local-only="
+                     + executionSummary.LocalOnlyToolCount.ToString()
+                     + ", remote-only="
+                     + executionSummary.RemoteOnlyToolCount.ToString()
+                     + ", local-or-remote="
+                     + executionSummary.LocalOrRemoteToolCount.ToString()
+                     + ".";
+        return mode switch {
+            "mixed" => "mixed locality across enabled tools (" + suffix,
+            "remote_ready" => "remote-ready across enabled tools (" + suffix,
+            "local_only" => "local-only across enabled tools (" + suffix,
+            "execution_aware_unspecified" => "execution-aware tools are present but locality is still underspecified (" + suffix,
+            _ => "unknown (execution locality is still loading from the live tool catalog)."
+        };
     }
 
     private static string DescribeReachabilityMode(string? mode) {

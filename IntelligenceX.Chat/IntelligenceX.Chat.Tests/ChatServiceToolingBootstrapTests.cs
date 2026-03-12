@@ -124,6 +124,10 @@ public sealed class ChatServiceToolingBootstrapTests {
 
         var timeline = Assert.Single(toolDefinitions, static item =>
             string.Equals(item.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase));
+        Assert.True(timeline.IsExecutionAware);
+        Assert.Equal(ToolExecutionContract.DefaultContractId, timeline.ExecutionContractId);
+        Assert.True(timeline.SupportsLocalExecution);
+        Assert.True(timeline.SupportsRemoteExecution);
         Assert.True(timeline.IsSetupAware);
         Assert.Equal("eventlog_channels_list", timeline.SetupToolName);
         Assert.True(timeline.IsHandoffAware);

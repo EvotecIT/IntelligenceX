@@ -253,40 +253,6 @@ public static class ToolSelectionMetadata {
         "max_results"
     };
 
-    private static readonly string[] TargetScopeArgumentNames = {
-        "domain_name",
-        "domain_controller",
-        "machine_name",
-        "machine_names",
-        "search_base_dn",
-        "computer_name"
-    };
-
-    private static readonly string[] DomainScopeArgumentNames = {
-        "domain_name",
-        "domain_controller",
-        "search_base_dn",
-        "forest_name"
-    };
-
-    private static readonly string[] HostScopeArgumentNames = {
-        "machine_name",
-        "machine_names",
-        "computer_name",
-        "server",
-        "host",
-        "target",
-        "targets"
-    };
-
-    private static readonly string[] FileScopeArgumentNames = {
-        "path",
-        "folder",
-        "file_path",
-        "evtx_path",
-        "source_path"
-    };
-
     /// <summary>
     /// Returns the same definition with inferred category/tags when missing.
     /// </summary>
@@ -323,7 +289,8 @@ public static class ToolSelectionMetadata {
             routing: routingContract,
             setup: definition.Setup,
             handoff: definition.Handoff,
-            recovery: definition.Recovery);
+            recovery: definition.Recovery,
+            execution: definition.Execution);
     }
 
     /// <summary>
@@ -824,18 +791,18 @@ public static class ToolSelectionMetadata {
             return "pack";
         }
 
-        if (HasAnyProperty(definition.Parameters, DomainScopeArgumentNames) ||
+        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.DomainScopeArguments) ||
             string.Equals(category, "active_directory", StringComparison.OrdinalIgnoreCase)) {
             return "domain";
         }
 
-        if (HasAnyProperty(definition.Parameters, FileScopeArgumentNames) ||
+        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.FileScopeArguments) ||
             string.Equals(category, "filesystem", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(category, "officeimo", StringComparison.OrdinalIgnoreCase)) {
             return "file";
         }
 
-        if (HasAnyProperty(definition.Parameters, HostScopeArgumentNames) ||
+        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.HostScopeArguments) ||
             string.Equals(category, "system", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(category, "eventlog", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(category, "powershell", StringComparison.OrdinalIgnoreCase)) {
@@ -1147,7 +1114,8 @@ public static class ToolSelectionMetadata {
         if (HasAnyProperty(definition.Parameters, PagingArgumentNames)) {
             AddTag("paging");
         }
-        if (HasAnyProperty(definition.Parameters, TargetScopeArgumentNames)) {
+        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.TargetScopeArguments)
+            || HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.HostTargetInputArguments)) {
             AddTag("target_scope");
         }
 

@@ -214,6 +214,30 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Contains(readiness, static line => line.Contains("inferred metadata", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void Build_DoesNotCountLocalOnlyExecutionContractToolAsRemoteCapable() {
+        var diagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(new[] {
+            CreateDefinition(
+                name: "system_local_trace_query",
+                category: "system",
+                parameters: ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Host label.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        });
+
+        Assert.Equal(0, diagnostics.RemoteCapableTools);
+        Assert.DoesNotContain(
+            ToolRoutingCatalogDiagnosticsBuilder.BuildAutonomyReadinessHighlights(diagnostics, maxItems: 8),
+            static line => line.Contains("remote host-targeting", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         string? category,
@@ -221,7 +245,8 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         JsonObject? parameters = null,
         ToolSetupContract? setup = null,
         ToolHandoffContract? handoff = null,
-        ToolRecoveryContract? recovery = null) {
+        ToolRecoveryContract? recovery = null,
+        ToolExecutionContract? execution = null) {
         return new ToolDefinition(
             name: name,
             description: "test tool",
@@ -230,6 +255,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
             routing: routing,
             setup: setup,
             handoff: handoff,
-            recovery: recovery);
+            recovery: recovery,
+            execution: execution);
     }
 }

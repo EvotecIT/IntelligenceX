@@ -24,6 +24,7 @@ public static class ToolDefinitionOverlay {
     /// </summary>
     public static ToolDefinition WithContracts(
         ToolDefinition definition,
+        ToolExecutionContract? execution = null,
         ToolRoutingContract? routing = null,
         ToolSetupContract? setup = null,
         ToolHandoffContract? handoff = null,
@@ -41,6 +42,7 @@ public static class ToolDefinitionOverlay {
             aliases: definition.Aliases,
             aliasOf: definition.AliasOf,
             authentication: definition.Authentication,
+            execution: execution ?? definition.Execution,
             routing: routing ?? definition.Routing,
             setup: setup ?? definition.Setup,
             handoff: handoff ?? definition.Handoff,

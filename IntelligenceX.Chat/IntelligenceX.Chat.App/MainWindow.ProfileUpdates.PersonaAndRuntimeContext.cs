@@ -51,6 +51,7 @@ public sealed partial class MainWindow {
         var options = BuildChatRequestOptions();
         var selectedModel = options?.Model;
         CountKnownToolStates(out var knownToolCount, out var enabledTools, out var disabledTools);
+        var executionSummary = BuildToolCatalogExecutionSummary();
 
         var transportLabel = string.Equals(_localProviderTransport, TransportCompatibleHttp, StringComparison.OrdinalIgnoreCase)
             ? "compatible-http"
@@ -69,6 +70,7 @@ public sealed partial class MainWindow {
                           knownToolCount,
                           enabledTools,
                           disabledTools));
+            lines.Add("Execution locality for enabled tools: " + DescribeExecutionLocalitySummary(executionSummary, compact: true));
         } else {
             lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
             lines.Add("Tool availability for this turn: "
@@ -80,6 +82,7 @@ public sealed partial class MainWindow {
                           knownToolCount,
                           enabledTools,
                           disabledTools));
+            lines.Add("Execution locality for enabled tools: " + DescribeExecutionLocalitySummary(executionSummary));
         }
 
         if (!compactSelfReport) {

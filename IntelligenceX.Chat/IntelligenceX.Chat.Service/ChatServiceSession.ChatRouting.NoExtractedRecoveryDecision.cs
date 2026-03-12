@@ -92,6 +92,7 @@ internal sealed partial class ChatServiceSession {
         int modelHeartbeatSeconds,
         string userRequest,
         string assistantDraft,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
         NoExtractedPromptRecoveryDecision decision) {
         var prompt = string.Empty;
         var phaseStatus = ChatStatusCodes.Thinking;
@@ -100,7 +101,7 @@ internal sealed partial class ChatServiceSession {
 
         switch (decision.Kind) {
             case NoExtractedPromptRecoveryDecisionKind.ExecutionNudge:
-                prompt = BuildToolExecutionNudgePrompt(userRequest, assistantDraft);
+                prompt = BuildToolExecutionNudgePrompt(userRequest, assistantDraft, toolDefinitions);
                 phaseStatus = planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking;
                 phaseMessage = "Re-planning to execute available tools in this turn.";
                 heartbeatLabel = "Re-planning execution";
@@ -112,19 +113,19 @@ internal sealed partial class ChatServiceSession {
                 heartbeatLabel = "Re-planning tool receipt";
                 break;
             case NoExtractedPromptRecoveryDecisionKind.ExecutionWatchdog:
-                prompt = BuildNoToolExecutionWatchdogPrompt(userRequest, assistantDraft);
+                prompt = BuildNoToolExecutionWatchdogPrompt(userRequest, assistantDraft, toolDefinitions);
                 phaseStatus = planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking;
                 phaseMessage = "Re-validating tool execution for this turn.";
                 heartbeatLabel = "Re-validating execution";
                 break;
             case NoExtractedPromptRecoveryDecisionKind.ExecutionContractEscape:
-                prompt = BuildExecutionContractEscapePrompt(userRequest, assistantDraft);
+                prompt = BuildExecutionContractEscapePrompt(userRequest, assistantDraft, toolDefinitions);
                 phaseStatus = planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking;
                 phaseMessage = "Selected action had no tool activity; retrying with full tool availability.";
                 heartbeatLabel = "Re-planning with full tools";
                 break;
             case NoExtractedPromptRecoveryDecisionKind.ContinuationSubsetEscape:
-                prompt = BuildContinuationSubsetEscapePrompt(userRequest, assistantDraft);
+                prompt = BuildContinuationSubsetEscapePrompt(userRequest, assistantDraft, toolDefinitions);
                 phaseStatus = planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking;
                 phaseMessage = "Follow-up subset had no tool activity; retrying with full tool availability.";
                 heartbeatLabel = "Expanding follow-up tools";

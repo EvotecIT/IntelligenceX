@@ -153,6 +153,7 @@
       },
       debugToolsEnabled: false,
       toolFilter: "",
+      toolLocalityFilter: "all",
       policy: null,
       packs: [],
       tools: [],

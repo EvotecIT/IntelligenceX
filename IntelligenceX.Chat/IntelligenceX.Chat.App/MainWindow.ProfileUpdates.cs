@@ -163,6 +163,15 @@ public sealed partial class MainWindow : Window {
                 ? parameters
                 : Array.Empty<ToolParameterDto>();
             _toolWriteCapabilities[name] = tool.IsWriteCapable;
+            _toolExecutionAwareness[name] = tool.IsExecutionAware;
+            if (!string.IsNullOrWhiteSpace(tool.ExecutionContractId)) {
+                _toolExecutionContractIds[name] = tool.ExecutionContractId.Trim();
+            } else {
+                _toolExecutionContractIds.Remove(name);
+            }
+            _toolExecutionScopes[name] = ResolveToolExecutionScope(tool.ExecutionScope, tool.SupportsRemoteExecution);
+            _toolSupportsLocalExecution[name] = tool.SupportsLocalExecution;
+            _toolSupportsRemoteExecution[name] = tool.SupportsRemoteExecution;
             if (!_toolStates.ContainsKey(name)) {
                 _toolStates[name] = !tool.IsWriteCapable;
             }
@@ -185,6 +194,11 @@ public sealed partial class MainWindow : Window {
                 _toolTags.Remove(toolName);
                 _toolParameters.Remove(toolName);
                 _toolWriteCapabilities.Remove(toolName);
+                _toolExecutionAwareness.Remove(toolName);
+                _toolExecutionContractIds.Remove(toolName);
+                _toolExecutionScopes.Remove(toolName);
+                _toolSupportsLocalExecution.Remove(toolName);
+                _toolSupportsRemoteExecution.Remove(toolName);
                 _toolRoutingConfidence.Remove(toolName);
                 _toolRoutingReason.Remove(toolName);
                 _toolRoutingScore.Remove(toolName);
@@ -202,6 +216,17 @@ public sealed partial class MainWindow : Window {
             _toolStates[key] = !IsWriteCapableTool(key);
         }
         _toolStates[key] = enabled;
+    }
+
+    private static string ResolveToolExecutionScope(string? executionScope, bool supportsRemoteExecution) {
+        var normalized = (executionScope ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.Equals(normalized, "local_only", StringComparison.Ordinal)
+            || string.Equals(normalized, "remote_only", StringComparison.Ordinal)
+            || string.Equals(normalized, "local_or_remote", StringComparison.Ordinal)) {
+            return normalized;
+        }
+
+        return supportsRemoteExecution ? "local_or_remote" : "local_only";
     }
 
     private async Task<bool> SetToolPackEnabledAsync(string packId, bool enabled) {

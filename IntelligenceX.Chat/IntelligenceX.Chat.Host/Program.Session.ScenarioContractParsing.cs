@@ -759,7 +759,16 @@ internal static partial class Program {
         }
 
         private static bool ToolDefinitionSupportsHostTargetInputs(ToolDefinition definition) {
-            return ToolHostTargeting.ToolSupportsHostTargetInputs(definition);
+            return ToolDefinitionSupportsRemoteHostFallback(definition);
+        }
+
+        private static bool ToolDefinitionSupportsRemoteHostFallback(ToolDefinition? definition) {
+            if (definition is null || !ToolHostTargeting.ToolSupportsHostTargetInputs(definition)) {
+                return false;
+            }
+
+            var normalizedExecutionScope = ToolExecutionScopes.Normalize(definition.Execution?.ExecutionScope);
+            return !string.Equals(normalizedExecutionScope, ToolExecutionScopes.LocalOnly, StringComparison.Ordinal);
         }
 
         private static string BuildScenarioContractRepairRetryPrompt(
