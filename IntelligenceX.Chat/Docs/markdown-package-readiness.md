@@ -63,6 +63,18 @@ Before publishing and then merging a package-adoption PR, all of the following s
   - markdown export
   - DOCX export
 
+## After Publish
+
+For the actual adoption PR, the expected sequence is:
+
+1. update [Directory.Build.props](../Directory.Build.props) to the exact published `OfficeIMO.Markdown` / `OfficeIMO.MarkdownRenderer` versions
+2. let the merged OfficeIMO package-mode gate run in CI
+3. re-check the user-visible markdown paths:
+   - UI render
+   - markdown export
+   - DOCX export
+4. merge only after the package-mode gate and those user-visible checks are green
+
 ## Current Recommendation
 
 Do not merge a package-adoption PR yet.
