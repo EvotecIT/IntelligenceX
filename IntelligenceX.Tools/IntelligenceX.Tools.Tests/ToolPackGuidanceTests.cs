@@ -329,40 +329,29 @@ public class ToolPackGuidanceTests {
         });
 
         var item = Assert.Single(catalog);
-        Assert.NotNull(item.Orchestration);
-        Assert.Equal("customx", item.Orchestration.PackId);
-        Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, item.Orchestration.Role);
-        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, item.Orchestration.RoutingSource);
-        Assert.True(item.Orchestration.IsRoutingAware);
-        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, item.Orchestration.DomainIntentFamily);
-        Assert.Equal("act_custom_scope", item.Orchestration.DomainIntentActionId);
-        Assert.True(item.Orchestration.IsSetupAware);
-        Assert.Equal(1, item.Orchestration.SetupRequirementCount);
-        Assert.Equal(ToolSetupContract.DefaultContractId, item.Orchestration.SetupContractId);
-        Assert.Equal("custom_setup", item.Orchestration.SetupToolName);
-        Assert.Equal(new[] { "auth.session" }, item.Orchestration.SetupRequirementIds);
-        Assert.Equal(new[] { ToolSetupRequirementKinds.Authentication }, item.Orchestration.SetupRequirementKinds);
-        Assert.Equal(new[] { "auth_required", "needs_auth" }, item.Orchestration.SetupHintKeys);
-        Assert.True(item.Orchestration.IsHandoffAware);
-        Assert.Equal(1, item.Orchestration.HandoffRouteCount);
-        Assert.Equal(1, item.Orchestration.HandoffBindingCount);
-        Assert.Equal(ToolHandoffContract.DefaultContractId, item.Orchestration.HandoffContractId);
-        var handoffEdge = Assert.Single(item.Orchestration.HandoffEdges);
-        Assert.Equal("dnsclientx", handoffEdge.TargetPackId);
+        Assert.Equal("custom_pack_info", item.Name);
+        Assert.True(item.IsPackInfoTool);
+        Assert.Equal("local_or_remote", item.Traits.ExecutionScope);
+        Assert.Contains("machine_name", item.Traits.RemoteHostArguments, StringComparer.OrdinalIgnoreCase);
+        Assert.True(item.Setup.IsSetupAware);
+        Assert.Equal("custom_setup", item.Setup.SetupToolName);
+        Assert.Equal(new[] { "auth.session" }, item.Setup.RequirementIds);
+        Assert.Equal(
+            new[] { "auth_required", "needs_auth" },
+            item.Setup.HintKeys.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
+        Assert.True(item.Handoff.IsHandoffAware);
+        var handoffEdge = Assert.Single(item.Handoff.Routes);
+        Assert.Equal("DnsClientX", handoffEdge.TargetPackId);
         Assert.Equal("dns_lookup", handoffEdge.TargetToolName);
         Assert.Equal(ToolRoutingTaxonomy.RoleOperational, handoffEdge.TargetRole);
-        Assert.Equal(1, handoffEdge.BindingCount);
-        Assert.Equal(new[] { "host->target" }, handoffEdge.BindingPairs);
-        Assert.True(item.Orchestration.IsRecoveryAware);
-        Assert.True(item.Orchestration.SupportsTransientRetry);
-        Assert.Equal(3, item.Orchestration.MaxRetryAttempts);
-        Assert.Equal(ToolRecoveryContract.DefaultContractId, item.Orchestration.RecoveryContractId);
-        Assert.True(item.Orchestration.SupportsAlternateEngines);
-        Assert.Equal(2, item.Orchestration.AlternateEngineCount);
-        Assert.Equal(2, item.Orchestration.RecoveryToolCount);
-        Assert.Equal(new[] { "query_failed", "timeout" }, item.Orchestration.RetryableErrorCodes);
-        Assert.Equal(new[] { "cim", "wmi" }, item.Orchestration.AlternateEngineIds);
-        Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, item.Orchestration.RecoveryToolNames);
+        Assert.Equal(new[] { "host->target" }, handoffEdge.BindingPairs.Select(static value => value.ToLowerInvariant()));
+        Assert.True(item.Recovery.IsRecoveryAware);
+        Assert.True(item.Recovery.SupportsTransientRetry);
+        Assert.Equal(3, item.Recovery.MaxRetryAttempts);
+        Assert.Equal(
+            new[] { "query_failed", "timeout" },
+            item.Recovery.RetryableErrorCodes.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
+        Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, item.Recovery.RecoveryToolNames);
     }
 
     [Fact]

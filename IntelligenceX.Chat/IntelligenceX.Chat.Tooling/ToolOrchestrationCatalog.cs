@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -483,6 +484,16 @@ public sealed class ToolOrchestrationCatalog {
                 StringComparer.OrdinalIgnoreCase);
 
         return new ToolOrchestrationCatalog(entriesByToolName, entriesByPackId, entriesByRole, entriesByPackAndRole);
+    }
+
+    /// <summary>
+    /// Builds orchestration catalog from registry definitions and runtime packs.
+    /// </summary>
+    public static ToolOrchestrationCatalog Build(
+        IReadOnlyList<ToolDefinition> definitions,
+        IEnumerable<IToolPack>? packs) {
+        _ = packs;
+        return Build(definitions);
     }
 
     /// <summary>
