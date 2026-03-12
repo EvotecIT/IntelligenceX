@@ -169,6 +169,132 @@ internal static class GitHubOverviewSectionBuilder {
             note: BuildGitHubNote(calendar, repositoryImpact));
     }
 
+    public static async Task<UsageTelemetryOverviewProviderSection> BuildOwnerImpactOnlyAsync(IReadOnlyList<string> repositoryOwners) {
+        var owners = (repositoryOwners ?? Array.Empty<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (owners.Length == 0) {
+            throw new InvalidOperationException("At least one GitHub owner is required.");
+        }
+
+        var repositoryImpact = await new GitHubRepositoryImpactClient()
+            .GetRepositoryImpactAsync(owners)
+            .ConfigureAwait(false);
+
+        var metrics = new[] {
+            new UsageTelemetryOverviewSectionMetric(
+                "owned-stars",
+                "Owned stars",
+                FormatCompact(repositoryImpact.TotalStars),
+                FormatCompact(repositoryImpact.TotalRepositories) + " public repo(s) across " + repositoryImpact.Owners.Count.ToString(CultureInfo.InvariantCulture) + " owner(s)",
+                repositoryImpact.TotalStars > 0 ? 1d : 0d,
+                "#9be9a8"),
+            new UsageTelemetryOverviewSectionMetric(
+                "owned-forks",
+                "Owned forks",
+                FormatCompact(repositoryImpact.TotalForks),
+                "Across selected owner scope",
+                repositoryImpact.TotalForks > 0 ? 1d : 0d,
+                "#40c463"),
+            new UsageTelemetryOverviewSectionMetric(
+                "repositories",
+                "Repositories",
+                FormatCompact(repositoryImpact.TotalRepositories),
+                string.Join(", ", repositoryImpact.Owners.Select(static owner => owner.Owner)),
+                repositoryImpact.TotalRepositories > 0 ? 1d : 0d,
+                "#216e39")
+        };
+
+        var topRepository = repositoryImpact.TopRepositories.FirstOrDefault();
+        var languageRows = repositoryImpact.Owners
+            .SelectMany(static owner => owner.Repositories)
+            .GroupBy(static repo => string.IsNullOrWhiteSpace(repo.PrimaryLanguage) ? "Unknown" : repo.PrimaryLanguage!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new {
+                Language = group.Key,
+                RepositoryCount = group.Count(),
+                Stars = group.Sum(static repo => repo.Stars)
+            })
+            .OrderByDescending(static entry => entry.Stars)
+            .ThenByDescending(static entry => entry.RepositoryCount)
+            .ThenBy(static entry => entry.Language, StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToArray();
+
+        var topLanguage = languageRows.FirstOrDefault();
+        var recentRepositories = repositoryImpact.Owners
+            .SelectMany(static owner => owner.Repositories)
+            .Select(repo => new {
+                Repository = repo,
+                ParsedPushedAt = TryParseGitHubTimestamp(repo.PushedAt)
+            })
+            .Where(static entry => entry.ParsedPushedAt.HasValue)
+            .OrderByDescending(static entry => entry.ParsedPushedAt)
+            .ThenByDescending(static entry => entry.Repository.Stars)
+            .ThenBy(static entry => entry.Repository.NameWithOwner, StringComparer.OrdinalIgnoreCase)
+            .Take(12)
+            .ToArray();
+
+        var monthlyUsage = recentRepositories
+            .GroupBy(entry => new DateTime(entry.ParsedPushedAt!.Value.Year, entry.ParsedPushedAt.Value.Month, 1))
+            .OrderBy(static group => group.Key)
+            .Select(group => new UsageTelemetryOverviewMonthlyUsage(
+                group.Key,
+                group.Sum(static entry => (long)entry.Repository.Stars),
+                group.Count()))
+            .ToArray();
+
+        var spotlight = new[] {
+            new UsageTelemetryOverviewCard(
+                "top-repository",
+                "Top Repository",
+                topRepository?.NameWithOwner ?? "n/a",
+                topRepository is null ? null : FormatCompact(topRepository.Stars) + " stars · " + FormatCompact(topRepository.Forks) + " forks"),
+            new UsageTelemetryOverviewCard(
+                "top-language",
+                "Top Language",
+                topLanguage?.Language ?? "n/a",
+                topLanguage is null ? null : FormatCompact(topLanguage.Stars) + " stars across " + FormatCompact(topLanguage.RepositoryCount) + " repo(s)"),
+            new UsageTelemetryOverviewCard(
+                "owners",
+                "Owner Scope",
+                repositoryImpact.Owners.Count.ToString(CultureInfo.InvariantCulture),
+                string.Join(", ", repositoryImpact.Owners.Select(static owner => owner.Owner))),
+            new UsageTelemetryOverviewCard(
+                "recent-repository-activity",
+                "Recent Repository Activity",
+                recentRepositories.FirstOrDefault()?.Repository.NameWithOwner ?? "n/a",
+                recentRepositories.FirstOrDefault()?.ParsedPushedAt?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+        };
+
+        var subtitle = "Owner scope: " + string.Join(", ", repositoryImpact.Owners.Select(static owner => owner.Owner));
+        return new UsageTelemetryOverviewProviderSection(
+            key: "provider-github",
+            providerId: "github",
+            title: "GitHub",
+            subtitle: subtitle,
+            heatmap: BuildOwnerImpactHeatmap(repositoryImpact),
+            metrics: metrics,
+            composition: null,
+            spotlightCards: spotlight,
+            inputTokens: 0L,
+            outputTokens: 0L,
+            totalTokens: 0L,
+            monthlyUsageTitle: "Monthly owner impact",
+            monthlyUsageUnitsLabel: "stars",
+            monthlyUsage: monthlyUsage,
+            additionalInsights: BuildRepositoryImpactInsights(null, repositoryImpact),
+            topModels: Array.Empty<UsageTelemetryOverviewTopModel>(),
+            apiCostEstimate: null,
+            mostUsedModel: null,
+            recentModel: null,
+            longestStreakDays: 0,
+            currentStreakDays: 0,
+            note: "Repository-impact only view built from owner scope. No profile contribution activity was requested.");
+    }
+
     private static HeatmapDocument BuildHeatmap(GitHubContributionCalendar calendar, DateTime startUtc, DateTime endUtc) {
         var heatmapDays = calendar.Days
             .Where(day => day.Date >= startUtc && day.Date <= endUtc)
@@ -190,6 +316,24 @@ internal static class GitHubOverviewSectionBuilder {
             units: "contributions",
             weekStart: DayOfWeek.Sunday,
             showIntensityLegend: true,
+            legendLowLabel: "Less",
+            legendHighLabel: "More");
+    }
+
+    private static HeatmapDocument BuildOwnerImpactHeatmap(GitHubRepositoryImpactSummary repositoryImpact) {
+        return new HeatmapDocument(
+            title: "GitHub owner impact",
+            subtitle: string.Join(", ", repositoryImpact.Owners.Select(static owner => owner.Owner)),
+            palette: HeatmapPalette.GitHubLight(),
+            sections: new[] {
+                new HeatmapSection(
+                    "Owner impact only",
+                    "No contribution activity available without --github-user",
+                    Array.Empty<HeatmapDay>())
+            },
+            units: "stars",
+            weekStart: DayOfWeek.Sunday,
+            showIntensityLegend: false,
             legendLowLabel: "Less",
             legendHighLabel: "More");
     }
@@ -361,16 +505,19 @@ internal static class GitHubOverviewSectionBuilder {
     }
 
     private static IReadOnlyList<UsageTelemetryOverviewInsightSection> BuildRepositoryImpactInsights(
-        string login,
+        string? login,
         GitHubRepositoryImpactSummary? repositoryImpact) {
         if (repositoryImpact is null || repositoryImpact.Owners.Count == 0) {
             return Array.Empty<UsageTelemetryOverviewInsightSection>();
         }
 
-        var personalOwner = repositoryImpact.Owners.FirstOrDefault(owner =>
-            string.Equals(owner.Owner, login, StringComparison.OrdinalIgnoreCase));
+        var hasLogin = !string.IsNullOrWhiteSpace(login);
+        var personalOwner = !hasLogin
+            ? null
+            : repositoryImpact.Owners.FirstOrDefault(owner =>
+                string.Equals(owner.Owner, login, StringComparison.OrdinalIgnoreCase));
         var orgOwners = repositoryImpact.Owners
-            .Where(owner => !string.Equals(owner.Owner, login, StringComparison.OrdinalIgnoreCase))
+            .Where(owner => !hasLogin || !string.Equals(owner.Owner, login, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         var sections = new List<UsageTelemetryOverviewInsightSection>();
 

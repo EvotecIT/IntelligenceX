@@ -581,6 +581,7 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         var hasPricing = section.ApiCostEstimate is not null;
         var hasComposition = section.Composition is not null && section.Composition.Items.Count > 0;
         var hasAdditionalInsights = section.AdditionalInsights.Count > 0;
+        var hasActivity = HasActivityData(section);
         var providerSectionId = "provider-section-" + section.ProviderId.Trim().ToLowerInvariant();
         sb.Append("    <section class=\"provider-section\" id=\"")
             .Append(Html(providerSectionId))
@@ -608,7 +609,9 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("      <div class=\"provider-datasets\">");
         sb.AppendLine("        <div class=\"provider-dataset-tabs\" role=\"tablist\" aria-label=\"Section datasets\">");
         sb.AppendLine("          <button type=\"button\" class=\"provider-dataset-tab active\" data-provider-panel=\"summary\" role=\"tab\" aria-selected=\"true\">Summary</button>");
-        sb.AppendLine("          <button type=\"button\" class=\"provider-dataset-tab\" data-provider-panel=\"activity\" role=\"tab\" aria-selected=\"false\">Activity</button>");
+        if (hasActivity) {
+            sb.AppendLine("          <button type=\"button\" class=\"provider-dataset-tab\" data-provider-panel=\"activity\" role=\"tab\" aria-selected=\"false\">Activity</button>");
+        }
         if (hasModels) {
             sb.AppendLine("          <button type=\"button\" class=\"provider-dataset-tab\" data-provider-panel=\"models\" role=\"tab\" aria-selected=\"false\">Models</button>");
         }
@@ -618,7 +621,7 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         if (hasAdditionalInsights) {
             sb.AppendLine("          <button type=\"button\" class=\"provider-dataset-tab\" data-provider-panel=\"impact\" role=\"tab\" aria-selected=\"false\">Impact</button>");
         }
-        if (IsGitHubSection(section)) {
+        if (IsGitHubSection(section) && hasActivity) {
             sb.AppendLine("          <a class=\"provider-dataset-tab provider-dataset-link\" href=\"github-wrapped.html\" target=\"_blank\" rel=\"noopener\">Wrapped</a>");
         }
         sb.AppendLine("        </div>");
@@ -699,18 +702,20 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         }
         sb.AppendLine("          </div>");
         sb.AppendLine("        </div>");
-        sb.AppendLine("        <div class=\"provider-panel\" data-provider-panel-content=\"activity\">");
-        if (hasMonthly) {
-            AppendProviderMonthlyUsage(sb, section, accentColors.Total);
+        if (hasActivity) {
+            sb.AppendLine("        <div class=\"provider-panel\" data-provider-panel-content=\"activity\">");
+            if (hasMonthly) {
+                AppendProviderMonthlyUsage(sb, section, accentColors.Total);
+            }
+            sb.AppendLine("          <figure class=\"provider-heatmap\">");
+            sb.Append("            <img src=\"").Append(Html(section.Key)).Append(".light.svg\" data-light-src=\"").Append(Html(section.Key)).Append(".light.svg\" data-dark-src=\"").Append(Html(section.Key)).Append(".dark.svg\" alt=\"").Append(Html(section.Title)).AppendLine(" usage heatmap\">");
+            sb.AppendLine("          </figure>");
+            if (!string.IsNullOrWhiteSpace(section.Note)) {
+                sb.Append("          <div class=\"provider-note\">").Append(Html(section.Note!)).AppendLine("</div>");
+            }
+            AppendProviderLegend(sb, section.ProviderId);
+            sb.AppendLine("        </div>");
         }
-        sb.AppendLine("          <figure class=\"provider-heatmap\">");
-        sb.Append("            <img src=\"").Append(Html(section.Key)).Append(".light.svg\" data-light-src=\"").Append(Html(section.Key)).Append(".light.svg\" data-dark-src=\"").Append(Html(section.Key)).Append(".dark.svg\" alt=\"").Append(Html(section.Title)).AppendLine(" usage heatmap\">");
-        sb.AppendLine("          </figure>");
-        if (!string.IsNullOrWhiteSpace(section.Note)) {
-            sb.Append("          <div class=\"provider-note\">").Append(Html(section.Note!)).AppendLine("</div>");
-        }
-        AppendProviderLegend(sb, section.ProviderId);
-        sb.AppendLine("        </div>");
         if (hasModels) {
             sb.AppendLine("        <div class=\"provider-panel\" data-provider-panel-content=\"models\">");
             sb.AppendLine("          <div class=\"provider-spotlight\">");
@@ -749,6 +754,10 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("      </div>");
         sb.AppendLine("      </div>");
         sb.AppendLine("    </section>");
+    }
+
+    private static bool HasActivityData(UsageTelemetryOverviewProviderSection section) {
+        return section.Heatmap.Sections.Any(static entry => entry.Days.Count > 0);
     }
 
     private static void AppendProviderMetric(StringBuilder sb, UsageTelemetryOverviewSectionMetric metric) {

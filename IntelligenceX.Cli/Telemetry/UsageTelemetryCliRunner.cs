@@ -708,22 +708,15 @@ internal static class UsageTelemetryCliRunner {
         if (overview is null) {
             throw new ArgumentNullException(nameof(overview));
         }
-        if (githubUsers is null || githubUsers.Count == 0) {
+        var requests = BuildGitHubSectionRequests(githubUsers, githubOwners);
+        if (requests.Count == 0) {
             return overview;
         }
-
-        var owners = (githubOwners ?? Array.Empty<string>())
-            .Select(NormalizeOptional)
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Cast<string>()
-            .ToArray();
         var sections = overview.ProviderSections.ToList();
-        foreach (var login in githubUsers
-                     .Select(NormalizeOptional)
-                     .Where(static value => !string.IsNullOrWhiteSpace(value))
-                     .Distinct(StringComparer.OrdinalIgnoreCase)!) {
-            sections.Add(await GitHubOverviewSectionBuilder.BuildAsync(login!, owners).ConfigureAwait(false));
+        foreach (var request in requests) {
+            sections.Add(request.Login is null
+                ? await GitHubOverviewSectionBuilder.BuildOwnerImpactOnlyAsync(request.Owners).ConfigureAwait(false)
+                : await GitHubOverviewSectionBuilder.BuildAsync(request.Login, request.Owners).ConfigureAwait(false));
         }
 
         return new UsageTelemetryOverviewDocument(
@@ -739,6 +732,35 @@ internal static class UsageTelemetryCliRunner {
                 .ThenBy(static section => section.Title, StringComparer.OrdinalIgnoreCase)
                 .ToArray());
     }
+
+    internal static IReadOnlyList<GitHubSectionRequest> BuildGitHubSectionRequests(
+        IReadOnlyList<string> githubUsers,
+        IReadOnlyList<string> githubOwners) {
+        var owners = (githubOwners ?? Array.Empty<string>())
+            .Select(NormalizeOptional)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Cast<string>()
+            .ToArray();
+        var users = (githubUsers ?? Array.Empty<string>())
+            .Select(NormalizeOptional)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Cast<string>()
+            .ToArray();
+
+        if (users.Length == 0) {
+            return owners.Length == 0
+                ? Array.Empty<GitHubSectionRequest>()
+                : new[] { new GitHubSectionRequest(null, owners) };
+        }
+
+        return users
+            .Select(user => new GitHubSectionRequest(user, owners))
+            .ToArray();
+    }
+
+    internal sealed record GitHubSectionRequest(string? Login, IReadOnlyList<string> Owners);
 
     private static int ResolveProviderSortOrder(string providerId) {
         return NormalizeOptional(providerId)?.ToLowerInvariant() switch {
@@ -1166,7 +1188,7 @@ internal static class UsageTelemetryCliRunner {
 
         var githubSection = overview.ProviderSections.FirstOrDefault(section =>
             string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase));
-        if (githubSection is not null) {
+        if (githubSection is not null && HasHeatmapActivity(githubSection.Heatmap)) {
             File.WriteAllText(
                 Path.Combine(outputDirectory, "github-wrapped.html"),
                 GitHubWrappedHtmlRenderer.Render(githubSection),
@@ -1176,6 +1198,10 @@ internal static class UsageTelemetryCliRunner {
                 GitHubWrappedCardHtmlRenderer.Render(githubSection),
                 new UTF8Encoding(false));
         }
+    }
+
+    private static bool HasHeatmapActivity(HeatmapDocument heatmap) {
+        return heatmap.Sections.Any(static section => section.Days.Count > 0);
     }
 
     private static HeatmapDocument CreateThemeVariant(HeatmapDocument source, bool darkMode) {

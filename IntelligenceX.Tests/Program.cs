@@ -119,6 +119,7 @@ internal static partial class Program {
         failed += Run("Telemetry usage overview json and export", TestTelemetryUsageOverviewJsonAndExport);
         failed += Run("Telemetry usage report auto imports and exports", TestTelemetryUsageReportAutoImportsAndExports);
         failed += Run("Telemetry usage report supports ad hoc recovered path", TestTelemetryUsageReportSupportsAdHocRecoveredPath);
+        failed += Run("Telemetry usage GitHub request planner supports owner-only runs", TestTelemetryUsageBuildGitHubSectionRequestsSupportsOwnerOnlyRuns);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);
         failed += Run("OpenAI model catalog normalizes fast mode suffix", TestOpenAiModelCatalogNormalizesFastModeSuffix);

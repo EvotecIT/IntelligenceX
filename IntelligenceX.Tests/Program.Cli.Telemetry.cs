@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+#if !NET472
+using IntelligenceX.Cli.Telemetry;
+#endif
 using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Tests;
@@ -349,6 +352,17 @@ internal static partial class Program {
         } finally {
             TryDeleteUsageTelemetryImportTempDirectory(tempDir);
         }
+    }
+
+    private static void TestTelemetryUsageBuildGitHubSectionRequestsSupportsOwnerOnlyRuns() {
+        var requests = UsageTelemetryCliRunner.BuildGitHubSectionRequests(
+            Array.Empty<string>(),
+            new[] { "EvotecIT", "evotecit", "  " });
+
+        AssertEqual(1, requests.Count, "telemetry github owner-only request count");
+        AssertEqual(null, requests[0].Login, "telemetry github owner-only login");
+        AssertEqual(1, requests[0].Owners.Count, "telemetry github owner-only owners count");
+        AssertEqual("EvotecIT", requests[0].Owners[0], "telemetry github owner-only owner");
     }
 #endif
 }
