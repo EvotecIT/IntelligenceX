@@ -74,6 +74,12 @@ The OfficeIMO markdown runtime diagnostics are currently surfaced through:
 - startup renderer diagnostics in the App host
 - transcript forensic export snapshots
 
+The package-mode compatibility gate for this contract now lives in:
+
+- [../.github/scripts/run-officeimo-markdown-package-gate.ps1](../../.github/scripts/run-officeimo-markdown-package-gate.ps1)
+- [../.github/workflows/test-dotnet.yml](../../.github/workflows/test-dotnet.yml)
+- [../.github/workflows/test-dotnet-hosted.yml](../../.github/workflows/test-dotnet-hosted.yml)
+
 ## Merge Criteria For OfficeIMO Packaging
 
 Before merging package-dependent OfficeIMO updates into IntelligenceX:

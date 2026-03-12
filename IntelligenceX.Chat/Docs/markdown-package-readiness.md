@@ -21,7 +21,13 @@ The currently pinned package versions in [Directory.Build.props](../Directory.Bu
 
 ## Package-Mode Validation
 
-Validated on March 11, 2026 with `UseLocalOfficeImoCheckout=false`.
+Validated on March 12, 2026 with `UseLocalOfficeImoCheckout=false`.
+
+The package-mode gate merged in [PR #1153](https://github.com/EvotecIT/IntelligenceX/pull/1153) now enforces the package contract automatically on Windows PR runs via:
+
+- [../.github/scripts/run-officeimo-markdown-package-gate.ps1](../../.github/scripts/run-officeimo-markdown-package-gate.ps1)
+- [../.github/workflows/test-dotnet.yml](../../.github/workflows/test-dotnet.yml)
+- [../.github/workflows/test-dotnet-hosted.yml](../../.github/workflows/test-dotnet-hosted.yml)
 
 Successful commands:
 
@@ -29,13 +35,14 @@ Successful commands:
 dotnet restore IntelligenceX.Chat/IntelligenceX.Chat.ExportArtifacts/IntelligenceX.Chat.ExportArtifacts.csproj -p:UseLocalOfficeImoCheckout=false
 dotnet restore IntelligenceX.Chat/IntelligenceX.Chat.App.Tests/IntelligenceX.Chat.App.Tests.csproj -p:UseLocalOfficeImoCheckout=false
 dotnet build IntelligenceX.Chat/IntelligenceX.Chat.ExportArtifacts/IntelligenceX.Chat.ExportArtifacts.csproj -p:UseLocalOfficeImoCheckout=false
-dotnet test IntelligenceX.Chat/IntelligenceX.Chat.App.Tests/IntelligenceX.Chat.App.Tests.csproj -p:UseLocalOfficeImoCheckout=false --filter "FullyQualifiedName~TranscriptMarkdownContractTests|FullyQualifiedName~TranscriptMarkdownContractIntegrationTests|FullyQualifiedName~OfficeImoMarkdownRuntimeContractTests|FullyQualifiedName~OfficeImoMarkdownInputNormalizationRuntimeContractTests|FullyQualifiedName~LocalExportArtifactWriterTests"
+dotnet build IntelligenceX.Chat/IntelligenceX.Chat.App.Tests/IntelligenceX.Chat.App.Tests.csproj -p:UseLocalOfficeImoCheckout=false
 ```
 
 Observed result:
 
 - `IntelligenceX.Chat.ExportArtifacts` built successfully in package mode.
-- The focused package-mode markdown/export contract suite passed: `40` passed, `0` failed.
+- `IntelligenceX.Chat.App.Tests` built successfully in package mode.
+- The merged CI gate now validates package-mode restore/build compatibility without depending on a flaky hosted Windows testhost.
 
 ## Merge / Publish Gate
 
@@ -64,5 +71,5 @@ The cleanup work is now in good shape and package-mode validation is green, but 
 
 1. publish the intended OfficeIMO markdown package line
 2. open a fresh adoption PR against those exact versions
-3. rerun package-mode validation and UI/export checks
+3. rerun the merged package-mode gate and UI/export checks
 4. merge the adoption PR only after that final confirmation
