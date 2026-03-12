@@ -97,6 +97,19 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("  --max-artifacts <n>   Parse at most N source artifacts in this run, then resume later");
         Console.WriteLine("  --force               Reparse artifacts even when the incremental cache says they are unchanged");
         Console.WriteLine();
+        Console.WriteLine("Report options:");
+        Console.WriteLine("  --path <path>         Additional local or recovered folder/file to scan immediately");
+        Console.WriteLine("                        Repeat to include multiple roots (for example Windows.old backups).");
+        Console.WriteLine("  --account <value>     Filter by provider account id or account label");
+        Console.WriteLine("  --person <value>      Filter by person label");
+        Console.WriteLine("  --metric <name>       tokens|cost|duration|events (default: tokens)");
+        Console.WriteLine("  --title <text>        Override the report title");
+        Console.WriteLine("  --recent-first        Prefer newer artifacts first during quick scans (default)");
+        Console.WriteLine("  --max-artifacts <n>   Parse at most N artifacts during the quick scan");
+        Console.WriteLine("  --full-import         Use the durable DB-backed import path instead of the quick scan");
+        Console.WriteLine("  --out <path>          Write text or JSON output to a file");
+        Console.WriteLine("  --out-dir <path>      Export overview.json plus one SVG/JSON pair per heatmap");
+        Console.WriteLine();
         Console.WriteLine("Overview options:");
         Console.WriteLine("  --account <value>     Filter by provider account id or account label");
         Console.WriteLine("  --person <value>      Filter by person label");
@@ -483,18 +496,131 @@ internal static class UsageTelemetryCliRunner {
     }
 
     private static async Task<int> RunReportAsync(string[] args) {
-        var reportArgs = args.ToList();
-        if (!reportArgs.Any(static arg => string.Equals(arg, "--discover", StringComparison.OrdinalIgnoreCase))) {
-            reportArgs.Add("--discover");
-        }
-        if (!reportArgs.Any(static arg => string.Equals(arg, "--out-dir", StringComparison.OrdinalIgnoreCase))
-            && !reportArgs.Any(static arg => string.Equals(arg, "--out", StringComparison.OrdinalIgnoreCase))
-            && !reportArgs.Any(static arg => string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))) {
-            reportArgs.Add("--out-dir");
-            reportArgs.Add(Path.Combine("artifacts", "telemetry", "reports", "latest"));
+        var options = ReportOptions.Parse(args);
+        if (string.IsNullOrWhiteSpace(options.OutputDirectory)
+            && string.IsNullOrWhiteSpace(options.OutputPath)
+            && !options.Json) {
+            options.OutputDirectory = Path.Combine("artifacts", "telemetry", "reports", "latest");
         }
 
-        return await RunOverviewAsync(reportArgs.ToArray()).ConfigureAwait(false);
+        if (options.FullImport) {
+            var overviewArgs = new List<string>();
+            AddIfValue(overviewArgs, "--db", options.DatabasePath);
+            AddIfValue(overviewArgs, "--provider", options.ProviderId);
+            AddIfValue(overviewArgs, "--account", options.AccountFilter);
+            AddIfValue(overviewArgs, "--person", options.PersonFilter);
+            AddIfValue(overviewArgs, "--metric", MetricToCliValue(options.Metric));
+            AddIfValue(overviewArgs, "--title", options.Title);
+            if (options.RecentFirst) {
+                overviewArgs.Add("--recent-first");
+            }
+            if (options.MaxArtifacts.HasValue) {
+                overviewArgs.Add("--max-artifacts");
+                overviewArgs.Add(options.MaxArtifacts.Value.ToString(CultureInfo.InvariantCulture));
+            }
+            if (options.Force) {
+                overviewArgs.Add("--force");
+            }
+            if (options.Json) {
+                overviewArgs.Add("--json");
+            }
+            AddIfValue(overviewArgs, "--out", options.OutputPath);
+            AddIfValue(overviewArgs, "--out-dir", options.OutputDirectory);
+            overviewArgs.Add("--discover");
+            return await RunOverviewAsync(overviewArgs.ToArray()).ConfigureAwait(false);
+        }
+
+        return await RunQuickReportAsync(options).ConfigureAwait(false);
+    }
+
+    private static async Task<int> RunQuickReportAsync(ReportOptions options) {
+        var sourceRootStore = new InMemorySourceRootStore();
+        var eventStore = new InMemoryUsageEventStore();
+        var coordinator = CreateCoordinator(sourceRootStore, eventStore);
+        var dbPath = ResolveDatabasePath(options.DatabasePath);
+        using var rawArtifactStore = new SqliteRawArtifactStore(dbPath);
+
+        var quickScanArtifactBudget = options.MaxArtifacts;
+        UsageTelemetryQuickReportResult scanResult = new();
+        await RunUsageStatusAsync(
+            "Preparing quick telemetry report...",
+            "Preparing quick telemetry report...",
+            static _ => Task.CompletedTask,
+            async progress => {
+                progress("Discovering telemetry roots...");
+                var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
+                progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " default telemetry root(s)");
+
+                var adHocRoots = RegisterAdHocReportRoots(sourceRootStore, options);
+                if (adHocRoots.Count > 0) {
+                    progress("Queued " + adHocRoots.Count.ToString(CultureInfo.InvariantCulture) + " additional path(s) for the quick scan");
+                }
+
+                scanResult = await new UsageTelemetryQuickReportScanner().ScanAsync(
+                    sourceRootStore.GetAll(),
+                    new UsageTelemetryQuickReportOptions {
+                        ProviderId = options.ProviderId,
+                        MachineId = null,
+                        RawArtifactStore = rawArtifactStore,
+                        PreferRecentArtifacts = options.RecentFirst,
+                        MaxArtifacts = quickScanArtifactBudget,
+                        ForceReimport = options.Force,
+                        Progress = update => progress(BuildProgressMessage(update))
+                    },
+                    CancellationToken.None).ConfigureAwait(false);
+
+                progress("Parsed " + scanResult.ArtifactsParsed.ToString(CultureInfo.InvariantCulture)
+                         + " artifact(s), reused " + scanResult.ArtifactsReused.ToString(CultureInfo.InvariantCulture)
+                         + " cached artifact(s)");
+                progress("Rendering usage report...");
+            }).ConfigureAwait(false);
+
+        var events = scanResult.Events
+            .Where(record => MatchesProvider(record.ProviderId, options.ProviderId))
+            .Where(record => MatchesAccount(record, options.AccountFilter))
+            .Where(record => MatchesPerson(record, options.PersonFilter))
+            .OrderBy(record => record.TimestampUtc)
+            .ToArray();
+
+        if (events.Length == 0) {
+            throw new InvalidOperationException("No telemetry usage events matched the requested report filters.");
+        }
+
+        var effectiveProviderId = NormalizeOptional(options.ProviderId)
+                                  ?? InferSingleProviderId(events);
+        var overview = new UsageTelemetryOverviewBuilder().Build(
+            events,
+            new UsageTelemetryOverviewOptions {
+                Metric = options.Metric,
+                Title = NormalizeOptional(options.Title) ?? BuildOverviewTitle(effectiveProviderId),
+                Subtitle = BuildQuickReportSubtitle(options, dbPath, scanResult)
+            });
+
+        if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
+            var outputDirectory = Path.GetFullPath(options.OutputDirectory!);
+            WriteOverviewArtifacts(overview, outputDirectory);
+            Console.WriteLine("Wrote " + outputDirectory);
+            return 0;
+        }
+
+        var content = options.Json
+            ? JsonLite.Serialize(JsonValue.From(overview.ToJson()))
+            : BuildOverviewText(dbPath, overview);
+
+        if (string.IsNullOrWhiteSpace(options.OutputPath)) {
+            Console.WriteLine(content);
+            return 0;
+        }
+
+        var outputPath = Path.GetFullPath(options.OutputPath!);
+        var outDirectory = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrWhiteSpace(outDirectory)) {
+            Directory.CreateDirectory(outDirectory);
+        }
+
+        File.WriteAllText(outputPath, content, new UTF8Encoding(false));
+        Console.WriteLine("Wrote " + outputPath);
+        return 0;
     }
 
     private static async Task<int> RunOverviewAsync(string[] args) {
@@ -733,12 +859,16 @@ internal static class UsageTelemetryCliRunner {
             .Count();
     }
 
-    private static string BuildOverviewTitle(OverviewOptions options) {
-        if (!string.IsNullOrWhiteSpace(options.ProviderId)) {
-            return options.ProviderId!.Trim() + " overview";
+    private static string BuildOverviewTitle(string? providerId) {
+        if (!string.IsNullOrWhiteSpace(providerId)) {
+            return providerId!.Trim() + " overview";
         }
 
         return "Usage Overview";
+    }
+
+    private static string BuildOverviewTitle(OverviewOptions options) {
+        return BuildOverviewTitle(options.ProviderId);
     }
 
     private static string? BuildOverviewSubtitle(OverviewOptions options) {
@@ -753,6 +883,123 @@ internal static class UsageTelemetryCliRunner {
             parts.Add("person: " + options.PersonFilter!.Trim());
         }
         return parts.Count == 0 ? null : string.Join(" | ", parts);
+    }
+
+    private static string? BuildQuickReportSubtitle(
+        ReportOptions options,
+        string? dbPath,
+        UsageTelemetryQuickReportResult scanResult) {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(options.ProviderId)) {
+            parts.Add("provider: " + options.ProviderId!.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(options.AccountFilter)) {
+            parts.Add("account: " + options.AccountFilter!.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(options.PersonFilter)) {
+            parts.Add("person: " + options.PersonFilter!.Trim());
+        }
+        parts.Add("quick scan");
+        if (options.RecentFirst) {
+            parts.Add("recent-first");
+        }
+        if (options.MaxArtifacts.HasValue) {
+            parts.Add("artifact cap: " + options.MaxArtifacts.Value.ToString(CultureInfo.InvariantCulture));
+        }
+        parts.Add("parsed: " + scanResult.ArtifactsParsed.ToString(CultureInfo.InvariantCulture));
+        parts.Add("cached: " + scanResult.ArtifactsReused.ToString(CultureInfo.InvariantCulture));
+        if (scanResult.ArtifactBudgetReached) {
+            parts.Add("partial");
+        }
+        if (!string.IsNullOrWhiteSpace(dbPath)) {
+            parts.Add("cache: " + dbPath);
+        }
+        return string.Join(" | ", parts);
+    }
+
+    private static string? InferSingleProviderId(IReadOnlyList<UsageEventRecord> events) {
+        var providers = events
+            .Select(static record => NormalizeOptional(record.ProviderId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToArray();
+        return providers.Length == 1 ? providers[0] : null;
+    }
+
+    private static IReadOnlyList<SourceRootRecord> RegisterAdHocReportRoots(
+        ISourceRootStore sourceRootStore,
+        ReportOptions options) {
+        var roots = new List<SourceRootRecord>();
+        foreach (var rawPath in options.Paths) {
+            var normalizedPath = NormalizeOptional(rawPath);
+            if (string.IsNullOrWhiteSpace(normalizedPath)) {
+                continue;
+            }
+
+            var providerId = NormalizeOptional(options.ProviderId) ?? InferProviderIdFromPath(normalizedPath!);
+            if (string.IsNullOrWhiteSpace(providerId)) {
+                throw new InvalidOperationException(
+                    "Unable to infer the provider for '" + normalizedPath + "'. Use --provider <id> with --path.");
+            }
+
+            var sourceKind = InferSourceKindFromPath(normalizedPath!);
+            var root = new SourceRootRecord(
+                SourceRootRecord.CreateStableId(providerId!, sourceKind, normalizedPath!),
+                providerId!,
+                sourceKind,
+                normalizedPath!);
+            sourceRootStore.Upsert(root);
+            roots.Add(root);
+        }
+
+        return roots;
+    }
+
+    private static UsageSourceKind InferSourceKindFromPath(string path) {
+        var normalized = UsageTelemetryIdentity.NormalizePath(path);
+        if (normalized.IndexOf("windows.old", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return UsageSourceKind.RecoveredFolder;
+        }
+
+        return UsageSourceKind.LocalLogs;
+    }
+
+    private static string? InferProviderIdFromPath(string path) {
+        var normalized = UsageTelemetryIdentity.NormalizePath(path);
+        if (normalized.IndexOf(".codex", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            normalized.IndexOf(Path.DirectorySeparatorChar + "sessions", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            normalized.IndexOf(Path.AltDirectorySeparatorChar + "sessions", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "codex";
+        }
+
+        if (normalized.IndexOf(".claude", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            normalized.IndexOf(Path.DirectorySeparatorChar + "projects", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            normalized.IndexOf(Path.AltDirectorySeparatorChar + "projects", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "claude";
+        }
+
+        return null;
+    }
+
+    private static void AddIfValue(List<string> args, string optionName, string? value) {
+        var normalized = NormalizeOptional(value);
+        if (string.IsNullOrWhiteSpace(normalized)) {
+            return;
+        }
+
+        args.Add(optionName);
+        args.Add(normalized!);
+    }
+
+    private static string MetricToCliValue(UsageSummaryMetric metric) {
+        return metric switch {
+            UsageSummaryMetric.TotalTokens => "tokens",
+            UsageSummaryMetric.CostUsd => "cost",
+            UsageSummaryMetric.DurationMs => "duration",
+            UsageSummaryMetric.EventCount => "events",
+            _ => "tokens"
+        };
     }
 
     private static string BuildOverviewText(string dbPath, UsageTelemetryOverviewDocument overview) {
@@ -1156,6 +1403,77 @@ internal static class UsageTelemetryCliRunner {
                         throw new InvalidOperationException($"Unknown option or unexpected argument: {args[i]}");
                 }
             }
+            return options;
+        }
+    }
+
+    private sealed class ReportOptions {
+        public string? DatabasePath { get; set; }
+        public string? ProviderId { get; set; }
+        public string? AccountFilter { get; set; }
+        public string? PersonFilter { get; set; }
+        public UsageSummaryMetric Metric { get; set; } = UsageSummaryMetric.TotalTokens;
+        public string? Title { get; set; }
+        public string? OutputPath { get; set; }
+        public string? OutputDirectory { get; set; }
+        public bool RecentFirst { get; set; } = true;
+        public int? MaxArtifacts { get; set; }
+        public bool Force { get; set; }
+        public bool FullImport { get; set; }
+        public bool Json { get; set; }
+        public List<string> Paths { get; } = new();
+
+        public static ReportOptions Parse(string[] args) {
+            var options = new ReportOptions();
+            for (var i = 0; i < args.Length; i++) {
+                switch (args[i]) {
+                    case "--db":
+                        options.DatabasePath = ReadValue(args, ref i);
+                        break;
+                    case "--provider":
+                        options.ProviderId = ReadValue(args, ref i);
+                        break;
+                    case "--path":
+                        options.Paths.Add(ReadValue(args, ref i));
+                        break;
+                    case "--account":
+                        options.AccountFilter = ReadValue(args, ref i);
+                        break;
+                    case "--person":
+                        options.PersonFilter = ReadValue(args, ref i);
+                        break;
+                    case "--metric":
+                        options.Metric = ParseMetric(ReadValue(args, ref i));
+                        break;
+                    case "--title":
+                        options.Title = ReadValue(args, ref i);
+                        break;
+                    case "--recent-first":
+                        options.RecentFirst = true;
+                        break;
+                    case "--max-artifacts":
+                        options.MaxArtifacts = ParsePositiveInt32(ReadValue(args, ref i), "--max-artifacts");
+                        break;
+                    case "--force":
+                        options.Force = true;
+                        break;
+                    case "--full-import":
+                        options.FullImport = true;
+                        break;
+                    case "--out":
+                        options.OutputPath = ReadValue(args, ref i);
+                        break;
+                    case "--out-dir":
+                        options.OutputDirectory = ReadValue(args, ref i);
+                        break;
+                    case "--json":
+                        options.Json = true;
+                        break;
+                    default:
+                        throw new InvalidOperationException($"Unknown option or unexpected argument: {args[i]}");
+                }
+            }
+
             return options;
         }
     }

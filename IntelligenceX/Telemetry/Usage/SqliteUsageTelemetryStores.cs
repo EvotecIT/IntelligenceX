@@ -357,7 +357,9 @@ INSERT INTO ix_usage_raw_artifacts (
   parser_version,
   size_bytes,
   last_write_utc,
-  imported_at_utc
+  imported_at_utc,
+  parsed_bytes,
+  state_json
 )
 VALUES (
   @source_root_id,
@@ -367,14 +369,18 @@ VALUES (
   @parser_version,
   @size_bytes,
   @last_write_utc,
-  @imported_at_utc
+  @imported_at_utc,
+  @parsed_bytes,
+  @state_json
 )
 ON CONFLICT(source_root_id, adapter_id, path) DO UPDATE SET
   fingerprint = excluded.fingerprint,
   parser_version = excluded.parser_version,
   size_bytes = excluded.size_bytes,
   last_write_utc = excluded.last_write_utc,
-  imported_at_utc = excluded.imported_at_utc;",
+  imported_at_utc = excluded.imported_at_utc,
+  parsed_bytes = excluded.parsed_bytes,
+  state_json = excluded.state_json;",
                 parameters: new Dictionary<string, object?> {
                     ["@source_root_id"] = artifact.SourceRootId,
                     ["@adapter_id"] = artifact.AdapterId,
@@ -383,7 +389,9 @@ ON CONFLICT(source_root_id, adapter_id, path) DO UPDATE SET
                     ["@parser_version"] = SqliteUsageTelemetrySchema.Normalize(artifact.ParserVersion),
                     ["@size_bytes"] = artifact.SizeBytes,
                     ["@last_write_utc"] = artifact.LastWriteTimeUtc?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-                    ["@imported_at_utc"] = artifact.ImportedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+                    ["@imported_at_utc"] = artifact.ImportedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                    ["@parsed_bytes"] = artifact.ParsedBytes,
+                    ["@state_json"] = SqliteUsageTelemetrySchema.Normalize(artifact.StateJson)
                 });
         }
     }
@@ -409,7 +417,9 @@ SELECT
   parser_version,
   size_bytes,
   last_write_utc,
-  imported_at_utc
+  imported_at_utc,
+  parsed_bytes,
+  state_json
 FROM ix_usage_raw_artifacts
 WHERE source_root_id = @source_root_id
   AND adapter_id = @adapter_id
@@ -445,7 +455,9 @@ SELECT
   parser_version,
   size_bytes,
   last_write_utc,
-  imported_at_utc
+  imported_at_utc,
+  parsed_bytes,
+  state_json
 FROM ix_usage_raw_artifacts
 ORDER BY source_root_id, adapter_id, path;"));
 
@@ -478,7 +490,9 @@ ORDER BY source_root_id, adapter_id, path;"));
             ParserVersion = SqliteUsageTelemetrySchema.ReadOptionalString(row, "parser_version"),
             SizeBytes = SqliteUsageTelemetrySchema.ReadNullableInt64(row, "size_bytes"),
             LastWriteTimeUtc = SqliteUsageTelemetrySchema.ReadNullableDateTimeOffset(row, "last_write_utc"),
-            ImportedAtUtc = SqliteUsageTelemetrySchema.ReadNullableDateTimeOffset(row, "imported_at_utc") ?? DateTimeOffset.MinValue
+            ImportedAtUtc = SqliteUsageTelemetrySchema.ReadNullableDateTimeOffset(row, "imported_at_utc") ?? DateTimeOffset.MinValue,
+            ParsedBytes = SqliteUsageTelemetrySchema.ReadNullableInt64(row, "parsed_bytes"),
+            StateJson = SqliteUsageTelemetrySchema.ReadOptionalString(row, "state_json")
         };
         return artifact;
     }
@@ -1172,6 +1186,8 @@ CREATE TABLE IF NOT EXISTS ix_usage_raw_artifacts (
   size_bytes INTEGER NULL,
   last_write_utc TEXT NULL,
   imported_at_utc TEXT NOT NULL,
+  parsed_bytes INTEGER NULL,
+  state_json TEXT NULL,
   PRIMARY KEY(source_root_id, adapter_id, path)
 );
 
@@ -1228,6 +1244,16 @@ CREATE INDEX IF NOT EXISTS ix_usage_events_session ON ix_usage_events(provider_i
 CREATE INDEX IF NOT EXISTS ix_usage_events_response ON ix_usage_events(provider_id, response_id);");
         try {
             db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_events ADD COLUMN person_label TEXT NULL;");
+        } catch {
+            // Ignore when the column already exists.
+        }
+        try {
+            db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_raw_artifacts ADD COLUMN parsed_bytes INTEGER NULL;");
+        } catch {
+            // Ignore when the column already exists.
+        }
+        try {
+            db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_raw_artifacts ADD COLUMN state_json TEXT NULL;");
         } catch {
             // Ignore when the column already exists.
         }

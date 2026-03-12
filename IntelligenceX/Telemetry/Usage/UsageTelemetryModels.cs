@@ -225,6 +225,16 @@ public sealed class RawArtifactDescriptor {
     public DateTimeOffset ImportedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>
+    /// Gets or sets the number of bytes parsed from this artifact when incremental scanners track offsets.
+    /// </summary>
+    public long? ParsedBytes { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional scanner-specific cached state for quick report generation.
+    /// </summary>
+    public string? StateJson { get; set; }
+
+    /// <summary>
     /// Creates a file-backed raw-artifact descriptor using file metadata as the incremental fingerprint.
     /// </summary>
     public static RawArtifactDescriptor CreateFile(

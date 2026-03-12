@@ -284,7 +284,6 @@ internal static partial class Program {
                 includeAuth: false,
                 authRoot: codexHome);
 
-            var dbPath = Path.Combine(tempDir, "usage.db");
             var exportDir = Path.Combine(tempDir, "report");
             var previousCodexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
             Environment.SetEnvironmentVariable("CODEX_HOME", codexHome);
@@ -293,8 +292,8 @@ internal static partial class Program {
                 var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
                     new[] {
                         "telemetry", "usage", "report",
-                        "--db", dbPath,
                         "--provider", "codex",
+                        "--max-artifacts", "10",
                         "--out-dir", exportDir
                     },
                     () => false,
@@ -306,9 +305,43 @@ internal static partial class Program {
                 AssertEqual(true, File.Exists(Path.Combine(exportDir, "index.html")), "telemetry report export html");
                 AssertEqual(true, File.Exists(Path.Combine(exportDir, "provider-codex.svg")), "telemetry report provider codex svg");
                 AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "INPUT TOKENS", "telemetry report html input tokens");
+                AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "overview.json")), "quick scan", "telemetry report quick scan subtitle");
             } finally {
                 Environment.SetEnvironmentVariable("CODEX_HOME", previousCodexHome);
             }
+        } finally {
+            TryDeleteUsageTelemetryImportTempDirectory(tempDir);
+        }
+    }
+
+    private static void TestTelemetryUsageReportSupportsAdHocRecoveredPath() {
+        var tempDir = CreateUsageTelemetryImportTempDirectory();
+        try {
+            var recoveredRoot = Path.Combine(tempDir, "Windows.old", "Users", "me", ".codex", "sessions");
+            Directory.CreateDirectory(recoveredRoot);
+            WriteCodexRolloutFile(
+                Path.Combine(recoveredRoot, "rollout-2026-03-11T14-00-00-thread-cli.jsonl"),
+                "thread-cli",
+                "resp-cli",
+                includeAuth: false,
+                authRoot: recoveredRoot);
+
+            var exportDir = Path.Combine(tempDir, "report-recovered");
+            var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
+                new[] {
+                    "telemetry", "usage", "report",
+                    "--path", recoveredRoot,
+                    "--max-artifacts", "10",
+                    "--out-dir", exportDir
+                },
+                () => false,
+                _ => Task.FromResult(0));
+
+            AssertEqual(0, exit, "telemetry report recovered path exit");
+            AssertContainsText(stdout, exportDir, "telemetry report recovered path output");
+            AssertEqual(string.Empty, stderr, "telemetry report recovered path stderr");
+            AssertEqual(true, File.Exists(Path.Combine(exportDir, "index.html")), "telemetry report recovered path html");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "Codex", "telemetry report recovered path codex section");
         } finally {
             TryDeleteUsageTelemetryImportTempDirectory(tempDir);
         }
