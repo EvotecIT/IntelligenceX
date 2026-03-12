@@ -381,15 +381,22 @@ public sealed class UsageTelemetryOverviewBuilder {
     private static UsageTelemetryOverviewProviderSection BuildProviderSection(
         IGrouping<string, UsageEventRecord> providerGroup) {
         var providerId = providerGroup.Key;
-        var events = providerGroup
+        var allEvents = providerGroup
             .Where(static record => record is not null)
             .OrderBy(static record => record.TimestampUtc)
             .ToArray();
+        var latestDayUtc = allEvents.Length == 0
+            ? DateTime.UtcNow.Date
+            : allEvents[allEvents.Length - 1].TimestampUtc.UtcDateTime.Date;
+        var rangeEndUtc = latestDayUtc;
+        var rangeStartUtc = latestDayUtc.AddDays(-364);
+        var events = allEvents
+            .Where(record => record.TimestampUtc.UtcDateTime.Date >= rangeStartUtc
+                             && record.TimestampUtc.UtcDateTime.Date <= rangeEndUtc)
+            .ToArray();
 
         var title = ResolveProviderTitle(providerId);
-        var subtitle = BuildRangeLabel(
-            events.Length == 0 ? null : events[0].TimestampUtc.UtcDateTime.Date,
-            events.Length == 0 ? null : events[events.Length - 1].TimestampUtc.UtcDateTime.Date);
+        var subtitle = BuildRangeLabel(rangeStartUtc, rangeEndUtc);
         var inputTokens = events.Sum(static record => record.InputTokens ?? 0L);
         var outputTokens = events.Sum(static record => record.OutputTokens ?? 0L);
         var totalTokens = events.Sum(static record => record.TotalTokens ?? 0L);
@@ -398,7 +405,7 @@ public sealed class UsageTelemetryOverviewBuilder {
         var (longestStreakDays, currentStreakDays) = ComputeStreaks(events);
         var note = BuildCoverageNote(events);
 
-        var heatmap = BuildProviderHeatmap(title, providerId, events);
+        var heatmap = BuildProviderHeatmap(title, providerId, events, rangeStartUtc, rangeEndUtc);
 
         return new UsageTelemetryOverviewProviderSection(
             key: "provider-" + NormalizeKey(providerId),
@@ -419,7 +426,9 @@ public sealed class UsageTelemetryOverviewBuilder {
     private static HeatmapDocument BuildProviderHeatmap(
         string title,
         string providerId,
-        IReadOnlyList<UsageEventRecord> events) {
+        IReadOnlyList<UsageEventRecord> events,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc) {
         var aggregates = new UsageDailyAggregateBuilder().Build(
             events,
             new UsageDailyAggregateOptions {
@@ -442,7 +451,10 @@ public sealed class UsageTelemetryOverviewBuilder {
                 LegendEntries = Array.Empty<UsageHeatmapLegendEntry>(),
                 ShowDocumentHeader = false,
                 ShowSectionHeaders = false,
-                CompactWeekdayLabels = true
+                CompactWeekdayLabels = true,
+                GroupSectionsByYear = false,
+                RangeStartUtc = rangeStartUtc,
+                RangeEndUtc = rangeEndUtc
             });
     }
 

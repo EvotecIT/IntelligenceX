@@ -99,4 +99,61 @@ internal static partial class Program {
         AssertEqual(true, document.LegendItems.Any(item => item.Label == "Codex"), "cost heatmap legend codex");
         AssertEqual(true, document.LegendItems.Any(item => item.Label == "Claude"), "cost heatmap legend claude");
     }
+
+    private static void TestUsageHeatmapDocumentBuilderPadsExplicitRange() {
+        var builder = new UsageHeatmapDocumentBuilder();
+        var document = builder.Build(
+            new[] {
+                new UsageDailyAggregateRecord(new DateTime(2026, 03, 10)) {
+                    ProviderId = "codex",
+                    TotalTokens = 120,
+                    TruthLevel = UsageTruthLevel.Exact
+                }
+            },
+            new UsageHeatmapDocumentOptions {
+                Title = "Padded range",
+                Metric = UsageHeatmapMetric.TotalTokens,
+                BreakdownDimension = UsageHeatmapBreakdownDimension.None,
+                RangeStartUtc = new DateTime(2026, 03, 01),
+                RangeEndUtc = new DateTime(2026, 03, 12)
+            });
+
+        AssertEqual(1, document.Sections.Count, "padded heatmap section count");
+        AssertEqual(12, document.Sections[0].Days.Count, "padded heatmap day count");
+        AssertEqual(new DateTime(2026, 03, 01), document.Sections[0].Days[0].Date, "padded heatmap first date");
+        AssertEqual(new DateTime(2026, 03, 12), document.Sections[0].Days[11].Date, "padded heatmap last date");
+        AssertEqual(0d, document.Sections[0].Days[0].Value, "padded heatmap empty day value");
+        AssertEqual(120d, document.Sections[0].Days.Single(day => day.Date == new DateTime(2026, 03, 10)).Value, "padded heatmap active day value");
+    }
+
+    private static void TestUsageHeatmapDocumentBuilderSupportsSingleRangeSection() {
+        var builder = new UsageHeatmapDocumentBuilder();
+        var document = builder.Build(
+            new[] {
+                new UsageDailyAggregateRecord(new DateTime(2025, 12, 31)) {
+                    ProviderId = "codex",
+                    TotalTokens = 50,
+                    TruthLevel = UsageTruthLevel.Exact
+                },
+                new UsageDailyAggregateRecord(new DateTime(2026, 01, 01)) {
+                    ProviderId = "codex",
+                    TotalTokens = 75,
+                    TruthLevel = UsageTruthLevel.Exact
+                }
+            },
+            new UsageHeatmapDocumentOptions {
+                Title = "Single range",
+                Metric = UsageHeatmapMetric.TotalTokens,
+                BreakdownDimension = UsageHeatmapBreakdownDimension.None,
+                GroupSectionsByYear = false,
+                RangeStartUtc = new DateTime(2025, 12, 30),
+                RangeEndUtc = new DateTime(2026, 01, 02)
+            });
+
+        AssertEqual(1, document.Sections.Count, "single range heatmap section count");
+        AssertEqual("2025-12-30 -> 2026-01-02", document.Sections[0].Title, "single range heatmap section title");
+        AssertEqual(4, document.Sections[0].Days.Count, "single range heatmap padded day count");
+        AssertEqual(new DateTime(2025, 12, 30), document.Sections[0].Days[0].Date, "single range heatmap first date");
+        AssertEqual(new DateTime(2026, 01, 02), document.Sections[0].Days[3].Date, "single range heatmap last date");
+    }
 }

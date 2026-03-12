@@ -231,7 +231,9 @@ public static class HeatmapSvgRenderer {
         var monthCursor = new DateTime(start.Year, start.Month, 1);
         while (monthCursor <= end) {
             var weekIndex = Math.Max(0, (monthCursor - alignedStart).Days / 7);
-            labels.Add(new MonthLabel(monthCursor.ToString("MMM", CultureInfo.InvariantCulture), weekIndex));
+            if (labels.Count == 0 || labels[labels.Count - 1].WeekIndex != weekIndex) {
+                labels.Add(new MonthLabel(monthCursor.ToString("MMM", CultureInfo.InvariantCulture), weekIndex));
+            }
             monthCursor = monthCursor.AddMonths(1);
         }
         return labels;

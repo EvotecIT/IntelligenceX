@@ -56,6 +56,9 @@ public sealed class UsageHeatmapDocumentOptions {
     public bool ShowDocumentHeader { get; set; } = true;
     public bool ShowSectionHeaders { get; set; } = true;
     public bool CompactWeekdayLabels { get; set; }
+    public DateTime? RangeStartUtc { get; set; }
+    public DateTime? RangeEndUtc { get; set; }
+    public bool GroupSectionsByYear { get; set; } = true;
 }
 
 /// <summary>
@@ -96,31 +99,49 @@ public sealed class UsageHeatmapDocumentBuilder {
                 compactWeekdayLabels: effectiveOptions.CompactWeekdayLabels);
         }
 
-        var days = aggregateList
+        var sourceDays = aggregateList
             .GroupBy(static aggregate => aggregate.DayUtc.Date)
             .Select(group => BuildDay(group.Key, group, effectiveOptions, legendByKey))
             .OrderBy(static day => day.Date)
             .ToArray();
 
-        var maxValue = days.Max(static day => day.Total);
-        var heatmapDays = days
+        var maxValue = sourceDays.Max(static day => day.Total);
+        var renderedDays = sourceDays
             .Select(day => day.ToHeatmapDay(maxValue, effectiveOptions.Palette, legendByKey))
             .ToArray();
+        var rangeStartUtc = NormalizeRangeBoundary(effectiveOptions.RangeStartUtc, renderedDays[0].Date);
+        var rangeEndUtc = NormalizeRangeBoundary(effectiveOptions.RangeEndUtc, renderedDays[renderedDays.Length - 1].Date);
+        if (rangeEndUtc < rangeStartUtc) {
+            var swap = rangeStartUtc;
+            rangeStartUtc = rangeEndUtc;
+            rangeEndUtc = swap;
+        }
 
-        var sections = heatmapDays
-            .GroupBy(static day => day.Date.Year)
-            .OrderByDescending(static group => group.Key)
-            .Select(group => {
-                var yearDays = group.OrderBy(static day => day.Date).ToArray();
-                var activeDays = yearDays.Count(static day => day.Value > 0d);
-                var peak = yearDays.Max(static day => day.Value);
-                var subtitle = $"{activeDays} active day(s), peak {FormatMetric(peak, effectiveOptions.Metric)} {ResolveUnitsLabel(effectiveOptions.Units)}";
-                return new HeatmapSection(group.Key.ToString(CultureInfo.InvariantCulture), subtitle, yearDays);
-            })
-            .Cast<HeatmapSection>()
-            .ToArray();
+        var renderedDayLookup = renderedDays.ToDictionary(static day => day.Date, static day => day);
+        var heatmapDays = ExpandRange(renderedDayLookup, rangeStartUtc, rangeEndUtc, effectiveOptions.Palette.EmptyColor);
 
-        var legendItems = days
+        var sections = effectiveOptions.GroupSectionsByYear
+            ? heatmapDays
+                .GroupBy(static day => day.Date.Year)
+                .OrderByDescending(static group => group.Key)
+                .Select(group => {
+                    var yearDays = group.OrderBy(static day => day.Date).ToArray();
+                    var activeDays = yearDays.Count(static day => day.Value > 0d);
+                    var peak = yearDays.Max(static day => day.Value);
+                    var subtitle = $"{activeDays} active day(s), peak {FormatMetric(peak, effectiveOptions.Metric)} {ResolveUnitsLabel(effectiveOptions.Units)}";
+                    return new HeatmapSection(group.Key.ToString(CultureInfo.InvariantCulture), subtitle, yearDays);
+                })
+                .Cast<HeatmapSection>()
+                .ToArray()
+            : new[] {
+                BuildSingleRangeSection(
+                    heatmapDays,
+                    rangeStartUtc,
+                    rangeEndUtc,
+                    effectiveOptions)
+            };
+
+        var legendItems = sourceDays
             .SelectMany(static day => day.BreakdownKeys)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(key => legendByKey.TryGetValue(key!, out var entry)
@@ -144,6 +165,47 @@ public sealed class UsageHeatmapDocumentBuilder {
             showDocumentHeader: effectiveOptions.ShowDocumentHeader,
             showSectionHeaders: effectiveOptions.ShowSectionHeaders,
             compactWeekdayLabels: effectiveOptions.CompactWeekdayLabels);
+    }
+
+    private static DateTime NormalizeRangeBoundary(DateTime? value, DateTime fallback) {
+        return value?.Date ?? fallback.Date;
+    }
+
+    private static HeatmapSection BuildSingleRangeSection(
+        IReadOnlyList<HeatmapDay> heatmapDays,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        UsageHeatmapDocumentOptions options) {
+        var activeDays = heatmapDays.Count(static day => day.Value > 0d);
+        var peak = heatmapDays.Max(static day => day.Value);
+        var subtitle = $"{activeDays} active day(s), peak {FormatMetric(peak, options.Metric)} {ResolveUnitsLabel(options.Units)}";
+        var title = rangeStartUtc == rangeEndUtc
+            ? rangeStartUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : $"{rangeStartUtc:yyyy-MM-dd} -> {rangeEndUtc:yyyy-MM-dd}";
+        return new HeatmapSection(title, subtitle, heatmapDays);
+    }
+
+    private static HeatmapDay[] ExpandRange(
+        IReadOnlyDictionary<DateTime, HeatmapDay> renderedDayLookup,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        string emptyColor) {
+        var days = new List<HeatmapDay>();
+        for (var cursor = rangeStartUtc.Date; cursor <= rangeEndUtc.Date; cursor = cursor.AddDays(1)) {
+            if (renderedDayLookup.TryGetValue(cursor, out var existing)) {
+                days.Add(existing);
+                continue;
+            }
+
+            days.Add(new HeatmapDay(
+                cursor,
+                0d,
+                level: 0,
+                fillColor: emptyColor,
+                tooltip: cursor.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        }
+
+        return days.ToArray();
     }
 
     private static UsageHeatmapSourceDay BuildDay(

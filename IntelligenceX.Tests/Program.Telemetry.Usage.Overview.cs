@@ -61,9 +61,13 @@ internal static partial class Program {
         AssertEqual("Codex", overview.ProviderSections[0].Title, "usage overview first provider section title");
         AssertEqual(900L, overview.ProviderSections[0].InputTokens, "usage overview codex input tokens");
         AssertEqual(300L, overview.ProviderSections[0].OutputTokens, "usage overview codex output tokens");
+        AssertEqual("2025-03-12 -> 2026-03-10", overview.ProviderSections[0].Subtitle, "usage overview codex trailing year subtitle");
         AssertEqual("gpt-5-codex", overview.ProviderSections[0].MostUsedModel?.Model, "usage overview codex most used model");
         AssertEqual(1, overview.ProviderSections[0].LongestStreakDays, "usage overview codex longest streak");
         AssertEqual("provider-codex", overview.ProviderSections[0].Key, "usage overview codex section key");
+        AssertEqual(1, overview.ProviderSections[0].Heatmap.Sections.Count, "usage overview codex single heatmap section");
+        AssertEqual(new DateTime(2025, 03, 12), overview.ProviderSections[0].Heatmap.Sections[0].Days[0].Date, "usage overview codex heatmap first padded day");
+        AssertEqual(new DateTime(2026, 03, 10), overview.ProviderSections[0].Heatmap.Sections[0].Days[overview.ProviderSections[0].Heatmap.Sections[0].Days.Count - 1].Date, "usage overview codex heatmap last padded day");
         AssertEqual("surface", overview.Heatmaps[0].Key, "usage overview first heatmap key");
         AssertContainsText(overview.Heatmaps.Single(heatmap => heatmap.Key == "provider").Document.Title, "By provider", "usage overview provider heatmap title");
         var json = JsonLite.Serialize(JsonValue.From(overview.ToJson()));

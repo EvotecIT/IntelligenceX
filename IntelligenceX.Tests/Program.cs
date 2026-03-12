@@ -47,6 +47,10 @@ internal static partial class Program {
             TestUsageHeatmapDocumentBuilderBuildsSurfaceLegendAndTooltip);
         failed += Run("Usage heatmap document builder supports cost metric and year sections",
             TestUsageHeatmapDocumentBuilderSupportsCostMetricAndYearSections);
+        failed += Run("Usage heatmap document builder pads explicit range",
+            TestUsageHeatmapDocumentBuilderPadsExplicitRange);
+        failed += Run("Usage heatmap document builder supports single range section",
+            TestUsageHeatmapDocumentBuilderSupportsSingleRangeSection);
         failed += Run("Usage summary builder calculates totals peak and rolling windows",
             TestUsageSummaryBuilderCalculatesTotalsPeakAndRollingWindows);
         failed += Run("Usage summary builder builds top breakdowns",
