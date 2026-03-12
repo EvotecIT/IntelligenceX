@@ -81,7 +81,7 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
     }
 
     [Fact]
-    public void ApplyKnownHostTargetFallbacks_ReplacesExistingEmptyAliasKeysAcrossSupportedArguments() {
+    public void ApplyKnownHostTargetFallbacks_PreservesOriginalScalarTargetKeyWhenOtherAliasesExist() {
         var schema = new JsonObject()
             .Add("type", "object")
             .Add("properties", new JsonObject()
@@ -104,9 +104,36 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
 
         var targets = repaired.Arguments?.GetArray("targets");
         Assert.NotNull(targets);
-        Assert.Equal(2, targets!.Count);
-        Assert.Equal("AD0.ad.evotec.xyz", targets[0]?.AsString());
-        Assert.Equal("AD1.ad.evotec.xyz", targets[1]?.AsString());
+        Assert.Empty(targets!);
+    }
+
+    [Fact]
+    public void ApplyKnownHostTargetFallbacks_PreservesOriginalArrayTargetShape() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("targets", new JsonObject()
+                    .Add("type", "array")
+                    .Add("items", new JsonObject().Add("type", "string")))
+                .Add("machine_name", new JsonObject().Add("type", "string"))
+                .Add("log_name", new JsonObject().Add("type", "string")));
+        var definition = new ToolDefinition("eventlog_live_query", parameters: schema);
+        var call = BuildToolCall("call_1", "eventlog_live_query", """{"targets":[],"log_name":"System"}""");
+
+        var repaired = InvokeApplyKnownHostTargetFallbacks(
+            call,
+            definition,
+            new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.NotSame(call, repaired);
+        Assert.Equal("System", repaired.Arguments?.GetString("log_name"));
+        Assert.Null(repaired.Arguments?.GetString("machine_name"));
+
+        var targetsArray = repaired.Arguments?.GetArray("targets");
+        Assert.NotNull(targetsArray);
+        Assert.Equal(2, targetsArray!.Count);
+        Assert.Equal("AD0.ad.evotec.xyz", targetsArray[0]?.AsString());
+        Assert.Equal("AD1.ad.evotec.xyz", targetsArray[1]?.AsString());
     }
 
     [Fact]
@@ -416,21 +443,16 @@ Continue that failure-signature collection across all remaining DCs in this turn
             Assert.False(string.IsNullOrWhiteSpace(target));
 
             var targetsArray = repaired.Arguments?.GetArray("targets");
-            Assert.NotNull(targetsArray);
-            var orderedTargets = targetsArray!
-                .Select(static value => value?.AsString() ?? string.Empty)
-                .Where(static value => !string.IsNullOrWhiteSpace(value))
-                .ToArray();
-            Assert.NotEmpty(orderedTargets);
+            Assert.Null(targetsArray);
 
             if (iteration == 0) {
                 baselineTarget = target;
-                baselineTargets = orderedTargets;
+                baselineTargets = Array.Empty<string>();
                 continue;
             }
 
             Assert.Equal(baselineTarget, target);
-            Assert.Equal(baselineTargets, orderedTargets);
+            Assert.Equal(baselineTargets, Array.Empty<string>());
         }
     }
 

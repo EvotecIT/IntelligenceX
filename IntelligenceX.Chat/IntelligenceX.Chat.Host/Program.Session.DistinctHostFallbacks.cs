@@ -542,45 +542,24 @@ internal static partial class Program {
             }
 
             normalizedTargets = OrderHostTargetCandidatesBySpecificity(normalizedTargets);
-            var supportedHostTargetArguments = ToolHostTargeting.GetSupportedHostTargetArguments(definition);
-            if (supportedHostTargetArguments.Count == 0) {
-                supportedHostTargetArguments = new[] { targetKey };
-            }
-
-            var supportedHostTargetArgumentSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < supportedHostTargetArguments.Count; i++) {
-                var candidateKey = supportedHostTargetArguments[i];
-                if (candidateKey.Length > 0) {
-                    supportedHostTargetArgumentSet.Add(candidateKey);
-                }
-            }
-
             var patchedArguments = new JsonObject(StringComparer.Ordinal);
             foreach (var pair in call.Arguments) {
-                if (supportedHostTargetArgumentSet.Contains(pair.Key)) {
+                if (string.Equals(pair.Key, targetKey, StringComparison.OrdinalIgnoreCase)) {
                     continue;
                 }
 
                 patchedArguments.Add(pair.Key, pair.Value);
             }
 
-            for (var i = 0; i < supportedHostTargetArguments.Count; i++) {
-                var candidateKey = supportedHostTargetArguments[i];
-                if (candidateKey.Length == 0) {
-                    continue;
+            if (keyIsArray) {
+                var targetsArray = new JsonArray();
+                for (var targetIndex = 0; targetIndex < normalizedTargets.Count; targetIndex++) {
+                    targetsArray.Add(normalizedTargets[targetIndex]);
                 }
 
-                if (ToolHostTargetArgumentNames.IsArrayArgument(candidateKey)) {
-                    var targetsArray = new JsonArray();
-                    for (var targetIndex = 0; targetIndex < normalizedTargets.Count; targetIndex++) {
-                        targetsArray.Add(normalizedTargets[targetIndex]);
-                    }
-
-                    patchedArguments[candidateKey] = JsonValue.From(targetsArray);
-                    continue;
-                }
-
-                patchedArguments[candidateKey] = JsonValue.From(normalizedTargets[0]);
+                patchedArguments[targetKey] = JsonValue.From(targetsArray);
+            } else {
+                patchedArguments[targetKey] = JsonValue.From(normalizedTargets[0]);
             }
 
             var patchedInput = JsonLite.Serialize(JsonValue.From(patchedArguments));

@@ -680,10 +680,7 @@ Continue recurring-error analysis across all remaining DCs in this turn.
 
         Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("target"));
         var targets = repaired.Arguments?.GetArray("targets");
-        Assert.NotNull(targets);
-        Assert.Equal(2, targets!.Count);
-        Assert.Equal("AD0.ad.evotec.xyz", targets[0].AsString());
-        Assert.Equal("AD1.ad.evotec.xyz", targets[1].AsString());
+        Assert.Null(targets);
     }
 
     [Fact]
@@ -703,8 +700,7 @@ Continue recurring-error analysis across all remaining DCs in this turn.
 
         Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("target"));
         var targets = repaired.Arguments?.GetArray("targets");
-        Assert.NotNull(targets);
-        Assert.Equal("AD0.ad.evotec.xyz", targets![0].AsString());
+        Assert.Null(targets);
     }
 
 }
