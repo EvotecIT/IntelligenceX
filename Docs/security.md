@@ -1,12 +1,19 @@
+---
+title: IntelligenceX Security and Trust Model
+description: Learn how IntelligenceX keeps code, credentials, GitHub Apps, and review workflows under your control with a zero-trust design and no hosted backend.
+---
+
 # Security and Trust Model
 
-IntelligenceX is built on a zero-trust design. You do not have to trust us - you trust your own environment.
+IntelligenceX is built on a zero-trust design.
+You do not have to trust an IntelligenceX backend because there is no IntelligenceX backend in the reviewer, IX Chat, CLI, or setup flows.
 
 ## Core Principles
 
 ### No Backend Service
 
-IntelligenceX has no backend. Onboarding happens locally on your machine, and the reviewer runs in your GitHub Actions environment.
+IntelligenceX has no hosted control plane.
+Onboarding happens locally on your machine, IX Chat stores state locally, and the reviewer runs inside your GitHub Actions environment.
 
 ### Your Credentials, Your Control
 

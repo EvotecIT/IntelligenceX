@@ -1,6 +1,17 @@
+---
+title: IntelligenceX Troubleshooting
+description: Troubleshoot common IntelligenceX issues across authentication, reviewer workflows, IX Chat runtimes, local providers, CLI setup, and self-hosted runners.
+---
+
 # Troubleshooting
 
-Common IntelligenceX issues and fixes.
+Common IntelligenceX issues and fixes across reviewer onboarding, IX Chat runtimes, local providers, GitHub workflows, and CLI setup.
+
+## Before You Dig In
+
+- Confirm which surface is failing: reviewer workflow, IX Chat, CLI setup, local provider, or self-hosted runner.
+- Re-run the closest guided flow first: [Getting Started](/docs/getting-started/), [Reviewer Overview](/docs/reviewer/overview/), or [IX Chat Overview](/docs/chat/overview/).
+- If the issue involves credentials or trust boundaries, review [Security & Trust](/docs/security/).
 
 ## Authentication Errors
 
@@ -92,6 +103,7 @@ Common causes:
 - Workflow file not on default branch yet
 - Trigger source cannot start workflows
 - Actions disabled in repository settings
+- Required secrets or GitHub App settings are missing after setup
 
 ### Empty Review Comments
 

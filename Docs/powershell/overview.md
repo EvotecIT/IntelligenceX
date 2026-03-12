@@ -1,3 +1,8 @@
+---
+title: IntelligenceX PowerShell Module Overview
+description: Automate IntelligenceX from PowerShell with cmdlets for chat, threads, reviews, config, MCP servers, diagnostics, and local app-server workflows.
+---
+
 # PowerShell Module Overview
 
 The IntelligenceX PowerShell module exposes the app-server client as native cmdlets, so you can automate chat, threads, reviews, config, MCP servers, and diagnostics from scripts and CI pipelines.

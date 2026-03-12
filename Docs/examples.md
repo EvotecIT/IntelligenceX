@@ -1,3 +1,8 @@
+---
+title: IntelligenceX Examples
+description: Use practical IntelligenceX examples for reviewer presets, provider configuration, workflow reuse, file filtering, and multi-repository onboarding.
+---
+
 # Examples
 
 Practical configuration examples for common IntelligenceX setups.

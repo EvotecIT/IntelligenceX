@@ -1,3 +1,8 @@
+---
+title: IntelligenceX Reviewer Overview
+description: Learn how the IntelligenceX reviewer runs in GitHub Actions, supports ChatGPT or Copilot, posts structured PR feedback, and keeps setup under your control.
+---
+
 # Reviewer Overview
 
 The reviewer runs in GitHub Actions (and Azure DevOps summary-only) and posts a structured review comment on PRs. Azure DevOps summary-only uses the PR-level changes endpoint (cumulative diff).

@@ -1,6 +1,19 @@
+---
+title: Getting Started with IntelligenceX
+description: Start with IntelligenceX using the reviewer wizard, IX Chat, .NET library, or PowerShell module, then expand into tools, Project Ops, and automation.
+---
+
 # Getting Started with IntelligenceX
 
-Get up and running with AI-powered code reviews in under a minute.
+Get up and running with the part of IntelligenceX you need first.
+The fastest path is the reviewer onboarding flow, but the platform also includes IX Chat, tool packs, a .NET library, and a PowerShell module for local automation.
+
+## Choose Your Starting Point
+
+- Want AI reviews on pull requests? Start with the reviewer setup below.
+- Want a local desktop experience? See [IX Chat Overview](/docs/chat/overview/) and [IX Chat Quickstart](/docs/chat/quickstart/).
+- Want to embed IntelligenceX in an app? Start with [Library Overview](/docs/library/overview/).
+- Want scriptable automation? Start with [PowerShell Overview](/docs/powershell/overview/).
 
 ## Prerequisites
 
@@ -8,7 +21,7 @@ Get up and running with AI-powered code reviews in under a minute.
 - GitHub account with repository access
 - ChatGPT account or GitHub Copilot access
 
-## Option 1 - CLI Wizard (Recommended)
+## Option 1 - Reviewer CLI Wizard (Recommended)
 
 The fastest way to set up IntelligenceX:
 
@@ -55,7 +68,7 @@ intelligencex auth export --format store-base64
 
 See [CLI Quick Start](/docs/cli/quickstart/) for the complete manual flow.
 
-## What Happens After Setup
+## What Happens After Reviewer Setup
 
 Once the workflow is in place, IntelligenceX automatically reviews every PR:
 
@@ -89,6 +102,10 @@ If you want to decide where each setting should live, see [Workflow vs JSON](/do
 ## Next Steps
 
 - [Reviewer Overview](/docs/reviewer/overview/) - Understand review modes and output
+- [IX Chat Overview](/docs/chat/overview/) - Run IntelligenceX locally with selectable runtimes and tool packs
+- [IX Tools Overview](/docs/tools/overview/) - See the packs available to IX Chat and custom integrations
 - [Security & Trust](/docs/security/) - Learn about the zero-trust model
 - [CLI Commands](/docs/cli/overview/) - Full CLI reference
 - [.NET Library](/docs/library/overview/) - Build custom integrations
+- [PowerShell Overview](/docs/powershell/overview/) - Automate chat, threads, config, and diagnostics
+- [Project Ops Overview](/docs/project-ops/overview/) - Use first-party issue and project workflows for triage

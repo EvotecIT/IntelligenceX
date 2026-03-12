@@ -1,3 +1,8 @@
+---
+title: Windows Tray Chat App
+description: Run IX Chat from source as a Windows tray app with a local host process, native UI, and no IntelligenceX cloud dependency.
+---
+
 # Windows Tray Chat App
 
 IX Chat is available today as a Windows tray application backed by the `IntelligenceX.Chat` projects in this monorepo.

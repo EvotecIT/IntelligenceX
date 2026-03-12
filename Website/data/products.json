@@ -1,7 +1,7 @@
 [
   {
     "title": "GitHub Actions Reviewer",
-    "description": "AI-powered PR reviews using ChatGPT or GitHub Copilot. Inline comments, summaries, or hybrid mode. Configurable presets from minimal to picky.",
+    "description": "Zero-trust PR reviews in GitHub Actions with ChatGPT or Copilot, structured findings, inline comments, hybrid summaries, and setup paths you control.",
     "icon": "review",
     "link": "/docs/reviewer/overview/",
     "tag": "Star Feature",
@@ -12,7 +12,7 @@
   },
   {
     "title": "IX Chat",
-    "description": "Windows desktop tray app for AI conversations. WinUI 3 interface with system tray integration, multi-provider support, and tool calling.",
+    "description": "Windows tray app for local AI conversations with runtime switching, persistent threads, tool packs, and no IntelligenceX-hosted backend.",
     "icon": "chat",
     "link": "/docs/chat/overview/",
     "tag": "Desktop App",
@@ -29,7 +29,7 @@
   },
   {
     "title": "IX Tools",
-    "description": "Tool packs that power tool calling in IX Chat and custom .NET integrations. Closed-source packs are private/licensed by default for IX Chat usage.",
+    "description": "Tool packs for IX Chat and custom .NET integrations, with open-source packs in-repo and private or licensed packs available in supported environments.",
     "icon": "tools",
     "link": "/docs/tools/overview/",
     "tag": "Tool Packs",
@@ -40,7 +40,7 @@
   },
   {
     "title": "CLI Tools",
-    "description": "One-command onboarding wizard, local web UI, multi-repo setup, auth management, and usage tracking.",
+    "description": "CLI and local web flows for onboarding, auth, reviewer runs, analysis commands, maintenance, cleanup, and multi-repository setup.",
     "icon": "cli",
     "link": "/docs/cli/overview/",
     "tag": "Setup",
@@ -50,7 +50,7 @@
   },
   {
     "title": ".NET Library",
-    "description": "Codex app-server client, Easy.ChatAsync one-liner, JSON-RPC support for building your own AI tools.",
+    "description": "Native, compatible HTTP, Copilot, and app-server clients with tool calling and streaming for building your own IntelligenceX-powered apps.",
     "icon": "library",
     "link": "/docs/library/overview/",
     "tag": "Developers",
@@ -60,7 +60,7 @@
   },
   {
     "title": "PowerShell Module",
-    "description": "Binary cmdlets for scripting and automation. Connect, send messages, run diagnostics, and integrate with your workflows.",
+    "description": "PowerShell cmdlets for chat, threads, config, MCP servers, diagnostics, and scriptable automation on top of the IntelligenceX runtime.",
     "icon": "powershell",
     "link": "/docs/powershell/overview/",
     "tag": "Automation",
@@ -70,7 +70,7 @@
   },
   {
     "title": "Issue Ops + Project Control",
-    "description": "First-party GitHub Project control plane for PR and issue triage. Built-in issue-review flags stale or invalid infra blockers, proposes actions, and syncs confidence to project fields.",
+    "description": "Maintainer-first GitHub Project workflows for issue and PR triage, confidence scoring, project field sync, and proposal-first backlog cleanup.",
     "icon": "project-ops",
     "link": "/docs/project-ops/overview/",
     "tag": "First-Party Ops",

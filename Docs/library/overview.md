@@ -1,6 +1,11 @@
+---
+title: IntelligenceX .NET Library Overview
+description: Build with the IntelligenceX .NET library using native, compatible HTTP, Copilot, and app-server transports plus tool calling and streaming APIs.
+---
+
 # .NET Library Overview
 
-The core library provides a Codex app-server client, ChatGPT auth helpers, and a lightweight Copilot client.
+The core library provides native, compatible HTTP, Copilot, and app-server clients for building IntelligenceX-powered applications.
 
 Quickstart: [Library Quickstart](/docs/library/quickstart/)  
 Providers: [Provider Setup](/docs/library/providers/)  

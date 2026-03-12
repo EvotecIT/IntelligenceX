@@ -1,5 +1,6 @@
 ---
 title: Project Ops Overview
+description: See how IntelligenceX Project Ops helps maintainers triage GitHub issues and projects with review signals, confidence fields, and proposal-first automation.
 slug: overview
 ---
 
