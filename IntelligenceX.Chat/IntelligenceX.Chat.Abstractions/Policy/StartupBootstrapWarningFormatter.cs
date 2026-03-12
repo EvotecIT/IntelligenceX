@@ -20,20 +20,11 @@ public static class StartupBootstrapWarningFormatter {
     private static readonly Regex ProviderConnectProgressRegex = new(
         @"^\[startup\]\s+provider_connect_progress\s+phase='(?<phase>[^']*)'\s+operation='(?<operation>[^']*)'(?:\s+transport='(?<transport>[^']*)')?(?:\s+status='(?<status>[^']*)')?",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ProgressSummaryRegex = new(
-        @"^\[startup\]\s+plugin load progress:\s+processed\s+(?<processed>\d+)\/(?<total>\d+)\s+plugin folders",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex TimingRegex = new(
-        @"^\[startup\]\s+tooling bootstrap timings\s+total=(?<total>[^\s]+)",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex CacheHitRegex = new(
-        @"^\[startup\]\s+tooling bootstrap cache hit\s+elapsed=(?<elapsed>\d+)ms(?:\s+tools=(?<tools>\d+))?(?:\s+packsLoaded=(?<packs>\d+))?\.$",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ElapsedMsRegex = new(
-        @"(?:^|\s)elapsed_ms='(?<elapsed>\d+)'",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private const string PackWarningPrefix = "[pack warning]";
     private const string PersistedPreviewRestoredWarning = "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues.";
+    private const string PluginProgressSummaryPrefix = "[startup] plugin load progress: processed ";
+    private const string ToolingBootstrapTimingPrefix = "[startup] tooling bootstrap timings ";
+    private const string ToolingBootstrapCacheHitPrefix = "[startup] tooling bootstrap cache hit ";
 
     /// <summary>
     /// Parses a structured bootstrap warning into user-facing status text.
@@ -112,38 +103,19 @@ public static class StartupBootstrapWarningFormatter {
                 nameGroup: "plugin");
         }
 
-        var progressSummaryMatch = ProgressSummaryRegex.Match(normalized);
-        if (progressSummaryMatch.Success) {
-            if (!TryReadProgressSummaryValues(progressSummaryMatch, out var processed, out var total)) {
-                return false;
-            }
-
-            statusText = $"Starting runtime... plugin folder scan {processed}/{total}";
+        if (TryReadProgressSummaryValues(normalized, out var processed, out var progressTotal)) {
+            statusText = $"Starting runtime... plugin folder scan {processed}/{progressTotal}";
             allowDuringSend = true;
             return true;
         }
 
-        var timingMatch = TimingRegex.Match(normalized);
-        if (timingMatch.Success) {
-            var total = timingMatch.Groups["total"].Value.Trim();
-            if (total.Length == 0) {
-                total = "unknown";
-            }
-
-            statusText = $"Starting runtime... tool bootstrap finished ({total}), finalizing runtime connection";
+        if (TryReadBootstrapTimingTotal(normalized, out var bootstrapTotal)) {
+            statusText = $"Starting runtime... tool bootstrap finished ({bootstrapTotal}), finalizing runtime connection";
             allowDuringSend = true;
             return true;
         }
 
-        var cacheHitMatch = CacheHitRegex.Match(normalized);
-        if (cacheHitMatch.Success) {
-            var elapsed = cacheHitMatch.Groups["elapsed"].Value.Trim();
-            if (elapsed.Length == 0) {
-                elapsed = "unknown";
-            } else {
-                elapsed += "ms";
-            }
-
+        if (TryReadCacheHitElapsed(normalized, out var elapsed)) {
             statusText = $"Starting runtime... reused tooling bootstrap cache ({elapsed}), finalizing runtime connection";
             allowDuringSend = true;
             return true;
@@ -221,14 +193,31 @@ public static class StartupBootstrapWarningFormatter {
         return true;
     }
 
-    private static bool TryReadProgressSummaryValues(Match match, out int processed, out int total) {
+    private static bool TryReadProgressSummaryValues(string normalizedWarning, out int processed, out int total) {
         processed = 0;
         total = 0;
-        if (!int.TryParse(match.Groups["processed"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out processed)) {
+        if (!normalizedWarning.StartsWith(PluginProgressSummaryPrefix, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
-        if (!int.TryParse(match.Groups["total"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out total)) {
+        var span = normalizedWarning.AsSpan(PluginProgressSummaryPrefix.Length);
+        var slashIndex = span.IndexOf('/');
+        if (slashIndex <= 0) {
+            return false;
+        }
+
+        if (!int.TryParse(span[..slashIndex], NumberStyles.Integer, CultureInfo.InvariantCulture, out processed)) {
+            return false;
+        }
+
+        span = span[(slashIndex + 1)..];
+        const string suffix = " plugin folders";
+        var suffixIndex = span.IndexOf(suffix.AsSpan(), StringComparison.OrdinalIgnoreCase);
+        if (suffixIndex <= 0) {
+            return false;
+        }
+
+        if (!int.TryParse(span[..suffixIndex], NumberStyles.Integer, CultureInfo.InvariantCulture, out total)) {
             return false;
         }
 
@@ -257,16 +246,90 @@ public static class StartupBootstrapWarningFormatter {
             : "done";
     }
 
+    private static bool TryReadBootstrapTimingTotal(string normalizedWarning, out string total) {
+        total = string.Empty;
+        if (!normalizedWarning.StartsWith(ToolingBootstrapTimingPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!TryReadTokenValue(normalizedWarning, "total=", out total) || total.Length == 0) {
+            total = "unknown";
+        }
+
+        return true;
+    }
+
+    private static bool TryReadCacheHitElapsed(string normalizedWarning, out string elapsed) {
+        elapsed = string.Empty;
+        if (!normalizedWarning.StartsWith(ToolingBootstrapCacheHitPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!TryReadTokenValue(normalizedWarning, "elapsed=", out elapsed)) {
+            elapsed = "unknown";
+            return true;
+        }
+
+        elapsed = elapsed.Trim();
+        if (elapsed.Length == 0) {
+            elapsed = "unknown";
+        }
+
+        return true;
+    }
+
     private static int? TryReadElapsedMs(string normalizedWarning) {
-        var elapsedMatch = ElapsedMsRegex.Match(normalizedWarning);
-        if (!elapsedMatch.Success) {
+        if (!TryReadQuotedTokenValue(normalizedWarning, "elapsed_ms", out var elapsedText)) {
             return null;
         }
 
-        if (!int.TryParse(elapsedMatch.Groups["elapsed"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var elapsedMs)) {
+        if (!int.TryParse(elapsedText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var elapsedMs)) {
             return null;
         }
 
         return Math.Max(1, elapsedMs);
+    }
+
+    private static bool TryReadQuotedTokenValue(string normalizedWarning, string key, out string value) {
+        value = string.Empty;
+        var token = key + "='";
+        var start = normalizedWarning.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+        if (start < 0) {
+            return false;
+        }
+
+        start += token.Length;
+        var end = normalizedWarning.IndexOf('\'', start);
+        if (end < 0) {
+            return false;
+        }
+
+        value = normalizedWarning.Substring(start, end - start);
+        return true;
+    }
+
+    private static bool TryReadTokenValue(string normalizedWarning, string key, out string value) {
+        value = string.Empty;
+        var start = normalizedWarning.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+        if (start < 0) {
+            return false;
+        }
+
+        start += key.Length;
+        var end = normalizedWarning.IndexOf(' ', start);
+        if (end < 0) {
+            end = normalizedWarning.Length;
+        }
+
+        while (end > start && normalizedWarning[end - 1] == '.') {
+            end--;
+        }
+
+        if (end <= start) {
+            return false;
+        }
+
+        value = normalizedWarning.Substring(start, end - start).Trim();
+        return value.Length > 0;
     }
 }

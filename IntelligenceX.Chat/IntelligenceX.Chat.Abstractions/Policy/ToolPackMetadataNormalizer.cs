@@ -55,8 +55,8 @@ public static class ToolPackMetadataNormalizer {
     /// <summary>
     /// Maps a raw source-kind token into the protocol enum used by Chat surfaces.
     /// </summary>
-    public static ToolPackSourceKind ResolveSourceKind(string? sourceKind, string? descriptorId) {
-        var normalizedSourceKind = NormalizeSourceKind(sourceKind, descriptorId);
+    public static ToolPackSourceKind ResolveSourceKind(string? sourceKind) {
+        var normalizedSourceKind = NormalizeSourceKind(sourceKind);
         return normalizedSourceKind switch {
             "builtin" => ToolPackSourceKind.Builtin,
             "closed_source" => ToolPackSourceKind.ClosedSource,
@@ -67,8 +67,7 @@ public static class ToolPackMetadataNormalizer {
     /// <summary>
     /// Normalizes a raw source-kind token into a stable machine-friendly string.
     /// </summary>
-    public static string NormalizeSourceKind(string? sourceKind, string? descriptorId) {
-        _ = descriptorId;
+    public static string NormalizeSourceKind(string? sourceKind) {
         var raw = (sourceKind ?? string.Empty).Trim().ToLowerInvariant();
         return raw switch {
             "builtin" => "builtin",

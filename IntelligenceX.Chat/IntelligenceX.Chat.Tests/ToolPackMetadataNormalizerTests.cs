@@ -30,7 +30,7 @@ public sealed class ToolPackMetadataNormalizerTests {
     [InlineData("internal", ToolPackSourceKind.ClosedSource)]
     [InlineData(null, ToolPackSourceKind.OpenSource)]
     public void ResolveSourceKind_NormalizesExpectedContractValues(string? input, ToolPackSourceKind expected) {
-        var sourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(input, "eventlog");
+        var sourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(input);
 
         Assert.Equal(expected, sourceKind);
     }
