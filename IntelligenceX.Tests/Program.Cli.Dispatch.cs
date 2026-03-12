@@ -29,6 +29,7 @@ internal static partial class Program {
 
         AssertEqual(1, exit, "dispatch no-args non-interactive exit");
         AssertContainsText(stdout, "Usage:", "dispatch no-args non-interactive help output");
+        AssertContainsText(stdout, "intelligencex heatmap <usage|chatgpt|github>", "dispatch no-args non-interactive heatmap usage");
         AssertEqual(string.Empty, stderr, "dispatch no-args non-interactive stderr");
     }
 

@@ -120,6 +120,7 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 
     private static GitHubContributionCalendar ParseContributionCalendarWindow(string login, JsonElement root) {
         if (!GitHubGraphQlCli.TryGetProperty(root, "data", out var data) ||
+            data.ValueKind != JsonValueKind.Object ||
             !GitHubGraphQlCli.TryGetProperty(data, "user", out var user)) {
             throw new InvalidOperationException("GitHub GraphQL response missing user contribution data.");
         }

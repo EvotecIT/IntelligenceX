@@ -27,7 +27,7 @@ internal static partial class Program {
         Console.WriteLine("  intelligencex release <command>");
         Console.WriteLine("  intelligencex models <command>");
         Console.WriteLine("  intelligencex usage [options]");
-        Console.WriteLine("  intelligencex heatmap <provider>");
+        Console.WriteLine("  intelligencex heatmap <usage|chatgpt|github>");
         Console.WriteLine();
         Console.WriteLine("Tip:");
         Console.WriteLine("  Run intelligencex with no arguments in an interactive terminal to open the management hub.");
