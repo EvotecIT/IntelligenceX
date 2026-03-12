@@ -222,8 +222,8 @@ Check AD0 reboot
         var turn = ReadTurns(scenario).Single();
         var toolDefinitions = new[] {
             new ToolDefinition(
-                name: "eventlog_timeline_query",
-                description: "Query event timeline.",
+                name: "eventlog_named_events_query",
+                description: "Query named event detections.",
                 parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
                 routing: new ToolRoutingContract {
                     IsRoutingAware = true,
@@ -239,7 +239,7 @@ Check AD0 reboot
 
         var prompt = InvokeBuildScenarioTurnPromptForExecution(turn, toolDefinitions);
 
-        Assert.Contains("eventlog_named_events_catalog -> eventlog_timeline_query", prompt, StringComparison.Ordinal);
+        Assert.Contains("eventlog_named_events_catalog -> eventlog_named_events_query", prompt, StringComparison.Ordinal);
         Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
         Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
     }

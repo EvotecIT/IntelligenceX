@@ -79,8 +79,7 @@ internal static class EventLogToolContracts {
             return definition.Setup;
         }
 
-        if (string.Equals(definition.Name, "eventlog_named_events_query", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)) {
+        if (string.Equals(definition.Name, "eventlog_named_events_query", StringComparison.OrdinalIgnoreCase)) {
             return new ToolSetupContract {
                 IsSetupAware = true,
                 SetupToolName = "eventlog_named_events_catalog",

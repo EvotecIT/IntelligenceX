@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 
@@ -54,9 +53,10 @@ internal static partial class Program {
                       + ").");
         }
 
-        if (includeRemoteHostFallbackHint
-            && matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting)) {
-            lines.Add("- If a remote-capable tool is missing host or machine input, default to the first discovered/source host/DC from prior turns when thread context provides one.");
+        if (matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting)) {
+            lines.Add(includeRemoteHostFallbackHint
+                ? "- If a remote-capable tool is missing host or machine input, default to the first discovered/source host/DC from prior turns when thread context provides one."
+                : "- If a remote-capable tool is missing host or machine input, infer it from prior thread context when available.");
         }
 
         return lines;
@@ -92,11 +92,43 @@ internal static partial class Program {
             return string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
         }
 
-        var regexPattern = "^"
-                           + Regex.Escape(expected)
-                               .Replace("\\*", ".*", StringComparison.Ordinal)
-                               .Replace("\\?", ".", StringComparison.Ordinal)
-                           + "$";
-        return Regex.IsMatch(actual, regexPattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return WildcardMatchesOrdinalIgnoreCase(expected, actual);
+    }
+
+    private static bool WildcardMatchesOrdinalIgnoreCase(string pattern, string candidate) {
+        var patternIndex = 0;
+        var candidateIndex = 0;
+        var starIndex = -1;
+        var candidateCheckpoint = 0;
+
+        while (candidateIndex < candidate.Length) {
+            if (patternIndex < pattern.Length
+                && (pattern[patternIndex] == '?'
+                    || char.ToUpperInvariant(pattern[patternIndex]) == char.ToUpperInvariant(candidate[candidateIndex]))) {
+                patternIndex++;
+                candidateIndex++;
+                continue;
+            }
+
+            if (patternIndex < pattern.Length && pattern[patternIndex] == '*') {
+                starIndex = patternIndex++;
+                candidateCheckpoint = candidateIndex;
+                continue;
+            }
+
+            if (starIndex >= 0) {
+                patternIndex = starIndex + 1;
+                candidateIndex = ++candidateCheckpoint;
+                continue;
+            }
+
+            return false;
+        }
+
+        while (patternIndex < pattern.Length && pattern[patternIndex] == '*') {
+            patternIndex++;
+        }
+
+        return patternIndex == pattern.Length;
     }
 }

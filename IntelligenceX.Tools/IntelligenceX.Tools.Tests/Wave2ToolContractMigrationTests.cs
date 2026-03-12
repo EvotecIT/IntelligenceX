@@ -76,7 +76,7 @@ public sealed class Wave2ToolContractMigrationTests {
     }
 
     [Fact]
-    public void EventLogWave2Tools_ShouldReferenceNamedEventCatalogForSetupAndChannelListForRecovery() {
+    public void EventLogWave2Tools_ShouldReferenceNamedEventCatalogOnlyForNamedEventSetupAndChannelListForRecovery() {
         var definitionsByName = BuildWave2CanonicalDefinitions()
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -87,7 +87,7 @@ public sealed class Wave2ToolContractMigrationTests {
         var recovery = Assert.IsType<ToolRecoveryContract>(timeline.Recovery);
 
         Assert.Equal("eventlog_named_events_catalog", namedEventsSetup.SetupToolName, ignoreCase: true);
-        Assert.Equal("eventlog_named_events_catalog", setup.SetupToolName, ignoreCase: true);
+        Assert.Equal("eventlog_channels_list", setup.SetupToolName, ignoreCase: true);
         Assert.Contains(recovery.RecoveryToolNames, tool => string.Equals(tool, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
     }
 

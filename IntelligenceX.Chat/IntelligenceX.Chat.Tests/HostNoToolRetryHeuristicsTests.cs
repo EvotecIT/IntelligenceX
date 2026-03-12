@@ -484,6 +484,31 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void BuildNoToolExecutionRetryPrompt_KeepsGenericRemoteHintWithoutKnownHostTargets() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "eventlog_named_events_query",
+                description: "Query named event detections.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        var prompt = InvokeBuildNoToolExecutionRetryPrompt(
+            userRequest: "Continue on remaining DCs.",
+            assistantDraft: string.Empty,
+            retryAttempt: 1,
+            knownHostTargets: Array.Empty<string>(),
+            toolDefinitions: toolDefinitions);
+
+        Assert.Contains("infer it from prior thread context when available", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildReadOnlyCallCanonicalIndices_DeduplicatesIdenticalReadOnlyCalls() {
         var calls = new List<ToolCall> {
             BuildToolCall("call_1", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}"""),
