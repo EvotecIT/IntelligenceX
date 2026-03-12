@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace IntelligenceX.Chat.Abstractions.Policy;
@@ -28,30 +27,16 @@ public static class StartupToolHealthWarningFormatter {
     /// Resolves a human-friendly pack label for operator-facing warning surfaces.
     /// </summary>
     public static string ResolvePackDisplayLabel(string? packId, string? fallbackName) {
-        var explicitName = (fallbackName ?? string.Empty).Trim();
-        if (explicitName.Length > 0) {
-            return explicitName;
+        var resolved = ToolPackMetadataNormalizer.ResolveDisplayName(packId, fallbackName);
+        if (resolved.Length > 0) {
+            return resolved;
         }
 
-        var normalizedPackId = NormalizePackId(packId);
-        if (normalizedPackId.Length == 0) {
+        if (NormalizePackId(packId).Length == 0) {
             return "Unknown pack";
         }
 
-        return normalizedPackId switch {
-            "active_directory" => "Active Directory",
-            "eventlog" => "Event Log",
-            "system" => "System",
-            "filesystem" => "Filesystem",
-            "email" => "Email",
-            "powershell" => "PowerShell",
-            "testimox" => "TestimoX",
-            "officeimo" => "OfficeIMO",
-            "reviewer_setup" => "Reviewer Setup",
-            "dnsclientx" => "DnsClientX",
-            "domaindetective" => "DomainDetective",
-            _ => HumanizePackId(normalizedPackId)
-        };
+        return "Unknown pack";
     }
 
     /// <summary>
@@ -123,31 +108,6 @@ public static class StartupToolHealthWarningFormatter {
             match.Groups["code"].Value,
             match.Groups["message"].Value);
         return new StartupToolHealthWarningDisplayParts(title, summary);
-    }
-
-    private static string HumanizePackId(string normalizedPackId) {
-        var parts = normalizedPackId.Split(new[] { '_', '-', '.' }, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) {
-            return normalizedPackId;
-        }
-
-        var buffer = new StringBuilder(normalizedPackId.Length + parts.Length);
-        for (var i = 0; i < parts.Length; i++) {
-            if (i > 0) {
-                buffer.Append(' ');
-            }
-
-            var part = parts[i];
-            if (part.Length == 1) {
-                buffer.Append(char.ToUpperInvariant(part[0]));
-                continue;
-            }
-
-            buffer.Append(char.ToUpperInvariant(part[0]));
-            buffer.Append(part[1..]);
-        }
-
-        return buffer.ToString();
     }
 }
 

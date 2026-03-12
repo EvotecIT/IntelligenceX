@@ -42,15 +42,14 @@ public static class ToolPackMetadataNormalizer {
     }
 
     /// <summary>
-    /// Resolves the preferred display name for a pack, falling back to the canonical normalized pack id.
+    /// Resolves the preferred display name for a pack, falling back to a human-friendly label derived from the canonical pack id.
     /// </summary>
     public static string ResolveDisplayName(string? descriptorId, string? fallbackName) {
-        var normalizedPackId = NormalizePackId(descriptorId);
         if (!string.IsNullOrWhiteSpace(fallbackName)) {
             return fallbackName.Trim();
         }
 
-        return normalizedPackId;
+        return HumanizePackId(NormalizePackId(descriptorId));
     }
 
     /// <summary>
@@ -133,5 +132,46 @@ public static class ToolPackMetadataNormalizer {
         }
 
         return length == 0 ? string.Empty : new string(buffer, 0, length);
+    }
+
+    private static string HumanizePackId(string normalizedPackId) {
+        if (string.IsNullOrWhiteSpace(normalizedPackId)) {
+            return string.Empty;
+        }
+
+        return normalizedPackId switch {
+            "active_directory" => "Active Directory",
+            "eventlog" => "Event Log",
+            "system" => "System",
+            "filesystem" => "Filesystem",
+            "email" => "Email",
+            "powershell" => "PowerShell",
+            "testimox" => "TestimoX",
+            "officeimo" => "OfficeIMO",
+            "reviewer_setup" => "Reviewer Setup",
+            "dnsclientx" => "DnsClientX",
+            "domaindetective" => "DomainDetective",
+            _ => HumanizeFallbackPackId(normalizedPackId)
+        };
+    }
+
+    private static string HumanizeFallbackPackId(string normalizedPackId) {
+        var parts = normalizedPackId.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0) {
+            return string.Empty;
+        }
+
+        for (var i = 0; i < parts.Length; i++) {
+            var part = parts[i];
+            if (part.Length == 0) {
+                continue;
+            }
+
+            parts[i] = part.Length == 1
+                ? part.ToUpperInvariant()
+                : char.ToUpperInvariant(part[0]) + part[1..];
+        }
+
+        return string.Join(" ", parts);
     }
 }

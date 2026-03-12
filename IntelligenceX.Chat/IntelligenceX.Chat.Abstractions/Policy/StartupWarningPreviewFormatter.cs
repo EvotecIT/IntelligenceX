@@ -39,24 +39,35 @@ public static class StartupWarningPreviewFormatter {
             maxShown = DefaultMaxShown;
         }
 
-        var shownCount = Math.Min(items.Count, maxShown);
-        var lines = new List<string>(shownCount + 6) {
-            normalizedHeading,
-            string.Empty,
-            string.Format(CultureInfo.InvariantCulture, normalizedCountLineFormat, items.Count)
-        };
-
-        for (var i = 0; i < shownCount; i++) {
+        var renderedItems = new List<string>(Math.Min(items.Count, maxShown));
+        var remainingRenderedCount = 0;
+        for (var i = 0; i < items.Count; i++) {
             var content = (formatItem(items[i]) ?? string.Empty).Trim();
             if (content.Length == 0) {
                 continue;
             }
 
-            lines.Add("- " + content);
+            if (renderedItems.Count < maxShown) {
+                renderedItems.Add("- " + content);
+            } else {
+                remainingRenderedCount++;
+            }
         }
 
-        if (items.Count > shownCount) {
-            lines.Add(string.Format(CultureInfo.InvariantCulture, "- +{0} more", items.Count - shownCount));
+        if (renderedItems.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var renderedCount = renderedItems.Count + remainingRenderedCount;
+        var lines = new List<string>(renderedItems.Count + 6) {
+            normalizedHeading,
+            string.Empty,
+            string.Format(CultureInfo.InvariantCulture, normalizedCountLineFormat, renderedCount)
+        };
+        lines.AddRange(renderedItems);
+
+        if (remainingRenderedCount > 0) {
+            lines.Add(string.Format(CultureInfo.InvariantCulture, "- +{0} more", remainingRenderedCount));
         }
 
         var normalizedFooter = (footer ?? string.Empty).Trim();

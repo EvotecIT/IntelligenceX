@@ -275,6 +275,47 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.DoesNotContain(lines, line => line.Contains("still loading", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Ensures disabled packs do not contribute cross-pack fallback hints to capability self-knowledge text.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_IgnoresDisabledCrossPackFallbackSources() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto {
+                    Id = "eventlog",
+                    Name = "Event Viewer",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = false,
+                    IsDangerous = false,
+                    AutonomySummary = new ToolPackAutonomySummaryDto {
+                        CrossPackHandoffTools = 1,
+                        CrossPackTargetPacks = new[] { "system" }
+                    }
+                },
+                new ToolPackInfoDto {
+                    Id = "system",
+                    Name = "System",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                }
+            },
+            toolCatalogRoutingCatalog: null,
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            });
+
+        Assert.DoesNotContain(lines, line => line.Contains("Cross-pack follow-up pivots", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static int FindLineIndex(IReadOnlyList<string> lines, string expectedFragment) {
         for (var i = 0; i < lines.Count; i++) {
             if (lines[i].Contains(expectedFragment, StringComparison.OrdinalIgnoreCase)) {

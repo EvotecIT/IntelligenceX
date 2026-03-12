@@ -34,4 +34,32 @@ public sealed class StartupWarningPreviewFormatterTests {
         Assert.DoesNotContain("- five", lines);
         Assert.Contains("- +1 more", lines);
     }
+
+    [Fact]
+    public void BuildLines_SkipsEmptySectionWhenNoRenderedItemsRemain() {
+        var lines = StartupWarningPreviewFormatter.BuildLines(
+            new[] { " ", string.Empty, "\t" },
+            static item => item,
+            "Warnings:",
+            "Found {0} warning(s):",
+            "Inspect full details in diagnostics.");
+
+        Assert.Empty(lines);
+    }
+
+    [Fact]
+    public void BuildLines_CountsOnlyRenderedItemsWhenSomeInputsFormatToEmpty() {
+        var lines = StartupWarningPreviewFormatter.BuildLines(
+            new[] { " ", "one", "", "two", "three" },
+            static item => item,
+            "Warnings:",
+            "Found {0} warning(s):",
+            maxShown: 2);
+
+        Assert.Contains("Found 3 warning(s):", lines);
+        Assert.Contains("- one", lines);
+        Assert.Contains("- two", lines);
+        Assert.DoesNotContain("- three", lines);
+        Assert.Contains("- +1 more", lines);
+    }
 }
