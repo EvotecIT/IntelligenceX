@@ -17,9 +17,14 @@ internal static partial class Program {
 
         var orchestrationCatalog = ToolOrchestrationCatalog.Build(toolDefinitions);
         var matchedEntries = new List<ToolOrchestrationCatalogEntry>(toolDefinitions.Count);
+        var seenToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolDefinitions.Count; i++) {
             var toolName = (toolDefinitions[i].Name ?? string.Empty).Trim();
             if (toolName.Length == 0 || !orchestrationCatalog.TryGetEntry(toolName, out var entry)) {
+                continue;
+            }
+
+            if (!seenToolNames.Add(entry.ToolName)) {
                 continue;
             }
 
