@@ -9,13 +9,13 @@ meta.raw_html: true
 
 <p>Download IntelligenceX release assets directly from this page. Source of truth remains <a href="https://github.com/EvotecIT/IntelligenceX/releases">GitHub Releases</a>.</p>
 
-<p>If the cards below show <code>No releases found</code>, no desktop artifacts have been published yet. In the meantime, start with <a href="/docs/getting-started/">Getting Started</a>, browse <a href="/docs/">Documentation</a>, or review common setup questions in the <a href="/faq/">FAQ</a>.</p>
+<p>If the cards below show <code>No releases found</code>, no desktop artifacts have been published yet. In the meantime, start with <a href="/docs/getting-started/">Getting Started</a>, browse <a href="/docs/">Documentation</a>, or review common setup questions in the <a href="/faq/">common questions page</a>.</p>
 
 <div class="ix-release-links" aria-label="Release resources">
   <a href="/changelog/">Changelog</a>
   <a href="/docs/getting-started/">Install Guide</a>
   <a href="/docs/">Documentation</a>
-  <a href="/faq/">FAQ</a>
+  <a href="/faq/">Questions</a>
 </div>
 
 <div class="ix-release-cta">
