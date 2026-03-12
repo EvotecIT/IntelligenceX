@@ -14,6 +14,13 @@ internal static class EventLogToolContracts {
         "path"
     };
 
+    private static readonly string[] NamedEventCatalogSetupHintKeys = {
+        "named_events",
+        "categories",
+        "machine_name",
+        "machine_names"
+    };
+
     private static readonly string[] EventLogSignalTokens = {
         "eventlog",
         "security",
@@ -72,6 +79,29 @@ internal static class EventLogToolContracts {
             return definition.Setup;
         }
 
+        if (string.Equals(definition.Name, "eventlog_named_events_query", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(definition.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)) {
+            return new ToolSetupContract {
+                IsSetupAware = true,
+                SetupToolName = "eventlog_named_events_catalog",
+                Requirements = new[] {
+                    new ToolSetupRequirement {
+                        RequirementId = "eventlog_named_event_catalog",
+                        Kind = ToolSetupRequirementKinds.Capability,
+                        IsRequired = true,
+                        HintKeys = NamedEventCatalogSetupHintKeys
+                    },
+                    new ToolSetupRequirement {
+                        RequirementId = "eventlog_channel_access",
+                        Kind = ToolSetupRequirementKinds.Connectivity,
+                        IsRequired = false,
+                        HintKeys = SetupHintKeys
+                    }
+                },
+                SetupHintKeys = MergeHintKeys(NamedEventCatalogSetupHintKeys, SetupHintKeys)
+            };
+        }
+
         return new ToolSetupContract {
             IsSetupAware = true,
             SetupToolName = "eventlog_channels_list",
@@ -85,6 +115,28 @@ internal static class EventLogToolContracts {
             },
             SetupHintKeys = SetupHintKeys
         };
+    }
+
+    private static string[] MergeHintKeys(params IReadOnlyList<string>[] groups) {
+        var values = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < groups.Length; i++) {
+            var group = groups[i];
+            if (group is null || group.Count == 0) {
+                continue;
+            }
+
+            for (var j = 0; j < group.Count; j++) {
+                var candidate = (group[j] ?? string.Empty).Trim();
+                if (candidate.Length == 0 || !seen.Add(candidate)) {
+                    continue;
+                }
+
+                values.Add(candidate);
+            }
+        }
+
+        return values.ToArray();
     }
 
     private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {

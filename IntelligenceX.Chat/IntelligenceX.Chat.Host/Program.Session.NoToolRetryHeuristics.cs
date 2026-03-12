@@ -441,11 +441,16 @@ internal static partial class Program {
             string userRequest,
             string assistantDraft,
             int retryAttempt,
+            IReadOnlyList<ToolDefinition>? toolDefinitions,
             IReadOnlyList<string>? knownHostTargets = null) {
             var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
             var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
             _ = retryAttempt;
             var knownHostHint = BuildKnownHostTargetHint(knownHostTargets);
+            var contractHintLines = BuildToolContractPromptHintLines(
+                toolDefinitions: toolDefinitions,
+                toolPatterns: null,
+                includeRemoteHostFallbackHint: knownHostTargets is { Count: > 0 });
             return $$"""
                 [Execution correction]
                 The previous assistant draft implied execution (or returned empty output) but no tool calls were emitted.
@@ -464,14 +469,35 @@ internal static partial class Program {
                 If no matching evidence is found, still include queried time-window boundaries as strict ISO-8601 UTC timestamps (T + Z).
                 Do not use blocker-preface phrasing like "I can do that, but"; execute best-effort tools first, then report results or exact blockers.
                 For optional projection arguments (columns/sort_by), use only supported fields; if uncertain, omit projection arguments.
-                For eventlog_named_events_query, use names from eventlog_named_events_catalog; if uncertain, prefer eventlog_live_query with explicit event_ids.
-                If Event Log source input is missing, default machine_name to the first discovered/source DC from prior turns.
+                {{FormatRetryPromptHintLines(contractHintLines)}}
                 If this is a continuation request over "remaining discovered DCs/hosts", execute multiple best-effort tool calls using distinct host/DC inputs from thread context.
                 If discovery appears empty in this turn, still use previously seen DC/host targets from thread context rather than stopping at narration.
                 {{knownHostHint}}
                 Do not claim internal retry/exhaustion limits; this is an internal execution correction path.
                 If tools still cannot satisfy this request after a best-effort tool attempt, state the exact blocker and the minimal missing input once.
                 """;
+        }
+
+        private static string FormatRetryPromptHintLines(IReadOnlyList<string> lines) {
+            if (lines is null || lines.Count == 0) {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder();
+            for (var i = 0; i < lines.Count; i++) {
+                var line = (lines[i] ?? string.Empty).Trim();
+                if (line.Length == 0) {
+                    continue;
+                }
+
+                if (sb.Length > 0) {
+                    sb.AppendLine();
+                }
+
+                sb.Append(line);
+            }
+
+            return sb.ToString();
         }
 
     }

@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -202,7 +204,7 @@ Check AD0 reboot
     }
 
     [Fact]
-    public void BuildScenarioTurnPrompt_WithEventLogRequirements_AddsEventLogFallbackAndLiteralHints() {
+    public void BuildScenarioTurnPromptForExecution_WithEventLogRequirements_AddsContractDerivedHints() {
         const string json = """
 {
   "name": "eventlog-contract",
@@ -218,12 +220,27 @@ Check AD0 reboot
 """;
         var scenario = InvokeParseScenarioDefinition(json, "eventlog-contract");
         var turn = ReadTurns(scenario).Single();
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "eventlog_timeline_query",
+                description: "Query event timeline.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_named_events_catalog"
+                })
+        };
 
-        var prompt = InvokeBuildScenarioTurnPrompt(turn);
+        var prompt = InvokeBuildScenarioTurnPromptForExecution(turn, toolDefinitions);
 
-        Assert.Contains("machine_name is missing", prompt, StringComparison.Ordinal);
-        Assert.Contains("first discovered/source DC", prompt, StringComparison.Ordinal);
-        Assert.Contains("eventlog_pack_info alone is insufficient", prompt, StringComparison.Ordinal);
+        Assert.Contains("eventlog_named_events_catalog -> eventlog_timeline_query", prompt, StringComparison.Ordinal);
+        Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
         Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
     }
 
@@ -443,6 +460,18 @@ Check AD0 reboot
         var promptMethod = programType.GetMethod("BuildScenarioTurnPrompt", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(promptMethod);
         var result = promptMethod!.Invoke(null, new[] { turn });
+        return Assert.IsType<string>(result);
+    }
+
+    private static string InvokeBuildScenarioTurnPromptForExecution(object turn, IReadOnlyList<ToolDefinition> toolDefinitions) {
+        var programType = ResolveHostProgramType();
+        var turnType = programType.Assembly.GetType("IntelligenceX.Chat.Host.Program+ChatScenarioTurn", throwOnError: true);
+        Assert.NotNull(turnType);
+        Assert.True(turnType!.IsInstanceOfType(turn));
+
+        var promptMethod = programType.GetMethod("BuildScenarioTurnPromptForExecution", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(promptMethod);
+        var result = promptMethod!.Invoke(null, new object?[] { turn, toolDefinitions });
         return Assert.IsType<string>(result);
     }
 

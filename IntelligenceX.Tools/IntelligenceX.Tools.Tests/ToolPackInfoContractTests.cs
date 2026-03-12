@@ -566,7 +566,7 @@ public class ToolPackInfoContractTests {
 
         var setup = timelineEntry.GetProperty("setup");
         Assert.True(setup.GetProperty("is_setup_aware").GetBoolean());
-        Assert.Equal("eventlog_channels_list", setup.GetProperty("setup_tool_name").GetString());
+        Assert.Equal("eventlog_named_events_catalog", setup.GetProperty("setup_tool_name").GetString());
 
         var handoff = timelineEntry.GetProperty("handoff");
         Assert.True(handoff.GetProperty("is_handoff_aware").GetBoolean());

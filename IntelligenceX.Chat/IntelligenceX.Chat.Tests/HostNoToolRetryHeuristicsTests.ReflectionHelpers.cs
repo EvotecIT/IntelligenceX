@@ -75,17 +75,33 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         string userRequest,
         string assistantDraft,
         int retryAttempt,
-        IReadOnlyList<string> knownHostTargets) {
+        IReadOnlyList<string> knownHostTargets,
+        IReadOnlyList<ToolDefinition>? toolDefinitions = null) {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
         Assert.NotNull(replSessionType);
 
         var method = replSessionType!.GetMethod(
             "BuildNoToolExecutionRetryPrompt",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] {
+                typeof(string),
+                typeof(string),
+                typeof(int),
+                typeof(IReadOnlyList<ToolDefinition>),
+                typeof(IReadOnlyList<string>)
+            },
+            modifiers: null);
         Assert.NotNull(method);
 
-        var value = method!.Invoke(null, new object?[] { userRequest, assistantDraft, retryAttempt, knownHostTargets });
+        var value = method!.Invoke(null, new object?[] {
+            userRequest,
+            assistantDraft,
+            retryAttempt,
+            toolDefinitions ?? Array.Empty<ToolDefinition>(),
+            knownHostTargets
+        });
         return Assert.IsType<string>(value);
     }
 
