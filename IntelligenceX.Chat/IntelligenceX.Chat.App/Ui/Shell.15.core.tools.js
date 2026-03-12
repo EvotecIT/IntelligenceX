@@ -393,8 +393,8 @@
     if (normalized === "local_only" || normalized === "local-only") {
       return "local_only";
     }
-    if (normalized === "mixed") {
-      return "mixed";
+    if (normalized === "dual_scope" || normalized === "dual-scope" || normalized === "mixed") {
+      return "dual_scope";
     }
     return "all";
   }
@@ -423,7 +423,7 @@
 
     var execution = resolveToolExecutionBadgeModel(tool);
     if (!execution) {
-      return localityFilter !== "mixed";
+      return localityFilter !== "dual_scope";
     }
 
     if (localityFilter === "remote_ready") {
@@ -432,7 +432,7 @@
     if (localityFilter === "local_only") {
       return execution.scope === "local_only";
     }
-    if (localityFilter === "mixed") {
+    if (localityFilter === "dual_scope") {
       return execution.scope === "local_or_remote";
     }
 
