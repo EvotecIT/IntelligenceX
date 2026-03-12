@@ -81,6 +81,35 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
     }
 
     [Fact]
+    public void ApplyKnownHostTargetFallbacks_ReplacesExistingEmptyAliasKeysAcrossSupportedArguments() {
+        var schema = new JsonObject()
+            .Add("type", "object")
+            .Add("properties", new JsonObject()
+                .Add("machine_name", new JsonObject().Add("type", "string"))
+                .Add("targets", new JsonObject()
+                    .Add("type", "array")
+                    .Add("items", new JsonObject().Add("type", "string")))
+                .Add("log_name", new JsonObject().Add("type", "string")));
+        var definition = new ToolDefinition("eventlog_live_query", parameters: schema);
+        var call = BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"","targets":[],"log_name":"System"}""");
+
+        var repaired = InvokeApplyKnownHostTargetFallbacks(
+            call,
+            definition,
+            new[] { "AD0.ad.evotec.xyz", "AD1.ad.evotec.xyz" });
+
+        Assert.NotSame(call, repaired);
+        Assert.Equal("System", repaired.Arguments?.GetString("log_name"));
+        Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("machine_name"));
+
+        var targets = repaired.Arguments?.GetArray("targets");
+        Assert.NotNull(targets);
+        Assert.Equal(2, targets!.Count);
+        Assert.Equal("AD0.ad.evotec.xyz", targets[0]?.AsString());
+        Assert.Equal("AD1.ad.evotec.xyz", targets[1]?.AsString());
+    }
+
+    [Fact]
     public void ApplyScenarioDistinctHostCoverageFallbacks_PatchesCallsWhenDistinctMachineCoverageMissing() {
         const string request = """
 [Scenario execution contract]

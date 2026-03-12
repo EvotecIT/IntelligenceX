@@ -662,7 +662,7 @@ public sealed partial class MainWindow : Window {
             var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
             var parameterState = BuildToolParameterState(parameters);
             if (!hasExecutionScope) {
-                executionScope = supportsRemoteExecution ? "local_or_remote" : "local_only";
+                executionScope = ResolveToolExecutionScope(null, supportsLocalExecution, supportsRemoteExecution);
             }
             if (!hasLocalExecution) {
                 supportsLocalExecution = !string.Equals(executionScope, "remote_only", StringComparison.OrdinalIgnoreCase);

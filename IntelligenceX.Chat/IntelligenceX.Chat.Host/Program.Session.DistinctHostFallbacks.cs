@@ -542,14 +542,26 @@ internal static partial class Program {
             }
 
             normalizedTargets = OrderHostTargetCandidatesBySpecificity(normalizedTargets);
-            var patchedArguments = new JsonObject(StringComparer.Ordinal);
-            foreach (var pair in call.Arguments) {
-                patchedArguments.Add(pair.Key, pair.Value);
-            }
-
             var supportedHostTargetArguments = ToolHostTargeting.GetSupportedHostTargetArguments(definition);
             if (supportedHostTargetArguments.Count == 0) {
                 supportedHostTargetArguments = new[] { targetKey };
+            }
+
+            var supportedHostTargetArgumentSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < supportedHostTargetArguments.Count; i++) {
+                var candidateKey = supportedHostTargetArguments[i];
+                if (candidateKey.Length > 0) {
+                    supportedHostTargetArgumentSet.Add(candidateKey);
+                }
+            }
+
+            var patchedArguments = new JsonObject(StringComparer.Ordinal);
+            foreach (var pair in call.Arguments) {
+                if (supportedHostTargetArgumentSet.Contains(pair.Key)) {
+                    continue;
+                }
+
+                patchedArguments.Add(pair.Key, pair.Value);
             }
 
             for (var i = 0; i < supportedHostTargetArguments.Count; i++) {
@@ -564,11 +576,11 @@ internal static partial class Program {
                         targetsArray.Add(normalizedTargets[targetIndex]);
                     }
 
-                    patchedArguments.Add(candidateKey, targetsArray);
+                    patchedArguments[candidateKey] = JsonValue.From(targetsArray);
                     continue;
                 }
 
-                patchedArguments.Add(candidateKey, normalizedTargets[0]);
+                patchedArguments[candidateKey] = JsonValue.From(normalizedTargets[0]);
             }
 
             var patchedInput = JsonLite.Serialize(JsonValue.From(patchedArguments));

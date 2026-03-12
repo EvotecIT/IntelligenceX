@@ -17,6 +17,11 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("UpdateToolCatalog not found.");
 
+    private static readonly MethodInfo BuildToolCatalogExecutionSummaryMethod = typeof(MainWindow).GetMethod(
+        "BuildToolCatalogExecutionSummary",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("BuildToolCatalogExecutionSummary not found.");
+
     private static readonly FieldInfo ToolDescriptionsField = typeof(MainWindow).GetField(
         "_toolDescriptions",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -191,6 +196,80 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         Assert.False(supportsRemoteExecution["system_local_trace_query"]);
     }
 
+    /// <summary>
+    /// Ensures remote-only tools normalize correctly even when callers omit the explicit execution scope string.
+    /// </summary>
+    [Fact]
+    public void UpdateToolCatalog_InferRemoteOnlyScope_WhenOnlyRemoteExecutionIsSupported() {
+        var window = CreateWindow();
+        var tools = new[] {
+            new ToolDefinitionDto {
+                Name = "ad_remote_domain_query",
+                Description = "Query remote directory state.",
+                PackId = "adplayground",
+                PackName = "Active Directory",
+                IsExecutionAware = true,
+                ExecutionContractId = "ix.tool-execution.v1",
+                ExecutionScope = "",
+                SupportsLocalExecution = false,
+                SupportsRemoteExecution = true
+            }
+        };
+
+        InvokeUpdateToolCatalog(window, tools);
+
+        var executionScopes = Assert.IsType<Dictionary<string, string>>(ToolExecutionScopesField.GetValue(window));
+        var supportsLocalExecution = Assert.IsType<Dictionary<string, bool>>(ToolSupportsLocalExecutionField.GetValue(window));
+        var supportsRemoteExecution = Assert.IsType<Dictionary<string, bool>>(ToolSupportsRemoteExecutionField.GetValue(window));
+
+        Assert.Equal("remote_only", executionScopes["ad_remote_domain_query"]);
+        Assert.False(supportsLocalExecution["ad_remote_domain_query"]);
+        Assert.True(supportsRemoteExecution["ad_remote_domain_query"]);
+    }
+
+    /// <summary>
+    /// Ensures execution locality summaries only count tools that explicitly declare execution contracts.
+    /// </summary>
+    [Fact]
+    public void BuildToolCatalogExecutionSummary_IgnoresToolsWithoutExecutionContracts() {
+        var window = CreateWindow();
+        var tools = new[] {
+            new ToolDefinitionDto {
+                Name = "eventlog_timeline_query",
+                Description = "Query timeline from a host.",
+                PackId = "eventlog",
+                PackName = "Event Viewer",
+                IsExecutionAware = true,
+                ExecutionContractId = "ix.tool-execution.v1",
+                ExecutionScope = "local_only",
+                SupportsLocalExecution = true,
+                SupportsRemoteExecution = false
+            },
+            new ToolDefinitionDto {
+                Name = "legacy_remote_helper",
+                Description = "Legacy helper with no execution contract.",
+                PackId = "system",
+                PackName = "System",
+                IsExecutionAware = false,
+                ExecutionScope = "",
+                SupportsLocalExecution = false,
+                SupportsRemoteExecution = true
+            }
+        };
+
+        InvokeUpdateToolCatalog(window, tools);
+
+        var summary = InvokeBuildToolCatalogExecutionSummary(window);
+
+        Assert.NotNull(summary);
+        Assert.Equal(1, summary!.ExecutionAwareToolCount);
+        Assert.Equal(1, summary.LocalOnlyToolCount);
+        Assert.Equal(0, summary.RemoteOnlyToolCount);
+        Assert.Equal(0, summary.LocalOrRemoteToolCount);
+        Assert.Equal(new[] { "eventlog" }, summary.LocalOnlyPackIds);
+        Assert.Empty(summary.RemoteCapablePackIds);
+    }
+
     private static MainWindow CreateWindow() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         SetField(ToolDescriptionsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -216,6 +295,14 @@ public sealed class MainWindowToolCatalogNormalizationTests {
     private static void InvokeUpdateToolCatalog(MainWindow window, ToolDefinitionDto[] tools) {
         try {
             UpdateToolCatalogMethod.Invoke(window, new object?[] { tools, null, null, null });
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
+    private static ToolCatalogExecutionSummary? InvokeBuildToolCatalogExecutionSummary(MainWindow window) {
+        try {
+            return (ToolCatalogExecutionSummary?)BuildToolCatalogExecutionSummaryMethod.Invoke(window, Array.Empty<object>());
         } catch (TargetInvocationException ex) {
             throw ex.InnerException ?? ex;
         }

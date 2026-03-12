@@ -346,12 +346,15 @@ public sealed partial class MainWindow {
 
             if (_toolExecutionAwareness.TryGetValue(toolName, out var isExecutionAware) && isExecutionAware) {
                 executionAwareToolCount++;
+            } else {
+                continue;
             }
 
+            var supportsLocalExecution = _toolSupportsLocalExecution.TryGetValue(toolName, out var localEnabled) && localEnabled;
             var supportsRemoteExecution = _toolSupportsRemoteExecution.TryGetValue(toolName, out var remoteEnabled) && remoteEnabled;
             var scope = _toolExecutionScopes.TryGetValue(toolName, out var explicitScope)
                 ? explicitScope
-                : ResolveToolExecutionScope(null, supportsRemoteExecution);
+                : ResolveToolExecutionScope(null, supportsLocalExecution, supportsRemoteExecution);
 
             if (string.Equals(scope, "remote_only", StringComparison.OrdinalIgnoreCase)) {
                 remoteOnlyToolCount++;

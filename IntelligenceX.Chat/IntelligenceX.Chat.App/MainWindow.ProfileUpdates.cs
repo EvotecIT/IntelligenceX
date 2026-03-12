@@ -169,7 +169,10 @@ public sealed partial class MainWindow : Window {
             } else {
                 _toolExecutionContractIds.Remove(name);
             }
-            _toolExecutionScopes[name] = ResolveToolExecutionScope(tool.ExecutionScope, tool.SupportsRemoteExecution);
+            _toolExecutionScopes[name] = ResolveToolExecutionScope(
+                tool.ExecutionScope,
+                tool.SupportsLocalExecution,
+                tool.SupportsRemoteExecution);
             _toolSupportsLocalExecution[name] = tool.SupportsLocalExecution;
             _toolSupportsRemoteExecution[name] = tool.SupportsRemoteExecution;
             if (!_toolStates.ContainsKey(name)) {
@@ -218,12 +221,19 @@ public sealed partial class MainWindow : Window {
         _toolStates[key] = enabled;
     }
 
-    private static string ResolveToolExecutionScope(string? executionScope, bool supportsRemoteExecution) {
+    private static string ResolveToolExecutionScope(
+        string? executionScope,
+        bool supportsLocalExecution,
+        bool supportsRemoteExecution) {
         var normalized = (executionScope ?? string.Empty).Trim().ToLowerInvariant();
         if (string.Equals(normalized, "local_only", StringComparison.Ordinal)
             || string.Equals(normalized, "remote_only", StringComparison.Ordinal)
             || string.Equals(normalized, "local_or_remote", StringComparison.Ordinal)) {
             return normalized;
+        }
+
+        if (supportsRemoteExecution && !supportsLocalExecution) {
+            return "remote_only";
         }
 
         return supportsRemoteExecution ? "local_or_remote" : "local_only";
