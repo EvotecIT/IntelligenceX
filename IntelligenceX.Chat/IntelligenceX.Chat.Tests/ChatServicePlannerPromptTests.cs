@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
 using IntelligenceX.Chat.Service;
@@ -18,10 +19,6 @@ namespace IntelligenceX.Chat.Tests;
 /// Validates planner and lexical-routing prompts include schema hints.
 /// </summary>
 public sealed class ChatServicePlannerPromptTests {
-    private static readonly MethodInfo BuildModelPlannerPromptMethod =
-        typeof(ChatServiceSession).GetMethod("BuildModelPlannerPrompt", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("BuildModelPlannerPrompt not found.");
-
     private static readonly MethodInfo BuildToolRoutingSearchTextMethod =
         typeof(ChatServiceSession).GetMethod("BuildToolRoutingSearchText", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildToolRoutingSearchText not found.");
@@ -69,11 +66,10 @@ public sealed class ChatServicePlannerPromptTests {
                     .NoAdditionalProperties())
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             "top 5 system events from AD0",
             definitions,
-            6
-        }));
+            6);
 
         Assert.Contains("required: log_name", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("args: ", prompt, StringComparison.OrdinalIgnoreCase);
@@ -98,17 +94,102 @@ public sealed class ChatServicePlannerPromptTests {
                 })
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             "inspect tls posture on the same domain controller",
             definitions,
-            4
-        }));
+            4);
 
         Assert.Contains("pack: system", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("role: operational", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("execution(local_or_remote)", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("target_scoping(search_base_dn, computer_name)", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("remote_host_targeting(computer_name)", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesPackEngineAndDeclaredPackTraits() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_gpo_health",
+                "Summarize GPO health for the selected domain.",
+                ToolSchema.Object(("domain_name", ToolSchema.String("Domain DNS name."))).Required("domain_name").NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "AD Playground",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        var prompt = BuildModelPlannerPrompt(
+            "check the same domain gpo health",
+            definitions,
+            4,
+            packAvailability: new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "ADPlayground",
+                    Name = "AD Playground",
+                    SourceKind = "builtin",
+                    EngineId = "ADPlayground",
+                    CapabilityTags = new[] { "Remote Analysis", "Directory", "GPO" },
+                    Enabled = true
+                }
+            });
+
+        Assert.Contains("pack: active_directory", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("engine: adplayground", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_traits: directory, gpo, remote_analysis", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesExecutionLocalitySummaryForMixedCatalog() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_local_trace_query",
+                "Inspect local traces only.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                }),
+            new(
+                "eventlog_live_query",
+                "Query remote event logs.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOrRemote
+                })
+        };
+
+        var prompt = BuildModelPlannerPrompt(
+            "continue on remaining DCs",
+            definitions,
+            4);
+
+        Assert.Contains("Execution locality:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Current candidate tools have mixed locality", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Prefer remote-ready tools for host/DC-targeted work", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesExecutionLocalitySummaryForLocalOnlyCatalog() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_local_trace_query",
+                "Inspect local traces only.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        };
+
+        var prompt = BuildModelPlannerPrompt(
+            "continue on remaining DCs",
+            definitions,
+            4);
+
+        Assert.Contains("Execution locality:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Current candidate tools are local-only", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("available tools here are local-only", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -152,11 +233,10 @@ public sealed class ChatServicePlannerPromptTests {
                 })
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             "inspect timeline on the same domain controller and continue into host diagnostics",
             definitions,
-            4
-        }));
+            4);
 
         Assert.Contains("setup: eventlog_channels_list", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("recovery: eventlog_channels_list", prompt, StringComparison.OrdinalIgnoreCase);
@@ -182,11 +262,10 @@ public sealed class ChatServicePlannerPromptTests {
                 })
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             "summarize contoso.com",
             definitions,
-            4
-        }));
+            4);
 
         Assert.Contains("category: dns", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("family: public_domain", prompt, StringComparison.OrdinalIgnoreCase);
@@ -203,7 +282,7 @@ public sealed class ChatServicePlannerPromptTests {
                 ToolSchema.Object(("forest_name", ToolSchema.String("Forest DNS name."))).NoAdditionalProperties())
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             """
             [Continuation focus]
             ix:continuation-focus:v1
@@ -217,8 +296,7 @@ public sealed class ChatServicePlannerPromptTests {
             follow_up: where is ADRODC in the table?
             """,
             definitions,
-            4
-        }));
+            4);
 
         Assert.Contains("User request:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("where is ADRODC in the table?", prompt, StringComparison.OrdinalIgnoreCase);
@@ -235,7 +313,7 @@ public sealed class ChatServicePlannerPromptTests {
                 ToolSchema.Object(("forest_name", ToolSchema.String("Forest DNS name."))).NoAdditionalProperties())
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             """
             [Continuation focus]
             ix:continuation-focus:v1
@@ -250,8 +328,7 @@ public sealed class ChatServicePlannerPromptTests {
             follow_up: continue replication AD2
             """,
             definitions,
-            4
-        }));
+            4);
 
         Assert.Contains("User request:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("continue replication AD2", prompt, StringComparison.OrdinalIgnoreCase);
@@ -279,7 +356,7 @@ public sealed class ChatServicePlannerPromptTests {
                 ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties())
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             """
             [Planner context]
             ix:planner-context:v1
@@ -299,8 +376,7 @@ public sealed class ChatServicePlannerPromptTests {
             continue from the same DC scope
             """,
             definitions,
-            4
-        }));
+            4);
 
         Assert.Contains("Execution intent:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Fresh live execution is required", prompt, StringComparison.OrdinalIgnoreCase);
@@ -330,7 +406,7 @@ public sealed class ChatServicePlannerPromptTests {
                 ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties())
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             """
             [Planner context]
             ix:planner-context:v1
@@ -345,8 +421,7 @@ public sealed class ChatServicePlannerPromptTests {
             continue from the same discovered domain controllers and inspect their certificate posture
             """,
             definitions,
-            4
-        }));
+            4);
 
         Assert.Contains("Missing live evidence: ldap certificate posture", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Preferred tools: ad_ldap_diagnostics, system_certificate_posture", prompt, StringComparison.OrdinalIgnoreCase);
@@ -1780,5 +1855,30 @@ public sealed class ChatServicePlannerPromptTests {
             maxContextLength: maxContextLength,
             loadedContextLength: loadedContextLength,
             capabilities: Array.Empty<string>());
+    }
+
+    private static string BuildModelPlannerPrompt(
+        string requestText,
+        IReadOnlyList<ToolDefinition> definitions,
+        int limit,
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null) {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        if (packAvailability is { Count: > 0 }) {
+            session.SetCapabilitySnapshotContextForTesting(
+                packAvailability,
+                new ToolRoutingCatalogDiagnostics {
+                    TotalTools = definitions.Count,
+                    RoutingAwareTools = 0,
+                    MissingRoutingContractTools = 0,
+                    DomainFamilyTools = 0,
+                    ExpectedDomainFamilyMissingTools = 0,
+                    DomainFamilyMissingActionTools = 0,
+                    ActionWithoutFamilyTools = 0,
+                    FamilyActionConflictFamilies = 0,
+                    FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+                });
+        }
+
+        return session.BuildModelPlannerPromptForTesting(requestText, definitions, limit);
     }
 }

@@ -238,7 +238,9 @@ internal static partial class Program {
                             toolOutputs: reportedOutputs,
                             model: _options.Model,
                             transport: _options.OpenAITransport,
-                            baseUrl: _options.OpenAIBaseUrl);
+                            baseUrl: _options.OpenAIBaseUrl,
+                            toolDefinitions: toolDefs,
+                            knownHostTargets: GetRecentHostTargetsSnapshot());
                     }
 
                     _previousResponseId = TryGetResponseId(turn) ?? _previousResponseId;

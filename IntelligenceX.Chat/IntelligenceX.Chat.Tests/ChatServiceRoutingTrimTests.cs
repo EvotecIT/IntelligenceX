@@ -57,19 +57,39 @@ public sealed partial class ChatServiceRoutingTrimTests {
         typeof(ChatServiceSession).GetMethod("ShouldAttemptToolReceiptCorrection", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ShouldAttemptToolReceiptCorrection not found.");
     private static readonly MethodInfo BuildToolExecutionNudgePromptMethod =
-        typeof(ChatServiceSession).GetMethod("BuildToolExecutionNudgePrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        typeof(ChatServiceSession).GetMethod(
+            "BuildToolExecutionNudgePrompt",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(string), typeof(string), typeof(IReadOnlyList<ToolDefinition>) },
+            modifiers: null)
         ?? throw new InvalidOperationException("BuildToolExecutionNudgePrompt not found.");
     private static readonly MethodInfo BuildNoToolExecutionWatchdogPromptMethod =
-        typeof(ChatServiceSession).GetMethod("BuildNoToolExecutionWatchdogPrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        typeof(ChatServiceSession).GetMethod(
+            "BuildNoToolExecutionWatchdogPrompt",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(string), typeof(string), typeof(IReadOnlyList<ToolDefinition>) },
+            modifiers: null)
         ?? throw new InvalidOperationException("BuildNoToolExecutionWatchdogPrompt not found.");
     private static readonly MethodInfo BuildExecutionContractBlockerTextMethod =
         typeof(ChatServiceSession).GetMethod("BuildExecutionContractBlockerText", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildExecutionContractBlockerText not found.");
     private static readonly MethodInfo BuildExecutionContractEscapePromptMethod =
-        typeof(ChatServiceSession).GetMethod("BuildExecutionContractEscapePrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        typeof(ChatServiceSession).GetMethod(
+            "BuildExecutionContractEscapePrompt",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(string), typeof(string), typeof(IReadOnlyList<ToolDefinition>) },
+            modifiers: null)
         ?? throw new InvalidOperationException("BuildExecutionContractEscapePrompt not found.");
     private static readonly MethodInfo BuildContinuationSubsetEscapePromptMethod =
-        typeof(ChatServiceSession).GetMethod("BuildContinuationSubsetEscapePrompt", BindingFlags.NonPublic | BindingFlags.Static)
+        typeof(ChatServiceSession).GetMethod(
+            "BuildContinuationSubsetEscapePrompt",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(string), typeof(string), typeof(IReadOnlyList<ToolDefinition>) },
+            modifiers: null)
         ?? throw new InvalidOperationException("BuildContinuationSubsetEscapePrompt not found.");
     private static readonly MethodInfo TryBuildStructuredNextActionRetryPromptMethod =
         typeof(ChatServiceSession).GetMethod("TryBuildStructuredNextActionRetryPrompt", BindingFlags.NonPublic | BindingFlags.Static)
@@ -417,10 +437,55 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void BuildToolExecutionNudgePrompt_EmitsStableMarker() {
-        var result = BuildToolExecutionNudgePromptMethod.Invoke(null, new object?[] { "run now", "draft" });
+        var result = BuildToolExecutionNudgePromptMethod.Invoke(null, new object?[] { "run now", "draft", Array.Empty<ToolDefinition>() });
         var text = Assert.IsType<string>(result);
 
         Assert.Contains("ix:execution-correction:v1", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolExecutionNudgePrompt_ExplainsLocalOnlyCatalogForRemoteRequests() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "system_local_trace_query",
+                description: "Inspect local traces only.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                })
+        };
+
+        var result = BuildToolExecutionNudgePromptMethod.Invoke(null, new object?[] { "continue on remaining DCs", "draft", toolDefinitions });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("available tools here are local-only", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not imply remote host/DC collection", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoToolExecutionWatchdogPrompt_PrefersRemoteReadyToolsWhenCatalogIsMixed() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "system_local_trace_query",
+                description: "Inspect local traces only.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Host label."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOnly
+                }),
+            new ToolDefinition(
+                name: "eventlog_live_query",
+                description: "Query remote event logs.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    ExecutionScope = ToolExecutionScopes.LocalOrRemote
+                })
+        };
+
+        var result = BuildNoToolExecutionWatchdogPromptMethod.Invoke(null, new object?[] { "continue on remaining DCs", "draft", toolDefinitions });
+        var text = Assert.IsType<string>(result);
+
+        Assert.Contains("both local-only and remote-ready tools", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Prefer remote-ready tools for host/DC-targeted work", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

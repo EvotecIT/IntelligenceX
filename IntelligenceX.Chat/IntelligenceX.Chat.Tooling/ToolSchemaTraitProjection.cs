@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using IntelligenceX.Json;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Tooling;
@@ -10,14 +9,15 @@ namespace IntelligenceX.Chat.Tooling;
 /// <summary>
 /// Schema-derived routing traits projected from a registered tool definition.
 /// </summary>
+/// <param name="ExecutionScope">Human-readable execution locality classification.</param>
 /// <param name="SupportsTableViewProjection">Indicates table-view projection arguments are present.</param>
 /// <param name="TargetScopeArguments">Canonical target-scope arguments present in the schema.</param>
 /// <param name="RemoteHostArguments">Canonical remote-host targeting arguments present in the schema.</param>
 public readonly record struct ToolSchemaTraits(
+    string ExecutionScope,
     bool SupportsTableViewProjection,
     IReadOnlyList<string> TargetScopeArguments,
     IReadOnlyList<string> RemoteHostArguments) {
-
     /// <summary>
     /// Indicates whether the schema exposes any target-scope arguments.
     /// </summary>
@@ -27,11 +27,6 @@ public readonly record struct ToolSchemaTraits(
     /// Indicates whether the schema exposes any remote-host targeting arguments.
     /// </summary>
     public bool SupportsRemoteHostTargeting => RemoteHostArguments?.Count > 0;
-
-    /// <summary>
-    /// Human-readable execution locality classification for planner/routing prompts.
-    /// </summary>
-    public string ExecutionScope => SupportsRemoteHostTargeting ? "local_or_remote" : "local_only";
 }
 
 /// <summary>
@@ -39,10 +34,6 @@ public readonly record struct ToolSchemaTraits(
 /// </summary>
 public static class ToolSchemaTraitProjection {
     private static readonly string[] TableViewArgumentNames = { "columns", "sort_by", "sort_direction", "top" };
-    private static readonly string[] TargetScopeArgumentNames = {
-        "search_base_dn", "path", "folder", "channel", "provider_name"
-    };
-
     /// <summary>
     /// Projects schema-derived traits from a tool definition.
     /// </summary>
@@ -61,7 +52,12 @@ public static class ToolSchemaTraitProjection {
     /// <param name="traits">Projected schema traits.</param>
     /// <returns>Normalized property names up to <paramref name="maxCount"/>.</returns>
     public static string[] ReadPropertyNames(ToolDefinition? definition, int maxCount, out ToolSchemaTraits traits) {
-        traits = default;
+        var executionTraits = ToolExecutionTraitProjection.Project(definition);
+        traits = new ToolSchemaTraits(
+            ExecutionScope: executionTraits.ExecutionScope,
+            SupportsTableViewProjection: false,
+            TargetScopeArguments: executionTraits.TargetScopeArguments,
+            RemoteHostArguments: executionTraits.RemoteHostArguments);
         if (definition?.Parameters is null) {
             return Array.Empty<string>();
         }
@@ -86,12 +82,9 @@ public static class ToolSchemaTraitProjection {
             }
         }
 
-        traits = new ToolSchemaTraits(
-            SupportsTableViewProjection: ContainsKnownArgument(allNames, TableViewArgumentNames),
-            TargetScopeArguments: MergeKnownArguments(
-                IntersectKnownArguments(allNames, TargetScopeArgumentNames),
-                IntersectKnownArguments(allNames, ToolHostTargeting.HostTargetArguments)),
-            RemoteHostArguments: IntersectKnownArguments(allNames, ToolHostTargeting.HostTargetArguments));
+        traits = traits with {
+            SupportsTableViewProjection = ContainsKnownArgument(allNames, TableViewArgumentNames)
+        };
 
         return selectedNames is null || selectedNames.Count == 0
             ? Array.Empty<string>()
@@ -204,55 +197,19 @@ public static class ToolSchemaTraitProjection {
     }
 
     private static bool ContainsKnownArgument(IReadOnlyList<string> names, IReadOnlyList<string> knownNames) {
-        return IntersectKnownArguments(names, knownNames).Count > 0;
-    }
-
-    private static IReadOnlyList<string> IntersectKnownArguments(IReadOnlyList<string> names, IReadOnlyList<string> knownNames) {
         if (names is null || names.Count == 0 || knownNames is null || knownNames.Count == 0) {
-            return Array.Empty<string>();
+            return false;
         }
 
         var set = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
-        var result = new List<string>();
         for (var i = 0; i < knownNames.Count; i++) {
             var known = (knownNames[i] ?? string.Empty).Trim();
-            if (known.Length == 0 || !set.Contains(known)) {
-                continue;
+            if (known.Length > 0 && set.Contains(known)) {
+                return true;
             }
-
-            result.Add(known);
         }
 
-        return result.Count == 0 ? Array.Empty<string>() : result;
-    }
-
-    private static IReadOnlyList<string> MergeKnownArguments(IReadOnlyList<string> first, IReadOnlyList<string> second) {
-        if ((first is null || first.Count == 0) && (second is null || second.Count == 0)) {
-            return Array.Empty<string>();
-        }
-
-        var merged = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        AppendDistinct(first, merged, seen);
-        AppendDistinct(second, merged, seen);
-
-        return merged.Count == 0 ? Array.Empty<string>() : merged;
-    }
-
-    private static void AppendDistinct(IReadOnlyList<string>? source, List<string> destination, HashSet<string> seen) {
-        if (source is null || source.Count == 0) {
-            return;
-        }
-
-        for (var i = 0; i < source.Count; i++) {
-            var value = (source[i] ?? string.Empty).Trim();
-            if (value.Length == 0 || !seen.Add(value)) {
-                continue;
-            }
-
-            destination.Add(value);
-        }
+        return false;
     }
 
     private static string NormalizeSchemaToken(string? token) {

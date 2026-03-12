@@ -54,6 +54,7 @@
     ensureCustomSelect("optAutonomyPlanReview");
     ensureCustomSelect("optAutonomyWeightedRouting");
 
+    renderToolLocalityQuickFilters();
     renderPolicy();
     renderAutonomy();
     renderMemory();

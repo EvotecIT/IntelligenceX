@@ -149,17 +149,40 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         IReadOnlyList<ToolOutput> toolOutputs,
         string? model,
         OpenAITransportKind transport,
-        string? baseUrl) {
+        string? baseUrl,
+        IReadOnlyList<ToolDefinition>? toolDefinitions = null,
+        IReadOnlyList<string>? knownHostTargets = null) {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
         Assert.NotNull(replSessionType);
 
         var method = replSessionType!.GetMethod(
             "BuildNoTextReplFallbackTextForTesting",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] {
+                typeof(string),
+                typeof(IReadOnlyList<ToolCall>),
+                typeof(IReadOnlyList<ToolOutput>),
+                typeof(string),
+                typeof(OpenAITransportKind),
+                typeof(string),
+                typeof(IReadOnlyList<ToolDefinition>),
+                typeof(IReadOnlyList<string>)
+            },
+            modifiers: null);
         Assert.NotNull(method);
 
-        var value = method!.Invoke(null, new object?[] { assistantDraft, toolCalls, toolOutputs, model, transport, baseUrl });
+        var value = method!.Invoke(null, new object?[] {
+            assistantDraft,
+            toolCalls,
+            toolOutputs,
+            model,
+            transport,
+            baseUrl,
+            toolDefinitions ?? Array.Empty<ToolDefinition>(),
+            knownHostTargets ?? Array.Empty<string>()
+        });
         return Assert.IsType<string>(value);
     }
 

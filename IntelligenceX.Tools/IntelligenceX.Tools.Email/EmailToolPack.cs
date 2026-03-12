@@ -26,7 +26,9 @@ public sealed class EmailToolPack : IToolPack, IToolPackCatalogProvider {
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "IMAP/SMTP workflows (search/get/probe/send) via Mailozaurr.",
-        SourceKind = "builtin"
+        SourceKind = "builtin",
+        EngineId = "mailozaurr",
+        CapabilityTags = new[] { "email", "imap", "smtp" }
     };
 
     /// <inheritdoc />

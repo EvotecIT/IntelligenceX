@@ -376,6 +376,57 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
+    public void CatalogFromTools_ShouldRecognizeAdDomainAndForestArguments_AsTargetScopeTraits() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "ad_scope_discovery",
+                "AD scope discovery",
+                ToolSchema.Object(
+                        ("domain_name", ToolSchema.String("Domain.")),
+                        ("forest_name", ToolSchema.String("Forest.")),
+                        ("domain_controller", ToolSchema.String("Domain controller.")))
+                    .NoAdditionalProperties(),
+                category: "active_directory"))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.True(item.Traits.SupportsTargetScoping);
+        Assert.Equal(new[] { "domain_name", "forest_name", "domain_controller" }, item.Traits.TargetScopeArguments);
+        Assert.True(item.Traits.SupportsRemoteHostTargeting);
+        Assert.Equal(new[] { "domain_controller" }, item.Traits.RemoteHostArguments);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldPreferExplicitExecutionContractOverSchemaInference() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "remote_eventlog_snapshot",
+                "Read from a remote-only event source.",
+                ToolSchema.Object(
+                        ("channel", ToolSchema.String("Event log channel.")),
+                        ("top", ToolSchema.Integer("Limit.")))
+                    .NoAdditionalProperties(),
+                execution: new ToolExecutionContract {
+                    IsExecutionAware = true,
+                    ExecutionScope = ToolExecutionScopes.RemoteOnly,
+                    TargetScopeArguments = new[] { "channel" }
+                },
+                category: "eventlog"))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.True(item.Traits.IsExecutionAware);
+        Assert.Equal(ToolExecutionContract.DefaultContractId, item.Traits.ExecutionContractId);
+        Assert.Equal(ToolExecutionScopes.RemoteOnly, item.Traits.ExecutionScope);
+        Assert.False(item.Traits.SupportsLocalExecution);
+        Assert.True(item.Traits.SupportsRemoteExecution);
+        Assert.True(item.Traits.SupportsTargetScoping);
+        Assert.Equal(new[] { "channel" }, item.Traits.TargetScopeArguments);
+        Assert.False(item.Traits.SupportsRemoteHostTargeting);
+        Assert.Empty(item.Traits.RemoteHostArguments);
+    }
+
+    [Fact]
     public void CatalogFromTools_ShouldInferCategoryAndSelectionTags() {
         var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
             new StubTool(new ToolDefinition(

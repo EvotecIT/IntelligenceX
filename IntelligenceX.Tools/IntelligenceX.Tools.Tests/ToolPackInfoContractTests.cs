@@ -561,7 +561,11 @@ public class ToolPackInfoContractTests {
             .First(static node => string.Equals(node.GetProperty("name").GetString(), "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase));
 
         var traits = timelineEntry.GetProperty("traits");
+        Assert.True(traits.GetProperty("is_execution_aware").GetBoolean());
+        Assert.Equal(ToolExecutionContract.DefaultContractId, traits.GetProperty("execution_contract_id").GetString());
         Assert.Equal("local_or_remote", traits.GetProperty("execution_scope").GetString());
+        Assert.True(traits.GetProperty("supports_local_execution").GetBoolean());
+        Assert.True(traits.GetProperty("supports_remote_execution").GetBoolean());
         Assert.Contains("machine_name", ReadStringArray(traits.GetProperty("remote_host_arguments")), StringComparer.OrdinalIgnoreCase);
 
         var setup = timelineEntry.GetProperty("setup");
@@ -776,7 +780,11 @@ public class ToolPackInfoContractTests {
     }
 
     private static void AssertTraitDetails(JsonElement actualTraits, ToolPackToolTraitsModel expectedTraits) {
+        Assert.Equal(expectedTraits.IsExecutionAware, TryGetBoolean(actualTraits, "is_execution_aware"));
+        Assert.Equal(expectedTraits.ExecutionContractId, TryGetString(actualTraits, "execution_contract_id"));
         Assert.Equal(expectedTraits.ExecutionScope, actualTraits.GetProperty("execution_scope").GetString());
+        Assert.Equal(expectedTraits.SupportsLocalExecution, TryGetBoolean(actualTraits, "supports_local_execution", fallback: true));
+        Assert.Equal(expectedTraits.SupportsRemoteExecution, TryGetBoolean(actualTraits, "supports_remote_execution"));
         Assert.Equal(expectedTraits.SupportsTableViewProjection, actualTraits.GetProperty("supports_table_view_projection").GetBoolean());
         Assert.Equal(expectedTraits.SupportsPaging, actualTraits.GetProperty("supports_paging").GetBoolean());
         Assert.Equal(expectedTraits.SupportsTimeRange, actualTraits.GetProperty("supports_time_range").GetBoolean());
@@ -820,7 +828,7 @@ public class ToolPackInfoContractTests {
         return catalog.Count(static entry =>
             entry.Traits.SupportsRemoteHostTargeting
             || entry.Traits.RemoteHostArguments.Count > 0
-            || string.Equals(entry.Traits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase));
+            || ToolExecutionScopes.IsRemoteCapable(entry.Traits.ExecutionScope));
     }
 
     private static int CountExpectedSetupAwareTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
@@ -845,11 +853,19 @@ public class ToolPackInfoContractTests {
             .Where(static entry =>
                 entry.Traits.SupportsRemoteHostTargeting
                 || entry.Traits.RemoteHostArguments.Count > 0
-                || string.Equals(entry.Traits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase))
+                || ToolExecutionScopes.IsRemoteCapable(entry.Traits.ExecutionScope))
             .Select(static entry => entry.Name)
             .Where(static name => !string.IsNullOrWhiteSpace(name))
             .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static bool TryGetBoolean(JsonElement element, string propertyName, bool fallback = false) {
+        return element.TryGetProperty(propertyName, out var property) ? property.GetBoolean() : fallback;
+    }
+
+    private static string? TryGetString(JsonElement element, string propertyName) {
+        return element.TryGetProperty(propertyName, out var property) ? property.GetString() : null;
     }
 
     private static string[] ReadExpectedSetupAwareToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {

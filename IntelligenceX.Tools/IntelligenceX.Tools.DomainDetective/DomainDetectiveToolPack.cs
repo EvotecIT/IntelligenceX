@@ -25,7 +25,9 @@ public sealed class DomainDetectiveToolPack : IToolPack, IToolPackCatalogProvide
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Open-source domain, DNS, and network-path diagnostics.",
-        SourceKind = "open_source"
+        SourceKind = "open_source",
+        EngineId = "domaindetective",
+        CapabilityTags = new[] { "dns", "domain_scope", "network_path", "remote_analysis" }
     };
 
     /// <inheritdoc />

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -51,6 +52,11 @@ public static class ToolAutonomySummaryBuilder {
             .Select(edge => NormalizePackId(edge.TargetPackId))
             .Where(targetPackId => targetPackId.Length > 0 && !string.Equals(targetPackId, normalizedPackId, StringComparison.OrdinalIgnoreCase));
 
+        var remoteCapableToolCount = CountDistinct(remoteCapableToolNames);
+        var setupAwareToolCount = CountDistinct(setupAwareToolNames);
+        var handoffAwareToolCount = CountDistinct(handoffAwareToolNames);
+        var recoveryAwareToolCount = CountDistinct(recoveryAwareToolNames);
+        var crossPackHandoffToolCount = CountDistinct(crossPackHandoffToolNames);
         var normalizedRemoteCapableToolNames = NormalizeDistinctStrings(remoteCapableToolNames, maxItems);
         var normalizedSetupAwareToolNames = NormalizeDistinctStrings(setupAwareToolNames, maxItems);
         var normalizedHandoffAwareToolNames = NormalizeDistinctStrings(handoffAwareToolNames, maxItems);
@@ -60,15 +66,15 @@ public static class ToolAutonomySummaryBuilder {
 
         return new ToolPackAutonomySummaryDto {
             TotalTools = Math.Max(0, entries.Count),
-            RemoteCapableTools = normalizedRemoteCapableToolNames.Length,
+            RemoteCapableTools = remoteCapableToolCount,
             RemoteCapableToolNames = normalizedRemoteCapableToolNames,
-            SetupAwareTools = normalizedSetupAwareToolNames.Length,
+            SetupAwareTools = setupAwareToolCount,
             SetupAwareToolNames = normalizedSetupAwareToolNames,
-            HandoffAwareTools = normalizedHandoffAwareToolNames.Length,
+            HandoffAwareTools = handoffAwareToolCount,
             HandoffAwareToolNames = normalizedHandoffAwareToolNames,
-            RecoveryAwareTools = normalizedRecoveryAwareToolNames.Length,
+            RecoveryAwareTools = recoveryAwareToolCount,
             RecoveryAwareToolNames = normalizedRecoveryAwareToolNames,
-            CrossPackHandoffTools = normalizedCrossPackHandoffToolNames.Length,
+            CrossPackHandoffTools = crossPackHandoffToolCount,
             CrossPackHandoffToolNames = normalizedCrossPackHandoffToolNames,
             CrossPackTargetPacks = normalizedCrossPackTargetPacks
         };
@@ -153,9 +159,7 @@ public static class ToolAutonomySummaryBuilder {
     }
 
     private static bool IsRemoteCapable(ToolOrchestrationCatalogEntry entry) {
-        return string.Equals(entry.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)
-            || entry.SupportsRemoteHostTargeting
-            || entry.RemoteHostArguments.Count > 0;
+        return ToolExecutionScopes.IsRemoteCapable(entry.ExecutionScope);
     }
 
     private static bool IsCrossPackHandoff(string normalizedPackId, ToolOrchestrationCatalogEntry entry) {
@@ -197,5 +201,21 @@ public static class ToolAutonomySummaryBuilder {
         }
 
         return list.Count == 0 ? Array.Empty<string>() : list.ToArray();
+    }
+
+    private static int CountDistinct(IEnumerable<string>? values) {
+        if (values is null) {
+            return 0;
+        }
+
+        var dedupe = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            var normalized = (value ?? string.Empty).Trim();
+            if (normalized.Length > 0) {
+                dedupe.Add(normalized);
+            }
+        }
+
+        return dedupe.Count;
     }
 }

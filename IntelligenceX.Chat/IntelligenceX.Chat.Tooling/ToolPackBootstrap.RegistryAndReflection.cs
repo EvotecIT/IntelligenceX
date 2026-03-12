@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -702,6 +703,8 @@ public static partial class ToolPackBootstrap {
         var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedId : descriptor.Name.Trim();
         var normalizedDescription = string.IsNullOrWhiteSpace(descriptor.Description) ? null : descriptor.Description.Trim();
         var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
+        var normalizedEngineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(descriptor.EngineId);
+        var normalizedCapabilityTags = NormalizeDistinctDescriptorTokens(descriptor.CapabilityTags);
         var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
 
         return new ToolPackAvailabilityInfo {
@@ -711,6 +714,8 @@ public static partial class ToolPackBootstrap {
             Tier = descriptor.Tier,
             IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
             SourceKind = normalizedSourceKind,
+            EngineId = normalizedEngineId.Length == 0 ? null : normalizedEngineId,
+            CapabilityTags = normalizedCapabilityTags,
             Enabled = enabled,
             DisabledReason = enabled ? null : normalizedReason
         };
@@ -750,7 +755,14 @@ public static partial class ToolPackBootstrap {
         }
 
         var normalizedName = string.IsNullOrWhiteSpace(availability.Name) ? normalizedPackId : availability.Name.Trim();
-        availabilityById[normalizedPackId] = availability with { Id = normalizedPackId, Name = normalizedName };
+        var normalizedEngineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(availability.EngineId);
+        var normalizedCapabilityTags = NormalizeDistinctDescriptorTokens(availability.CapabilityTags);
+        availabilityById[normalizedPackId] = availability with {
+            Id = normalizedPackId,
+            Name = normalizedName,
+            EngineId = normalizedEngineId.Length == 0 ? null : normalizedEngineId,
+            CapabilityTags = normalizedCapabilityTags
+        };
     }
 
     private static void UpsertPluginAvailability(
@@ -820,6 +832,26 @@ public static partial class ToolPackBootstrap {
             return;
         }
         onWarning?.Invoke(message);
+    }
+
+    private static IReadOnlyList<string> NormalizeDistinctDescriptorTokens(IReadOnlyList<string>? values) {
+        if (values is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(values.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var token = ToolPackMetadataNormalizer.NormalizeDescriptorToken(values[i]);
+            if (token.Length == 0 || !seen.Add(token)) {
+                continue;
+            }
+
+            normalized.Add(token);
+        }
+
+        normalized.Sort(StringComparer.OrdinalIgnoreCase);
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
     }
 
     private sealed class DescriptorOverrideToolPack : IToolPack {

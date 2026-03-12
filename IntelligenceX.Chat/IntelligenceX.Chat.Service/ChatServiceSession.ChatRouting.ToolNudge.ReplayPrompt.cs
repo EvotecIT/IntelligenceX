@@ -2,14 +2,24 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
 
     private static string BuildToolExecutionNudgePrompt(string userRequest, string assistantDraft) {
+        return BuildToolExecutionNudgePrompt(userRequest, assistantDraft, toolDefinitions: null);
+    }
+
+    private static string BuildToolExecutionNudgePrompt(
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition>? toolDefinitions) {
         var requestText = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
         var draftText = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
+        var executionHintBlock = FormatExecutionAvailabilityHintBlock(toolDefinitions);
         return $$"""
             [Execution correction]
             {{ExecutionCorrectionMarker}}
@@ -23,13 +33,22 @@ internal sealed partial class ChatServiceSession {
 
             Execute available tools now when they can satisfy this request.
             Do not ask for another confirmation unless a required input cannot be inferred or discovered.
+            {{executionHintBlock}}
             If tools truly cannot satisfy the request, explain the exact blocker and the minimal missing input.
             """;
     }
 
     private static string BuildNoToolExecutionWatchdogPrompt(string userRequest, string assistantDraft) {
+        return BuildNoToolExecutionWatchdogPrompt(userRequest, assistantDraft, toolDefinitions: null);
+    }
+
+    private static string BuildNoToolExecutionWatchdogPrompt(
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition>? toolDefinitions) {
         var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
         var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
+        var executionHintBlock = FormatExecutionAvailabilityHintBlock(toolDefinitions);
         return $$"""
             [Execution watchdog]
             {{ExecutionWatchdogMarker}}
@@ -42,6 +61,7 @@ internal sealed partial class ChatServiceSession {
             {{draftText}}
 
             If tools can satisfy this request, call them now in this turn.
+            {{executionHintBlock}}
             If tools cannot satisfy this request, do not imply execution. State the exact blocker and the minimal missing input.
             """;
     }
@@ -66,8 +86,16 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildExecutionContractEscapePrompt(string userRequest, string assistantDraft) {
+        return BuildExecutionContractEscapePrompt(userRequest, assistantDraft, toolDefinitions: null);
+    }
+
+    private static string BuildExecutionContractEscapePrompt(
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition>? toolDefinitions) {
         var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
         var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
+        var executionHintBlock = FormatExecutionAvailabilityHintBlock(toolDefinitions, bulletPrefix: "- ");
         return $$"""
             [Execution contract escape]
             {{ExecutionContractEscapeMarker}}
@@ -82,14 +110,23 @@ internal sealed partial class ChatServiceSession {
             Retry now with full tool availability for this turn.
             Requirements:
             - Call at least one relevant tool in this turn if any registered tool can satisfy the request.
+            {{executionHintBlock}}
             - If no tool can satisfy the request, do not claim execution. Explain the exact blocker and the minimal missing input.
             - Keep the response concise and execution-focused.
             """;
     }
 
     private static string BuildContinuationSubsetEscapePrompt(string userRequest, string assistantDraft) {
+        return BuildContinuationSubsetEscapePrompt(userRequest, assistantDraft, toolDefinitions: null);
+    }
+
+    private static string BuildContinuationSubsetEscapePrompt(
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition>? toolDefinitions) {
         var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
         var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
+        var executionHintBlock = FormatExecutionAvailabilityHintBlock(toolDefinitions, bulletPrefix: "- ");
         return $$"""
             [Continuation subset escape]
             {{ContinuationSubsetEscapeMarker}}
@@ -104,9 +141,42 @@ internal sealed partial class ChatServiceSession {
             Retry now with full tool availability for this turn.
             Requirements:
             - Call at least one relevant tool in this turn when any registered tool can satisfy the request.
+            {{executionHintBlock}}
             - If no tool can satisfy the request, state the exact blocker and the minimal missing input.
             - Keep the response concise and execution-focused.
             """;
+    }
+
+    private static string FormatExecutionAvailabilityHintBlock(
+        IReadOnlyList<ToolDefinition>? toolDefinitions,
+        string bulletPrefix = "") {
+        var lines = ToolExecutionAvailabilityHints.BuildPromptHintLines(toolDefinitions);
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder();
+        for (var i = 0; i < lines.Count; i++) {
+            var line = (lines[i] ?? string.Empty).Trim();
+            if (line.Length == 0) {
+                continue;
+            }
+
+            if (builder.Length > 0) {
+                builder.AppendLine();
+            }
+
+            if (bulletPrefix.Length > 0 && !line.StartsWith(bulletPrefix, StringComparison.Ordinal)) {
+                var normalized = line.StartsWith("- ", StringComparison.Ordinal) ? line.Substring(2) : line;
+                builder.Append(bulletPrefix);
+                builder.Append(normalized);
+                continue;
+            }
+
+            builder.Append(line);
+        }
+
+        return builder.ToString();
     }
 
     private static string BuildExecutionContractReplayActionBlock(string userRequest, string assistantDraft) {

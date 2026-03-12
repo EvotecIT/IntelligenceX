@@ -21,6 +21,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         "system",
         "active_directory",
         "testimox",
+        "testimox_analytics",
         "officeimo",
         "dnsclientx",
         "domaindetective",
@@ -70,34 +71,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(600, options.SmtpProbeMaxAgeSeconds);
         Assert.Equal(runtimePolicyContext.Options.RunAsProfilePath, options.RunAsProfilePath);
         Assert.Equal(runtimePolicyContext.Options.AuthenticationProfilePath, options.AuthenticationProfilePath);
-
-        Assert.True(options.PackRuntimeOptionBag.TryGetValue("*", out var globalBag));
-        Assert.NotNull(globalBag);
-        Assert.True(globalBag!.TryGetValue("AllowedRoots", out var allowedRootsValue));
-        var allowedRootsBag = Assert.IsAssignableFrom<IEnumerable<string>>(allowedRootsValue);
-        Assert.Equal(new[] { "C:/allowed-a", "C:/allowed-b" }, allowedRootsBag);
-        Assert.Equal(runtimePolicyContext.Options.RunAsProfilePath, globalBag["RunAsProfilePath"]);
-        Assert.Equal(runtimePolicyContext.Options.AuthenticationProfilePath, globalBag["AuthenticationProfilePath"]);
-        Assert.Same(runtimePolicyContext.AuthenticationProbeStore, globalBag["AuthenticationProbeStore"]);
-        Assert.True(Assert.IsType<bool>(globalBag["RequireSuccessfulSmtpProbeForSend"]));
-        Assert.Equal(600, Assert.IsType<int>(globalBag["SmtpProbeMaxAgeSeconds"]));
-
-        Assert.True(options.PackRuntimeOptionBag.TryGetValue("active_directory", out var adBag));
-        Assert.NotNull(adBag);
-        Assert.Equal("dc.contoso.local", adBag!["DomainController"]);
-        Assert.Equal("DC=contoso,DC=local", adBag["DefaultSearchBaseDn"]);
-        Assert.Equal(2222, Assert.IsType<int>(adBag["MaxResults"]));
-        Assert.False(options.PackRuntimeOptionBag.ContainsKey("adplayground"));
-
-        Assert.True(options.PackRuntimeOptionBag.TryGetValue("powershell", out var powershellBag));
-        Assert.NotNull(powershellBag);
-        Assert.True(Assert.IsType<bool>(powershellBag!["AllowWrite"]));
-
-        Assert.True(options.PackRuntimeOptionBag.TryGetValue("email", out var emailBag));
-        Assert.NotNull(emailBag);
-        Assert.Same(runtimePolicyContext.AuthenticationProbeStore, emailBag!["AuthenticationProbeStore"]);
-        Assert.True(Assert.IsType<bool>(emailBag["RequireSuccessfulSmtpProbeForSend"]));
-        Assert.Equal(600, Assert.IsType<int>(emailBag["SmtpProbeMaxAgeSeconds"]));
+        Assert.Empty(options.PackRuntimeOptionBag);
     }
 
     [Fact]
@@ -125,6 +99,39 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("dc01.contoso.local", options.AppliedDomainController);
         Assert.Equal("DC=contoso,DC=local", options.AppliedSearchBaseDn);
         Assert.Equal(4096, options.AppliedMaxResults);
+    }
+
+    [Fact]
+    public void ConfigurePackOptions_AllowsExplicitRuntimeOptionBagOverrides_OnRuntimeConfigurableOptions() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ConfigurePackOptions",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var options = new RuntimeConfigurableOptions();
+        var bootstrapOptions = new ToolPackBootstrapOptions {
+            AllowedRoots = new[] { "C:/runtime-a", "C:/runtime-b" },
+            AdDomainController = "dc01.contoso.local",
+            AdDefaultSearchBaseDn = "DC=contoso,DC=local",
+            AdMaxResults = 4096,
+            PackRuntimeOptionBag = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) {
+                ["runtime_configurable"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                    ["AppliedDomainController"] = "override.contoso.local",
+                    ["AppliedMaxResults"] = 512
+                }
+            }
+        };
+
+        method!.Invoke(null, new object[] {
+            options,
+            bootstrapOptions,
+            typeof(RuntimeConfigurablePack)
+        });
+
+        Assert.Equal(new[] { "C:/runtime-a", "C:/runtime-b" }, options.AppliedRoots);
+        Assert.Equal("override.contoso.local", options.AppliedDomainController);
+        Assert.Equal("DC=contoso,DC=local", options.AppliedSearchBaseDn);
+        Assert.Equal(512, options.AppliedMaxResults);
     }
 
     [Fact]
@@ -464,6 +471,32 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_ProjectsDeclaredEngineMetadata() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            DisabledPackIds = DisableDefaultsExcept("ad", "system", "eventlog"),
+            EnableDefaultPluginPaths = false
+        });
+
+        var activeDirectory = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("adplayground", activeDirectory.EngineId);
+        Assert.Contains("directory", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("remote_analysis", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+
+        var system = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "system", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("computerx", system.EngineId);
+        Assert.Contains("host_inventory", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("local_analysis", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+
+        var eventLog = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("eventviewerx", eventLog.EngineId);
+        Assert.Contains("event_logs", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("evtx", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDisabledReason_ForDnsOpenSourcePacksWhenDisabledByConfiguration() {
         var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
             DisabledPackIds = DefaultEnabledKnownPackIds,
@@ -733,11 +766,12 @@ public sealed class ToolPackBootstrapMetadataTests {
         return disabled.ToArray();
     }
 
-    private sealed class RuntimeConfigurableOptions : IToolPackRuntimeConfigurable {
-        public string[] AppliedRoots { get; private set; } = Array.Empty<string>();
-        public string AppliedDomainController { get; private set; } = string.Empty;
-        public string AppliedSearchBaseDn { get; private set; } = string.Empty;
-        public int AppliedMaxResults { get; private set; }
+    private sealed class RuntimeConfigurableOptions : IToolPackRuntimeConfigurable, IToolPackRuntimeOptionTarget {
+        public string[] AppliedRoots { get; set; } = Array.Empty<string>();
+        public string AppliedDomainController { get; set; } = string.Empty;
+        public string AppliedSearchBaseDn { get; set; } = string.Empty;
+        public int AppliedMaxResults { get; set; }
+        public IReadOnlyList<string> RuntimeOptionKeys => new[] { "runtime_configurable" };
 
         public void ApplyRuntimeContext(ToolPackRuntimeContext context) {
             AppliedRoots = context.AllowedRoots?.ToArray() ?? Array.Empty<string>();

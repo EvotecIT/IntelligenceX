@@ -624,9 +624,29 @@ public sealed class ToolPackToolArgumentModel {
 /// </summary>
 public sealed class ToolPackToolTraitsModel {
     /// <summary>
+    /// Indicates whether the tool exposes a structured execution contract.
+    /// </summary>
+    public bool IsExecutionAware { get; init; }
+
+    /// <summary>
+    /// Optional stable execution contract identifier.
+    /// </summary>
+    public string? ExecutionContractId { get; init; }
+
+    /// <summary>
     /// Execution locality classification derived from tool arguments.
     /// </summary>
     public string ExecutionScope { get; init; } = "local_only";
+
+    /// <summary>
+    /// Indicates whether the tool can execute in the local runtime.
+    /// </summary>
+    public bool SupportsLocalExecution { get; init; } = true;
+
+    /// <summary>
+    /// Indicates whether the tool can execute against remote targets or remote backends.
+    /// </summary>
+    public bool SupportsRemoteExecution { get; init; }
 
     /// <summary>
     /// Indicates support for optional table projection arguments (for display-only shaping).
@@ -727,10 +747,8 @@ public static partial class ToolPackGuidance {
     private static readonly string[] PagingArgumentNames = { "cursor", "page_size", "offset", "skip", "limit" };
     private static readonly string[] TimeRangeArgumentNames = { "start_time_utc", "end_time_utc", "since_utc", "before_utc", "reference_time_utc" };
     private static readonly string[] DynamicAttributeArgumentNames = { "attributes", "include_raw", "include_operational_attributes", "include_computed_flags", "include_security_descriptor" };
-    private static readonly string[] TargetScopeArgumentNames = {
-        "search_base_dn", "path", "folder", "channel", "provider_name"
-    };
-    private static readonly IReadOnlyList<string> RemoteHostArgumentNames = ToolHostTargetArgumentNames.OrderedInputArguments;
+    private static readonly IReadOnlyList<string> TargetScopeArgumentNames = ToolScopeArgumentNames.TargetScopeArguments;
+    private static readonly IReadOnlyList<string> RemoteHostArgumentNames = ToolScopeArgumentNames.HostTargetInputArguments;
     private static readonly IReadOnlyList<string> MutatingActionArgumentNames = ToolMutabilityHintNames.CanonicalMutatingActionArguments;
     private static readonly IReadOnlyList<string> AuthenticationArgumentNames =
         ToolAuthenticationArgumentNames.CanonicalArguments;
@@ -866,7 +884,7 @@ public static partial class ToolPackGuidance {
                 Arguments = argumentHints,
                 SupportsTableViewProjection = supportsTableView,
                 IsPackInfoTool = enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
-                Traits = BuildToolTraits(argumentHints.Select(static x => x.Name), supportsTableView),
+                Traits = BuildToolTraits(enrichedDefinition, supportsTableView),
                 Setup = BuildSetup(enrichedDefinition.Setup),
                 Handoff = BuildHandoff(enrichedDefinition.Handoff),
                 Recovery = BuildRecovery(enrichedDefinition.Recovery),

@@ -84,6 +84,39 @@ public static class ToolPackMetadataNormalizer {
         };
     }
 
+    /// <summary>
+    /// Normalizes engine ids and capability tags without applying pack-id alias mapping.
+    /// </summary>
+    public static string NormalizeDescriptorToken(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        var buffer = new char[normalized.Length];
+        var length = 0;
+        var previousWasSeparator = false;
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (char.IsLetterOrDigit(ch)) {
+                buffer[length++] = char.ToLowerInvariant(ch);
+                previousWasSeparator = false;
+                continue;
+            }
+
+            if (length > 0 && !previousWasSeparator) {
+                buffer[length++] = '_';
+                previousWasSeparator = true;
+            }
+        }
+
+        while (length > 0 && buffer[length - 1] == '_') {
+            length--;
+        }
+
+        return length == 0 ? string.Empty : new string(buffer, 0, length);
+    }
+
     private static string NormalizePackToken(string? value) {
         var normalized = (value ?? string.Empty).Trim();
         if (normalized.Length == 0) {

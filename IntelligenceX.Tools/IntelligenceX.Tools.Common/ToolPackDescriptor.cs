@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace IntelligenceX.Tools.Common;
 
 /// <summary>
@@ -33,4 +36,14 @@ public sealed record ToolPackDescriptor {
     /// Optional provenance classification for pack origin (for example: builtin/open_source/closed_source).
     /// </summary>
     public string? SourceKind { get; init; }
+
+    /// <summary>
+    /// Optional stable engine identifier (for example: adplayground/computerx/eventviewerx).
+    /// </summary>
+    public string? EngineId { get; init; }
+
+    /// <summary>
+    /// Optional normalized capability tags advertised by the pack.
+    /// </summary>
+    public IReadOnlyList<string> CapabilityTags { get; init; } = Array.Empty<string>();
 }

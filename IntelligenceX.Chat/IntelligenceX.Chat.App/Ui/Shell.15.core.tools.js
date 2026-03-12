@@ -62,6 +62,129 @@
     return card;
   }
 
+  function normalizeToolExecutionScope(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "remote_only" || normalized === "remote-only") {
+      return "remote_only";
+    }
+    if (normalized === "local_or_remote" || normalized === "local-or-remote" || normalized === "local_and_remote") {
+      return "local_or_remote";
+    }
+    if (normalized === "local_only" || normalized === "local-only") {
+      return "local_only";
+    }
+    return "";
+  }
+
+  function resolveToolExecutionScope(tool) {
+    var normalized = normalizeToolExecutionScope(tool && tool.executionScope);
+    if (normalized) {
+      return normalized;
+    }
+
+    var supportsLocalExecution = !tool || !Object.prototype.hasOwnProperty.call(tool, "supportsLocalExecution")
+      ? true
+      : normalizeBool(tool.supportsLocalExecution);
+    var supportsRemoteExecution = !!tool && normalizeBool(tool.supportsRemoteExecution);
+
+    if (supportsRemoteExecution && !supportsLocalExecution) {
+      return "remote_only";
+    }
+    if (supportsRemoteExecution) {
+      return "local_or_remote";
+    }
+    return "local_only";
+  }
+
+  function resolveToolExecutionBadgeModel(tool) {
+    var scope = resolveToolExecutionScope(tool);
+    var isExecutionAware = !!tool && normalizeBool(tool.isExecutionAware);
+    var contractId = tool && tool.executionContractId ? String(tool.executionContractId).trim() : "";
+    var label = "Local only";
+    var status = "local";
+    var terms = ["execution", scope, "local local-only local only on-box onbox localhost"];
+
+    if (scope === "remote_only") {
+      label = "Remote only";
+      status = "remote";
+      terms = ["execution", scope, "remote remote-only remote only remote-ready remote ready remote-capable remote capable"];
+    } else if (scope === "local_or_remote") {
+      label = "Local + remote";
+      status = "mixed";
+      terms = ["execution", scope, "local remote local-and-remote local or remote mixed dual-scope remote-ready remote ready remote-capable remote capable"];
+    }
+
+    terms.push(isExecutionAware
+      ? "execution-aware declared execution-contract structured"
+      : "execution-inferred inferred execution-metadata");
+
+    if (contractId) {
+      terms.push(contractId);
+    }
+
+    return {
+      scope: scope,
+      label: label,
+      status: status,
+      isExecutionAware: isExecutionAware,
+      contractId: contractId,
+      searchText: terms.join(" "),
+      note: isExecutionAware
+        ? (contractId
+            ? ("Declared execution locality (" + contractId + ").")
+            : "Declared execution locality.")
+        : "Execution locality inferred from current tool metadata."
+    };
+  }
+
+  function summarizePackExecutionLocality(tools) {
+    if (!Array.isArray(tools) || tools.length === 0) {
+      return null;
+    }
+
+    var localOnly = 0;
+    var remoteOnly = 0;
+    var localOrRemote = 0;
+    for (var i = 0; i < tools.length; i++) {
+      var execution = resolveToolExecutionBadgeModel(tools[i]);
+      if (!execution) {
+        continue;
+      }
+
+      if (execution.scope === "remote_only") {
+        remoteOnly++;
+      } else if (execution.scope === "local_or_remote") {
+        localOrRemote++;
+      } else {
+        localOnly++;
+      }
+    }
+
+    var remoteCapable = remoteOnly + localOrRemote;
+    var label = "Local-only";
+    var status = "local";
+    var searchText = "local-only local only";
+    if (remoteCapable > 0 && localOnly > 0) {
+      label = "Mixed locality";
+      status = "mixed";
+      searchText = "mixed locality local-and-remote local only remote ready remote-ready";
+    } else if (remoteCapable > 0) {
+      label = "Remote-ready";
+      status = "remote";
+      searchText = "remote-ready remote ready remote-capable remote capable";
+    }
+
+    return {
+      label: label,
+      status: status,
+      searchText: searchText,
+      summary: label + " across " + String(tools.length) + (tools.length === 1 ? " tool" : " tools")
+        + " (local-only " + String(localOnly)
+        + ", remote-only " + String(remoteOnly)
+        + ", local+remote " + String(localOrRemote) + ")."
+    };
+  }
+
   function createToolCard(tool) {
     var item = document.createElement("div");
     item.className = "options-item";
@@ -85,6 +208,15 @@
       category.className = "options-pill options-pill-category";
       category.textContent = tool.category;
       header.appendChild(category);
+    }
+
+    var execution = resolveToolExecutionBadgeModel(tool);
+    if (execution) {
+      var executionPill = document.createElement("span");
+      executionPill.className = "options-pill options-pill-execution options-pill-execution-" + execution.status;
+      executionPill.textContent = execution.label;
+      executionPill.title = execution.note;
+      header.appendChild(executionPill);
     }
 
     var toggle = document.createElement("input");
@@ -120,6 +252,18 @@
       sub.className = "options-item-sub";
       sub.textContent = tool.description;
       item.appendChild(sub);
+    }
+
+    if (execution) {
+      var executionMeta = document.createElement("div");
+      executionMeta.className = "options-tool-routing";
+
+      var executionDetail = document.createElement("span");
+      executionDetail.className = "options-tool-routing-reason";
+      executionDetail.textContent = execution.note;
+      executionMeta.appendChild(executionDetail);
+
+      item.appendChild(executionMeta);
     }
 
     if (packUnavailable) {
@@ -241,12 +385,67 @@
     return (value || "").trim().toLowerCase();
   }
 
+  function normalizeToolLocalityFilter(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "remote_ready" || normalized === "remote-ready") {
+      return "remote_ready";
+    }
+    if (normalized === "local_only" || normalized === "local-only") {
+      return "local_only";
+    }
+    if (normalized === "dual_scope" || normalized === "dual-scope" || normalized === "mixed") {
+      return "dual_scope";
+    }
+    return "all";
+  }
+
+  function renderToolLocalityQuickFilters() {
+    var active = normalizeToolLocalityFilter(state.options && state.options.toolLocalityFilter);
+    var host = byId("optToolLocalityFilters");
+    if (host) {
+      host.setAttribute("data-active-locality-filter", active);
+    }
+
+    var buttons = host ? host.querySelectorAll("[data-locality-filter]") : [];
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      var value = normalizeToolLocalityFilter(button.getAttribute("data-locality-filter"));
+      var isActive = value === active;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    }
+  }
+
+  function toolMatchesLocalityFilter(tool, localityFilter) {
+    if (localityFilter === "all") {
+      return true;
+    }
+
+    var execution = resolveToolExecutionBadgeModel(tool);
+    if (!execution) {
+      return localityFilter !== "dual_scope";
+    }
+
+    if (localityFilter === "remote_ready") {
+      return execution.scope === "remote_only" || execution.scope === "local_or_remote";
+    }
+    if (localityFilter === "local_only") {
+      return execution.scope === "local_only";
+    }
+    if (localityFilter === "dual_scope") {
+      return execution.scope === "local_or_remote";
+    }
+
+    return true;
+  }
+
   function toolMatchesFilter(tool, filter) {
     if (!filter) {
       return true;
     }
 
     var toolPackId = inferPackIdFromTool(tool);
+    var execution = resolveToolExecutionBadgeModel(tool);
     var haystack = [
       tool.displayName || "",
       tool.name || "",
@@ -259,6 +458,14 @@
       typeof tool.routingScore === "number" ? String(tool.routingScore) : "",
       packSourceLabel(packSourceKind(toolPackId)),
       packDisabledReason(toolPackId),
+      tool.executionScope || "",
+      tool.executionContractId || "",
+      normalizeBool(tool.isExecutionAware) ? "execution-aware" : "execution-inferred",
+      normalizeBool(tool.supportsLocalExecution) ? "supports-local-execution local-capable" : "",
+      normalizeBool(tool.supportsRemoteExecution) ? "supports-remote-execution remote-capable remote-ready" : "",
+      execution ? execution.label : "",
+      execution ? execution.note : "",
+      execution ? execution.searchText : "",
       (tool.tags || []).join(" "),
       Array.isArray(tool.parameters)
         ? tool.parameters.map(function(p) { return (p && p.name ? p.name : "") + " " + (p && p.description ? p.description : ""); }).join(" ")
@@ -271,12 +478,17 @@
   function renderTools() {
     var toolsEl = byId("toolsList");
     toolsEl.innerHTML = "";
+    renderToolLocalityQuickFilters();
 
     var allTools = state.options.tools || [];
     var tools = allTools.slice();
     var filter = normalizeToolFilter(state.options.toolFilter);
+    var localityFilter = normalizeToolLocalityFilter(state.options.toolLocalityFilter);
+    if (localityFilter !== "all") {
+      tools = tools.filter(function(tool) { return toolMatchesLocalityFilter(tool, localityFilter); });
+    }
     if (filter) {
-      tools = allTools.filter(function(tool) { return toolMatchesFilter(tool, filter); });
+      tools = tools.filter(function(tool) { return toolMatchesFilter(tool, filter); });
     }
 
     var groups = {};
@@ -295,6 +507,7 @@
       }
 
       var autonomySummary = packAutonomySummary(packId);
+      var executionSummary = summarizePackExecutionLocality(groups[packId] || []);
       var autonomyHaystack = [];
       if (autonomySummary) {
         if (Number(autonomySummary.remoteCapableTools || 0) > 0) {
@@ -318,6 +531,11 @@
         autonomyHaystack.push((autonomySummary.recoveryAwareToolNames || []).join(" "));
         autonomyHaystack.push((autonomySummary.crossPackHandoffToolNames || []).join(" "));
         autonomyHaystack.push((autonomySummary.crossPackTargetPacks || []).join(" "));
+      }
+      if (executionSummary) {
+        autonomyHaystack.push(executionSummary.label);
+        autonomyHaystack.push(executionSummary.summary);
+        autonomyHaystack.push(executionSummary.searchText);
       }
 
       var haystack = [
@@ -486,11 +704,20 @@
 
       var sourceKind = packSourceKind(currentPackId);
       var autonomySummary = packAutonomySummary(currentPackId);
+      var executionSummary = summarizePackExecutionLocality(groupTools);
       var sourceBadge = document.createElement("span");
       sourceBadge.className = "options-pill options-pill-source options-pill-source-" + sourceKind;
       sourceBadge.textContent = packSourceLabel(sourceKind);
       sourceBadge.title = packSourceHint(sourceKind);
       summaryRight.appendChild(sourceBadge);
+
+      if (executionSummary) {
+        var executionBadge = document.createElement("span");
+        executionBadge.className = "options-pill options-pill-execution options-pill-execution-" + executionSummary.status;
+        executionBadge.textContent = executionSummary.label;
+        executionBadge.title = executionSummary.summary;
+        summaryRight.appendChild(executionBadge);
+      }
 
       var meta = document.createElement("span");
       meta.className = "options-accordion-meta";
@@ -498,8 +725,11 @@
       if (autonomySummary && Number(autonomySummary.remoteCapableTools || 0) > 0) {
         meta.textContent += " • remote " + String(autonomySummary.remoteCapableTools || 0);
       }
-      if (autonomySummary) {
-        meta.title = packAutonomySummaryText(currentPackId);
+      if (autonomySummary || executionSummary) {
+        meta.title = [
+          autonomySummary ? packAutonomySummaryText(currentPackId) : "",
+          executionSummary ? executionSummary.summary : ""
+        ].filter(function(value) { return !!value; }).join(" | ");
       }
       summaryRight.appendChild(meta);
 
@@ -1107,6 +1337,14 @@
     var bridgeAccountIdentity = normalizeModelText(data.bridgeAccountIdentity || "");
     var bridgeSessionState = normalizeBridgeSessionState(data.bridgeSessionState || "");
     var bridgeSessionDetail = normalizeModelText(data.bridgeSessionDetail || "");
+    var executionLocality = data.executionLocality && typeof data.executionLocality === "object"
+      ? data.executionLocality
+      : {};
+    var executionLocalityMode = normalizeExecutionLocalityMode(executionLocality.mode || "");
+    var executionLocalitySummary = normalizeModelText(executionLocality.summary || "");
+    var executionLocalityLabel = resolveExecutionLocalityLabel(executionLocalityMode);
+    var executionLocalityStatus = resolveExecutionLocalityStatus(executionLocalityMode);
+    var executionLocalityNote = resolveExecutionLocalityNote(executionLocality);
     if (!isBridgePreset) {
       var preset = String(data.compatiblePreset || "").trim().toLowerCase();
       isBridgePreset = preset === "anthropic-bridge" || preset === "gemini-bridge";
@@ -1150,6 +1388,13 @@
                 ? reasoningSupportReason
                 : "Current provider supports reasoning fields; model metadata may refine available efforts."))
         : (reasoningSupportReason || "Current provider profile does not expose reasoning controls."));
+
+    appendRuntimeCapabilityRow(
+      listEl,
+      "Execution locality",
+      executionLocalityStatus,
+      executionLocalityLabel,
+      executionLocalityNote || executionLocalitySummary || "Execution locality is still loading from the live tool catalog.");
 
     if (data.isNativeTransport === true) {
       appendRuntimeCapabilityRow(
@@ -1243,6 +1488,80 @@
     if (titleEl) {
       titleEl.hidden = listEl.hidden;
     }
+  }
+
+  function normalizeExecutionLocalityMode(value) {
+    var normalized = normalizeModelText(value || "").toLowerCase();
+    if (normalized === "mixed" || normalized === "remote_ready" || normalized === "local_only" || normalized === "execution_aware_unspecified") {
+      return normalized;
+    }
+    return "unknown";
+  }
+
+  function resolveExecutionLocalityLabel(mode) {
+    if (mode === "mixed") {
+      return "Mixed locality";
+    }
+    if (mode === "remote_ready") {
+      return "Remote-ready";
+    }
+    if (mode === "local_only") {
+      return "Local-only";
+    }
+    if (mode === "execution_aware_unspecified") {
+      return "Execution-aware (scope still settling)";
+    }
+    return "Unknown";
+  }
+
+  function resolveExecutionLocalityStatus(mode) {
+    if (mode === "remote_ready" || mode === "mixed") {
+      return "supported";
+    }
+    if (mode === "local_only" || mode === "execution_aware_unspecified") {
+      return "limited";
+    }
+    return "unavailable";
+  }
+
+  function resolveExecutionLocalityNote(executionLocality) {
+    if (!executionLocality || typeof executionLocality !== "object") {
+      return "";
+    }
+
+    var summary = normalizeModelText(executionLocality.summary || "");
+    var executionAwareTools = Number(executionLocality.executionAwareTools);
+    var localOnlyTools = Number(executionLocality.localOnlyTools);
+    var remoteOnlyTools = Number(executionLocality.remoteOnlyTools);
+    var localOrRemoteTools = Number(executionLocality.localOrRemoteTools);
+    var localOnlyPackIds = Array.isArray(executionLocality.localOnlyPackIds) ? executionLocality.localOnlyPackIds : [];
+    var remoteCapablePackIds = Array.isArray(executionLocality.remoteCapablePackIds) ? executionLocality.remoteCapablePackIds : [];
+    var noteParts = [];
+    if (summary) {
+      noteParts.push(summary);
+    }
+
+    if (Number.isFinite(executionAwareTools) && executionAwareTools > 0) {
+      noteParts.push("Execution-aware tools: " + String(Math.max(0, Math.floor(executionAwareTools))) + ".");
+    }
+    if (Number.isFinite(localOnlyTools) && localOnlyTools > 0) {
+      noteParts.push("Local-only tools: " + String(Math.max(0, Math.floor(localOnlyTools))) + ".");
+    }
+    if (Number.isFinite(remoteOnlyTools) && remoteOnlyTools > 0) {
+      noteParts.push("Remote-only tools: " + String(Math.max(0, Math.floor(remoteOnlyTools))) + ".");
+    }
+    if (Number.isFinite(localOrRemoteTools) && localOrRemoteTools > 0) {
+      noteParts.push("Local-or-remote tools: " + String(Math.max(0, Math.floor(localOrRemoteTools))) + ".");
+    }
+
+    if (remoteCapablePackIds.length > 0) {
+      noteParts.push("Remote-ready packs: " + remoteCapablePackIds.join(", ") + ".");
+    }
+    if (localOnlyPackIds.length > 0) {
+      noteParts.push("Local-only packs: " + localOnlyPackIds.join(", ") + ".");
+    }
+
+    return noteParts.join(" ");
   }
 
   function normalizeTemperatureText(value) {
@@ -1411,6 +1730,11 @@
     var bridgeSessionState = normalizeBridgeSessionState(runtimeCapabilities.bridgeSessionState || "");
     var bridgeSessionDetail = normalizeModelText(runtimeCapabilities.bridgeSessionDetail || "");
     var runtimeProviderLabel = normalizeModelText(runtimeCapabilities.providerLabel || "");
+    var executionLocality = runtimeCapabilities.executionLocality && typeof runtimeCapabilities.executionLocality === "object"
+      ? runtimeCapabilities.executionLocality
+      : {};
+    var executionLocalityMode = normalizeExecutionLocalityMode(executionLocality.mode || "");
+    var executionLocalityLabel = resolveExecutionLocalityLabel(executionLocalityMode);
     var modelsEndpoint = normalizeModelText(local.modelsEndpoint || "");
     var model = normalizeModelText(local.model || "");
     var nativeAccountSlots = Array.isArray(local.nativeAccountSlots) ? local.nativeAccountSlots : [];
@@ -1466,15 +1790,15 @@
     var runtimeSummary = byId("optRuntimeSummary");
     if (runtimeSummary) {
       if (isCopilotCli) {
-        runtimeSummary.textContent = "Current: GitHub Copilot subscription runtime (CLI transport).";
+        runtimeSummary.textContent = "Current: GitHub Copilot subscription runtime (CLI transport). Tools: " + executionLocalityLabel + ".";
       } else if (isCompatible) {
         var endpoint = baseUrl ? baseUrl : "(base URL not set)";
         var providerLabel = runtimeProviderLabel
           ? runtimeProviderLabel
           : resolveRuntimeProviderLabel(transport, compatiblePreset, copilotConnected);
-        runtimeSummary.textContent = "Current: " + providerLabel + " via " + endpoint + ".";
+        runtimeSummary.textContent = "Current: " + providerLabel + " via " + endpoint + ". Tools: " + executionLocalityLabel + ".";
       } else {
-        runtimeSummary.textContent = "Current: ChatGPT runtime (OpenAI native).";
+        runtimeSummary.textContent = "Current: ChatGPT runtime (OpenAI native). Tools: " + executionLocalityLabel + ".";
       }
     }
 
@@ -1534,6 +1858,7 @@
         }
         runtimeText += " | Bridge: " + bridgeText;
       }
+      runtimeText += " | Tools: " + executionLocalityLabel;
       runtimeBadge.textContent = runtimeText;
     }
 
@@ -2216,6 +2541,7 @@
       bridgeAccountIdentity: bridgeAccountIdentity,
       bridgeSessionState: bridgeSessionState,
       bridgeSessionDetail: bridgeSessionDetail,
+      executionLocality: executionLocality,
       activeNativeAccountSlot: activeNativeAccountSlot,
       accountUsage: accountUsage
     });

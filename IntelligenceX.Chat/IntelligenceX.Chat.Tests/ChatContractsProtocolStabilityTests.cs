@@ -224,7 +224,11 @@ public sealed class ChatContractsProtocolStabilityTests {
                     PackDescription = "Event log investigation tools.",
                     PackSourceKind = ToolPackSourceKind.OpenSource,
                     IsWriteCapable = false,
+                    IsExecutionAware = true,
+                    ExecutionContractId = "ix.tool-execution.v1",
                     ExecutionScope = "local_or_remote",
+                    SupportsLocalExecution = true,
+                    SupportsRemoteExecution = true,
                     SupportsTargetScoping = true,
                     TargetScopeArguments = new[] { "channel", "machine_name" },
                     SupportsRemoteHostTargeting = true,
@@ -263,7 +267,11 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("Event Timeline Query", tool.DisplayName);
         Assert.Equal("eventlog", tool.Category);
         Assert.Equal(ToolPackSourceKind.OpenSource, tool.PackSourceKind);
+        Assert.True(tool.IsExecutionAware);
+        Assert.Equal("ix.tool-execution.v1", tool.ExecutionContractId);
         Assert.Equal("local_or_remote", tool.ExecutionScope);
+        Assert.True(tool.SupportsLocalExecution);
+        Assert.True(tool.SupportsRemoteExecution);
         Assert.Equal(new[] { "channel", "machine_name" }, tool.TargetScopeArguments);
         Assert.Equal(new[] { "machine_name", "machine_names" }, tool.RemoteHostArguments);
         Assert.True(tool.IsSetupAware);

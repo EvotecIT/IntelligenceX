@@ -20,12 +20,16 @@ public sealed partial class ChatServiceRoutingTrimTests {
                     Id = "AD Playground",
                     Name = "AD Playground",
                     SourceKind = "builtin",
+                    EngineId = "adplayground",
+                    CapabilityTags = new[] { "directory", "remote_analysis" },
                     Enabled = true
                 },
                 new ToolPackAvailabilityInfo {
                     Id = "eventlog",
                     Name = "Event Log",
                     SourceKind = "builtin",
+                    EngineId = "eventviewerx",
+                    CapabilityTags = new[] { "event_logs", "evtx" },
                     Enabled = true
                 },
                 new ToolPackAvailabilityInfo {
@@ -77,6 +81,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("enabled_plugin_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_plugins: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_pack_engines: adplayground, eventviewerx", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_capability_tags: directory, remote_analysis, event_logs, evtx", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families: ad_domain, public_domain", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skills: ad_domain.scope_hosts, public_domain.query_whois", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -190,6 +196,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
                     Id = "AD Playground",
                     Name = "AD Playground",
                     SourceKind = "builtin",
+                    EngineId = "adplayground",
+                    CapabilityTags = new[] { "directory", "remote_analysis" },
                     Enabled = true
                 }
             },
@@ -228,6 +236,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(1, snapshot.EnabledPluginCount);
         Assert.Equal("active_directory", Assert.Single(snapshot.EnabledPackIds));
         Assert.Equal("active_directory", Assert.Single(snapshot.EnabledPluginIds));
+        Assert.Equal("adplayground", Assert.Single(snapshot.EnabledPackEngineIds));
+        Assert.Contains("directory", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("remote_analysis", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(2, snapshot.RoutingFamilies.Length);
         Assert.Equal(2, snapshot.FamilyActions.Length);
         Assert.Equal("ad_domain.scope_hosts", snapshot.Skills[0]);
@@ -322,6 +333,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
                     Id = "AD Playground",
                     Name = "AD Playground",
                     SourceKind = "builtin",
+                    EngineId = "adplayground",
+                    CapabilityTags = new[] { "directory", "remote_analysis" },
                     Enabled = true
                 }
             },
@@ -365,6 +378,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("skill_count='2'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_plugins='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_pack_engines='adplayground'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_capability_tags='directory,remote_analysis'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families='ad_domain,public_domain'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skills='ad_domain.scope_hosts,public_domain.query_whois'", handshake, StringComparison.OrdinalIgnoreCase);
     }

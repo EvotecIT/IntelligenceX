@@ -428,6 +428,7 @@ public sealed partial class MainWindow : Window {
         var bridgeSessionDetail = isBridgePreset
             ? ResolveBridgeSessionDetail(bridgeSessionState, bridgeAccountIdentity, _modelListWarning)
             : string.Empty;
+        var executionSummary = BuildToolCatalogExecutionSummary();
 
         return new {
             providerLabel = ResolveRuntimeProviderLabelForState(transport, preset, copilotConnected, baseUrl),
@@ -444,7 +445,18 @@ public sealed partial class MainWindow : Window {
             isBridgePreset,
             bridgeAccountIdentity,
             bridgeSessionState,
-            bridgeSessionDetail
+            bridgeSessionDetail,
+            executionLocality = new {
+                mode = ResolveExecutionLocalityMode(executionSummary),
+                summary = DescribeExecutionLocalitySummary(executionSummary),
+                compactSummary = DescribeExecutionLocalitySummary(executionSummary, compact: true),
+                executionAwareTools = executionSummary?.ExecutionAwareToolCount ?? 0,
+                localOnlyTools = executionSummary?.LocalOnlyToolCount ?? 0,
+                remoteOnlyTools = executionSummary?.RemoteOnlyToolCount ?? 0,
+                localOrRemoteTools = executionSummary?.LocalOrRemoteToolCount ?? 0,
+                localOnlyPackIds = executionSummary?.LocalOnlyPackIds ?? Array.Empty<string>(),
+                remoteCapablePackIds = executionSummary?.RemoteCapablePackIds ?? Array.Empty<string>()
+            }
         };
     }
 

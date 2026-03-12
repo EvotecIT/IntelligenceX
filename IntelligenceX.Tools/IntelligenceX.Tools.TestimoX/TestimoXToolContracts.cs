@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -47,9 +48,9 @@ internal static class TestimoXToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "testimox",
-            Role = ResolveRole(definition.Name),
-            DomainIntentFamily = existing?.DomainIntentFamily ?? string.Empty,
-            DomainIntentActionId = existing?.DomainIntentActionId ?? string.Empty,
+            Role = ResolveRole(definition.Name, existing?.Role),
+            DomainIntentFamily = ResolveDomainIntentFamily(definition.Name, existing?.DomainIntentFamily),
+            DomainIntentActionId = ResolveDomainIntentActionId(definition.Name, existing?.DomainIntentActionId),
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : TestimoXSignalTokens,
             RequiresSelectionForFallback = existing?.RequiresSelectionForFallback ?? false,
             FallbackSelectionKeys = existing?.FallbackSelectionKeys ?? Array.Empty<string>(),
@@ -204,14 +205,47 @@ internal static class TestimoXToolContracts {
                             IsRequired = false
                         }
                     }
+                },
+                new ToolHandoffRoute {
+                    TargetPackId = "eventlog",
+                    TargetToolName = "eventlog_live_stats",
+                    Reason = "Promote TestimoX scope evidence into remote Event Log follow-up for the same domain controller.",
+                    Bindings = new[] {
+                        new ToolHandoffBinding {
+                            SourceField = domainControllerSourceField,
+                            TargetArgument = "machine_name",
+                            IsRequired = false
+                        }
+                    }
                 }
             }
         };
     }
 
-    private static string ResolveRole(string toolName) {
+    private static string ResolveRole(string toolName, string? existingRole) {
+        var inferredRole = TryResolveDeclaredRole(toolName);
+        if (inferredRole.Length == 0) {
+            return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+                explicitRole: existingRole,
+                toolName: toolName,
+                declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                packDisplayName: "TestimoX");
+        }
+
+        return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
+            explicitRole: existingRole,
+            fallbackRole: inferredRole,
+            packDisplayName: "TestimoX");
+    }
+
+    private static string TryResolveDeclaredRole(string toolName) {
         if (string.Equals(toolName, "testimox_pack_info", StringComparison.OrdinalIgnoreCase)) {
             return ToolRoutingTaxonomy.RolePackInfo;
+        }
+
+        if (string.Equals(toolName, "testimox_source_query", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "testimox_baseline_crosswalk", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleResolver;
         }
 
         if (string.Equals(toolName, "testimox_baselines_list", StringComparison.OrdinalIgnoreCase)
@@ -219,13 +253,39 @@ internal static class TestimoXToolContracts {
             || string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
             || string.Equals(toolName, "testimox_baseline_compare", StringComparison.OrdinalIgnoreCase)
             || string.Equals(toolName, "testimox_profiles_list", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_baseline_crosswalk", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_source_query", StringComparison.OrdinalIgnoreCase)
             || string.Equals(toolName, "testimox_rule_inventory", StringComparison.OrdinalIgnoreCase)
             || string.Equals(toolName, "testimox_rules_list", StringComparison.OrdinalIgnoreCase)) {
             return ToolRoutingTaxonomy.RoleDiagnostic;
         }
 
-        return ToolRoutingTaxonomy.RoleOperational;
+        if (string.Equals(toolName, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleOperational;
+        }
+
+        return string.Empty;
+    }
+
+    private static string ResolveDomainIntentFamily(string toolName, string? existingFamily) {
+        if (!string.IsNullOrWhiteSpace(existingFamily)) {
+            return existingFamily!;
+        }
+
+        if (string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
+            return "security_posture";
+        }
+
+        return string.Empty;
+    }
+
+    private static string ResolveDomainIntentActionId(string toolName, string? existingActionId) {
+        if (!string.IsNullOrWhiteSpace(existingActionId)) {
+            return existingActionId!;
+        }
+
+        if (string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
+            return "act_domain_scope_security_posture";
+        }
+
+        return string.Empty;
     }
 }

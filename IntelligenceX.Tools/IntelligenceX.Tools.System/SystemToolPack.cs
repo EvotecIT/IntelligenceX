@@ -26,7 +26,9 @@ public sealed class SystemToolPack : IToolPack, IToolPackCatalogProvider {
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "ComputerX host inventory and diagnostics (read-only).",
-        SourceKind = "closed_source"
+        SourceKind = "closed_source",
+        EngineId = "computerx",
+        CapabilityTags = new[] { "host_inventory", "local_analysis", "performance", "remote_analysis", "storage" }
     };
 
     /// <inheritdoc />

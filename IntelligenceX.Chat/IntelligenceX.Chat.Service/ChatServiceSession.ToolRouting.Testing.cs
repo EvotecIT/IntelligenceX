@@ -54,6 +54,7 @@ internal sealed partial class ChatServiceSession {
         _connectedRuntimeSkillInventory = NormalizeSkillInventoryValues(connectedRuntimeSkills ?? Array.Empty<string>(), maxItems: 0);
         _connectedRuntimeSkillInventoryHydrated = _connectedRuntimeSkillInventory.Length > 0;
         _routingCatalogDiagnostics = routingCatalogDiagnostics;
+        UpdatePackMetadataIndexesFromAvailability(_packAvailability);
     }
 
     internal void SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog catalog) {
@@ -123,6 +124,15 @@ internal sealed partial class ChatServiceSession {
         ArgumentNullException.ThrowIfNull(requestText);
         ArgumentNullException.ThrowIfNull(definitions);
         return BuildPlannerContextAugmentedRequest(threadId, requestText, definitions);
+    }
+
+    internal string BuildModelPlannerPromptForTesting(
+        string requestText,
+        IReadOnlyList<ToolDefinition> definitions,
+        int limit) {
+        ArgumentNullException.ThrowIfNull(requestText);
+        ArgumentNullException.ThrowIfNull(definitions);
+        return BuildModelPlannerPrompt(requestText, definitions, limit);
     }
 
     internal static bool TryReadPlannerContextFromRequestTextForTesting(

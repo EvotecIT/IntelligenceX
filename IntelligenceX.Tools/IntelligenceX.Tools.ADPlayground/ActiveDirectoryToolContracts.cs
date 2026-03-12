@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -27,21 +28,84 @@ internal static class ActiveDirectoryToolContracts {
         "forest_name"
     };
 
+    private static readonly string[] DiagnosticRoleKeywords = {
+        "domain",
+        "forest",
+        "gpo",
+        "dns",
+        "site",
+        "subnet",
+        "group",
+        "account",
+        "policy",
+        "trust",
+        "replication",
+        "spn",
+        "kerberos",
+        "ldap",
+        "pki",
+        "laps",
+        "firewall",
+        "delegation",
+        "permission",
+        "monitoring",
+        "schema",
+        "certificate",
+        "credentials",
+        "ntlm",
+        "logon",
+        "uac",
+        "wsus",
+        "wmi",
+        "winrm",
+        "service",
+        "netlogon",
+        "sysvol",
+        "shadow",
+        "kdc",
+        "proxy",
+        "whoami",
+        "ou",
+        "admin",
+        "users"
+    };
+
     public static ITool Apply(ITool tool) {
         ArgumentNullException.ThrowIfNull(tool);
 
         var definition = tool.Definition;
         var routing = BuildRouting(definition);
+        var execution = BuildExecution(definition, routing);
         var setup = BuildSetup(definition, routing);
         var handoff = BuildHandoff(definition);
         var recovery = BuildRecovery(definition, routing);
         var updatedDefinition = ToolDefinitionOverlay.WithContracts(
             definition: definition,
+            execution: execution,
             routing: routing,
             setup: setup,
             handoff: handoff,
             recovery: recovery);
         return ToolDefinitionOverlay.WithDefinition(tool, updatedDefinition);
+    }
+
+    private static ToolExecutionContract? BuildExecution(ToolDefinition definition, ToolRoutingContract? routing) {
+        if (definition.Execution is { IsExecutionAware: true }) {
+            return definition.Execution;
+        }
+
+        if (routing is not null
+            && string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Execution;
+        }
+
+        var traits = ToolExecutionTraitProjection.Project(definition);
+        return new ToolExecutionContract {
+            IsExecutionAware = true,
+            ExecutionScope = traits.ExecutionScope,
+            TargetScopeArguments = traits.TargetScopeArguments,
+            RemoteHostArguments = traits.RemoteHostArguments
+        };
     }
 
     private static ToolRoutingContract BuildRouting(ToolDefinition definition) {
@@ -53,7 +117,7 @@ internal static class ActiveDirectoryToolContracts {
                 : existing!.RoutingContractId,
             RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
             PackId = "active_directory",
-            Role = ResolveRole(definition.Name),
+            Role = ResolveRole(definition.Name, existing?.Role),
             DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
             DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd,
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0 ? existing.DomainSignalTokens : DomainSignalTokens,
@@ -94,6 +158,10 @@ internal static class ActiveDirectoryToolContracts {
     }
 
     private static ToolHandoffContract? BuildHandoff(ToolDefinition definition) {
+        if (definition.Handoff is { IsHandoffAware: true }) {
+            return definition.Handoff;
+        }
+
         if (string.Equals(definition.Name, "ad_environment_discover", StringComparison.OrdinalIgnoreCase)) {
             return CreateSystemHostPivotHandoff(
                 primarySourceField: "context/domain_controller",
@@ -256,7 +324,23 @@ internal static class ActiveDirectoryToolContracts {
         };
     }
 
-    private static string ResolveRole(string toolName) {
+    private static string ResolveRole(string toolName, string? existingRole) {
+        var inferredRole = TryResolveDeclaredRole(toolName);
+        if (inferredRole.Length == 0) {
+            return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+                explicitRole: existingRole,
+                toolName: toolName,
+                declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                packDisplayName: "AD Playground");
+        }
+
+        return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
+            explicitRole: existingRole,
+            fallbackRole: inferredRole,
+            packDisplayName: "AD Playground");
+    }
+
+    private static string TryResolveDeclaredRole(string toolName) {
         if (string.Equals(toolName, "ad_pack_info", StringComparison.OrdinalIgnoreCase)) {
             return ToolRoutingTaxonomy.RolePackInfo;
         }
@@ -286,6 +370,76 @@ internal static class ActiveDirectoryToolContracts {
             return ToolRoutingTaxonomy.RoleResolver;
         }
 
-        return ToolRoutingTaxonomy.RoleOperational;
+        if (string.Equals(toolName, "ad_search_facets", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleDiagnostic;
+        }
+
+        if (string.Equals(toolName, "ad_search", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "ad_object_resolve", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "ad_ldap_query", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "ad_ldap_query_paged", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "ad_spn_search", StringComparison.OrdinalIgnoreCase)
+            || toolName.IndexOf("_search", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_resolve", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_query", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return ToolRoutingTaxonomy.RoleResolver;
+        }
+
+        if (string.Equals(toolName, "ad_handoff_prepare", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "ad_object_get", StringComparison.OrdinalIgnoreCase)) {
+            return ToolRoutingTaxonomy.RoleOperational;
+        }
+
+        if (string.Equals(toolName, "ad_domain_info", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(toolName, "ad_trust", StringComparison.OrdinalIgnoreCase)
+            || toolName.IndexOf("_list", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_summary", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_statistics", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_stats", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_policy", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_posture", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_security", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_health", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_facts", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_roles", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_coverage", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_integrity", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_inventory", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_status", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_version", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_templates", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_keys", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_usage", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_accounts", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_audit", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_defaults", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_configuration", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_filters", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_functional", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_changes", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_duplicates", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_site", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_read", StringComparison.OrdinalIgnoreCase) >= 0
+            || toolName.IndexOf("_report", StringComparison.OrdinalIgnoreCase) >= 0
+            || ContainsAnyKeyword(toolName, DiagnosticRoleKeywords)) {
+            return ToolRoutingTaxonomy.RoleDiagnostic;
+        }
+
+        if (toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
+            && toolName.IndexOf("unclassified", StringComparison.OrdinalIgnoreCase) < 0) {
+            return ToolRoutingTaxonomy.RoleDiagnostic;
+        }
+
+        return string.Empty;
+    }
+
+    private static bool ContainsAnyKeyword(string toolName, IReadOnlyList<string> keywords) {
+        for (var i = 0; i < keywords.Count; i++) {
+            if (toolName.IndexOf(keywords[i], StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

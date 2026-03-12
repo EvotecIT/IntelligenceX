@@ -960,12 +960,12 @@ internal sealed partial class ChatServiceSession {
             && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
             return entry.SupportsRemoteHostTargeting
                    || entry.RemoteHostArguments.Count > 0
-                   || string.Equals(entry.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase);
+                   || ToolExecutionScopes.IsRemoteCapable(entry.ExecutionScope);
         }
 
         var schemaTraits = ToolSchemaTraitProjection.Project(definition);
         return schemaTraits.SupportsRemoteHostTargeting
-               || string.Equals(schemaTraits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase);
+               || ToolExecutionScopes.IsRemoteCapable(schemaTraits.ExecutionScope);
     }
 
     private static bool ToolSupportsCrossPackHandoff(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
