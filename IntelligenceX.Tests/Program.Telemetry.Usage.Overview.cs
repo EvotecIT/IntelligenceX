@@ -66,6 +66,9 @@ internal static partial class Program {
         AssertEqual(1, overview.ProviderSections[0].LongestStreakDays, "usage overview codex longest streak");
         AssertEqual("provider-codex", overview.ProviderSections[0].Key, "usage overview codex section key");
         AssertEqual(1, overview.ProviderSections[0].Heatmap.Sections.Count, "usage overview codex single heatmap section");
+        AssertEqual(13, overview.ProviderSections[0].MonthlyUsage.Count, "usage overview codex monthly usage count");
+        AssertEqual("2025-03", overview.ProviderSections[0].MonthlyUsage[0].Key, "usage overview codex monthly usage first key");
+        AssertEqual(1200L, overview.ProviderSections[0].MonthlyUsage[12].TotalTokens, "usage overview codex monthly usage last total");
         AssertEqual(new DateTime(2025, 03, 12), overview.ProviderSections[0].Heatmap.Sections[0].Days[0].Date, "usage overview codex heatmap first padded day");
         AssertEqual(new DateTime(2026, 03, 10), overview.ProviderSections[0].Heatmap.Sections[0].Days[overview.ProviderSections[0].Heatmap.Sections[0].Days.Count - 1].Date, "usage overview codex heatmap last padded day");
         AssertEqual("surface", overview.Heatmaps[0].Key, "usage overview first heatmap key");
@@ -74,5 +77,6 @@ internal static partial class Program {
         AssertContainsText(json, "\"key\":\"person\"", "usage overview json person heatmap");
         AssertContainsText(json, "\"providerSections\":[", "usage overview json provider sections");
         AssertContainsText(json, "\"title\":\"Codex\"", "usage overview json codex provider section");
+        AssertContainsText(json, "\"monthlyUsage\":[", "usage overview json provider monthly usage");
     }
 }

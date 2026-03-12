@@ -124,6 +124,32 @@ public sealed class UsageTelemetryOverviewModelHighlight {
 }
 
 /// <summary>
+/// Represents one monthly provider usage point in the overview.
+/// </summary>
+public sealed class UsageTelemetryOverviewMonthlyUsage {
+    public UsageTelemetryOverviewMonthlyUsage(DateTime monthUtc, long totalTokens, int activeDays) {
+        MonthUtc = new DateTime(monthUtc.Year, monthUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        TotalTokens = Math.Max(0L, totalTokens);
+        ActiveDays = Math.Max(0, activeDays);
+    }
+
+    public DateTime MonthUtc { get; }
+    public long TotalTokens { get; }
+    public int ActiveDays { get; }
+    public string Label => MonthUtc.ToString("MMM", CultureInfo.InvariantCulture);
+    public string Key => MonthUtc.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+
+    public JsonObject ToJson() {
+        return new JsonObject()
+            .Add("monthUtc", MonthUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+            .Add("key", Key)
+            .Add("label", Label)
+            .Add("totalTokens", TotalTokens)
+            .Add("activeDays", ActiveDays);
+    }
+}
+
+/// <summary>
 /// Represents one provider-specific usage section in the overview.
 /// </summary>
 public sealed class UsageTelemetryOverviewProviderSection {
@@ -136,6 +162,7 @@ public sealed class UsageTelemetryOverviewProviderSection {
         long inputTokens,
         long outputTokens,
         long totalTokens,
+        IReadOnlyList<UsageTelemetryOverviewMonthlyUsage> monthlyUsage,
         UsageTelemetryOverviewModelHighlight? mostUsedModel,
         UsageTelemetryOverviewModelHighlight? recentModel,
         int longestStreakDays,
@@ -149,6 +176,7 @@ public sealed class UsageTelemetryOverviewProviderSection {
         InputTokens = Math.Max(0L, inputTokens);
         OutputTokens = Math.Max(0L, outputTokens);
         TotalTokens = Math.Max(0L, totalTokens);
+        MonthlyUsage = monthlyUsage ?? Array.Empty<UsageTelemetryOverviewMonthlyUsage>();
         MostUsedModel = mostUsedModel;
         RecentModel = recentModel;
         LongestStreakDays = Math.Max(0, longestStreakDays);
@@ -164,6 +192,7 @@ public sealed class UsageTelemetryOverviewProviderSection {
     public long InputTokens { get; }
     public long OutputTokens { get; }
     public long TotalTokens { get; }
+    public IReadOnlyList<UsageTelemetryOverviewMonthlyUsage> MonthlyUsage { get; }
     public UsageTelemetryOverviewModelHighlight? MostUsedModel { get; }
     public UsageTelemetryOverviewModelHighlight? RecentModel { get; }
     public int LongestStreakDays { get; }
@@ -182,6 +211,12 @@ public sealed class UsageTelemetryOverviewProviderSection {
             .Add("longestStreakDays", LongestStreakDays)
             .Add("currentStreakDays", CurrentStreakDays)
             .Add("heatmap", Heatmap.ToJson());
+
+        var monthlyUsage = new JsonArray();
+        foreach (var month in MonthlyUsage) {
+            monthlyUsage.Add(JsonValue.From(month.ToJson()));
+        }
+        obj.Add("monthlyUsage", monthlyUsage);
 
         if (MostUsedModel is not null) {
             obj.Add("mostUsedModel", MostUsedModel.ToJson());
@@ -400,6 +435,7 @@ public sealed class UsageTelemetryOverviewBuilder {
         var inputTokens = events.Sum(static record => record.InputTokens ?? 0L);
         var outputTokens = events.Sum(static record => record.OutputTokens ?? 0L);
         var totalTokens = events.Sum(static record => record.TotalTokens ?? 0L);
+        var monthlyUsage = BuildMonthlyUsage(events, rangeStartUtc, rangeEndUtc);
         var mostUsedModel = BuildModelHighlight(events);
         var recentModel = BuildModelHighlight(FilterToRecentWindow(events, 30));
         var (longestStreakDays, currentStreakDays) = ComputeStreaks(events);
@@ -416,6 +452,7 @@ public sealed class UsageTelemetryOverviewBuilder {
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             totalTokens: totalTokens,
+            monthlyUsage: monthlyUsage,
             mostUsedModel: mostUsedModel,
             recentModel: recentModel,
             longestStreakDays: longestStreakDays,
@@ -456,6 +493,42 @@ public sealed class UsageTelemetryOverviewBuilder {
                 RangeStartUtc = rangeStartUtc,
                 RangeEndUtc = rangeEndUtc
             });
+    }
+
+    private static IReadOnlyList<UsageTelemetryOverviewMonthlyUsage> BuildMonthlyUsage(
+        IReadOnlyList<UsageEventRecord> events,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc) {
+        var monthLookup = events
+            .GroupBy(record => new DateTime(
+                record.TimestampUtc.UtcDateTime.Year,
+                record.TimestampUtc.UtcDateTime.Month,
+                1,
+                0,
+                0,
+                0,
+                DateTimeKind.Utc))
+            .ToDictionary(
+                static group => group.Key,
+                group => new UsageTelemetryOverviewMonthlyUsage(
+                    group.Key,
+                    group.Sum(static record => record.TotalTokens ?? 0L),
+                    group.Select(static record => record.TimestampUtc.UtcDateTime.Date).Distinct().Count()));
+
+        var values = new List<UsageTelemetryOverviewMonthlyUsage>();
+        var cursor = new DateTime(rangeStartUtc.Year, rangeStartUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endMonth = new DateTime(rangeEndUtc.Year, rangeEndUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        while (cursor <= endMonth) {
+            if (monthLookup.TryGetValue(cursor, out var month)) {
+                values.Add(month);
+            } else {
+                values.Add(new UsageTelemetryOverviewMonthlyUsage(cursor, 0L, 0));
+            }
+
+            cursor = cursor.AddMonths(1);
+        }
+
+        return values;
     }
 
     private static UsageTelemetryOverviewModelHighlight? BuildModelHighlight(

@@ -58,6 +58,16 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("    .provider-token-mix-item { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; }");
         sb.AppendLine("    .provider-token-mix-item strong { color:var(--ink); font-size:13px; }");
         sb.AppendLine("    .provider-token-dot { width:10px; height:10px; border-radius:999px; display:inline-block; }");
+        sb.AppendLine("    .provider-monthly { margin:18px 0 18px; padding:16px 18px 14px; border-radius:20px; background:#f8f8f8; border:1px solid var(--line); }");
+        sb.AppendLine("    .provider-monthly-header { display:flex; justify-content:space-between; gap:16px; align-items:baseline; margin-bottom:14px; }");
+        sb.AppendLine("    .provider-monthly-title { font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }");
+        sb.AppendLine("    .provider-monthly-copy { font-size:13px; color:var(--muted); }");
+        sb.AppendLine("    .provider-monthly-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(42px,1fr)); gap:10px; align-items:end; min-height:126px; }");
+        sb.AppendLine("    .provider-month { display:flex; flex-direction:column; gap:8px; align-items:center; }");
+        sb.AppendLine("    .provider-month-bar-wrap { width:100%; height:90px; display:flex; align-items:flex-end; }");
+        sb.AppendLine("    .provider-month-bar { width:100%; min-height:4px; border-radius:10px 10px 4px 4px; background:#d7dcff; box-shadow:inset 0 -1px 0 rgba(0,0,0,.08); }");
+        sb.AppendLine("    .provider-month-label { font-size:12px; color:var(--muted); }");
+        sb.AppendLine("    .provider-month-value { font-size:11px; color:var(--muted); }");
         sb.AppendLine("    .provider-heatmap { margin:0; background:#f6f6f6; border:1px solid var(--line); border-radius:24px; padding:14px; }");
         sb.AppendLine("    .provider-heatmap img { width:100%; height:auto; display:block; }");
         sb.AppendLine("    .provider-note { margin:14px 0 0; color:var(--muted); font-size:14px; }");
@@ -154,6 +164,7 @@ public static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("        </div>");
         sb.AppendLine("      </div>");
         AppendProviderTokenMix(sb, section, accentColors);
+        AppendProviderMonthlyUsage(sb, section, accentColors.Total);
         sb.AppendLine("      <figure class=\"provider-heatmap\">");
         sb.Append("        <img src=\"").Append(Html(section.Key)).Append(".svg\" alt=\"").Append(Html(section.Title)).AppendLine(" usage heatmap\">");
         sb.AppendLine("      </figure>");
@@ -238,6 +249,44 @@ public static class UsageTelemetryOverviewHtmlRenderer {
             sb.Append("        <span class=\"legend-swatch\" style=\"background:").Append(Html(color)).AppendLine("\"></span>");
         }
         sb.AppendLine("        <span class=\"legend-copy\">More</span>");
+        sb.AppendLine("      </div>");
+    }
+
+    private static void AppendProviderMonthlyUsage(StringBuilder sb, UsageTelemetryOverviewProviderSection section, string accentColor) {
+        var months = section.MonthlyUsage ?? Array.Empty<UsageTelemetryOverviewMonthlyUsage>();
+        if (months.Count == 0) {
+            return;
+        }
+
+        var maxTokens = months.Max(static month => month.TotalTokens);
+        sb.AppendLine("      <div class=\"provider-monthly\">");
+        sb.AppendLine("        <div class=\"provider-monthly-header\">");
+        sb.AppendLine("          <div class=\"provider-monthly-title\">Monthly usage</div>");
+        sb.Append("          <div class=\"provider-monthly-copy\">").Append(Html(months.Count.ToString(CultureInfo.InvariantCulture))).AppendLine(" month window</div>");
+        sb.AppendLine("        </div>");
+        sb.AppendLine("        <div class=\"provider-monthly-grid\">");
+        foreach (var month in months) {
+            var height = maxTokens <= 0L ? 4d : Math.Max(4d, month.TotalTokens / (double)maxTokens * 90d);
+            var alpha = month.TotalTokens <= 0L ? "33" : Math.Max(64, Math.Min(255, (int)Math.Round(month.TotalTokens / (double)Math.Max(1L, maxTokens) * 255d))).ToString("X2", CultureInfo.InvariantCulture);
+            var monthColor = month.TotalTokens <= 0L ? "#dfdfdf" : accentColor + alpha;
+            var title = $"{month.Key}: {FormatCompact(month.TotalTokens)} tokens";
+            if (month.ActiveDays > 0) {
+                title += $" across {month.ActiveDays} active day(s)";
+            }
+
+            sb.Append("          <div class=\"provider-month\" title=\"").Append(Html(title)).AppendLine("\">");
+            sb.AppendLine("            <div class=\"provider-month-bar-wrap\">");
+            sb.Append("              <div class=\"provider-month-bar\" style=\"height:")
+                .Append(Html(height.ToString("0.##", CultureInfo.InvariantCulture)))
+                .Append("px; background:")
+                .Append(Html(monthColor))
+                .AppendLine(";\"></div>");
+            sb.AppendLine("            </div>");
+            sb.Append("            <div class=\"provider-month-label\">").Append(Html(month.Label)).AppendLine("</div>");
+            sb.Append("            <div class=\"provider-month-value\">").Append(Html(FormatCompact(month.TotalTokens))).AppendLine("</div>");
+            sb.AppendLine("          </div>");
+        }
+        sb.AppendLine("        </div>");
         sb.AppendLine("      </div>");
     }
 
