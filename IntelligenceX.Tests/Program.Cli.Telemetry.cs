@@ -28,6 +28,7 @@ internal static partial class Program {
         AssertContainsText(stdout, "telemetry usage roots list", "telemetry usage roots help");
         AssertContainsText(stdout, "telemetry usage accounts list", "telemetry usage accounts help");
         AssertContainsText(stdout, "telemetry usage import", "telemetry usage import help");
+        AssertContainsText(stdout, "telemetry usage report", "telemetry usage report help");
         AssertContainsText(stdout, "telemetry usage overview", "telemetry usage overview help");
         AssertContainsText(stdout, "telemetry usage stats", "telemetry usage stats help");
         AssertContainsText(stdout, "--force", "telemetry usage help force import option");
@@ -267,6 +268,49 @@ internal static partial class Program {
             } catch {
                 // best-effort cleanup
             }
+        }
+    }
+
+    private static void TestTelemetryUsageReportAutoImportsAndExports() {
+        var tempDir = CreateUsageTelemetryImportTempDirectory();
+        try {
+            var codexHome = Path.Combine(tempDir, ".codex");
+            var sessionsDir = Path.Combine(codexHome, "sessions");
+            Directory.CreateDirectory(sessionsDir);
+            WriteCodexRolloutFile(
+                Path.Combine(sessionsDir, "rollout-2026-03-11T14-00-00-thread-cli.jsonl"),
+                "thread-cli",
+                "resp-cli",
+                includeAuth: false,
+                authRoot: codexHome);
+
+            var dbPath = Path.Combine(tempDir, "usage.db");
+            var exportDir = Path.Combine(tempDir, "report");
+            var previousCodexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+            Environment.SetEnvironmentVariable("CODEX_HOME", codexHome);
+
+            try {
+                var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
+                    new[] {
+                        "telemetry", "usage", "report",
+                        "--db", dbPath,
+                        "--provider", "codex",
+                        "--out-dir", exportDir
+                    },
+                    () => false,
+                    _ => Task.FromResult(0));
+
+                AssertEqual(0, exit, "telemetry report exit");
+                AssertContainsText(stdout, exportDir, "telemetry report output");
+                AssertEqual(string.Empty, stderr, "telemetry report stderr");
+                AssertEqual(true, File.Exists(Path.Combine(exportDir, "index.html")), "telemetry report export html");
+                AssertEqual(true, File.Exists(Path.Combine(exportDir, "provider-codex.svg")), "telemetry report provider codex svg");
+                AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "INPUT TOKENS", "telemetry report html input tokens");
+            } finally {
+                Environment.SetEnvironmentVariable("CODEX_HOME", previousCodexHome);
+            }
+        } finally {
+            TryDeleteUsageTelemetryImportTempDirectory(tempDir);
         }
     }
 #endif

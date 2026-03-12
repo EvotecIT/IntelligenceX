@@ -36,8 +36,11 @@ internal static class UsageTelemetryCliRunner {
             if (string.Equals(command, "import", StringComparison.OrdinalIgnoreCase)) {
                 return await RunImportAsync(rest).ConfigureAwait(false);
             }
+            if (string.Equals(command, "report", StringComparison.OrdinalIgnoreCase)) {
+                return await RunReportAsync(rest).ConfigureAwait(false);
+            }
             if (string.Equals(command, "overview", StringComparison.OrdinalIgnoreCase)) {
-                return RunOverviewAsync(rest);
+                return await RunOverviewAsync(rest).ConfigureAwait(false);
             }
             if (string.Equals(command, "stats", StringComparison.OrdinalIgnoreCase)) {
                 return RunStatsAsync(rest);
@@ -58,6 +61,7 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("  intelligencex telemetry usage accounts bind [options]");
         Console.WriteLine("  intelligencex telemetry usage discover [options]");
         Console.WriteLine("  intelligencex telemetry usage import [options]");
+        Console.WriteLine("  intelligencex telemetry usage report [options]");
         Console.WriteLine("  intelligencex telemetry usage overview [options]");
         Console.WriteLine("  intelligencex telemetry usage stats [options]");
         Console.WriteLine();
@@ -97,6 +101,10 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("  --person <value>      Filter by person label");
         Console.WriteLine("  --metric <name>       tokens|cost|duration|events (default: tokens)");
         Console.WriteLine("  --title <text>        Override the overview title");
+        Console.WriteLine("  --discover            Auto-discover provider roots before rendering");
+        Console.WriteLine("  --recent-first        Prefer newer artifacts first during auto-import");
+        Console.WriteLine("  --max-artifacts <n>   Parse at most N artifacts during auto-import");
+        Console.WriteLine("  --force               Reparse cached artifacts during auto-import");
         Console.WriteLine("  --out <path>          Write text or JSON output to a file");
         Console.WriteLine("  --out-dir <path>      Export overview.json plus one SVG/JSON pair per heatmap");
         Console.WriteLine();
@@ -456,16 +464,34 @@ internal static class UsageTelemetryCliRunner {
         return 0;
     }
 
-    private static int RunOverviewAsync(string[] args) {
+    private static async Task<int> RunReportAsync(string[] args) {
+        var reportArgs = args.ToList();
+        if (!reportArgs.Any(static arg => string.Equals(arg, "--discover", StringComparison.OrdinalIgnoreCase))) {
+            reportArgs.Add("--discover");
+        }
+        if (!reportArgs.Any(static arg => string.Equals(arg, "--out-dir", StringComparison.OrdinalIgnoreCase))
+            && !reportArgs.Any(static arg => string.Equals(arg, "--out", StringComparison.OrdinalIgnoreCase))
+            && !reportArgs.Any(static arg => string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))) {
+            reportArgs.Add("--out-dir");
+            reportArgs.Add(Path.Combine("artifacts", "telemetry", "reports", "latest"));
+        }
+
+        return await RunOverviewAsync(reportArgs.ToArray()).ConfigureAwait(false);
+    }
+
+    private static async Task<int> RunOverviewAsync(string[] args) {
         var options = OverviewOptions.Parse(args);
         var dbPath = ResolveDatabasePath(options.DatabasePath);
+        if (options.Discover) {
+            await DiscoverAndImportForOverviewAsync(dbPath, options).ConfigureAwait(false);
+        }
+
         using var eventStore = new SqliteUsageEventStore(dbPath);
-        var events = eventStore.GetAll()
-            .Where(record => MatchesProvider(record.ProviderId, options.ProviderId))
-            .Where(record => MatchesAccount(record, options.AccountFilter))
-            .Where(record => MatchesPerson(record, options.PersonFilter))
-            .OrderBy(record => record.TimestampUtc)
-            .ToArray();
+        var events = LoadOverviewEvents(eventStore, options);
+        if (events.Length == 0 && !options.SkipAutoImport) {
+            await DiscoverAndImportForOverviewAsync(dbPath, options).ConfigureAwait(false);
+            events = LoadOverviewEvents(eventStore, options);
+        }
 
         if (events.Length == 0) {
             throw new InvalidOperationException("No telemetry usage events matched the requested overview filters.");
@@ -504,6 +530,34 @@ internal static class UsageTelemetryCliRunner {
         File.WriteAllText(outputPath, content, new UTF8Encoding(false));
         Console.WriteLine("Wrote " + outputPath);
         return 0;
+    }
+
+    private static UsageEventRecord[] LoadOverviewEvents(SqliteUsageEventStore eventStore, OverviewOptions options) {
+        return eventStore.GetAll()
+            .Where(record => MatchesProvider(record.ProviderId, options.ProviderId))
+            .Where(record => MatchesAccount(record, options.AccountFilter))
+            .Where(record => MatchesPerson(record, options.PersonFilter))
+            .OrderBy(record => record.TimestampUtc)
+            .ToArray();
+    }
+
+    private static async Task DiscoverAndImportForOverviewAsync(string dbPath, OverviewOptions options) {
+        using var rootStore = new SqliteSourceRootStore(dbPath);
+        using var bindingStore = new SqliteUsageAccountBindingStore(dbPath);
+        using var rawArtifactStore = new SqliteRawArtifactStore(dbPath);
+        using var eventStore = new SqliteUsageEventStore(dbPath);
+        var coordinator = CreateCoordinator(rootStore, eventStore);
+        await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
+        await coordinator.ImportAllAsync(
+            new UsageImportContext {
+                AccountResolver = new UsageAccountBindingResolver(bindingStore),
+                RawArtifactStore = rawArtifactStore,
+                PreferRecentArtifacts = options.RecentFirst,
+                MaxArtifacts = options.MaxArtifacts,
+                ForceReimport = options.Force
+            },
+            options.ProviderId,
+            CancellationToken.None).ConfigureAwait(false);
     }
 
     private static UsageTelemetryImportCoordinator CreateCoordinator(
@@ -1088,6 +1142,11 @@ internal static class UsageTelemetryCliRunner {
         public string? Title { get; set; }
         public string? OutputPath { get; set; }
         public string? OutputDirectory { get; set; }
+        public bool Discover { get; set; }
+        public bool RecentFirst { get; set; }
+        public int? MaxArtifacts { get; set; }
+        public bool Force { get; set; }
+        public bool SkipAutoImport { get; set; }
         public bool Json { get; set; }
 
         public static OverviewOptions Parse(string[] args) {
@@ -1111,6 +1170,21 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--title":
                         options.Title = ReadValue(args, ref i);
+                        break;
+                    case "--discover":
+                        options.Discover = true;
+                        break;
+                    case "--recent-first":
+                        options.RecentFirst = true;
+                        break;
+                    case "--max-artifacts":
+                        options.MaxArtifacts = ParsePositiveInt32(ReadValue(args, ref i), "--max-artifacts");
+                        break;
+                    case "--force":
+                        options.Force = true;
+                        break;
+                    case "--no-auto-import":
+                        options.SkipAutoImport = true;
                         break;
                     case "--out":
                         options.OutputPath = ReadValue(args, ref i);

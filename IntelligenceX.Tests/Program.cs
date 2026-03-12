@@ -107,6 +107,7 @@ internal static partial class Program {
         failed += Run("Telemetry usage roots add and list json", TestTelemetryUsageRootsAddAndListJson);
         failed += Run("Telemetry usage import and stats json", TestTelemetryUsageImportAndStatsJson);
         failed += Run("Telemetry usage overview json and export", TestTelemetryUsageOverviewJsonAndExport);
+        failed += Run("Telemetry usage report auto imports and exports", TestTelemetryUsageReportAutoImportsAndExports);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);
         failed += Run("OpenAI model catalog normalizes fast mode suffix", TestOpenAiModelCatalogNormalizesFastModeSuffix);
