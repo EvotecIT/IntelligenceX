@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -52,14 +53,23 @@ internal static class GitHubGraphQlCli {
             if (ShouldIgnoreErrors(root, errors)) {
                 return root;
             }
-            var first = errors[0];
-            var message = first.TryGetProperty("message", out var msg)
-                ? (msg.GetString() ?? "GraphQL error")
-                : "GraphQL error";
-            throw new InvalidOperationException($"GitHub GraphQL returned errors: {message}");
+            throw new InvalidOperationException($"GitHub GraphQL returned errors: {FormatGraphQlErrors(errors)}");
         }
 
         return root;
+    }
+
+    private static string FormatGraphQlErrors(JsonElement errors) {
+        var messages = errors
+            .EnumerateArray()
+            .Select(static error => ReadString(error, "message"))
+            .Where(static message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return messages.Length == 0
+            ? "GraphQL error"
+            : string.Join(" | ", messages);
     }
 
     private static bool ShouldIgnoreErrors(JsonElement root, JsonElement errors) {

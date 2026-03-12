@@ -1,12 +1,24 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace IntelligenceX.Cli.GitHub;
 
 internal sealed class GitHubContributionCalendarClient {
+    private const int MaxWindowDays = 365;
+    private readonly Func<string, DateTimeOffset, DateTimeOffset, Task<JsonElement>> _queryWindowAsync;
+
+    public GitHubContributionCalendarClient()
+        : this(QueryContributionCalendarWindowAsync) {
+    }
+
+    internal GitHubContributionCalendarClient(Func<string, DateTimeOffset, DateTimeOffset, Task<JsonElement>> queryWindowAsync) {
+        _queryWindowAsync = queryWindowAsync ?? throw new ArgumentNullException(nameof(queryWindowAsync));
+    }
+
     public async Task<GitHubContributionCalendar> GetUserContributionCalendarAsync(
         string login,
         DateTimeOffset from,
@@ -18,18 +30,19 @@ internal sealed class GitHubContributionCalendarClient {
             throw new InvalidOperationException("GitHub contribution calendar end date must be on or after the start date.");
         }
 
-        var totalContributions = 0;
         var days = new List<GitHubContributionDay>();
         string? resolvedLogin = null;
         string? resolvedName = null;
         string? resolvedUrl = null;
 
-        var windowStart = from;
-        while (windowStart <= to) {
-            var nextWindowExclusive = windowStart.AddYears(1);
-            var windowEnd = nextWindowExclusive <= to
-                ? nextWindowExclusive.AddDays(-1)
-                : to;
+        var dedupedDays = new Dictionary<DateTime, GitHubContributionDay>();
+        var windowStart = NormalizeDay(from);
+        var endDay = NormalizeDay(to);
+        while (windowStart <= endDay) {
+            var windowEnd = windowStart.AddDays(MaxWindowDays - 1);
+            if (windowEnd > endDay) {
+                windowEnd = endDay;
+            }
 
             var window = await GetContributionCalendarWindowAsync(login, windowStart, windowEnd).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(resolvedLogin)) {
@@ -42,11 +55,8 @@ internal sealed class GitHubContributionCalendarClient {
                 resolvedUrl = window.ProfileUrl;
             }
 
-            totalContributions += window.TotalContributions;
             foreach (var day in window.Days) {
-                if (days.Count == 0 || days[days.Count - 1].Date != day.Date) {
-                    days.Add(day);
-                }
+                dedupedDays[day.Date] = day;
             }
 
             windowStart = windowEnd.AddDays(1);
@@ -56,10 +66,23 @@ internal sealed class GitHubContributionCalendarClient {
             throw new InvalidOperationException($"GitHub user '{login}' was not found.");
         }
 
+        days.AddRange(dedupedDays
+            .OrderBy(static pair => pair.Key)
+            .Select(static pair => pair.Value));
+
+        var totalContributions = days.Sum(static day => day.ContributionCount);
         return new GitHubContributionCalendar(resolvedLogin, resolvedName, resolvedUrl, totalContributions, days);
     }
 
-    private static async Task<GitHubContributionCalendar> GetContributionCalendarWindowAsync(
+    private async Task<GitHubContributionCalendar> GetContributionCalendarWindowAsync(
+        string login,
+        DateTimeOffset from,
+        DateTimeOffset to) {
+        var root = await _queryWindowAsync(login, from, to).ConfigureAwait(false);
+        return ParseContributionCalendarWindow(login, root);
+    }
+
+    private static async Task<JsonElement> QueryContributionCalendarWindowAsync(
         string login,
         DateTimeOffset from,
         DateTimeOffset to) {
@@ -87,16 +110,23 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 }
 """;
 
-        var root = await GitHubGraphQlCli.QueryAsync(
+        return await GitHubGraphQlCli.QueryAsync(
             query,
             TimeSpan.FromSeconds(90),
             ("login", login.Trim()),
-            ("from", from.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture)),
-            ("to", to.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture))).ConfigureAwait(false);
+            ("from", NormalizeDay(from).ToString("o", CultureInfo.InvariantCulture)),
+            ("to", NormalizeDay(to).AddDays(1).AddTicks(-1).ToString("o", CultureInfo.InvariantCulture))).ConfigureAwait(false);
+    }
 
+    private static GitHubContributionCalendar ParseContributionCalendarWindow(string login, JsonElement root) {
         if (!GitHubGraphQlCli.TryGetProperty(root, "data", out var data) ||
-            !GitHubGraphQlCli.TryGetProperty(data, "user", out var user) ||
-            user.ValueKind != JsonValueKind.Object) {
+            !GitHubGraphQlCli.TryGetProperty(data, "user", out var user)) {
+            throw new InvalidOperationException("GitHub GraphQL response missing user contribution data.");
+        }
+        if (user.ValueKind == JsonValueKind.Null) {
+            throw new InvalidOperationException($"GitHub user '{login}' was not found.");
+        }
+        if (user.ValueKind != JsonValueKind.Object) {
             throw new InvalidOperationException("GitHub GraphQL response missing user contribution data.");
         }
 
@@ -130,7 +160,7 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 
                 foreach (var day in contributionDays.EnumerateArray()) {
                     var dateText = GitHubGraphQlCli.ReadString(day, "date");
-                    if (!DateTime.TryParse(dateText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsedDate)) {
+                    if (!TryParseGitHubContributionDate(dateText, out var parsedDate)) {
                         continue;
                     }
 
@@ -156,6 +186,29 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
             }
         }
         return new GitHubContributionCalendar(resolvedLogin, resolvedName, resolvedUrl, totalContributions, days);
+    }
+
+    private static DateTimeOffset NormalizeDay(DateTimeOffset value) {
+        return new DateTimeOffset(value.UtcDateTime.Date, TimeSpan.Zero);
+    }
+
+    private static bool TryParseGitHubContributionDate(string? value, out DateTime parsedDateUtc) {
+        parsedDateUtc = default;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        if (!DateTime.TryParseExact(
+                value.Trim(),
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed)) {
+            return false;
+        }
+
+        parsedDateUtc = DateTime.SpecifyKind(parsed.Date, DateTimeKind.Utc);
+        return true;
     }
 }
 

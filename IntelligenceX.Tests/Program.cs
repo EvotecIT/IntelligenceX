@@ -373,6 +373,12 @@ internal static partial class Program {
         failed += Run("Web setup resolves org-secret verification context", TestWebSetupResolveOrgSecretVerificationContext);
         failed += Run("Web setup resolves org-secret verification context per repo", TestWebSetupResolveOrgSecretVerificationContextPerRepo);
         failed += Run("Web setup subprocess timeout returns promptly", TestWebSetupRunProcessTimeoutReturnsPromptly);
+        failed += Run("GitHub contribution calendar stitches non-overlapping windows",
+            TestGitHubContributionCalendarClientStitchesNonOverlappingWindows);
+        failed += Run("GitHub contribution calendar parses ISO dates deterministically",
+            TestGitHubContributionCalendarClientParsesIsoDatesDeterministically);
+        failed += Run("GitHub contribution calendar treats null user as not found",
+            TestGitHubContributionCalendarClientTreatsNullUserAsNotFound);
         failed += Run("Manage GitHub CLI status token authenticated", TestManageGitHubCliStatusWithTokenIsAuthenticated);
         failed += Run("Manage GitHub CLI status exit code zero authenticated", TestManageGitHubCliStatusExitCodeZeroAuthenticated);
         failed += Run("Manage GitHub CLI status exit code non-zero unauthenticated", TestManageGitHubCliStatusExitCodeNonZeroUnauthenticated);

@@ -2017,7 +2017,7 @@ $('checkUsage').addEventListener('click', async () => {
           ? openAiAccountIdInput.value.trim()
           : openAiAccountId,
         includeEvents: usageEvents.checked,
-        includeDailyBreakdown: true
+        includeDailyBreakdown: usageEvents.checked
       })
     });
     const updated = data.updatedAt ? `Updated: ${data.updatedAt}\n\n` : '';
