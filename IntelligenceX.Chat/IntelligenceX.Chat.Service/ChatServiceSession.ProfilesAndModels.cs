@@ -856,8 +856,8 @@ internal sealed partial class ChatServiceSession {
         ChatServiceToolingBootstrapSnapshot snapshot,
         bool clearRoutingCaches,
         TimeSpan cacheHitElapsed) {
-        _registry = snapshot.Registry;
         ClearPersistedToolingBootstrapPreviewState();
+        _registry = snapshot.Registry;
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packs = snapshot.Packs;
         _packAvailability = snapshot.PackAvailability.ToArray();
