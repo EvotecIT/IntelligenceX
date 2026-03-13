@@ -28,6 +28,26 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("BuildToolState not found.");
 
+    private static readonly MethodInfo ClearToolCatalogCacheMethod = typeof(MainWindow).GetMethod(
+        "ClearToolCatalogCache",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ClearToolCatalogCache not found.");
+
+    private static readonly FieldInfo ToolCatalogPacksField = typeof(MainWindow).GetField(
+        "_toolCatalogPacks",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogPacks field not found.");
+
+    private static readonly FieldInfo ToolCatalogRoutingCatalogField = typeof(MainWindow).GetField(
+        "_toolCatalogRoutingCatalog",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogRoutingCatalog field not found.");
+
+    private static readonly FieldInfo ToolCatalogCapabilitySnapshotField = typeof(MainWindow).GetField(
+        "_toolCatalogCapabilitySnapshot",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogCapabilitySnapshot field not found.");
+
     private static readonly FieldInfo ToolDescriptionsField = typeof(MainWindow).GetField(
         "_toolDescriptions",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -350,8 +370,126 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         Assert.Equal(new[] { "domain_controller", "search_base_dn" }, GetProperty<string[]>(tool, "requiredArguments"));
     }
 
+    /// <summary>
+    /// Ensures tool-cache invalidation clears stale per-tool contracts while preserving still-valid hello metadata.
+    /// </summary>
+    [Fact]
+    public void ClearToolCatalogCache_ClearsStaleToolDefinitions_WithoutDroppingLiveMetadata() {
+        var window = CreateWindow();
+        var tools = new[] {
+            new ToolDefinitionDto {
+                Name = "system_metrics_summary",
+                Description = "Collect system metrics.",
+                PackId = "system",
+                PackName = "System",
+                IsExecutionAware = true,
+                ExecutionScope = "local_or_remote",
+                SupportsLocalExecution = true,
+                SupportsRemoteExecution = true
+            }
+        };
+
+        InvokeUpdateToolCatalog(
+            window,
+            tools,
+            routingCatalog: new SessionRoutingCatalogDiagnosticsDto {
+                TotalTools = 1
+            },
+            packs: new[] {
+                new ToolPackInfoDto {
+                    Id = "system",
+                    Name = "System",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                }
+            },
+            capabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                EnabledPackIds = new[] { "system" },
+                EnabledPluginIds = Array.Empty<string>(),
+                RoutingFamilies = Array.Empty<string>(),
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                Skills = Array.Empty<string>(),
+                HealthyTools = new[] { "system_metrics_summary" }
+            });
+
+        try {
+            ClearToolCatalogCacheMethod.Invoke(window, new object?[] { false });
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+
+        Assert.Empty(Assert.IsType<Dictionary<string, ToolDefinitionDto>>(ToolCatalogDefinitionsField.GetValue(window)));
+        Assert.Empty(Assert.IsType<Dictionary<string, string>>(ToolDescriptionsField.GetValue(window)));
+        Assert.Empty(Assert.IsType<Dictionary<string, bool>>(ToolStatesField.GetValue(window)));
+
+        var packs = Assert.IsType<ToolPackInfoDto[]>(ToolCatalogPacksField.GetValue(window));
+        Assert.Single(packs);
+        Assert.NotNull(ToolCatalogRoutingCatalogField.GetValue(window));
+        Assert.NotNull(ToolCatalogCapabilitySnapshotField.GetValue(window));
+    }
+
+    /// <summary>
+    /// Ensures full catalog invalidation also clears pack-level routing and capability snapshot metadata.
+    /// </summary>
+    [Fact]
+    public void ClearToolCatalogCache_WithMetadataFlag_ClearsPackAndSnapshotMetadata() {
+        var window = CreateWindow();
+        SetField(ToolCatalogPacksField, window, new[] {
+            new ToolPackInfoDto {
+                Id = "system",
+                Name = "System",
+                Tier = CapabilityTier.ReadOnly,
+                Enabled = true,
+                IsDangerous = false
+            }
+        });
+        SetField(
+            ToolCatalogRoutingCatalogField,
+            window,
+            new SessionRoutingCatalogDiagnosticsDto {
+                TotalTools = 1
+            });
+        SetField(
+            ToolCatalogCapabilitySnapshotField,
+            window,
+            new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                EnabledPackIds = new[] { "system" },
+                EnabledPluginIds = Array.Empty<string>(),
+                RoutingFamilies = Array.Empty<string>(),
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                Skills = Array.Empty<string>(),
+                HealthyTools = Array.Empty<string>()
+            });
+
+        try {
+            ClearToolCatalogCacheMethod.Invoke(window, new object?[] { true });
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+
+        Assert.Empty(Assert.IsType<ToolPackInfoDto[]>(ToolCatalogPacksField.GetValue(window)));
+        Assert.Null(ToolCatalogRoutingCatalogField.GetValue(window));
+        Assert.Null(ToolCatalogCapabilitySnapshotField.GetValue(window));
+    }
+
     private static MainWindow CreateWindow() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        SetField(ToolCatalogPacksField, window, Array.Empty<ToolPackInfoDto>());
+        SetField(ToolCatalogRoutingCatalogField, window, null!);
+        SetField(ToolCatalogCapabilitySnapshotField, window, null!);
         SetField(ToolDescriptionsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolDisplayNamesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolCategoriesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -373,9 +511,14 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         return window;
     }
 
-    private static void InvokeUpdateToolCatalog(MainWindow window, ToolDefinitionDto[] tools) {
+    private static void InvokeUpdateToolCatalog(
+        MainWindow window,
+        ToolDefinitionDto[] tools,
+        SessionRoutingCatalogDiagnosticsDto? routingCatalog = null,
+        ToolPackInfoDto[]? packs = null,
+        SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
         try {
-            UpdateToolCatalogMethod.Invoke(window, new object?[] { tools, null, null, null });
+            UpdateToolCatalogMethod.Invoke(window, new object?[] { tools, routingCatalog, packs, capabilitySnapshot });
         } catch (TargetInvocationException ex) {
             throw ex.InnerException ?? ex;
         }

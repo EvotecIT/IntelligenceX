@@ -38,6 +38,34 @@ public sealed partial class MainWindow : Window {
     private static readonly StringComparer MemoryTokenComparer = StringComparer.OrdinalIgnoreCase;
     private static readonly Regex MemoryTokenSplitRegex = new(@"[^\p{L}\p{Nd}_]+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    private void ClearToolCatalogCache(bool clearCatalogMetadata) {
+        if (clearCatalogMetadata) {
+            _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
+            _toolCatalogRoutingCatalog = null;
+            _toolCatalogCapabilitySnapshot = null;
+        }
+
+        _toolStates.Clear();
+        _toolDisplayNames.Clear();
+        _toolDescriptions.Clear();
+        _toolCategories.Clear();
+        _toolTags.Clear();
+        _toolPackIds.Clear();
+        _toolPackNames.Clear();
+        _toolCatalogDefinitions.Clear();
+        _toolParameters.Clear();
+        _toolWriteCapabilities.Clear();
+        _toolExecutionAwareness.Clear();
+        _toolExecutionContractIds.Clear();
+        _toolExecutionScopes.Clear();
+        _toolSupportsLocalExecution.Clear();
+        _toolSupportsRemoteExecution.Clear();
+        _toolRoutingConfidence.Clear();
+        _toolRoutingReason.Clear();
+        _toolRoutingScore.Clear();
+        _toolStateHiddenWithoutCatalogLastCount = -1;
+    }
+
     private void ReplaceLastAssistantText(string text) {
         ReplaceLastAssistantText(GetActiveConversation(), text);
     }
