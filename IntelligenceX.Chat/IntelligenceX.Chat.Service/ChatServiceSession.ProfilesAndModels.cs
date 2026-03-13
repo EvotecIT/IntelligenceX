@@ -642,6 +642,12 @@ internal sealed partial class ChatServiceSession {
         RebuildToolingCore(clearRoutingCaches: true);
     }
 
+    private void ClearPersistedToolingBootstrapPreviewState() {
+        _servingPersistedToolingBootstrapPreview = false;
+        _persistedPreviewPackSummaries = Array.Empty<ToolPackInfoDto>();
+        _persistedPreviewCapabilitySnapshot = null;
+    }
+
     [MemberNotNull(
         nameof(_registry),
         nameof(_packs),
@@ -773,6 +779,7 @@ internal sealed partial class ChatServiceSession {
         var packs = bootstrapResult.Packs.ToArray();
         var packAvailability = bootstrapResult.PackAvailability.ToArray();
         var pluginAvailability = bootstrapResult.PluginAvailability.ToArray();
+        ClearPersistedToolingBootstrapPreviewState();
         _packs = packs;
         _packAvailability = packAvailability;
         _pluginAvailability = pluginAvailability;
@@ -850,9 +857,7 @@ internal sealed partial class ChatServiceSession {
         bool clearRoutingCaches,
         TimeSpan cacheHitElapsed) {
         _registry = snapshot.Registry;
-        _servingPersistedToolingBootstrapPreview = false;
-        _persistedPreviewPackSummaries = Array.Empty<ToolPackInfoDto>();
-        _persistedPreviewCapabilitySnapshot = null;
+        ClearPersistedToolingBootstrapPreviewState();
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packs = snapshot.Packs;
         _packAvailability = snapshot.PackAvailability.ToArray();

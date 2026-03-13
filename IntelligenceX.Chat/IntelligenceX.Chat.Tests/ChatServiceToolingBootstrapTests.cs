@@ -695,6 +695,134 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public void RebuildToolingFromOptions_ClearsPersistedPreviewPackAndCapabilityState_WhenLiveBootstrapApplies() {
+        var cachePath = Path.Combine(
+            Path.GetTempPath(),
+            "IntelligenceX.Chat.Tests",
+            "tooling-cache-clear-preview-state-" + Guid.NewGuid().ToString("N") + ".json");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var keyMethod = typeof(ChatServiceSession).GetMethod(
+                "BuildToolingBootstrapCacheKey",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            var runtimePolicyOptionsMethod = typeof(ChatServiceSession).GetMethod(
+                "BuildRuntimePolicyOptions",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            var rebuildMethod = typeof(ChatServiceSession).GetMethod(
+                "RebuildToolingFromOptions",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var persistedPreviewFlagField = typeof(ChatServiceSession).GetField(
+                "_servingPersistedToolingBootstrapPreview",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var persistedPreviewPackSummariesField = typeof(ChatServiceSession).GetField(
+                "_persistedPreviewPackSummaries",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var persistedPreviewCapabilitySnapshotField = typeof(ChatServiceSession).GetField(
+                "_persistedPreviewCapabilitySnapshot",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(keyMethod);
+            Assert.NotNull(runtimePolicyOptionsMethod);
+            Assert.NotNull(rebuildMethod);
+            Assert.NotNull(persistedPreviewFlagField);
+            Assert.NotNull(persistedPreviewPackSummariesField);
+            Assert.NotNull(persistedPreviewCapabilitySnapshotField);
+
+            var options = new ServiceOptions();
+            var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
+                null,
+                new object[] { options }));
+            var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+            var cacheKey = Assert.IsType<string>(keyMethod!.Invoke(
+                null,
+                new object?[] { options, runtimePolicyOptions, resolvedRuntimePolicyOptions }));
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                cacheKey,
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "preview_tool",
+                            Description = "Persisted preview tool",
+                            PackId = "preview_pack"
+                        }
+                    },
+                    PackSummaries = new[] {
+                        new ToolPackInfoDto {
+                            Id = "preview_pack",
+                            Name = "Preview Pack",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false,
+                            SourceKind = ToolPackSourceKind.ClosedSource
+                        }
+                    },
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "preview_pack",
+                            Name = "Preview Pack",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "preview_pack" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "preview_tool" }
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                });
+
+            var session = new ChatServiceSession(options, Stream.Null, cache);
+            Assert.True(Assert.IsType<bool>(persistedPreviewFlagField!.GetValue(session)));
+
+            var previewCapabilitySnapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+            Assert.Equal(new[] { "preview_pack" }, previewCapabilitySnapshot.EnabledPackIds);
+
+            rebuildMethod!.Invoke(session, Array.Empty<object>());
+
+            Assert.False(Assert.IsType<bool>(persistedPreviewFlagField.GetValue(session)));
+            Assert.Empty(Assert.IsType<ToolPackInfoDto[]>(persistedPreviewPackSummariesField!.GetValue(session)));
+            Assert.Null(persistedPreviewCapabilitySnapshotField!.GetValue(session));
+
+            var liveCapabilitySnapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+            Assert.DoesNotContain("preview_pack", liveCapabilitySnapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+            Assert.NotEmpty(liveCapabilitySnapshot.EnabledPackIds);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
     public void BuildToolingBootstrapCacheKey_IncludesResolvedSmtpProbePolicyDimensions() {
         var keyMethod = typeof(ChatServiceSession).GetMethod(
             "BuildToolingBootstrapCacheKey",
