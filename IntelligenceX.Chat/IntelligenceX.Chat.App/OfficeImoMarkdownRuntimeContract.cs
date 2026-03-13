@@ -9,9 +9,9 @@ namespace IntelligenceX.Chat.App;
 /// Centralizes the OfficeIMO markdown runtime contract used by the desktop chat host.
 /// </summary>
 internal static class OfficeImoMarkdownRuntimeContract {
-    private static readonly Version MinimumMarkdownRendererVersion = new(0, 1, 9);
-    private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 5, 12);
-    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 6);
+    private static readonly Version MinimumMarkdownRendererVersion = new(0, 2, 0);
+    private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 6, 0);
+    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 7);
     private static readonly Lazy<PropertyInfo?> NetworkPropertyLazy = new(
         () => typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public));
 
@@ -19,11 +19,12 @@ internal static class OfficeImoMarkdownRuntimeContract {
     /// Creates transcript renderer options using the central OfficeIMO runtime contract.
     /// </summary>
     public static MarkdownRendererOptions CreateTranscriptRendererOptions() {
-        // Preset factory returns a fresh options object per call; these mutations are call-local.
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = MarkdownRendererPresets.CreateStrictMinimal();
+        MarkdownRendererPresets.ApplyChatPresentation(options, enableCopyButtons: false);
+        MarkdownRendererIntelligenceXAdapter.Apply(options);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
-        TryEnableOptionalRendererNetworkSupport(options);
+        options.Network.Enabled = true;
         return options;
     }
 
@@ -85,7 +86,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
             typeof(MarkdownRenderer).Assembly,
             "OfficeIMO.MarkdownRenderer",
             MinimumMarkdownRendererVersion,
-            "chat renderer presets + optional network support");
+            "generic presets + composed chat presentation + IntelligenceX aliases + network support");
     }
 
     /// <summary>
@@ -146,4 +147,5 @@ internal static class OfficeImoMarkdownRuntimeContract {
             return "(dynamic)";
         }
     }
+
 }

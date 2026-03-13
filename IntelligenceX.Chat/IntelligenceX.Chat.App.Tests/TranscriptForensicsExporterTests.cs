@@ -60,10 +60,10 @@ public sealed class TranscriptForensicsExporterTests {
         Assert.Contains("**healthy**", bundle.Live.NormalizedTranscriptMarkdown, StringComparison.Ordinal);
         Assert.Contains("Forest Replication Status", bundle.Live.RenderedTranscriptHtml, StringComparison.Ordinal);
         Assert.Contains("OfficeIMO.MarkdownRenderer", bundle.Renderer.MarkdownRendererAssembly, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.1.9", bundle.Renderer.MarkdownRendererAssembly, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.5.12", bundle.Renderer.MarkdownAssembly, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.2.0", bundle.Renderer.MarkdownRendererAssembly, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.6.0", bundle.Renderer.MarkdownAssembly, StringComparison.Ordinal);
         Assert.Contains("OfficeIMO.Word.Markdown", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
-        Assert.Contains("expected>=1.0.6", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
+        Assert.Contains("expected>=1.0.7", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -129,7 +129,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void Export_WritesIndentedJsonBundle() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 8, 40, DateTimeKind.Local);
         var bundle = TranscriptForensicsExporter.Build(
             "default",
@@ -164,7 +164,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void Export_EscapesHtmlSensitiveContentInJson() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 9, 40, DateTimeKind.Local);
         var bundle = TranscriptForensicsExporter.Build(
             "default",
@@ -314,3 +314,4 @@ public sealed class TranscriptForensicsExporterTests {
         return path;
     }
 }
+
