@@ -695,7 +695,7 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
-    public void RebuildToolingFromOptions_ClearsPersistedPreviewPackAndCapabilityState_WhenLiveBootstrapApplies() {
+    public async Task RebuildToolingFromOptions_ClearsPersistedPreviewPackAndCapabilityState_WhenLiveBootstrapApplies() {
         var cachePath = Path.Combine(
             Path.GetTempPath(),
             "IntelligenceX.Chat.Tests",
@@ -715,6 +715,9 @@ public sealed class ChatServiceToolingBootstrapTests {
             var rebuildMethod = typeof(ChatServiceSession).GetMethod(
                 "RebuildToolingFromOptions",
                 BindingFlags.NonPublic | BindingFlags.Instance);
+            var handleListToolsMethod = typeof(ChatServiceSession).GetMethod(
+                "HandleListToolsAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance);
             var persistedPreviewFlagField = typeof(ChatServiceSession).GetField(
                 "_servingPersistedToolingBootstrapPreview",
                 BindingFlags.NonPublic | BindingFlags.Instance);
@@ -727,6 +730,7 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.NotNull(keyMethod);
             Assert.NotNull(runtimePolicyOptionsMethod);
             Assert.NotNull(rebuildMethod);
+            Assert.NotNull(handleListToolsMethod);
             Assert.NotNull(persistedPreviewFlagField);
             Assert.NotNull(persistedPreviewPackSummariesField);
             Assert.NotNull(persistedPreviewCapabilitySnapshotField);
@@ -811,6 +815,24 @@ public sealed class ChatServiceToolingBootstrapTests {
             var liveCapabilitySnapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
             Assert.DoesNotContain("preview_pack", liveCapabilitySnapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
             Assert.NotEmpty(liveCapabilitySnapshot.EnabledPackIds);
+
+            using var memoryStream = new MemoryStream();
+            using var writer = new StreamWriter(memoryStream) { AutoFlush = true };
+            var listTask = Assert.IsAssignableFrom<Task>(handleListToolsMethod!.Invoke(session, new object?[] {
+                writer,
+                "req_list_tools_after_live_bootstrap",
+                CancellationToken.None
+            }));
+            await listTask;
+
+            memoryStream.Position = 0;
+            using var reader = new StreamReader(memoryStream);
+            var json = await reader.ReadToEndAsync();
+            var parsed = JsonSerializer.Deserialize<ChatServiceMessage>(json, ChatServiceJsonContext.Default.ChatServiceMessage);
+            var message = Assert.IsType<ToolListMessage>(parsed);
+            var listCapabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(message.CapabilitySnapshot);
+            Assert.DoesNotContain(message.Packs, static pack => string.Equals(pack.Id, "preview_pack", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain("preview_pack", listCapabilitySnapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
         } finally {
             try {
                 if (File.Exists(cachePath)) {
