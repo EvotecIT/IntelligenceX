@@ -157,6 +157,21 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewFailureBodyIncludesSafeAuthRefreshDetail() {
+        var settings = new ReviewSettings { Diagnostics = true };
+        var ex = new InvalidOperationException("OAuth token request failed (401): refresh_token_reused. Your refresh token has already been used to generate a new access token. Please try signing in again.");
+        var classification = ReviewDiagnostics.Classify(ex);
+        AssertEqual(ReviewDiagnostics.ReviewErrorCategory.Auth, classification.Category, "auth refresh classification");
+        AssertEqual("OpenAI auth refresh token was already used; sign in again", classification.Summary, "auth refresh classification summary");
+
+        var body = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
+        AssertContainsText(body, "- Detail: OpenAI auth refresh token was already used; sign in again", "auth refresh failure detail");
+        if (body.Contains("refresh_token_reused", StringComparison.OrdinalIgnoreCase) ||
+            body.Contains("Your refresh token has already been used to generate a new access token", StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException("Expected failure body to keep raw provider auth payload out of the PR summary.");
+        }
+    }
+
     private static void TestFailureSummaryCommentUpdate() {
         var commentId = 42L;
         string? body = null;
