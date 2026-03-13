@@ -333,7 +333,7 @@ internal static class TranscriptHtmlFormatter {
         var headline = headlineRaw.Length == 0
             ? GetOutcomeDefaultTitle(normalizedKind, role)
             : headlineRaw;
-        var detail = SanitizeOutcomeDetail(normalizedKind, raw[match.Length..].Trim());
+        var detail = TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(raw[match.Length..]);
         var toneClass = GetAssistantOutcomeToneClass(normalizedKind);
         var badge = GetAssistantOutcomeBadge(normalizedKind);
         var iconSvg = GetAssistantOutcomeIconSvg(normalizedKind);
@@ -354,40 +354,14 @@ internal static class TranscriptHtmlFormatter {
             .Append("</div>");
 
         if (detail.Length > 0) {
-            var preparedDetail = TranscriptMarkdownPreparation.PrepareMessageBody(detail);
             sb.Append("<div class='outcome-body'>")
-                .Append(RenderBodyHtml(preparedDetail, markdownOptions))
+                .Append(RenderBodyHtml(detail, markdownOptions))
                 .Append("</div>");
         }
 
         sb.Append("</section>");
         html = sb.ToString();
         return true;
-    }
-
-    private static string SanitizeOutcomeDetail(string kind, string detail) {
-        if (string.IsNullOrWhiteSpace(detail)) {
-            return string.Empty;
-        }
-
-        var normalized = detail.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
-            var lines = normalized.Split('\n');
-            var start = 0;
-            while (start < lines.Length && string.IsNullOrWhiteSpace(lines[start])) {
-                start++;
-            }
-
-            if (start < lines.Length && lines[start].Trim().Equals("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase)) {
-                start++;
-                while (start < lines.Length && string.IsNullOrWhiteSpace(lines[start])) {
-                    start++;
-                }
-                normalized = start >= lines.Length ? string.Empty : string.Join('\n', lines, start, lines.Length - start);
-            }
-        }
-
-        return normalized.Trim();
     }
 
     private static string NormalizeOutcomeKind(string kind) {

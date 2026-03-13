@@ -20,7 +20,14 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
         "NormalizeTightParentheticalSpacing",
         "NormalizeNestedStrongDelimiters",
         "NormalizeTightArrowStrongBoundaries",
-        "NormalizeTightColonSpacing"
+        "NormalizeTightColonSpacing",
+        "NormalizeWrappedSignalFlowStrongRuns",
+        "NormalizeCollapsedMetricChains",
+        "NormalizeHostLabelBulletArtifacts",
+        "NormalizeStandaloneHashHeadingSeparators",
+        "NormalizeBrokenTwoLineStrongLeadIns",
+        "NormalizeDanglingTrailingStrongListClosers",
+        "NormalizeMetricValueStrongRuns"
     ];
 
     public static string NormalizeForTranscriptCleanup(string text) {
@@ -99,15 +106,13 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
     private sealed class OfficeImoInputNormalizationBridge(Type optionsType, MethodInfo normalizeMethod, MethodInfo? presetFactoryMethod, PropertyInfo[] enabledProperties) {
         public string Normalize(string text) {
             try {
-                var options = CreateOptionsInstance(out var usedPresetFactory);
+                var options = CreateOptionsInstance();
                 if (options == null) {
                     return text;
                 }
 
-                if (!usedPresetFactory) {
-                    for (var i = 0; i < enabledProperties.Length; i++) {
-                        enabledProperties[i].SetValue(options, true);
-                    }
+                for (var i = 0; i < enabledProperties.Length; i++) {
+                    enabledProperties[i].SetValue(options, true);
                 }
 
                 var normalized = normalizeMethod.Invoke(null, [text, options]) as string;
@@ -117,13 +122,11 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
             }
         }
 
-        private object? CreateOptionsInstance(out bool usedPresetFactory) {
-            usedPresetFactory = false;
+        private object? CreateOptionsInstance() {
             try {
                 if (presetFactoryMethod != null) {
                     var presetOptions = presetFactoryMethod.Invoke(null, null);
                     if (presetOptions != null && optionsType.IsInstanceOfType(presetOptions)) {
-                        usedPresetFactory = true;
                         return presetOptions;
                     }
                 }

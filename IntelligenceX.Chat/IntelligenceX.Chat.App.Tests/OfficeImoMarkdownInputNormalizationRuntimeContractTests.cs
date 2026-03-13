@@ -35,4 +35,31 @@ public sealed class OfficeImoMarkdownInputNormalizationRuntimeContractTests {
 
         Assert.Equal(markdown, normalized);
     }
+
+    /// <summary>
+    /// Ensures the runtime contract picks up newer shared transcript repairs such as split host bullets.
+    /// </summary>
+    [Fact]
+    public void NormalizeForTranscriptCleanup_RepairsHostLabelBulletArtifacts() {
+        const string markdown = "-AD1\nhealthy for directory access";
+
+        var normalized = OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup(markdown);
+
+        Assert.Equal("- AD1 healthy for directory access", normalized);
+    }
+
+    /// <summary>
+    /// Ensures the runtime contract picks up shared two-line result lead-in repair.
+    /// </summary>
+    [Fact]
+    public void NormalizeForTranscriptCleanup_RepairsBrokenTwoLineStrongLeadIns() {
+        const string markdown = """
+**Result
+all 5 are healthy for directory access** with recommended LDAPS endpoints.
+""";
+
+        var normalized = OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup(markdown);
+
+        Assert.Equal("**Result:** all 5 are healthy for directory access with recommended LDAPS endpoints.", normalized);
+    }
 }

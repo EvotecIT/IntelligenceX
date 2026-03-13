@@ -741,6 +741,10 @@ public sealed class LocalExportArtifactWriterTests {
             2500);
 
         Assert.True(options.PreferNarrativeSingleLineDefinitions);
+        Assert.NotNull(options.ReaderOptions);
+        Assert.True(options.ReaderOptions!.PreferNarrativeSingleLineDefinitions);
+        Assert.True(options.ReaderOptions.Callouts);
+        Assert.True(options.ReaderOptions.DefinitionLists);
         Assert.Equal(100d, options.MaxImageWidthPercentOfContent);
         Assert.Equal(2000, options.MaxImageWidthPixels);
         Assert.Contains("C:\\allowed-a", options.AllowedImageDirectories);

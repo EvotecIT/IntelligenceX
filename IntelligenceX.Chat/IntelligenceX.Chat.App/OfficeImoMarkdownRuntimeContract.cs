@@ -49,6 +49,35 @@ internal static class OfficeImoMarkdownRuntimeContract {
     }
 
     /// <summary>
+    /// Applies the IntelligenceX markdown pre-processor chain without rendering HTML.
+    /// This keeps the transcript normalizer aligned with the shared OfficeIMO IX adapter.
+    /// </summary>
+    public static string ApplyTranscriptMarkdownPreProcessors(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return markdown;
+        }
+
+        try {
+            var options = new MarkdownRendererOptions();
+            MarkdownRendererIntelligenceXAdapter.Apply(options);
+            var value = markdown;
+            var processors = options.MarkdownPreProcessors;
+            for (var i = 0; i < processors.Count; i++) {
+                var processor = processors[i];
+                if (processor == null) {
+                    continue;
+                }
+
+                value = processor(value, options) ?? value;
+            }
+
+            return value;
+        } catch {
+            return markdown;
+        }
+    }
+
+    /// <summary>
     /// Describes the loaded markdown renderer assembly against the minimum supported package contract.
     /// </summary>
     public static string DescribeMarkdownRendererContract() {

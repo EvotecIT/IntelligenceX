@@ -1,13 +1,14 @@
 using System;
 using System.IO;
 using System.Reflection;
+using IntelligenceX.Chat.App;
 using OfficeIMO.MarkdownRenderer;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
-/// Guards the explicit OfficeIMO markdown runtime contract used by package mode and diagnostics.
+/// Guards the explicit OfficeIMO markdown runtime contract used by package mode, diagnostics, and transcript preprocessing.
 /// </summary>
 public sealed class OfficeImoMarkdownRuntimeContractTests {
     /// <summary>
@@ -102,6 +103,62 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         Assert.Contains(">0.1.9<", props, StringComparison.Ordinal);
         Assert.Contains(">0.6.12<", props, StringComparison.Ordinal);
         Assert.Contains(">1.0.6<", props, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies cached-evidence transport markers are stripped and legacy network payloads are upgraded through the shared IX adapter path.
+    /// </summary>
+    [Fact]
+    public void ApplyTranscriptMarkdownPreProcessors_StripsCachedEvidenceMarkerAndUpgradesNetworkPayload() {
+        const string markdown = """
+ix:cached-tool-evidence:v1
+
+```json
+{
+  "nodes": [
+    { "id": "forest_ad.evotec.xyz", "label": "Forest: ad.evotec.xyz" }
+  ],
+  "edges": [
+    { "source": "forest_ad.evotec.xyz", "target": "domain_ad.evotec.xyz", "label": "contains" }
+  ]
+}
+```
+""";
+
+        var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+
+        Assert.DoesNotContain("cached-tool-evidence", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```ix-network", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies cached-evidence visual upgrades are scoped to recognized IX payloads and leave ordinary JSON examples untouched.
+    /// </summary>
+    [Fact]
+    public void ApplyTranscriptMarkdownPreProcessors_UpgradesCachedEvidenceChartAndDataViewPayloadsOnly() {
+        const string markdown = """
+ix:cached-tool-evidence:v1
+
+```json
+{ "type": "bar", "data": { "labels": [ "A" ], "datasets": [ { "label": "Count", "data": [ 1 ] } ] } }
+```
+
+```json
+{ "kind": "ix_tool_dataview_v1", "rows": [ [ "Server", "Fails" ], [ "AD0", "0" ] ] }
+```
+
+Standalone example:
+
+```json
+{ "hello": "world" }
+```
+""";
+
+        var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+
+        Assert.Contains("```ix-chart", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```ix-dataview", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```json\n{ \"hello\": \"world\" }\n```", normalized, System.StringComparison.Ordinal);
     }
 
     private static string InvokeContractMethod(string methodName) {

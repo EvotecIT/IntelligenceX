@@ -19,10 +19,14 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
     public static MarkdownToWordOptions CreateTranscriptMarkdownToWordOptions(
         IReadOnlyList<string>? allowedImageDirectories,
         int? docxVisualMaxWidthPx) {
+        var readerOptions = OfficeIMO.Markdown.MarkdownReaderOptions.CreateOfficeIMOProfile();
+        readerOptions.PreferNarrativeSingleLineDefinitions = true;
+
         var options = new MarkdownToWordOptions {
             FontFamily = "Calibri",
             AllowLocalImages = allowedImageDirectories is { Count: > 0 },
             PreferNarrativeSingleLineDefinitions = true,
+            ReaderOptions = readerOptions,
             FitImagesToContextWidth = true,
             MaxImageWidthPercentOfContent = 100d,
             FitImagesToPageContentWidth = true,
