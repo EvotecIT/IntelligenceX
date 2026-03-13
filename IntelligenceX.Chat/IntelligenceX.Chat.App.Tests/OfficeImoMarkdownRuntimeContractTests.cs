@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Xml.Linq;
 using OfficeIMO.MarkdownRenderer;
 using Xunit;
 
@@ -72,18 +74,36 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     [Fact]
     public void DirectoryBuildProps_PinsCurrentPublishedOfficeImoPackageVersions() {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
-        var props = File.ReadAllText(propsPath);
+        var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Contains(">0.6.0<", props, StringComparison.Ordinal);
-        Assert.Contains(">0.2.0<", props, StringComparison.Ordinal);
-        Assert.Contains(">0.6.13<", props, StringComparison.Ordinal);
-        Assert.Contains(">1.0.7<", props, StringComparison.Ordinal);
+        Assert.Equal("0.6.0", props["OfficeImoMarkdownNuGetVersion"]);
+        Assert.Equal("0.2.0", props["OfficeImoMarkdownRendererNuGetVersion"]);
+        Assert.Equal("0.6.13", props["OfficeImoExcelNuGetVersion"]);
+        Assert.Equal("1.0.7", props["OfficeImoWordMarkdownNuGetVersion"]);
     }
 
     private static string InvokeContractMethod(string methodName) {
         var contractType = typeof(OfficeImoMarkdownRuntimeContract);
         var method = contractType!.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         return (string)(method!.Invoke(null, null) ?? string.Empty);
+    }
+
+    private static IReadOnlyDictionary<string, string> LoadMsBuildProperties(string propsPath) {
+        using var stream = File.OpenRead(propsPath);
+        var document = XDocument.Load(stream);
+        var properties = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var propertyGroup in document.Root?.Elements() ?? []) {
+            if (!string.Equals(propertyGroup.Name.LocalName, "PropertyGroup", StringComparison.Ordinal)) {
+                continue;
+            }
+
+            foreach (var property in propertyGroup.Elements()) {
+                properties[property.Name.LocalName] = (property.Value ?? string.Empty).Trim();
+            }
+        }
+
+        return properties;
     }
 }
 
