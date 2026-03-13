@@ -24,7 +24,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
         MarkdownRendererIntelligenceXAdapter.Apply(options);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
-        options.Network.Enabled = true;
+        TryEnableOptionalRendererNetworkSupport(options);
         return options;
     }
 
