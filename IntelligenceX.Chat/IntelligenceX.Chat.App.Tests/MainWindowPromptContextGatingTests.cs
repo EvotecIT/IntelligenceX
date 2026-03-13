@@ -1,5 +1,6 @@
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -140,6 +141,56 @@ public sealed class MainWindowPromptContextGatingTests {
         Assert.NotNull(result);
         Assert.Contains(result!, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(result!, line => line.Contains("invite the user's task", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures capability-question prompt context can surface tool-backed live examples when the tool catalog is available.
+    /// </summary>
+    [Fact]
+    public void SelectCapabilitySelfKnowledgeLines_UsesToolContractExamples_ForCapabilityQuestion() {
+        var result = MainWindow.SelectCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto { Id = "active_directory", Name = "Active Directory", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+            },
+            toolCatalogRoutingCatalog: null,
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 2,
+                EnabledPackCount = 2,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "remote_capable",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            toolCatalogTools: new[] {
+                new ToolDefinitionDto {
+                    Name = "ad_environment_discover",
+                    Description = "Discover AD environment context.",
+                    PackId = "active_directory",
+                    PackName = "Active Directory",
+                    IsEnvironmentDiscoverTool = true,
+                    SupportsTargetScoping = true,
+                    TargetScopeArguments = new[] { "domain_controller", "search_base_dn" }
+                },
+                new ToolDefinitionDto {
+                    Name = "system_metrics_summary",
+                    Description = "Collect system metrics.",
+                    PackId = "system",
+                    PackName = "System",
+                    ExecutionScope = "local_or_remote",
+                    SupportsRemoteHostTargeting = true
+                }
+            },
+            assistantCapabilityQuestion: true,
+            assistantRuntimeIntrospectionQuestion: false);
+
+        Assert.NotNull(result);
+        Assert.Contains(result!, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result!, line => line.Contains("domain controller or base DN", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result!, line => line.Contains("CPU, memory, and disk", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

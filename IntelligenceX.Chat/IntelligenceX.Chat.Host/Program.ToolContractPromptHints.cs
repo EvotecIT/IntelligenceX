@@ -28,7 +28,7 @@ internal static partial class Program {
                 continue;
             }
 
-            if (string.Equals(entry.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            if (entry.IsPackInfoTool) {
                 continue;
             }
 
@@ -43,7 +43,11 @@ internal static partial class Program {
             return Array.Empty<string>();
         }
 
-        var lines = new List<string>(3);
+        var lines = new List<string>(4);
+        var representativeExamples = ToolContractPromptExamples.BuildRepresentativeExamples(matchedEntries);
+        if (representativeExamples.Count > 0) {
+            lines.Add("- Representative live tool examples for this flow: " + string.Join("; ", representativeExamples) + ".");
+        }
         var setupExamples = matchedEntries
             .Where(static entry => entry.SetupToolName.Length > 0
                                    && entry.SetupToolName.IndexOf("_catalog", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -58,7 +62,12 @@ internal static partial class Program {
                       + ").");
         }
 
-        if (matchedEntries.Any(static entry => entry.SupportsRemoteExecution && entry.SupportsRemoteHostTargeting)) {
+        var crossPackTargets = ToolContractPromptExamples.BuildCrossPackTargetPackDisplayNames(matchedEntries);
+        if (crossPackTargets.Count > 0) {
+            lines.Add("- Cross-pack follow-up pivots are available into " + string.Join(", ", crossPackTargets) + " when the workflow calls for it.");
+        }
+
+        if (matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting && entry.SupportsRemoteExecution)) {
             lines.Add(includeRemoteHostFallbackHint
                 ? "- If a remote-capable tool is missing host or machine input, default to the first discovered/source host/DC from prior turns when thread context provides one."
                 : "- If a remote-capable tool is missing host or machine input, infer it from prior thread context when available.");
@@ -88,6 +97,10 @@ internal static partial class Program {
     }
 
     private static bool PatternMatchesAnyToolName(IReadOnlyList<string>? toolPatterns, string toolName) {
+        return ToolPatternsMatch(toolName, toolPatterns);
+    }
+
+    private static bool ToolPatternsMatch(string toolName, IReadOnlyList<string>? toolPatterns) {
         if (toolPatterns is null || toolPatterns.Count == 0) {
             return true;
         }

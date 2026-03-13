@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Profiles;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
@@ -33,64 +34,35 @@ internal static partial class Program {
         }
 
         var requireExplicitPackInfoRole = options.RequireExplicitRoutingMetadata;
-        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(registry, requireExplicitPackInfoRole);
-        if (packInfoDefinitions.Length == 0) {
+        var availability = BuildToolHealthPackAvailability(packs);
+        var availableProbeCatalog = ToolHealthDiagnostics.BuildPackInfoProbeCatalog(registry, availability, requireExplicitPackInfoRole);
+        if (availableProbeCatalog.Length == 0) {
             Console.WriteLine("No pack-info role tools are registered in this session.");
             return;
         }
 
-        var packMetadataById = BuildToolHealthPackMetadata(packs);
-        var selectedProbeCount = 0;
+        var probeCatalog = FilterToolHealthProbeCatalog(availableProbeCatalog, filter);
         var okCount = 0;
         var failCount = 0;
 
-        foreach (var definition in packInfoDefinitions) {
-            var resolvedPackId = ResolveToolHealthPackId(definition);
-            packMetadataById.TryGetValue(resolvedPackId, out var metadata);
-
-            var effectivePackId = metadata.PackId.Length == 0 ? resolvedPackId : metadata.PackId;
-            var effectiveSourceKind = metadata.SourceKind.Length == 0
-                ? InferToolHealthSourceKind(sourceKind: null, effectivePackId)
-                : metadata.SourceKind;
-
-            if (!ShouldIncludeToolHealthProbe(effectivePackId, effectiveSourceKind, filter)) {
-                continue;
-            }
-
-            selectedProbeCount++;
-        }
-
-        if (selectedProbeCount == 0) {
+        if (probeCatalog.Length == 0) {
             Console.WriteLine("No pack probes matched the provided filters.");
-            WriteAvailableToolHealthPacks(packMetadataById);
+            WriteAvailableToolHealthPacks(availableProbeCatalog);
             return;
         }
 
         var selectedLabel = DescribeToolHealthFilter(filter);
-        Console.WriteLine($"Running tool health checks for {selectedProbeCount}/{packInfoDefinitions.Length} pack probes{selectedLabel}...");
+        Console.WriteLine($"Running tool health checks for {probeCatalog.Length}/{availableProbeCatalog.Length} pack probes{selectedLabel}...");
 
-        foreach (var definition in packInfoDefinitions) {
-            var resolvedPackId = ResolveToolHealthPackId(definition);
-            packMetadataById.TryGetValue(resolvedPackId, out var metadata);
-
-            var effectivePackId = metadata.PackId.Length == 0 ? resolvedPackId : metadata.PackId;
-            var effectivePackName = metadata.PackName;
-            var effectiveSourceKind = metadata.SourceKind.Length == 0
-                ? InferToolHealthSourceKind(sourceKind: null, effectivePackId)
-                : metadata.SourceKind;
-
-            if (!ShouldIncludeToolHealthProbe(effectivePackId, effectiveSourceKind, filter)) {
-                continue;
-            }
-
+        foreach (var entry in probeCatalog) {
             var probe = await ToolHealthDiagnostics.ProbeAsync(
                     registry,
-                    definition.Name,
+                    entry.ToolName,
                     options.ToolTimeoutSeconds,
                     cancellationToken,
                     requireExplicitPackInfoRole)
                 .ConfigureAwait(false);
-            var probeScope = FormatProbeScope(effectivePackId, effectivePackName, effectiveSourceKind);
+            var probeScope = FormatProbeScope(entry.PackId, entry.PackName, NormalizeToolHealthSourceKind(entry.SourceKind));
             if (probe.Ok) {
                 okCount++;
                 Console.WriteLine($"[OK]   {probe.ToolName}{probeScope}");
@@ -102,18 +74,6 @@ internal static partial class Program {
         }
 
         Console.WriteLine($"Tool health summary: ok={okCount}, failed={failCount}");
-        var descriptors = ToolPackBootstrap.GetDescriptors(packs);
-        var availability = descriptors
-            .Select(static descriptor => new ToolPackAvailabilityInfo {
-                Id = descriptor.Id ?? string.Empty,
-                Name = descriptor.Name ?? string.Empty,
-                Description = descriptor.Description,
-                Tier = descriptor.Tier,
-                IsDangerous = descriptor.IsDangerous,
-                SourceKind = descriptor.SourceKind ?? string.Empty,
-                Enabled = true
-            })
-            .ToArray();
         var parityEntries = ToolCapabilityParityInventoryBuilder.Build(registry.GetDefinitions(), availability);
         if (parityEntries.Length > 0) {
             Console.WriteLine("Capability parity summary: " + ToolCapabilityParityInventoryBuilder.FormatSummary(parityEntries));
@@ -215,6 +175,18 @@ internal static partial class Program {
         return $" ({string.Join("; ", parts)})";
     }
 
+    internal static ToolHealthDiagnostics.PackInfoProbeCatalogEntry[] FilterToolHealthProbeCatalog(
+        IReadOnlyList<ToolHealthDiagnostics.PackInfoProbeCatalogEntry> probeCatalog,
+        ToolHealthFilter filter) {
+        if (probeCatalog is not { Count: > 0 }) {
+            return Array.Empty<ToolHealthDiagnostics.PackInfoProbeCatalogEntry>();
+        }
+
+        return probeCatalog
+            .Where(entry => ShouldIncludeToolHealthProbe(entry.PackId, NormalizeToolHealthSourceKind(entry.SourceKind), filter))
+            .ToArray();
+    }
+
     private static bool ShouldIncludeToolHealthProbe(string packId, string sourceKind, ToolHealthFilter filter) {
         if (filter.SourceKinds is { Count: > 0 } sourceKinds && !sourceKinds.Contains(sourceKind)) {
             return false;
@@ -230,31 +202,43 @@ internal static partial class Program {
         return true;
     }
 
-    private static Dictionary<string, ToolHealthPackMetadata> BuildToolHealthPackMetadata(IReadOnlyList<IToolPack> packs) {
-        var result = new Dictionary<string, ToolHealthPackMetadata>(StringComparer.OrdinalIgnoreCase);
+    private static ToolPackAvailabilityInfo[] BuildToolHealthPackAvailability(IReadOnlyList<IToolPack> packs) {
         var descriptors = ToolPackBootstrap.GetDescriptors(packs);
-        foreach (var descriptor in descriptors) {
-            var normalizedPackId = NormalizeToolHealthPackId(descriptor.Id);
-            if (normalizedPackId.Length == 0) {
-                continue;
-            }
-
-            var sourceKind = InferToolHealthSourceKind(descriptor.SourceKind, normalizedPackId);
-            var packName = ResolveToolHealthPackDisplayName(normalizedPackId, descriptor.Name);
-            result[normalizedPackId] = new ToolHealthPackMetadata(normalizedPackId, packName, sourceKind);
-        }
-
-        return result;
+        return descriptors
+            .Select(static descriptor => new ToolPackAvailabilityInfo {
+                Id = descriptor.Id ?? string.Empty,
+                Name = descriptor.Name ?? string.Empty,
+                Description = descriptor.Description,
+                Tier = descriptor.Tier,
+                IsDangerous = descriptor.IsDangerous,
+                SourceKind = descriptor.SourceKind ?? string.Empty,
+                Enabled = true
+            })
+            .ToArray();
     }
 
-    private static void WriteAvailableToolHealthPacks(Dictionary<string, ToolHealthPackMetadata> packMetadataById) {
-        if (packMetadataById.Count == 0) {
+    private static void WriteAvailableToolHealthPacks(IReadOnlyList<ToolHealthDiagnostics.PackInfoProbeCatalogEntry> probeCatalog) {
+        if (probeCatalog.Count == 0) {
+            Console.WriteLine("No pack metadata was discovered.");
+            return;
+        }
+
+        var packMetadata = probeCatalog
+            .Select(static entry => new ToolHealthPackMetadata(
+                entry.PackId,
+                entry.PackName ?? string.Empty,
+                NormalizeToolHealthSourceKind(entry.SourceKind)))
+            .Where(static metadata => metadata.PackId.Length > 0)
+            .Distinct()
+            .OrderBy(static metadata => metadata.PackId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (packMetadata.Length == 0) {
             Console.WriteLine("No pack metadata was discovered.");
             return;
         }
 
         Console.WriteLine("Available pack filters:");
-        foreach (var metadata in packMetadataById.Values.OrderBy(static value => value.PackId, StringComparer.OrdinalIgnoreCase)) {
+        foreach (var metadata in packMetadata) {
             var displayName = string.IsNullOrWhiteSpace(metadata.PackName) ? metadata.PackId : metadata.PackName.Trim();
             Console.WriteLine($"- pack:{metadata.PackId} ({displayName}, source={metadata.SourceKind})");
         }
@@ -293,14 +277,6 @@ internal static partial class Program {
             : $" [{idAndName}, source={normalizedSource}]";
     }
 
-    private static string ResolveToolHealthPackId(ToolDefinition definition) {
-        if (ToolHealthDiagnostics.TryResolvePackId(definition, out var packId)) {
-            return packId;
-        }
-
-        return string.Empty;
-    }
-
     private static bool TryParseSourceKindToken(string token, out string sourceKind) {
         sourceKind = string.Empty;
         var canonical = CanonicalizeToken(token);
@@ -333,15 +309,12 @@ internal static partial class Program {
             .Replace(".", string.Empty, StringComparison.Ordinal);
     }
 
-    private static string InferToolHealthSourceKind(string? sourceKind, string descriptorId) {
-        return ToolPackBootstrap.NormalizeSourceKind(sourceKind, descriptorId);
-    }
-
-    private static string ResolveToolHealthPackDisplayName(string? descriptorId, string? fallbackName) {
-        var packId = NormalizeToolHealthPackId(descriptorId);
-        return string.IsNullOrWhiteSpace(fallbackName)
-            ? packId
-            : fallbackName.Trim();
+    private static string NormalizeToolHealthSourceKind(ToolPackSourceKind sourceKind) {
+        return sourceKind switch {
+            ToolPackSourceKind.Builtin => "builtin",
+            ToolPackSourceKind.ClosedSource => "closed_source",
+            _ => "open_source"
+        };
     }
 
     private static string NormalizeToolHealthPackId(string? descriptorId) {
@@ -349,6 +322,6 @@ internal static partial class Program {
     }
 
     private readonly record struct ToolHealthPackMetadata(string PackId, string PackName, string SourceKind);
-    private readonly record struct ToolHealthFilter(HashSet<string>? SourceKinds, HashSet<string>? PackIds);
+    internal readonly record struct ToolHealthFilter(HashSet<string>? SourceKinds, HashSet<string>? PackIds);
 
 }

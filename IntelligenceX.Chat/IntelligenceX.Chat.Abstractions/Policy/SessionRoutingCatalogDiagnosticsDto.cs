@@ -45,6 +45,10 @@ public sealed record SessionRoutingCatalogDiagnosticsDto {
     /// Tools with setup-aware contracts.
     /// </summary>
     public int SetupAwareTools { get; init; }
+    /// <summary>
+    /// Tools with explicit environment-discovery/bootstrap role.
+    /// </summary>
+    public int EnvironmentDiscoverTools { get; init; }
 
     /// <summary>
     /// Tools with handoff-aware contracts.

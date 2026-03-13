@@ -101,6 +101,29 @@ public sealed partial class MainWindow : Window {
         return list.ToArray();
     }
 
+    private static string[] NormalizeStringArray(string[]? values) {
+        if (values is null || values.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            set.Add(value.Trim());
+        }
+
+        if (set.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var list = new List<string>(set);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list.ToArray();
+    }
+
     private string[] BuildKnownProfiles() {
         var set = new HashSet<string>(_knownProfiles, StringComparer.OrdinalIgnoreCase) { _appProfileName };
         var list = new List<string>(set);

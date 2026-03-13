@@ -6,6 +6,24 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.TestimoX;
 
 internal static class TestimoXToolContracts {
+    private const string SecurityPostureDomainIntentFamily = "security_posture";
+    private const string SecurityPostureDomainIntentActionId = "act_domain_scope_security_posture";
+
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["testimox_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["testimox_runs_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_run_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_baselines_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_baseline_compare"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_profiles_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_rule_inventory"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_source_query"] = ToolRoutingTaxonomy.RoleResolver,
+            ["testimox_baseline_crosswalk"] = ToolRoutingTaxonomy.RoleResolver,
+            ["testimox_rules_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_rules_run"] = ToolRoutingTaxonomy.RoleOperational
+        };
+
     private static readonly string[] SetupHintKeys = {
         "search_text",
         "categories",
@@ -209,7 +227,7 @@ internal static class TestimoXToolContracts {
                 new ToolHandoffRoute {
                     TargetPackId = "eventlog",
                     TargetToolName = "eventlog_live_stats",
-                    Reason = "Promote TestimoX scope evidence into remote Event Log follow-up for the same domain controller.",
+                    Reason = "Promote TestimoX scope evidence into remote Event Log live statistics for the same domain controller.",
                     Bindings = new[] {
                         new ToolHandoffBinding {
                             SourceField = domainControllerSourceField,
@@ -222,70 +240,33 @@ internal static class TestimoXToolContracts {
         };
     }
 
-    private static string ResolveRole(string toolName, string? existingRole) {
-        var inferredRole = TryResolveDeclaredRole(toolName);
-        if (inferredRole.Length == 0) {
-            return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
-                explicitRole: existingRole,
-                toolName: toolName,
-                declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                packDisplayName: "TestimoX");
+    private static string ResolveDomainIntentFamily(string toolName, string? explicitFamily) {
+        if (!string.IsNullOrWhiteSpace(explicitFamily)) {
+            return explicitFamily!;
         }
 
-        return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
-            explicitRole: existingRole,
-            fallbackRole: inferredRole,
+        return string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(toolName, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)
+            ? SecurityPostureDomainIntentFamily
+            : string.Empty;
+    }
+
+    private static string ResolveDomainIntentActionId(string toolName, string? explicitActionId) {
+        if (!string.IsNullOrWhiteSpace(explicitActionId)) {
+            return explicitActionId!;
+        }
+
+        return string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(toolName, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)
+            ? SecurityPostureDomainIntentActionId
+            : string.Empty;
+    }
+
+    private static string ResolveRole(string toolName, string? explicitRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: explicitRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
             packDisplayName: "TestimoX");
-    }
-
-    private static string TryResolveDeclaredRole(string toolName) {
-        if (string.Equals(toolName, "testimox_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (string.Equals(toolName, "testimox_source_query", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_baseline_crosswalk", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        if (string.Equals(toolName, "testimox_baselines_list", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_runs_list", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_baseline_compare", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_profiles_list", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_rule_inventory", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "testimox_rules_list", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (string.Equals(toolName, "testimox_rules_run", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleOperational;
-        }
-
-        return string.Empty;
-    }
-
-    private static string ResolveDomainIntentFamily(string toolName, string? existingFamily) {
-        if (!string.IsNullOrWhiteSpace(existingFamily)) {
-            return existingFamily!;
-        }
-
-        if (string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
-            return "security_posture";
-        }
-
-        return string.Empty;
-    }
-
-    private static string ResolveDomainIntentActionId(string toolName, string? existingActionId) {
-        if (!string.IsNullOrWhiteSpace(existingActionId)) {
-            return existingActionId!;
-        }
-
-        if (string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)) {
-            return "act_domain_scope_security_posture";
-        }
-
-        return string.Empty;
     }
 }

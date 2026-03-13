@@ -537,9 +537,7 @@ public sealed partial class MainWindow : Window {
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
                     _sessionPolicy = null;
-                    _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
-                    _toolCatalogRoutingCatalog = null;
-                    _toolCatalogCapabilitySnapshot = null;
+                    ClearToolCatalogCache(clearCatalogMetadata: true);
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, helloAttemptCount, success: false);
                     StartupLog.Write(
@@ -621,6 +619,7 @@ public sealed partial class MainWindow : Window {
                             phase: "tool catalog loaded")
                         .ConfigureAwait(false);
                 } catch (Exception ex) {
+                    ClearToolCatalogCache(clearCatalogMetadata: false);
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: false);
                     StartupLog.Write(
                         "StartupConnect.list_tools failed after "

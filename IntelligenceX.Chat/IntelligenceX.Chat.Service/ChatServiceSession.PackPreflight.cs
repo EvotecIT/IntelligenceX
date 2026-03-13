@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -181,7 +182,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (!_toolOrchestrationCatalog.TryGetEntry(toolName, out var entry)
-                || !string.Equals(entry.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)
+                || !entry.IsEnvironmentDiscoverTool
                 || entry.PackId.Length == 0
                 || ToolDefinitionHasRequiredArguments(definition)) {
                 continue;
@@ -329,7 +330,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (string.Equals(orchestrationEntry.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            if (orchestrationEntry.IsPackInfoTool) {
                 if (!packInfoByPackId.ContainsKey(orchestrationEntry.PackId)) {
                     packInfoByPackId[orchestrationEntry.PackId] = definition;
                 }
@@ -338,7 +339,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (string.Equals(orchestrationEntry.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+            if (orchestrationEntry.IsEnvironmentDiscoverTool) {
                 if (!discoverByPackId.ContainsKey(orchestrationEntry.PackId)) {
                     discoverByPackId[orchestrationEntry.PackId] = definition;
                 }
@@ -418,8 +419,19 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        return string.Equals(entry.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(entry.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
+        return entry.IsPackInfoTool || entry.IsEnvironmentDiscoverTool;
+    }
+
+    private static bool MatchesPreflightClassifier(ToolOrchestrationCatalogEntry entry, string normalizedRole) {
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return entry.IsPackInfoTool;
+        }
+
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+            return entry.IsEnvironmentDiscoverTool;
+        }
+
+        return string.Equals(entry.Role, normalizedRole, StringComparison.OrdinalIgnoreCase);
     }
 
     private static ToolCall BuildHostPackPreflightCall(string toolName, string role) {

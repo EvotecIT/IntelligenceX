@@ -20,8 +20,9 @@ public sealed class ReviewerSetupToolPack : IToolPack, IToolPackCatalogProvider 
 
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
-        Id = "reviewersetup",
+        Id = "reviewer_setup",
         Name = "Reviewer Setup",
+        Aliases = new[] { "reviewersetup" },
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Path contract and execution guidance for IntelligenceX reviewer onboarding.",

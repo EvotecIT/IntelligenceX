@@ -139,6 +139,8 @@ public class ToolPackInfoContractTests {
                 Assert.True(supportsProjection.ValueKind == JsonValueKind.True || supportsProjection.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("is_pack_info_tool", out var isPackInfo));
                 Assert.True(isPackInfo.ValueKind == JsonValueKind.True || isPackInfo.ValueKind == JsonValueKind.False);
+                Assert.True(entry.TryGetProperty("is_environment_discover_tool", out var isEnvironmentDiscover));
+                Assert.True(isEnvironmentDiscover.ValueKind == JsonValueKind.True || isEnvironmentDiscover.ValueKind == JsonValueKind.False);
                 Assert.True(entry.TryGetProperty("traits", out var traits));
                 Assert.Equal(JsonValueKind.Object, traits.ValueKind);
                 Assert.True(entry.TryGetProperty("is_write_capable", out var isWriteCapable));
@@ -173,11 +175,15 @@ public class ToolPackInfoContractTests {
                     category.GetString() ?? string.Empty,
                     ReadStringArray(tags),
                     StringComparer.OrdinalIgnoreCase);
+                Assert.Equal(expectedCatalogEntry.Routing.PackId, routing.GetProperty("pack_id").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.Role, routing.GetProperty("role").GetString());
                 Assert.Equal(expectedCatalogEntry.Routing.Scope, routing.GetProperty("scope").GetString());
                 Assert.Equal(expectedCatalogEntry.Routing.Operation, routing.GetProperty("operation").GetString());
                 Assert.Equal(expectedCatalogEntry.Routing.Entity, routing.GetProperty("entity").GetString());
                 Assert.Equal(expectedCatalogEntry.Routing.Risk, routing.GetProperty("risk").GetString());
                 Assert.Equal(expectedCatalogEntry.Routing.Source, routing.GetProperty("source").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.DomainIntentFamily, routing.GetProperty("domain_intent_family").GetString());
+                Assert.Equal(expectedCatalogEntry.Routing.DomainIntentActionId, routing.GetProperty("domain_intent_action_id").GetString());
                 Assert.Equal(
                     expectedCatalogEntry.RequiredArguments.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase),
                     ReadStringArray(requiredArguments));
@@ -187,6 +193,7 @@ public class ToolPackInfoContractTests {
                 AssertArgumentDetails(arguments, expectedCatalogEntry.Arguments);
                 Assert.Equal(expectedCatalogEntry.SupportsTableViewProjection, supportsProjection.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.IsPackInfoTool, isPackInfo.GetBoolean());
+                Assert.Equal(expectedCatalogEntry.IsEnvironmentDiscoverTool, isEnvironmentDiscover.GetBoolean());
                 AssertTraitDetails(traits, expectedCatalogEntry.Traits);
                 Assert.Equal(expectedCatalogEntry.IsWriteCapable, isWriteCapable.GetBoolean());
                 Assert.Equal(expectedCatalogEntry.RequiresWriteGovernance, requiresWriteGovernance.GetBoolean());

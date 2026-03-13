@@ -21,9 +21,17 @@ public sealed record ToolPackAutonomySummaryDto {
     /// </summary>
     public int SetupAwareTools { get; init; }
     /// <summary>
+    /// Number of tools that explicitly perform environment discovery/bootstrap.
+    /// </summary>
+    public int EnvironmentDiscoverTools { get; init; }
+    /// <summary>
     /// Setup-aware tool names.
     /// </summary>
     public string[] SetupAwareToolNames { get; init; } = [];
+    /// <summary>
+    /// Environment-discovery tool names.
+    /// </summary>
+    public string[] EnvironmentDiscoverToolNames { get; init; } = [];
     /// <summary>
     /// Number of tools that declare outbound handoff metadata.
     /// </summary>

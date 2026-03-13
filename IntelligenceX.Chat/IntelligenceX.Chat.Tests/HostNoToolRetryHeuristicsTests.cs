@@ -469,6 +469,21 @@ Continue recurring-error analysis across all remaining DCs in this turn.
                 setup: new ToolSetupContract {
                     IsSetupAware = true,
                     SetupToolName = "eventlog_named_events_catalog"
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetRole = ToolRoutingTaxonomy.RoleDiagnostic,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "machine_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
                 })
         };
 
@@ -479,7 +494,10 @@ Continue recurring-error analysis across all remaining DCs in this turn.
             knownHostTargets: new[] { "AD0", "AD1" },
             toolDefinitions: toolDefinitions);
 
+        Assert.Contains("Representative live tool examples for this flow", prompt, StringComparison.Ordinal);
+        Assert.Contains("inspect Windows event logs", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_named_events_catalog -> eventlog_named_events_query", prompt, StringComparison.Ordinal);
+        Assert.Contains("Cross-pack follow-up pivots are available into System", prompt, StringComparison.Ordinal);
         Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
     }
 
@@ -584,6 +602,72 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
+    public void BuildNoToolExecutionRetryPrompt_UsesRepresentativeExamplesAcrossAdAndSystemContracts() {
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "ad_environment_discover",
+                description: "Discover Active Directory environment scope.",
+                parameters: ToolSchema.Object(
+                        ("domain_controller", ToolSchema.String("Domain controller to target.")),
+                        ("search_base_dn", ToolSchema.String("Base DN to scope the query.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "domain_controller",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetRole = ToolRoutingTaxonomy.RoleDiagnostic,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "domain_controller",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                name: "system_metrics_summary",
+                description: "Collect CPU, memory, and disk health.",
+                parameters: ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                })
+        };
+
+        var prompt = InvokeBuildNoToolExecutionRetryPrompt(
+            userRequest: "Discover scope and check the affected server.",
+            assistantDraft: string.Empty,
+            retryAttempt: 1,
+            knownHostTargets: new[] { "AD0", "SRV1" },
+            toolDefinitions: toolDefinitions);
+
+        Assert.Contains("Representative live tool examples for this flow", prompt, StringComparison.Ordinal);
+        Assert.Contains("domain controller or base DN", prompt, StringComparison.Ordinal);
+        Assert.Contains("CPU, memory, and disk", prompt, StringComparison.Ordinal);
+        Assert.Contains("Cross-pack follow-up pivots are available into Event Log, System", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BuildReadOnlyCallCanonicalIndices_DeduplicatesIdenticalReadOnlyCalls() {
         var calls = new List<ToolCall> {
             BuildToolCall("call_1", "dnsclientx_query", """{"name":"contoso.com","type":"MX"}"""),
@@ -623,30 +707,87 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
-    public void TryGetSessionToolOutputCacheKey_MatchesPackInfoWithEmptyInput() {
-        var call = BuildToolCall("call_1", "AD_Pack_Info", "{}");
+    public void TryGetSessionToolOutputCacheKey_MatchesStructuredPackInfoWithoutSuffix() {
+        var registry = new ToolRegistry();
+        registry.Register(new HostFallbackStubTool(
+            "ad_pack_summary",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        var call = BuildToolCall("call_1", "AD_Pack_Summary", "{}");
 
-        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(call);
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(registry, call);
 
         Assert.True(matched);
-        Assert.Equal("ad_pack_info", cacheKey);
+        Assert.Equal("ad_pack_summary", cacheKey);
     }
 
     [Fact]
     public void TryGetSessionToolOutputCacheKey_DoesNotMatchNonPackTools() {
+        var registry = new ToolRegistry();
+        registry.Register(new HostFallbackStubTool(
+            "ad_monitoring_probe_run",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
         var call = BuildToolCall("call_1", "ad_monitoring_probe_run", "{}");
 
-        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(call);
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(registry, call);
 
         Assert.False(matched);
         Assert.Equal(string.Empty, cacheKey);
     }
 
     [Fact]
-    public void TryGetSessionToolOutputCacheKey_DoesNotMatchPackInfoWithArguments() {
-        var call = BuildToolCall("call_1", "ad_pack_info", """{"include_tools":true}""");
+    public void TryGetSessionToolOutputCacheKey_DoesNotFallbackToSuffixWhenStructuredMetadataSaysOperational() {
+        var registry = new ToolRegistry();
+        registry.Register(new HostFallbackStubTool(
+            "ad_pack_info",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        var call = BuildToolCall("call_1", "ad_pack_info", "{}");
 
-        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(call);
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(registry, call);
+
+        Assert.False(matched);
+        Assert.Equal(string.Empty, cacheKey);
+    }
+
+    [Fact]
+    public void TryGetSessionToolOutputCacheKey_MatchesLegacySuffixOnlyToolWhenMetadataIsUnavailable() {
+        var registry = new ToolRegistry();
+        var call = BuildToolCall("call_1", "ad_pack_info", "{}");
+
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(registry, call);
+
+        Assert.True(matched);
+        Assert.Equal("ad_pack_info", cacheKey);
+    }
+
+    [Fact]
+    public void TryGetSessionToolOutputCacheKey_DoesNotMatchPackInfoWithArguments() {
+        var registry = new ToolRegistry();
+        registry.Register(new HostFallbackStubTool(
+            "ad_pack_summary",
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        var call = BuildToolCall("call_1", "ad_pack_summary", """{"include_tools":true}""");
+
+        var (matched, cacheKey) = InvokeTryGetSessionToolOutputCacheKey(registry, call);
 
         Assert.False(matched);
         Assert.Equal(string.Empty, cacheKey);
@@ -701,6 +842,18 @@ Continue recurring-error analysis across all remaining DCs in this turn.
         Assert.Equal("AD0.ad.evotec.xyz", repaired.Arguments?.GetString("target"));
         var targets = repaired.Arguments?.GetArray("targets");
         Assert.Null(targets);
+    }
+
+    private sealed class HostFallbackStubTool : ITool {
+        public HostFallbackStubTool(string name, ToolRoutingContract? routing) {
+            Definition = new ToolDefinition(name, description: "stub", routing: routing);
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            return Task.FromResult("""{"ok":true}""");
+        }
     }
 
 }

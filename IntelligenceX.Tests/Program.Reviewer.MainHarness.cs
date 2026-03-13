@@ -57,6 +57,7 @@ internal static partial class Program {
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
+        failed += Run("Review failure body includes safe auth refresh detail", TestReviewFailureBodyIncludesSafeAuthRefreshDetail);
         failed += Run("Failure summary comment update", TestFailureSummaryCommentUpdate);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
         failed += Run("Review fail-open decision", TestReviewFailOpenDecision);

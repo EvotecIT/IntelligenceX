@@ -331,6 +331,11 @@ public class ToolPackGuidanceTests {
         var item = Assert.Single(catalog);
         Assert.Equal("custom_pack_info", item.Name);
         Assert.True(item.IsPackInfoTool);
+        Assert.False(item.IsEnvironmentDiscoverTool);
+        Assert.Equal("customx", item.Routing.PackId);
+        Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, item.Routing.Role);
+        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, item.Routing.DomainIntentFamily);
+        Assert.Equal("Act_Custom_Scope", item.Routing.DomainIntentActionId);
         Assert.Equal("local_or_remote", item.Traits.ExecutionScope);
         Assert.Contains("machine_name", item.Traits.RemoteHostArguments, StringComparer.OrdinalIgnoreCase);
         Assert.True(item.Setup.IsSetupAware);
@@ -352,6 +357,27 @@ public class ToolPackGuidanceTests {
             new[] { "query_failed", "timeout" },
             item.Recovery.RetryableErrorCodes.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase));
         Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, item.Recovery.RecoveryToolNames);
+    }
+
+    [Fact]
+    public void CatalogFromTools_ShouldFlagEnvironmentDiscoverTools_FromExplicitRoutingRole() {
+        var catalog = ToolPackGuidance.CatalogFromTools(new ITool[] {
+            new StubTool(new ToolDefinition(
+                "custom_scope_probe",
+                "Custom environment discovery",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "CustomX",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+                }))
+        });
+
+        var item = Assert.Single(catalog);
+        Assert.False(item.IsPackInfoTool);
+        Assert.True(item.IsEnvironmentDiscoverTool);
+        Assert.Equal(ToolRoutingTaxonomy.RoleEnvironmentDiscover, item.Routing.Role);
     }
 
     [Fact]
@@ -695,6 +721,10 @@ public class ToolPackGuidanceTests {
         Assert.Equal(ToolRoutingTaxonomy.EntityResource, entry.Routing.Entity);
         Assert.Equal(ToolRoutingTaxonomy.RiskLow, entry.Routing.Risk);
         Assert.Equal(ToolRoutingTaxonomy.SourceInferred, entry.Routing.Source);
+        Assert.Equal(string.Empty, entry.Routing.PackId);
+        Assert.Equal(string.Empty, entry.Routing.Role);
+        Assert.Equal(string.Empty, entry.Routing.DomainIntentFamily);
+        Assert.Equal(string.Empty, entry.Routing.DomainIntentActionId);
     }
 
     [Fact]

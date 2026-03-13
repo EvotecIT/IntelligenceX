@@ -223,6 +223,8 @@ public sealed class ChatContractsProtocolStabilityTests {
                     PackName = "Event Log",
                     PackDescription = "Event log investigation tools.",
                     PackSourceKind = ToolPackSourceKind.OpenSource,
+                    IsPackInfoTool = false,
+                    IsEnvironmentDiscoverTool = true,
                     IsWriteCapable = false,
                     IsExecutionAware = true,
                     ExecutionContractId = "ix.tool-execution.v1",
@@ -269,6 +271,8 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal(ToolPackSourceKind.OpenSource, tool.PackSourceKind);
         Assert.True(tool.IsExecutionAware);
         Assert.Equal("ix.tool-execution.v1", tool.ExecutionContractId);
+        Assert.False(tool.IsPackInfoTool);
+        Assert.True(tool.IsEnvironmentDiscoverTool);
         Assert.Equal("local_or_remote", tool.ExecutionScope);
         Assert.True(tool.SupportsLocalExecution);
         Assert.True(tool.SupportsRemoteExecution);

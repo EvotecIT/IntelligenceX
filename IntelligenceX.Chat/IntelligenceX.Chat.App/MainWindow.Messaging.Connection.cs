@@ -791,9 +791,7 @@ public sealed partial class MainWindow : Window {
                 deferStartupModelProfileSync: ShouldDeferStartupModelProfileSync(captureStartupPhaseTelemetry));
             if (deferredMetadataPlan.DeferStartupMetadataSync) {
                 _sessionPolicy = null;
-                _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
-                _toolCatalogRoutingCatalog = null;
-                _toolCatalogCapabilitySnapshot = null;
+                ClearToolCatalogCache(clearCatalogMetadata: true);
                 RecordStartupBootstrapCacheMode(_sessionPolicy);
                 UpdateStartupMetadataSyncPhase(
                     deferredMetadataPlan.SkipDeferredMetadataUntilAuthenticated
@@ -829,9 +827,7 @@ public sealed partial class MainWindow : Window {
                 } catch (Exception ex) {
                     LogStartupConnectPhase("hello", "failed");
                     _sessionPolicy = null;
-                    _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
-                    _toolCatalogRoutingCatalog = null;
-                    _toolCatalogCapabilitySnapshot = null;
+                    ClearToolCatalogCache(clearCatalogMetadata: true);
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: false);
                     if (VerboseServiceLogs || _debugMode) {
@@ -852,6 +848,7 @@ public sealed partial class MainWindow : Window {
                     LogStartupConnectPhase("list_tools", "done");
                 } catch (Exception ex) {
                     LogStartupConnectPhase("list_tools", "failed");
+                    ClearToolCatalogCache(clearCatalogMetadata: false);
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: false);
                     if (VerboseServiceLogs || _debugMode) {
                         AppendSystem(SystemNotice.ListToolsFailed(ex.Message));

@@ -642,6 +642,52 @@ internal sealed partial class ChatServiceSession {
         RebuildToolingCore(clearRoutingCaches: true);
     }
 
+    private void ClearPersistedToolingBootstrapPreviewState() {
+        _servingPersistedToolingBootstrapPreview = false;
+        _persistedPreviewPackSummaries = Array.Empty<ToolPackInfoDto>();
+        _persistedPreviewCapabilitySnapshot = null;
+    }
+
+    [MemberNotNull(
+        nameof(_registry),
+        nameof(_packs),
+        nameof(_packAvailability),
+        nameof(_pluginAvailability),
+        nameof(_startupWarnings),
+        nameof(_pluginSearchPaths),
+        nameof(_runtimePolicyDiagnostics),
+        nameof(_routingCatalogDiagnostics),
+        nameof(_toolOrchestrationCatalog))]
+    private void ApplyLiveToolingBootstrapState(
+        ToolRegistry registry,
+        ToolDefinitionDto[] toolDefinitions,
+        IToolPack[] packs,
+        ToolPackAvailabilityInfo[] packAvailability,
+        ToolPluginAvailabilityInfo[] pluginAvailability,
+        string[] pluginSearchPaths,
+        string[] startupWarnings,
+        SessionStartupBootstrapTelemetryDto startupBootstrap,
+        ToolRuntimePolicyDiagnostics runtimePolicyDiagnostics,
+        ToolRoutingCatalogDiagnostics routingCatalogDiagnostics,
+        ToolOrchestrationCatalog toolOrchestrationCatalog) {
+        ClearPersistedToolingBootstrapPreviewState();
+        _registry = registry;
+        _packs = packs;
+        _packAvailability = packAvailability;
+        _pluginAvailability = pluginAvailability;
+        _pluginSearchPaths = pluginSearchPaths;
+        _startupWarnings = startupWarnings;
+        _startupBootstrap = startupBootstrap;
+        _runtimePolicyDiagnostics = runtimePolicyDiagnostics;
+        _routingCatalogDiagnostics = routingCatalogDiagnostics;
+        _toolOrchestrationCatalog = toolOrchestrationCatalog;
+        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
+
+        // Publish the cached tool DTOs last so list_tools cannot observe live tool
+        // definitions while the session still reports preview-only pack/capability state.
+        Volatile.Write(ref _cachedToolDefinitions, toolDefinitions);
+    }
+
     [MemberNotNull(
         nameof(_registry),
         nameof(_packs),
@@ -713,11 +759,10 @@ internal sealed partial class ChatServiceSession {
 
         var registryFinalizeStopwatch = Stopwatch.StartNew();
         var definitions = registry.GetDefinitions();
+        var toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, bootstrapResult.Packs);
         var toolDefinitions = BuildToolDefinitionDtosFromRegistryDefinitions(definitions);
-        Volatile.Write(ref _cachedToolDefinitions, toolDefinitions);
-        _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, bootstrapResult.Packs);
-        _runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
-        _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+        var runtimePolicyDiagnostics = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
+        var routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
         registryFinalizeStopwatch.Stop();
         registryBuildStopwatch.Stop();
 
@@ -773,11 +818,6 @@ internal sealed partial class ChatServiceSession {
         var packs = bootstrapResult.Packs.ToArray();
         var packAvailability = bootstrapResult.PackAvailability.ToArray();
         var pluginAvailability = bootstrapResult.PluginAvailability.ToArray();
-        _packs = packs;
-        _packAvailability = packAvailability;
-        _pluginAvailability = pluginAvailability;
-        _pluginSearchPaths = pluginSearchPaths;
-        _startupWarnings = warnings;
         var startupBootstrap = new SessionStartupBootstrapTelemetryDto {
             TotalMs = totalMs,
             RuntimePolicyMs = runtimePolicyMs,
@@ -807,28 +847,36 @@ internal sealed partial class ChatServiceSession {
             SlowestPhaseLabel = slowestPhase?.Label,
             SlowestPhaseMs = slowestPhase?.DurationMs ?? 0
         };
-        _startupBootstrap = startupBootstrap;
-        _registry = registry;
+        ApplyLiveToolingBootstrapState(
+            registry,
+            toolDefinitions,
+            packs,
+            packAvailability,
+            pluginAvailability,
+            pluginSearchPaths,
+            warnings,
+            startupBootstrap,
+            runtimePolicyDiagnostics,
+            routingCatalogDiagnostics,
+            toolOrchestrationCatalog);
 
         _toolingBootstrapCache?.StoreSnapshot(
             bootstrapCacheKey,
             new ChatServiceToolingBootstrapSnapshot {
                 Registry = registry,
                 ToolDefinitions = toolDefinitions,
-                PackSummaries = BuildPackPolicyList(packAvailability, _toolOrchestrationCatalog),
+                PackSummaries = BuildPackPolicyList(packAvailability, toolOrchestrationCatalog),
                 Packs = packs,
                 PackAvailability = packAvailability,
                 PluginAvailability = bootstrapResult.PluginAvailability.ToArray(),
                 StartupWarnings = warnings,
                 StartupBootstrap = startupBootstrap,
                 PluginSearchPaths = pluginSearchPaths,
-                RuntimePolicyDiagnostics = _runtimePolicyDiagnostics,
-                RoutingCatalogDiagnostics = _routingCatalogDiagnostics,
+                RuntimePolicyDiagnostics = runtimePolicyDiagnostics,
+                RoutingCatalogDiagnostics = routingCatalogDiagnostics,
                 CapabilitySnapshot = BuildRuntimeCapabilitySnapshot(),
-                ToolOrchestrationCatalog = _toolOrchestrationCatalog
+                ToolOrchestrationCatalog = toolOrchestrationCatalog
             });
-
-        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();
@@ -849,17 +897,6 @@ internal sealed partial class ChatServiceSession {
         ChatServiceToolingBootstrapSnapshot snapshot,
         bool clearRoutingCaches,
         TimeSpan cacheHitElapsed) {
-        _registry = snapshot.Registry;
-        _servingPersistedToolingBootstrapPreview = false;
-        Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
-        _packs = snapshot.Packs;
-        _packAvailability = snapshot.PackAvailability.ToArray();
-        _pluginAvailability = snapshot.PluginAvailability.ToArray();
-        _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
-        _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
-        _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;
-        _toolOrchestrationCatalog = snapshot.ToolOrchestrationCatalog;
-
         var cacheHitMs = Math.Max(1, (long)Math.Round(Math.Max(1, cacheHitElapsed.TotalMilliseconds)));
         var warnings = new List<string>(snapshot.StartupWarnings.Length + 1);
         warnings.AddRange(snapshot.StartupWarnings);
@@ -867,8 +904,8 @@ internal sealed partial class ChatServiceSession {
             cacheHitMs,
             snapshot.StartupBootstrap.Tools,
             snapshot.StartupBootstrap.PacksLoaded));
-        _startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 64);
-        _startupBootstrap = snapshot.StartupBootstrap with {
+        var startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 64);
+        var startupBootstrap = snapshot.StartupBootstrap with {
             TotalMs = cacheHitMs,
             RuntimePolicyMs = cacheHitMs,
             BootstrapOptionsMs = 0,
@@ -883,8 +920,18 @@ internal sealed partial class ChatServiceSession {
             SlowestPhaseLabel = StartupBootstrapContracts.PhaseCacheHitLabel,
             SlowestPhaseMs = cacheHitMs
         };
-
-        UpdatePackMetadataIndexes(ToolPackBootstrap.GetDescriptors(_packs));
+        ApplyLiveToolingBootstrapState(
+            snapshot.Registry,
+            snapshot.ToolDefinitions,
+            snapshot.Packs,
+            snapshot.PackAvailability.ToArray(),
+            snapshot.PluginAvailability.ToArray(),
+            snapshot.PluginSearchPaths.ToArray(),
+            startupWarnings,
+            startupBootstrap,
+            snapshot.RuntimePolicyDiagnostics,
+            snapshot.RoutingCatalogDiagnostics,
+            snapshot.ToolOrchestrationCatalog);
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();
@@ -909,6 +956,8 @@ internal sealed partial class ChatServiceSession {
 
     private void ApplyToolingBootstrapPersistedSnapshot(ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
         _servingPersistedToolingBootstrapPreview = true;
+        _persistedPreviewPackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>();
+        _persistedPreviewCapabilitySnapshot = snapshot.CapabilitySnapshot;
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packAvailability = snapshot.PackAvailability.ToArray();
         _pluginAvailability = snapshot.PluginAvailability.ToArray();

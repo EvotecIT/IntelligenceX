@@ -22,6 +22,10 @@ internal sealed partial class ChatServiceSession {
     private const int MaxCapabilitySnapshotParityDetail = 4;
 
     private SessionCapabilitySnapshotDto BuildRuntimeCapabilitySnapshot() {
+        if (_servingPersistedToolingBootstrapPreview && _persistedPreviewCapabilitySnapshot is not null) {
+            return _persistedPreviewCapabilitySnapshot;
+        }
+
         return BuildCapabilitySnapshot(
             _options,
             _registry.GetDefinitions(),

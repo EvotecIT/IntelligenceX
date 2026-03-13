@@ -22,6 +22,28 @@ public class SystemAdMonitoringParityTests {
         typeof(AdMonitoringProbeRunTool).GetMethod("BuildChainContract", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildChainContract not found.");
 
+    private static void AssertRouteBindsToTarget(
+        ToolDefinition definition,
+        string expectedPackId,
+        string expectedToolName,
+        string expectedTargetArgument,
+        params string[] expectedSourceFields) {
+        var handoff = Assert.IsType<ToolHandoffContract>(definition.Handoff);
+        var route = Assert.Single(
+            handoff.OutboundRoutes,
+            candidate => string.Equals(candidate.TargetPackId, expectedPackId, StringComparison.OrdinalIgnoreCase)
+                         && string.Equals(candidate.TargetToolName, expectedToolName, StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(expectedSourceFields.Length, route.Bindings.Count);
+        foreach (var sourceField in expectedSourceFields) {
+            Assert.Contains(
+                route.Bindings,
+                binding => string.Equals(binding.SourceField, sourceField, StringComparison.OrdinalIgnoreCase)
+                           && string.Equals(binding.TargetArgument, expectedTargetArgument, StringComparison.OrdinalIgnoreCase)
+                           && !binding.IsRequired);
+        }
+    }
+
     [Theory]
     [InlineData(typeof(SystemHardwareSummaryTool))]
     [InlineData(typeof(SystemMetricsSummaryTool))]
@@ -233,6 +255,68 @@ public class SystemAdMonitoringParityTests {
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
                             && string.Equals(route.TargetToolName, "system_certificate_posture", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ActiveDirectoryDiscoveryTools_ShouldBindRemotePivotRoutesToCanonicalHostArguments() {
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        var scopeDiscovery = Assert.IsType<ToolDefinition>(definitionsByName["ad_scope_discovery"]);
+        var environmentDiscover = Assert.IsType<ToolDefinition>(definitionsByName["ad_environment_discover"]);
+        var monitoringProbeRun = Assert.IsType<ToolDefinition>(definitionsByName["ad_monitoring_probe_run"]);
+
+        AssertRouteBindsToTarget(scopeDiscovery, "system", "system_metrics_summary", "computer_name",
+            "domain_controllers/0/value", "requested_scope/domain_controller");
+        AssertRouteBindsToTarget(scopeDiscovery, "system", "system_logical_disks_list", "computer_name",
+            "domain_controllers/0/value", "requested_scope/domain_controller");
+        AssertRouteBindsToTarget(scopeDiscovery, "eventlog", "eventlog_channels_list", "machine_name",
+            "domain_controllers/0/value", "requested_scope/domain_controller");
+
+        AssertRouteBindsToTarget(environmentDiscover, "system", "system_info", "computer_name",
+            "context/domain_controller", "domain_controllers/0/value");
+        AssertRouteBindsToTarget(environmentDiscover, "system", "system_metrics_summary", "computer_name",
+            "context/domain_controller", "domain_controllers/0/value");
+        AssertRouteBindsToTarget(environmentDiscover, "eventlog", "eventlog_channels_list", "machine_name",
+            "context/domain_controller", "domain_controllers/0/value");
+
+        AssertRouteBindsToTarget(monitoringProbeRun, "system", "system_time_sync", "computer_name",
+            "normalized_request/domain_controller", "normalized_request/targets/0");
+        AssertRouteBindsToTarget(monitoringProbeRun, "system", "system_windows_update_client_status", "computer_name",
+            "normalized_request/domain_controller", "normalized_request/targets/0");
+        AssertRouteBindsToTarget(monitoringProbeRun, "system", "system_logical_disks_list", "computer_name",
+            "normalized_request/domain_controller", "normalized_request/targets/0");
+        AssertRouteBindsToTarget(monitoringProbeRun, "eventlog", "eventlog_channels_list", "machine_name",
+            "normalized_request/domain_controller", "normalized_request/targets/0");
+    }
+
+    [Fact]
+    public void SystemRemoteParityTools_ShouldBindReverseAdAndEventLogHandoffsToCanonicalArguments() {
+        var registry = new ToolRegistry();
+        registry.RegisterSystemPack(new SystemToolOptions());
+
+        var definitionsByName = registry.GetDefinitions()
+            .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRouteBindsToTarget(definitionsByName["system_info"], "active_directory", "ad_scope_discovery", "domain_controller",
+            "meta/computer_name", "computer_name");
+        AssertRouteBindsToTarget(definitionsByName["system_info"], "eventlog", "eventlog_channels_list", "machine_name",
+            "meta/computer_name", "computer_name");
+        AssertRouteBindsToTarget(definitionsByName["system_metrics_summary"], "active_directory", "ad_scope_discovery", "domain_controller",
+            "meta/computer_name", "computer_name");
+        AssertRouteBindsToTarget(definitionsByName["system_metrics_summary"], "eventlog", "eventlog_channels_list", "machine_name",
+            "meta/computer_name", "computer_name");
+        AssertRouteBindsToTarget(definitionsByName["system_time_sync"], "active_directory", "ad_scope_discovery", "domain_controller",
+            "meta/computer_name", "computer_name");
+        AssertRouteBindsToTarget(definitionsByName["system_time_sync"], "eventlog", "eventlog_channels_list", "machine_name",
+            "meta/computer_name", "computer_name");
+        AssertRouteBindsToTarget(definitionsByName["system_logical_disks_list"], "active_directory", "ad_scope_discovery", "domain_controller",
+            "meta/computer_name", "computer_name");
+        AssertRouteBindsToTarget(definitionsByName["system_logical_disks_list"], "eventlog", "eventlog_channels_list", "machine_name",
+            "meta/computer_name", "computer_name");
     }
 
     [Fact]

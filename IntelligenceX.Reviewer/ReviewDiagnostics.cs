@@ -99,6 +99,10 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
 
 internal static class ReviewDiagnostics {
     public const string FailureMarker = "<!-- intelligencex:failure -->";
+    private const string InvalidConfigurationSummary = "Invalid configuration";
+    private const string AuthBundleSummary = "Auth bundle missing or invalid";
+    private const string AuthRefreshFailedSummary = "OpenAI auth refresh failed; sign in again";
+    private const string AuthRefreshTokenReusedSummary = "OpenAI auth refresh token was already used; sign in again";
 
     /// <summary>
     /// Categorizes reviewer failures for reporting and retry logic.
@@ -171,11 +175,21 @@ internal static class ReviewDiagnostics {
         var message = root.Message ?? string.Empty;
         if (message.Contains("auth bundle", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("INTELLIGENCEX_AUTH", StringComparison.OrdinalIgnoreCase)) {
-            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Auth bundle missing or invalid");
+            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, AuthBundleSummary);
+        }
+        if (message.Contains("refresh_token_reused", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("refresh token has already been used", StringComparison.OrdinalIgnoreCase)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, AuthRefreshTokenReusedSummary);
+        }
+        if ((message.Contains("OAuth token request failed", StringComparison.OrdinalIgnoreCase) &&
+             message.Contains("signing in again", StringComparison.OrdinalIgnoreCase)) ||
+            message.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("token refresh", StringComparison.OrdinalIgnoreCase)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, AuthRefreshFailedSummary);
         }
         if (message.Contains("configuration", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("invalid", StringComparison.OrdinalIgnoreCase)) {
-            return new ReviewErrorInfo(ReviewErrorCategory.Config, false, "Invalid configuration");
+            return new ReviewErrorInfo(ReviewErrorCategory.Config, false, InvalidConfigurationSummary);
         }
         return new ReviewErrorInfo(ReviewErrorCategory.Unknown, false, root.GetType().Name);
     }
@@ -197,6 +211,9 @@ internal static class ReviewDiagnostics {
         sb.AppendLine($"- Transport: {settings.OpenAITransport}");
         sb.AppendLine($"- Model: {settings.Model}");
         sb.AppendLine($"- Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
+        if (!string.IsNullOrWhiteSpace(classification.Summary)) {
+            sb.AppendLine($"- Detail: {classification.Summary}");
+        }
         if (retryState is not null && retryState.LastAttempt > 0) {
             sb.AppendLine($"- Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
         }

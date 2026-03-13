@@ -460,11 +460,16 @@ internal static partial class Program {
             highlights.Add(
                 "autonomy surface: remote-capable " + autonomy.RemoteCapableToolCount
                 + ", setup-aware " + autonomy.SetupAwareToolCount
+                + ", environment-discover " + autonomy.EnvironmentDiscoverToolCount
                 + ", handoff-aware " + autonomy.HandoffAwareToolCount
                 + ", recovery-aware " + autonomy.RecoveryAwareToolCount
                 + ", cross-pack " + autonomy.CrossPackHandoffToolCount);
             if (autonomy.RemoteCapablePackIds.Length > 0) {
                 highlights.Add("remote-capable packs: " + string.Join(", ", autonomy.RemoteCapablePackIds));
+            }
+
+            if (autonomy.EnvironmentDiscoverPackIds.Length > 0) {
+                highlights.Add("environment-discover packs: " + string.Join(", ", autonomy.EnvironmentDiscoverPackIds));
             }
 
             if (autonomy.CrossPackReadyPackIds.Length > 0) {
@@ -514,6 +519,7 @@ internal static partial class Program {
                 $"tools={summary.TotalTools}",
                 $"remote-capable={summary.RemoteCapableTools}",
                 $"setup-aware={summary.SetupAwareTools}",
+                $"environment-discover={summary.EnvironmentDiscoverTools}",
                 $"handoff-aware={summary.HandoffAwareTools}",
                 $"recovery-aware={summary.RecoveryAwareTools}",
                 $"cross-pack={summary.CrossPackHandoffTools}"

@@ -1,5 +1,6 @@
 using System;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -361,6 +362,108 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.Contains(lines, line => line.Contains("local-only tools currently include System", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("explicit remote-ready tools currently include Event Viewer", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("execution-aware tools", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures capability answers can use contract-backed live examples from representative tools,
+    /// instead of relying only on pack-level autonomy summaries.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_UsesRepresentativeToolContracts_ForConcreteExamples() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto { Id = "active_directory", Name = "Active Directory", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                new ToolPackInfoDto { Id = "eventlog", Name = "Event Log", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+            },
+            toolCatalogRoutingCatalog: new SessionRoutingCatalogDiagnosticsDto {
+                AutonomyReadinessHighlights = new[] { "remote host-targeting is ready for representative tools." }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 3,
+                EnabledPackCount = 3,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "remote_capable",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            toolCatalogTools: new[] {
+                new ToolDefinitionDto {
+                    Name = "ad_environment_discover",
+                    Description = "Discover Active Directory environment context.",
+                    PackId = "active_directory",
+                    PackName = "Active Directory",
+                    IsEnvironmentDiscoverTool = true,
+                    SupportsTargetScoping = true,
+                    TargetScopeArguments = new[] { "domain_controller", "search_base_dn" }
+                },
+                new ToolDefinitionDto {
+                    Name = "eventlog_live_query",
+                    Description = "Query Windows event logs.",
+                    PackId = "eventlog",
+                    PackName = "Event Log",
+                    ExecutionScope = "local_or_remote",
+                    SupportsRemoteHostTargeting = true,
+                    RemoteHostArguments = new[] { "machine_name" }
+                },
+                new ToolDefinitionDto {
+                    Name = "system_metrics_summary",
+                    Description = "Collect system metrics.",
+                    PackId = "system",
+                    PackName = "System",
+                    ExecutionScope = "local_or_remote",
+                    SupportsRemoteHostTargeting = true,
+                    RemoteHostArguments = new[] { "computer_name" },
+                    IsHandoffAware = true,
+                    HandoffTargetPackIds = new[] { "eventlog", "system" }
+                }
+            });
+
+        Assert.Contains(lines, line => line.Contains("domain controller or base DN", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Windows event logs", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("CPU, memory, and disk", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("pivot findings into Event Log, System", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("live tool contracts", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures runtime-introspection answers stay concise and do not pick up broader tool-example guidance.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_RuntimeMode_DoesNotAddRepresentativeToolExamples() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+            },
+            toolCatalogRoutingCatalog: null,
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "local_only",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            toolCatalogTools: new[] {
+                new ToolDefinitionDto {
+                    Name = "system_metrics_summary",
+                    Description = "Collect system metrics.",
+                    PackId = "system",
+                    PackName = "System",
+                    ExecutionScope = "local_or_remote",
+                    SupportsRemoteHostTargeting = true
+                }
+            },
+            runtimeIntrospectionMode: true);
+
+        Assert.DoesNotContain(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

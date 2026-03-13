@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 
 namespace IntelligenceX.Chat.App;
 
@@ -21,6 +22,7 @@ public sealed partial class MainWindow {
             _toolCatalogRoutingCatalog,
             _toolCatalogCapabilitySnapshot,
             BuildToolCatalogExecutionSummary(),
+            _toolCatalogDefinitions.Count == 0 ? null : _toolCatalogDefinitions.Values,
             runtimeIntrospectionMode);
     }
 
@@ -33,6 +35,7 @@ public sealed partial class MainWindow {
             toolCatalogRoutingCatalog: null,
             toolCatalogCapabilitySnapshot: null,
             toolCatalogExecutionSummary: null,
+            toolCatalogTools: null,
             runtimeIntrospectionMode: runtimeIntrospectionMode);
     }
 
@@ -42,6 +45,7 @@ public sealed partial class MainWindow {
         SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog = null,
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot = null,
         ToolCatalogExecutionSummary? toolCatalogExecutionSummary = null,
+        IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools = null,
         bool runtimeIntrospectionMode = false) {
         var lines = new List<string>();
         var snapshot = sessionPolicy?.CapabilitySnapshot ?? toolCatalogCapabilitySnapshot;
@@ -140,6 +144,13 @@ public sealed partial class MainWindow {
             }
         }
 
+        var representativeExamples = runtimeIntrospectionMode
+            ? Array.Empty<string>()
+            : BuildRepresentativeCapabilityExamples(effectivePacks, toolCatalogTools).ToArray();
+        if (representativeExamples.Length > 0) {
+            lines.Add("Concrete examples you can mention: " + string.Join("; ", representativeExamples) + ".");
+        }
+
         if (runtimeIntrospectionMode) {
             if (enabledPackNames.Count == 0) {
                 lines.Add("If tooling details are still sparse, answer with only confirmed runtime or model facts and say the rest is still loading.");
@@ -148,7 +159,7 @@ public sealed partial class MainWindow {
             lines.Add("For runtime self-report, mention only the live tooling or capability areas that are relevant to the user's scope.");
             lines.Add("Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake.");
         } else {
-            AddGenericCapabilityGuidance(lines, enabledPackNames);
+            AddGenericCapabilityGuidance(lines, enabledPackNames, representativeExamples.Length > 0);
             lines.Add("For explicit capability questions, lead with a few practical examples that are genuinely live in this session, then invite the user's task.");
             lines.Add("When asked what you can do, answer with useful examples and invite the task instead of listing internal identifiers or protocol details.");
         }
@@ -194,7 +205,7 @@ public sealed partial class MainWindow {
         return names;
     }
 
-    private static void AddGenericCapabilityGuidance(List<string> lines, IReadOnlyList<string> enabledPackNames) {
+    private static void AddGenericCapabilityGuidance(List<string> lines, IReadOnlyList<string> enabledPackNames, bool hasRepresentativeExamples) {
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(enabledPackNames);
 
@@ -205,7 +216,11 @@ public sealed partial class MainWindow {
         }
 
         lines.Add("Use the enabled capability areas above as the source of truth for what is live in this session.");
-        lines.Add("Concrete examples you can mention: a few practical tasks grounded in the enabled areas above, phrased in the user's language and scope.");
+        if (!hasRepresentativeExamples) {
+            lines.Add("Concrete examples you can mention: a few practical tasks grounded in the enabled areas above, phrased in the user's language and scope.");
+        } else {
+            lines.Add("Keep those examples grounded in the live tool contracts above instead of improvising broader capability claims.");
+        }
 
         if (enabledPackNames.Count == 1) {
             lines.Add("If you need a concrete anchor, start from the single enabled area above instead of inventing broader capability claims.");
@@ -497,6 +512,148 @@ public sealed partial class MainWindow {
         }
 
         return normalized.Length == 0 ? "unknown" : normalized;
+    }
+
+    private static List<string> BuildRepresentativeCapabilityExamples(
+        IReadOnlyList<ToolPackInfoDto>? packs,
+        IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools) {
+        var examples = new List<string>();
+        if (toolCatalogTools is null || toolCatalogTools.Count == 0) {
+            return examples;
+        }
+
+        var enabledPackIds = BuildEnabledPackIdSet(packs);
+        var requireEnabledPack = enabledPackIds.Count > 0;
+        var tools = new List<ToolDefinitionDto>(toolCatalogTools.Count);
+        foreach (var tool in toolCatalogTools) {
+            if (tool is null || string.IsNullOrWhiteSpace(tool.Name)) {
+                continue;
+            }
+
+            var normalizedPackId = NormalizeRuntimePackId(tool.PackId);
+            if (requireEnabledPack && normalizedPackId.Length > 0 && !enabledPackIds.Contains(normalizedPackId)) {
+                continue;
+            }
+
+            tools.Add(tool);
+        }
+
+        if (tools.Count == 0) {
+            return examples;
+        }
+
+        if (HasMatchingTool(tools, static tool =>
+                string.Equals(NormalizeRuntimePackId(tool.PackId), "active_directory", StringComparison.Ordinal)
+                && (tool.IsEnvironmentDiscoverTool
+                    || tool.SupportsTargetScoping
+                    || ContainsArgument(tool.TargetScopeArguments, "domain_controller")
+                    || ContainsArgument(tool.TargetScopeArguments, "search_base_dn")))) {
+            examples.Add("discover Active Directory environment scope, search users/groups/computers, and target a specific domain controller or base DN");
+        }
+
+        if (HasMatchingTool(tools, static tool =>
+                string.Equals(NormalizeRuntimePackId(tool.PackId), "eventlog", StringComparison.Ordinal)
+                && (tool.SupportsRemoteHostTargeting
+                    || string.Equals(tool.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)))) {
+            examples.Add("inspect Windows event logs and summarize recurring failures on this machine or a reachable host");
+        }
+
+        if (HasMatchingTool(tools, static tool =>
+                string.Equals(NormalizeRuntimePackId(tool.PackId), "system", StringComparison.Ordinal)
+                && (tool.SupportsRemoteHostTargeting
+                    || string.Equals(tool.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)))) {
+            examples.Add("collect system inventory plus CPU, memory, and disk health locally or on reachable machines");
+        }
+
+        var crossPackTargets = BuildCrossPackTargetNamesFromTools(tools, packs);
+        if (crossPackTargets.Count > 0) {
+            examples.Add("pivot findings into " + string.Join(", ", crossPackTargets) + " for follow-up checks when the workflow calls for it");
+        }
+
+        if (examples.Count < 4 && HasMatchingTool(tools, static tool => tool.IsSetupAware || tool.IsEnvironmentDiscoverTool)) {
+            examples.Add("use built-in setup or preflight helpers before deeper checks when a workflow needs environment context");
+        }
+
+        if (examples.Count < 4 && HasMatchingTool(tools, static tool => tool.IsPackInfoTool)) {
+            examples.Add("summarize the currently loaded tool areas before choosing the next check");
+        }
+
+        return examples;
+    }
+
+    private static bool HasMatchingTool(IReadOnlyList<ToolDefinitionDto> tools, Func<ToolDefinitionDto, bool> predicate) {
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        for (var i = 0; i < tools.Count; i++) {
+            if (predicate(tools[i])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsArgument(IReadOnlyList<string>? values, string expected) {
+        if (values is not { Count: > 0 } || string.IsNullOrWhiteSpace(expected)) {
+            return false;
+        }
+
+        for (var i = 0; i < values.Count; i++) {
+            if (string.Equals((values[i] ?? string.Empty).Trim(), expected, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static HashSet<string> BuildEnabledPackIdSet(IReadOnlyList<ToolPackInfoDto>? packs) {
+        var enabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (packs is not { Count: > 0 }) {
+            return enabledPackIds;
+        }
+
+        for (var i = 0; i < packs.Count; i++) {
+            var pack = packs[i];
+            if (!pack.Enabled) {
+                continue;
+            }
+
+            var normalizedPackId = NormalizeRuntimePackId(pack.Id);
+            if (normalizedPackId.Length > 0) {
+                enabledPackIds.Add(normalizedPackId);
+            }
+        }
+
+        return enabledPackIds;
+    }
+
+    private static List<string> BuildCrossPackTargetNamesFromTools(
+        IReadOnlyList<ToolDefinitionDto> tools,
+        IReadOnlyList<ToolPackInfoDto>? packs) {
+        var names = new List<string>();
+        for (var i = 0; i < tools.Count; i++) {
+            var targets = tools[i].HandoffTargetPackIds;
+            if (targets is not { Length: > 0 }) {
+                continue;
+            }
+
+            for (var j = 0; j < targets.Length; j++) {
+                var normalizedPackId = NormalizeRuntimePackId(targets[j]);
+                if (normalizedPackId.Length == 0) {
+                    continue;
+                }
+
+                var displayName = ResolvePackDisplayName(packs, normalizedPackId);
+                if (displayName.Length > 0 && !ContainsIgnoreCase(names, displayName)) {
+                    names.Add(displayName);
+                }
+            }
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
     }
 
     private static bool ContainsIgnoreCase(IReadOnlyList<string> values, string candidate) {

@@ -101,7 +101,9 @@ internal sealed partial class ChatServiceSession {
         var inMemory = Volatile.Read(ref _cachedToolDefinitions);
         if (inMemory.Length > 0) {
             tools = inMemory;
-            packs = BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
+            packs = _servingPersistedToolingBootstrapPreview && _persistedPreviewPackSummaries.Length > 0
+                ? _persistedPreviewPackSummaries
+                : BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
             routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
             capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
             return true;

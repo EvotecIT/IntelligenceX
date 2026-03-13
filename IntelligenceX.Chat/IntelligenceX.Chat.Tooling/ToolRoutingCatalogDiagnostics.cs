@@ -68,6 +68,10 @@ public sealed record ToolRoutingCatalogDiagnostics {
     /// Tools with setup-aware contracts.
     /// </summary>
     public int SetupAwareTools { get; init; }
+    /// <summary>
+    /// Tools with explicit environment-discovery/bootstrap role.
+    /// </summary>
+    public int EnvironmentDiscoverTools { get; init; }
 
     /// <summary>
     /// Tools with handoff-aware contracts.
@@ -172,6 +176,7 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
         var missingPackIdTools = 0;
         var missingRoleTools = 0;
         var setupAwareTools = 0;
+        var environmentDiscoverTools = 0;
         var handoffAwareTools = 0;
         var recoveryAwareTools = 0;
         var remoteCapableTools = 0;
@@ -199,6 +204,9 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
 
             if (definition.Setup?.IsSetupAware == true) {
                 setupAwareTools++;
+            }
+            if (string.Equals(role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+                environmentDiscoverTools++;
             }
             if (definition.Handoff?.IsHandoffAware == true) {
                 handoffAwareTools++;
@@ -302,6 +310,7 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             MissingPackIdTools = missingPackIdTools,
             MissingRoleTools = missingRoleTools,
             SetupAwareTools = setupAwareTools,
+            EnvironmentDiscoverTools = environmentDiscoverTools,
             HandoffAwareTools = handoffAwareTools,
             RecoveryAwareTools = recoveryAwareTools,
             RemoteCapableTools = remoteCapableTools,
@@ -332,6 +341,7 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             $"missing_pack={diagnostics.MissingPackIdTools}, " +
             $"missing_role={diagnostics.MissingRoleTools}, " +
             $"setup_aware={diagnostics.SetupAwareTools}, " +
+            $"environment_discover={diagnostics.EnvironmentDiscoverTools}, " +
             $"handoff_aware={diagnostics.HandoffAwareTools}, " +
             $"recovery_aware={diagnostics.RecoveryAwareTools}, " +
             $"remote_capable={diagnostics.RemoteCapableTools}, " +
@@ -447,6 +457,12 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             highlights,
             diagnostics.SetupAwareTools,
             "setup helpers are available for ",
+            " tool(s).",
+            maxItems);
+        AddHighlightIfPositive(
+            highlights,
+            diagnostics.EnvironmentDiscoverTools,
+            "environment discovery bootstrap is available for ",
             " tool(s).",
             maxItems);
         AddHighlightIfPositive(

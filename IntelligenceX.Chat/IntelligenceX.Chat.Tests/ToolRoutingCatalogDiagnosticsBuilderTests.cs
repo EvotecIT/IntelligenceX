@@ -16,6 +16,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
                 category: "active_directory",
                 routing: new ToolRoutingContract {
                     PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
                     DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
                     DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
                 }),
@@ -65,6 +66,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Equal(0, diagnostics.MissingPackIdTools);
         Assert.Equal(0, diagnostics.MissingRoleTools);
         Assert.Equal(0, diagnostics.SetupAwareTools);
+        Assert.Equal(1, diagnostics.EnvironmentDiscoverTools);
         Assert.Equal(1, diagnostics.HandoffAwareTools);
         Assert.Equal(0, diagnostics.RecoveryAwareTools);
         Assert.Equal(1, diagnostics.RemoteCapableTools);
@@ -79,6 +81,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Contains("tools=3", summary, StringComparison.Ordinal);
         Assert.Contains("routing_explicit=3", summary, StringComparison.Ordinal);
         Assert.Contains("routing_inferred=0", summary, StringComparison.Ordinal);
+        Assert.Contains("environment_discover=1", summary, StringComparison.Ordinal);
         Assert.Contains("remote_capable=1", summary, StringComparison.Ordinal);
         Assert.Contains("cross_pack_handoffs=1", summary, StringComparison.Ordinal);
         Assert.Contains("conflicts=0", summary, StringComparison.Ordinal);
@@ -90,6 +93,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         var readiness = ToolRoutingCatalogDiagnosticsBuilder.BuildAutonomyReadinessHighlights(diagnostics, maxItems: 8);
         Assert.Contains(readiness, static line => line.Contains("remote host-targeting", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(readiness, static line => line.Contains("cross-pack continuation", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(readiness, static line => line.Contains("environment discovery bootstrap", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(readiness, static line => line.Contains("strict enforcement", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(readiness, static line => line.Contains("fully populated", StringComparison.OrdinalIgnoreCase));
     }
@@ -187,6 +191,7 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Equal(2, diagnostics.MissingPackIdTools);
         Assert.Equal(1, diagnostics.MissingRoleTools);
         Assert.Equal(1, diagnostics.SetupAwareTools);
+        Assert.Equal(0, diagnostics.EnvironmentDiscoverTools);
         Assert.Equal(1, diagnostics.HandoffAwareTools);
         Assert.Equal(1, diagnostics.RecoveryAwareTools);
         Assert.Equal(1, diagnostics.RemoteCapableTools);

@@ -58,6 +58,16 @@ public sealed record ToolOrchestrationCatalogEntry {
     public string Role { get; init; } = ToolRoutingTaxonomy.RoleOperational;
 
     /// <summary>
+    /// Indicates whether this tool is an orientation/pack-info tool.
+    /// </summary>
+    public bool IsPackInfoTool { get; init; }
+
+    /// <summary>
+    /// Indicates whether this tool is an environment-discovery tool.
+    /// </summary>
+    public bool IsEnvironmentDiscoverTool { get; init; }
+
+    /// <summary>
     /// Routing source token.
     /// </summary>
     public string RoutingSource { get; init; } = ToolRoutingTaxonomy.SourceExplicit;
@@ -258,6 +268,10 @@ public sealed record ToolOrchestrationCatalogEntry {
 /// Contract-first orchestration catalog built from tool definitions.
 /// </summary>
 public sealed class ToolOrchestrationCatalog {
+    private sealed record PackCatalogToolMetadata(
+        string PackId,
+        ToolPackToolCatalogEntryModel Entry);
+
     private readonly IReadOnlyDictionary<string, ToolOrchestrationCatalogEntry> _entriesByToolName;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByPackId;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByRole;
@@ -291,6 +305,12 @@ public sealed class ToolOrchestrationCatalog {
     /// <param name="definitions">Tool definitions.</param>
     /// <returns>Normalized orchestration catalog.</returns>
     public static ToolOrchestrationCatalog Build(IReadOnlyList<ToolDefinition> definitions) {
+        return Build(definitions, packCatalogEntriesByToolName: null);
+    }
+
+    private static ToolOrchestrationCatalog Build(
+        IReadOnlyList<ToolDefinition> definitions,
+        IReadOnlyDictionary<string, PackCatalogToolMetadata>? packCatalogEntriesByToolName) {
         if (definitions is null) {
             throw new ArgumentNullException(nameof(definitions));
         }
@@ -319,6 +339,8 @@ public sealed class ToolOrchestrationCatalog {
             if (!ToolRoutingTaxonomy.IsAllowedRole(role)) {
                 role = ToolRoutingTaxonomy.RoleOperational;
             }
+            var isPackInfoTool = string.Equals(role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase);
+            var isEnvironmentDiscoverTool = string.Equals(role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
 
             var routingSource = NormalizeToken(routing?.RoutingSource);
             if (!ToolRoutingTaxonomy.IsAllowedSource(routingSource)) {
@@ -437,10 +459,12 @@ public sealed class ToolOrchestrationCatalog {
                                       || supportsAlternateEngines
                                       || maxRetryAttempts > 0);
 
-            entriesByToolName[toolName] = new ToolOrchestrationCatalogEntry {
+            var entry = new ToolOrchestrationCatalogEntry {
                 ToolName = toolName,
                 PackId = packId,
                 Role = role,
+                IsPackInfoTool = isPackInfoTool,
+                IsEnvironmentDiscoverTool = isEnvironmentDiscoverTool,
                 RoutingSource = routingSource,
                 IsRoutingAware = routing?.IsRoutingAware == true,
                 Scope = NormalizeToken(routingInfo.Scope, ToolRoutingTaxonomy.ScopeGeneral),
@@ -481,6 +505,12 @@ public sealed class ToolOrchestrationCatalog {
                 AlternateEngineIds = FreezeStringList(alternateEngineIds),
                 RecoveryToolNames = FreezeStringList(recoveryToolNames)
             };
+            if (packCatalogEntriesByToolName is not null
+                && packCatalogEntriesByToolName.TryGetValue(toolName, out var packCatalogMetadata)) {
+                entry = ApplyPackCatalogOverlay(entry, packCatalogMetadata);
+            }
+
+            entriesByToolName[toolName] = entry;
         }
 
         var entriesByPackId = entriesByToolName.Values
@@ -515,8 +545,12 @@ public sealed class ToolOrchestrationCatalog {
     public static ToolOrchestrationCatalog Build(
         IReadOnlyList<ToolDefinition> definitions,
         IEnumerable<IToolPack>? packs) {
-        _ = packs;
-        return Build(definitions);
+        if (definitions is null) {
+            throw new ArgumentNullException(nameof(definitions));
+        }
+
+        var packCatalogEntriesByToolName = BuildPackCatalogEntryIndex(packs);
+        return Build(definitions, packCatalogEntriesByToolName);
     }
 
     /// <summary>
@@ -584,6 +618,244 @@ public sealed class ToolOrchestrationCatalog {
 
     private static string BuildPackRoleKey(string packId, string role) {
         return packId + "|" + role;
+    }
+
+    private static IReadOnlyDictionary<string, PackCatalogToolMetadata>? BuildPackCatalogEntryIndex(IEnumerable<IToolPack>? packs) {
+        if (packs is null) {
+            return null;
+        }
+
+        var index = new Dictionary<string, PackCatalogToolMetadata>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pack in packs) {
+            if (pack is not IToolPackCatalogProvider catalogProvider) {
+                continue;
+            }
+
+            var normalizedPackId = NormalizePackId(pack.Descriptor.Id);
+            var catalogEntries = catalogProvider.GetToolCatalog();
+            if (catalogEntries is null || catalogEntries.Count == 0) {
+                continue;
+            }
+
+            for (var i = 0; i < catalogEntries.Count; i++) {
+                var catalogEntry = catalogEntries[i];
+                if (catalogEntry is null) {
+                    continue;
+                }
+
+                var toolName = NormalizeToken(catalogEntry.Name);
+                if (toolName.Length == 0 || index.ContainsKey(toolName)) {
+                    continue;
+                }
+
+                index[toolName] = new PackCatalogToolMetadata(normalizedPackId, catalogEntry);
+            }
+        }
+
+        return index.Count == 0 ? null : index;
+    }
+
+    private static ToolOrchestrationCatalogEntry ApplyPackCatalogOverlay(
+        ToolOrchestrationCatalogEntry entry,
+        PackCatalogToolMetadata overlay) {
+        var overlayEntry = overlay.Entry;
+        var normalizedPackId = NormalizeOverlayPackId(overlayEntry.Routing?.PackId, entry.PackId, overlay.PackId);
+        var normalizedRole = NormalizeOverlayRole(overlayEntry.Routing?.Role, entry.Role);
+        var normalizedScope = NormalizeToken(overlayEntry.Routing?.Scope, entry.Scope);
+        var normalizedOperation = NormalizeToken(overlayEntry.Routing?.Operation, entry.Operation);
+        var normalizedEntity = NormalizeToken(overlayEntry.Routing?.Entity, entry.Entity);
+        var normalizedRisk = NormalizeOverlayRisk(overlayEntry.Routing?.Risk, entry.Risk);
+        var normalizedRoutingSource = NormalizeOverlayRoutingSource(overlayEntry.Routing?.Source, entry.RoutingSource);
+        var isPackInfoTool = overlayEntry.IsPackInfoTool
+                             || entry.IsPackInfoTool
+                             || string.Equals(normalizedRole, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase);
+        var isEnvironmentDiscoverTool = overlayEntry.IsEnvironmentDiscoverTool
+                                        || entry.IsEnvironmentDiscoverTool
+                                        || string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
+        var normalizedDomainIntentFamily = NormalizeOverlayDomainIntentFamily(
+            overlayEntry.Routing?.DomainIntentFamily,
+            entry.DomainIntentFamily);
+        var normalizedDomainIntentActionId = NormalizeOverlayDomainIntentActionId(
+            overlayEntry.Routing?.DomainIntentActionId,
+            normalizedDomainIntentFamily,
+            entry.DomainIntentFamily,
+            entry.DomainIntentActionId);
+
+        var targetScopeArguments = NormalizeDistinctTokens(overlayEntry.Traits?.TargetScopeArguments);
+        var remoteHostArguments = NormalizeDistinctTokens(overlayEntry.Traits?.RemoteHostArguments);
+        var supportsTargetScoping = overlayEntry.Traits?.SupportsTargetScoping == true || targetScopeArguments.Length > 0;
+        var supportsRemoteHostTargeting = overlayEntry.Traits?.SupportsRemoteHostTargeting == true || remoteHostArguments.Length > 0;
+        var executionScope = NormalizeOverlayExecutionScope(
+            overlayEntry.Traits?.ExecutionScope,
+            entry.ExecutionScope,
+            supportsRemoteHostTargeting);
+
+        var setupToolName = NormalizeToken(overlayEntry.Setup?.SetupToolName);
+        var setupRequirementIds = NormalizeDistinctTokens(overlayEntry.Setup?.RequirementIds);
+        var setupHintKeys = NormalizeDistinctTokens(overlayEntry.Setup?.HintKeys);
+        var isSetupAware = overlayEntry.Setup?.IsSetupAware == true
+                           || setupToolName.Length > 0
+                           || setupRequirementIds.Length > 0
+                           || setupHintKeys.Length > 0;
+
+        var handoffEdges = BuildOverlayHandoffEdges(overlayEntry.Handoff);
+        var handoffBindingCount = handoffEdges.Sum(static edge => edge.BindingCount);
+        var isHandoffAware = overlayEntry.Handoff?.IsHandoffAware == true || handoffEdges.Count > 0;
+
+        var retryableErrorCodes = NormalizeDistinctTokens(overlayEntry.Recovery?.RetryableErrorCodes);
+        var recoveryToolNames = NormalizeDistinctTokens(overlayEntry.Recovery?.RecoveryToolNames);
+        var supportsTransientRetry = overlayEntry.Recovery?.SupportsTransientRetry == true;
+        var maxRetryAttempts = Math.Max(0, overlayEntry.Recovery?.MaxRetryAttempts ?? 0);
+        var isRecoveryAware = overlayEntry.Recovery?.IsRecoveryAware == true
+                              || retryableErrorCodes.Length > 0
+                              || recoveryToolNames.Length > 0
+                              || supportsTransientRetry
+                              || maxRetryAttempts > 0;
+
+        return entry with {
+            PackId = normalizedPackId,
+            Role = normalizedRole,
+            IsPackInfoTool = isPackInfoTool,
+            IsEnvironmentDiscoverTool = isEnvironmentDiscoverTool,
+            Scope = normalizedScope,
+            Operation = normalizedOperation,
+            Entity = normalizedEntity,
+            Risk = normalizedRisk,
+            RoutingSource = normalizedRoutingSource,
+            IsRoutingAware = true,
+            ExecutionScope = executionScope,
+            SupportsTargetScoping = supportsTargetScoping,
+            TargetScopeArguments = FreezeStringList(targetScopeArguments),
+            SupportsRemoteHostTargeting = supportsRemoteHostTargeting,
+            RemoteHostArguments = FreezeStringList(remoteHostArguments),
+            DomainIntentFamily = normalizedDomainIntentFamily,
+            DomainIntentActionId = normalizedDomainIntentActionId,
+            IsSetupAware = isSetupAware,
+            SetupRequirementCount = isSetupAware
+                ? Math.Max(entry.SetupRequirementCount, setupRequirementIds.Length)
+                : 0,
+            SetupToolName = setupToolName,
+            SetupRequirementIds = FreezeStringList(setupRequirementIds),
+            SetupRequirementKinds = isSetupAware ? entry.SetupRequirementKinds : Array.Empty<string>(),
+            SetupHintKeys = FreezeStringList(setupHintKeys),
+            IsHandoffAware = isHandoffAware,
+            HandoffRouteCount = handoffEdges.Count,
+            HandoffBindingCount = handoffBindingCount,
+            HandoffEdges = handoffEdges,
+            IsRecoveryAware = isRecoveryAware,
+            SupportsTransientRetry = supportsTransientRetry,
+            MaxRetryAttempts = maxRetryAttempts,
+            SupportsAlternateEngines = entry.SupportsAlternateEngines,
+            AlternateEngineCount = entry.AlternateEngineCount,
+            RecoveryToolCount = recoveryToolNames.Length,
+            RetryableErrorCodes = FreezeStringList(retryableErrorCodes),
+            AlternateEngineIds = entry.AlternateEngineIds,
+            RecoveryToolNames = FreezeStringList(recoveryToolNames)
+        };
+    }
+
+    private static IReadOnlyList<ToolOrchestrationHandoffEdge> BuildOverlayHandoffEdges(ToolPackToolHandoffModel? handoff) {
+        if (handoff?.Routes is not { Count: > 0 }) {
+            return Array.Empty<ToolOrchestrationHandoffEdge>();
+        }
+
+        var edges = new List<ToolOrchestrationHandoffEdge>();
+        for (var i = 0; i < handoff.Routes.Count; i++) {
+            var route = handoff.Routes[i];
+            var bindingPairs = NormalizeTokensPreserveMultiplicity(route?.BindingPairs);
+            if (bindingPairs.Count == 0) {
+                continue;
+            }
+
+            edges.Add(new ToolOrchestrationHandoffEdge {
+                TargetPackId = NormalizePackId(route?.TargetPackId),
+                TargetToolName = NormalizeToken(route?.TargetToolName),
+                TargetRole = NormalizeToken(route?.TargetRole),
+                BindingCount = bindingPairs.Count,
+                BindingPairs = FreezeStringList(bindingPairs)
+            });
+        }
+
+        return edges.Count == 0
+            ? Array.Empty<ToolOrchestrationHandoffEdge>()
+            : FreezeHandoffEdges(
+                edges
+                    .OrderBy(static edge => edge.TargetPackId, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static edge => edge.TargetRole, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static edge => edge.TargetToolName, StringComparer.OrdinalIgnoreCase)
+                    .ToArray());
+    }
+
+    private static string NormalizeOverlayRisk(string? value, string fallback) {
+        var normalized = NormalizeToken(value, fallback);
+        return ToolRoutingTaxonomy.IsAllowedRisk(normalized) ? normalized : fallback;
+    }
+
+    private static string NormalizeOverlayRoutingSource(string? value, string fallback) {
+        var normalized = NormalizeToken(value, fallback);
+        return ToolRoutingTaxonomy.IsAllowedSource(normalized) ? normalized : fallback;
+    }
+
+    private static string NormalizeOverlayPackId(string? value, string fallback, string overlayFallback) {
+        var normalized = NormalizePackId(value);
+        if (normalized.Length > 0) {
+            return normalized;
+        }
+
+        var fallbackPackId = NormalizePackId(fallback);
+        if (fallbackPackId.Length > 0) {
+            return fallbackPackId;
+        }
+
+        return NormalizePackId(overlayFallback);
+    }
+
+    private static string NormalizeOverlayRole(string? value, string fallback) {
+        var normalized = NormalizeToken(value);
+        return ToolRoutingTaxonomy.IsAllowedRole(normalized) ? normalized : fallback;
+    }
+
+    private static string NormalizeOverlayDomainIntentFamily(string? value, string fallback) {
+        var normalized = NormalizeToken(value);
+        if (normalized.Length == 0) {
+            return fallback;
+        }
+
+        return ToolSelectionMetadata.TryNormalizeDomainIntentFamily(normalized, out var family)
+            ? family
+            : fallback;
+    }
+
+    private static string NormalizeOverlayDomainIntentActionId(
+        string? value,
+        string normalizedFamily,
+        string fallbackFamily,
+        string fallbackActionId) {
+        var normalizedActionId = NormalizeToken(value);
+        if (normalizedActionId.Length > 0) {
+            return normalizedActionId;
+        }
+
+        if (normalizedFamily.Length > 0
+            && !string.Equals(normalizedFamily, fallbackFamily, StringComparison.OrdinalIgnoreCase)) {
+            return ToolSelectionMetadata.GetDefaultDomainIntentActionId(normalizedFamily);
+        }
+
+        return fallbackActionId;
+    }
+
+    private static string NormalizeOverlayExecutionScope(string? value, string fallback, bool supportsRemoteHostTargeting) {
+        var normalized = NormalizeToken(value);
+        if (string.Equals(normalized, "local_only", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "local_or_remote", StringComparison.OrdinalIgnoreCase)) {
+            return normalized;
+        }
+
+        if (supportsRemoteHostTargeting) {
+            return "local_or_remote";
+        }
+
+        return NormalizeToken(fallback, "local_only");
     }
 
     private static string NormalizePackId(string? value) {

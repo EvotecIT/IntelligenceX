@@ -185,6 +185,28 @@
     };
   }
 
+  function formatExecutionScopeLabel(executionScope) {
+    var normalized = String(executionScope || "").trim().toLowerCase();
+    if (normalized === "local_or_remote") {
+      return "Local or remote";
+    }
+    if (normalized === "remote_only") {
+      return "Remote only";
+    }
+    return "Local only";
+  }
+
+  function appendToolContractSummary(item, label, values) {
+    if (!item || !label || !Array.isArray(values) || values.length === 0) {
+      return;
+    }
+
+    var detail = document.createElement("div");
+    detail.className = "options-item-sub";
+    detail.textContent = label + ": " + values.join(", ");
+    item.appendChild(detail);
+  }
+
   function createToolCard(tool) {
     var item = document.createElement("div");
     item.className = "options-item";
@@ -286,6 +308,63 @@
       }
       item.appendChild(tagsRow);
     }
+
+    var contractPills = [];
+    if (tool.isPackInfoTool) {
+      contractPills.push("Pack info");
+    }
+    if (tool.isEnvironmentDiscoverTool) {
+      contractPills.push("Environment");
+    }
+    if (tool.supportsRemoteHostTargeting || String(tool.executionScope || "").toLowerCase() === "local_or_remote") {
+      contractPills.push("Remote");
+    }
+    if (tool.supportsTargetScoping) {
+      contractPills.push("Target scope");
+    }
+    if (tool.isSetupAware) {
+      contractPills.push("Setup");
+    }
+    if (tool.isHandoffAware) {
+      contractPills.push("Handoff");
+    }
+    if (tool.isRecoveryAware) {
+      contractPills.push("Recovery");
+    }
+
+    if (contractPills.length > 0) {
+      var contractRow = document.createElement("div");
+      contractRow.className = "options-tag-row";
+      for (var cp = 0; cp < contractPills.length; cp++) {
+        var contractPill = document.createElement("span");
+        contractPill.className = "options-pill options-pill-category";
+        contractPill.textContent = contractPills[cp];
+        contractRow.appendChild(contractPill);
+      }
+      item.appendChild(contractRow);
+    }
+
+    var contractDetails = [];
+    contractDetails.push("Execution " + formatExecutionScopeLabel(tool.executionScope));
+    if (tool.supportsTransientRetry && Number(tool.maxRetryAttempts || 0) > 0) {
+      contractDetails.push("Retry " + String(tool.maxRetryAttempts));
+    }
+    if (contractDetails.length > 0) {
+      var contractSummary = document.createElement("div");
+      contractSummary.className = "options-item-sub";
+      contractSummary.textContent = contractDetails.join(" | ");
+      item.appendChild(contractSummary);
+    }
+
+    appendToolContractSummary(item, "Target arguments", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);
+    appendToolContractSummary(item, "Remote arguments", Array.isArray(tool.remoteHostArguments) ? tool.remoteHostArguments : []);
+    appendToolContractSummary(item, "Required arguments", Array.isArray(tool.requiredArguments) ? tool.requiredArguments : []);
+    if (tool.isSetupAware && tool.setupToolName) {
+      appendToolContractSummary(item, "Setup helper", [String(tool.setupToolName)]);
+    }
+    appendToolContractSummary(item, "Handoff packs", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);
+    appendToolContractSummary(item, "Handoff tools", Array.isArray(tool.handoffTargetToolNames) ? tool.handoffTargetToolNames : []);
+    appendToolContractSummary(item, "Recovery tools", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);
 
     if (tool.routingConfidence || tool.routingReason || typeof tool.routingScore === "number") {
       var routing = document.createElement("div");
@@ -453,6 +532,23 @@
       tool.category || "",
       tool.packId || "",
       tool.packName || "",
+      tool.packDescription || "",
+      tool.isPackInfoTool ? "pack-info pack info orientation" : "",
+      tool.isEnvironmentDiscoverTool ? "environment discover preflight bootstrap" : "",
+      tool.executionScope || "",
+      tool.supportsTargetScoping ? "target scope targeting" : "",
+      tool.supportsRemoteHostTargeting ? "remote host remote targeting" : "",
+      tool.isSetupAware ? "setup setup-aware bootstrap" : "",
+      tool.setupToolName || "",
+      tool.isHandoffAware ? "handoff pivot continuation" : "",
+      Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds.join(" ") : "",
+      Array.isArray(tool.handoffTargetToolNames) ? tool.handoffTargetToolNames.join(" ") : "",
+      tool.isRecoveryAware ? "recovery retry remediation" : "",
+      tool.supportsTransientRetry ? "transient retry" : "",
+      Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames.join(" ") : "",
+      Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments.join(" ") : "",
+      Array.isArray(tool.remoteHostArguments) ? tool.remoteHostArguments.join(" ") : "",
+      Array.isArray(tool.requiredArguments) ? tool.requiredArguments.join(" ") : "",
       tool.routingConfidence || "",
       tool.routingReason || "",
       typeof tool.routingScore === "number" ? String(tool.routingScore) : "",

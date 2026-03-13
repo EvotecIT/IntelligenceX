@@ -261,6 +261,7 @@ public static partial class ToolPackGuidance {
                 Arguments = NormalizeArguments(entry.Arguments),
                 SupportsTableViewProjection = entry.SupportsTableViewProjection,
                 IsPackInfoTool = entry.IsPackInfoTool,
+                IsEnvironmentDiscoverTool = entry.IsEnvironmentDiscoverTool,
                 Traits = NormalizeTraits(entry.Traits),
                 Setup = NormalizeSetup(entry.Setup),
                 Handoff = NormalizeHandoff(entry.Handoff),
@@ -341,6 +342,14 @@ public static partial class ToolPackGuidance {
             return new ToolPackToolRoutingModel();
         }
 
+        var packId = ToolSelectionMetadata.NormalizePackId(routing.PackId);
+        var rawRole = (routing.Role ?? string.Empty).Trim();
+        var role = rawRole.Length == 0 ? string.Empty : rawRole.ToLowerInvariant();
+        if (role.Length > 0 && !ToolRoutingTaxonomy.IsAllowedRole(role)) {
+            throw new InvalidOperationException(
+                $"Routing role '{rawRole}' is invalid. Allowed values: {string.Join(", ", ToolRoutingTaxonomy.AllowedRoles)}.");
+        }
+
         var scope = NormalizeRoutingToken(routing.Scope, ToolRoutingTaxonomy.ScopeGeneral);
         var operation = NormalizeRoutingToken(routing.Operation, ToolRoutingTaxonomy.OperationRead);
         var entity = NormalizeRoutingToken(routing.Entity, ToolRoutingTaxonomy.EntityResource);
@@ -371,12 +380,31 @@ public static partial class ToolPackGuidance {
                 $"Explicit routing risk is required and must be one of: {string.Join(", ", ToolRoutingTaxonomy.AllowedRisks)}.");
         }
 
+        var rawFamily = (routing.DomainIntentFamily ?? string.Empty).Trim();
+        var family = string.Empty;
+        if (rawFamily.Length > 0 && !ToolSelectionMetadata.TryNormalizeDomainIntentFamily(rawFamily, out family)) {
+            throw new InvalidOperationException("Routing domain intent family must be a normalized non-empty token when provided.");
+        }
+
+        var actionId = (routing.DomainIntentActionId ?? string.Empty).Trim();
+        if (family.Length > 0 && actionId.Length == 0) {
+            actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
+        }
+
+        if (family.Length == 0 && actionId.Length > 0) {
+            throw new InvalidOperationException("Routing domain intent action id requires a domain intent family.");
+        }
+
         return new ToolPackToolRoutingModel {
+            PackId = packId,
+            Role = role,
             Scope = scope,
             Operation = operation,
             Entity = entity,
             Risk = risk,
-            Source = source
+            Source = source,
+            DomainIntentFamily = family,
+            DomainIntentActionId = actionId
         };
     }
 

@@ -6,6 +6,24 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.EventLog;
 
 internal static class EventLogToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["eventlog_channels_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["eventlog_providers_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["eventlog_named_events_catalog"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["eventlog_named_events_query"] = ToolRoutingTaxonomy.RoleResolver,
+            ["eventlog_timeline_explain"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["eventlog_timeline_query"] = ToolRoutingTaxonomy.RoleResolver,
+            ["eventlog_top_events"] = ToolRoutingTaxonomy.RoleResolver,
+            ["eventlog_live_query"] = ToolRoutingTaxonomy.RoleResolver,
+            ["eventlog_live_stats"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["eventlog_evtx_find"] = ToolRoutingTaxonomy.RoleResolver,
+            ["eventlog_evtx_security_summary"] = ToolRoutingTaxonomy.RoleResolver,
+            ["eventlog_evtx_query"] = ToolRoutingTaxonomy.RoleResolver,
+            ["eventlog_evtx_stats"] = ToolRoutingTaxonomy.RoleDiagnostic
+        };
+
     private static readonly string[] SetupHintKeys = {
         "machine_name",
         "machine_names",
@@ -163,24 +181,53 @@ internal static class EventLogToolContracts {
         if (definition.Handoff is { IsHandoffAware: true }) {
             return definition.Handoff;
         }
-
         if (string.Equals(definition.Name, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)) {
             return new ToolHandoffContract {
                 IsHandoffAware = true,
                 OutboundRoutes = new[] {
-                    CreatePathHandoffRoute("eventlog", "eventlog_evtx_query", "files[].path"),
-                    CreatePathHandoffRoute("eventlog", "eventlog_evtx_security_summary", "files[].path"),
-                    CreatePathHandoffRoute("eventlog", "eventlog_evtx_stats", "files[].path")
+                    new ToolHandoffRoute {
+                        TargetPackId = "eventlog",
+                        TargetToolName = "eventlog_evtx_query",
+                        Reason = "Promote discovered EVTX file paths directly into bounded EVTX querying.",
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "files[].path",
+                                TargetArgument = "path",
+                                IsRequired = true
+                            }
+                        }
+                    },
+                    new ToolHandoffRoute {
+                        TargetPackId = "eventlog",
+                        TargetToolName = "eventlog_evtx_security_summary",
+                        Reason = "Promote discovered EVTX security logs directly into security-summary analysis.",
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "files[].path",
+                                TargetArgument = "path",
+                                IsRequired = true
+                            }
+                        }
+                    },
+                    new ToolHandoffRoute {
+                        TargetPackId = "eventlog",
+                        TargetToolName = "eventlog_evtx_stats",
+                        Reason = "Promote discovered EVTX file paths into fast count/statistics follow-up.",
+                        Bindings = new[] {
+                            new ToolHandoffBinding {
+                                SourceField = "files[].path",
+                                TargetArgument = "path",
+                                IsRequired = true
+                            }
+                        }
+                    }
                 }
             };
         }
 
-        if (string.Equals(definition.Name, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)) {
-            return CreateAdEntityHandoffContract();
-        }
-
         if (string.Equals(definition.Name, "eventlog_named_events_query", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)) {
+            || string.Equals(definition.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(definition.Name, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)) {
             return CreateEventLogQueryHandoffContract();
         }
 
@@ -292,45 +339,11 @@ internal static class EventLogToolContracts {
         };
     }
 
-    private static string ResolveRole(string toolName, string? existingRole) {
-        var inferredRole = TryResolveDeclaredRole(toolName);
-        if (inferredRole.Length == 0) {
-            return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
-                explicitRole: existingRole,
-                toolName: toolName,
-                declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                packDisplayName: "EventLog");
-        }
-
-        return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
-            explicitRole: existingRole,
-            fallbackRole: inferredRole,
+    private static string ResolveRole(string toolName, string? explicitRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: explicitRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
             packDisplayName: "EventLog");
-    }
-
-    private static string TryResolveDeclaredRole(string toolName) {
-        if (string.Equals(toolName, "eventlog_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (toolName.IndexOf("_catalog", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_list", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_stats", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_explain", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (toolName.IndexOf("_query", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_find", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_top_events", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_security_summary", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        if (string.Equals(toolName, "eventlog_entity_handoff", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleOperational;
-        }
-
-        return string.Empty;
     }
 }

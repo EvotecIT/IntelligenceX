@@ -20,6 +20,11 @@ internal sealed partial class ChatServiceSession {
         PropertyNameCaseInsensitive = true,
         WriteIndented = false
     };
+    internal readonly record struct ToolHealthProbeCatalogEntry(
+        string ToolName,
+        string PackId,
+        string? PackName,
+        ToolPackSourceKind SourceKind);
 
     private async Task HandleToolHealthAsync(StreamWriter writer, CheckToolHealthRequest request, CancellationToken cancellationToken) {
         var timeoutSeconds = request.ToolTimeoutSeconds ?? _options.ToolTimeoutSeconds;
@@ -34,22 +39,15 @@ internal sealed partial class ChatServiceSession {
         }
 
         var requireExplicitPackInfoRole = _runtimePolicyDiagnostics.RequireExplicitRoutingMetadata;
-        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry, requireExplicitPackInfoRole);
-        var sourceFilter = BuildSourceKindFilter(request.SourceKinds);
-        var packIdFilter = BuildPackIdFilter(request.PackIds);
+        var probeCatalog = GetToolHealthProbeCatalog(request.SourceKinds, request.PackIds);
 
-        var probes = new List<ToolHealthProbeDto>(packInfoDefinitions.Length);
+        var probes = new List<ToolHealthProbeDto>(probeCatalog.Length);
         var okCount = 0;
         var failedCount = 0;
-        foreach (var definition in packInfoDefinitions) {
-            var metadata = ResolvePackMetadata(definition);
-            if (!ShouldIncludeProbe(metadata.PackId, metadata.SourceKind, sourceFilter, packIdFilter)) {
-                continue;
-            }
-
+        foreach (var entry in probeCatalog) {
             var probe = await ToolHealthDiagnostics.ProbeAsync(
                     _registry,
-                    definition.Name,
+                    entry.ToolName,
                     timeoutSeconds,
                     cancellationToken,
                     requireExplicitPackInfoRole)
@@ -61,7 +59,7 @@ internal sealed partial class ChatServiceSession {
                 failedCount++;
             }
 
-            probes.Add(MapProbeDto(probe, metadata.PackId, metadata.PackName, metadata.SourceKind));
+            probes.Add(MapProbeDto(probe, entry.PackId, entry.PackName, entry.SourceKind));
         }
 
         await WriteAsync(writer, new ToolHealthMessage {
@@ -90,8 +88,8 @@ internal sealed partial class ChatServiceSession {
 
     private async Task PrimeStartupToolHealthWarningsAsync(CancellationToken cancellationToken) {
         var requireExplicitPackInfoRole = _runtimePolicyDiagnostics.RequireExplicitRoutingMetadata;
-        var packInfoDefinitions = ToolHealthDiagnostics.GetPackInfoDefinitions(_registry, requireExplicitPackInfoRole);
-        if (packInfoDefinitions.Length == 0) {
+        var probeCatalog = GetToolHealthProbeCatalog();
+        if (probeCatalog.Length == 0) {
             return;
         }
 
@@ -99,31 +97,30 @@ internal sealed partial class ChatServiceSession {
         var cacheUpdated = false;
 
         try {
-            foreach (var definition in packInfoDefinitions) {
+            foreach (var entry in probeCatalog) {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var metadata = ResolvePackMetadata(definition);
-                var cacheKey = BuildStartupToolHealthCacheKey(metadata.SourceKind, metadata.PackId, definition.Name);
+                var cacheKey = BuildStartupToolHealthCacheKey(entry.SourceKind, entry.PackId, entry.ToolName);
                 var nowUtc = DateTime.UtcNow;
                 if (cache.TryGetValue(cacheKey, out var cachedFailure)
                     && ShouldSkipStartupToolHealthProbe(nowUtc, cachedFailure.NextProbeUtc)) {
                     continue;
                 }
 
-                var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, metadata.SourceKind, metadata.PackId);
+                var timeoutSeconds = ResolveStartupToolHealthTimeoutSeconds(_options.ToolTimeoutSeconds, entry.SourceKind, entry.PackId);
                 var probe = await ToolHealthDiagnostics.ProbeAsync(
                         _registry,
-                        definition.Name,
+                        entry.ToolName,
                         timeoutSeconds,
                         cancellationToken,
                         requireExplicitPackInfoRole)
                     .ConfigureAwait(false);
                 if (!probe.Ok && IsToolTimeoutProbe(probe)) {
-                    var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, metadata.SourceKind, metadata.PackId);
+                    var retryTimeoutSeconds = ResolveStartupToolHealthRetryTimeoutSeconds(timeoutSeconds, entry.SourceKind, entry.PackId);
                     if (retryTimeoutSeconds > timeoutSeconds) {
                         probe = await ToolHealthDiagnostics.ProbeAsync(
                                 _registry,
-                                definition.Name,
+                                entry.ToolName,
                                 retryTimeoutSeconds,
                                 cancellationToken,
                                 requireExplicitPackInfoRole)
@@ -138,9 +135,9 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                var sourceLabel = ToSourceLabel(metadata.SourceKind);
-                var packLabel = metadata.PackId.Length == 0 ? "unknown" : metadata.PackId;
-                var prefix = ShouldDowngradeStartupToolHealthFailure(metadata.SourceKind, probe.ErrorCode)
+                var sourceLabel = ToSourceLabel(entry.SourceKind);
+                var packLabel = entry.PackId.Length == 0 ? "unknown" : entry.PackId;
+                var prefix = ShouldDowngradeStartupToolHealthFailure(entry.SourceKind, probe.ErrorCode)
                     ? "[tool health notice]"
                     : "[tool health]";
                 var warning = $"{prefix}[{sourceLabel}][{packLabel}] {probe.ToolName} failed ({NormalizeHealthErrorCode(probe.ErrorCode)}): {NormalizeHealthError(probe.Error)}";
@@ -150,8 +147,8 @@ internal sealed partial class ChatServiceSession {
                 var nextFailureCount = ResolveNextFailureCount(cachedFailure, errorCode);
                 var nextProbeUtc = ComputeNextStartupToolHealthProbeUtc(
                     nowUtc,
-                    metadata.SourceKind,
-                    metadata.PackId,
+                    entry.SourceKind,
+                    entry.PackId,
                     errorCode,
                     nextFailureCount);
                 cache[cacheKey] = new StartupToolHealthCacheEntry(
@@ -170,6 +167,31 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+    }
+
+    internal ToolHealthProbeCatalogEntry[] GetToolHealthProbeCatalog(IReadOnlyList<ToolPackSourceKind>? sourceKinds = null, IReadOnlyList<string>? packIds = null) {
+        var requireExplicitPackInfoRole = _runtimePolicyDiagnostics.RequireExplicitRoutingMetadata;
+        var packInfoCatalog = ToolHealthDiagnostics.BuildPackInfoProbeCatalog(_registry, _packAvailability, requireExplicitPackInfoRole);
+        if (packInfoCatalog.Length == 0) {
+            return Array.Empty<ToolHealthProbeCatalogEntry>();
+        }
+
+        var sourceFilter = BuildSourceKindFilter(sourceKinds);
+        var packIdFilter = BuildPackIdFilter(packIds);
+        var entries = new List<ToolHealthProbeCatalogEntry>(packInfoCatalog.Length);
+        foreach (var entry in packInfoCatalog) {
+            if (!ShouldIncludeProbe(entry.PackId, entry.SourceKind, sourceFilter, packIdFilter)) {
+                continue;
+            }
+
+            entries.Add(new ToolHealthProbeCatalogEntry(
+                ToolName: entry.ToolName,
+                PackId: entry.PackId,
+                PackName: entry.PackName,
+                SourceKind: entry.SourceKind));
+        }
+
+        return entries.ToArray();
     }
 
     private static HashSet<ToolPackSourceKind>? BuildSourceKindFilter(IReadOnlyList<ToolPackSourceKind>? sourceKinds) {
@@ -218,20 +240,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         return true;
-    }
-
-    private (string PackId, string? PackName, ToolPackSourceKind SourceKind) ResolvePackMetadata(ToolDefinition definition) {
-        var packId = string.Empty;
-        if (_toolOrchestrationCatalog.TryGetPackId(definition.Name, out var catalogPackId)) {
-            packId = catalogPackId;
-        }
-
-        _packDisplayNamesById.TryGetValue(packId, out var packName);
-        var sourceKind = ToolPackSourceKind.OpenSource;
-        if (packId.Length > 0 && _packSourceKindsById.TryGetValue(packId, out var resolved)) {
-            sourceKind = resolved;
-        }
-        return (packId, packName, sourceKind);
     }
 
     internal static int ResolveStartupToolHealthTimeoutSeconds(int configuredTimeoutSeconds, ToolPackSourceKind sourceKind, string? packId = null) {

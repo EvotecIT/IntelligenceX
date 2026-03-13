@@ -4,9 +4,11 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -36,6 +38,36 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
 
         var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-1", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        Assert.Equal(2, preflightCalls.Count);
+        Assert.Equal("customx_pack_probe", preflightCalls[0].Name);
+        Assert.Equal("customx_discover_scope", preflightCalls[1].Name);
+    }
+
+    [Fact]
+    public void BuildHostPackPreflightCalls_UsesExplicitPreflightFlagsFromOrchestrationCatalog() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational)));
+        registry.Register(new PreflightStubTool(
+            "customx_discover_scope",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational)));
+        registry.Register(new PreflightStubTool(
+            "customx_health_scan",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational)));
+        SetSessionRegistry(session, registry);
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(
+            registry.GetDefinitions(),
+            new IToolPack[] { new ExplicitPreflightCatalogOverlayPack() }));
+
+        var extractedCalls = new List<ToolCall> {
+            new("call_operational_flags_1", "customx_health_scan", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-flags-1", registry.GetDefinitions(), extractedCalls });
         var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
 
         Assert.Equal(2, preflightCalls.Count);
@@ -224,6 +256,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             return _invoke(arguments, cancellationToken);
+        }
+    }
+
+    private sealed class ExplicitPreflightCatalogOverlayPack : IToolPack, IToolPackCatalogProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "active_directory",
+            Name = "Active Directory",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic explicit preflight overlay."
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "customx_pack_probe",
+                    IsPackInfoTool = true,
+                    Routing = new ToolPackToolRoutingModel {
+                        PackId = "active_directory",
+                        Role = ToolRoutingTaxonomy.RoleOperational,
+                        Source = ToolRoutingTaxonomy.SourceExplicit
+                    }
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "customx_discover_scope",
+                    IsEnvironmentDiscoverTool = true,
+                    Routing = new ToolPackToolRoutingModel {
+                        PackId = "active_directory",
+                        Role = ToolRoutingTaxonomy.RoleOperational,
+                        Source = ToolRoutingTaxonomy.SourceExplicit
+                    }
+                }
+            };
         }
     }
 }
