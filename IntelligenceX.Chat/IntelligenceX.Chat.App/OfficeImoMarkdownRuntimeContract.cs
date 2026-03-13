@@ -9,43 +9,21 @@ namespace IntelligenceX.Chat.App;
 /// Centralizes the OfficeIMO markdown runtime contract used by the desktop chat host.
 /// </summary>
 internal static class OfficeImoMarkdownRuntimeContract {
-    private static readonly Version MinimumMarkdownRendererVersion = new(0, 1, 9);
-    private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 5, 12);
-    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 6);
-    private static readonly Lazy<PropertyInfo?> NetworkPropertyLazy = new(
-        () => typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public));
+    private static readonly Version MinimumMarkdownRendererVersion = new(0, 2, 0);
+    private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 6, 0);
+    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 7);
 
     /// <summary>
     /// Creates transcript renderer options using the central OfficeIMO runtime contract.
     /// </summary>
     public static MarkdownRendererOptions CreateTranscriptRendererOptions() {
-        // Preset factory returns a fresh options object per call; these mutations are call-local.
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = MarkdownRendererPresets.CreateStrictMinimal();
+        MarkdownRendererPresets.ApplyChatPresentation(options, enableCopyButtons: false);
+        MarkdownRendererIntelligenceXAdapter.Apply(options);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
-        TryEnableOptionalRendererNetworkSupport(options);
+        options.Network.Enabled = true;
         return options;
-    }
-
-    /// <summary>
-    /// Enables optional vis-network support when the loaded renderer exposes it.
-    /// </summary>
-    /// <param name="options">Renderer options to mutate.</param>
-    /// <returns><see langword="true"/> when the optional capability was enabled.</returns>
-    public static bool TryEnableOptionalRendererNetworkSupport(MarkdownRendererOptions options) {
-        ArgumentNullException.ThrowIfNull(options);
-
-        var networkProperty = NetworkPropertyLazy.Value;
-        var networkOptions = networkProperty?.GetValue(options);
-        var enabledProperty = networkOptions?.GetType().GetProperty(
-            "Enabled",
-            BindingFlags.Instance | BindingFlags.Public);
-        if (enabledProperty?.CanWrite != true || enabledProperty.PropertyType != typeof(bool)) {
-            return false;
-        }
-
-        enabledProperty.SetValue(networkOptions, true);
-        return true;
     }
 
     /// <summary>
@@ -56,7 +34,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
             typeof(MarkdownRenderer).Assembly,
             "OfficeIMO.MarkdownRenderer",
             MinimumMarkdownRendererVersion,
-            "chat renderer presets + optional network support");
+            "generic presets + composed chat presentation + IntelligenceX aliases + network support");
     }
 
     /// <summary>
@@ -117,4 +95,5 @@ internal static class OfficeImoMarkdownRuntimeContract {
             return "(dynamic)";
         }
     }
+
 }

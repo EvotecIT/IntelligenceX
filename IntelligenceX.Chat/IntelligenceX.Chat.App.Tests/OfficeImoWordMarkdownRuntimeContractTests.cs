@@ -16,7 +16,7 @@ public sealed class OfficeImoWordMarkdownRuntimeContractTests {
         var description = OfficeImoWordMarkdownRuntimeContract.DescribeWordMarkdownContract();
 
         Assert.Contains("OfficeIMO.Word.Markdown", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=1.0.6", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=1.0.7", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 }

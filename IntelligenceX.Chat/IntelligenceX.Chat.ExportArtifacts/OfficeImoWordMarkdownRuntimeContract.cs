@@ -13,7 +13,7 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
     private const int MinDocxVisualMaxWidthPx = 320;
     private const int MaxDocxVisualMaxWidthPx = 2000;
     private const int DefaultDocxVisualMaxWidthPx = 760;
-    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 6);
+    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 7);
     private static readonly Lazy<bool> PreservesGroupedDefinitionLikeParagraphsLazy = new(DetectGroupedDefinitionLikeParagraphSupport);
 
     public static MarkdownToWordOptions CreateTranscriptMarkdownToWordOptions(

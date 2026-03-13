@@ -49,8 +49,8 @@ This is the canonical cross-project transcript markdown contract.
 
 It owns:
 
-- transcript renderer option creation
-- optional runtime capability probing such as vis-network enablement
+- transcript renderer option creation through the published generic-first OfficeIMO preset composition (`CreateStrictMinimal` + `ApplyChatPresentation` + `MarkdownRendererIntelligenceXAdapter`)
+- renderer option shaping for the published package line, including network visual enablement
 - runtime/package diagnostics for loaded OfficeIMO assemblies
 
 ### 4. DOCX adaptation
