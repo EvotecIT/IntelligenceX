@@ -1,4 +1,5 @@
 using System.Reflection;
+using OfficeIMO.MarkdownRenderer;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -19,6 +20,30 @@ public sealed class ChatMarkdownOptionsTests {
         Assert.False(options.Math.Enabled);
         Assert.False(options.EnableCodeCopyButtons);
         Assert.False(options.EnableTableCopyButtons);
+    }
+
+    /// <summary>
+    /// Ensures the central contract still produces a chat-scoped surface with IntelligenceX alias support.
+    /// </summary>
+    [Fact]
+    public void CreateTranscriptRendererOptions_ComposesChatPresentationAndIntelligenceXAliases() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        options.Chart.Enabled = true;
+
+        var styleValue = options.HtmlOptions.GetType().GetProperty("Style", BindingFlags.Instance | BindingFlags.Public)?.GetValue(options.HtmlOptions)?.ToString();
+        Assert.Equal("ChatAuto", styleValue);
+        Assert.Equal("#omdRoot article.markdown-body", options.HtmlOptions.CssScopeSelector);
+
+        var html = MarkdownRenderer.RenderBodyHtml("""
+```ix-chart
+{"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Count","data":[1]}]}}
+```
+""", options);
+
+        Assert.True(
+            html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal)
+            || html.Contains("language-ix-chart", StringComparison.OrdinalIgnoreCase),
+            "Expected the composed transcript contract to support ix-chart fences through native visuals or fenced-block fallback.");
     }
 
     /// <summary>

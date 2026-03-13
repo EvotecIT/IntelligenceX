@@ -12,6 +12,14 @@ internal static class OfficeImoMarkdownRuntimeContract {
     private static readonly Version MinimumMarkdownRendererVersion = new(0, 1, 9);
     private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 5, 12);
     private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 6);
+    private static readonly Lazy<MethodInfo?> CreateStrictMinimalMethodLazy = new(
+        () => typeof(MarkdownRendererPresets).GetMethod("CreateStrictMinimal", BindingFlags.Static | BindingFlags.Public));
+    private static readonly Lazy<MethodInfo?> ApplyChatPresentationMethodLazy = new(
+        () => typeof(MarkdownRendererPresets).GetMethod("ApplyChatPresentation", BindingFlags.Static | BindingFlags.Public));
+    private static readonly Lazy<Type?> IntelligenceXAdapterTypeLazy = new(
+        () => Type.GetType("OfficeIMO.MarkdownRenderer.MarkdownRendererIntelligenceXAdapter, OfficeIMO.MarkdownRenderer", throwOnError: false));
+    private static readonly Lazy<MethodInfo?> IntelligenceXAdapterApplyMethodLazy = new(
+        () => IntelligenceXAdapterTypeLazy.Value?.GetMethod("Apply", BindingFlags.Static | BindingFlags.Public));
     private static readonly Lazy<PropertyInfo?> NetworkPropertyLazy = new(
         () => typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public));
 
@@ -19,10 +27,9 @@ internal static class OfficeImoMarkdownRuntimeContract {
     /// Creates transcript renderer options using the central OfficeIMO runtime contract.
     /// </summary>
     public static MarkdownRendererOptions CreateTranscriptRendererOptions() {
-        // Preset factory returns a fresh options object per call; these mutations are call-local.
-        var options = MarkdownRendererPresets.CreateStrictMinimal();
-        MarkdownRendererPresets.ApplyChatPresentation(options, enableCopyButtons: false);
-        MarkdownRendererIntelligenceXAdapter.Apply(options);
+        var options = CreateBaseTranscriptOptions();
+        ApplyChatPresentationIfAvailable(options, enableCopyButtons: false);
+        ApplyIntelligenceXAliasesIfAvailable(options);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
         TryEnableOptionalRendererNetworkSupport(options);
@@ -58,7 +65,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
             typeof(MarkdownRenderer).Assembly,
             "OfficeIMO.MarkdownRenderer",
             MinimumMarkdownRendererVersion,
-            "generic presets + chat presentation composition + optional network support");
+            "generic presets + composed chat presentation (with package fallback) + optional network support");
     }
 
     /// <summary>
@@ -118,5 +125,45 @@ internal static class OfficeImoMarkdownRuntimeContract {
         } catch {
             return "(dynamic)";
         }
+    }
+
+    private static MarkdownRendererOptions CreateBaseTranscriptOptions() {
+        var createStrictMinimalMethod = CreateStrictMinimalMethodLazy.Value;
+        if (createStrictMinimalMethod != null
+            && typeof(MarkdownRendererOptions).IsAssignableFrom(createStrictMinimalMethod.ReturnType)) {
+            var created = createStrictMinimalMethod.Invoke(null, [null]);
+            if (created is MarkdownRendererOptions optionsFromGenericPreset) {
+                return optionsFromGenericPreset;
+            }
+        }
+
+        return MarkdownRendererPresets.CreateChatStrictMinimal();
+    }
+
+    private static void ApplyChatPresentationIfAvailable(MarkdownRendererOptions options, bool enableCopyButtons) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var applyChatPresentationMethod = ApplyChatPresentationMethodLazy.Value;
+        if (applyChatPresentationMethod == null) {
+            return;
+        }
+
+        var parameters = applyChatPresentationMethod.GetParameters();
+        if (parameters.Length == 1) {
+            applyChatPresentationMethod.Invoke(null, [options]);
+            options.EnableCodeCopyButtons = enableCopyButtons;
+            options.EnableTableCopyButtons = enableCopyButtons;
+            return;
+        }
+
+        if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool)) {
+            applyChatPresentationMethod.Invoke(null, [options, enableCopyButtons]);
+        }
+    }
+
+    private static void ApplyIntelligenceXAliasesIfAvailable(MarkdownRendererOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        IntelligenceXAdapterApplyMethodLazy.Value?.Invoke(null, [options]);
     }
 }
