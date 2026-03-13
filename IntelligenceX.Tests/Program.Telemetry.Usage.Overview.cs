@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using IntelligenceX.Json;
 using IntelligenceX.Telemetry.Usage;
@@ -91,6 +92,10 @@ internal static partial class Program {
 
         var html = GitHubWrappedHtmlRenderer.Render(section);
         AssertContainsText(html, "GitHub Wrapped", "github wrapped title");
+        AssertContainsText(html, "github-wrapped-shared.css", "github wrapped shared css");
+        AssertContainsText(html, "github-wrapped.css", "github wrapped external css");
+        AssertContainsText(html, "report-runtime.js", "github wrapped shared runtime js");
+        AssertContainsText(html, "github-wrapped.js", "github wrapped external js");
         AssertContainsText(html, "provider-github.dark.svg", "github wrapped heatmap image");
         AssertContainsText(html, "11.8K contributions", "github wrapped current year value");
         AssertContainsText(html, "567 contributions", "github wrapped previous year value");
@@ -99,6 +104,8 @@ internal static partial class Program {
         AssertContainsText(html, "github-wrapped-card.html", "github wrapped share card link");
         AssertContainsText(html, "data-owner-panel=\"github-owner-evotecit\"", "github wrapped owner chip");
         AssertContainsText(html, "data-owner-panel-content=\"github-owner-przemyslawklys\"", "github wrapped owner panel");
+        AssertEqual(false, html.Contains("<style>", StringComparison.Ordinal), "github wrapped no inline style block");
+        AssertEqual(false, html.Contains("const ownerChips", StringComparison.Ordinal), "github wrapped no inline js");
     }
 
     private static void TestGitHubWrappedCardHtmlRendererBuildsCompactCard() {
@@ -106,10 +113,56 @@ internal static partial class Program {
 
         var html = GitHubWrappedCardHtmlRenderer.Render(section);
         AssertContainsText(html, "GitHub Wrapped Card", "github wrapped card title");
+        AssertContainsText(html, "github-wrapped-shared.css", "github wrapped card shared css");
+        AssertContainsText(html, "github-wrapped-card.css", "github wrapped card external css");
         AssertContainsText(html, "provider-github.dark.svg", "github wrapped card heatmap image");
         AssertContainsText(html, "EvotecIT/GPOZaurr", "github wrapped card top repository");
         AssertContainsText(html, "8.99K stars", "github wrapped card owner scope");
         AssertContainsText(html, "2026 YTD +1989.1% vs 2025", "github wrapped card year comparison");
+        AssertEqual(false, html.Contains("<style>", StringComparison.Ordinal), "github wrapped card no inline style block");
+    }
+
+    private static void TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets() {
+        var heatmap = new HeatmapDocument(
+            title: "By telemetry source",
+            subtitle: "Detailed breakdown view.",
+            palette: HeatmapPalette.ChatGptDark(),
+            sections: new[] {
+                new HeatmapSection(
+                    "2026",
+                    null,
+                    new[] {
+                        new HeatmapDay(new DateTime(2026, 03, 10), 12, level: 3, breakdown: new Dictionary<string, double> {
+                            ["codex"] = 8,
+                            ["claude"] = 4
+                        }),
+                        new HeatmapDay(new DateTime(2026, 03, 11), 18, level: 4, breakdown: new Dictionary<string, double> {
+                            ["codex"] = 10,
+                            ["claude"] = 8
+                        })
+                    })
+            },
+            legendItems: new[] {
+                new HeatmapLegendItem("codex", "Codex", "#6268f1"),
+                new HeatmapLegendItem("claude", "Claude", "#fb8c1d")
+            });
+
+        var html = UsageTelemetryBreakdownHtmlRenderer.Render(
+            "Usage Overview",
+            "provider",
+            "By telemetry source",
+            "Detailed breakdown view.",
+            heatmap);
+
+        AssertContainsText(html, "report-runtime.js", "breakdown shared runtime js");
+        AssertContainsText(html, "report-shell.css", "breakdown shared shell css");
+        AssertContainsText(html, "breakdown.css", "breakdown external css");
+        AssertContainsText(html, "breakdown.js", "breakdown external js");
+        AssertContainsText(html, "\"defaultTheme\":\"system\"", "breakdown bootstrap default theme");
+        AssertContainsText(html, "Top categories", "breakdown server summary card");
+        AssertContainsText(html, "Codex", "breakdown server summary label");
+        AssertEqual(false, html.Contains("<style>", StringComparison.Ordinal), "breakdown no inline style block");
+        AssertEqual(false, html.Contains("fetch(`${ixBreakdownKey}.json`)", StringComparison.Ordinal), "breakdown no fetch-based summary js");
     }
 
     private static void TestUsageTelemetryOverviewHtmlRendererBuildsGitHubOwnerExplorer() {
@@ -136,6 +189,8 @@ internal static partial class Program {
             providerSections: new[] { section });
 
         var html = UsageTelemetryOverviewHtmlRenderer.Render(overview);
+        AssertContainsText(html, "report-runtime.js", "overview shared runtime js");
+        AssertContainsText(html, "report-shell.css", "overview shared shell css");
         AssertContainsText(html, "data-github-lens=\"owners\"", "github main explorer owner lens");
         AssertContainsText(html, "data-github-owner=\"github-owner-evotecit\"", "github main explorer evotecit owner chip");
         AssertContainsText(html, "data-github-owner-content=\"github-owner-przemyslawklys\"", "github main explorer personal owner panel");
@@ -143,6 +198,260 @@ internal static partial class Program {
         AssertContainsText(html, "aria-label=\"GitHub owner scope summary\"", "github main summary owner explorer");
         AssertContainsText(html, "data-github-repo-sort=\"forks\"", "github main explorer repo sort forks");
         AssertContainsText(html, "data-github-repo-sort-content=\"health\"", "github main explorer repo sort health");
+        AssertEqual(false, html.Contains("Loading summary", StringComparison.Ordinal), "overview no lazy summary placeholder");
+        AssertEqual(false, html.Contains("fetch(`${key}.json`)", StringComparison.Ordinal), "overview no fetch-based supporting summary js");
+        AssertEqual(false, html.Contains("color:inherit;text-decoration:none", StringComparison.Ordinal), "overview no inline anchor styling");
+    }
+
+    private static void TestUsageTelemetryPresentationHelpersBuildSourceRootLabels() {
+        var codexRoot = new SourceRootRecord("src-codex", "codex", UsageSourceKind.LocalLogs, @"C:\Users\me\.codex\sessions");
+        var claudeRoot = new SourceRootRecord("src-claude", "claude", UsageSourceKind.LocalLogs, "/home/me/.claude/projects");
+        var recoveredRoot = new SourceRootRecord("src-old", "codex", UsageSourceKind.RecoveredFolder, @"C:\Windows.old\Users\me\.codex\sessions");
+        var internalRoot = new SourceRootRecord("src-ix", "ix", UsageSourceKind.InternalIx, "ix://internal/reviewer");
+
+        var labels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(new[] {
+            codexRoot,
+            claudeRoot,
+            recoveredRoot,
+            internalRoot
+        });
+
+        AssertEqual("Codex · Current (.codex/sessions)", labels["src-codex"], "source root codex label");
+        AssertEqual("Claude · Current (.claude/projects)", labels["src-claude"], "source root claude label");
+        AssertEqual("Codex · Windows.old (.codex/sessions)", labels["src-old"], "source root recovered label");
+        AssertEqual("IntelligenceX · Internal IX", labels["src-ix"], "source root internal label");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderBuildsGitHubRenderModel() {
+        var section = CreateSampleGitHubOverviewSection();
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 11),
+            PeakValue = 18m
+        };
+
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section });
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(overview);
+        var sectionPage = page.Sections.Single();
+        var github = sectionPage.GitHub;
+
+        AssertEqual(true, github is not null, "github page model exists");
+        AssertEqual(4, sectionPage.DatasetTabs.Count, "github page model dataset tab count");
+        AssertEqual("summary", sectionPage.DatasetTabs[0].Key, "github page model first dataset tab");
+        AssertEqual("wrapped", sectionPage.DatasetTabs[3].Key, "github page model wrapped tab");
+        AssertEqual("github-wrapped.html", sectionPage.DatasetTabs[3].Href, "github page model wrapped tab href");
+        AssertEqual(4, github?.Lenses.Count ?? 0, "github page model lens count");
+        AssertEqual("impact", github?.Lenses[0].Key, "github page model first lens");
+        AssertEqual(3, github?.RepoSortModes.Count ?? 0, "github page model repo sort count");
+        AssertEqual("stars", github?.RepoSortModes[0].Key, "github page model first repo sort");
+        AssertEqual(3, github?.OwnerScopes.Count ?? 0, "github page model owner scope count");
+        AssertEqual("all", github?.OwnerScopes[0].Key, "github page model default owner scope");
+        AssertEqual("github-year-comparison", github?.YearComparison?.Key, "github page model year comparison");
+        AssertEqual("github-top-repositories", github?.TopRepositories?.Key, "github page model top repos");
+        AssertEqual(2, github?.OwnerSections.Count ?? 0, "github page model owner sections");
+    }
+
+    private static void TestUsageTelemetryGitHubWrappedPageModelBuilderBuildsOwnerPanels() {
+        var section = CreateSampleGitHubOverviewSection();
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrapped(section);
+
+        AssertEqual("GitHub", page.Title, "github wrapped page title");
+        AssertEqual("github-year-comparison", page.YearComparison?.Key, "github wrapped page year comparison");
+        AssertEqual(2, page.OwnerPanels.Count, "github wrapped owner panel count");
+        AssertEqual("github-owner-evotecit", page.OwnerPanels[0].Key, "github wrapped owner panel ordering");
+        AssertContainsText(page.BootstrapJson, "\"defaultOwnerPanel\":\"all\"", "github wrapped bootstrap owner default");
+    }
+
+    private static void TestUsageTelemetryGitHubWrappedCardPageModelBuilderBuildsMetrics() {
+        var section = CreateSampleGitHubOverviewSection();
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrappedCard(section);
+
+        AssertEqual("GitHub", page.Title, "github wrapped card title");
+        AssertEqual(4, page.Metrics.Count, "github wrapped card metric count");
+        AssertEqual(4, page.Stats.Count, "github wrapped card stat count");
+        AssertEqual(2, page.FooterMetrics.Count, "github wrapped card footer count");
+        AssertEqual("Year over year", page.Stats[0].Label, "github wrapped card first stat label");
+        AssertContainsText(page.Stats[0].Value, "2026 YTD", "github wrapped card first stat value");
+    }
+
+    private static void TestUsageTelemetryBreakdownPageModelBuilderBuildsServerSummary() {
+        var heatmap = new HeatmapDocument(
+            title: "By source root",
+            subtitle: "Detailed breakdown view.",
+            palette: HeatmapPalette.ChatGptDark(),
+            sections: new[] {
+                new HeatmapSection(
+                    "2026",
+                    null,
+                    new[] {
+                        new HeatmapDay(new DateTime(2026, 03, 10), 12, level: 3, breakdown: new Dictionary<string, double> {
+                            ["Codex · Current (.codex/sessions)"] = 8,
+                            ["Codex · Windows.old (.codex/sessions)"] = 4
+                        }),
+                        new HeatmapDay(new DateTime(2026, 03, 11), 18, level: 4, breakdown: new Dictionary<string, double> {
+                            ["Claude · Current (.claude/projects)"] = 18
+                        })
+                    })
+            },
+            legendItems: new[] {
+                new HeatmapLegendItem("current", "Current", "#6268f1"),
+                new HeatmapLegendItem("windows.old", "Windows.old", "#98a8ff")
+            });
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildBreakdown(
+            "Usage Overview",
+            "sourceroot",
+            "By source root",
+            "Detailed breakdown view.",
+            heatmap);
+
+        AssertEqual(true, page.Summary.IsSourceRoot, "breakdown page source-root mode");
+        AssertEqual("Source coverage", page.Summary.OverviewTitle, "breakdown page overview title");
+        AssertEqual("Top source roots", page.Summary.TopRowsTitle, "breakdown page top title");
+        AssertEqual("Source families", page.Summary.SecondaryRowsTitle, "breakdown page secondary title");
+        AssertEqual(5, page.Summary.Stats.Count, "breakdown page stats count");
+        AssertContainsText(page.Summary.Stats[0].Value, "2026-03-10 to 2026-03-11", "breakdown page range stat");
+        AssertEqual("Claude · Current (.claude/projects)", page.Summary.TopRows[0].Label, "breakdown page top row label");
+        AssertEqual("Current machine", page.Summary.SecondaryRows[0].Label, "breakdown page source family");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderBuildsSupportingBreakdownSummaries() {
+        var builder = new UsageTelemetryOverviewBuilder();
+        var events = new[] {
+            new UsageEventRecord("evt-1", "codex", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero)) {
+                AccountLabel = "work",
+                PersonLabel = "Przemek",
+                Surface = "cli",
+                Model = "gpt-5-codex",
+                InputTokens = 900,
+                OutputTokens = 300,
+                TotalTokens = 1200,
+                TruthLevel = UsageTruthLevel.Exact
+            },
+            new UsageEventRecord("evt-2", "claude", "claude.logs", "src-2", new DateTimeOffset(2026, 03, 11, 11, 0, 0, TimeSpan.Zero)) {
+                AccountLabel = "lab",
+                PersonLabel = "Przemek",
+                Surface = "chat",
+                Model = "claude-opus",
+                InputTokens = 410,
+                OutputTokens = 90,
+                TotalTokens = 500,
+                TruthLevel = UsageTruthLevel.Exact
+            }
+        };
+
+        var overview = builder.Build(
+            events,
+            new UsageTelemetryOverviewOptions {
+                Title = "Combined Usage",
+                Subtitle = "person: Przemek"
+            });
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(overview);
+        var sourceroot = page.SupportingBreakdowns.Single(item => item.Key == "sourceroot");
+
+        AssertEqual(true, sourceroot.Summary.IsSourceRoot, "overview supporting source-root summary mode");
+        AssertEqual("Source coverage", sourceroot.Summary.OverviewTitle, "overview supporting source-root summary title");
+        AssertEqual(true, sourceroot.Summary.TopRows.Count > 0, "overview supporting source-root top rows");
+    }
+
+    private static void TestUsageTelemetryReportBundleWriterPublishesSharedAssets() {
+        var section = CreateSampleGitHubOverviewSection();
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 11),
+            PeakValue = 18m
+        };
+
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section });
+
+        var tempPath = Path.Combine(Path.GetTempPath(), "ix-report-bundle-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempPath);
+        try {
+            UsageTelemetryReportBundleWriter.WriteOverviewBundle(overview, tempPath);
+
+            var indexPath = Path.Combine(tempPath, "index.html");
+            var shellCssPath = Path.Combine(tempPath, "report-shell.css");
+            var cssPath = Path.Combine(tempPath, "report.css");
+            var runtimeJsPath = Path.Combine(tempPath, "report-runtime.js");
+            var jsPath = Path.Combine(tempPath, "report.js");
+            var breakdownCssPath = Path.Combine(tempPath, "breakdown.css");
+            var breakdownJsPath = Path.Combine(tempPath, "breakdown.js");
+            var wrappedCssPath = Path.Combine(tempPath, "github-wrapped.css");
+            var wrappedSharedCssPath = Path.Combine(tempPath, "github-wrapped-shared.css");
+            var wrappedJsPath = Path.Combine(tempPath, "github-wrapped.js");
+            var wrappedCardCssPath = Path.Combine(tempPath, "github-wrapped-card.css");
+            var wrappedPath = Path.Combine(tempPath, "github-wrapped.html");
+            var manifestPath = Path.Combine(tempPath, "bundle-manifest.json");
+            AssertEqual(true, File.Exists(indexPath), "report bundle index exists");
+            AssertEqual(true, File.Exists(shellCssPath), "report bundle shell css exists");
+            AssertEqual(true, File.Exists(cssPath), "report bundle css exists");
+            AssertEqual(true, File.Exists(runtimeJsPath), "report bundle runtime js exists");
+            AssertEqual(true, File.Exists(jsPath), "report bundle js exists");
+            AssertEqual(true, File.Exists(breakdownCssPath), "report bundle breakdown css exists");
+            AssertEqual(true, File.Exists(breakdownJsPath), "report bundle breakdown js exists");
+            AssertEqual(true, File.Exists(wrappedSharedCssPath), "report bundle wrapped shared css exists");
+            AssertEqual(true, File.Exists(wrappedCssPath), "report bundle wrapped css exists");
+            AssertEqual(true, File.Exists(wrappedJsPath), "report bundle wrapped js exists");
+            AssertEqual(true, File.Exists(wrappedCardCssPath), "report bundle wrapped card css exists");
+            AssertEqual(true, File.Exists(manifestPath), "report bundle manifest exists");
+
+            var html = File.ReadAllText(indexPath);
+            var wrappedHtml = File.ReadAllText(wrappedPath);
+            var manifest = File.ReadAllText(manifestPath);
+            AssertContainsText(html, "report-shell.css", "report bundle shared shell css reference");
+            AssertContainsText(html, "report.css", "report bundle external css reference");
+            AssertContainsText(html, "report-runtime.js", "report bundle shared runtime reference");
+            AssertContainsText(html, "report.js", "report bundle external js reference");
+            AssertContainsText(wrappedHtml, "report-runtime.js", "report bundle wrapped shared runtime reference");
+            AssertContainsText(manifest, "\"assets\":[", "report bundle manifest assets");
+            AssertContainsText(manifest, "\"pages\":[", "report bundle manifest pages");
+            AssertContainsText(manifest, "\"dataFiles\":[", "report bundle manifest data files");
+            AssertContainsText(manifest, "\"lightSvgFiles\":[", "report bundle manifest light svg files");
+            AssertContainsText(manifest, "\"darkSvgFiles\":[", "report bundle manifest dark svg files");
+            AssertContainsText(manifest, "\"report-runtime.js\"", "report bundle manifest runtime asset");
+            AssertContainsText(manifest, "\"report-shell.css\"", "report bundle manifest shell asset");
+            AssertContainsText(manifest, "\"github-wrapped-shared.css\"", "report bundle manifest shared wrapped css");
+            AssertContainsText(manifest, "\"index.html\"", "report bundle manifest main page");
+            AssertContainsText(manifest, "\"github-wrapped.html\"", "report bundle manifest wrapped page");
+            AssertContainsText(manifest, "\"provider-github.light.svg\"", "report bundle manifest github light svg");
+            AssertContainsText(manifest, "\"provider-github.dark.svg\"", "report bundle manifest github dark svg");
+            AssertEqual(false, html.Contains("<style>", StringComparison.Ordinal), "report bundle no inline style block");
+            AssertEqual(false, html.Contains("const ixThemeKey", StringComparison.Ordinal), "report bundle no inline overview js");
+        } finally {
+            if (Directory.Exists(tempPath)) {
+                Directory.Delete(tempPath, recursive: true);
+            }
+        }
     }
 
     private static UsageTelemetryOverviewProviderSection CreateSampleGitHubOverviewSection() {
