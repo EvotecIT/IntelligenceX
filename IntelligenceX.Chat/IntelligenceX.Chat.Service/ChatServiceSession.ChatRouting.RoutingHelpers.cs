@@ -518,6 +518,18 @@ internal sealed partial class ChatServiceSession {
             || handoffTargetToolNames.Count > 0
             || plannerContext.StructuredNextActionSourceToolNames.Length > 0
             || plannerContext.ContinuationSourceTool.Length > 0;
+        var prefersEnvironmentBootstrap = ShouldPreferEnvironmentBootstrap(
+            plannerContext,
+            preferredPackIds,
+            preferredToolNames,
+            handoffTargetPackIds,
+            handoffTargetToolNames);
+        var prefersSetupAwareTools = ShouldPreferSetupAwareTools(
+            plannerContext,
+            preferredPackIds,
+            preferredToolNames,
+            handoffTargetPackIds,
+            handoffTargetToolNames);
         if (focusTokens.Length == 0) {
             if (preferredToolNames.Count == 0
                 && handoffTargetToolNames.Count == 0
@@ -552,6 +564,16 @@ internal sealed partial class ChatServiceSession {
             }
             if (prefersCrossPackContinuation && ToolSupportsCrossPackHandoff(definition, toolOrchestrationCatalog)) {
                 priority += PlannerCrossPackContinuationPriorityBoost;
+            }
+            if (prefersEnvironmentBootstrap
+                && ToolSupportsEnvironmentDiscovery(definition, toolOrchestrationCatalog)
+                && ToolMatchesPlannerContractTargets(toolName, packId, preferredToolNames, handoffTargetToolNames, preferredPackIds, handoffTargetPackIds)) {
+                priority += PlannerEnvironmentDiscoverPriorityBoost;
+            }
+            if (prefersSetupAwareTools
+                && ToolIsSetupAware(definition, toolOrchestrationCatalog)
+                && ToolMatchesPlannerContractTargets(toolName, packId, preferredToolNames, handoffTargetToolNames, preferredPackIds, handoffTargetPackIds)) {
+                priority += PlannerSetupAwarePriorityBoost;
             }
             for (var t = 0; t < focusTokens.Length; t++) {
                 var token = focusTokens[t];
@@ -652,6 +674,18 @@ internal sealed partial class ChatServiceSession {
             || handoffTargetToolNames.Count > 0
             || plannerContext.StructuredNextActionSourceToolNames.Length > 0
             || plannerContext.ContinuationSourceTool.Length > 0;
+        var prefersEnvironmentBootstrap = ShouldPreferEnvironmentBootstrap(
+            plannerContext,
+            preferredPackIds,
+            preferredToolNames,
+            handoffTargetPackIds,
+            handoffTargetToolNames);
+        var prefersSetupAwareTools = ShouldPreferSetupAwareTools(
+            plannerContext,
+            preferredPackIds,
+            preferredToolNames,
+            handoffTargetPackIds,
+            handoffTargetToolNames);
         var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
         var focusTokenSupport = focusTokens.Length == 0 ? Array.Empty<int>() : new int[focusTokens.Length];
         string[]? toolSearchTexts = null;
@@ -733,6 +767,20 @@ internal sealed partial class ChatServiceSession {
                 ? WeightedRoutingCrossPackContinuationScoreBoost
                 : 0d;
             score += crossPackContinuationBoost;
+            var environmentDiscoverBoost =
+                prefersEnvironmentBootstrap
+                && ToolSupportsEnvironmentDiscovery(definition, _toolOrchestrationCatalog)
+                && ToolMatchesPlannerContractTargets(definition.Name, packId, preferredToolNames, handoffTargetToolNames, preferredPackIds, handoffTargetPackIds)
+                    ? WeightedRoutingEnvironmentDiscoverScoreBoost
+                    : 0d;
+            score += environmentDiscoverBoost;
+            var setupAwareBoost =
+                prefersSetupAwareTools
+                && ToolIsSetupAware(definition, _toolOrchestrationCatalog)
+                && ToolMatchesPlannerContractTargets(definition.Name, packId, preferredToolNames, handoffTargetToolNames, preferredPackIds, handoffTargetPackIds)
+                    ? WeightedRoutingSetupAwareScoreBoost
+                    : 0d;
+            score += setupAwareBoost;
 
             if (routingTokens.Length > 0) {
                 var searchText = toolSearchTexts?[i] ?? BuildToolRoutingSearchText(definition);
@@ -793,7 +841,9 @@ internal sealed partial class ChatServiceSession {
                 FocusTokenHits: focusTokenHits,
                 Adjustment: adjustment,
                 RemoteCapableBoost: remoteCapableBoost,
-                CrossPackContinuationBoost: crossPackContinuationBoost));
+                CrossPackContinuationBoost: crossPackContinuationBoost,
+                EnvironmentDiscoverBoost: environmentDiscoverBoost,
+                SetupAwareBoost: setupAwareBoost));
         }
 
         if (!hasSignal) {
@@ -968,6 +1018,39 @@ internal sealed partial class ChatServiceSession {
                || ToolExecutionScopes.IsRemoteCapable(schemaTraits.ExecutionScope);
     }
 
+    private static bool ToolSupportsEnvironmentDiscovery(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return false;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            return entry.IsEnvironmentDiscoverTool
+                   || string.Equals(entry.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(definition.Routing?.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ToolIsSetupAware(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return false;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            return entry.IsSetupAware
+                   || entry.SetupToolName.Length > 0
+                   || entry.SetupRequirementCount > 0
+                   || entry.SetupHintKeys.Count > 0;
+        }
+
+        return definition.Setup?.IsSetupAware == true
+               || !string.IsNullOrWhiteSpace(definition.Setup?.SetupToolName)
+               || definition.Setup?.Requirements.Count > 0
+               || definition.Setup?.SetupHintKeys.Count > 0;
+    }
+
     private static bool ToolSupportsCrossPackHandoff(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
         if (definition is null) {
             return false;
@@ -1003,6 +1086,68 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool ShouldPreferEnvironmentBootstrap(
+        PlannerContextMetadata plannerContext,
+        IReadOnlyCollection<string> preferredPackIds,
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetPackIds,
+        IReadOnlyCollection<string> handoffTargetToolNames) {
+        if ((preferredPackIds?.Count ?? 0) == 0 && (handoffTargetPackIds?.Count ?? 0) == 0) {
+            return false;
+        }
+
+        if ((preferredToolNames?.Count ?? 0) > 0 || (handoffTargetToolNames?.Count ?? 0) > 0) {
+            return false;
+        }
+
+        return plannerContext.RequiresLiveExecution
+               || plannerContext.MissingLiveEvidence.Length > 0
+               || plannerContext.StructuredNextActionSourceToolNames.Length > 0
+               || plannerContext.ContinuationSourceTool.Length > 0;
+    }
+
+    private static bool ShouldPreferSetupAwareTools(
+        PlannerContextMetadata plannerContext,
+        IReadOnlyCollection<string> preferredPackIds,
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetPackIds,
+        IReadOnlyCollection<string> handoffTargetToolNames) {
+        if ((preferredPackIds?.Count ?? 0) == 0
+            && (preferredToolNames?.Count ?? 0) == 0
+            && (handoffTargetPackIds?.Count ?? 0) == 0
+            && (handoffTargetToolNames?.Count ?? 0) == 0) {
+            return false;
+        }
+
+        return plannerContext.RequiresLiveExecution
+               || plannerContext.MissingLiveEvidence.Length > 0
+               || plannerContext.StructuredNextActionReason.Length > 0
+               || plannerContext.ContinuationReason.Length > 0;
+    }
+
+    private static bool ToolMatchesPlannerContractTargets(
+        string? toolName,
+        string? packId,
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetToolNames,
+        IReadOnlyCollection<string> preferredPackIds,
+        IReadOnlyCollection<string> handoffTargetPackIds) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length > 0
+            && ((preferredToolNames?.Contains(normalizedToolName, StringComparer.OrdinalIgnoreCase) ?? false)
+                || (handoffTargetToolNames?.Contains(normalizedToolName, StringComparer.OrdinalIgnoreCase) ?? false))) {
+            return true;
+        }
+
+        var normalizedPackId = NormalizePackId(packId);
+        if (normalizedPackId.Length == 0) {
+            return false;
+        }
+
+        return (preferredPackIds?.Contains(normalizedPackId, StringComparer.OrdinalIgnoreCase) ?? false)
+               || (handoffTargetPackIds?.Contains(normalizedPackId, StringComparer.OrdinalIgnoreCase) ?? false);
     }
 
     private static WeightedRoutingSelectionDiagnostics ResolveWeightedRoutingSelectionDiagnostics(

@@ -7,12 +7,16 @@ namespace IntelligenceX.Tools.EventLog;
 /// <summary>
 /// Safety and output limits for event log tools.
 /// </summary>
-public sealed class EventLogToolOptions : IToolPackRuntimeConfigurable {
+public sealed class EventLogToolOptions : IToolPackRuntimeConfigurable, IToolPackRuntimeOptionTarget {
     // Hard upper bounds: even if the host misconfigures options, keep filesystem scanning conservative.
     // These are intentionally higher than defaults but low enough to avoid "scan the whole disk" incidents.
     private const int EvtxFindMaxDepthUpper = 32;
     private const int EvtxFindMaxDirsScannedUpper = 50_000;
     private const int EvtxFindMaxFilesScannedUpper = 200_000;
+    private static readonly IReadOnlyList<string> RuntimeOptionKeyValues = new[] {
+        "eventlog",
+        "eventviewerx"
+    };
 
     /// <summary>
     /// Allowed root directories for any file-based log operations (for example: EVTX parsing).
@@ -45,6 +49,9 @@ public sealed class EventLogToolOptions : IToolPackRuntimeConfigurable {
     /// Maximum number of EVTX files enumerated for EVTX discovery helper tools.
     /// </summary>
     public int EvtxFindMaxFilesScanned { get; set; } = 8000;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <inheritdoc />
     public void ApplyRuntimeContext(ToolPackRuntimeContext context) {

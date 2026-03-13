@@ -429,6 +429,145 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesRepresentativeContractExamplesAndCrossPackPivots() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_environment_discover",
+                "Discover Active Directory environment scope.",
+                ToolSchema.Object(
+                        ("domain_controller", ToolSchema.String("Domain controller to target.")),
+                        ("search_base_dn", ToolSchema.String("Base DN to scope the query.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "domain_controller",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetRole = ToolRoutingTaxonomy.RoleDiagnostic,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "domain_controller",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect live event logs on a host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "system_metrics_summary",
+                "Collect CPU, memory, and disk health.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                })
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            "investigate the affected domain controller and continue into host evidence",
+            definitions,
+            6
+        }));
+
+        Assert.Contains("Contract-backed capability hints:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Representative live tool examples:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("domain controller or base DN", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Windows event logs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CPU, memory, and disk", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Cross-pack follow-up pivots: Event Log, System", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_FocusesRepresentativeExamplesOnPreferredPlannerPacks() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_environment_discover",
+                "Discover Active Directory environment scope.",
+                ToolSchema.Object(
+                        ("domain_controller", ToolSchema.String("Domain controller to target.")),
+                        ("search_base_dn", ToolSchema.String("Base DN to scope the query.")))
+                    .NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect live event logs on a host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "system_metrics_summary",
+                "Collect CPU, memory, and disk health.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                })
+        };
+
+        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            preferred_pack_ids: eventlog
+
+            continue with event evidence on the same host
+            """,
+            definitions,
+            4
+        }));
+
+        var sectionStart = prompt.IndexOf("Contract-backed capability hints:", StringComparison.OrdinalIgnoreCase);
+        Assert.True(sectionStart >= 0);
+        var sectionEnd = prompt.IndexOf("Return at most", sectionStart, StringComparison.OrdinalIgnoreCase);
+        Assert.True(sectionEnd > sectionStart);
+        var hintSection = prompt[sectionStart..sectionEnd];
+
+        Assert.Contains("Windows event logs", hintSection, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("domain controller or base DN", hintSection, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CPU, memory, and disk", hintSection, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildPlannerContextAugmentedRequest_UsesStructuredNextActionHintsWithoutCheckpoint() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var toolDefinitions = new List<ToolDefinition> {
@@ -741,6 +880,46 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("setup_tool eventlog_channels_list", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("recovery_tool eventlog_channels_list", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("handoff_target system/system_metrics_summary", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesEnvironmentDiscoveryAndSetupMetadataTokens() {
+        var definition = new ToolDefinition(
+            "ad_environment_discover",
+            "Discover Active Directory environment scope.",
+            ToolSchema.Object(
+                    ("domain_controller", ToolSchema.String("Domain controller.")),
+                    ("search_base_dn", ToolSchema.String("Base DN.")))
+                .NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupToolName = "ad_environment_catalog",
+                SetupHintKeys = new[] { "ad.scope" },
+                Requirements = new[] {
+                    new ToolSetupRequirement {
+                        RequirementId = "directory_scope",
+                        Kind = ToolSetupRequirementKinds.Configuration,
+                        HintKeys = new[] { "ad.dc" }
+                    }
+                }
+            });
+
+        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+
+        Assert.Contains("environment_discover", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("environment_discovery", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("setup_aware", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("setup_tool ad_environment_catalog", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("setup_requirement directory_scope", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("setup_kind configuration", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("setup_hint ad.scope", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("setup_hint ad.dc", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1538,6 +1717,54 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerCandidates_PrefersEnvironmentDiscoverToolsForPackBootstrapTurns() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"active_directory_probe_{i:D2}",
+                "Collect generic Active Directory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "zz_ad_environment_discover",
+            "Discover Active Directory environment scope and target domain controllers.",
+            ToolSchema.Object(
+                    ("domain_controller", ToolSchema.String("Domain controller.")),
+                    ("search_base_dn", ToolSchema.String("Base DN.")))
+                .NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+            }));
+
+        var selected = ChatServiceSession.BuildModelPlannerCandidatesForTesting(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            preferred_pack_ids: active_directory
+            allow_cached_evidence_reuse: false
+
+            continue with the same directory scope
+            """,
+            4,
+            ToolOrchestrationCatalog.Build(definitions));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "zz_ad_environment_discover", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildModelPlannerCandidates_DerivesHandoffTargetsFromSourceToolsInPlannerContext() {
         var definitions = new List<ToolDefinition>();
         for (var i = 0; i < 80; i++) {
@@ -1648,6 +1875,63 @@ public sealed class ChatServicePlannerPromptTests {
             insights,
             insight => (insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)?.GetValue(insight)?.ToString() ?? string.Empty)
                 .IndexOf("remote-capable host targeting", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_PrefersSetupAwareToolsForPlannerPackBootstrapTurns() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"eventlog_probe_{i:D2}",
+                "Collect generic event log diagnostics.",
+                ToolSchema.Object(("path", ToolSchema.String("Path."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "zz_eventlog_named_events_query",
+            "Query named event detections once valid values are known.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupToolName = "eventlog_named_events_catalog",
+                SetupHintKeys = new[] { "eventlog.named_values" }
+            }));
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        var selected = session.SelectWeightedToolSubsetForTesting(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            missing_live_evidence: validated event values
+            preferred_pack_ids: eventlog
+            allow_cached_evidence_reuse: false
+
+            continue with the same event evidence
+            """,
+            8,
+            out var insights);
+
+        Assert.Equal(8, selected.Count);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "zz_eventlog_named_events_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            insights,
+            insight => (insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)?.GetValue(insight)?.ToString() ?? string.Empty)
+                .IndexOf("setup-aware preflight support", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
     [Fact]

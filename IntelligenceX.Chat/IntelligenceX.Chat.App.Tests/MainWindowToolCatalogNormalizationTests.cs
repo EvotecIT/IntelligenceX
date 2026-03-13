@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App;
 using Xunit;
@@ -21,6 +22,11 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         "BuildToolCatalogExecutionSummary",
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("BuildToolCatalogExecutionSummary not found.");
+
+    private static readonly MethodInfo BuildToolStateMethod = typeof(MainWindow).GetMethod(
+        "BuildToolState",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("BuildToolState not found.");
 
     private static readonly FieldInfo ToolDescriptionsField = typeof(MainWindow).GetField(
         "_toolDescriptions",
@@ -56,6 +62,11 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         "_toolParameters",
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_toolParameters field not found.");
+
+    private static readonly FieldInfo ToolCatalogDefinitionsField = typeof(MainWindow).GetField(
+        "_toolCatalogDefinitions",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogDefinitions field not found.");
 
     private static readonly FieldInfo ToolWriteCapabilitiesField = typeof(MainWindow).GetField(
         "_toolWriteCapabilities",
@@ -270,6 +281,75 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         Assert.Empty(summary.RemoteCapablePackIds);
     }
 
+    /// <summary>
+    /// Ensures the desktop app preserves autonomy metadata when projecting tool catalogs into UI state.
+    /// </summary>
+    [Fact]
+    public void BuildToolState_PreservesAutonomyContractMetadata_FromToolCatalogDtos() {
+        var window = CreateWindow();
+        var tools = new[] {
+            new ToolDefinitionDto {
+                Name = "ad_environment_discover",
+                Description = "Discovers the current AD environment.",
+                DisplayName = "AD Environment Discover",
+                Category = "directory",
+                Tags = new[] { "bootstrap", "remote", "bootstrap" },
+                PackId = "ADPlayground",
+                PackName = "Active Directory",
+                PackDescription = "AD analysis and discovery",
+                PackSourceKind = ToolPackSourceKind.ClosedSource,
+                IsEnvironmentDiscoverTool = true,
+                IsPackInfoTool = false,
+                ExecutionScope = "local_or_remote",
+                SupportsTargetScoping = true,
+                TargetScopeArguments = new[] { "domain_controller", "search_base_dn", "domain_controller" },
+                SupportsRemoteHostTargeting = true,
+                RemoteHostArguments = new[] { "domain_controller", "server" },
+                IsSetupAware = true,
+                SetupToolName = " ad_environment_discover ",
+                IsHandoffAware = true,
+                HandoffTargetPackIds = new[] { "System", "eventlog", "system" },
+                HandoffTargetToolNames = new[] { "system_info", "eventlog_channels_list" },
+                IsRecoveryAware = true,
+                SupportsTransientRetry = true,
+                MaxRetryAttempts = 2,
+                RecoveryToolNames = new[] { "ad_environment_discover", "system_info" },
+                RequiredArguments = new[] { "domain_controller", "search_base_dn" },
+                Parameters = new[] {
+                    new ToolParameterDto { Name = "domain_controller", Type = "string", Required = true },
+                    new ToolParameterDto { Name = "search_base_dn", Type = "string", Required = false }
+                }
+            }
+        };
+
+        InvokeUpdateToolCatalog(window, tools);
+
+        var toolState = InvokeBuildToolState(window);
+        var tool = Assert.Single(toolState);
+
+        Assert.Equal("active_directory", GetProperty<string>(tool, "packId"));
+        Assert.Equal("Active Directory", GetProperty<string>(tool, "packName"));
+        Assert.Equal("AD analysis and discovery", GetProperty<string>(tool, "packDescription"));
+        Assert.Equal("closed_source", GetProperty<string>(tool, "packSourceKind"));
+        Assert.False(GetProperty<bool>(tool, "isPackInfoTool"));
+        Assert.True(GetProperty<bool>(tool, "isEnvironmentDiscoverTool"));
+        Assert.Equal("local_or_remote", GetProperty<string>(tool, "executionScope"));
+        Assert.True(GetProperty<bool>(tool, "supportsTargetScoping"));
+        Assert.Equal(new[] { "domain_controller", "search_base_dn" }, GetProperty<string[]>(tool, "targetScopeArguments"));
+        Assert.True(GetProperty<bool>(tool, "supportsRemoteHostTargeting"));
+        Assert.Equal(new[] { "domain_controller", "server" }, GetProperty<string[]>(tool, "remoteHostArguments"));
+        Assert.True(GetProperty<bool>(tool, "isSetupAware"));
+        Assert.Equal("ad_environment_discover", GetProperty<string>(tool, "setupToolName"));
+        Assert.True(GetProperty<bool>(tool, "isHandoffAware"));
+        Assert.Equal(new[] { "eventlog", "system" }, GetProperty<string[]>(tool, "handoffTargetPackIds"));
+        Assert.Equal(new[] { "eventlog_channels_list", "system_info" }, GetProperty<string[]>(tool, "handoffTargetToolNames"));
+        Assert.True(GetProperty<bool>(tool, "isRecoveryAware"));
+        Assert.True(GetProperty<bool>(tool, "supportsTransientRetry"));
+        Assert.Equal(2, GetProperty<int>(tool, "maxRetryAttempts"));
+        Assert.Equal(new[] { "ad_environment_discover", "system_info" }, GetProperty<string[]>(tool, "recoveryToolNames"));
+        Assert.Equal(new[] { "domain_controller", "search_base_dn" }, GetProperty<string[]>(tool, "requiredArguments"));
+    }
+
     private static MainWindow CreateWindow() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         SetField(ToolDescriptionsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -279,6 +359,7 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         SetField(ToolPackIdsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolPackNamesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolParametersField, window, new Dictionary<string, ToolParameterDto[]>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolCatalogDefinitionsField, window, new Dictionary<string, ToolDefinitionDto>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolWriteCapabilitiesField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolExecutionAwarenessField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolExecutionContractIdsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -306,6 +387,20 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         } catch (TargetInvocationException ex) {
             throw ex.InnerException ?? ex;
         }
+    }
+
+    private static object[] InvokeBuildToolState(MainWindow window) {
+        try {
+            return Assert.IsType<object[]>(BuildToolStateMethod.Invoke(window, Array.Empty<object>()));
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
+    private static T GetProperty<T>(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)
+            ?? throw new InvalidOperationException($"Property '{propertyName}' not found.");
+        return Assert.IsType<T>(property.GetValue(instance));
     }
 
     private static void SetField(FieldInfo field, MainWindow window, object value) {

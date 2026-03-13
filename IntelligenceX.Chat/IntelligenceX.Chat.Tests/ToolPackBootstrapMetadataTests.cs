@@ -5,9 +5,14 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
+using IntelligenceX.Tools.ADPlayground;
+using IntelligenceX.Tools.EventLog;
+using IntelligenceX.Tools.System;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -401,6 +406,39 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void ResolvePackRuntimeOptionKeys_UsesRealPackEngineAliases() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ResolvePackRuntimeOptionKeys",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(object), typeof(Type), typeof(string) },
+            modifiers: null);
+        Assert.NotNull(method);
+
+        var adOptions = new ActiveDirectoryToolOptions();
+        var eventLogOptions = new EventLogToolOptions();
+        var systemOptions = new SystemToolOptions();
+
+        var adKeys = Assert.IsAssignableFrom<IReadOnlyList<string>>(method!.Invoke(
+            null,
+            new object?[] { adOptions, typeof(ActiveDirectoryToolPack), null }));
+        var eventLogKeys = Assert.IsAssignableFrom<IReadOnlyList<string>>(method!.Invoke(
+            null,
+            new object?[] { eventLogOptions, typeof(EventLogToolPack), null }));
+        var systemKeys = Assert.IsAssignableFrom<IReadOnlyList<string>>(method!.Invoke(
+            null,
+            new object?[] { systemOptions, typeof(SystemToolPack), null }));
+
+        Assert.Contains("adplayground", adOptions.RuntimeOptionKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventviewerx", eventLogOptions.RuntimeOptionKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("computerx", systemOptions.RuntimeOptionKeys, StringComparer.OrdinalIgnoreCase);
+
+        Assert.Contains("active_directory", adKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog", eventLogKeys, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system", systemKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacks_IncludesOfficeImoPack_ByDefault() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
             DisabledPackIds = DisableDefaultsExcept("officeimo"),
@@ -440,6 +478,27 @@ public sealed class ToolPackBootstrapMetadataTests {
         });
 
         Assert.DoesNotContain(packs, static pack => string.Equals(pack.Descriptor.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_UsesCanonicalDescriptorIds_AndPublishesLegacyAliases() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            DisabledPackIds = DisableDefaultsExcept("active_directory", "filesystem", "reviewer_setup"),
+            EnableDefaultPluginPaths = false
+        });
+
+        var activeDirectory = Assert.Single(packs, static pack =>
+            string.Equals(pack.Descriptor.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("ad", activeDirectory.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("adplayground", activeDirectory.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
+
+        var fileSystem = Assert.Single(packs, static pack =>
+            string.Equals(pack.Descriptor.Id, "filesystem", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("fs", fileSystem.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
+
+        var reviewerSetup = Assert.Single(packs, static pack =>
+            string.Equals(pack.Descriptor.Id, "reviewer_setup", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("reviewersetup", reviewerSetup.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -637,6 +696,19 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void RegisterAll_Throws_WhenPackAliasNormalizesToDifferentCanonicalPackId() {
+        var packs = new IToolPack[] {
+            new TestPack("filesystem", "Filesystem", aliases: new[] { "event-log" })
+        };
+        var registry = new ToolRegistry();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ToolPackBootstrap.RegisterAll(registry, packs));
+
+        Assert.Contains("alias 'event-log'", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("'filesystem'", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void UpdatePackMetadataIndexes_Throws_WhenDescriptorIdsCollideAfterNormalization() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var descriptors = new[] {
@@ -650,6 +722,72 @@ public sealed class ToolPackBootstrapMetadataTests {
         var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
 
         Assert.Contains("both normalize to 'eventlog'", inner.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void UpdatePackMetadataIndexes_Throws_WhenAliasNormalizesToDifferentCanonicalPackId() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var descriptors = new[] {
+            new ToolPackDescriptor {
+                Id = "filesystem",
+                Name = "Filesystem",
+                Aliases = new[] { "eventlog" },
+                Tier = ToolCapabilityTier.ReadOnly,
+                SourceKind = "open_source"
+            }
+        };
+        var method = typeof(ChatServiceSession).GetMethod("UpdatePackMetadataIndexes", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+
+        var ex = Assert.Throws<TargetInvocationException>(() => method!.Invoke(session, new object[] { descriptors }));
+        var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
+
+        Assert.Contains("alias 'eventlog'", inner.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("'filesystem'", inner.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolDefinitionDtos_PreservesRepresentativePackMetadataFromOrchestrationCatalog() {
+        var adPack = new ActiveDirectoryToolPack(new ActiveDirectoryToolOptions());
+        var eventLogPack = new EventLogToolPack(new EventLogToolOptions());
+        var systemPack = new SystemToolPack(new SystemToolOptions());
+        IToolPack[] packs = { adPack, eventLogPack, systemPack };
+
+        var registry = new ToolRegistry();
+        ToolPackBootstrap.RegisterAll(registry, packs);
+
+        var definitions = registry.GetDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, packs);
+        var packAvailability = packs
+            .Select(static pack => new ToolPackAvailabilityInfo {
+                Id = pack.Descriptor.Id ?? string.Empty,
+                Name = pack.Descriptor.Name ?? string.Empty,
+                Description = pack.Descriptor.Description,
+                Tier = pack.Descriptor.Tier,
+                IsDangerous = pack.Descriptor.Tier == ToolCapabilityTier.DangerousWrite,
+                SourceKind = pack.Descriptor.SourceKind ?? string.Empty,
+                Enabled = true
+            })
+            .ToArray();
+        var toolDtos = ToolCatalogExportBuilder.BuildToolDefinitionDtos(definitions, orchestrationCatalog, packAvailability)
+            .ToDictionary(static tool => tool.Name, StringComparer.OrdinalIgnoreCase);
+        var packAvailabilityById = packAvailability.ToDictionary(
+            static pack => ToolPackBootstrap.NormalizePackId(pack.Id),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var toolName in new[] {
+                     "ad_pack_info",
+                     "ad_environment_discover",
+                     "ad_scope_discovery",
+                     "system_metrics_summary",
+                     "system_time_sync",
+                     "eventlog_channels_list",
+                     "eventlog_timeline_query"
+                 }) {
+            Assert.True(orchestrationCatalog.TryGetEntry(toolName, out var entry));
+            var dto = Assert.IsType<ToolDefinitionDto>(toolDtos[toolName]);
+            AssertToolDtoMatchesOrchestration(dto, entry!, packAvailabilityById);
+        }
     }
 
     private sealed class TestPackRuntimeSettings : IToolPackRuntimeSettings {
@@ -672,10 +810,11 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     private sealed class TestPack : IToolPack {
-        public TestPack(string id, string name) {
+        public TestPack(string id, string name, IReadOnlyList<string>? aliases = null) {
             Descriptor = new ToolPackDescriptor {
                 Id = id,
                 Name = name,
+                Aliases = aliases ?? Array.Empty<string>(),
                 Tier = ToolCapabilityTier.ReadOnly,
                 SourceKind = "open_source"
             };
@@ -792,5 +931,62 @@ public sealed class ToolPackBootstrapMetadataTests {
         public void Register(ToolRegistry registry) {
             throw new NotSupportedException();
         }
+    }
+
+    private static void AssertToolDtoMatchesOrchestration(
+        ToolDefinitionDto dto,
+        ToolOrchestrationCatalogEntry entry,
+        IReadOnlyDictionary<string, ToolPackAvailabilityInfo> packAvailabilityById) {
+        Assert.Equal(entry.PackId, dto.PackId);
+        Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
+        Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
+        Assert.Equal(entry.ExecutionScope, dto.ExecutionScope);
+        Assert.Equal(entry.SupportsTargetScoping, dto.SupportsTargetScoping);
+        Assert.Equal(entry.TargetScopeArguments, dto.TargetScopeArguments);
+        Assert.Equal(entry.SupportsRemoteHostTargeting, dto.SupportsRemoteHostTargeting);
+        Assert.Equal(entry.RemoteHostArguments, dto.RemoteHostArguments);
+        Assert.Equal(entry.IsSetupAware, dto.IsSetupAware);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.SetupToolName) ? null : entry.SetupToolName, dto.SetupToolName);
+        Assert.Equal(entry.IsHandoffAware, dto.IsHandoffAware);
+        Assert.Equal(
+            entry.HandoffEdges
+                .Select(static edge => edge.TargetPackId)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            dto.HandoffTargetPackIds);
+        Assert.Equal(
+            entry.HandoffEdges
+                .Select(static edge => edge.TargetToolName)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            dto.HandoffTargetToolNames);
+        Assert.Equal(entry.IsRecoveryAware, dto.IsRecoveryAware);
+        Assert.Equal(entry.SupportsTransientRetry, dto.SupportsTransientRetry);
+        Assert.Equal(entry.MaxRetryAttempts, dto.MaxRetryAttempts);
+        Assert.Equal(entry.RecoveryToolNames, dto.RecoveryToolNames);
+
+        if (string.IsNullOrWhiteSpace(entry.PackId)) {
+            Assert.Null(dto.PackName);
+            Assert.Null(dto.PackDescription);
+            Assert.Null(dto.PackSourceKind);
+            return;
+        }
+
+        var pack = Assert.IsType<ToolPackAvailabilityInfo>(packAvailabilityById[entry.PackId]);
+        Assert.Equal(pack.Name, dto.PackName);
+        Assert.Equal(
+            string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
+            dto.PackDescription);
+        Assert.Equal(ResolveExpectedSourceKind(pack.SourceKind), dto.PackSourceKind);
+    }
+
+    private static ToolPackSourceKind ResolveExpectedSourceKind(string? sourceKind) {
+        return ToolPackBootstrap.NormalizeSourceKind(sourceKind) switch {
+            "open_source" => ToolPackSourceKind.OpenSource,
+            "closed_source" => ToolPackSourceKind.ClosedSource,
+            _ => ToolPackSourceKind.Builtin
+        };
     }
 }

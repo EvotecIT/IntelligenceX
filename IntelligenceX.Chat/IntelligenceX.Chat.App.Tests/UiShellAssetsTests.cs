@@ -30,6 +30,26 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures the tools panel exposes autonomy contract hints from tool catalog metadata
+    /// instead of flattening remote/setup/handoff/recovery capabilities away.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesToolAutonomyContractRenderingAndSearchTerms() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var script = File.ReadAllText(scriptPath);
+
+        Assert.Contains("function formatExecutionScopeLabel(executionScope)", script, StringComparison.Ordinal);
+        Assert.Contains("if (tool.isEnvironmentDiscoverTool) {", script, StringComparison.Ordinal);
+        Assert.Contains("if (tool.supportsRemoteHostTargeting || String(tool.executionScope || \"\").toLowerCase() === \"local_or_remote\") {", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolContractSummary(item, \"Target arguments\", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolContractSummary(item, \"Handoff packs\", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolContractSummary(item, \"Recovery tools\", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);", script, StringComparison.Ordinal);
+        Assert.Contains("tool.isEnvironmentDiscoverTool ? \"environment discover preflight bootstrap\" : \"\",", script, StringComparison.Ordinal);
+        Assert.Contains("tool.isHandoffAware ? \"handoff pivot continuation\" : \"\",", script, StringComparison.Ordinal);
+        Assert.Contains("tool.supportsTransientRetry ? \"transient retry\" : \"\",", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures top header status chip remains scoped to compact runtime/session states
     /// and rejects long queue/usage-limit operational messages.
     /// </summary>

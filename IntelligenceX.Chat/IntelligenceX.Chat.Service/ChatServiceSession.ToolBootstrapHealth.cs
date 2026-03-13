@@ -68,7 +68,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         var candidateToolNames = _toolOrchestrationCatalog
-            .GetByPackAndRole(normalizedPackId, normalizedRole)
+            .GetByPackId(normalizedPackId)
+            .Where(entry => MatchesPreflightClassifier(entry, normalizedRole))
             .Select(static entry => entry.ToolName);
 
         var orderedCandidateToolNames = OrderBootstrapToolNamesByHealth(

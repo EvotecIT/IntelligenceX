@@ -36,6 +36,8 @@ public sealed class ToolAutonomySummaryBuilderTests {
 
         var packSummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("active_directory", orchestrationCatalog);
         Assert.NotNull(packSummary);
+        Assert.Equal(1, packSummary!.EnvironmentDiscoverTools);
+        Assert.Contains("ad_domain_monitor", packSummary.EnvironmentDiscoverToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(1, packSummary!.CrossPackHandoffTools);
         Assert.Contains("ad_domain_monitor", packSummary.CrossPackHandoffToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", packSummary.CrossPackTargetPacks, StringComparer.OrdinalIgnoreCase);
@@ -44,11 +46,13 @@ public sealed class ToolAutonomySummaryBuilderTests {
         Assert.NotNull(capabilitySummary);
         Assert.Equal(2, capabilitySummary!.RemoteCapableToolCount);
         Assert.Equal(1, capabilitySummary.SetupAwareToolCount);
+        Assert.Equal(1, capabilitySummary.EnvironmentDiscoverToolCount);
         Assert.Equal(2, capabilitySummary.HandoffAwareToolCount);
         Assert.Equal(1, capabilitySummary.RecoveryAwareToolCount);
         Assert.Equal(2, capabilitySummary.CrossPackHandoffToolCount);
         Assert.Contains("eventlog", capabilitySummary.RemoteCapablePackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", capabilitySummary.RemoteCapablePackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("active_directory", capabilitySummary.EnvironmentDiscoverPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("active_directory", capabilitySummary.CrossPackReadyPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog", capabilitySummary.CrossPackReadyPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", capabilitySummary.CrossPackTargetPackIds, StringComparer.OrdinalIgnoreCase);
@@ -152,6 +156,7 @@ public sealed class ToolAutonomySummaryBuilderTests {
                     IsRoutingAware = true,
                     RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
                     PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
                     DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
                     DomainIntentActionId = "act_domain_monitor"
                 },

@@ -19,8 +19,12 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const int PlannerRemoteCapablePriorityBoost = 300;
     private const int PlannerCrossPackContinuationPriorityBoost = 120;
+    private const int PlannerEnvironmentDiscoverPriorityBoost = 160;
+    private const int PlannerSetupAwarePriorityBoost = 110;
     private const double WeightedRoutingRemoteCapableScoreBoost = 3.5d;
     private const double WeightedRoutingCrossPackContinuationScoreBoost = 1.75d;
+    private const double WeightedRoutingEnvironmentDiscoverScoreBoost = 2.4d;
+    private const double WeightedRoutingSetupAwareScoreBoost = 1.65d;
 
     private IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
         return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
@@ -61,17 +65,28 @@ internal sealed partial class ChatServiceSession {
         // Deterministic but less registration-order-biased fallback:
         // round-robin one tool per catalog family before filling remaining slots.
         var familyOrder = new List<string>(uniqueDefinitions.Count);
-        var toolsByFamily = new Dictionary<string, Queue<ToolDefinition>>(StringComparer.OrdinalIgnoreCase);
+        var toolsByFamily = new Dictionary<string, List<ToolDefinition>>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < uniqueDefinitions.Count; i++) {
             var definition = uniqueDefinitions[i];
             var family = ResolveDeterministicSubsetFamilyKey(definition, toolOrchestrationCatalog);
-            if (!toolsByFamily.TryGetValue(family, out var queue)) {
-                queue = new Queue<ToolDefinition>();
-                toolsByFamily[family] = queue;
+            if (!toolsByFamily.TryGetValue(family, out var familyTools)) {
+                familyTools = new List<ToolDefinition>();
+                toolsByFamily[family] = familyTools;
                 familyOrder.Add(family);
             }
 
-            queue.Enqueue(definition);
+            familyTools.Add(definition);
+        }
+
+        var orderedToolsByFamily = new Dictionary<string, Queue<ToolDefinition>>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < familyOrder.Count; i++) {
+            var family = familyOrder[i];
+            if (!toolsByFamily.TryGetValue(family, out var familyTools) || familyTools.Count == 0) {
+                continue;
+            }
+
+            familyTools.Sort((left, right) => CompareDeterministicSubsetCandidates(left, right, toolOrchestrationCatalog));
+            orderedToolsByFamily[family] = new Queue<ToolDefinition>(familyTools);
         }
 
         var selected = new List<ToolDefinition>(limit);
@@ -80,7 +95,7 @@ internal sealed partial class ChatServiceSession {
             var addedInPass = false;
             for (var familyIndex = 0; familyIndex < familyOrder.Count && selected.Count < limit; familyIndex++) {
                 var family = familyOrder[familyIndex];
-                if (!toolsByFamily.TryGetValue(family, out var queue) || queue.Count == 0) {
+                if (!orderedToolsByFamily.TryGetValue(family, out var queue) || queue.Count == 0) {
                     continue;
                 }
 
@@ -112,6 +127,80 @@ internal sealed partial class ChatServiceSession {
         }
 
         return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
+    }
+
+    private static int CompareDeterministicSubsetCandidates(
+        ToolDefinition? left,
+        ToolDefinition? right,
+        ToolOrchestrationCatalog toolOrchestrationCatalog) {
+        var leftPriority = GetDeterministicSubsetPriority(left, toolOrchestrationCatalog);
+        var rightPriority = GetDeterministicSubsetPriority(right, toolOrchestrationCatalog);
+        var priorityCompare = leftPriority.CompareTo(rightPriority);
+        if (priorityCompare != 0) {
+            return priorityCompare;
+        }
+
+        return StringComparer.OrdinalIgnoreCase.Compare(left?.Name, right?.Name);
+    }
+
+    private static int GetDeterministicSubsetPriority(ToolDefinition? definition, ToolOrchestrationCatalog toolOrchestrationCatalog) {
+        if (definition is null) {
+            return 100;
+        }
+
+        if (toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            if (entry.IsEnvironmentDiscoverTool) {
+                return 0;
+            }
+
+            if (entry.IsSetupAware) {
+                return 1;
+            }
+
+            if (string.Equals(entry.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)
+                || entry.SupportsRemoteHostTargeting
+                || entry.RemoteHostArguments.Count > 0) {
+                return 2;
+            }
+
+            if (HasCrossPackHandoff(entry)) {
+                return 3;
+            }
+
+            return 4;
+        }
+
+        if (string.Equals(definition.Routing?.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+            return 0;
+        }
+
+        if (definition.Setup?.IsSetupAware == true) {
+            return 1;
+        }
+
+        var schemaTraits = ToolSchemaTraitProjection.Project(definition);
+        if (schemaTraits.SupportsRemoteHostTargeting
+            || string.Equals(schemaTraits.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)) {
+            return 2;
+        }
+
+        return 4;
+    }
+
+    private static bool HasCrossPackHandoff(ToolOrchestrationCatalogEntry entry) {
+        if (!entry.IsHandoffAware || entry.HandoffEdges.Count == 0) {
+            return false;
+        }
+
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(entry.PackId);
+        for (var i = 0; i < entry.HandoffEdges.Count; i++) {
+            var targetPackId = ToolPackBootstrap.NormalizePackId(entry.HandoffEdges[i].TargetPackId);
+            if (targetPackId.Length > 0 && !string.Equals(targetPackId, normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string ResolveDeterministicSubsetFamilyKey(
@@ -189,6 +278,12 @@ internal sealed partial class ChatServiceSession {
             }
             if (toolScore.CrossPackContinuationBoost > 0.01d) {
                 reasons.Add("cross-pack continuation support");
+            }
+            if (toolScore.EnvironmentDiscoverBoost > 0.01d) {
+                reasons.Add("environment discovery bootstrap");
+            }
+            if (toolScore.SetupAwareBoost > 0.01d) {
+                reasons.Add("setup-aware preflight support");
             }
             if (toolScore.Adjustment > 0.2d) {
                 reasons.Add("recent tool success");
@@ -400,16 +495,53 @@ internal sealed partial class ChatServiceSession {
         }
 
         var setupToolName = NormalizeRoutingSearchToken(definition.Setup?.SetupToolName);
+        var setupAware = definition.Setup?.IsSetupAware == true;
+        var environmentDiscover = string.Equals(definition.Routing?.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
         var recoveryToolNames = ExtractToolRecoveryHelperNames(definition, maxCount: 4);
         var handoffTargets = ExtractToolHandoffTargets(definition, maxCount: 6);
-        if (setupToolName.Length == 0 && recoveryToolNames.Length == 0 && handoffTargets.Length == 0) {
+        var setupRequirementIds = ExtractSetupRequirementIds(definition, maxCount: 4);
+        var setupRequirementKinds = ExtractSetupRequirementKinds(definition, maxCount: 4);
+        var setupHintKeys = ExtractSetupHintKeys(definition, maxCount: 6);
+        if (setupToolName.Length == 0
+            && !setupAware
+            && !environmentDiscover
+            && recoveryToolNames.Length == 0
+            && handoffTargets.Length == 0
+            && setupRequirementIds.Length == 0
+            && setupRequirementKinds.Length == 0
+            && setupHintKeys.Length == 0) {
             return string.Empty;
         }
 
-        var sb = new StringBuilder(160);
+        var sb = new StringBuilder(224);
+        if (environmentDiscover) {
+            sb.Append(" environment_discover");
+            sb.Append(" environment_discovery");
+            sb.Append(" scope_discovery");
+            sb.Append(" preflight");
+        }
+
+        if (setupAware) {
+            sb.Append(" setup_aware");
+            sb.Append(" setup_discovery");
+            sb.Append(" preflight");
+        }
+
         if (setupToolName.Length > 0) {
             sb.Append(" setup ").Append(setupToolName);
             sb.Append(" setup_tool ").Append(setupToolName);
+        }
+
+        for (var i = 0; i < setupRequirementIds.Length; i++) {
+            sb.Append(" setup_requirement ").Append(setupRequirementIds[i]);
+        }
+
+        for (var i = 0; i < setupRequirementKinds.Length; i++) {
+            sb.Append(" setup_kind ").Append(setupRequirementKinds[i]);
+        }
+
+        for (var i = 0; i < setupHintKeys.Length; i++) {
+            sb.Append(" setup_hint ").Append(setupHintKeys[i]);
         }
 
         for (var i = 0; i < recoveryToolNames.Length; i++) {
@@ -524,6 +656,78 @@ internal sealed partial class ChatServiceSession {
         }
 
         return targets.Count == 0 ? Array.Empty<string>() : targets.ToArray();
+    }
+
+    private static string[] ExtractSetupRequirementIds(ToolDefinition definition, int maxCount) {
+        if (definition?.Setup?.Requirements is not { Count: > 0 } || maxCount <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>(Math.Min(maxCount, definition.Setup.Requirements.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definition.Setup.Requirements.Count && values.Count < maxCount; i++) {
+            var normalized = NormalizeRoutingSearchToken(definition.Setup.Requirements[i]?.RequirementId);
+            if (normalized.Length == 0 || !seen.Add(normalized)) {
+                continue;
+            }
+
+            values.Add(normalized);
+        }
+
+        return values.Count == 0 ? Array.Empty<string>() : values.ToArray();
+    }
+
+    private static string[] ExtractSetupRequirementKinds(ToolDefinition definition, int maxCount) {
+        if (definition?.Setup?.Requirements is not { Count: > 0 } || maxCount <= 0) {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>(Math.Min(maxCount, definition.Setup.Requirements.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definition.Setup.Requirements.Count && values.Count < maxCount; i++) {
+            var normalized = NormalizeRoutingSearchToken(definition.Setup.Requirements[i]?.Kind);
+            if (normalized.Length == 0 || !seen.Add(normalized)) {
+                continue;
+            }
+
+            values.Add(normalized);
+        }
+
+        return values.Count == 0 ? Array.Empty<string>() : values.ToArray();
+    }
+
+    private static string[] ExtractSetupHintKeys(ToolDefinition definition, int maxCount) {
+        if (maxCount <= 0 || definition?.Setup is null) {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>(Math.Min(maxCount, 8));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AppendValue(string? value) {
+            var normalized = NormalizeRoutingSearchToken(value);
+            if (normalized.Length == 0 || !seen.Add(normalized) || values.Count >= maxCount) {
+                return;
+            }
+
+            values.Add(normalized);
+        }
+
+        for (var i = 0; i < definition.Setup.SetupHintKeys.Count && values.Count < maxCount; i++) {
+            AppendValue(definition.Setup.SetupHintKeys[i]);
+        }
+
+        for (var i = 0; i < definition.Setup.Requirements.Count && values.Count < maxCount; i++) {
+            var requirement = definition.Setup.Requirements[i];
+            if (requirement?.HintKeys is not { Count: > 0 }) {
+                continue;
+            }
+
+            for (var h = 0; h < requirement.HintKeys.Count && values.Count < maxCount; h++) {
+                AppendValue(requirement.HintKeys[h]);
+            }
+        }
+
+        return values.Count == 0 ? Array.Empty<string>() : values.ToArray();
     }
 
     private static string NormalizeRoutingSearchToken(string? value) {

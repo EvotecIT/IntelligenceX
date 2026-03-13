@@ -520,6 +520,23 @@ internal sealed partial class ChatServiceSession {
                 sb.AppendLine(hintLine);
             }
         }
+
+        var plannerPromptHintEntries = CollectPlannerPromptHintEntries(definitions, plannerContext);
+        var representativeExamples = ToolContractPromptExamples.BuildRepresentativeExamples(plannerPromptHintEntries);
+        var crossPackTargets = ToolContractPromptExamples.BuildCrossPackTargetPackDisplayNames(plannerPromptHintEntries);
+        if (representativeExamples.Count > 0 || crossPackTargets.Count > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Contract-backed capability hints:");
+            if (representativeExamples.Count > 0) {
+                sb.Append("Representative live tool examples: ")
+                    .AppendLine(string.Join("; ", representativeExamples));
+            }
+
+            if (crossPackTargets.Count > 0) {
+                sb.Append("Cross-pack follow-up pivots: ")
+                    .AppendLine(string.Join(", ", crossPackTargets));
+            }
+        }
         sb.AppendLine();
         sb.AppendLine($"Return at most {Math.Max(1, limit)} tool names.");
         sb.AppendLine("Available tools:");
@@ -655,6 +672,53 @@ internal sealed partial class ChatServiceSession {
             .Where(static tag => !string.IsNullOrWhiteSpace(tag))
             .Take(maxCount)
             .ToArray();
+    }
+
+    private static IReadOnlyList<ToolOrchestrationCatalogEntry> CollectPlannerPromptHintEntries(
+        IReadOnlyList<ToolDefinition> definitions,
+        PlannerContextMetadata plannerContext) {
+        if (definitions.Count == 0) {
+            return Array.Empty<ToolOrchestrationCatalogEntry>();
+        }
+
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        var preferredPackIds = new HashSet<string>(
+            plannerContext.PreferredPackIds
+                .Concat(plannerContext.HandoffTargetPackIds)
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        var preferredToolNames = new HashSet<string>(
+            plannerContext.PreferredToolNames
+                .Concat(plannerContext.HandoffTargetToolNames)
+                .Where(static toolName => !string.IsNullOrWhiteSpace(toolName)),
+            StringComparer.OrdinalIgnoreCase);
+
+        var focusedEntries = new List<ToolOrchestrationCatalogEntry>(definitions.Count);
+        var allEntries = new List<ToolOrchestrationCatalogEntry>(definitions.Count);
+        var seenToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var toolName = (definitions[i].Name ?? string.Empty).Trim();
+            if (toolName.Length == 0
+                || !seenToolNames.Add(toolName)
+                || !orchestrationCatalog.TryGetEntry(toolName, out var entry)
+                || entry.IsPackInfoTool) {
+                continue;
+            }
+
+            allEntries.Add(entry);
+            if (preferredPackIds.Count == 0 && preferredToolNames.Count == 0) {
+                continue;
+            }
+
+            var normalizedPackId = NormalizePackId(entry.PackId);
+            if (preferredToolNames.Contains(entry.ToolName)
+                || (normalizedPackId.Length > 0 && preferredPackIds.Contains(normalizedPackId))) {
+                focusedEntries.Add(entry);
+            }
+        }
+
+        return focusedEntries.Count > 0 ? focusedEntries : allEntries;
     }
 
     private static string ResolvePlannerCategory(ToolDefinition definition) {
@@ -1047,7 +1111,9 @@ internal sealed partial class ChatServiceSession {
         int FocusTokenHits,
         double Adjustment,
         double RemoteCapableBoost,
-        double CrossPackContinuationBoost);
+        double CrossPackContinuationBoost,
+        double EnvironmentDiscoverBoost,
+        double SetupAwareBoost);
 
     private enum ToolRoutingInsightStrategy {
         Unknown = 0,

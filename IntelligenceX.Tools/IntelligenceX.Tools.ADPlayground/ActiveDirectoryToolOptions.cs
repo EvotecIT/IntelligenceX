@@ -7,7 +7,13 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// <summary>
 /// Safety and connection options for Active Directory tools.
 /// </summary>
-public sealed class ActiveDirectoryToolOptions : IToolPackRuntimeConfigurable {
+public sealed class ActiveDirectoryToolOptions : IToolPackRuntimeConfigurable, IToolPackRuntimeOptionTarget {
+    private static readonly IReadOnlyList<string> RuntimeOptionKeyValues = new[] {
+        "active_directory",
+        "ad",
+        "adplayground"
+    };
+
     /// <summary>
     /// Optional domain controller hostname (if not specified, the underlying implementation may use defaults).
     /// </summary>
@@ -27,6 +33,9 @@ public sealed class ActiveDirectoryToolOptions : IToolPackRuntimeConfigurable {
     /// Allowed roots for persisted monitoring snapshot inspection.
     /// </summary>
     public List<string> AllowedMonitoringRoots { get; } = new();
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <inheritdoc />
     public void ApplyRuntimeContext(ToolPackRuntimeContext context) {

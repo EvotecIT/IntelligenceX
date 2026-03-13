@@ -135,6 +135,16 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.Contains("system_info", timeline.HandoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.True(timeline.IsRecoveryAware);
         Assert.Contains("eventlog_channels_list", timeline.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+
+        var adPackInfo = Assert.Single(toolDefinitions, static item =>
+            string.Equals(item.Name, "ad_pack_info", StringComparison.OrdinalIgnoreCase));
+        Assert.True(adPackInfo.IsPackInfoTool);
+        Assert.False(adPackInfo.IsEnvironmentDiscoverTool);
+
+        var adEnvironmentDiscover = Assert.Single(toolDefinitions, static item =>
+            string.Equals(item.Name, "ad_environment_discover", StringComparison.OrdinalIgnoreCase));
+        Assert.False(adEnvironmentDiscover.IsPackInfoTool);
+        Assert.True(adEnvironmentDiscover.IsEnvironmentDiscoverTool);
     }
 
     [Fact]
@@ -173,6 +183,125 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.True(routingCatalog.RemoteCapableTools > 0);
         Assert.True(routingCatalog.CrossPackHandoffTools > 0);
         Assert.NotEmpty(routingCatalog.AutonomyReadinessHighlights);
+    }
+
+    [Fact]
+    public async Task HandleToolHealthAsync_UsesSameContractBackedPackInfoSurfaceAsExportedToolCatalog() {
+        var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        var handleListToolsMethod = typeof(ChatServiceSession).GetMethod("HandleListToolsAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        var handleToolHealthMethod = typeof(ChatServiceSession).GetMethod("HandleToolHealthAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildMethod);
+        Assert.NotNull(handleListToolsMethod);
+        Assert.NotNull(handleToolHealthMethod);
+
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        rebuildMethod!.Invoke(session, Array.Empty<object>());
+
+        ToolListMessage toolListMessage;
+        using (var toolsStream = new MemoryStream())
+        using (var toolsWriter = new StreamWriter(toolsStream) { AutoFlush = true }) {
+            var listTask = Assert.IsAssignableFrom<Task>(handleListToolsMethod!.Invoke(session, new object?[] {
+                toolsWriter,
+                "req_list_tools_for_health_parity",
+                CancellationToken.None
+            }));
+            await listTask;
+
+            toolsStream.Position = 0;
+            using var toolsReader = new StreamReader(toolsStream);
+            var toolsJson = await toolsReader.ReadToEndAsync();
+            var parsedTools = JsonSerializer.Deserialize<ChatServiceMessage>(toolsJson, ChatServiceJsonContext.Default.ChatServiceMessage);
+            toolListMessage = Assert.IsType<ToolListMessage>(parsedTools);
+        }
+
+        ToolHealthMessage toolHealthMessage;
+        using (var healthStream = new MemoryStream())
+        using (var healthWriter = new StreamWriter(healthStream) { AutoFlush = true }) {
+            var healthTask = Assert.IsAssignableFrom<Task>(handleToolHealthMethod!.Invoke(session, new object?[] {
+                healthWriter,
+                new CheckToolHealthRequest {
+                    RequestId = "req_tool_health_parity"
+                },
+                CancellationToken.None
+            }));
+            await healthTask;
+
+            healthStream.Position = 0;
+            using var healthReader = new StreamReader(healthStream);
+            var healthJson = await healthReader.ReadToEndAsync();
+            var parsedHealth = JsonSerializer.Deserialize<ChatServiceMessage>(healthJson, ChatServiceJsonContext.Default.ChatServiceMessage);
+            toolHealthMessage = Assert.IsType<ToolHealthMessage>(parsedHealth);
+        }
+
+        var exportedPackInfoTools = toolListMessage.Tools
+            .Where(static tool => tool.IsPackInfoTool)
+            .OrderBy(static tool => tool.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var exportedEnvironmentDiscoverTools = toolListMessage.Tools
+            .Where(static tool => tool.IsEnvironmentDiscoverTool)
+            .Select(static tool => tool.Name)
+            .ToArray();
+        var exportedToolsByName = toolListMessage.Tools.ToDictionary(static tool => tool.Name, StringComparer.OrdinalIgnoreCase);
+        var exportedPacksById = toolListMessage.Packs.ToDictionary(static pack => pack.Id, StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(exportedPackInfoTools.Length, toolHealthMessage.Probes.Length);
+        Assert.Equal(toolHealthMessage.Probes.Length, toolHealthMessage.OkCount + toolHealthMessage.FailedCount);
+
+        foreach (var probe in toolHealthMessage.Probes) {
+            Assert.True(exportedToolsByName.TryGetValue(probe.ToolName, out var exportedTool));
+            Assert.True(exportedTool.IsPackInfoTool);
+            Assert.False(exportedTool.IsEnvironmentDiscoverTool);
+            Assert.DoesNotContain(probe.ToolName, exportedEnvironmentDiscoverTools, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(exportedTool.PackId, probe.PackId);
+
+            if (!string.IsNullOrWhiteSpace(probe.PackId) && exportedPacksById.TryGetValue(probe.PackId, out var exportedPack)) {
+                Assert.Equal(exportedPack.Name, probe.PackName);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task GetToolHealthProbeCatalog_AppliesSourceAndPackFiltersWithoutLeavingPackInfoSurface() {
+        var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
+        var handleListToolsMethod = typeof(ChatServiceSession).GetMethod("HandleListToolsAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildMethod);
+        Assert.NotNull(handleListToolsMethod);
+
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        rebuildMethod!.Invoke(session, Array.Empty<object>());
+
+        ToolListMessage toolListMessage;
+        using (var toolsStream = new MemoryStream())
+        using (var toolsWriter = new StreamWriter(toolsStream) { AutoFlush = true }) {
+            var listTask = Assert.IsAssignableFrom<Task>(handleListToolsMethod!.Invoke(session, new object?[] {
+                toolsWriter,
+                "req_list_tools_for_probe_catalog_filters",
+                CancellationToken.None
+            }));
+            await listTask;
+
+            toolsStream.Position = 0;
+            using var toolsReader = new StreamReader(toolsStream);
+            var toolsJson = await toolsReader.ReadToEndAsync();
+            var parsedTools = JsonSerializer.Deserialize<ChatServiceMessage>(toolsJson, ChatServiceJsonContext.Default.ChatServiceMessage);
+            toolListMessage = Assert.IsType<ToolListMessage>(parsedTools);
+        }
+
+        var filteredCatalog = session.GetToolHealthProbeCatalog(
+            new[] { ToolPackSourceKind.ClosedSource },
+            new[] { "active_directory", "eventlog" });
+        Assert.NotEmpty(filteredCatalog);
+
+        var exportedToolsByName = toolListMessage.Tools.ToDictionary(static tool => tool.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in filteredCatalog) {
+            Assert.Equal(ToolPackSourceKind.ClosedSource, entry.SourceKind);
+            Assert.Equal("active_directory", entry.PackId);
+            Assert.True(exportedToolsByName.TryGetValue(entry.ToolName, out var exportedTool));
+            Assert.True(exportedTool.IsPackInfoTool);
+            Assert.False(exportedTool.IsEnvironmentDiscoverTool);
+            Assert.Equal(exportedTool.PackId, entry.PackId);
+            Assert.Equal(exportedTool.PackName, entry.PackName);
+        }
     }
 
     [Fact]
@@ -364,6 +493,196 @@ public sealed class ChatServiceToolingBootstrapTests {
             using var document = JsonDocument.Parse(File.ReadAllText(cachePath));
             Assert.True(document.RootElement.TryGetProperty("CapabilitySnapshot", out var capabilitySnapshot));
             Assert.False(capabilitySnapshot.GetProperty("ToolingAvailable").GetBoolean());
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public async Task HandleListToolsAsync_PersistedPreviewPreservesAutonomyRichToolAndPackMetadata() {
+        var cachePath = Path.Combine(
+            Path.GetTempPath(),
+            "IntelligenceX.Chat.Tests",
+            "tooling-cache-persisted-preview-autonomy-" + Guid.NewGuid().ToString("N") + ".json");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var keyMethod = typeof(ChatServiceSession).GetMethod(
+                "BuildToolingBootstrapCacheKey",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            var runtimePolicyOptionsMethod = typeof(ChatServiceSession).GetMethod(
+                "BuildRuntimePolicyOptions",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(keyMethod);
+            Assert.NotNull(runtimePolicyOptionsMethod);
+            var options = new ServiceOptions();
+            var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
+                null,
+                new object[] { options }));
+            var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+            var cacheKey = Assert.IsType<string>(keyMethod!.Invoke(
+                null,
+                new object?[] { options, runtimePolicyOptions, resolvedRuntimePolicyOptions }));
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                cacheKey,
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "ad_environment_discover",
+                            Description = "Discover AD environment context.",
+                            PackId = "active_directory",
+                            PackName = "ADPlayground",
+                            PackSourceKind = ToolPackSourceKind.ClosedSource,
+                            IsEnvironmentDiscoverTool = true,
+                            ExecutionScope = "local_or_remote",
+                            SupportsTargetScoping = true,
+                            TargetScopeArguments = new[] { "domain_controller", "search_base_dn" },
+                            SupportsRemoteHostTargeting = true,
+                            RemoteHostArguments = new[] { "domain_controller" },
+                            IsSetupAware = true,
+                            SetupToolName = "ad_environment_discover",
+                            IsHandoffAware = true,
+                            HandoffTargetPackIds = new[] { "eventlog", "system" },
+                            HandoffTargetToolNames = new[] { "eventlog_channels_list", "system_info" },
+                            IsRecoveryAware = true,
+                            SupportsTransientRetry = true,
+                            MaxRetryAttempts = 1,
+                            RecoveryToolNames = new[] { "ad_environment_discover" }
+                        }
+                    },
+                    PackSummaries = new[] {
+                        new ToolPackInfoDto {
+                            Id = "active_directory",
+                            Name = "Active Directory",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false,
+                            SourceKind = ToolPackSourceKind.ClosedSource,
+                            AutonomySummary = new ToolPackAutonomySummaryDto {
+                                TotalTools = 1,
+                                RemoteCapableTools = 1,
+                                RemoteCapableToolNames = new[] { "ad_environment_discover" },
+                                SetupAwareTools = 1,
+                                SetupAwareToolNames = new[] { "ad_environment_discover" },
+                                HandoffAwareTools = 1,
+                                HandoffAwareToolNames = new[] { "ad_environment_discover" },
+                                RecoveryAwareTools = 1,
+                                RecoveryAwareToolNames = new[] { "ad_environment_discover" },
+                                CrossPackHandoffTools = 1,
+                                CrossPackHandoffToolNames = new[] { "ad_environment_discover" },
+                                CrossPackTargetPacks = new[] { "eventlog", "system" }
+                            }
+                        }
+                    },
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "active_directory",
+                            Name = "ADPlayground",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "active_directory" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "ad_environment_discover" },
+                        RemoteReachabilityMode = "remote_capable",
+                        Autonomy = new SessionCapabilityAutonomySummaryDto {
+                            RemoteCapableToolCount = 1,
+                            SetupAwareToolCount = 1,
+                            HandoffAwareToolCount = 1,
+                            RecoveryAwareToolCount = 1,
+                            CrossPackHandoffToolCount = 1,
+                            RemoteCapablePackIds = new[] { "active_directory" },
+                            CrossPackReadyPackIds = new[] { "active_directory" },
+                            CrossPackTargetPackIds = new[] { "eventlog", "system" }
+                        }
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                });
+
+            var session = new ChatServiceSession(options, Stream.Null, cache);
+            var orchestrationCatalogField = typeof(ChatServiceSession).GetField("_toolOrchestrationCatalog", BindingFlags.NonPublic | BindingFlags.Instance);
+            var handleListToolsMethod = typeof(ChatServiceSession).GetMethod("HandleListToolsAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(orchestrationCatalogField);
+            Assert.NotNull(handleListToolsMethod);
+
+            var previewCatalog = Assert.IsType<ToolOrchestrationCatalog>(orchestrationCatalogField!.GetValue(session));
+            Assert.Equal(0, previewCatalog.Count);
+
+            var previewCapabilitySnapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+            Assert.NotNull(previewCapabilitySnapshot.Autonomy);
+            Assert.Equal(1, previewCapabilitySnapshot.Autonomy!.RemoteCapableToolCount);
+            Assert.Equal(new[] { "eventlog", "system" }, previewCapabilitySnapshot.Autonomy.CrossPackTargetPackIds);
+
+            using var memoryStream = new MemoryStream();
+            using var writer = new StreamWriter(memoryStream) { AutoFlush = true };
+            var task = Assert.IsAssignableFrom<Task>(handleListToolsMethod!.Invoke(session, new object?[] {
+                writer,
+                "req_list_tools_persisted_preview",
+                CancellationToken.None
+            }));
+            await task;
+
+            memoryStream.Position = 0;
+            using var reader = new StreamReader(memoryStream);
+            var json = await reader.ReadToEndAsync();
+            var parsed = JsonSerializer.Deserialize<ChatServiceMessage>(json, ChatServiceJsonContext.Default.ChatServiceMessage);
+            var message = Assert.IsType<ToolListMessage>(parsed);
+
+            var tool = Assert.Single(message.Tools);
+            Assert.Equal("ad_environment_discover", tool.Name);
+            Assert.True(tool.IsEnvironmentDiscoverTool);
+            Assert.Equal("local_or_remote", tool.ExecutionScope);
+            Assert.Equal(new[] { "domain_controller", "search_base_dn" }, tool.TargetScopeArguments);
+            Assert.Equal(new[] { "domain_controller" }, tool.RemoteHostArguments);
+            Assert.Equal("ad_environment_discover", tool.SetupToolName);
+            Assert.Equal(new[] { "eventlog", "system" }, tool.HandoffTargetPackIds);
+            Assert.Equal(new[] { "eventlog_channels_list", "system_info" }, tool.HandoffTargetToolNames);
+            Assert.Equal(new[] { "ad_environment_discover" }, tool.RecoveryToolNames);
+
+            var pack = Assert.Single(message.Packs);
+            Assert.Equal("active_directory", pack.Id);
+            var autonomySummary = Assert.IsType<ToolPackAutonomySummaryDto>(pack.AutonomySummary);
+            Assert.Equal(1, autonomySummary.RemoteCapableTools);
+            Assert.Equal(new[] { "ad_environment_discover" }, autonomySummary.RemoteCapableToolNames);
+            Assert.Equal(new[] { "eventlog", "system" }, autonomySummary.CrossPackTargetPacks);
+
+            var capabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(message.CapabilitySnapshot);
+            Assert.Equal("remote_capable", capabilitySnapshot.RemoteReachabilityMode);
+            Assert.NotNull(capabilitySnapshot.Autonomy);
+            Assert.Equal(1, capabilitySnapshot.Autonomy!.RemoteCapableToolCount);
+            Assert.Equal(new[] { "eventlog", "system" }, capabilitySnapshot.Autonomy.CrossPackTargetPackIds);
         } finally {
             try {
                 if (File.Exists(cachePath)) {

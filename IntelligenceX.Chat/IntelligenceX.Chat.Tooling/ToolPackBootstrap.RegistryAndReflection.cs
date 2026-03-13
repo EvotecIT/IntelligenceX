@@ -67,10 +67,9 @@ public static partial class ToolPackBootstrap {
                 continue;
             }
 
-            EnsureNoPackIdNormalizationCollision(
+            EnsureNoPackIdentityNormalizationCollisions(
                 descriptorIdsByNormalizedPackId,
-                normalizedPack.Descriptor.Id,
-                normalizedPackId);
+                normalizedPack.Descriptor);
 
             var defaultEnabled = !normalizedPack.Descriptor.IsDangerous
                                  && normalizedPack.Descriptor.Tier != ToolCapabilityTier.DangerousWrite;
@@ -494,7 +493,7 @@ public static partial class ToolPackBootstrap {
             var pack = packList[packIndex];
             var descriptorId = (pack.Descriptor.Id ?? string.Empty).Trim();
             var normalizedPackId = NormalizePackId(descriptorId);
-            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedPackId);
+            EnsureNoPackIdentityNormalizationCollisions(descriptorIdsByNormalizedPackId, pack.Descriptor);
             if (normalizedPackId.Length == 0) {
                 normalizedPackId = "pack_" + (packIndex + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
@@ -642,6 +641,39 @@ public static partial class ToolPackBootstrap {
         }
 
         descriptorIdsByNormalizedPackId[normalizedPackId] = normalizedDescriptorId;
+    }
+
+    private static void EnsureNoPackIdentityNormalizationCollisions(
+        IDictionary<string, string> descriptorIdsByNormalizedPackId,
+        ToolPackDescriptor descriptor) {
+        var descriptorId = (descriptor.Id ?? string.Empty).Trim();
+        var normalizedPrimaryPackId = NormalizePackId(descriptorId);
+        EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedPrimaryPackId);
+
+        if (descriptor.Aliases is not { Count: > 0 }) {
+            return;
+        }
+
+        var seenAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < descriptor.Aliases.Count; i++) {
+            var alias = (descriptor.Aliases[i] ?? string.Empty).Trim();
+            if (alias.Length == 0 || !seenAliases.Add(alias)) {
+                continue;
+            }
+
+            var normalizedAliasPackId = NormalizePackId(alias);
+            if (normalizedAliasPackId.Length == 0) {
+                continue;
+            }
+
+            if (normalizedPrimaryPackId.Length > 0
+                && !string.Equals(normalizedAliasPackId, normalizedPrimaryPackId, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException(
+                    $"Tool pack alias '{alias}' for '{NormalizeCollisionDescriptorId(descriptorId)}' normalizes to '{normalizedAliasPackId}' instead of '{normalizedPrimaryPackId}'.");
+            }
+
+            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedAliasPackId);
+        }
     }
 
     private static string NormalizeCollisionDescriptorId(string descriptorId) {

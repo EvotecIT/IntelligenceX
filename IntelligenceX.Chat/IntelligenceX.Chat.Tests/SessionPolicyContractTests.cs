@@ -36,7 +36,9 @@ public sealed class SessionPolicyContractTests {
                             RemoteCapableTools = 1,
                             RemoteCapableToolNames = new[] { "testimox_rules_run" },
                             SetupAwareTools = 1,
+                            EnvironmentDiscoverTools = 1,
                             SetupAwareToolNames = new[] { "testimox_pack_info" },
+                            EnvironmentDiscoverToolNames = new[] { "testimox_pack_info" },
                             HandoffAwareTools = 2,
                             HandoffAwareToolNames = new[] { "testimox_rules_run", "testimox_run_summary" },
                             RecoveryAwareTools = 1,
@@ -133,10 +135,12 @@ public sealed class SessionPolicyContractTests {
                     Autonomy = new SessionCapabilityAutonomySummaryDto {
                         RemoteCapableToolCount = 2,
                         SetupAwareToolCount = 1,
+                        EnvironmentDiscoverToolCount = 1,
                         HandoffAwareToolCount = 2,
                         RecoveryAwareToolCount = 1,
                         CrossPackHandoffToolCount = 1,
                         RemoteCapablePackIds = new[] { "testimox" },
+                        EnvironmentDiscoverPackIds = new[] { "testimox" },
                         CrossPackReadyPackIds = new[] { "testimox" },
                         CrossPackTargetPackIds = new[] { "system", "eventlog" }
                     }
@@ -190,6 +194,7 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal("unit_test_tool", capabilitySnapshot.HealthyTools[0]);
         var autonomy = Assert.IsType<SessionCapabilityAutonomySummaryDto>(capabilitySnapshot.Autonomy);
         Assert.Equal(2, autonomy.RemoteCapableToolCount);
+        Assert.Equal(1, autonomy.EnvironmentDiscoverToolCount);
         Assert.Equal(new[] { "system", "eventlog" }, autonomy.CrossPackTargetPackIds);
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(policy.StartupBootstrap);
         Assert.Equal(4120, startupBootstrap.TotalMs);
@@ -210,6 +215,7 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal("License expired on 2026-03-31.", policy.Packs[0].DisabledReason);
         var autonomySummary = Assert.IsType<ToolPackAutonomySummaryDto>(policy.Packs[0].AutonomySummary);
         Assert.Equal(3, autonomySummary.TotalTools);
+        Assert.Equal(1, autonomySummary.EnvironmentDiscoverTools);
         Assert.Equal(new[] { "active_directory", "eventlog", "system" }, autonomySummary.CrossPackTargetPacks);
         Assert.Single(policy.Plugins);
         Assert.Equal("ix-testimox", policy.Plugins[0].Id);

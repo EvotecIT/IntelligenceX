@@ -15,6 +15,10 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// Number of setup-aware tools in the enabled pack set.
     /// </summary>
     public int SetupAwareToolCount { get; init; }
+    /// <summary>
+    /// Number of environment-discovery tools in the enabled pack set.
+    /// </summary>
+    public int EnvironmentDiscoverToolCount { get; init; }
 
     /// <summary>
     /// Number of handoff-aware tools in the enabled pack set.
@@ -35,6 +39,10 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// Enabled pack ids that currently expose at least one remote-capable tool.
     /// </summary>
     public string[] RemoteCapablePackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Enabled pack ids that currently expose at least one environment-discovery tool.
+    /// </summary>
+    public string[] EnvironmentDiscoverPackIds { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Enabled pack ids that currently expose at least one cross-pack handoff.

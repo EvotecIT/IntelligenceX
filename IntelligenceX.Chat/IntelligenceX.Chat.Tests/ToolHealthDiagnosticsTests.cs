@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -48,12 +49,73 @@ public sealed class ToolHealthDiagnosticsTests {
     [Fact]
     public async Task ProbeAsync_ReturnsOk_WhenToolOutputIsHealthy() {
         var registry = new ToolRegistry();
-        registry.Register(new StubTool("system_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
 
         Assert.True(result.Ok);
         Assert.Null(result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_RejectsToolWithoutPackInfoRoleEvenWhenNameLooksLikePackInfo() {
+        var invoked = false;
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            (_, _) => {
+                invoked = true;
+                return Task.FromResult("""{"ok":true}""");
+            },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal("tool_not_pack_info", result.ErrorCode);
+        Assert.False(invoked);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_WhenExplicitPackInfoRoleRequired_RejectsInferredPackInfoDefinition() {
+        var invoked = false;
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            (_, _) => {
+                invoked = true;
+                return Task.FromResult("""{"ok":true}""");
+            },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceInferred,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+
+        var result = await ToolHealthDiagnostics.ProbeAsync(
+            registry,
+            "system_pack_info",
+            timeoutSeconds: 2,
+            cancellationToken: CancellationToken.None,
+            requireExplicitPackInfoRole: true);
+
+        Assert.False(result.Ok);
+        Assert.Equal("tool_not_pack_info", result.ErrorCode);
+        Assert.False(invoked);
     }
 
     [Fact]
@@ -319,10 +381,18 @@ public sealed class ToolHealthDiagnosticsTests {
     [Fact]
     public async Task ProbeAsync_ReturnsTimeout_WhenProbeExceedsDeadline() {
         var registry = new ToolRegistry();
-        registry.Register(new StubTool("ad_pack_info", static async (_, token) => {
-            await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
-            return """{"ok":true}""";
-        }));
+        registry.Register(new StubTool(
+            "ad_pack_info",
+            static async (_, token) => {
+                await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
+                return """{"ok":true}""";
+            },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "ad_pack_info", timeoutSeconds: 1, CancellationToken.None);
 
@@ -422,9 +492,57 @@ public sealed class ToolHealthDiagnosticsTests {
     }
 
     [Fact]
+    public void BuildPackInfoProbeCatalog_ProjectsPackAvailabilityMetadata() {
+        var registry = new ToolRegistry();
+        registry.Register(new StubTool(
+            "system_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RolePackInfo
+            }));
+        registry.Register(new StubTool(
+            "system_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "system",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var catalog = ToolHealthDiagnostics.BuildPackInfoProbeCatalog(
+            registry,
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "system",
+                    Name = "ComputerX",
+                    SourceKind = "closed_source",
+                    Enabled = true
+                }
+            });
+
+        var entry = Assert.Single(catalog);
+        Assert.Equal("system_pack_info", entry.ToolName);
+        Assert.Equal("system", entry.PackId);
+        Assert.Equal("ComputerX", entry.PackName);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, entry.SourceKind);
+    }
+
+    [Fact]
     public async Task ProbeAsync_DoesNotRunSmokeForSuffixOnlyToolWithoutPackInfoRole() {
         var registry = new ToolRegistry();
-        registry.Register(new StubTool("legacy_pack_info", static (_, _) => Task.FromResult("""{"ok":true}""")));
+        registry.Register(new StubTool(
+            "legacy_pack_info",
+            static (_, _) => Task.FromResult("""{"ok":true}"""),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "legacy",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
         registry.Register(new StubTool("legacy_diagnostic", static (_, _) => Task.FromResult("""{"ok":false,"error_code":"access_denied","error":"Should not run."}""")));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(
@@ -433,8 +551,8 @@ public sealed class ToolHealthDiagnosticsTests {
             timeoutSeconds: 2,
             cancellationToken: CancellationToken.None);
 
-        Assert.True(result.Ok);
-        Assert.Null(result.ErrorCode);
+        Assert.False(result.Ok);
+        Assert.Equal("tool_not_pack_info", result.ErrorCode);
     }
 
     private sealed class StubTool : ITool {

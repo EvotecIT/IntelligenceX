@@ -330,6 +330,16 @@ public sealed class ToolPackEntityFieldMappingModel {
 /// </summary>
 public sealed class ToolPackToolRoutingModel {
     /// <summary>
+    /// Canonical normalized pack identifier for this tool when known.
+    /// </summary>
+    public string PackId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Routing role for orchestrator behavior when known.
+    /// </summary>
+    public string Role { get; init; } = string.Empty;
+
+    /// <summary>
     /// Primary scope where the tool operates (for example: host/domain/file/message/pack).
     /// </summary>
     public string Scope { get; init; } = ToolRoutingTaxonomy.ScopeGeneral;
@@ -353,6 +363,16 @@ public sealed class ToolPackToolRoutingModel {
     /// Routing source marker (<c>explicit</c> when overridden, otherwise <c>inferred</c>).
     /// </summary>
     public string Source { get; init; } = ToolRoutingTaxonomy.SourceInferred;
+
+    /// <summary>
+    /// Optional normalized domain intent family token.
+    /// </summary>
+    public string DomainIntentFamily { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional domain intent action id token.
+    /// </summary>
+    public string DomainIntentActionId { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -414,6 +434,11 @@ public sealed class ToolPackToolCatalogEntryModel {
     /// Indicates whether this is a pack guidance tool.
     /// </summary>
     public bool IsPackInfoTool { get; init; }
+
+    /// <summary>
+    /// Indicates whether this is an environment discovery tool.
+    /// </summary>
+    public bool IsEnvironmentDiscoverTool { get; init; }
 
     /// <summary>
     /// Structured capability hints inferred from tool arguments.
@@ -871,19 +896,32 @@ public static partial class ToolPackGuidance {
                 Category = NormalizeCategory(enrichedDefinition.Category),
                 Tags = NormalizeTags(enrichedDefinition.Tags),
                 Routing = new ToolPackToolRoutingModel {
+                    PackId = enrichedDefinition.Routing?.PackId ?? string.Empty,
+                    Role = enrichedDefinition.Routing?.Role ?? string.Empty,
                     Scope = routing.Scope,
                     Operation = routing.Operation,
                     Entity = routing.Entity,
                     Risk = routing.Risk,
                     Source = routing.IsExplicit
                         ? ToolRoutingTaxonomy.SourceExplicit
-                        : ToolRoutingTaxonomy.SourceInferred
+                        : ToolRoutingTaxonomy.SourceInferred,
+                    DomainIntentFamily = enrichedDefinition.Routing?.DomainIntentFamily ?? string.Empty,
+                    DomainIntentActionId = enrichedDefinition.Routing?.DomainIntentActionId ?? string.Empty
                 },
                 Description = enrichedDefinition.Description?.Trim() ?? string.Empty,
                 RequiredArguments = requiredArguments,
                 Arguments = argumentHints,
                 SupportsTableViewProjection = supportsTableView,
-                IsPackInfoTool = enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
+                IsPackInfoTool = string.Equals(
+                                     enrichedDefinition.Routing?.Role,
+                                     ToolRoutingTaxonomy.RolePackInfo,
+                                     StringComparison.OrdinalIgnoreCase)
+                                 || enrichedDefinition.Name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase),
+                IsEnvironmentDiscoverTool = string.Equals(
+                                                enrichedDefinition.Routing?.Role,
+                                                ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+                                                StringComparison.OrdinalIgnoreCase)
+                                            || enrichedDefinition.Name.EndsWith("_environment_discover", StringComparison.OrdinalIgnoreCase),
                 Traits = BuildToolTraits(enrichedDefinition, supportsTableView),
                 Setup = BuildSetup(enrichedDefinition.Setup),
                 Handoff = BuildHandoff(enrichedDefinition.Handoff),

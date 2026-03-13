@@ -21,8 +21,9 @@ public sealed class FileSystemToolPack : IToolPack, IToolPackCatalogProvider {
 
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
-        Id = "fs",
+        Id = "filesystem",
         Name = "File System",
+        Aliases = new[] { "fs" },
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Safe-by-default file system reads (restricted to AllowedRoots).",

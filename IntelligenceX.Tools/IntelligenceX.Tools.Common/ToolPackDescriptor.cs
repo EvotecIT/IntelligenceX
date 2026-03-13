@@ -18,6 +18,12 @@ public sealed record ToolPackDescriptor {
     public required string Name { get; init; }
 
     /// <summary>
+    /// Optional legacy aliases accepted for this pack id.
+    /// Aliases should normalize back to the same canonical id as <see cref="Id"/>.
+    /// </summary>
+    public IReadOnlyList<string> Aliases { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Capability tier.
     /// </summary>
     public required ToolCapabilityTier Tier { get; init; }

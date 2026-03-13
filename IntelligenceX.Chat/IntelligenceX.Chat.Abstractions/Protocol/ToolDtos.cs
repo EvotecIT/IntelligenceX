@@ -46,6 +46,14 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public ToolPackSourceKind? PackSourceKind { get; init; }
     /// <summary>
+    /// Indicates whether the tool is an orientation/pack-info tool.
+    /// </summary>
+    public bool IsPackInfoTool { get; init; }
+    /// <summary>
+    /// Indicates whether the tool is an environment-discovery tool.
+    /// </summary>
+    public bool IsEnvironmentDiscoverTool { get; init; }
+    /// <summary>
     /// Whether the tool is write-capable (mutating).
     /// </summary>
     public bool IsWriteCapable { get; init; }

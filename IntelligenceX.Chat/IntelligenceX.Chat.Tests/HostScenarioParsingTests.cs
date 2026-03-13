@@ -234,12 +234,30 @@ Check AD0 reboot
                 setup: new ToolSetupContract {
                     IsSetupAware = true,
                     SetupToolName = "eventlog_named_events_catalog"
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetRole = ToolRoutingTaxonomy.RoleDiagnostic,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "machine_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
                 })
         };
 
         var prompt = InvokeBuildScenarioTurnPromptForExecution(turn, toolDefinitions);
 
+        Assert.Contains("Representative live tool examples for this flow", prompt, StringComparison.Ordinal);
+        Assert.Contains("inspect Windows event logs", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_named_events_catalog -> eventlog_named_events_query", prompt, StringComparison.Ordinal);
+        Assert.Contains("Cross-pack follow-up pivots are available into System", prompt, StringComparison.Ordinal);
         Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
         Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
     }

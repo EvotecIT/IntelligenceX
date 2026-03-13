@@ -7,6 +7,64 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.System;
 
 internal static class SystemToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            ["system_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
+            ["system_info"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_hardware_identity"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_whoami"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_process_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_network_adapters"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_patch_details"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_ports_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_service_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_scheduled_tasks_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_firewall_rules"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_firewall_profiles"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_security_options"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_rdp_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_smb_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_boot_configuration"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_bios_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_time_sync"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_local_identity_inventory"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_bitlocker_status"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_privacy_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_exploit_protection"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_office_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_browser_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_backup_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_certificate_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_credential_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_tls_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_winrm_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_powershell_logging_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_platform_security_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_app_control_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_remote_access_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_uac_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_ldap_policy_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_network_client_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_account_policy_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_interactive_logon_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_audit_options"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_builtin_accounts"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_device_guard_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_defender_asr_posture"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_installed_applications"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_updates_installed"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_windows_update_client_status"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_windows_update_telemetry"] = ToolRoutingTaxonomy.RoleOperational,
+            ["system_patch_compliance"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_logical_disks_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_disks_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_devices_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_hardware_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_metrics_summary"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["system_features_list"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["wsl_status"] = ToolRoutingTaxonomy.RoleDiagnostic
+        };
+
     private static readonly string[] SetupHintKeys = {
         "computer_name",
         "machine_name",
@@ -187,61 +245,11 @@ internal static class SystemToolContracts {
         };
     }
 
-    private static string ResolveRole(string toolName, string? existingRole) {
-        var inferredRole = TryResolveDeclaredRole(toolName);
-        if (inferredRole.Length == 0) {
-            return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
-                explicitRole: existingRole,
-                toolName: toolName,
-                declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                packDisplayName: "System");
-        }
-
-        return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
-            explicitRole: existingRole,
-            fallbackRole: inferredRole,
+    private static string ResolveRole(string toolName, string? explicitRole) {
+        return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
+            explicitRole: explicitRole,
+            toolName: toolName,
+            declaredRolesByToolName: DeclaredRolesByToolName,
             packDisplayName: "System");
-    }
-
-    private static string TryResolveDeclaredRole(string toolName) {
-        if (string.Equals(toolName, "system_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
-        }
-
-        if (toolName.IndexOf("_list", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_summary", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_status", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_posture", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_compliance", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_info", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_identity", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_details", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_configuration", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_updates", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.StartsWith("wsl_", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (string.Equals(toolName, "system_whoami", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_time_sync", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_audit_options", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_security_options", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_boot_configuration", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_network_adapters", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_firewall_profiles", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_firewall_rules", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_installed_applications", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_builtin_accounts", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_local_identity_inventory", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "system_exploit_protection", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (toolName.StartsWith("system_", StringComparison.OrdinalIgnoreCase)
-            && toolName.IndexOf("unclassified", StringComparison.OrdinalIgnoreCase) < 0) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        return string.Empty;
     }
 }

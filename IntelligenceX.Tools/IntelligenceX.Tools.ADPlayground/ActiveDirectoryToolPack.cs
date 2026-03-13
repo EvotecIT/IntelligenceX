@@ -21,8 +21,9 @@ public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvide
 
     /// <inheritdoc />
     public ToolPackDescriptor Descriptor { get; } = new() {
-        Id = "ad",
+        Id = "active_directory",
         Name = "ADPlayground",
+        Aliases = new[] { "ad", "adplayground" },
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "ADPlayground-backed Active Directory analysis tools (read-oriented).",

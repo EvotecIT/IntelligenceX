@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -44,6 +45,15 @@ public static class ToolHealthDiagnostics {
         long DurationMs);
 
     /// <summary>
+    /// Metadata-backed catalog entry for a registered pack-info probe.
+    /// </summary>
+    public readonly record struct PackInfoProbeCatalogEntry(
+        string ToolName,
+        string PackId,
+        string? PackName,
+        ToolPackSourceKind SourceKind);
+
+    /// <summary>
     /// Returns registered pack-info role definitions (sorted, case-insensitive).
     /// Can optionally require explicit routing-source metadata for pack-info role tools.
     /// </summary>
@@ -65,6 +75,47 @@ public static class ToolHealthDiagnostics {
         return GetPackInfoDefinitions(registry, requireExplicitPackInfoRole)
             .Select(static def => def.Name)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Builds pack-info probe entries enriched with canonical pack/source metadata when pack availability is known.
+    /// </summary>
+    public static PackInfoProbeCatalogEntry[] BuildPackInfoProbeCatalog(
+        ToolRegistry registry,
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null,
+        bool requireExplicitPackInfoRole = false) {
+        if (registry is null) {
+            throw new ArgumentNullException(nameof(registry));
+        }
+
+        var definitions = GetPackInfoDefinitions(registry, requireExplicitPackInfoRole);
+        if (definitions.Length == 0) {
+            return Array.Empty<PackInfoProbeCatalogEntry>();
+        }
+
+        var packMetadataById = BuildPackMetadataLookup(packAvailability);
+        var entries = new List<PackInfoProbeCatalogEntry>(definitions.Length);
+        for (var i = 0; i < definitions.Length; i++) {
+            var definition = definitions[i];
+            var packId = TryResolvePackId(definition, out var resolvedPackId)
+                ? resolvedPackId
+                : string.Empty;
+
+            var packName = default(string);
+            var sourceKind = ResolveProbeSourceKind(sourceKind: null, packId: packId);
+            if (packId.Length > 0 && packMetadataById.TryGetValue(packId, out var metadata)) {
+                packName = metadata.PackName;
+                sourceKind = metadata.SourceKind;
+            }
+
+            entries.Add(new PackInfoProbeCatalogEntry(
+                ToolName: definition.Name,
+                PackId: packId,
+                PackName: packName,
+                SourceKind: sourceKind));
+        }
+
+        return entries.ToArray();
     }
 
     /// <summary>
@@ -91,6 +142,16 @@ public static class ToolHealthDiagnostics {
         try {
             if (!registry.TryGet(normalizedToolName, out var tool)) {
                 return new ProbeResult(normalizedToolName, Ok: false, ErrorCode: "tool_not_registered", Error: "Probe tool is not registered.", DurationMs: sw.ElapsedMilliseconds);
+            }
+
+            if (registry.TryGetDefinition(normalizedToolName, out var definition)
+                && !IsPackInfoDefinition(definition, requireExplicitPackInfoRole)) {
+                return new ProbeResult(
+                    normalizedToolName,
+                    Ok: false,
+                    ErrorCode: "tool_not_pack_info",
+                    Error: "Probe tool is not registered as a pack-info role tool.",
+                    DurationMs: sw.ElapsedMilliseconds);
             }
 
             using var timeoutCts = CreateTimeoutCts(cancellationToken, timeoutSeconds);
@@ -241,6 +302,61 @@ public static class ToolHealthDiagnostics {
         out SmokeProbePlan plan) {
         var cache = SmokeProbePlanCaches.GetValue(registry, static _ => new SmokeProbePlanCache());
         return cache.TryResolvePlan(registry, packInfoToolName, requireExplicitPackInfoRole, out plan);
+    }
+
+    private static Dictionary<string, ProbePackMetadata> BuildPackMetadataLookup(IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability) {
+        var result = new Dictionary<string, ProbePackMetadata>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pack in packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()) {
+            var packId = ToolPackBootstrap.NormalizePackId(pack.Id);
+            if (packId.Length == 0) {
+                continue;
+            }
+
+            var packName = string.IsNullOrWhiteSpace(pack.Name)
+                ? null
+                : pack.Name.Trim();
+            result[packId] = new ProbePackMetadata(
+                PackName: packName,
+                SourceKind: ResolveProbeSourceKind(pack.SourceKind, packId));
+        }
+
+        return result;
+    }
+
+    private static ToolPackSourceKind ResolveProbeSourceKind(string? sourceKind, string? packId = null) {
+        var normalized = NormalizeProbeSourceKind(sourceKind, packId);
+        return normalized switch {
+            "builtin" => ToolPackSourceKind.Builtin,
+            "closed_source" => ToolPackSourceKind.ClosedSource,
+            _ => ToolPackSourceKind.OpenSource
+        };
+    }
+
+    private static string NormalizeProbeSourceKind(string? sourceKind, string? packId) {
+        var normalized = (sourceKind ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return "open_source";
+        }
+
+        var canonical = normalized
+            .ToLowerInvariant()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(".", string.Empty, StringComparison.Ordinal);
+        return canonical switch {
+            "builtin" or "core" => "builtin",
+            "closedsource" or "closed" or "private" or "internal" or "nonopen" => "closed_source",
+            "opensource" or "open" or "public" => "open_source",
+            _ => TryNormalizeProbeSourceKindFallback(sourceKind, packId)
+        };
+    }
+
+    private static string TryNormalizeProbeSourceKindFallback(string? sourceKind, string? packId) {
+        try {
+            return ToolPackBootstrap.NormalizeSourceKind(sourceKind, packId);
+        } catch (ArgumentException) {
+            return "open_source";
+        }
     }
 
     private static Dictionary<string, SmokeProbePlan> BuildSmokeProbePlanIndex(IReadOnlyList<ToolDefinition> definitions, bool requireExplicitPackInfoRole) {
@@ -532,4 +648,6 @@ public static class ToolHealthDiagnostics {
 
         return false;
     }
+
+    private readonly record struct ProbePackMetadata(string? PackName, ToolPackSourceKind SourceKind);
 }

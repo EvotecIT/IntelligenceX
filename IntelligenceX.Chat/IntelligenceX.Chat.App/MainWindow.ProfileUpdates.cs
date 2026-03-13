@@ -138,13 +138,15 @@ public sealed partial class MainWindow : Window {
                 continue;
             }
 
-            var name = tool.Name.Trim();
+            var normalizedTool = NormalizeToolDefinitionForUiState(tool);
+            var name = normalizedTool.Name;
             seen.Add(name);
-            _toolDescriptions[name] = tool.Description ?? string.Empty;
-            _toolDisplayNames[name] = string.IsNullOrWhiteSpace(tool.DisplayName) ? FormatToolDisplayName(name) : tool.DisplayName.Trim();
-            _toolCategories[name] = string.IsNullOrWhiteSpace(tool.Category) ? "other" : tool.Category.Trim();
-            if (!string.IsNullOrWhiteSpace(tool.PackId)) {
-                var normalizedPackId = NormalizeRuntimePackId(tool.PackId);
+            _toolCatalogDefinitions[name] = normalizedTool;
+            _toolDescriptions[name] = normalizedTool.Description;
+            _toolDisplayNames[name] = string.IsNullOrWhiteSpace(normalizedTool.DisplayName) ? FormatToolDisplayName(name) : normalizedTool.DisplayName.Trim();
+            _toolCategories[name] = string.IsNullOrWhiteSpace(normalizedTool.Category) ? "other" : normalizedTool.Category.Trim();
+            if (!string.IsNullOrWhiteSpace(normalizedTool.PackId)) {
+                var normalizedPackId = NormalizeRuntimePackId(normalizedTool.PackId);
                 if (normalizedPackId.Length > 0) {
                     _toolPackIds[name] = normalizedPackId;
                 } else {
@@ -153,30 +155,30 @@ public sealed partial class MainWindow : Window {
             } else {
                 _toolPackIds.Remove(name);
             }
-            if (!string.IsNullOrWhiteSpace(tool.PackName)) {
-                _toolPackNames[name] = ToolPackMetadataNormalizer.ResolveDisplayName(tool.PackId, tool.PackName);
+            if (!string.IsNullOrWhiteSpace(normalizedTool.PackName)) {
+                _toolPackNames[name] = ToolPackMetadataNormalizer.ResolveDisplayName(normalizedTool.PackId, normalizedTool.PackName);
             } else {
                 _toolPackNames.Remove(name);
             }
-            _toolTags[name] = NormalizeTags(tool.Tags);
-            _toolParameters[name] = tool.Parameters is { Length: > 0 } parameters
+            _toolTags[name] = NormalizeTags(normalizedTool.Tags);
+            _toolParameters[name] = normalizedTool.Parameters is { Length: > 0 } parameters
                 ? parameters
                 : Array.Empty<ToolParameterDto>();
-            _toolWriteCapabilities[name] = tool.IsWriteCapable;
-            _toolExecutionAwareness[name] = tool.IsExecutionAware;
-            if (!string.IsNullOrWhiteSpace(tool.ExecutionContractId)) {
-                _toolExecutionContractIds[name] = tool.ExecutionContractId.Trim();
+            _toolWriteCapabilities[name] = normalizedTool.IsWriteCapable;
+            _toolExecutionAwareness[name] = normalizedTool.IsExecutionAware;
+            if (!string.IsNullOrWhiteSpace(normalizedTool.ExecutionContractId)) {
+                _toolExecutionContractIds[name] = normalizedTool.ExecutionContractId.Trim();
             } else {
                 _toolExecutionContractIds.Remove(name);
             }
             _toolExecutionScopes[name] = ResolveToolExecutionScope(
-                tool.ExecutionScope,
-                tool.SupportsLocalExecution,
-                tool.SupportsRemoteExecution);
-            _toolSupportsLocalExecution[name] = tool.SupportsLocalExecution;
-            _toolSupportsRemoteExecution[name] = tool.SupportsRemoteExecution;
+                normalizedTool.ExecutionScope,
+                normalizedTool.SupportsLocalExecution,
+                normalizedTool.SupportsRemoteExecution);
+            _toolSupportsLocalExecution[name] = normalizedTool.SupportsLocalExecution;
+            _toolSupportsRemoteExecution[name] = normalizedTool.SupportsRemoteExecution;
             if (!_toolStates.ContainsKey(name)) {
-                _toolStates[name] = !tool.IsWriteCapable;
+                _toolStates[name] = !normalizedTool.IsWriteCapable;
             }
 
             // Reset routing snapshot on catalog refresh so UI never shows stale confidence/score/reason.
@@ -194,6 +196,7 @@ public sealed partial class MainWindow : Window {
                 _toolCategories.Remove(toolName);
                 _toolPackIds.Remove(toolName);
                 _toolPackNames.Remove(toolName);
+                _toolCatalogDefinitions.Remove(toolName);
                 _toolTags.Remove(toolName);
                 _toolParameters.Remove(toolName);
                 _toolWriteCapabilities.Remove(toolName);
@@ -364,6 +367,64 @@ public sealed partial class MainWindow : Window {
         }
 
         return "uncategorized";
+    }
+
+    private static ToolDefinitionDto NormalizeToolDefinitionForUiState(ToolDefinitionDto tool) {
+        var normalizedName = tool.Name.Trim();
+        var normalizedPackId = NormalizeRuntimePackId(tool.PackId);
+        var normalizedPackName = ToolPackMetadataNormalizer.ResolveDisplayName(normalizedPackId, tool.PackName);
+        return tool with {
+            Name = normalizedName,
+            Description = tool.Description ?? string.Empty,
+            DisplayName = string.IsNullOrWhiteSpace(tool.DisplayName) ? null : tool.DisplayName.Trim(),
+            Category = string.IsNullOrWhiteSpace(tool.Category) ? "other" : tool.Category.Trim(),
+            Tags = NormalizeTags(tool.Tags),
+            PackId = normalizedPackId.Length == 0 ? null : normalizedPackId,
+            PackName = string.IsNullOrWhiteSpace(normalizedPackName) ? null : normalizedPackName,
+            PackDescription = string.IsNullOrWhiteSpace(tool.PackDescription) ? null : tool.PackDescription.Trim(),
+            ExecutionScope = NormalizeExecutionScope(tool.ExecutionScope),
+            TargetScopeArguments = NormalizeStringArray(tool.TargetScopeArguments),
+            RemoteHostArguments = NormalizeStringArray(tool.RemoteHostArguments),
+            SetupToolName = string.IsNullOrWhiteSpace(tool.SetupToolName) ? null : tool.SetupToolName.Trim(),
+            HandoffTargetPackIds = NormalizePackIdArray(tool.HandoffTargetPackIds),
+            HandoffTargetToolNames = NormalizeStringArray(tool.HandoffTargetToolNames),
+            RecoveryToolNames = NormalizeStringArray(tool.RecoveryToolNames),
+            RequiredArguments = NormalizeStringArray(tool.RequiredArguments),
+            ParametersJson = string.IsNullOrWhiteSpace(tool.ParametersJson) ? "{}" : tool.ParametersJson,
+            Parameters = tool.Parameters is { Length: > 0 } parameters
+                ? parameters
+                : Array.Empty<ToolParameterDto>(),
+            MaxRetryAttempts = Math.Max(0, tool.MaxRetryAttempts)
+        };
+    }
+
+    private static string[] NormalizePackIdArray(string[]? packIds) {
+        if (packIds is null || packIds.Length == 0) {
+            return Array.Empty<string>();
+        }
+
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var packId in packIds) {
+            var normalizedPackId = NormalizeRuntimePackId(packId);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            set.Add(normalizedPackId);
+        }
+
+        if (set.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var list = new List<string>(set);
+        list.Sort(StringComparer.OrdinalIgnoreCase);
+        return list.ToArray();
+    }
+
+    private static string NormalizeExecutionScope(string? executionScope) {
+        var normalized = (executionScope ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized.Length == 0 ? "local_only" : normalized;
     }
 
     private static string NormalizeRuntimePackId(string? packId) {

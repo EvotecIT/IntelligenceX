@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -153,8 +155,8 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Contains(lines, static line => line.Contains("Routing catalog:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("[routing]", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("Pack readiness:", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, static line => line.Contains("Active Directory [active_directory]: tools=1, remote-capable=0, setup-aware=0, handoff-aware=1, recovery-aware=0, cross-pack=1, targets=system", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, static line => line.Contains("Event Log [eventlog]: tools=1, remote-capable=1, setup-aware=1, handoff-aware=1, recovery-aware=1, cross-pack=1, targets=system", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, static line => line.Contains("Active Directory [active_directory]: tools=1, remote-capable=0, setup-aware=0, environment-discover=0, handoff-aware=1, recovery-aware=0, cross-pack=1, targets=system", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, static line => line.Contains("Event Log [eventlog]: tools=1, remote-capable=1, setup-aware=1, environment-discover=0, handoff-aware=1, recovery-aware=1, cross-pack=1, targets=system", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("Eventlog / Timeline Query (eventlog_timeline_query): Query event timeline from a host. [pack=eventlog, role=operational, scope=local_or_remote, remote_args=machine_name, setup=eventlog_channels_list, handoff=system/system_metrics_summary, recovery=eventlog_channels_list]", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("System / Metrics Summary (system_metrics_summary): Summarize local system metrics. [pack=system, role=operational, scope=local_or_remote, remote_args=computer_name]", StringComparison.OrdinalIgnoreCase));
     }
@@ -244,6 +246,70 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
     }
 
     [Fact]
+    public void BuildHostToolsExportMessage_PreservesRepresentativeMetadataFromOrchestrationCatalog() {
+        var definitions = CreateDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        var routingCatalog = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+        var packAvailability = new[] {
+            new ToolPackAvailabilityInfo {
+                Id = "active_directory",
+                Name = "Active Directory",
+                SourceKind = "closed_source",
+                Enabled = true
+            },
+            new ToolPackAvailabilityInfo {
+                Id = "eventlog",
+                Name = "Event Log",
+                SourceKind = "closed_source",
+                Enabled = true
+            },
+            new ToolPackAvailabilityInfo {
+                Id = "system",
+                Name = "System",
+                SourceKind = "closed_source",
+                Enabled = true
+            }
+        };
+        var pluginAvailability = new[] {
+            new ToolPluginAvailabilityInfo {
+                Id = "ops_bundle",
+                Name = "Ops Bundle",
+                Origin = "folder",
+                SourceKind = "closed_source",
+                DefaultEnabled = true,
+                Enabled = true,
+                PackIds = new[] { "active_directory", "eventlog", "system" },
+                SkillIds = new[] { "ad-ops", "event-triage" }
+            }
+        };
+
+        var message = HostProgram.BuildHostToolsExportMessage(
+            allowedRootCount: 2,
+            toolDefinitions: definitions,
+            packAvailability: packAvailability,
+            pluginAvailability: pluginAvailability,
+            routingCatalogDiagnostics: routingCatalog,
+            orchestrationCatalog: orchestrationCatalog);
+        var parsed = JsonSerializer.Deserialize(
+            JsonSerializer.Serialize(message, ChatServiceJsonContext.Default.ToolListMessage),
+            ChatServiceJsonContext.Default.ToolListMessage);
+
+        Assert.NotNull(parsed);
+        var toolsByName = parsed!.Tools.ToDictionary(static item => item.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var toolName in new[] { "ad_domain_monitor", "eventlog_timeline_query", "system_metrics_summary" }) {
+            Assert.True(orchestrationCatalog.TryGetEntry(toolName, out var entry));
+            AssertToolDtoMatchesOrchestration(toolsByName[toolName], entry!);
+        }
+
+        var packsById = parsed.Packs.ToDictionary(static item => item.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var packId in new[] { "active_directory", "eventlog", "system" }) {
+            var expected = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(packId, orchestrationCatalog);
+            Assert.NotNull(expected);
+            AssertPackSummaryMatchesOrchestration(packsById[packId], expected!);
+        }
+    }
+
+    [Fact]
     public void BuildUnavailablePackAvailabilityWarnings_DeduplicatesAliasPackIdsWithCanonicalLabels() {
         var warnings = HostProgram.BuildUnavailablePackAvailabilityWarnings(new[] {
             new ToolPackAvailabilityInfo {
@@ -313,6 +379,58 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Equal(
             "Starting runtime... reused tooling bootstrap cache (42ms), finalizing runtime connection",
             formatted);
+    }
+
+    private static void AssertToolDtoMatchesOrchestration(ToolDefinitionDto dto, ToolOrchestrationCatalogEntry entry) {
+        Assert.Equal(entry.PackId, dto.PackId);
+        Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
+        Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
+        Assert.Equal(entry.ExecutionScope, dto.ExecutionScope);
+        Assert.Equal(entry.SupportsTargetScoping, dto.SupportsTargetScoping);
+        Assert.Equal(entry.TargetScopeArguments, dto.TargetScopeArguments);
+        Assert.Equal(entry.SupportsRemoteHostTargeting, dto.SupportsRemoteHostTargeting);
+        Assert.Equal(entry.RemoteHostArguments, dto.RemoteHostArguments);
+        Assert.Equal(entry.IsSetupAware, dto.IsSetupAware);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.SetupToolName) ? null : entry.SetupToolName, dto.SetupToolName);
+        Assert.Equal(entry.IsHandoffAware, dto.IsHandoffAware);
+        Assert.Equal(
+            entry.HandoffEdges
+                .Select(static edge => edge.TargetPackId)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            dto.HandoffTargetPackIds);
+        Assert.Equal(
+            entry.HandoffEdges
+                .Select(static edge => edge.TargetToolName)
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            dto.HandoffTargetToolNames);
+        Assert.Equal(entry.IsRecoveryAware, dto.IsRecoveryAware);
+        Assert.Equal(entry.SupportsTransientRetry, dto.SupportsTransientRetry);
+        Assert.Equal(entry.MaxRetryAttempts, dto.MaxRetryAttempts);
+        Assert.Equal(entry.RecoveryToolNames, dto.RecoveryToolNames);
+    }
+
+    private static void AssertPackSummaryMatchesOrchestration(
+        ToolPackInfoDto pack,
+        ToolPackAutonomySummaryDto expected) {
+        var summary = Assert.IsType<ToolPackAutonomySummaryDto>(pack.AutonomySummary);
+        Assert.Equal(expected.TotalTools, summary.TotalTools);
+        Assert.Equal(expected.RemoteCapableTools, summary.RemoteCapableTools);
+        Assert.Equal(expected.RemoteCapableToolNames, summary.RemoteCapableToolNames);
+        Assert.Equal(expected.SetupAwareTools, summary.SetupAwareTools);
+        Assert.Equal(expected.EnvironmentDiscoverTools, summary.EnvironmentDiscoverTools);
+        Assert.Equal(expected.SetupAwareToolNames, summary.SetupAwareToolNames);
+        Assert.Equal(expected.EnvironmentDiscoverToolNames, summary.EnvironmentDiscoverToolNames);
+        Assert.Equal(expected.HandoffAwareTools, summary.HandoffAwareTools);
+        Assert.Equal(expected.HandoffAwareToolNames, summary.HandoffAwareToolNames);
+        Assert.Equal(expected.RecoveryAwareTools, summary.RecoveryAwareTools);
+        Assert.Equal(expected.RecoveryAwareToolNames, summary.RecoveryAwareToolNames);
+        Assert.Equal(expected.CrossPackHandoffTools, summary.CrossPackHandoffTools);
+        Assert.Equal(expected.CrossPackHandoffToolNames, summary.CrossPackHandoffToolNames);
+        Assert.Equal(expected.CrossPackTargetPacks, summary.CrossPackTargetPacks);
     }
 
     private static ToolDefinition[] CreateDefinitions() {

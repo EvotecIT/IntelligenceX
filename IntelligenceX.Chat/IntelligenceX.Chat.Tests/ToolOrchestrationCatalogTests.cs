@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -129,6 +130,44 @@ public sealed class ToolOrchestrationCatalogTests {
         var byPackAndRole = catalog.GetByPackAndRole("CUSTOMX", "PACK_INFO");
         Assert.Single(byPackAndRole);
         Assert.Equal("custom_pack_info", byPackAndRole[0].ToolName);
+    }
+
+    [Fact]
+    public void Build_DoesNotInferPackInfoFlagFromSuffixWhenRoleIsOperational() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "custom_pack_info",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("custom_pack_info", out var entry));
+        Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.Role);
+        Assert.False(entry.IsPackInfoTool);
+        Assert.Empty(catalog.GetByRole(ToolRoutingTaxonomy.RolePackInfo));
+    }
+
+    [Fact]
+    public void Build_DoesNotInferEnvironmentDiscoverFlagFromSuffixWhenRoleIsOperational() {
+        var catalog = ToolOrchestrationCatalog.Build(new[] {
+            CreateDefinition(
+                name: "custom_environment_discover",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        });
+
+        Assert.True(catalog.TryGetEntry("custom_environment_discover", out var entry));
+        Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.Role);
+        Assert.False(entry.IsEnvironmentDiscoverTool);
+        Assert.Empty(catalog.GetByRole(ToolRoutingTaxonomy.RoleEnvironmentDiscover));
     }
 
     [Fact]
@@ -630,6 +669,63 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(new[] { "domain_controller" }, entry.RemoteHostArguments);
     }
 
+    [Fact]
+    public void Build_WithPackCatalogProvider_UsesPackOwnedOverlayForAutonomyMetadata() {
+        var definitions = new[] {
+            CreateDefinition(
+                name: "custom_probe",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var baseline = ToolOrchestrationCatalog.Build(definitions);
+        var overlay = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticCatalogOverlayPack() });
+
+        Assert.True(baseline.TryGetEntry("custom_probe", out var baselineEntry));
+        Assert.Equal("local_only", baselineEntry.ExecutionScope);
+        Assert.False(baselineEntry.IsPackInfoTool);
+        Assert.False(baselineEntry.IsEnvironmentDiscoverTool);
+        Assert.False(baselineEntry.IsSetupAware);
+        Assert.False(baselineEntry.IsHandoffAware);
+        Assert.False(baselineEntry.IsRecoveryAware);
+
+        Assert.True(overlay.TryGetEntry("custom_probe", out var overlayEntry));
+        Assert.Equal("active_directory", overlayEntry.PackId);
+        Assert.Equal(ToolRoutingTaxonomy.RoleEnvironmentDiscover, overlayEntry.Role);
+        Assert.False(overlayEntry.IsPackInfoTool);
+        Assert.True(overlayEntry.IsEnvironmentDiscoverTool);
+        Assert.Equal("host", overlayEntry.Scope);
+        Assert.Equal("diagnose", overlayEntry.Operation);
+        Assert.Equal("host", overlayEntry.Entity);
+        Assert.Equal(ToolRoutingTaxonomy.RiskMedium, overlayEntry.Risk);
+        Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, overlayEntry.RoutingSource);
+        Assert.Equal("local_or_remote", overlayEntry.ExecutionScope);
+        Assert.True(overlayEntry.SupportsTargetScoping);
+        Assert.True(overlayEntry.SupportsRemoteHostTargeting);
+        Assert.Equal(new[] { "computer_name" }, overlayEntry.TargetScopeArguments);
+        Assert.Equal(new[] { "computer_name" }, overlayEntry.RemoteHostArguments);
+        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, overlayEntry.DomainIntentFamily);
+        Assert.Equal(ToolSelectionMetadata.DomainIntentActionIdAd, overlayEntry.DomainIntentActionId);
+        Assert.True(overlayEntry.IsSetupAware);
+        Assert.Equal("custom_environment_discover", overlayEntry.SetupToolName);
+        Assert.Equal(new[] { "host_access" }, overlayEntry.SetupRequirementIds);
+        Assert.Equal(new[] { "computer_name" }, overlayEntry.SetupHintKeys);
+        Assert.True(overlayEntry.IsHandoffAware);
+        Assert.Equal(1, overlayEntry.HandoffRouteCount);
+        Assert.Equal(1, overlayEntry.HandoffBindingCount);
+        Assert.Equal("eventlog", overlayEntry.HandoffEdges[0].TargetPackId);
+        Assert.Equal("eventlog_channels_list", overlayEntry.HandoffEdges[0].TargetToolName);
+        Assert.Equal(new[] { "meta/computer_name->machine_name" }, overlayEntry.HandoffEdges[0].BindingPairs);
+        Assert.True(overlayEntry.IsRecoveryAware);
+        Assert.True(overlayEntry.SupportsTransientRetry);
+        Assert.Equal(2, overlayEntry.MaxRetryAttempts);
+        Assert.Equal(new[] { "timeout" }, overlayEntry.RetryableErrorCodes);
+        Assert.Equal(new[] { "custom_environment_discover" }, overlayEntry.RecoveryToolNames);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolExecutionContract? execution = null,
@@ -645,5 +741,69 @@ public sealed class ToolOrchestrationCatalogTests {
             setup: setup,
             handoff: handoff,
             recovery: recovery);
+    }
+
+    private sealed class SyntheticCatalogOverlayPack : IToolPack, IToolPackCatalogProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "customx",
+            Name = "CustomX",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic catalog overlay pack.",
+            SourceKind = "builtin"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "custom_probe",
+                    IsEnvironmentDiscoverTool = true,
+                    Routing = new ToolPackToolRoutingModel {
+                        PackId = "ADPlayground",
+                        Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+                        Scope = "host",
+                        Operation = "diagnose",
+                        Entity = "host",
+                        Risk = ToolRoutingTaxonomy.RiskMedium,
+                        Source = ToolRoutingTaxonomy.SourceExplicit,
+                        DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                        DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                    },
+                    Traits = new ToolPackToolTraitsModel {
+                        ExecutionScope = "local_or_remote",
+                        SupportsTargetScoping = true,
+                        TargetScopeArguments = new[] { "computer_name" },
+                        SupportsRemoteHostTargeting = true,
+                        RemoteHostArguments = new[] { "computer_name" }
+                    },
+                    Setup = new ToolPackToolSetupModel {
+                        IsSetupAware = true,
+                        SetupToolName = "custom_environment_discover",
+                        RequirementIds = new[] { "host_access" },
+                        HintKeys = new[] { "computer_name" }
+                    },
+                    Handoff = new ToolPackToolHandoffModel {
+                        IsHandoffAware = true,
+                        Routes = new[] {
+                            new ToolPackToolHandoffRouteModel {
+                                TargetPackId = "eventlog",
+                                TargetToolName = "eventlog_channels_list",
+                                BindingPairs = new[] { "meta/computer_name->machine_name" }
+                            }
+                        }
+                    },
+                    Recovery = new ToolPackToolRecoveryModel {
+                        IsRecoveryAware = true,
+                        SupportsTransientRetry = true,
+                        MaxRetryAttempts = 2,
+                        RetryableErrorCodes = new[] { "timeout" },
+                        RecoveryToolNames = new[] { "custom_environment_discover" }
+                    }
+                }
+            };
+        }
     }
 }

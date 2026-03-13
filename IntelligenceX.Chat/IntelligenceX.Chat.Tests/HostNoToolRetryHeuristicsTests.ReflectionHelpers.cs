@@ -222,20 +222,23 @@ public sealed partial class HostNoToolRetryHeuristicsTests {
         return (canonical, dedupedCount);
     }
 
-    private static (bool matched, string cacheKey) InvokeTryGetSessionToolOutputCacheKey(ToolCall call) {
+    private static (bool matched, string cacheKey) InvokeTryGetSessionToolOutputCacheKey(ToolRegistry registry, ToolCall call) {
         var hostAssembly = Assembly.Load("IntelligenceX.Chat.Host");
         var replSessionType = hostAssembly.GetType("IntelligenceX.Chat.Host.Program+ReplSession", throwOnError: true);
         Assert.NotNull(replSessionType);
 
         var method = replSessionType!.GetMethod(
             "TryGetSessionToolOutputCacheKey",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(ToolRegistry), typeof(ToolCall), typeof(string).MakeByRefType() },
+            modifiers: null);
         Assert.NotNull(method);
 
-        var args = new object?[] { call, null };
+        var args = new object?[] { registry, call, null };
         var value = method!.Invoke(null, args);
         var matched = value is bool b && b;
-        var cacheKey = args[1] as string ?? string.Empty;
+        var cacheKey = args[2] as string ?? string.Empty;
         return (matched, cacheKey);
     }
 

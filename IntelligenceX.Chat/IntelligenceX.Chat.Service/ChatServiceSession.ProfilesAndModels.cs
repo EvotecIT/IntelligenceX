@@ -851,6 +851,8 @@ internal sealed partial class ChatServiceSession {
         TimeSpan cacheHitElapsed) {
         _registry = snapshot.Registry;
         _servingPersistedToolingBootstrapPreview = false;
+        _persistedPreviewPackSummaries = Array.Empty<ToolPackInfoDto>();
+        _persistedPreviewCapabilitySnapshot = null;
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packs = snapshot.Packs;
         _packAvailability = snapshot.PackAvailability.ToArray();
@@ -909,6 +911,8 @@ internal sealed partial class ChatServiceSession {
 
     private void ApplyToolingBootstrapPersistedSnapshot(ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
         _servingPersistedToolingBootstrapPreview = true;
+        _persistedPreviewPackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>();
+        _persistedPreviewCapabilitySnapshot = snapshot.CapabilitySnapshot;
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packAvailability = snapshot.PackAvailability.ToArray();
         _pluginAvailability = snapshot.PluginAvailability.ToArray();

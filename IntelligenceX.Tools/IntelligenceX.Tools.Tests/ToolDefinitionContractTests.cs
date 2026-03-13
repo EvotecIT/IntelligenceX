@@ -705,6 +705,11 @@ public class ToolDefinitionContractTests {
         var definitionsByName = registry.GetDefinitions()
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
+        AssertRoutingRole(definitionsByName, "ad_pack_info", ToolRoutingTaxonomy.RolePackInfo);
+        AssertRoutingRole(definitionsByName, "ad_environment_discover", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
+        AssertRoutingRole(definitionsByName, "ad_scope_discovery", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
+        AssertRoutingRole(definitionsByName, "ad_forest_discover", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
+        AssertRoutingRole(definitionsByName, "ad_domain_info", ToolRoutingTaxonomy.RoleDiagnostic);
         AssertRoutingRole(definitionsByName, "ad_search", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "ad_object_resolve", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "ad_ldap_query", ToolRoutingTaxonomy.RoleResolver);
@@ -715,6 +720,7 @@ public class ToolDefinitionContractTests {
         AssertRoutingRole(definitionsByName, "ad_groups_list", ToolRoutingTaxonomy.RoleDiagnostic);
         AssertRoutingRole(definitionsByName, "ad_search_facets", ToolRoutingTaxonomy.RoleDiagnostic);
         AssertRoutingRole(definitionsByName, "ad_trust", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "ad_monitoring_probe_run", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingRole(definitionsByName, "ad_object_get", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingRole(definitionsByName, "ad_handoff_prepare", ToolRoutingTaxonomy.RoleOperational);
 

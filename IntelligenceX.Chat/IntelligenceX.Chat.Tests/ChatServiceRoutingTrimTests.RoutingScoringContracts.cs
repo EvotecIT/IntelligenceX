@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using Xunit;
 
@@ -61,5 +62,37 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains(selected, static definition => string.Equals(definition.Name, "alpha_one", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(selected, static definition => string.Equals(definition.Name, "alpha_two", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(selected, static definition => string.Equals(definition.Name, "beta_one", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SelectDeterministicToolSubset_PrefersEnvironmentDiscoverAndSetupAwareToolsWithinPackFamily() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition> {
+            new(
+                name: "eventlog_operational_query",
+                description: "operational",
+                routing: CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational)),
+            new(
+                name: "eventlog_environment_discover",
+                description: "discover",
+                routing: CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleEnvironmentDiscover)),
+            new(
+                name: "eventlog_named_events_query",
+                description: "setup aware",
+                routing: CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational),
+                setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupToolName = "eventlog_named_events_catalog"
+                })
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        var result = SelectDeterministicToolSubsetMethod.Invoke(session, new object?[] { definitions, 2 });
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(result);
+
+        Assert.Equal(2, selected.Count);
+        Assert.Equal("eventlog_environment_discover", selected[0].Name);
+        Assert.Equal("eventlog_named_events_query", selected[1].Name);
+        Assert.DoesNotContain(selected, static definition => string.Equals(definition.Name, "eventlog_operational_query", StringComparison.OrdinalIgnoreCase));
     }
 }

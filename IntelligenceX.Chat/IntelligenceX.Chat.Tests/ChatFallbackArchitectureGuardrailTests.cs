@@ -40,6 +40,14 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
+    public void ToolOrchestrationCatalog_ShouldNotInferRoutingFlagsFromToolNameSuffixes() {
+        var source = File.ReadAllText(GetToolingSourceFilePath("ToolOrchestrationCatalog.cs"));
+
+        Assert.DoesNotContain("_pack_info", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("_environment_discover", source, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DomainIntentSignals_ShouldNotResolveDefinitionFamiliesViaNameInferenceFirst() {
         var source = File.ReadAllText(GetServiceSourceFilePath("ChatServiceSession.ToolRouting.DomainIntentSignals.cs"));
 

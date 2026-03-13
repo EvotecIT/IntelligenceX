@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Markdown;
 
 namespace IntelligenceX.Chat.App;
@@ -56,6 +57,7 @@ public sealed partial class MainWindow {
             _toolCatalogPacks,
             _toolCatalogRoutingCatalog,
             _toolCatalogCapabilitySnapshot,
+            _toolCatalogDefinitions.Count == 0 ? null : _toolCatalogDefinitions.Values,
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion);
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
@@ -120,6 +122,7 @@ public sealed partial class MainWindow {
             toolCatalogPacks: null,
             toolCatalogRoutingCatalog: null,
             toolCatalogCapabilitySnapshot: null,
+            toolCatalogTools: null,
             assistantCapabilityQuestion,
             assistantRuntimeIntrospectionQuestion);
     }
@@ -129,6 +132,7 @@ public sealed partial class MainWindow {
         IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
         SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog,
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot,
+        IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools,
         bool assistantCapabilityQuestion,
         bool assistantRuntimeIntrospectionQuestion) {
         if (assistantCapabilityQuestion) {
@@ -137,6 +141,7 @@ public sealed partial class MainWindow {
                 toolCatalogPacks,
                 toolCatalogRoutingCatalog,
                 toolCatalogCapabilitySnapshot,
+                toolCatalogTools,
                 runtimeIntrospectionMode: false);
         }
 
@@ -146,6 +151,7 @@ public sealed partial class MainWindow {
                 toolCatalogPacks,
                 toolCatalogRoutingCatalog,
                 toolCatalogCapabilitySnapshot,
+                toolCatalogTools,
                 runtimeIntrospectionMode: true);
         }
 

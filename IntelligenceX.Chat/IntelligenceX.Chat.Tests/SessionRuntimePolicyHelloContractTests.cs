@@ -427,6 +427,7 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.Equal(1, autonomySummary.RemoteCapableTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, autonomySummary.RemoteCapableToolNames);
         Assert.Equal(1, autonomySummary.SetupAwareTools);
+        Assert.Equal(0, autonomySummary.EnvironmentDiscoverTools);
         Assert.Equal(1, autonomySummary.HandoffAwareTools);
         Assert.Equal(1, autonomySummary.RecoveryAwareTools);
         Assert.Equal(1, autonomySummary.CrossPackHandoffTools);

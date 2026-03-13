@@ -658,6 +658,7 @@ public sealed partial class MainWindow : Window {
             _toolRoutingConfidence.TryGetValue(name, out var routingConfidence);
             _toolRoutingReason.TryGetValue(name, out var routingReason);
             _toolRoutingScore.TryGetValue(name, out var routingScore);
+            _toolCatalogDefinitions.TryGetValue(name, out var toolDefinition);
             var normalizedPackId = NormalizeRuntimePackId(packId);
             var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
             var parameterState = BuildToolParameterState(parameters);
@@ -683,9 +684,35 @@ public sealed partial class MainWindow : Window {
                 isWriteCapable,
                 isExecutionAware,
                 executionContractId = string.IsNullOrWhiteSpace(executionContractId) ? null : executionContractId,
-                executionScope = string.IsNullOrWhiteSpace(executionScope) ? "local_only" : executionScope,
+                executionScope = string.IsNullOrWhiteSpace(toolDefinition?.ExecutionScope)
+                    ? (string.IsNullOrWhiteSpace(executionScope) ? "local_only" : executionScope)
+                    : toolDefinition.ExecutionScope,
                 supportsLocalExecution,
                 supportsRemoteExecution,
+                packDescription = string.IsNullOrWhiteSpace(toolDefinition?.PackDescription) ? null : toolDefinition.PackDescription,
+                packSourceKind = toolDefinition?.PackSourceKind switch {
+                    ToolPackSourceKind.Builtin => "builtin",
+                    ToolPackSourceKind.ClosedSource => "closed_source",
+                    ToolPackSourceKind.OpenSource => "open_source",
+                    _ => null
+                },
+                isPackInfoTool = toolDefinition?.IsPackInfoTool == true,
+                isEnvironmentDiscoverTool = toolDefinition?.IsEnvironmentDiscoverTool == true,
+                executionScope = string.IsNullOrWhiteSpace(toolDefinition?.ExecutionScope) ? "local_only" : toolDefinition.ExecutionScope,
+                supportsTargetScoping = toolDefinition?.SupportsTargetScoping == true,
+                targetScopeArguments = toolDefinition?.TargetScopeArguments ?? Array.Empty<string>(),
+                supportsRemoteHostTargeting = toolDefinition?.SupportsRemoteHostTargeting == true,
+                remoteHostArguments = toolDefinition?.RemoteHostArguments ?? Array.Empty<string>(),
+                isSetupAware = toolDefinition?.IsSetupAware == true,
+                setupToolName = string.IsNullOrWhiteSpace(toolDefinition?.SetupToolName) ? null : toolDefinition.SetupToolName,
+                isHandoffAware = toolDefinition?.IsHandoffAware == true,
+                handoffTargetPackIds = toolDefinition?.HandoffTargetPackIds ?? Array.Empty<string>(),
+                handoffTargetToolNames = toolDefinition?.HandoffTargetToolNames ?? Array.Empty<string>(),
+                isRecoveryAware = toolDefinition?.IsRecoveryAware == true,
+                supportsTransientRetry = toolDefinition?.SupportsTransientRetry == true,
+                maxRetryAttempts = Math.Max(0, toolDefinition?.MaxRetryAttempts ?? 0),
+                recoveryToolNames = toolDefinition?.RecoveryToolNames ?? Array.Empty<string>(),
+                requiredArguments = toolDefinition?.RequiredArguments ?? Array.Empty<string>(),
                 routingConfidence = string.IsNullOrWhiteSpace(routingConfidence) ? null : routingConfidence,
                 routingReason = string.IsNullOrWhiteSpace(routingReason) ? null : routingReason,
                 routingScore = _toolRoutingScore.ContainsKey(name) ? Math.Round(routingScore, 3) : (double?)null,

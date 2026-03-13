@@ -6,6 +6,9 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.ADPlayground;
 
 internal static class ActiveDirectoryToolContracts {
+    private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName = BuildDeclaredRolesByToolName();
+    private static readonly IReadOnlySet<string> KnownToolNames = BuildKnownToolNames();
+
     private static readonly string[] DomainSignalTokens = {
         "dc",
         "ldap",
@@ -28,47 +31,275 @@ internal static class ActiveDirectoryToolContracts {
         "forest_name"
     };
 
-    private static readonly string[] DiagnosticRoleKeywords = {
-        "domain",
-        "forest",
-        "gpo",
-        "dns",
-        "site",
-        "subnet",
-        "group",
-        "account",
-        "policy",
-        "trust",
-        "replication",
-        "spn",
-        "kerberos",
-        "ldap",
-        "pki",
-        "laps",
-        "firewall",
-        "delegation",
-        "permission",
-        "monitoring",
-        "schema",
-        "certificate",
-        "credentials",
-        "ntlm",
-        "logon",
-        "uac",
-        "wsus",
-        "wmi",
-        "winrm",
-        "service",
-        "netlogon",
-        "sysvol",
-        "shadow",
-        "kdc",
-        "proxy",
-        "whoami",
-        "ou",
-        "admin",
-        "users"
-    };
+    private static IReadOnlyDictionary<string, string> BuildDeclaredRolesByToolName() {
+        var declared = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddRoleGroup(declared, ToolRoutingTaxonomy.RolePackInfo,
+            "ad_pack_info");
+        AddRoleGroup(declared, ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+            "ad_environment_discover",
+            "ad_scope_discovery",
+            "ad_forest_discover");
+        AddRoleGroup(declared, ToolRoutingTaxonomy.RoleResolver,
+            "ad_search",
+            "ad_object_resolve",
+            "ad_ldap_query",
+            "ad_ldap_query_paged",
+            "ad_spn_search",
+            "ad_dns_server_config",
+            "ad_dns_zone_config",
+            "ad_dns_zone_security",
+            "ad_dns_delegation",
+            "ad_dns_scavenging");
+        AddRoleGroup(declared, ToolRoutingTaxonomy.RoleDiagnostic,
+            "ad_gpo_list",
+            "ad_gpo_changes",
+            "ad_gpo_health",
+            "ad_gpo_permission_read",
+            "ad_gpo_permission_administrative",
+            "ad_gpo_permission_consistency",
+            "ad_gpo_permission_unknown",
+            "ad_gpo_permission_root",
+            "ad_gpo_permission_report",
+            "ad_gpo_inventory_health",
+            "ad_gpo_duplicates",
+            "ad_gpo_blocked_inheritance",
+            "ad_gpo_ou_link_summary",
+            "ad_gpo_redirect",
+            "ad_gpo_integrity",
+            "ad_wmi_filters",
+            "ad_wsus_configuration",
+            "ad_domain_info",
+            "ad_forest_functional",
+            "ad_ds_heuristics",
+            "ad_laps_schema_posture",
+            "ad_azuread_sso",
+            "ad_domain_statistics",
+            "ad_domain_container_defaults",
+            "ad_domain_controller_facts",
+            "ad_domain_controller_security",
+            "ad_dc_fleet_posture",
+            "ad_registration_posture",
+            "ad_domain_controllers",
+            "ad_fsmo_roles",
+            "ad_client_server_auth_posture",
+            "ad_legacy_cve_exposure",
+            "ad_firewall_profiles",
+            "ad_time_service_configuration",
+            "ad_llmnr_policy",
+            "ad_wdigest_policy",
+            "ad_winrm_policy",
+            "ad_proxy_policy",
+            "ad_schannel_policy",
+            "ad_terminal_services_redirection_policy",
+            "ad_terminal_services_timeout_policy",
+            "ad_name_resolution_policy",
+            "ad_lsa_protection_policy",
+            "ad_net_session_hardening_policy",
+            "ad_limit_blank_password_use_policy",
+            "ad_pku2u_policy",
+            "ad_hardened_paths_policy",
+            "ad_kdc_proxy_policy",
+            "ad_kerberos_pac_policy",
+            "ad_powershell_logging_policy",
+            "ad_no_lm_hash_policy",
+            "ad_ntlm_restrictions_policy",
+            "ad_restrict_ntlm_configuration",
+            "ad_logon_ux_uac_policy",
+            "ad_deny_logon_rights_policy",
+            "ad_defender_asr_policy",
+            "ad_everyone_includes_anonymous_policy",
+            "ad_enable_delegation_privilege_policy",
+            "ad_lan_manager_settings",
+            "ad_machine_account_quota",
+            "ad_duplicate_accounts",
+            "ad_ou_protection",
+            "ad_laps_coverage",
+            "ad_kerberos_crypto_posture",
+            "ad_spn_stats",
+            "ad_spn_hygiene",
+            "ad_groups_list",
+            "ad_recycle_bin_lifetime",
+            "ad_delegation_audit",
+            "ad_privileged_groups_summary",
+            "ad_domain_admins_summary",
+            "ad_stale_accounts",
+            "ad_never_logged_in_accounts",
+            "ad_service_account_usage",
+            "ad_kds_root_keys",
+            "ad_admin_count_report",
+            "ad_krbtgt_health",
+            "ad_ldap_diagnostics",
+            "ad_directory_discovery_diagnostics",
+            "ad_monitoring_probe_catalog",
+            "ad_monitoring_service_heartbeat_get",
+            "ad_monitoring_diagnostics_get",
+            "ad_monitoring_metrics_get",
+            "ad_monitoring_dashboard_state_get",
+            "ad_replication_summary",
+            "ad_replication_connections",
+            "ad_replication_status",
+            "ad_password_policy",
+            "ad_password_policy_rollup",
+            "ad_password_policy_length",
+            "ad_schema_version",
+            "ad_null_session_posture",
+            "ad_shadow_credentials_risk",
+            "ad_dc_shadow_indicators",
+            "ad_dangerous_extended_rights",
+            "ad_smartcard_posture",
+            "ad_pki_templates",
+            "ad_pki_posture",
+            "ad_sites",
+            "ad_subnets",
+            "ad_site_links",
+            "ad_site_coverage",
+            "ad_trust",
+            "ad_system_state_backup",
+            "ad_search_facets",
+            "ad_users_expired");
+
+        return declared;
+    }
+
+    private static IReadOnlySet<string> BuildKnownToolNames() {
+        return new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            "ad_pack_info",
+            "ad_environment_discover",
+            "ad_scope_discovery",
+            "ad_forest_discover",
+            "ad_gpo_list",
+            "ad_gpo_changes",
+            "ad_gpo_health",
+            "ad_gpo_permission_read",
+            "ad_gpo_permission_administrative",
+            "ad_gpo_permission_consistency",
+            "ad_gpo_permission_unknown",
+            "ad_gpo_permission_root",
+            "ad_gpo_permission_report",
+            "ad_gpo_inventory_health",
+            "ad_gpo_duplicates",
+            "ad_gpo_blocked_inheritance",
+            "ad_gpo_ou_link_summary",
+            "ad_gpo_redirect",
+            "ad_gpo_integrity",
+            "ad_wmi_filters",
+            "ad_wsus_configuration",
+            "ad_domain_info",
+            "ad_forest_functional",
+            "ad_ds_heuristics",
+            "ad_laps_schema_posture",
+            "ad_azuread_sso",
+            "ad_domain_statistics",
+            "ad_domain_container_defaults",
+            "ad_domain_controller_facts",
+            "ad_domain_controller_security",
+            "ad_dc_fleet_posture",
+            "ad_registration_posture",
+            "ad_domain_controllers",
+            "ad_fsmo_roles",
+            "ad_client_server_auth_posture",
+            "ad_legacy_cve_exposure",
+            "ad_firewall_profiles",
+            "ad_time_service_configuration",
+            "ad_llmnr_policy",
+            "ad_wdigest_policy",
+            "ad_winrm_policy",
+            "ad_proxy_policy",
+            "ad_schannel_policy",
+            "ad_terminal_services_redirection_policy",
+            "ad_terminal_services_timeout_policy",
+            "ad_name_resolution_policy",
+            "ad_lsa_protection_policy",
+            "ad_net_session_hardening_policy",
+            "ad_limit_blank_password_use_policy",
+            "ad_pku2u_policy",
+            "ad_hardened_paths_policy",
+            "ad_kdc_proxy_policy",
+            "ad_kerberos_pac_policy",
+            "ad_powershell_logging_policy",
+            "ad_no_lm_hash_policy",
+            "ad_ntlm_restrictions_policy",
+            "ad_restrict_ntlm_configuration",
+            "ad_logon_ux_uac_policy",
+            "ad_deny_logon_rights_policy",
+            "ad_defender_asr_policy",
+            "ad_everyone_includes_anonymous_policy",
+            "ad_enable_delegation_privilege_policy",
+            "ad_lan_manager_settings",
+            "ad_machine_account_quota",
+            "ad_duplicate_accounts",
+            "ad_ou_protection",
+            "ad_laps_coverage",
+            "ad_kerberos_crypto_posture",
+            "ad_spn_search",
+            "ad_spn_stats",
+            "ad_spn_hygiene",
+            "ad_groups_list",
+            "ad_whoami",
+            "ad_recycle_bin_lifetime",
+            "ad_object_get",
+            "ad_object_resolve",
+            "ad_handoff_prepare",
+            "ad_delegation_audit",
+            "ad_privileged_groups_summary",
+            "ad_domain_admins_summary",
+            "ad_stale_accounts",
+            "ad_never_logged_in_accounts",
+            "ad_service_account_usage",
+            "ad_kds_root_keys",
+            "ad_admin_count_report",
+            "ad_krbtgt_health",
+            "ad_ldap_query",
+            "ad_ldap_query_paged",
+            "ad_ldap_diagnostics",
+            "ad_directory_discovery_diagnostics",
+            "ad_dns_server_config",
+            "ad_dns_zone_config",
+            "ad_dns_zone_security",
+            "ad_dns_delegation",
+            "ad_dns_scavenging",
+            "ad_monitoring_probe_catalog",
+            "ad_monitoring_probe_run",
+            "ad_monitoring_service_heartbeat_get",
+            "ad_monitoring_diagnostics_get",
+            "ad_monitoring_metrics_get",
+            "ad_monitoring_dashboard_state_get",
+            "ad_replication_summary",
+            "ad_replication_connections",
+            "ad_replication_status",
+            "ad_password_policy",
+            "ad_password_policy_rollup",
+            "ad_password_policy_length",
+            "ad_schema_version",
+            "ad_null_session_posture",
+            "ad_shadow_credentials_risk",
+            "ad_dc_shadow_indicators",
+            "ad_dangerous_extended_rights",
+            "ad_smartcard_posture",
+            "ad_pki_templates",
+            "ad_pki_posture",
+            "ad_sites",
+            "ad_subnets",
+            "ad_site_links",
+            "ad_site_coverage",
+            "ad_trust",
+            "ad_system_state_backup",
+            "ad_search_facets",
+            "ad_search",
+            "ad_group_members",
+            "ad_group_members_resolved",
+            "ad_users_expired"
+        };
+    }
+
+    private static void AddRoleGroup(
+        IDictionary<string, string> declared,
+        string role,
+        params string[] toolNames) {
+        foreach (var toolName in toolNames) {
+            declared[toolName] = role;
+        }
+    }
 
     public static ITool Apply(ITool tool) {
         ArgumentNullException.ThrowIfNull(tool);
@@ -324,122 +555,24 @@ internal static class ActiveDirectoryToolContracts {
         };
     }
 
-    private static string ResolveRole(string toolName, string? existingRole) {
-        var inferredRole = TryResolveDeclaredRole(toolName);
-        if (inferredRole.Length == 0) {
-            return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
-                explicitRole: existingRole,
-                toolName: toolName,
-                declaredRolesByToolName: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                packDisplayName: "AD Playground");
+    private static string ResolveRole(string toolName, string? explicitRole) {
+        if (!string.IsNullOrWhiteSpace(explicitRole)) {
+            return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
+                explicitRole: explicitRole,
+                fallbackRole: ToolRoutingTaxonomy.RoleOperational,
+                packDisplayName: "ActiveDirectory");
         }
 
-        return ToolRoutingRoleResolver.ResolveExplicitOrFallback(
-            explicitRole: existingRole,
-            fallbackRole: inferredRole,
-            packDisplayName: "AD Playground");
-    }
-
-    private static string TryResolveDeclaredRole(string toolName) {
-        if (string.Equals(toolName, "ad_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RolePackInfo;
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (DeclaredRolesByToolName.TryGetValue(normalizedToolName, out var declaredRole)) {
+            return declaredRole;
         }
 
-        if (string.Equals(toolName, "ad_environment_discover", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_forest_discover", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleEnvironmentDiscover;
-        }
-
-        if (string.Equals(toolName, "ad_directory_discovery_diagnostics", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_probe_catalog", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_service_heartbeat_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_diagnostics_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_metrics_get", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_monitoring_dashboard_state_get", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (string.Equals(toolName, "ad_dns_server_config", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_zone_config", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_zone_security", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_delegation", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_dns_scavenging", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        if (string.Equals(toolName, "ad_search_facets", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (string.Equals(toolName, "ad_search", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_object_resolve", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_ldap_query", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_ldap_query_paged", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_spn_search", StringComparison.OrdinalIgnoreCase)
-            || toolName.IndexOf("_search", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_resolve", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_query", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return ToolRoutingTaxonomy.RoleResolver;
-        }
-
-        if (string.Equals(toolName, "ad_handoff_prepare", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_object_get", StringComparison.OrdinalIgnoreCase)) {
+        if (KnownToolNames.Contains(normalizedToolName)) {
             return ToolRoutingTaxonomy.RoleOperational;
         }
 
-        if (string.Equals(toolName, "ad_domain_info", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(toolName, "ad_trust", StringComparison.OrdinalIgnoreCase)
-            || toolName.IndexOf("_list", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_summary", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_statistics", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_stats", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_policy", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_posture", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_security", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_health", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_facts", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_roles", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_coverage", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_integrity", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_inventory", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_status", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_version", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_templates", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_keys", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_usage", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_accounts", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_audit", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_defaults", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_configuration", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_filters", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_functional", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_changes", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_duplicates", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_site", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_read", StringComparison.OrdinalIgnoreCase) >= 0
-            || toolName.IndexOf("_report", StringComparison.OrdinalIgnoreCase) >= 0
-            || ContainsAnyKeyword(toolName, DiagnosticRoleKeywords)) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        if (toolName.StartsWith("ad_", StringComparison.OrdinalIgnoreCase)
-            && toolName.IndexOf("unclassified", StringComparison.OrdinalIgnoreCase) < 0) {
-            return ToolRoutingTaxonomy.RoleDiagnostic;
-        }
-
-        return string.Empty;
-    }
-
-    private static bool ContainsAnyKeyword(string toolName, IReadOnlyList<string> keywords) {
-        for (var i = 0; i < keywords.Count; i++) {
-            if (toolName.IndexOf(keywords[i], StringComparison.OrdinalIgnoreCase) >= 0) {
-                return true;
-            }
-        }
-
-        return false;
+        throw new InvalidOperationException(
+            $"ActiveDirectory tool '{normalizedToolName}' must declare an explicit routing role or be added to the known-tool role catalog.");
     }
 }

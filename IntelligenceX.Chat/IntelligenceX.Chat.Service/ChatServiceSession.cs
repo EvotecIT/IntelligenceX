@@ -62,6 +62,8 @@ internal sealed partial class ChatServiceSession {
     private string[] _pluginSearchPaths;
     private ToolDefinitionDto[] _cachedToolDefinitions;
     private bool _servingPersistedToolingBootstrapPreview;
+    private ToolPackInfoDto[] _persistedPreviewPackSummaries;
+    private SessionCapabilitySnapshotDto? _persistedPreviewCapabilitySnapshot;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
@@ -134,6 +136,8 @@ internal sealed partial class ChatServiceSession {
         _pluginSearchPaths = Array.Empty<string>();
         _cachedToolDefinitions = Array.Empty<ToolDefinitionDto>();
         _servingPersistedToolingBootstrapPreview = false;
+        _persistedPreviewPackSummaries = Array.Empty<ToolPackInfoDto>();
+        _persistedPreviewCapabilitySnapshot = null;
         _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
         _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>());
         UpdatePackMetadataIndexes(Array.Empty<ToolPackDescriptor>());
@@ -161,13 +165,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            if (descriptorIdsByNormalizedPackId.TryGetValue(normalizedPackId, out var existingDescriptorId)
-                && !string.Equals(existingDescriptorId, descriptorId, StringComparison.OrdinalIgnoreCase)) {
-                throw new InvalidOperationException(
-                    $"Tool pack ids '{existingDescriptorId}' and '{descriptorId}' both normalize to '{normalizedPackId}'.");
-            }
-
-            descriptorIdsByNormalizedPackId[normalizedPackId] = descriptorId;
+            EnsureNoPackIdentityNormalizationCollisions(descriptorIdsByNormalizedPackId, descriptor);
             _packDisplayNamesById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveDisplayName(descriptor.Id, descriptor.Name);
             var description = (descriptor.Description ?? string.Empty).Trim();
             if (description.Length > 0) {
@@ -238,6 +236,62 @@ internal sealed partial class ChatServiceSession {
 
         normalized.Sort(StringComparer.OrdinalIgnoreCase);
         return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
+    }
+
+    private static void EnsureNoPackIdentityNormalizationCollisions(
+        IDictionary<string, string> descriptorIdsByNormalizedPackId,
+        ToolPackDescriptor descriptor) {
+        var descriptorId = (descriptor.Id ?? string.Empty).Trim();
+        var normalizedPrimaryPackId = NormalizePackId(descriptorId);
+        EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedPrimaryPackId);
+
+        if (descriptor.Aliases is not { Count: > 0 }) {
+            return;
+        }
+
+        var seenAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < descriptor.Aliases.Count; i++) {
+            var alias = (descriptor.Aliases[i] ?? string.Empty).Trim();
+            if (alias.Length == 0 || !seenAliases.Add(alias)) {
+                continue;
+            }
+
+            var normalizedAliasPackId = NormalizePackId(alias);
+            if (normalizedAliasPackId.Length == 0) {
+                continue;
+            }
+
+            if (normalizedPrimaryPackId.Length > 0
+                && !string.Equals(normalizedAliasPackId, normalizedPrimaryPackId, StringComparison.OrdinalIgnoreCase)) {
+                throw new InvalidOperationException(
+                    $"Tool pack alias '{alias}' for '{NormalizeCollisionDescriptorId(descriptorId)}' normalizes to '{normalizedAliasPackId}' instead of '{normalizedPrimaryPackId}'.");
+            }
+
+            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedAliasPackId);
+        }
+    }
+
+    private static void EnsureNoPackIdNormalizationCollision(
+        IDictionary<string, string> descriptorIdsByNormalizedPackId,
+        string descriptorId,
+        string normalizedPackId) {
+        if (normalizedPackId.Length == 0) {
+            return;
+        }
+
+        var normalizedDescriptorId = NormalizeCollisionDescriptorId(descriptorId);
+        if (descriptorIdsByNormalizedPackId.TryGetValue(normalizedPackId, out var existingDescriptorId)
+            && !string.Equals(existingDescriptorId, normalizedDescriptorId, StringComparison.OrdinalIgnoreCase)) {
+            throw new InvalidOperationException(
+                $"Tool pack ids '{existingDescriptorId}' and '{normalizedDescriptorId}' both normalize to '{normalizedPackId}'.");
+        }
+
+        descriptorIdsByNormalizedPackId[normalizedPackId] = normalizedDescriptorId;
+    }
+
+    private static string NormalizeCollisionDescriptorId(string descriptorId) {
+        var normalized = (descriptorId ?? string.Empty).Trim();
+        return normalized.Length == 0 ? "<empty>" : normalized;
     }
 
     internal static bool RequestRequiresConnectedClient(ChatServiceRequest request) {
