@@ -83,17 +83,23 @@ public sealed class ToolPackCatalogParityTests {
             string.Equals(routing.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase),
             entry.IsEnvironmentDiscoverTool);
 
-        var remoteHostArguments = DeriveKnownSchemaArguments(definition.Parameters, KnownRemoteHostArgumentNames);
-        var targetScopeArguments = MergeKnownArguments(
-            DeriveKnownSchemaArguments(definition.Parameters, KnownTargetScopeArgumentNames),
-            remoteHostArguments);
+        var remoteHostArguments = definition.Execution is ToolExecutionContract { IsExecutionAware: true, RemoteHostArguments.Count: > 0 } execution
+            ? execution.RemoteHostArguments.ToArray()
+            : DeriveKnownSchemaArguments(definition.Parameters, KnownRemoteHostArgumentNames);
+        var targetScopeArguments = definition.Execution is ToolExecutionContract { IsExecutionAware: true, TargetScopeArguments.Count: > 0 } targetExecution
+            ? targetExecution.TargetScopeArguments.ToArray()
+            : MergeKnownArguments(
+                DeriveKnownSchemaArguments(definition.Parameters, KnownTargetScopeArgumentNames),
+                remoteHostArguments);
 
         Assert.Equal(remoteHostArguments.Length > 0, entry.Traits.SupportsRemoteHostTargeting);
         Assert.Equal(targetScopeArguments.Length > 0, entry.Traits.SupportsTargetScoping);
         Assert.Equal(remoteHostArguments, entry.Traits.RemoteHostArguments);
         Assert.Equal(targetScopeArguments, entry.Traits.TargetScopeArguments);
         Assert.Equal(
-            remoteHostArguments.Length > 0 ? "local_or_remote" : "local_only",
+            definition.Execution is ToolExecutionContract { IsExecutionAware: true } explicitExecution
+                ? explicitExecution.ExecutionScope
+                : (remoteHostArguments.Length > 0 ? "local_or_remote" : "local_only"),
             entry.Traits.ExecutionScope);
 
         AssertSetupParity(entry, definition);

@@ -67,7 +67,7 @@ internal static partial class Program {
             lines.Add("- Cross-pack follow-up pivots are available into " + string.Join(", ", crossPackTargets) + " when the workflow calls for it.");
         }
 
-        if (matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting)) {
+        if (matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting && entry.SupportsRemoteExecution)) {
             lines.Add(includeRemoteHostFallbackHint
                 ? "- If a remote-capable tool is missing host or machine input, default to the first discovered/source host/DC from prior turns when thread context provides one."
                 : "- If a remote-capable tool is missing host or machine input, infer it from prior thread context when available.");

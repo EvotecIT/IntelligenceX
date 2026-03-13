@@ -141,7 +141,8 @@ public sealed partial class MainWindow {
                 toolCatalogPacks,
                 toolCatalogRoutingCatalog,
                 toolCatalogCapabilitySnapshot,
-                toolCatalogTools,
+                toolCatalogExecutionSummary: null,
+                toolCatalogTools: toolCatalogTools,
                 runtimeIntrospectionMode: false);
         }
 
@@ -151,7 +152,8 @@ public sealed partial class MainWindow {
                 toolCatalogPacks,
                 toolCatalogRoutingCatalog,
                 toolCatalogCapabilitySnapshot,
-                toolCatalogTools,
+                toolCatalogExecutionSummary: null,
+                toolCatalogTools: toolCatalogTools,
                 runtimeIntrospectionMode: true);
         }
 

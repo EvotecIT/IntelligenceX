@@ -491,11 +491,10 @@ public sealed class ChatServicePlannerPromptTests {
                 })
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             "investigate the affected domain controller and continue into host evidence",
             definitions,
-            6
-        }));
+            6);
 
         Assert.Contains("Contract-backed capability hints:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Representative live tool examples:", prompt, StringComparison.OrdinalIgnoreCase);
@@ -543,7 +542,7 @@ public sealed class ChatServicePlannerPromptTests {
                 })
         };
 
-        var prompt = Assert.IsType<string>(BuildModelPlannerPromptMethod.Invoke(null, new object?[] {
+        var prompt = BuildModelPlannerPrompt(
             """
             [Planner context]
             ix:planner-context:v1
@@ -553,8 +552,7 @@ public sealed class ChatServicePlannerPromptTests {
             continue with event evidence on the same host
             """,
             definitions,
-            4
-        }));
+            4);
 
         var sectionStart = prompt.IndexOf("Contract-backed capability hints:", StringComparison.OrdinalIgnoreCase);
         Assert.True(sectionStart >= 0);

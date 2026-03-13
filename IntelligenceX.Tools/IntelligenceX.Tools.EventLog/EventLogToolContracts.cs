@@ -228,22 +228,6 @@ internal static class EventLogToolContracts {
         if (string.Equals(definition.Name, "eventlog_named_events_query", StringComparison.OrdinalIgnoreCase)
             || string.Equals(definition.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)
             || string.Equals(definition.Name, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)) {
-            return new ToolHandoffContract {
-                IsHandoffAware = true,
-                OutboundRoutes = new[] {
-                    CreatePathHandoffRoute("eventlog", "eventlog_evtx_query", "files[].path"),
-                    CreatePathHandoffRoute("eventlog", "eventlog_evtx_security_summary", "files[].path"),
-                    CreatePathHandoffRoute("eventlog", "eventlog_evtx_stats", "files[].path")
-                }
-            };
-        }
-
-        if (string.Equals(definition.Name, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)) {
-            return CreateAdEntityHandoffContract();
-        }
-
-        if (string.Equals(definition.Name, "eventlog_named_events_query", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)) {
             return CreateEventLogQueryHandoffContract();
         }
 

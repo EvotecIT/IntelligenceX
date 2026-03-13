@@ -698,7 +698,6 @@ public sealed partial class MainWindow : Window {
                 },
                 isPackInfoTool = toolDefinition?.IsPackInfoTool == true,
                 isEnvironmentDiscoverTool = toolDefinition?.IsEnvironmentDiscoverTool == true,
-                executionScope = string.IsNullOrWhiteSpace(toolDefinition?.ExecutionScope) ? "local_only" : toolDefinition.ExecutionScope,
                 supportsTargetScoping = toolDefinition?.SupportsTargetScoping == true,
                 targetScopeArguments = toolDefinition?.TargetScopeArguments ?? Array.Empty<string>(),
                 supportsRemoteHostTargeting = toolDefinition?.SupportsRemoteHostTargeting == true,

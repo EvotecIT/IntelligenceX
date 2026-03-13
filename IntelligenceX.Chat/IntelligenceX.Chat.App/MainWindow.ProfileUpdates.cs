@@ -424,7 +424,7 @@ public sealed partial class MainWindow : Window {
 
     private static string NormalizeExecutionScope(string? executionScope) {
         var normalized = (executionScope ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized.Length == 0 ? "local_only" : normalized;
+        return normalized;
     }
 
     private static string NormalizeRuntimePackId(string? packId) {
