@@ -8,6 +8,36 @@ using IntelligenceX.Cli.GitHub;
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+    private static void TestGitHubOverviewDataCollectorSupportsOwnerOnlyRuns() {
+        var collector = new GitHubOverviewDataCollector(
+            new GitHubContributionCalendarClient((login, from, to) => throw new InvalidOperationException("Calendar client should not be used for owner-only runs.")),
+            owners => Task.FromResult(new GitHubRepositoryImpactSummary(
+                new[] {
+                    new GitHubRepositoryOwnerImpact(
+                        owner: "EvotecIT",
+                        repositoryCount: 2,
+                        totalStars: 42,
+                        totalForks: 9,
+                        repositories: new[] {
+                            new GitHubRepositoryImpactRepository("EvotecIT/IntelligenceX", null, 24, 5, "C#", "#178600", "2026-03-10T00:00:00Z"),
+                            new GitHubRepositoryImpactRepository("EvotecIT/PSWriteHTML", null, 18, 4, "PowerShell", "#012456", "2026-03-09T00:00:00Z")
+                        },
+                        topRepository: new GitHubRepositoryImpactRepository("EvotecIT/IntelligenceX", null, 24, 5, "C#", "#178600", "2026-03-10T00:00:00Z"))
+                },
+                Array.Empty<GitHubRepositoryImpactRepository>())));
+
+        var snapshot = collector.CollectOwnerImpactOnlyAsync(new[] { " EvotecIT ", "evotecit" })
+            .GetAwaiter()
+            .GetResult();
+
+        AssertEqual(true, snapshot.OwnerImpactOnly, "github overview collector owner-only flag");
+        AssertEqual(true, snapshot.Calendar is null, "github overview collector owner-only calendar absent");
+        AssertEqual(true, snapshot.PreviousYearCalendar is null, "github overview collector owner-only comparison calendar absent");
+        AssertEqual(1, snapshot.RepositoryOwners.Count, "github overview collector owner-only distinct owner count");
+        AssertEqual("EvotecIT", snapshot.RepositoryOwners[0], "github overview collector owner-only normalized owner");
+        AssertEqual(42, snapshot.RepositoryImpact?.TotalStars ?? 0, "github overview collector owner-only repository impact");
+    }
+
     private static void TestGitHubContributionCalendarClientStitchesNonOverlappingWindows() {
         var calls = new List<(DateTimeOffset From, DateTimeOffset To)>();
         var client = new GitHubContributionCalendarClient((login, from, to) => {

@@ -61,8 +61,24 @@ internal static partial class Program {
             TestGitHubWrappedHtmlRendererBuildsShareablePage);
         failed += Run("GitHub wrapped card html renderer builds compact card",
             TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
+        failed += Run("Usage breakdown html renderer uses shared assets",
+            TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets);
+        failed += Run("Usage breakdown page model builder builds server summary",
+            TestUsageTelemetryBreakdownPageModelBuilderBuildsServerSummary);
+        failed += Run("Usage overview page model builder builds supporting breakdown summaries",
+            TestUsageTelemetryOverviewPageModelBuilderBuildsSupportingBreakdownSummaries);
         failed += Run("Usage overview html renderer builds GitHub owner explorer",
             TestUsageTelemetryOverviewHtmlRendererBuildsGitHubOwnerExplorer);
+        failed += Run("Usage presentation helpers build source root labels",
+            TestUsageTelemetryPresentationHelpersBuildSourceRootLabels);
+        failed += Run("Usage overview page model builder builds GitHub render model",
+            TestUsageTelemetryOverviewPageModelBuilderBuildsGitHubRenderModel);
+        failed += Run("Usage GitHub wrapped page model builder builds owner panels",
+            TestUsageTelemetryGitHubWrappedPageModelBuilderBuildsOwnerPanels);
+        failed += Run("Usage GitHub wrapped card page model builder builds metrics",
+            TestUsageTelemetryGitHubWrappedCardPageModelBuilderBuildsMetrics);
+        failed += Run("Usage report bundle writer publishes shared assets",
+            TestUsageTelemetryReportBundleWriterPublishesSharedAssets);
         failed += Run("IntelligenceX client emits turn completed telemetry",
             TestIntelligenceXClientEmitsTurnCompletedTelemetry);
         failed += Run("EasySession forwards telemetry labels", TestEasySessionForwardsTelemetryLabels);
@@ -106,6 +122,7 @@ internal static partial class Program {
         failed += Run("Codex session usage adapter skips locked files",
             TestCodexSessionUsageAdapterSkipsLockedFiles);
 #if !NET472
+        failed += Run("GitHub overview collector supports owner-only runs", TestGitHubOverviewDataCollectorSupportsOwnerOnlyRuns);
         failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);
         failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
         failed += Run("Usage options parse daily breakdown", TestUsageOptionsParseDailyBreakdown);

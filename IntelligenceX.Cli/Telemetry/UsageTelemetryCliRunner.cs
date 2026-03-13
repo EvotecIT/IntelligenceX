@@ -605,7 +605,7 @@ internal static class UsageTelemetryCliRunner {
                 Metric = options.Metric,
                 Title = NormalizeOptional(options.Title) ?? BuildOverviewTitle(effectiveProviderId),
                 Subtitle = BuildQuickReportSubtitle(options, dbPath, scanResult),
-                SourceRootLabels = BuildSourceRootLabels(sourceRootStore.GetAll())
+                SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRootStore.GetAll())
             });
         overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners).ConfigureAwait(false);
 
@@ -661,7 +661,7 @@ internal static class UsageTelemetryCliRunner {
                 Metric = options.Metric,
                 Title = NormalizeOptional(options.Title) ?? BuildOverviewTitle(options),
                 Subtitle = BuildOverviewSubtitle(options),
-                SourceRootLabels = BuildSourceRootLabels(sourceRootStore.GetAll())
+                SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRootStore.GetAll())
             });
         overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners).ConfigureAwait(false);
 
@@ -1126,132 +1126,7 @@ internal static class UsageTelemetryCliRunner {
     }
 
     private static void WriteOverviewArtifacts(UsageTelemetryOverviewDocument overview, string outputDirectory) {
-        Directory.CreateDirectory(outputDirectory);
-        File.WriteAllText(
-            Path.Combine(outputDirectory, "overview.json"),
-            JsonLite.Serialize(JsonValue.From(overview.ToJson())),
-            new UTF8Encoding(false));
-        File.WriteAllText(
-            Path.Combine(outputDirectory, "index.html"),
-            UsageTelemetryOverviewHtmlRenderer.Render(overview),
-            new UTF8Encoding(false));
-
-        foreach (var heatmap in overview.Heatmaps) {
-            var lightDocument = CreateThemeVariant(heatmap.Document, darkMode: false);
-            var darkDocument = CreateThemeVariant(heatmap.Document, darkMode: true);
-            File.WriteAllText(
-                Path.Combine(outputDirectory, heatmap.Key + ".json"),
-                JsonLite.Serialize(JsonValue.From(heatmap.Document.ToJson())),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, heatmap.Key + ".svg"),
-                HeatmapSvgRenderer.Render(lightDocument),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, heatmap.Key + ".light.svg"),
-                HeatmapSvgRenderer.Render(lightDocument),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, heatmap.Key + ".dark.svg"),
-                HeatmapSvgRenderer.Render(darkDocument),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, heatmap.Key + ".html"),
-                UsageTelemetryBreakdownHtmlRenderer.Render(
-                    overview.Title,
-                    heatmap.Key,
-                    heatmap.Label,
-                    heatmap.Document.Subtitle),
-                new UTF8Encoding(false));
-        }
-
-        foreach (var providerSection in overview.ProviderSections) {
-            var lightDocument = CreateThemeVariant(providerSection.Heatmap, darkMode: false);
-            var darkDocument = CreateThemeVariant(providerSection.Heatmap, darkMode: true);
-            File.WriteAllText(
-                Path.Combine(outputDirectory, providerSection.Key + ".json"),
-                JsonLite.Serialize(JsonValue.From(providerSection.Heatmap.ToJson())),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, providerSection.Key + ".svg"),
-                HeatmapSvgRenderer.Render(lightDocument),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, providerSection.Key + ".light.svg"),
-                HeatmapSvgRenderer.Render(lightDocument),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, providerSection.Key + ".dark.svg"),
-                HeatmapSvgRenderer.Render(darkDocument),
-                new UTF8Encoding(false));
-        }
-
-        var githubSection = overview.ProviderSections.FirstOrDefault(section =>
-            string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase));
-        if (githubSection is not null && HasHeatmapActivity(githubSection.Heatmap)) {
-            File.WriteAllText(
-                Path.Combine(outputDirectory, "github-wrapped.html"),
-                GitHubWrappedHtmlRenderer.Render(githubSection),
-                new UTF8Encoding(false));
-            File.WriteAllText(
-                Path.Combine(outputDirectory, "github-wrapped-card.html"),
-                GitHubWrappedCardHtmlRenderer.Render(githubSection),
-                new UTF8Encoding(false));
-        }
-    }
-
-    private static bool HasHeatmapActivity(HeatmapDocument heatmap) {
-        return heatmap.Sections.Any(static section => section.Days.Count > 0);
-    }
-
-    private static HeatmapDocument CreateThemeVariant(HeatmapDocument source, bool darkMode) {
-        var themedPalette = CreateThemeVariant(source.Palette, darkMode);
-        var sections = source.Sections
-            .Select(static section => new HeatmapSection(
-                section.Title,
-                section.Subtitle,
-                section.Days
-                    .Select(static day => new HeatmapDay(day.Date, day.Value, day.Level, day.FillColor, day.Tooltip, day.Breakdown))
-                    .ToArray()))
-            .ToArray();
-        var legend = source.LegendItems
-            .Select(static item => new HeatmapLegendItem(item.Label, item.Color))
-            .ToArray();
-
-        return new HeatmapDocument(
-            source.Title,
-            source.Subtitle,
-            themedPalette,
-            sections,
-            units: source.Units,
-            weekStart: source.WeekStart,
-            showIntensityLegend: source.ShowIntensityLegend,
-            legendLowLabel: source.LegendLowLabel,
-            legendHighLabel: source.LegendHighLabel,
-            legendItems: legend,
-            showDocumentHeader: source.ShowDocumentHeader,
-            showSectionHeaders: source.ShowSectionHeaders,
-            compactWeekdayLabels: source.CompactWeekdayLabels);
-    }
-
-    private static HeatmapPalette CreateThemeVariant(HeatmapPalette source, bool darkMode) {
-        if (darkMode) {
-            return new HeatmapPalette(
-                backgroundColor: "#0f1115",
-                panelColor: "#171b22",
-                textColor: "#f5f7fa",
-                mutedTextColor: "#9aa4b2",
-                emptyColor: "#252b34",
-                intensityColors: source.IntensityColors.ToArray());
-        }
-
-        return new HeatmapPalette(
-            backgroundColor: "#f6f8fa",
-            panelColor: "#ffffff",
-            textColor: "#24292f",
-            mutedTextColor: "#57606a",
-            emptyColor: "#ebedf0",
-            intensityColors: source.IntensityColors.ToArray());
+        UsageTelemetryReportBundleWriter.WriteOverviewBundle(overview, outputDirectory);
     }
 
     private static bool MatchesProvider(string providerId, string? filter) {
@@ -1259,63 +1134,6 @@ internal static class UsageTelemetryCliRunner {
             return true;
         }
         return string.Equals(providerId, filter.Trim(), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static IReadOnlyDictionary<string, string> BuildSourceRootLabels(IEnumerable<SourceRootRecord> roots) {
-        var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var root in roots ?? Array.Empty<SourceRootRecord>()) {
-            if (root is null || string.IsNullOrWhiteSpace(root.Id)) {
-                continue;
-            }
-
-            labels[root.Id] = BuildSourceRootLabel(root);
-        }
-
-        return labels;
-    }
-
-    private static string BuildSourceRootLabel(SourceRootRecord root) {
-        var provider = BuildProviderTitle(root.ProviderId);
-        var path = root.Path ?? string.Empty;
-        var normalized = path.Replace('/', '\\');
-        var location = normalized.IndexOf("Windows.old", StringComparison.OrdinalIgnoreCase) >= 0
-            ? "Windows.old"
-            : normalized.StartsWith("ix://", StringComparison.OrdinalIgnoreCase)
-                ? "Internal"
-                : "Current";
-
-        var leaf = Path.GetFileName(normalized.TrimEnd('\\'));
-        if (string.IsNullOrWhiteSpace(leaf)) {
-            leaf = normalized;
-        }
-
-        var parent = Path.GetFileName(Path.GetDirectoryName(normalized.TrimEnd('\\')) ?? string.Empty);
-        if (string.Equals(leaf, "projects", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(parent, ".claude", StringComparison.OrdinalIgnoreCase)) {
-            leaf = ".claude/projects";
-        } else if (string.Equals(leaf, "sessions", StringComparison.OrdinalIgnoreCase) &&
-                   string.Equals(parent, ".codex", StringComparison.OrdinalIgnoreCase)) {
-            leaf = ".codex/sessions";
-        }
-
-        if (normalized.StartsWith("ix://", StringComparison.OrdinalIgnoreCase)) {
-            return provider + " · Internal IX";
-        }
-
-        return provider + " · " + location + " (" + leaf + ")";
-    }
-
-    private static string BuildProviderTitle(string? providerId) {
-        return NormalizeOptional(providerId)?.ToLowerInvariant() switch {
-            "codex" => "Codex",
-            "claude" => "Claude",
-            "ix" => "IntelligenceX",
-            "chatgpt" => "ChatGPT",
-            "github" => "GitHub",
-            "lmstudio" => "LM Studio",
-            "ollama" => "Ollama",
-            _ => string.IsNullOrWhiteSpace(providerId) ? "Unknown" : providerId!.Trim()
-        };
     }
 
     private static bool MatchesAccount(UsageEventRecord record, string? filter) {

@@ -1,0 +1,551 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using IntelligenceX.Json;
+
+namespace IntelligenceX.Visualization.Heatmaps;
+
+internal static class UsageTelemetryReportPageModelBuilders {
+    public static UsageTelemetryOverviewPageModel BuildOverview(UsageTelemetryOverviewDocument overview) {
+        if (overview is null) {
+            throw new ArgumentNullException(nameof(overview));
+        }
+
+        var sectionSwitches = new List<UsageTelemetrySectionSwitchModel>();
+        if (overview.ProviderSections.Count > 1) {
+            sectionSwitches.Add(new UsageTelemetrySectionSwitchModel("all", "All sections"));
+            sectionSwitches.AddRange(overview.ProviderSections.Select(static section =>
+                new UsageTelemetrySectionSwitchModel(section.ProviderId, section.Title)));
+        }
+
+        var sections = overview.ProviderSections
+            .Select(BuildSection)
+            .ToArray();
+
+        var supportingBreakdowns = overview.Heatmaps
+            .Select((heatmap, index) => new UsageTelemetrySupportingBreakdownModel(
+                heatmap.Key,
+                heatmap.Label,
+                heatmap.Document.Subtitle,
+                index == 0,
+                BuildBreakdownSummary(heatmap.Key, heatmap.Document.Subtitle ?? "Detailed breakdown view.", heatmap.Document)))
+            .ToArray();
+
+        var bootstrap = new JsonObject()
+            .Add("themeKey", "ix-usage-report-theme")
+            .Add("defaultTheme", "system")
+            .Add("defaultSectionTarget", "all")
+            .Add("defaultSupportingMode", "preview");
+
+        return new UsageTelemetryOverviewPageModel(
+            Title: overview.Title,
+            Subtitle: overview.Subtitle,
+            HeroStats: new[] {
+                new UsageTelemetryHeroStatModel("Range", FormatRange(overview.Summary.StartDayUtc, overview.Summary.EndDayUtc)),
+                new UsageTelemetryHeroStatModel("Sections", overview.ProviderSections.Count.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Telemetry Tokens", FormatCompact(overview.Summary.TotalValue))
+            },
+            SectionSwitches: sectionSwitches,
+            Sections: sections,
+            SupportingBreakdowns: supportingBreakdowns,
+            BootstrapJson: JsonLite.Serialize(JsonValue.From(bootstrap)),
+            Footnote: "Built from the provider-neutral telemetry ledger, so the same report format can work for Codex, Claude, IX-native usage, and future compatible providers.");
+    }
+
+    public static UsageTelemetryBreakdownPageModel BuildBreakdown(
+        string reportTitle,
+        string breakdownKey,
+        string breakdownLabel,
+        string? subtitle,
+        HeatmapDocument document) {
+        var safeTitle = string.IsNullOrWhiteSpace(reportTitle) ? "Usage Overview" : reportTitle.Trim();
+        var safeLabel = string.IsNullOrWhiteSpace(breakdownLabel) ? "Breakdown" : breakdownLabel.Trim();
+        var safeKey = string.IsNullOrWhiteSpace(breakdownKey) ? "breakdown" : breakdownKey.Trim();
+        var summaryHint = string.IsNullOrWhiteSpace(subtitle) ? "Detailed breakdown view." : (subtitle ?? string.Empty).Trim();
+
+        var bootstrap = new JsonObject()
+            .Add("themeKey", "ix-usage-report-theme")
+            .Add("defaultTheme", "system");
+
+        return new UsageTelemetryBreakdownPageModel(
+            ReportTitle: safeTitle,
+            BreakdownKey: safeKey,
+            BreakdownLabel: safeLabel,
+            SummaryHint: summaryHint,
+            BootstrapJson: JsonLite.Serialize(JsonValue.From(bootstrap)),
+            Summary: BuildBreakdownSummary(safeKey, summaryHint, document));
+    }
+
+    private static UsageTelemetryOverviewSectionPageModel BuildSection(UsageTelemetryOverviewProviderSection section) {
+        var isGitHub = IsGitHubSection(section);
+        var flags = new UsageTelemetryOverviewSectionFlags(
+            IsGitHub: isGitHub,
+            HasActivity: HasActivityData(section),
+            HasMonthly: section.MonthlyUsage.Count > 0,
+            HasModels: section.MostUsedModel is not null || section.RecentModel is not null || section.TopModels.Count > 0,
+            HasPricing: section.ApiCostEstimate is not null,
+            HasComposition: section.Composition is not null && section.Composition.Items.Count > 0,
+            HasAdditionalInsights: section.AdditionalInsights.Count > 0,
+            UseSummaryGrid: !isGitHub && (section.Composition is not null && section.Composition.Items.Count > 0 || section.MonthlyUsage.Count > 0 || section.ApiCostEstimate is not null || section.MostUsedModel is not null || section.RecentModel is not null || section.TopModels.Count > 0 || section.AdditionalInsights.Count > 0));
+        var datasetTabs = BuildDatasetTabs(flags);
+
+        return new UsageTelemetryOverviewSectionPageModel(
+            ProviderSectionId: "provider-section-" + section.ProviderId.Trim().ToLowerInvariant(),
+            ProviderId: section.ProviderId,
+            Title: section.Title,
+            Subtitle: section.Subtitle,
+            Section: section,
+            Flags: flags,
+            DatasetTabs: datasetTabs,
+            AccentColors: ResolveProviderAccentColors(section.ProviderId),
+            GitHub: isGitHub ? BuildGitHubSection(section) : null);
+    }
+
+    private static bool HasActivityData(UsageTelemetryOverviewProviderSection section) {
+        return section.Heatmap.Sections.Any(static entry => entry.Days.Count > 0);
+    }
+
+    private static bool IsGitHubSection(UsageTelemetryOverviewProviderSection section) {
+        return string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static UsageTelemetryProviderAccentColors ResolveProviderAccentColors(string providerId) {
+        return providerId.Trim().ToLowerInvariant() switch {
+            "claude" => new UsageTelemetryProviderAccentColors("#f3ba73", "#fb8c1d", "#c65102", "#e9c89e"),
+            "codex" => new UsageTelemetryProviderAccentColors("#98a8ff", "#6268f1", "#2f2a93", "#bcc5ff"),
+            _ => new UsageTelemetryProviderAccentColors("#9be9a8", "#40c463", "#216e39", "#cfe8d2")
+        };
+    }
+
+    private static UsageTelemetryGitHubSectionPageModel BuildGitHubSection(UsageTelemetryOverviewProviderSection section) {
+        var ownerSections = section.AdditionalInsights
+            .Where(static insight =>
+                insight.Key.StartsWith("github-owner-", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(insight.Key, "github-owner-impact", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(static insight => insight.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var topRepositoriesByForks = FindInsight(section, "github-top-repositories-forks");
+        var topRepositoriesByHealth = FindInsight(section, "github-top-repositories-health");
+        var topLanguages = FindInsight(section, "github-top-languages");
+
+        return new UsageTelemetryGitHubSectionPageModel(
+            Lenses: BuildGitHubLenses(ownerSections, topLanguages),
+            RepoSortModes: BuildGitHubRepoSortModes(topRepositoriesByForks, topRepositoriesByHealth),
+            OwnerScopes: BuildGitHubOwnerScopes(ownerSections),
+            YearComparison: FindInsight(section, "github-year-comparison"),
+            ScopeSplit: FindInsight(section, "github-scope-split"),
+            RecentRepositories: FindInsight(section, "github-recent-repositories"),
+            OwnerImpact: FindInsight(section, "github-owner-impact"),
+            TopRepositories: FindInsight(section, "github-top-repositories"),
+            TopRepositoriesByForks: topRepositoriesByForks,
+            TopRepositoriesByHealth: topRepositoriesByHealth,
+            TopLanguages: topLanguages,
+            OwnerSections: ownerSections);
+    }
+
+    private static UsageTelemetryToggleOptionModel[] BuildDatasetTabs(UsageTelemetryOverviewSectionFlags flags) {
+        var tabs = new List<UsageTelemetryToggleOptionModel> {
+            new("summary", "Summary", IsDefault: true)
+        };
+
+        if (flags.HasActivity) {
+            tabs.Add(new("activity", "Activity", IsDefault: false));
+        }
+        if (flags.HasModels) {
+            tabs.Add(new("models", "Models", IsDefault: false));
+        }
+        if (flags.HasPricing) {
+            tabs.Add(new("pricing", "Pricing", IsDefault: false));
+        }
+        if (flags.HasAdditionalInsights) {
+            tabs.Add(new("impact", "Impact", IsDefault: false));
+        }
+        if (flags.IsGitHub && flags.HasActivity) {
+            tabs.Add(new("wrapped", "Wrapped", IsDefault: false, Href: "github-wrapped.html"));
+        }
+
+        return tabs.ToArray();
+    }
+
+    private static UsageTelemetryToggleOptionModel[] BuildGitHubLenses(
+        IReadOnlyList<UsageTelemetryOverviewInsightSection> ownerSections,
+        UsageTelemetryOverviewInsightSection? topLanguages) {
+        var tabs = new List<UsageTelemetryToggleOptionModel> {
+            new("impact", "Impact", IsDefault: true),
+            new("recent", "Recent", IsDefault: false)
+        };
+        if (ownerSections.Count > 0) {
+            tabs.Add(new("owners", "Owners", IsDefault: false));
+        }
+        if (topLanguages is not null) {
+            tabs.Add(new("languages", "Languages", IsDefault: false));
+        }
+
+        return tabs.ToArray();
+    }
+
+    private static UsageTelemetryToggleOptionModel[] BuildGitHubRepoSortModes(
+        UsageTelemetryOverviewInsightSection? topRepositoriesByForks,
+        UsageTelemetryOverviewInsightSection? topRepositoriesByHealth) {
+        var tabs = new List<UsageTelemetryToggleOptionModel> {
+            new("stars", "Top by stars", IsDefault: true)
+        };
+        if (topRepositoriesByForks is not null) {
+            tabs.Add(new("forks", "Top by forks", IsDefault: false));
+        }
+        if (topRepositoriesByHealth is not null) {
+            tabs.Add(new("health", "Top by health", IsDefault: false));
+        }
+
+        return tabs.ToArray();
+    }
+
+    private static UsageTelemetryToggleOptionModel[] BuildGitHubOwnerScopes(
+        IReadOnlyList<UsageTelemetryOverviewInsightSection> ownerSections) {
+        if (ownerSections.Count == 0) {
+            return Array.Empty<UsageTelemetryToggleOptionModel>();
+        }
+
+        var scopes = new List<UsageTelemetryToggleOptionModel> {
+            new("all", "All scope", IsDefault: true)
+        };
+        scopes.AddRange(ownerSections.Select(static ownerSection =>
+            new UsageTelemetryToggleOptionModel(ownerSection.Key, ownerSection.Title, IsDefault: false)));
+        return scopes.ToArray();
+    }
+
+    public static UsageTelemetryGitHubWrappedPageModel BuildGitHubWrapped(UsageTelemetryOverviewProviderSection section) {
+        if (section is null) {
+            throw new ArgumentNullException(nameof(section));
+        }
+
+        var github = BuildGitHubSection(section);
+        var ownerPanels = github.OwnerSections
+            .OrderByDescending(static insight => ExtractOwnerMagnitude(insight.Headline))
+            .ThenBy(static insight => insight.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(static insight => new UsageTelemetryGitHubWrappedOwnerPanelModel(
+                insight.Key,
+                insight.Title,
+                insight))
+            .ToArray();
+
+        var bootstrap = new JsonObject()
+            .Add("defaultOwnerPanel", "all");
+
+        return new UsageTelemetryGitHubWrappedPageModel(
+            Title: section.Title,
+            Subtitle: section.Subtitle,
+            Note: section.Note,
+            BootstrapJson: JsonLite.Serialize(JsonValue.From(bootstrap)),
+            Metrics: section.Metrics,
+            SpotlightCards: section.SpotlightCards,
+            MonthlyUsage: section.MonthlyUsage,
+            LongestStreakDays: section.LongestStreakDays,
+            CurrentStreakDays: section.CurrentStreakDays,
+            YearComparison: github.YearComparison,
+            ScopeSplit: github.ScopeSplit,
+            OwnerImpact: github.OwnerImpact,
+            TopLanguages: github.TopLanguages,
+            RecentRepositories: github.RecentRepositories,
+            TopRepositories: github.TopRepositories,
+            TopRepositoriesByForks: github.TopRepositoriesByForks,
+            TopRepositoriesByHealth: github.TopRepositoriesByHealth,
+            OwnerPanels: ownerPanels);
+    }
+
+    public static UsageTelemetryGitHubWrappedCardPageModel BuildGitHubWrappedCard(UsageTelemetryOverviewProviderSection section) {
+        if (section is null) {
+            throw new ArgumentNullException(nameof(section));
+        }
+
+        var github = BuildGitHubSection(section);
+        var yearComparisonHeadline = github.YearComparison?.Headline ?? "n/a";
+        var topRepositoryHeadline = github.TopRepositories?.Headline ?? "n/a";
+        var topRepositoryValue = github.TopRepositories?.Rows.FirstOrDefault()?.Value;
+        var topLanguageHeadline = github.TopLanguages?.Headline ?? "n/a";
+        var topLanguageValue = github.TopLanguages?.Rows.FirstOrDefault()?.Value;
+        var ownerScopeValue = github.ScopeSplit?.Rows.Count > 1
+            ? github.ScopeSplit.Rows[1].Value
+            : github.ScopeSplit?.Headline ?? "n/a";
+
+        return new UsageTelemetryGitHubWrappedCardPageModel(
+            Title: section.Title,
+            Subtitle: section.Subtitle,
+            BootstrapJson: "{}",
+            Metrics: new[] {
+                new UsageTelemetryGitHubWrappedMetricModel(
+                    section.Metrics.ElementAtOrDefault(0)?.Label ?? "Contributions",
+                    section.Metrics.ElementAtOrDefault(0)?.Value ?? "n/a",
+                    section.Metrics.ElementAtOrDefault(0)?.Subtitle),
+                new UsageTelemetryGitHubWrappedMetricModel(
+                    "Most active month",
+                    FindSpotlightCardValue(section, "most-active-month", "n/a"),
+                    FindSpotlightCardSubtitle(section, "most-active-month")),
+                new UsageTelemetryGitHubWrappedMetricModel(
+                    "Longest streak",
+                    section.LongestStreakDays.ToString(CultureInfo.InvariantCulture) + " days",
+                    FindSpotlightCardSubtitle(section, "longest-streak")),
+                new UsageTelemetryGitHubWrappedMetricModel(
+                    "Current streak",
+                    section.CurrentStreakDays.ToString(CultureInfo.InvariantCulture) + " days",
+                    FindSpotlightCardSubtitle(section, "current-streak"))
+            },
+            Stats: new[] {
+                new UsageTelemetryGitHubWrappedMetricModel("Year over year", yearComparisonHeadline, github.YearComparison?.Note),
+                new UsageTelemetryGitHubWrappedMetricModel("Top repository", topRepositoryHeadline, topRepositoryValue),
+                new UsageTelemetryGitHubWrappedMetricModel("Top language", topLanguageHeadline, topLanguageValue),
+                new UsageTelemetryGitHubWrappedMetricModel("Owner scope", ownerScopeValue, section.Note)
+            },
+            FooterMetrics: new[] {
+                new UsageTelemetryGitHubWrappedMetricModel(
+                    "Recent repo",
+                    github.RecentRepositories?.Rows.FirstOrDefault()?.Label ?? "n/a",
+                    github.RecentRepositories?.Rows.FirstOrDefault()?.Subtitle),
+                new UsageTelemetryGitHubWrappedMetricModel(
+                    "Repository impact",
+                    github.OwnerImpact?.Headline ?? "n/a",
+                    github.OwnerImpact?.Note)
+            });
+    }
+
+    private static UsageTelemetryOverviewInsightSection? FindInsight(
+        UsageTelemetryOverviewProviderSection section,
+        string key) {
+        return section.AdditionalInsights.FirstOrDefault(insight =>
+            string.Equals(insight.Key, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string FormatRange(DateTime? startDayUtc, DateTime? endDayUtc) {
+        if (!startDayUtc.HasValue || !endDayUtc.HasValue) {
+            return "n/a";
+        }
+
+        return startDayUtc.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " to " + endDayUtc.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCompact(decimal value) {
+        if (value <= 0m) {
+            return "0";
+        }
+
+        return FormatCompact((double)value);
+    }
+
+    private static string FormatCompact(double value) {
+        if (value >= 1_000_000_000d) {
+            return (value / 1_000_000_000d).ToString(value >= 10_000_000_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "B";
+        }
+        if (value >= 1_000_000d) {
+            return (value / 1_000_000d).ToString(value >= 10_000_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "M";
+        }
+        if (value >= 1_000d) {
+            return (value / 1_000d).ToString(value >= 10_000d ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "K";
+        }
+
+        return value.ToString("0", CultureInfo.InvariantCulture);
+    }
+
+    private static string FindSpotlightCardValue(
+        UsageTelemetryOverviewProviderSection section,
+        string key,
+        string fallback) {
+        return section.SpotlightCards.FirstOrDefault(card =>
+                   string.Equals(card.Key, key, StringComparison.OrdinalIgnoreCase))?.Value
+               ?? fallback;
+    }
+
+    private static string? FindSpotlightCardSubtitle(
+        UsageTelemetryOverviewProviderSection section,
+        string key) {
+        return section.SpotlightCards.FirstOrDefault(card =>
+            string.Equals(card.Key, key, StringComparison.OrdinalIgnoreCase))?.Subtitle;
+    }
+
+    private static long ExtractOwnerMagnitude(string? headline) {
+        if (string.IsNullOrWhiteSpace(headline)) {
+            return 0L;
+        }
+
+        var token = headline!.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return ParseCompactLong(token);
+    }
+
+    private static long ParseCompactLong(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return 0L;
+        }
+
+        var normalized = value!.Trim().ToUpperInvariant();
+        var multiplier = 1d;
+        if (normalized.EndsWith("B", StringComparison.Ordinal)) {
+            multiplier = 1_000_000_000d;
+            normalized = normalized.Substring(0, normalized.Length - 1);
+        } else if (normalized.EndsWith("M", StringComparison.Ordinal)) {
+            multiplier = 1_000_000d;
+            normalized = normalized.Substring(0, normalized.Length - 1);
+        } else if (normalized.EndsWith("K", StringComparison.Ordinal)) {
+            multiplier = 1_000d;
+            normalized = normalized.Substring(0, normalized.Length - 1);
+        }
+
+        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? (long)Math.Round(parsed * multiplier, MidpointRounding.AwayFromZero)
+            : 0L;
+    }
+
+    private static UsageTelemetryBreakdownSummaryPageModel BuildBreakdownSummary(
+        string breakdownKey,
+        string summaryHint,
+        HeatmapDocument document) {
+        var sections = document.Sections ?? Array.Empty<HeatmapSection>();
+        var days = sections.SelectMany(static section => section.Days).OrderBy(static day => day.Date).ToArray();
+        var activeDays = days.Where(static day => day.Value > 0d).ToArray();
+        var totals = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var day in activeDays) {
+            foreach (var pair in day.Breakdown) {
+                totals[pair.Key] = totals.TryGetValue(pair.Key, out var existing)
+                    ? existing + pair.Value
+                    : pair.Value;
+            }
+        }
+
+        var totalValue = activeDays.Sum(static day => day.Value);
+        var isSourceRoot = string.Equals(breakdownKey, "sourceroot", StringComparison.OrdinalIgnoreCase);
+        var firstDate = days.Length > 0 ? days[0].Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "n/a";
+        var lastDate = days.Length > 0 ? days[days.Length - 1].Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "n/a";
+        var peak = activeDays.Length > 0
+            ? activeDays.OrderByDescending(static day => day.Value).First()
+            : null;
+
+        var stats = new[] {
+            new UsageTelemetryHeroStatModel("Range", firstDate + " to " + lastDate),
+            new UsageTelemetryHeroStatModel("Active days", activeDays.Length.ToString(CultureInfo.InvariantCulture)),
+            new UsageTelemetryHeroStatModel("Total", FormatCompact(totalValue)),
+            new UsageTelemetryHeroStatModel("Peak day", peak is null ? "n/a" : peak.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (" + FormatCompact(peak.Value) + ")"),
+            new UsageTelemetryHeroStatModel("Categories", totals.Count.ToString(CultureInfo.InvariantCulture))
+        };
+
+        var legendLabelMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in document.LegendItems) {
+            if (!string.IsNullOrWhiteSpace(item.Key)) {
+                legendLabelMap[item.Key] = item.Label;
+            }
+            if (!string.IsNullOrWhiteSpace(item.Label)) {
+                legendLabelMap[item.Label] = item.Label;
+            }
+        }
+
+        var topRows = totals
+            .OrderByDescending(static pair => pair.Value)
+            .Take(10)
+            .Select(pair => new UsageTelemetryBreakdownRowModel(
+                ResolveLegendLabel(legendLabelMap, pair.Key),
+                FormatCompact(pair.Value) + " (" + FormatPercentValue(pair.Value, totalValue) + "%)",
+                FormatPercentValue(pair.Value, totalValue) + "% of visible total",
+                ComputePercentage(pair.Value, totalValue)))
+            .ToArray();
+
+        var sectionRows = sections
+            .Select(section => {
+                var sectionActive = section.Days.Where(static day => day.Value > 0d).ToArray();
+                var sectionTotal = sectionActive.Sum(static day => day.Value);
+                return new {
+                    section.Title,
+                    SectionTotal = sectionTotal,
+                    ActiveDays = sectionActive.Length
+                };
+            })
+            .Where(static row => row.SectionTotal > 0d)
+            .OrderByDescending(static row => row.SectionTotal)
+            .Select(row => new UsageTelemetryBreakdownRowModel(
+                row.Title,
+                FormatCompact(row.SectionTotal) + " (" + FormatPercentValue(row.SectionTotal, totalValue) + "%)",
+                row.ActiveDays.ToString(CultureInfo.InvariantCulture) + " active day(s)",
+                ComputePercentage(row.SectionTotal, totalValue)))
+            .ToArray();
+
+        var secondaryRows = isSourceRoot
+            ? BuildSourceFamilyRows(totals, totalValue)
+            : sectionRows;
+
+        var overviewNotes = new List<string> { summaryHint };
+        if (isSourceRoot) {
+            overviewNotes.Add(totals.Count.ToString(CultureInfo.InvariantCulture) + " distinct source root(s), with labels derived from current roots, Windows.old, and future imported sources like WSL or macOS backups.");
+        }
+
+        var legendItems = document.LegendItems
+            .Select(static item => new UsageTelemetryBreakdownLegendItemModel(item.Label, item.Color))
+            .ToArray();
+
+        return new UsageTelemetryBreakdownSummaryPageModel(
+            IsSourceRoot: isSourceRoot,
+            Stats: stats,
+            OverviewTitle: isSourceRoot ? "Source coverage" : "Overview",
+            OverviewNotes: overviewNotes,
+            TopRows: topRows,
+            TopRowsTitle: isSourceRoot ? "Top source roots" : "Top categories",
+            SecondaryRows: secondaryRows,
+            SecondaryRowsTitle: isSourceRoot ? "Source families" : "Section activity",
+            LegendItems: legendItems,
+            LegendTitle: "Legend");
+    }
+
+    private static IReadOnlyList<UsageTelemetryBreakdownRowModel> BuildSourceFamilyRows(
+        IReadOnlyDictionary<string, double> totals,
+        double totalValue) {
+        var families = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in totals) {
+            var bucket = ResolveSourceFamily(pair.Key);
+            families[bucket] = families.TryGetValue(bucket, out var existing)
+                ? existing + pair.Value
+                : pair.Value;
+        }
+
+        return families
+            .OrderByDescending(static pair => pair.Value)
+            .Select(pair => new UsageTelemetryBreakdownRowModel(
+                pair.Key,
+                FormatCompact(pair.Value) + " (" + FormatPercentValue(pair.Value, totalValue) + "%)",
+                FormatPercentValue(pair.Value, totalValue) + "% of visible total",
+                ComputePercentage(pair.Value, totalValue)))
+            .ToArray();
+    }
+
+    private static string ResolveSourceFamily(string label) {
+        if (label.IndexOf("windows.old", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Windows.old";
+        }
+        if (label.IndexOf("current", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Current machine";
+        }
+        if (label.IndexOf("wsl", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "WSL";
+        }
+        if (label.IndexOf("mac", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "macOS";
+        }
+
+        return "Imported / other";
+    }
+
+    private static string ResolveLegendLabel(
+        IReadOnlyDictionary<string, string> labelMap,
+        string label) {
+        return labelMap.TryGetValue(label, out var resolved)
+            ? resolved
+            : label;
+    }
+
+    private static string FormatPercentValue(double numerator, double denominator) {
+        return ComputePercentage(numerator, denominator).ToString("0.#", CultureInfo.InvariantCulture);
+    }
+
+    private static double ComputePercentage(double numerator, double denominator) {
+        if (numerator <= 0d || denominator <= 0d) {
+            return 0d;
+        }
+
+        return numerator / denominator * 100d;
+    }
+}
