@@ -165,7 +165,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersRoleRowsAndContinuationMarkers() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 11, 18, 45, 31, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "first", now),
@@ -195,7 +195,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersAssistantModelBadgeWhenProvided() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 20, 31, 6, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("User", "hello", now, null),
@@ -211,7 +211,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersAssistantTurnTraceAndProvisionalStateWhenDecorationsProvided() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("Assistant", "Running checks...", now, "gpt-5.4")
@@ -243,7 +243,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersToolActivityChannelWhenDecorationRequestsIt() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 23, 7, 41, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("Assistant", "Running cross-DC checks...", now, "gpt-5.4")
@@ -271,7 +271,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_DoesNotRenderAssistantTurnTraceWhenDisabled() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 22, 20, 18, 6, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("Assistant", "Running checks...", now, "gpt-5.4")
@@ -297,7 +297,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_HidesAssistantDraftBubbleWhenDraftVisibilityDisabled() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 23, 19, 12, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("User", "Run check", now, null),
@@ -328,7 +328,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_KeepsDraftMetadataVisibleAcrossStreamingContinuations() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 23, 22, 5, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("Assistant", "draft-one", now, "gpt-5.4"),
@@ -361,7 +361,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_CapsAssistantTurnTraceTimelineToBoundedEntryCount() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 23, 21, 6, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("Assistant", "Status snapshot.", now, "gpt-5.4")
@@ -391,7 +391,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_CapsAssistantTurnTraceTimelineUsingLastNonEmptyEntries() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 23, 21, 12, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("Assistant", "Status snapshot.", now, "gpt-5.4")
@@ -420,7 +420,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_IgnoresAssistantDecorationsForNonAssistantMessages() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 22, 20, 20, 0, DateTimeKind.Local);
         var messages = new (string Role, string Text, DateTime Time, string? Model)[] {
             ("User", "hello", now, null)
@@ -445,7 +445,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_DoesNotHideMetaForSystemContinuations() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 17, 14, 22, 0, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("System", "Restarting local runtime...", now),
@@ -464,7 +464,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_SkipsBlankMessagesButKeepsIndexProgression() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 11, 19, 0, 0, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "a", now),
@@ -482,7 +482,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersAssistantErrorAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 11, 19, 10, 0, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "[error] Chat failed\n\nChatGPT usage limit reached. Try again later.", now)
@@ -500,7 +500,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersSystemWarningAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 16, 18, 2, 0, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("System", "[warning] Tool health checks need attention\n\nFound 1 startup warning.", now)
@@ -518,7 +518,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersStartupSystemMessageAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 8, 2, 39, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("System", "[startup] Runtime tool bootstrap summary\n\n- Total: 9.6s\n- Packs loaded: 10, disabled: 1, tools: 187", now)
@@ -537,7 +537,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersCachedEvidenceFallbackAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 8, 12, 36, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "[Cached evidence fallback]\nix:cached-tool-evidence:v1\n\n#### ad_environment_discover\n### Active Directory: Environment Discovery", now)
@@ -555,7 +555,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_NormalizesLegacyCachedEvidenceToolHeadingBullets() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 8, 12, 36, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "[Cached evidence fallback]\nix:cached-tool-evidence:v1\n\nRecent evidence:\n- eventlog_top_events: ### Top 30 recent events (preview)", now)
@@ -570,7 +570,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersHyphenatedCachedEvidenceFallbackPrefixAsCalloutCard() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 8, 12, 36, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "[cached-evidence-fallback]\nix:cached-tool-evidence:v1\n\nCached tool output reused.", now)
@@ -588,7 +588,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_NormalizesCommonMarkdownSpacingArtifacts() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 13, 19, 25, 24, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "✅I can run 1) LDAP checks, or2) cert checks.", now)
@@ -605,7 +605,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersAdjacentOrderedItemsAsSeparateListEntries() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 10, 10, 22, 14, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "1. First check\n2. Second check", now)
@@ -620,7 +620,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RepairsCollapsedStatusMetricMarkdownBeforeRender() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 13, 19, 25, 24, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "**Status: HEALTHY** - **Servers checked:**5 -**Replication edges:**62 -*Failed edges:**0 -*Stale edges (>24h):**0 - **Servers with failures:**0", now)
@@ -656,7 +656,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersPendingActionsAsActionChips() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 15, 20, 36, 14, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
@@ -679,7 +679,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_DoesNotExtractPendingActionsFromFencedCode() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 16, 8, 15, 0, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
@@ -701,7 +701,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_AlwaysRendersInlineBackticksAsCodeTags() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 15, 23, 18, 6, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "Use `/act act_ad0_sys3210_msg` to run it.", now)
@@ -716,7 +716,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RendersCommonStrongPhrasesWithoutLiteralMarkers() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 16, 13, 6, 34, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", "If you want, I can run a **“Top 8 high-signal security pack”** now, or list only **GPO-related** reports.", now),
@@ -736,7 +736,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RepairsCollapsedOrderedMenuWithoutLiteralMarkers() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 17, 13, 1, 40, DateTimeKind.Local);
         var text = "Love it 😄\nIf “oki doki” means *“we’re good for now”* — perfect.\n\nQuick next-step menu (pick one and I’ll run it right away):\n1) **Privilege hygiene sweep(Domain Admins + other privileged groups, nested exposure) 2)** Delegation risk audit**(unconstrained / constrained / protocol transition) 3)** Replication + DC health snapshot** (stale links, failing partners, LDAP/Kerberos basics)\n\nOr just say “done” and I’ll keep quiet like a well-configured service.";
         var normalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
@@ -756,7 +756,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RepairsAdComparisonBulletArtifactsForDisplayHtml() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 18, 19, 3, 10, DateTimeKind.Local);
         var text = "-AD1 starkes Muster\n-** AD2** eher Secure-Channel\n- Signal **AD1 has very high `7034/7023` volume, mostly from **Service Control Manager**.**";
 
@@ -779,7 +779,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RepairsHistoricalReplicationSummaryArtifacts() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 6, 28, DateTimeKind.Local);
         var text = """
                    Nice—forest replication check is clean. No zombies escaped the tomb. 🧟‍♂️
@@ -811,7 +811,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RepairsBrokenTwoLineStrongResultLabelArtifacts() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 8, 40, DateTimeKind.Local);
         var text = """
                    ## 2) LDAP/LDAPS check on all 5 servers
@@ -833,7 +833,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_RepairsSplitHostLabelBulletsIntoRenderableListItems() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 19, 9, 7, 51, DateTimeKind.Local);
         var text = """
                    **Bewertung:**
@@ -862,7 +862,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_NormalizesUnicodeDashBulletsForDisplayHtml() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 19, 10, 12, 0, DateTimeKind.Local);
         var text = "—** AD2** eher Secure-Channel/TLS";
 
@@ -879,7 +879,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// </summary>
     [Fact]
     public void Format_StreamingPreviewPipelineRepairsSignalTypographyArtifacts() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 11, 8, 0, DateTimeKind.Local);
         var raw = string.Join('\n', [
             "- Signal **Catalog count includes hidden/disabled/deprecated rules -> **Why it matters:**external/custom rules can drift or disappear between hosts ->**Next action:**break down `rule_origin` (`builtin` vs `external`) and confirm expected external rules are present.**",
@@ -904,3 +904,4 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("</strong>break down", html, StringComparison.Ordinal);
     }
 }
+

@@ -55,7 +55,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var method = contractType!.GetMethod(
             "TryEnableOptionalRendererNetworkSupport",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
 
         var enabled = (bool)(method!.Invoke(null, [options]) ?? false);
         var property = options.GetType().GetProperty("Network", BindingFlags.Instance | BindingFlags.Public);
@@ -110,3 +110,4 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         return (string)(method!.Invoke(null, null) ?? string.Empty);
     }
 }
+

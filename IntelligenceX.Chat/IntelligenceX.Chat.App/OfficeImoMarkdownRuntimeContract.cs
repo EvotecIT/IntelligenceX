@@ -20,7 +20,9 @@ internal static class OfficeImoMarkdownRuntimeContract {
     /// </summary>
     public static MarkdownRendererOptions CreateTranscriptRendererOptions() {
         // Preset factory returns a fresh options object per call; these mutations are call-local.
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = MarkdownRendererPresets.CreateStrictMinimal();
+        MarkdownRendererPresets.ApplyChatPresentation(options, enableCopyButtons: false);
+        MarkdownRendererIntelligenceXAdapter.Apply(options);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
         TryEnableOptionalRendererNetworkSupport(options);
@@ -56,7 +58,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
             typeof(MarkdownRenderer).Assembly,
             "OfficeIMO.MarkdownRenderer",
             MinimumMarkdownRendererVersion,
-            "chat renderer presets + optional network support");
+            "generic presets + chat presentation composition + optional network support");
     }
 
     /// <summary>

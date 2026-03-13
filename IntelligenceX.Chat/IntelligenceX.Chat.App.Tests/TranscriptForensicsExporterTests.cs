@@ -129,7 +129,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void Export_WritesIndentedJsonBundle() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 8, 40, DateTimeKind.Local);
         var bundle = TranscriptForensicsExporter.Build(
             "default",
@@ -164,7 +164,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void Export_EscapesHtmlSensitiveContentInJson() {
-        var options = MarkdownRendererPresets.CreateChatStrictMinimal();
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 8, 18, 9, 40, DateTimeKind.Local);
         var bundle = TranscriptForensicsExporter.Build(
             "default",
@@ -314,3 +314,4 @@ public sealed class TranscriptForensicsExporterTests {
         return path;
     }
 }
+
