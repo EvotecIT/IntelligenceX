@@ -18,7 +18,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeMarkdownRendererContract");
 
         Assert.Contains("OfficeIMO.MarkdownRenderer", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.1.9", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.2.0", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -30,7 +30,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeMarkdownContract");
 
         Assert.Contains("OfficeIMO.Markdown", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.5.12", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.6.0", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -42,7 +42,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeWordMarkdownContract");
 
         Assert.Contains("OfficeIMO.Word.Markdown", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=1.0.6", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=1.0.7", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -98,10 +98,10 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = File.ReadAllText(propsPath);
 
-        Assert.Contains(">0.5.12<", props, StringComparison.Ordinal);
-        Assert.Contains(">0.1.9<", props, StringComparison.Ordinal);
-        Assert.Contains(">0.6.12<", props, StringComparison.Ordinal);
-        Assert.Contains(">1.0.6<", props, StringComparison.Ordinal);
+        Assert.Contains(">0.6.0<", props, StringComparison.Ordinal);
+        Assert.Contains(">0.2.0<", props, StringComparison.Ordinal);
+        Assert.Contains(">0.6.13<", props, StringComparison.Ordinal);
+        Assert.Contains(">1.0.7<", props, StringComparison.Ordinal);
     }
 
     private static string InvokeContractMethod(string methodName) {

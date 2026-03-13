@@ -1,4 +1,3 @@
-using System.Reflection;
 using OfficeIMO.MarkdownRenderer;
 using Xunit;
 
@@ -30,7 +29,7 @@ public sealed class ChatMarkdownOptionsTests {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         options.Chart.Enabled = true;
 
-        var styleValue = options.HtmlOptions.GetType().GetProperty("Style", BindingFlags.Instance | BindingFlags.Public)?.GetValue(options.HtmlOptions)?.ToString();
+        var styleValue = options.HtmlOptions.Style.ToString();
         Assert.Equal("ChatAuto", styleValue);
         Assert.Equal("#omdRoot article.markdown-body", options.HtmlOptions.CssScopeSelector);
 
@@ -40,10 +39,26 @@ public sealed class ChatMarkdownOptionsTests {
 ```
 """, options);
 
-        Assert.True(
-            html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal)
-            || html.Contains("language-ix-chart", StringComparison.OrdinalIgnoreCase),
-            "Expected the composed transcript contract to support ix-chart fences through native visuals or fenced-block fallback.");
+        Assert.Contains("data-omd-visual-kind=\"chart\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the central transcript contract maps IntelligenceX dataview aliases onto the native OfficeIMO visual contract.
+    /// </summary>
+    [Fact]
+    public void CreateTranscriptRendererOptions_ComposesIntelligenceXDataviewAliasesOntoNativeVisualContract() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+
+        var html = MarkdownRenderer.RenderBodyHtml("""
+```ix-dataview
+{"headers":["Name","Count"],"items":[{"Name":"A","Count":1}]}
+```
+""", options);
+
+        Assert.Contains("data-omd-visual-kind=\"dataview\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -65,13 +80,6 @@ public sealed class ChatMarkdownOptionsTests {
     [Fact]
     public void CreateTranscriptRendererOptions_EnablesOptionalNetworkSupport_WhenSupported() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
-        var property = options.GetType().GetProperty("Network", BindingFlags.Instance | BindingFlags.Public);
-        var networkOptions = property?.GetValue(options);
-        var enabledProperty = networkOptions?.GetType().GetProperty("Enabled", BindingFlags.Instance | BindingFlags.Public);
-        if (enabledProperty?.PropertyType != typeof(bool)) {
-            return;
-        }
-
-        Assert.True((bool)(enabledProperty.GetValue(networkOptions) ?? false));
+        Assert.True(options.Network.Enabled);
     }
 }

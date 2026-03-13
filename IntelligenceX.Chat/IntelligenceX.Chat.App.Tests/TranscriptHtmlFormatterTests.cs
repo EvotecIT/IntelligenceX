@@ -76,7 +76,7 @@ public sealed class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
-    /// Ensures ix-chart fenced blocks either render natively through OfficeIMO extensions or remain as host-rendered fences.
+    /// Ensures ix-chart fenced blocks render through the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
     public void Format_SupportsIxChartViaRendererExtensionOrHostRuntime() {
@@ -93,20 +93,15 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Chart preview:", html, StringComparison.Ordinal);
-        Assert.True(
-            html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal)
-            || html.Contains("language-ix-chart", StringComparison.Ordinal),
-            "Expected native OfficeIMO chart HTML or the legacy ix-chart fenced block.");
-        if (html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal)) {
-            Assert.Contains("omd-visual", html, StringComparison.Ordinal);
-            Assert.Contains("omd-chart", html, StringComparison.Ordinal);
-            Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
-            Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
-        }
+        Assert.Contains("data-omd-visual-kind=\"chart\"", html, StringComparison.Ordinal);
+        Assert.Contains("omd-visual", html, StringComparison.Ordinal);
+        Assert.Contains("omd-chart", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Ensures ix-network fenced blocks either render natively through OfficeIMO extensions or remain as host-rendered fences.
+    /// Ensures ix-network fenced blocks render through the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
     public void Format_SupportsIxNetworkViaRendererExtensionOrHostRuntime() {
@@ -123,16 +118,11 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Relationship network:", html, StringComparison.Ordinal);
-        Assert.True(
-            html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal)
-            || html.Contains("language-ix-network", StringComparison.Ordinal),
-            "Expected native OfficeIMO network HTML or the legacy ix-network fenced block.");
-        if (html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal)) {
-            Assert.Contains("omd-visual", html, StringComparison.Ordinal);
-            Assert.Contains("omd-network", html, StringComparison.Ordinal);
-            Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
-            Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
-        }
+        Assert.Contains("data-omd-visual-kind=\"network\"", html, StringComparison.Ordinal);
+        Assert.Contains("omd-visual", html, StringComparison.Ordinal);
+        Assert.Contains("omd-network", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -153,10 +143,7 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Scope graph preview:", html, StringComparison.Ordinal);
-        Assert.True(
-            html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal)
-            || html.Contains("language-ix-network", StringComparison.Ordinal),
-            "Expected upgraded legacy JSON network fence to flow through the ix-network render path.");
+        Assert.Contains("data-omd-visual-kind=\"network\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("language-json", html, StringComparison.OrdinalIgnoreCase);
     }
 

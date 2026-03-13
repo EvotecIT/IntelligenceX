@@ -6,10 +6,10 @@ This document is the contributor checklist for adopting a new `OfficeIMO.Markdow
 
 The currently pinned package versions in [Directory.Build.props](../Directory.Build.props) are:
 
-- `OfficeIMO.Markdown` = `0.5.12`
-- `OfficeIMO.MarkdownRenderer` = `0.1.9`
-- `OfficeIMO.Word.Markdown` = `1.0.6`
-- `OfficeIMO.Excel` = `0.6.12`
+- `OfficeIMO.Markdown` = `0.6.0`
+- `OfficeIMO.MarkdownRenderer` = `0.2.0`
+- `OfficeIMO.Word.Markdown` = `1.0.7`
+- `OfficeIMO.Excel` = `0.6.13`
 
 ## What Is Already Cleaned Up
 

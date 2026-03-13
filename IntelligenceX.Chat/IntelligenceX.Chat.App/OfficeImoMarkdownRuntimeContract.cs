@@ -9,30 +9,20 @@ namespace IntelligenceX.Chat.App;
 /// Centralizes the OfficeIMO markdown runtime contract used by the desktop chat host.
 /// </summary>
 internal static class OfficeImoMarkdownRuntimeContract {
-    private static readonly Version MinimumMarkdownRendererVersion = new(0, 1, 9);
-    private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 5, 12);
-    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 6);
-    private static readonly Lazy<MethodInfo?> CreateStrictMinimalMethodLazy = new(
-        () => typeof(MarkdownRendererPresets).GetMethod("CreateStrictMinimal", BindingFlags.Static | BindingFlags.Public));
-    private static readonly Lazy<MethodInfo?> ApplyChatPresentationMethodLazy = new(
-        () => typeof(MarkdownRendererPresets).GetMethod("ApplyChatPresentation", BindingFlags.Static | BindingFlags.Public));
-    private static readonly Lazy<Type?> IntelligenceXAdapterTypeLazy = new(
-        () => Type.GetType("OfficeIMO.MarkdownRenderer.MarkdownRendererIntelligenceXAdapter, OfficeIMO.MarkdownRenderer", throwOnError: false));
-    private static readonly Lazy<MethodInfo?> IntelligenceXAdapterApplyMethodLazy = new(
-        () => IntelligenceXAdapterTypeLazy.Value?.GetMethod("Apply", BindingFlags.Static | BindingFlags.Public));
-    private static readonly Lazy<PropertyInfo?> NetworkPropertyLazy = new(
-        () => typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public));
+    private static readonly Version MinimumMarkdownRendererVersion = new(0, 2, 0);
+    private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 6, 0);
+    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 7);
 
     /// <summary>
     /// Creates transcript renderer options using the central OfficeIMO runtime contract.
     /// </summary>
     public static MarkdownRendererOptions CreateTranscriptRendererOptions() {
-        var options = CreateBaseTranscriptOptions();
-        ApplyChatPresentationIfAvailable(options, enableCopyButtons: false);
-        ApplyIntelligenceXAliasesIfAvailable(options);
+        var options = MarkdownRendererPresets.CreateStrictMinimal();
+        MarkdownRendererPresets.ApplyChatPresentation(options, enableCopyButtons: false);
+        MarkdownRendererIntelligenceXAdapter.Apply(options);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
-        TryEnableOptionalRendererNetworkSupport(options);
+        options.Network.Enabled = true;
         return options;
     }
 
@@ -43,17 +33,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
     /// <returns><see langword="true"/> when the optional capability was enabled.</returns>
     public static bool TryEnableOptionalRendererNetworkSupport(MarkdownRendererOptions options) {
         ArgumentNullException.ThrowIfNull(options);
-
-        var networkProperty = NetworkPropertyLazy.Value;
-        var networkOptions = networkProperty?.GetValue(options);
-        var enabledProperty = networkOptions?.GetType().GetProperty(
-            "Enabled",
-            BindingFlags.Instance | BindingFlags.Public);
-        if (enabledProperty?.CanWrite != true || enabledProperty.PropertyType != typeof(bool)) {
-            return false;
-        }
-
-        enabledProperty.SetValue(networkOptions, true);
+        options.Network.Enabled = true;
         return true;
     }
 
@@ -65,7 +45,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
             typeof(MarkdownRenderer).Assembly,
             "OfficeIMO.MarkdownRenderer",
             MinimumMarkdownRendererVersion,
-            "generic presets + composed chat presentation (with package fallback) + optional network support");
+            "generic presets + composed chat presentation + IntelligenceX aliases + network support");
     }
 
     /// <summary>
@@ -127,43 +107,4 @@ internal static class OfficeImoMarkdownRuntimeContract {
         }
     }
 
-    private static MarkdownRendererOptions CreateBaseTranscriptOptions() {
-        var createStrictMinimalMethod = CreateStrictMinimalMethodLazy.Value;
-        if (createStrictMinimalMethod != null
-            && typeof(MarkdownRendererOptions).IsAssignableFrom(createStrictMinimalMethod.ReturnType)) {
-            var created = createStrictMinimalMethod.Invoke(null, [null]);
-            if (created is MarkdownRendererOptions optionsFromGenericPreset) {
-                return optionsFromGenericPreset;
-            }
-        }
-
-        return MarkdownRendererPresets.CreateChatStrictMinimal();
-    }
-
-    private static void ApplyChatPresentationIfAvailable(MarkdownRendererOptions options, bool enableCopyButtons) {
-        ArgumentNullException.ThrowIfNull(options);
-
-        var applyChatPresentationMethod = ApplyChatPresentationMethodLazy.Value;
-        if (applyChatPresentationMethod == null) {
-            return;
-        }
-
-        var parameters = applyChatPresentationMethod.GetParameters();
-        if (parameters.Length == 1) {
-            applyChatPresentationMethod.Invoke(null, [options]);
-            options.EnableCodeCopyButtons = enableCopyButtons;
-            options.EnableTableCopyButtons = enableCopyButtons;
-            return;
-        }
-
-        if (parameters.Length == 2 && parameters[1].ParameterType == typeof(bool)) {
-            applyChatPresentationMethod.Invoke(null, [options, enableCopyButtons]);
-        }
-    }
-
-    private static void ApplyIntelligenceXAliasesIfAvailable(MarkdownRendererOptions options) {
-        ArgumentNullException.ThrowIfNull(options);
-
-        IntelligenceXAdapterApplyMethodLazy.Value?.Invoke(null, [options]);
-    }
 }
