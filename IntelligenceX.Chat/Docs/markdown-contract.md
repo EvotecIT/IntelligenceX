@@ -74,19 +74,13 @@ The OfficeIMO markdown runtime diagnostics are currently surfaced through:
 - startup renderer diagnostics in the App host
 - transcript forensic export snapshots
 
-The package-mode compatibility gate for this contract now lives in:
+## OfficeIMO Package Adoption Rules
 
-- [../.github/scripts/run-officeimo-markdown-package-gate.ps1](../../.github/scripts/run-officeimo-markdown-package-gate.ps1)
-- [../.github/workflows/test-dotnet.yml](../../.github/workflows/test-dotnet.yml)
-- [../.github/workflows/test-dotnet-hosted.yml](../../.github/workflows/test-dotnet-hosted.yml)
-
-## Merge Criteria For OfficeIMO Packaging
-
-Before merging package-dependent OfficeIMO updates into IntelligenceX:
+Before adopting a new `OfficeIMO.Markdown` / `OfficeIMO.MarkdownRenderer` package line in `IntelligenceX`:
 
 - render, markdown export, and DOCX export should all use the intended shared contract
-- package-mode validation should pass against the exact OfficeIMO versions we plan to publish
+- package-mode validation should pass against the exact package versions chosen for adoption
 - any remaining OfficeIMO-specific behavior should be documented and intentional
 - renderer/runtime capability probing should stay isolated from transcript content normalization
 
-See [markdown-package-readiness.md](markdown-package-readiness.md) for the current validation baseline and the final package-adoption gate.
+The detailed adoption checklist lives in [markdown-package-readiness.md](markdown-package-readiness.md).
