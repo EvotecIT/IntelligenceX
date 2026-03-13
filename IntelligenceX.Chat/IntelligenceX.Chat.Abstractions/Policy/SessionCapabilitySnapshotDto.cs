@@ -47,6 +47,16 @@ public sealed record SessionCapabilitySnapshotDto {
     public string[] EnabledPluginIds { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Normalized engine identifiers advertised by enabled packs.
+    /// </summary>
+    public string[] EnabledPackEngineIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Normalized capability tags advertised by enabled packs.
+    /// </summary>
+    public string[] EnabledCapabilityTags { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Normalized routing families exposed by the active registry.
     /// </summary>
     public string[] RoutingFamilies { get; init; } = Array.Empty<string>();

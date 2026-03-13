@@ -32,7 +32,7 @@ internal static partial class Program {
                 continue;
             }
 
-            if (!ToolPatternsMatch(entry.ToolName, toolPatterns)) {
+            if (!PatternMatchesAnyToolName(toolPatterns, entry.ToolName)) {
                 continue;
             }
 
@@ -43,7 +43,7 @@ internal static partial class Program {
             return Array.Empty<string>();
         }
 
-        var lines = new List<string>(2);
+        var lines = new List<string>(3);
         var setupExamples = matchedEntries
             .Where(static entry => entry.SetupToolName.Length > 0
                                    && entry.SetupToolName.IndexOf("_catalog", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -58,7 +58,7 @@ internal static partial class Program {
                       + ").");
         }
 
-        if (matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting)) {
+        if (matchedEntries.Any(static entry => entry.SupportsRemoteExecution && entry.SupportsRemoteHostTargeting)) {
             lines.Add(includeRemoteHostFallbackHint
                 ? "- If a remote-capable tool is missing host or machine input, default to the first discovered/source host/DC from prior turns when thread context provides one."
                 : "- If a remote-capable tool is missing host or machine input, infer it from prior thread context when available.");
@@ -67,37 +67,56 @@ internal static partial class Program {
         return lines;
     }
 
-    private static bool ToolPatternsMatch(string toolName, IReadOnlyList<string>? toolPatterns) {
+    private static IReadOnlyList<string> BuildToolExecutionAvailabilityHintLines(
+        IReadOnlyList<ToolDefinition>? toolDefinitions,
+        IReadOnlyList<string>? toolPatterns,
+        IReadOnlyList<string>? knownHostTargets = null) {
+        return ToolExecutionAvailabilityHints.BuildPromptHintLines(
+            toolDefinitions,
+            toolPatterns,
+            hasKnownHostTargets: knownHostTargets is { Count: > 0 });
+    }
+
+    private static string BuildToolExecutionAvailabilityWarningText(
+        IReadOnlyList<ToolDefinition>? toolDefinitions,
+        IReadOnlyList<string>? toolPatterns,
+        IReadOnlyList<string>? knownHostTargets) {
+        return ToolExecutionAvailabilityHints.BuildWarningText(
+            toolDefinitions,
+            toolPatterns,
+            hasKnownHostTargets: knownHostTargets is { Count: > 0 });
+    }
+
+    private static bool PatternMatchesAnyToolName(IReadOnlyList<string>? toolPatterns, string toolName) {
         if (toolPatterns is null || toolPatterns.Count == 0) {
             return true;
         }
 
         for (var i = 0; i < toolPatterns.Count; i++) {
-            if (PatternMatchesToolName(toolPatterns[i], toolName)) {
+            var pattern = (toolPatterns[i] ?? string.Empty).Trim();
+            if (pattern.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(pattern, "*", StringComparison.Ordinal)) {
+                return true;
+            }
+
+            var hasWildcard = pattern.IndexOf('*') >= 0 || pattern.IndexOf('?') >= 0;
+            if (!hasWildcard && string.Equals(pattern, toolName, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+
+            if (!hasWildcard) {
+                continue;
+            }
+
+            if (WildcardMatchesOrdinalIgnoreCase(pattern, toolName)) {
                 return true;
             }
         }
 
         return false;
-    }
-
-    private static bool PatternMatchesToolName(string pattern, string toolName) {
-        var expected = (pattern ?? string.Empty).Trim();
-        var actual = (toolName ?? string.Empty).Trim();
-        if (expected.Length == 0 || actual.Length == 0) {
-            return false;
-        }
-
-        if (string.Equals(expected, "*", StringComparison.Ordinal)) {
-            return true;
-        }
-
-        var hasWildcard = expected.IndexOf('*') >= 0 || expected.IndexOf('?') >= 0;
-        if (!hasWildcard) {
-            return string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
-        }
-
-        return WildcardMatchesOrdinalIgnoreCase(expected, actual);
     }
 
     private static bool WildcardMatchesOrdinalIgnoreCase(string pattern, string candidate) {

@@ -65,6 +65,8 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _packEngineIdsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string[]> _packCapabilityTagsById = new(StringComparer.OrdinalIgnoreCase);
     private ToolRuntimePolicyDiagnostics _runtimePolicyDiagnostics;
     private ToolRoutingCatalogDiagnostics _routingCatalogDiagnostics;
     private ToolOrchestrationCatalog _toolOrchestrationCatalog;
@@ -147,6 +149,8 @@ internal sealed partial class ChatServiceSession {
         _packDisplayNamesById.Clear();
         _packDescriptionsById.Clear();
         _packSourceKindsById.Clear();
+        _packEngineIdsById.Clear();
+        _packCapabilityTagsById.Clear();
         var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < descriptors.Count; i++) {
@@ -170,6 +174,15 @@ internal sealed partial class ChatServiceSession {
                 _packDescriptionsById[normalizedPackId] = description;
             }
             _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(descriptor.SourceKind);
+            var engineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(descriptor.EngineId);
+            if (engineId.Length > 0) {
+                _packEngineIdsById[normalizedPackId] = engineId;
+            }
+
+            var capabilityTags = NormalizeDescriptorTokens(descriptor.CapabilityTags);
+            if (capabilityTags.Length > 0) {
+                _packCapabilityTagsById[normalizedPackId] = capabilityTags;
+            }
         }
     }
 
@@ -177,6 +190,8 @@ internal sealed partial class ChatServiceSession {
         _packDisplayNamesById.Clear();
         _packDescriptionsById.Clear();
         _packSourceKindsById.Clear();
+        _packEngineIdsById.Clear();
+        _packCapabilityTagsById.Clear();
 
         for (var i = 0; i < packAvailability.Count; i++) {
             var pack = packAvailability[i];
@@ -193,7 +208,36 @@ internal sealed partial class ChatServiceSession {
             }
 
             _packSourceKindsById[normalizedPackId] = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind);
+            var engineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(pack.EngineId);
+            if (engineId.Length > 0) {
+                _packEngineIdsById[normalizedPackId] = engineId;
+            }
+
+            var capabilityTags = NormalizeDescriptorTokens(pack.CapabilityTags);
+            if (capabilityTags.Length > 0) {
+                _packCapabilityTagsById[normalizedPackId] = capabilityTags;
+            }
         }
+    }
+
+    private static string[] NormalizeDescriptorTokens(IReadOnlyList<string>? values) {
+        if (values is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(values.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var token = ToolPackMetadataNormalizer.NormalizeDescriptorToken(values[i]);
+            if (token.Length == 0 || !seen.Add(token)) {
+                continue;
+            }
+
+            normalized.Add(token);
+        }
+
+        normalized.Sort(StringComparer.OrdinalIgnoreCase);
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
     }
 
     internal static bool RequestRequiresConnectedClient(ChatServiceRequest request) {

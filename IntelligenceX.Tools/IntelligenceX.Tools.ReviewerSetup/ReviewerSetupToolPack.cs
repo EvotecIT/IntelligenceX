@@ -25,7 +25,9 @@ public sealed class ReviewerSetupToolPack : IToolPack, IToolPackCatalogProvider 
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Path contract and execution guidance for IntelligenceX reviewer onboarding.",
-        SourceKind = "builtin"
+        SourceKind = "builtin",
+        EngineId = "reviewer_setup",
+        CapabilityTags = new[] { "onboarding", "reviewer", "setup" }
     };
 
     /// <inheritdoc />

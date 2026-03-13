@@ -451,6 +451,13 @@ internal static partial class Program {
                 toolDefinitions: toolDefinitions,
                 toolPatterns: null,
                 includeRemoteHostFallbackHint: knownHostTargets is { Count: > 0 });
+            var executionAvailabilityHintLines = BuildToolExecutionAvailabilityHintLines(
+                toolDefinitions: toolDefinitions,
+                toolPatterns: null,
+                knownHostTargets: knownHostTargets);
+            var combinedHintLines = new List<string>(contractHintLines.Count + executionAvailabilityHintLines.Count);
+            combinedHintLines.AddRange(contractHintLines);
+            combinedHintLines.AddRange(executionAvailabilityHintLines);
             return $$"""
                 [Execution correction]
                 The previous assistant draft implied execution (or returned empty output) but no tool calls were emitted.
@@ -469,7 +476,7 @@ internal static partial class Program {
                 If no matching evidence is found, still include queried time-window boundaries as strict ISO-8601 UTC timestamps (T + Z).
                 Do not use blocker-preface phrasing like "I can do that, but"; execute best-effort tools first, then report results or exact blockers.
                 For optional projection arguments (columns/sort_by), use only supported fields; if uncertain, omit projection arguments.
-                {{FormatRetryPromptHintLines(contractHintLines)}}
+                {{FormatRetryPromptHintLines(combinedHintLines)}}
                 If this is a continuation request over "remaining discovered DCs/hosts", execute multiple best-effort tool calls using distinct host/DC inputs from thread context.
                 If discovery appears empty in this turn, still use previously seen DC/host targets from thread context rather than stopping at narration.
                 {{knownHostHint}}

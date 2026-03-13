@@ -91,6 +91,22 @@ public sealed record ToolOrchestrationCatalogEntry {
     /// Human-readable execution locality token projected from tool schema.
     /// </summary>
     public string ExecutionScope { get; init; } = "local_only";
+    /// <summary>
+    /// Indicates whether tool declares a structured execution contract.
+    /// </summary>
+    public bool IsExecutionAware { get; init; }
+    /// <summary>
+    /// Optional stable execution contract identifier.
+    /// </summary>
+    public string ExecutionContractId { get; init; } = string.Empty;
+    /// <summary>
+    /// Indicates whether the tool can execute in the local runtime.
+    /// </summary>
+    public bool SupportsLocalExecution { get; init; } = true;
+    /// <summary>
+    /// Indicates whether the tool can execute against remote targets or remote backends.
+    /// </summary>
+    public bool SupportsRemoteExecution { get; init; }
 
     /// <summary>
     /// Indicates whether the tool schema exposes target-scope arguments.
@@ -295,6 +311,9 @@ public sealed class ToolOrchestrationCatalog {
             var routing = definition.Routing;
             var packId = NormalizePackId(routing?.PackId);
             var schemaTraits = ToolSchemaTraitProjection.Project(definition);
+            var execution = definition.Execution;
+            var normalizedExecutionContractId = NormalizeToken(execution?.ExecutionContractId);
+            var executionScope = ToolExecutionScopes.Resolve(schemaTraits.ExecutionScope, schemaTraits.SupportsRemoteHostTargeting);
 
             var role = NormalizeToken(routing?.Role);
             if (!ToolRoutingTaxonomy.IsAllowedRole(role)) {
@@ -428,7 +447,11 @@ public sealed class ToolOrchestrationCatalog {
                 Operation = NormalizeToken(routingInfo.Operation, ToolRoutingTaxonomy.OperationRead),
                 Entity = NormalizeToken(routingInfo.Entity, ToolRoutingTaxonomy.EntityResource),
                 Risk = NormalizeToken(routingInfo.Risk, ToolRoutingTaxonomy.RiskLow),
-                ExecutionScope = NormalizeToken(schemaTraits.ExecutionScope, "local_only"),
+                ExecutionScope = executionScope,
+                IsExecutionAware = execution?.IsExecutionAware == true,
+                ExecutionContractId = normalizedExecutionContractId,
+                SupportsLocalExecution = !string.Equals(executionScope, ToolExecutionScopes.RemoteOnly, StringComparison.OrdinalIgnoreCase),
+                SupportsRemoteExecution = ToolExecutionScopes.IsRemoteCapable(executionScope),
                 SupportsTargetScoping = schemaTraits.SupportsTargetScoping,
                 TargetScopeArguments = FreezeStringList(schemaTraits.TargetScopeArguments),
                 SupportsRemoteHostTargeting = schemaTraits.SupportsRemoteHostTargeting,

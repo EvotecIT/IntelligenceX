@@ -50,9 +50,25 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public bool IsWriteCapable { get; init; }
     /// <summary>
+    /// Indicates whether the tool exposes a structured execution contract.
+    /// </summary>
+    public bool IsExecutionAware { get; init; }
+    /// <summary>
+    /// Optional stable execution contract identifier.
+    /// </summary>
+    public string? ExecutionContractId { get; init; }
+    /// <summary>
     /// Human-readable execution locality classification.
     /// </summary>
     public string ExecutionScope { get; init; } = "local_only";
+    /// <summary>
+    /// Indicates whether the tool can execute in the local runtime.
+    /// </summary>
+    public bool SupportsLocalExecution { get; init; } = true;
+    /// <summary>
+    /// Indicates whether the tool can execute against remote targets or remote backends.
+    /// </summary>
+    public bool SupportsRemoteExecution { get; init; }
     /// <summary>
     /// Indicates whether the tool supports explicit target scoping.
     /// </summary>

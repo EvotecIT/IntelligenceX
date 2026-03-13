@@ -21,7 +21,9 @@ internal static partial class Program {
             IReadOnlyList<ToolOutput> toolOutputs,
             string? model,
             OpenAITransportKind transport,
-            string? baseUrl) {
+            string? baseUrl,
+            IReadOnlyList<ToolDefinition>? toolDefinitions = null,
+            IReadOnlyList<string>? knownHostTargets = null) {
             var normalizedAssistantDraft = assistantDraft ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(normalizedAssistantDraft)) {
                 return normalizedAssistantDraft;
@@ -31,7 +33,7 @@ internal static partial class Program {
                 return toolOutputFallback;
             }
 
-            return BuildNoTextModelWarning(model, transport, baseUrl);
+            return BuildNoTextModelWarning(model, transport, baseUrl, toolDefinitions, knownHostTargets);
         }
 
         internal static string BuildNoTextReplFallbackTextForTesting(
@@ -40,8 +42,10 @@ internal static partial class Program {
             IReadOnlyList<ToolOutput> toolOutputs,
             string? model,
             OpenAITransportKind transport,
-            string? baseUrl) {
-            return BuildNoTextReplFallbackText(assistantDraft, toolCalls, toolOutputs, model, transport, baseUrl);
+            string? baseUrl,
+            IReadOnlyList<ToolDefinition>? toolDefinitions = null,
+            IReadOnlyList<string>? knownHostTargets = null) {
+            return BuildNoTextReplFallbackText(assistantDraft, toolCalls, toolOutputs, model, transport, baseUrl, toolDefinitions, knownHostTargets);
         }
 
         internal static string BuildNoTextToolOutputRetryPromptForTesting(
@@ -360,22 +364,35 @@ internal static partial class Program {
             return normalized.Substring(0, NoTextToolOutputRetryPromptMaxArgumentValueChars - 3).TrimEnd() + "...";
         }
 
-        private static string BuildNoTextModelWarning(string? model, OpenAITransportKind transport, string? baseUrl) {
+        private static string BuildNoTextModelWarning(
+            string? model,
+            OpenAITransportKind transport,
+            string? baseUrl,
+            IReadOnlyList<ToolDefinition>? toolDefinitions = null,
+            IReadOnlyList<string>? knownHostTargets = null) {
             var normalizedModel = (model ?? string.Empty).Trim();
             if (normalizedModel.Length == 0) {
                 normalizedModel = "unknown";
             }
 
+            var executionWarning = BuildToolExecutionAvailabilityWarningText(
+                toolDefinitions: toolDefinitions,
+                toolPatterns: null,
+                knownHostTargets: knownHostTargets);
+            var executionWarningBlock = string.IsNullOrWhiteSpace(executionWarning)
+                ? string.Empty
+                : "\nTooling: " + executionWarning.Trim();
+
             if (transport == OpenAITransportKind.CompatibleHttp) {
                 var endpoint = string.IsNullOrWhiteSpace(baseUrl) ? "configured endpoint" : baseUrl!.Trim();
                 return "[warning] No response text was produced by the runtime.\n\n"
                        + "Model: " + normalizedModel + "\n"
-                       + "Endpoint: " + endpoint + "\n\n"
+                       + "Endpoint: " + endpoint + executionWarningBlock + "\n\n"
                        + "Try a different model, then run Refresh Models and retry.";
             }
 
             return "[warning] No response text was produced by the model.\n\n"
-                   + "Model: " + normalizedModel + "\n\n"
+                   + "Model: " + normalizedModel + executionWarningBlock + "\n\n"
                    + "Retry the turn, or choose a different model.";
         }
     }

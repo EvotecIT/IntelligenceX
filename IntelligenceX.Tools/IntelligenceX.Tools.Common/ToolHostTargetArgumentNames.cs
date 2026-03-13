@@ -7,24 +7,7 @@ namespace IntelligenceX.Tools.Common;
 /// Shared host-target argument aliases used across pack guidance, Chat routing, and handoff helpers.
 /// </summary>
 public static class ToolHostTargetArgumentNames {
-    private static readonly string[] OrderedInputArgumentPriority = {
-        "machine_name",
-        "machine_names",
-        "computer_name",
-        "computer_names",
-        "domain_controller",
-        "domain_controllers",
-        "host",
-        "hostname",
-        "host_name",
-        "dns_host_name",
-        "dnshostname",
-        "server",
-        "server_name",
-        "target",
-        "targets",
-        "servers"
-    };
+    private static readonly IReadOnlyList<string> OrderedInputArgumentPriority = ToolScopeArgumentNames.HostTargetInputArguments;
 
     private static readonly HashSet<string> AllKnownFieldNames = new(OrderedInputArgumentPriority, StringComparer.OrdinalIgnoreCase) {
         "domainControllers"

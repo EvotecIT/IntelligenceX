@@ -26,7 +26,9 @@ public sealed class OfficeImoToolPack : IToolPack, IToolPackCatalogProvider {
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader.",
-        SourceKind = "open_source"
+        SourceKind = "open_source",
+        EngineId = "officeimo",
+        CapabilityTags = new[] { "document_analysis", "local_analysis", "office" }
     };
 
     /// <inheritdoc />

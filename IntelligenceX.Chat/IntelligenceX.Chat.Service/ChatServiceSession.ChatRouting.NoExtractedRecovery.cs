@@ -186,7 +186,7 @@ internal sealed partial class ChatServiceSession {
                         shouldAttemptNudge: shouldAttemptExecutionNudge,
                         reason: executionNudgeReason);
                     executionNudgeUsed = true;
-                    var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text);
+                    var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text, toolDefs);
                     turn = await RunModelPhaseWithProgressAsync(
                             client,
                             writer,
@@ -321,6 +321,7 @@ internal sealed partial class ChatServiceSession {
                             modelHeartbeatSeconds,
                             routedUserRequest,
                             text,
+                            toolDefs,
                             promptRecoveryDecision)
                         .ConfigureAwait(false);
                     return ContinueRound();

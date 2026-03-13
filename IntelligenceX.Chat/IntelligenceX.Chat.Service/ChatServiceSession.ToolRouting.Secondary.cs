@@ -414,7 +414,7 @@ internal sealed partial class ChatServiceSession {
         return list;
     }
 
-    private static string BuildModelPlannerPrompt(string requestText, IReadOnlyList<ToolDefinition> definitions, int limit) {
+    private string BuildModelPlannerPrompt(string requestText, IReadOnlyList<ToolDefinition> definitions, int limit) {
         if (definitions.Count == 0) {
             return string.Empty;
         }
@@ -505,6 +505,21 @@ internal sealed partial class ChatServiceSession {
                 sb.Append("Preference reason: ").AppendLine(cachedEvidenceReuseReason);
             }
         }
+        var executionAvailabilitySummary = ToolExecutionAvailabilityHints.BuildSummary(definitions);
+        var executionAvailabilityHints = ToolExecutionAvailabilityHints.BuildPromptHintLines(definitions);
+        if (executionAvailabilitySummary.ToolCount > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Execution locality:");
+            sb.AppendLine(BuildPlannerExecutionAvailabilitySummaryLine(executionAvailabilitySummary));
+            for (var hintIndex = 0; hintIndex < executionAvailabilityHints.Count; hintIndex++) {
+                var hintLine = (executionAvailabilityHints[hintIndex] ?? string.Empty).Trim();
+                if (hintLine.Length == 0) {
+                    continue;
+                }
+
+                sb.AppendLine(hintLine);
+            }
+        }
         sb.AppendLine();
         sb.AppendLine($"Return at most {Math.Max(1, limit)} tool names.");
         sb.AppendLine("Available tools:");
@@ -524,6 +539,8 @@ internal sealed partial class ChatServiceSession {
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             var category = ResolvePlannerCategory(definition);
             var packId = NormalizePackId(definition.Routing?.PackId);
+            var packEngineId = ResolvePlannerPackEngineId(packId);
+            var packCapabilityTags = ResolvePlannerPackCapabilityTags(packId, maxCount: 3);
             var role = ResolvePlannerRole(definition);
             var domainIntentFamily = ResolveDomainIntentFamily(definition);
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
@@ -534,6 +551,9 @@ internal sealed partial class ChatServiceSession {
             }
             if (packId.Length > 0) {
                 sb.Append(" | pack: ").Append(packId);
+            }
+            if (packEngineId.Length > 0) {
+                sb.Append(" | engine: ").Append(packEngineId);
             }
             if (role.Length > 0) {
                 sb.Append(" | role: ").Append(role);
@@ -546,6 +566,9 @@ internal sealed partial class ChatServiceSession {
             }
             if (plannerTags.Length > 0) {
                 sb.Append(" | tags: ").Append(string.Join(", ", plannerTags));
+            }
+            if (packCapabilityTags.Length > 0) {
+                sb.Append(" | pack_traits: ").Append(string.Join(", ", packCapabilityTags));
             }
             if (requiredArguments.Length > 0) {
                 sb.Append(" | required: ").Append(string.Join(", ", requiredArguments));
@@ -572,6 +595,66 @@ internal sealed partial class ChatServiceSession {
         }
 
         return sb.ToString();
+    }
+
+    private static string BuildPlannerExecutionAvailabilitySummaryLine(ToolExecutionAvailabilitySummary summary) {
+        if (summary.ToolCount <= 0) {
+            return "Execution locality is unavailable for the current catalog.";
+        }
+
+        if (summary.IsLocalOnly) {
+            return "Current candidate tools are local-only (local-only "
+                   + summary.LocalOnlyTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                   + ").";
+        }
+
+        if (summary.HasMixedLocality) {
+            return "Current candidate tools have mixed locality (local-only "
+                   + summary.LocalOnlyTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                   + ", remote-only "
+                   + summary.RemoteOnlyTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                   + ", local-or-remote "
+                   + summary.LocalOrRemoteTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                   + ").";
+        }
+
+        if (summary.IsRemoteReadyOnly) {
+            return "Current candidate tools are remote-ready (remote-only "
+                   + summary.RemoteOnlyTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                   + ", local-or-remote "
+                   + summary.LocalOrRemoteTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                   + ").";
+        }
+
+        return "Execution locality includes local-only "
+               + summary.LocalOnlyTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+               + ", remote-only "
+               + summary.RemoteOnlyTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+               + ", and local-or-remote "
+               + summary.LocalOrRemoteTools.ToString(System.Globalization.CultureInfo.InvariantCulture)
+               + " tools.";
+    }
+
+    private string ResolvePlannerPackEngineId(string normalizedPackId) {
+        if (normalizedPackId.Length == 0 || !_packEngineIdsById.TryGetValue(normalizedPackId, out var engineId)) {
+            return string.Empty;
+        }
+
+        return (engineId ?? string.Empty).Trim();
+    }
+
+    private string[] ResolvePlannerPackCapabilityTags(string normalizedPackId, int maxCount) {
+        if (maxCount <= 0
+            || normalizedPackId.Length == 0
+            || !_packCapabilityTagsById.TryGetValue(normalizedPackId, out var capabilityTags)
+            || capabilityTags is not { Length: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        return capabilityTags
+            .Where(static tag => !string.IsNullOrWhiteSpace(tag))
+            .Take(maxCount)
+            .ToArray();
     }
 
     private static string ResolvePlannerCategory(ToolDefinition definition) {

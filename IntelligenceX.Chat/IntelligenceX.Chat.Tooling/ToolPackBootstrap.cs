@@ -242,6 +242,14 @@ public sealed record ToolPackAvailabilityInfo {
     /// </summary>
     public required string SourceKind { get; init; }
     /// <summary>
+    /// Stable engine identifier when the pack maps to a known upstream engine.
+    /// </summary>
+    public string? EngineId { get; init; }
+    /// <summary>
+    /// Normalized capability tags advertised by the pack.
+    /// </summary>
+    public IReadOnlyList<string> CapabilityTags { get; init; } = Array.Empty<string>();
+    /// <summary>
     /// Whether the pack is available and loaded in this runtime.
     /// </summary>
     public bool Enabled { get; init; }
@@ -417,46 +425,8 @@ public static partial class ToolPackBootstrap {
         };
 
         return baseOptions with {
-            PackRuntimeOptionBag = BuildLegacyPackRuntimeOptionBag(baseOptions)
+            PackRuntimeOptionBag = NormalizePackRuntimeOptionBag(baseOptions.PackRuntimeOptionBag)
         };
-    }
-
-    internal static IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> BuildLegacyPackRuntimeOptionBag(
-        ToolPackBootstrapOptions options) {
-        var bag = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) {
-            [PackOptionKeyGlobal] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
-                ["AllowedRoots"] = options.AllowedRoots?.ToArray() ?? Array.Empty<string>(),
-                ["RunAsProfilePath"] = options.RunAsProfilePath,
-                ["AuthenticationProfilePath"] = options.AuthenticationProfilePath,
-                ["AuthenticationProbeStore"] = options.AuthenticationProbeStore,
-                ["RequireSuccessfulSmtpProbeForSend"] = options.RequireSuccessfulSmtpProbeForSend,
-                ["SmtpProbeMaxAgeSeconds"] = options.SmtpProbeMaxAgeSeconds
-            },
-            [PackOptionKeyActiveDirectory] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
-                ["DomainController"] = options.AdDomainController,
-                ["DefaultSearchBaseDn"] = options.AdDefaultSearchBaseDn,
-                ["MaxResults"] = options.AdMaxResults > 0 ? options.AdMaxResults : 1000,
-                ["AllowedMonitoringRoots"] = options.AllowedRoots?.ToArray() ?? Array.Empty<string>()
-            },
-            [PackOptionKeyPowerShell] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
-                ["Enabled"] = true,
-                ["DefaultTimeoutMs"] = options.PowerShellDefaultTimeoutMs,
-                ["MaxTimeoutMs"] = options.PowerShellMaxTimeoutMs,
-                ["DefaultMaxOutputChars"] = options.PowerShellDefaultMaxOutputChars,
-                ["MaxOutputChars"] = options.PowerShellMaxOutputChars,
-                ["AllowWrite"] = options.PowerShellAllowWrite
-            },
-            [PackOptionKeyEmail] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
-                ["AuthenticationProbeStore"] = options.AuthenticationProbeStore,
-                ["RequireSuccessfulSmtpProbeForSend"] = options.RequireSuccessfulSmtpProbeForSend,
-                ["SmtpProbeMaxAgeSeconds"] = options.SmtpProbeMaxAgeSeconds
-            },
-            [PackOptionKeyReviewerSetup] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
-                ["IncludeMaintenancePath"] = options.ReviewerSetupIncludeMaintenancePath
-            }
-        };
-
-        return bag;
     }
 
     internal static ToolPackRuntimeContext BuildRuntimeContext(ToolPackBootstrapOptions options) {
@@ -485,6 +455,60 @@ public static partial class ToolPackBootstrap {
             RunAsProfilePath = options.RunAsProfilePath,
             AuthenticationProfilePath = options.AuthenticationProfilePath,
             EffectivePackRuntimeOptionBag = effectiveOptionBag
+        };
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> NormalizePackRuntimeOptionBag(
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>>? optionBag) {
+        if (optionBag is null || optionBag.Count == 0) {
+            return new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var normalized = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in optionBag) {
+            var normalizedPackKey = NormalizePackId(entry.Key);
+            if (string.Equals(entry.Key, PackOptionKeyGlobal, StringComparison.Ordinal)) {
+                normalizedPackKey = PackOptionKeyGlobal;
+            }
+
+            if (normalizedPackKey.Length == 0) {
+                continue;
+            }
+
+            if (entry.Value is null || entry.Value.Count == 0) {
+                normalized[normalizedPackKey] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                continue;
+            }
+
+            var propertyBag = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in entry.Value) {
+                var propertyName = (property.Key ?? string.Empty).Trim();
+                if (propertyName.Length == 0) {
+                    continue;
+                }
+
+                propertyBag[propertyName] = property.Value;
+            }
+
+            normalized[normalizedPackKey] = propertyBag;
+        }
+
+        return normalized;
+    }
+
+    internal static IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> BuildGlobalRuntimeOptionBag(
+        ToolPackBootstrapOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) {
+            [PackOptionKeyGlobal] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                ["AllowedRoots"] = options.AllowedRoots?.ToArray() ?? Array.Empty<string>(),
+                ["RunAsProfilePath"] = options.RunAsProfilePath,
+                ["AuthenticationProfilePath"] = options.AuthenticationProfilePath,
+                ["AuthenticationProbeStore"] = options.AuthenticationProbeStore,
+                ["RequireSuccessfulSmtpProbeForSend"] = options.RequireSuccessfulSmtpProbeForSend,
+                ["SmtpProbeMaxAgeSeconds"] = options.SmtpProbeMaxAgeSeconds
+            }
         };
     }
 

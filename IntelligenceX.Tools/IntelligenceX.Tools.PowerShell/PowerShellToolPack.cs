@@ -26,7 +26,9 @@ public sealed class PowerShellToolPack : IToolPack, IToolPackCatalogProvider {
         Tier = ToolCapabilityTier.DangerousWrite,
         IsDangerous = true,
         Description = "Opt-in shell runtime execution (windows_powershell / pwsh / cmd).",
-        SourceKind = "builtin"
+        SourceKind = "builtin",
+        EngineId = "powershell_runtime",
+        CapabilityTags = new[] { "local_execution", "remote_execution", "shell", "write_capable" }
     };
 
     /// <inheritdoc />

@@ -300,10 +300,13 @@ internal sealed partial class ChatServiceSession {
     private async Task<ToolOutputDto> ExecuteToolAsync(string threadId, string userRequest, ToolCall call, int toolTimeoutSeconds,
         CancellationToken cancellationToken, ToolExecutionStatusWriter? statusWriter = null) {
         if (!_registry.TryGet(call.Name, out var tool)) {
+            var hints = new List<string> { "Call list_tools to list available tools." };
+            hints.AddRange(ToolExecutionAvailabilityHints.BuildRegistrationHintLines(_registry.GetDefinitions()));
+            hints.Add("Check that the correct packs are enabled.");
             var output = ToolOutputEnvelope.Error(
                 errorCode: "tool_not_registered",
                 error: $"Tool '{call.Name}' is not registered.",
-                hints: new[] { "Call list_tools to list available tools.", "Check that the correct packs are enabled." },
+                hints: hints,
                 isTransient: false);
 
             return BuildToolOutputDto(call.CallId, output);

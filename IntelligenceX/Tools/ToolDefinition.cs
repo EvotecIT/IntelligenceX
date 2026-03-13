@@ -29,6 +29,7 @@ public sealed class ToolDefinition {
     /// <param name="setup">Optional setup contract for prerequisites and setup hints.</param>
     /// <param name="handoff">Optional handoff contract for cross-pack argument mappings.</param>
     /// <param name="recovery">Optional recovery contract for tool-owned resilience behavior.</param>
+    /// <param name="execution">Optional execution contract for local/remote capability and scope metadata.</param>
     public ToolDefinition(
         string name,
         string? description = null,
@@ -43,7 +44,8 @@ public sealed class ToolDefinition {
         ToolRoutingContract? routing = null,
         ToolSetupContract? setup = null,
         ToolHandoffContract? handoff = null,
-        ToolRecoveryContract? recovery = null) {
+        ToolRecoveryContract? recovery = null,
+        ToolExecutionContract? execution = null) {
         if (string.IsNullOrWhiteSpace(name)) {
             throw new ArgumentException("Tool name cannot be empty.", nameof(name));
         }
@@ -62,6 +64,8 @@ public sealed class ToolDefinition {
         WriteGovernance = writeGovernance;
         authentication?.Validate();
         Authentication = authentication;
+        execution?.Validate();
+        Execution = execution;
         routing?.Validate();
         Routing = routing;
         setup?.Validate();
@@ -115,6 +119,11 @@ public sealed class ToolDefinition {
     /// Gets optional authentication contract for tools that require/declare auth behavior.
     /// </summary>
     public ToolAuthenticationContract? Authentication { get; }
+
+    /// <summary>
+    /// Gets optional execution contract for explicit local/remote capability metadata.
+    /// </summary>
+    public ToolExecutionContract? Execution { get; }
 
     /// <summary>
     /// Gets optional routing contract for host-side orchestration.
@@ -184,6 +193,7 @@ public sealed class ToolDefinition {
             aliases: null,
             aliasOf: CanonicalName,
             authentication: Authentication,
+            execution: Execution,
             routing: Routing,
             setup: Setup,
             handoff: Handoff,

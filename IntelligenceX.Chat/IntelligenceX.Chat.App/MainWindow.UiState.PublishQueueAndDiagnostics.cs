@@ -649,6 +649,11 @@ public sealed partial class MainWindow : Window {
             _toolPackNames.TryGetValue(name, out var packName);
             _toolParameters.TryGetValue(name, out var parameters);
             _toolWriteCapabilities.TryGetValue(name, out var isWriteCapable);
+            _toolExecutionAwareness.TryGetValue(name, out var isExecutionAware);
+            _toolExecutionContractIds.TryGetValue(name, out var executionContractId);
+            var hasExecutionScope = _toolExecutionScopes.TryGetValue(name, out var executionScope);
+            var hasLocalExecution = _toolSupportsLocalExecution.TryGetValue(name, out var supportsLocalExecution);
+            var hasRemoteExecution = _toolSupportsRemoteExecution.TryGetValue(name, out var supportsRemoteExecution);
             _toolStates.TryGetValue(name, out var enabled);
             _toolRoutingConfidence.TryGetValue(name, out var routingConfidence);
             _toolRoutingReason.TryGetValue(name, out var routingReason);
@@ -656,6 +661,16 @@ public sealed partial class MainWindow : Window {
             var normalizedPackId = NormalizeRuntimePackId(packId);
             var normalizedPackName = ResolvePackDisplayName(normalizedPackId, packName);
             var parameterState = BuildToolParameterState(parameters);
+            if (!hasExecutionScope) {
+                executionScope = ResolveToolExecutionScope(null, supportsLocalExecution, supportsRemoteExecution);
+            }
+            if (!hasLocalExecution) {
+                supportsLocalExecution = !string.Equals(executionScope, "remote_only", StringComparison.OrdinalIgnoreCase);
+            }
+            if (!hasRemoteExecution) {
+                supportsRemoteExecution = string.Equals(executionScope, "remote_only", StringComparison.OrdinalIgnoreCase)
+                                          || string.Equals(executionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase);
+            }
             list.Add(new {
                 name,
                 displayName = string.IsNullOrWhiteSpace(displayName) ? FormatToolDisplayName(name) : displayName,
@@ -666,6 +681,11 @@ public sealed partial class MainWindow : Window {
                 tags = tags ?? Array.Empty<string>(),
                 parameters = parameterState,
                 isWriteCapable,
+                isExecutionAware,
+                executionContractId = string.IsNullOrWhiteSpace(executionContractId) ? null : executionContractId,
+                executionScope = string.IsNullOrWhiteSpace(executionScope) ? "local_only" : executionScope,
+                supportsLocalExecution,
+                supportsRemoteExecution,
                 routingConfidence = string.IsNullOrWhiteSpace(routingConfidence) ? null : routingConfidence,
                 routingReason = string.IsNullOrWhiteSpace(routingReason) ? null : routingReason,
                 routingScore = _toolRoutingScore.ContainsKey(name) ? Math.Round(routingScore, 3) : (double?)null,

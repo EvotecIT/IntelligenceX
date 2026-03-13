@@ -226,10 +226,15 @@ internal static partial class Program {
             }
 
             if (!_registry.TryGet(call.Name, out var tool)) {
+                var hints = new List<string> { "Run /tools to list available tools." };
+                hints.AddRange(ToolExecutionAvailabilityHints.BuildRegistrationHintLines(
+                    _registry.GetDefinitions(),
+                    hasKnownHostTargets: knownHostTargets is { Count: > 0 }));
+                hints.Add("Check that the correct packs are enabled.");
                 return new ToolOutput(call.CallId, ToolOutputEnvelope.Error(
                     errorCode: "tool_not_registered",
                     error: $"Tool '{call.Name}' is not registered.",
-                    hints: new[] { "Run /tools to list available tools.", "Check that the correct packs are enabled." },
+                    hints: hints,
                     isTransient: false));
             }
 

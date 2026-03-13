@@ -961,6 +961,29 @@ body.options-open .options-panel {
   color: #d5ebff;
 }
 
+.options-pill-execution {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.options-pill-execution-local {
+  border-color: rgba(110, 231, 183, 0.45);
+  background: rgba(16, 185, 129, 0.14);
+  color: #d1fae5;
+}
+
+.options-pill-execution-remote {
+  border-color: rgba(251, 191, 36, 0.52);
+  background: rgba(245, 158, 11, 0.18);
+  color: #fef3c7;
+}
+
+.options-pill-execution-mixed {
+  border-color: rgba(147, 197, 253, 0.5);
+  background: rgba(59, 130, 246, 0.18);
+  color: #dbeafe;
+}
+
 .options-pill-required {
   border-color: rgba(255, 206, 107, 0.52);
   background: rgba(255, 206, 107, 0.16);
@@ -1062,6 +1085,23 @@ body.options-open .options-panel {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+}
+
+.options-tools-filter-pills {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.options-tools-filter-pills .options-pill-action {
+  background: rgba(100, 240, 205, 0.08);
+}
+
+.options-tools-filter-pills .options-pill-action.active {
+  border-color: rgba(76, 195, 255, 0.55);
+  background: rgba(76, 195, 255, 0.2);
+  color: #e6f6ff;
 }
 
 .options-tool-routing {

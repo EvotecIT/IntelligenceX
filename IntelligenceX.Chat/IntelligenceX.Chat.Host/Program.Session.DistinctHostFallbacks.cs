@@ -448,7 +448,7 @@ internal static partial class Program {
         }
 
         private static ToolCall ApplyHostTargetOverride(ToolCall call, ToolDefinition? definition, string hostTarget) {
-            if (call.Arguments is null) {
+            if (call.Arguments is null || !ToolDefinitionSupportsRemoteHostFallback(definition)) {
                 return call;
             }
 
@@ -514,7 +514,7 @@ internal static partial class Program {
                 return call;
             }
 
-            if (!ToolDefinitionSupportsHostTargetInputs(definition)) {
+            if (!ToolDefinitionSupportsRemoteHostFallback(definition)) {
                 return call;
             }
 
@@ -542,20 +542,39 @@ internal static partial class Program {
             }
 
             normalizedTargets = OrderHostTargetCandidatesBySpecificity(normalizedTargets);
+            var supportedHostTargetArguments = ToolHostTargeting.GetSupportedHostTargetArguments(definition);
+            if (supportedHostTargetArguments.Count == 0) {
+                supportedHostTargetArguments = new[] { targetKey };
+            }
+
+            var supportedHostTargetArgumentSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < supportedHostTargetArguments.Count; i++) {
+                var candidateKey = supportedHostTargetArguments[i];
+                if (candidateKey.Length > 0) {
+                    supportedHostTargetArgumentSet.Add(candidateKey);
+                }
+            }
+
             var patchedArguments = new JsonObject(StringComparer.Ordinal);
             foreach (var pair in call.Arguments) {
+                if (supportedHostTargetArgumentSet.Contains(pair.Key)) {
+                    continue;
+                }
+
                 patchedArguments.Add(pair.Key, pair.Value);
             }
 
+            // No supported alias carried a usable target value, so rewrite only the original key/shape
+            // and drop the other alias fields to avoid conflicting repaired payloads.
             if (keyIsArray) {
                 var targetsArray = new JsonArray();
-                for (var i = 0; i < normalizedTargets.Count; i++) {
-                    targetsArray.Add(normalizedTargets[i]);
+                for (var targetIndex = 0; targetIndex < normalizedTargets.Count; targetIndex++) {
+                    targetsArray.Add(normalizedTargets[targetIndex]);
                 }
 
-                patchedArguments.Add(targetKey, targetsArray);
+                patchedArguments[targetKey] = JsonValue.From(targetsArray);
             } else {
-                patchedArguments.Add(targetKey, normalizedTargets[0]);
+                patchedArguments[targetKey] = JsonValue.From(normalizedTargets[0]);
             }
 
             var patchedInput = JsonLite.Serialize(JsonValue.From(patchedArguments));

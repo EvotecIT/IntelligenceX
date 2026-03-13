@@ -523,6 +523,27 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
+        public void Enrich_ShouldTagDomainAndForestScopeArguments_AsTargetScope() {
+            var definition = new ToolDefinition(
+                name: "ad_scope_probe",
+                description: "AD scope probe",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add(
+                        "properties",
+                        new JsonObject()
+                            .Add("domain_name", new JsonObject().Add("type", "string"))
+                            .Add("forest_name", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                category: "active_directory");
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            Assert.Contains("target_scope", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("scope:domain", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void Enrich_ShouldPreserveSetupHandoffAndRecoveryContracts() {
             var definition = new ToolDefinition(
                 name: "custom_contract_preserve_tool",

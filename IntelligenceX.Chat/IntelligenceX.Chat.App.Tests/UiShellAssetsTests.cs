@@ -742,6 +742,62 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures tool cards expose searchable execution-locality labels so mixed/local-only/remote-ready tools
+    /// can be spotted without relying on pack-level summaries alone.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesToolExecutionLocalityBadgesAndFilterTerms() {
+        var html = UiShellAssets.Load();
+        var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var script = File.ReadAllText(scriptPath);
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindings = File.ReadAllText(bindingsPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+        var cssPath = Path.Combine(UiDirectory, "Shell.30.options.css");
+        var css = File.ReadAllText(cssPath);
+
+        Assert.Contains("id=\"optToolLocalityFilters\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optToolLocalityRemoteReady\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optToolLocalityLocalOnly\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optToolLocalityMixed\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-locality-filter=\"dual_scope\">Dual-scope</button>", html, StringComparison.Ordinal);
+        Assert.Contains("toolLocalityFilter: \"all\"", coreScript, StringComparison.Ordinal);
+        Assert.Contains("function normalizeToolExecutionScope(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function normalizeToolLocalityFilter(value)", script, StringComparison.Ordinal);
+        Assert.Contains("function renderToolLocalityQuickFilters()", script, StringComparison.Ordinal);
+        Assert.Contains("function toolMatchesLocalityFilter(tool, localityFilter)", script, StringComparison.Ordinal);
+        Assert.Contains("var localityFilter = normalizeToolLocalityFilter(state.options.toolLocalityFilter);", script, StringComparison.Ordinal);
+        Assert.Contains("tools = tools.filter(function(tool) { return toolMatchesLocalityFilter(tool, localityFilter); });", script, StringComparison.Ordinal);
+        Assert.Contains("if (normalized === \"dual_scope\" || normalized === \"dual-scope\" || normalized === \"mixed\") {", script, StringComparison.Ordinal);
+        Assert.Contains("return \"dual_scope\";", script, StringComparison.Ordinal);
+        Assert.Contains("if (localityFilter === \"dual_scope\") {", script, StringComparison.Ordinal);
+        Assert.Contains("return execution.scope === \"local_or_remote\";", script, StringComparison.Ordinal);
+        Assert.Contains("function resolveToolExecutionBadgeModel(tool)", script, StringComparison.Ordinal);
+        Assert.Contains("function summarizePackExecutionLocality(tools)", script, StringComparison.Ordinal);
+        Assert.Contains("executionPill.className = \"options-pill options-pill-execution options-pill-execution-\" + execution.status;", script, StringComparison.Ordinal);
+        Assert.Contains("executionDetail.textContent = execution.note;", script, StringComparison.Ordinal);
+        Assert.Contains("executionBadge.className = \"options-pill options-pill-execution options-pill-execution-\" + executionSummary.status;", script, StringComparison.Ordinal);
+        Assert.Contains("label = \"Mixed locality\";", script, StringComparison.Ordinal);
+        Assert.Contains("label = \"Remote-ready\";", script, StringComparison.Ordinal);
+        Assert.Contains("tool.executionContractId || \"\"", script, StringComparison.Ordinal);
+        Assert.Contains("\"execution-aware declared execution-contract structured\"", script, StringComparison.Ordinal);
+        Assert.Contains("\"remote remote-only remote only remote-ready remote ready remote-capable remote capable\"", script, StringComparison.Ordinal);
+        Assert.Contains("\"local remote local-and-remote local or remote mixed dual-scope remote-ready remote ready remote-capable remote capable\"", script, StringComparison.Ordinal);
+        Assert.Contains("normalizeBool(tool.supportsRemoteExecution) ? \"supports-remote-execution remote-capable remote-ready\" : \"\"", script, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolLocalityFilter = normalizeToolLocalityFilter(button.getAttribute(\"data-locality-filter\"));", bindings, StringComparison.Ordinal);
+        Assert.Contains("renderToolLocalityQuickFilters();", renderingScript, StringComparison.Ordinal);
+        Assert.Contains(".options-pill-execution", css, StringComparison.Ordinal);
+        Assert.Contains(".options-pill-execution-local", css, StringComparison.Ordinal);
+        Assert.Contains(".options-pill-execution-remote", css, StringComparison.Ordinal);
+        Assert.Contains(".options-pill-execution-mixed", css, StringComparison.Ordinal);
+        Assert.Contains(".options-tools-filter-pills", css, StringComparison.Ordinal);
+        Assert.Contains(".options-tools-filter-pills .options-pill-action.active", css, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures runtime UI supports focused provider/model/usage panel views so long settings pages stay navigable.
     /// </summary>
     [Fact]

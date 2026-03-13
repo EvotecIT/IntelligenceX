@@ -62,6 +62,14 @@ internal sealed partial class ChatServiceSession {
             warning.Append(" enabled_plugins='").Append(string.Join(",", snapshot.EnabledPluginIds)).Append('\'');
         }
 
+        if (snapshot.EnabledPackEngineIds.Length > 0) {
+            warning.Append(" enabled_pack_engines='").Append(string.Join(",", snapshot.EnabledPackEngineIds)).Append('\'');
+        }
+
+        if (snapshot.EnabledCapabilityTags.Length > 0) {
+            warning.Append(" enabled_capability_tags='").Append(string.Join(",", snapshot.EnabledCapabilityTags)).Append('\'');
+        }
+
         if (snapshot.RoutingFamilies.Length > 0) {
             warning.Append(" routing_families='").Append(string.Join(",", snapshot.RoutingFamilies)).Append('\'');
         }

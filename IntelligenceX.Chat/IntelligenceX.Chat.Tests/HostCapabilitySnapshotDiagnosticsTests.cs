@@ -23,18 +23,24 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                 Id = "active_directory",
                 Name = "Active Directory",
                 SourceKind = "closed_source",
+                EngineId = "adplayground",
+                CapabilityTags = new[] { "directory", "remote_analysis" },
                 Enabled = true
             },
             new ToolPackAvailabilityInfo {
                 Id = "eventlog",
                 Name = "Event Log",
                 SourceKind = "closed_source",
+                EngineId = "eventviewerx",
+                CapabilityTags = new[] { "event_logs", "evtx" },
                 Enabled = true
             },
             new ToolPackAvailabilityInfo {
                 Id = "system",
                 Name = "System",
                 SourceKind = "closed_source",
+                EngineId = "computerx",
+                CapabilityTags = new[] { "host_inventory", "storage" },
                 Enabled = true
             }
         };
@@ -65,10 +71,26 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Equal("remote_capable", snapshot.RemoteReachabilityMode);
         Assert.Equal(1, snapshot.EnabledPluginCount);
         Assert.Contains("ops_bundle", snapshot.EnabledPluginIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("adplayground", snapshot.EnabledPackEngineIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("computerx", snapshot.EnabledPackEngineIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("directory", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("host_inventory", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad-ops", snapshot.Skills, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("remote_reachability=remote_capable", summary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy remote-capable 2, cross-pack 2", summary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(highlights, static line => line.Contains("enabled packs: active_directory, eventlog, system", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            highlights,
+            static line => line.Contains("enabled engines:", StringComparison.OrdinalIgnoreCase)
+                && line.Contains("adplayground", StringComparison.OrdinalIgnoreCase)
+                && line.Contains("computerx", StringComparison.OrdinalIgnoreCase)
+                && line.Contains("eventviewerx", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            highlights,
+            static line => line.Contains("enabled capability tags:", StringComparison.OrdinalIgnoreCase)
+                && line.Contains("directory", StringComparison.OrdinalIgnoreCase)
+                && line.Contains("host_inventory", StringComparison.OrdinalIgnoreCase)
+                && line.Contains("remote_analysis", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(highlights, static line => line.Contains("skills: ad-ops, event-triage", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(highlights, static line => line.Contains("cross-pack targets: system", StringComparison.OrdinalIgnoreCase));
     }
@@ -83,18 +105,24 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                 Id = "active_directory",
                 Name = "Active Directory",
                 SourceKind = "closed_source",
+                EngineId = "adplayground",
+                CapabilityTags = new[] { "directory", "remote_analysis" },
                 Enabled = true
             },
             new ToolPackAvailabilityInfo {
                 Id = "eventlog",
                 Name = "Event Log",
                 SourceKind = "closed_source",
+                EngineId = "eventviewerx",
+                CapabilityTags = new[] { "event_logs", "evtx" },
                 Enabled = true
             },
             new ToolPackAvailabilityInfo {
                 Id = "system",
                 Name = "System",
                 SourceKind = "closed_source",
+                EngineId = "computerx",
+                CapabilityTags = new[] { "host_inventory", "storage" },
                 Enabled = true
             }
         };
@@ -141,18 +169,24 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                 Id = "active_directory",
                 Name = "Active Directory",
                 SourceKind = "closed_source",
+                EngineId = "adplayground",
+                CapabilityTags = new[] { "directory", "remote_analysis" },
                 Enabled = true
             },
             new ToolPackAvailabilityInfo {
                 Id = "eventlog",
                 Name = "Event Log",
                 SourceKind = "closed_source",
+                EngineId = "eventviewerx",
+                CapabilityTags = new[] { "event_logs", "evtx" },
                 Enabled = true
             },
             new ToolPackAvailabilityInfo {
                 Id = "system",
                 Name = "System",
                 SourceKind = "closed_source",
+                EngineId = "computerx",
+                CapabilityTags = new[] { "host_inventory", "storage" },
                 Enabled = true
             }
         };
@@ -193,6 +227,8 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         var eventLogTool = Assert.Single(parsed.Tools, static item =>
             string.Equals(item.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("eventlog", eventLogTool.PackId);
+        Assert.True(eventLogTool.SupportsLocalExecution);
+        Assert.True(eventLogTool.SupportsRemoteExecution);
         Assert.True(eventLogTool.SupportsRemoteHostTargeting);
         Assert.Contains("machine_name", eventLogTool.RemoteHostArguments, StringComparer.OrdinalIgnoreCase);
         Assert.True(eventLogTool.IsSetupAware);
