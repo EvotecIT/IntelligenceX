@@ -1,6 +1,6 @@
-# IntelligenceX OfficeIMO Markdown Package Readiness
+# IntelligenceX OfficeIMO Markdown Adoption Checklist
 
-This document tracks whether `IntelligenceX.Chat` is ready to adopt and freeze a new `OfficeIMO.Markdown` / `OfficeIMO.MarkdownRenderer` package line.
+This document is the contributor checklist for adopting a new `OfficeIMO.Markdown` / `OfficeIMO.MarkdownRenderer` package line in `IntelligenceX.Chat`.
 
 ## Current Baseline
 
@@ -19,50 +19,35 @@ The currently pinned package versions in [Directory.Build.props](../Directory.Bu
 - OfficeIMO Word converter/runtime probing is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](../IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
 - OfficeIMO input-normalizer probing is isolated in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
 
-## Package-Mode Validation
+## Adoption Gate
 
-Validated on March 11, 2026 with `UseLocalOfficeImoCheckout=false`.
-
-Successful commands:
-
-```powershell
-dotnet restore IntelligenceX.Chat/IntelligenceX.Chat.ExportArtifacts/IntelligenceX.Chat.ExportArtifacts.csproj -p:UseLocalOfficeImoCheckout=false
-dotnet restore IntelligenceX.Chat/IntelligenceX.Chat.App.Tests/IntelligenceX.Chat.App.Tests.csproj -p:UseLocalOfficeImoCheckout=false
-dotnet build IntelligenceX.Chat/IntelligenceX.Chat.ExportArtifacts/IntelligenceX.Chat.ExportArtifacts.csproj -p:UseLocalOfficeImoCheckout=false
-dotnet test IntelligenceX.Chat/IntelligenceX.Chat.App.Tests/IntelligenceX.Chat.App.Tests.csproj -p:UseLocalOfficeImoCheckout=false --filter "FullyQualifiedName~TranscriptMarkdownContractTests|FullyQualifiedName~TranscriptMarkdownContractIntegrationTests|FullyQualifiedName~OfficeImoMarkdownRuntimeContractTests|FullyQualifiedName~OfficeImoMarkdownInputNormalizationRuntimeContractTests|FullyQualifiedName~LocalExportArtifactWriterTests"
-```
-
-Observed result:
-
-- `IntelligenceX.Chat.ExportArtifacts` built successfully in package mode.
-- The focused package-mode markdown/export contract suite passed: `40` passed, `0` failed.
-
-## Merge / Publish Gate
-
-Before publishing and then merging a package-adoption PR, all of the following should stay true:
+Before updating the pinned package versions, all of the following should be true:
 
 - App render, markdown export, and DOCX export still go through the intended shared markdown contract.
-- Package-mode validation passes against the exact versions we plan to publish.
+- Package-mode validation passes against the exact versions selected for adoption.
 - The new package-adoption PR does not reintroduce mixed ownership between transcript cleanup, renderer probing, and DOCX adaptation.
 - Any intentional OfficeIMO-specific behavior used by `IntelligenceX` is documented in [markdown-contract.md](markdown-contract.md).
 
-## What Still Needs To Happen
+## Validation Expectations
 
-- Publish the intended `OfficeIMO.Markdown` and `OfficeIMO.MarkdownRenderer` package versions.
-- Open a fresh package-adoption PR from the cleaned baseline instead of reviving old pre-cleanup integration branches.
-- Re-run the package-mode validation against the exact published versions chosen for adoption.
-- Verify the final adoption PR on the three user-visible paths:
-  - UI render
-  - markdown export
-  - DOCX export
+The package line should be validated in package mode, not only against a local OfficeIMO checkout.
 
-## Current Recommendation
+The final adoption PR should also be checked on the three user-visible paths:
 
-Do not merge a package-adoption PR yet.
+- UI render
+- markdown export
+- DOCX export
 
-The cleanup work is now in good shape and package-mode validation is green, but the safer sequence is:
+## Adoption Sequence
 
-1. publish the intended OfficeIMO markdown package line
-2. open a fresh adoption PR against those exact versions
-3. rerun package-mode validation and UI/export checks
-4. merge the adoption PR only after that final confirmation
+Use this sequence for the actual package update:
+
+1. publish the intended `OfficeIMO.Markdown` and `OfficeIMO.MarkdownRenderer` package versions
+2. update [Directory.Build.props](../Directory.Build.props) to those exact versions
+3. run package-mode validation against the published package line
+4. re-check UI render, markdown export, and DOCX export
+5. merge only after the package-mode gate and those user-visible checks are green
+
+## Notes
+
+This page is intentionally checklist-oriented. Implementation details for the current markdown pipeline live in [markdown-contract.md](markdown-contract.md).
