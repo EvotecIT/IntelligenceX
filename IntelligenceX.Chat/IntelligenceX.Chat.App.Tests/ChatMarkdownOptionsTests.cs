@@ -75,10 +75,10 @@ public sealed class ChatMarkdownOptionsTests {
     }
 
     /// <summary>
-    /// Ensures optional vis-network support is enabled when the referenced OfficeIMO renderer exposes it.
+    /// Ensures the published OfficeIMO transcript contract enables the required network visual path.
     /// </summary>
     [Fact]
-    public void CreateTranscriptRendererOptions_EnablesOptionalNetworkSupport_WhenSupported() {
+    public void CreateTranscriptRendererOptions_EnablesRequiredNetworkSupport() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         Assert.True(options.Network.Enabled);
     }

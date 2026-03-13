@@ -27,17 +27,6 @@ internal static class OfficeImoMarkdownRuntimeContract {
     }
 
     /// <summary>
-    /// Enables optional vis-network support when the loaded renderer exposes it.
-    /// </summary>
-    /// <param name="options">Renderer options to mutate.</param>
-    /// <returns><see langword="true"/> when the optional capability was enabled.</returns>
-    public static bool TryEnableOptionalRendererNetworkSupport(MarkdownRendererOptions options) {
-        ArgumentNullException.ThrowIfNull(options);
-        options.Network.Enabled = true;
-        return true;
-    }
-
-    /// <summary>
     /// Describes the loaded markdown renderer assembly against the minimum supported package contract.
     /// </summary>
     public static string DescribeMarkdownRendererContract() {

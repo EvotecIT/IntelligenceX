@@ -47,31 +47,6 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
-    /// Verifies renderer option capability probing only enables network support when the runtime exposes it.
-    /// </summary>
-    [Fact]
-    public void TryEnableOptionalRendererNetworkSupport_ReturnsExpectedCapabilityState() {
-        var contractType = typeof(OfficeImoMarkdownRuntimeContract);
-        var method = contractType!.GetMethod(
-            "TryEnableOptionalRendererNetworkSupport",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
-
-        var enabled = (bool)(method!.Invoke(null, [options]) ?? false);
-        var property = options.GetType().GetProperty("Network", BindingFlags.Instance | BindingFlags.Public);
-        var networkOptions = property?.GetValue(options);
-        var enabledProperty = networkOptions?.GetType().GetProperty("Enabled", BindingFlags.Instance | BindingFlags.Public);
-
-        if (enabledProperty?.PropertyType != typeof(bool)) {
-            Assert.False(enabled);
-            return;
-        }
-
-        Assert.True(enabled);
-        Assert.True((bool)(enabledProperty.GetValue(networkOptions) ?? false));
-    }
-
-    /// <summary>
     /// Verifies the central runtime contract creates the same chat-safe renderer defaults used by the app shell.
     /// </summary>
     [Fact]
@@ -85,6 +60,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
 
         Assert.True(options.Mermaid.Enabled);
         Assert.True(options.Chart.Enabled);
+        Assert.True(options.Network.Enabled);
         Assert.False(options.Math.Enabled);
         Assert.False(options.EnableCodeCopyButtons);
         Assert.False(options.EnableTableCopyButtons);

@@ -79,7 +79,7 @@ public sealed class TranscriptHtmlFormatterTests {
     /// Ensures ix-chart fenced blocks render through the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
-    public void Format_SupportsIxChartViaRendererExtensionOrHostRuntime() {
+    public void Format_ComposesIxChartAliasIntoNativeChartVisualContract() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 9, 12, 45, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
@@ -93,18 +93,14 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Chart preview:", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-visual-kind=\"chart\"", html, StringComparison.Ordinal);
-        Assert.Contains("omd-visual", html, StringComparison.Ordinal);
-        Assert.Contains("omd-chart", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
+        AssertIxChartAliasRendersAsNativeChartVisual(html);
     }
 
     /// <summary>
     /// Ensures ix-network fenced blocks render through the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
-    public void Format_SupportsIxNetworkViaRendererExtensionOrHostRuntime() {
+    public void Format_ComposesIxNetworkAliasIntoNativeNetworkVisualContract() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 9, 16, 22, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
@@ -118,11 +114,7 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Relationship network:", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-visual-kind=\"network\"", html, StringComparison.Ordinal);
-        Assert.Contains("omd-visual", html, StringComparison.Ordinal);
-        Assert.Contains("omd-network", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
+        AssertIxNetworkAliasRendersAsNativeNetworkVisual(html);
     }
 
     /// <summary>
@@ -143,7 +135,7 @@ public sealed class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Scope graph preview:", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-visual-kind=\"network\"", html, StringComparison.Ordinal);
+        AssertIxNetworkAliasRendersAsNativeNetworkVisual(html);
         Assert.DoesNotContain("language-json", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -889,6 +881,26 @@ public sealed class TranscriptHtmlFormatterTests {
         Assert.Contains("TestimoX rules available <strong>359</strong>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("</strong>external/custom", html, StringComparison.Ordinal);
         Assert.DoesNotContain("</strong>break down", html, StringComparison.Ordinal);
+    }
+
+    private static void AssertIxChartAliasRendersAsNativeChartVisual(string html) {
+        Assert.True(
+            html.Contains("data-omd-visual-kind=\"chart\"", StringComparison.Ordinal),
+            "Expected ix-chart alias composition to produce a native chart visual.");
+        Assert.Contains("omd-visual", html, StringComparison.Ordinal);
+        Assert.Contains("omd-chart", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
+    }
+
+    private static void AssertIxNetworkAliasRendersAsNativeNetworkVisual(string html) {
+        Assert.True(
+            html.Contains("data-omd-visual-kind=\"network\"", StringComparison.Ordinal),
+            "Expected ix-network alias composition to produce a native network visual.");
+        Assert.Contains("omd-visual", html, StringComparison.Ordinal);
+        Assert.Contains("omd-network", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
     }
 }
 
