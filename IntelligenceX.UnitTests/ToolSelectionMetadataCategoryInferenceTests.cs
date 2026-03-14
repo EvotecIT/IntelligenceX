@@ -54,10 +54,33 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
-        public void ResolveRouting_ShouldInferDnsAndProbeSemantics_WithoutExplicitOverrides() {
-            Assert.False(ToolSelectionMetadata.HasExplicitOverride("dnsclientx_ping"));
-            Assert.False(ToolSelectionMetadata.HasExplicitOverride("domaindetective_network_probe"));
+        public void Enrich_ShouldInferSystemCategory_FromComputerXPrefixThroughSharedIdentityCatalog() {
+            var definition = new ToolDefinition(
+                name: "computerx_inventory_snapshot",
+                description: "Computer inventory",
+                parameters: null);
 
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            Assert.Equal("system", enriched.Category);
+            Assert.Contains("system", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void Enrich_ShouldInferReviewerSetupCategory_FromRuntimeNamespaceThroughSharedIdentityCatalog() {
+            var definition = new ToolDefinition(
+                name: "customsetup",
+                description: "Setup",
+                parameters: null);
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, ToolSelectionMetadataNamespaceTypes.ReviewerSetupDecoratorType);
+
+            Assert.Equal("reviewer_setup", enriched.Category);
+            Assert.Contains("reviewer_setup", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void ResolveRouting_ShouldInferDnsAndProbeSemantics_WithoutExplicitOverrides() {
             var summary = new ToolDefinition(
                 name: "domaindetective_domain_summary",
                 description: "Domain summary",
@@ -88,6 +111,50 @@ namespace IntelligenceX.UnitTests {
             Assert.Equal("probe", pingRouting.Operation);
             Assert.Equal("host", pingRouting.Entity);
             Assert.False(pingRouting.IsExplicit);
+        }
+
+        [Fact]
+        public void ResolveRouting_ShouldUseSharedCategoryScopeDefaults_ForReviewerSetupAndEmail() {
+            var reviewerTool = new ToolDefinition(
+                name: "custom_reviewer_probe",
+                description: "Reviewer setup probe",
+                parameters: null,
+                category: "reviewer_setup");
+            var emailTool = new ToolDefinition(
+                name: "custom_mail_probe",
+                description: "Mail probe",
+                parameters: null,
+                category: "email");
+
+            var reviewerRouting = ToolSelectionMetadata.ResolveRouting(reviewerTool);
+            var emailRouting = ToolSelectionMetadata.ResolveRouting(emailTool);
+
+            Assert.Equal("repository", reviewerRouting.Scope);
+            Assert.Equal(ToolRoutingTaxonomy.EntityResource, reviewerRouting.Entity);
+            Assert.Equal("message", emailRouting.Scope);
+            Assert.Equal("message", emailRouting.Entity);
+        }
+
+        [Fact]
+        public void ResolveRouting_ShouldUseSharedCategoryEntityDefaults_ForFilesystemAndActiveDirectory() {
+            var filesystemTool = new ToolDefinition(
+                name: "custom_file_probe",
+                description: "File probe",
+                parameters: null,
+                category: "filesystem");
+            var directoryTool = new ToolDefinition(
+                name: "custom_directory_probe",
+                description: "Directory probe",
+                parameters: null,
+                category: "active_directory");
+
+            var filesystemRouting = ToolSelectionMetadata.ResolveRouting(filesystemTool);
+            var directoryRouting = ToolSelectionMetadata.ResolveRouting(directoryTool);
+
+            Assert.Equal("file", filesystemRouting.Scope);
+            Assert.Equal("file", filesystemRouting.Entity);
+            Assert.Equal("domain", directoryRouting.Scope);
+            Assert.Equal("directory_object", directoryRouting.Entity);
         }
 
         [Fact]
@@ -244,6 +311,41 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
+        public void Enrich_ShouldPreferRoutingPackIdForCategory_WhenToolNameAndNamespaceAreCustom() {
+            var definition = new ToolDefinition(
+                name: "custom_probe",
+                description: "Custom probe",
+                parameters: null,
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                });
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            Assert.Equal("eventlog", enriched.Category);
+            Assert.Contains("eventlog", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("pack:eventlog", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void Enrich_ShouldPreferPackTagForCategory_WhenRoutingPackIdIsMissing() {
+            var definition = new ToolDefinition(
+                name: "custom_scope_probe",
+                description: "Custom scope probe",
+                parameters: null,
+                tags: new[] { "pack:dnsclientx" });
+
+            var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
+
+            Assert.Equal("dns", enriched.Category);
+            Assert.Contains("dns", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("pack:dnsclientx", enriched.Tags, StringComparer.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void GetNormalizedPackAliases_ShouldReturnCanonicalAliasSet_ForActiveDirectoryPack() {
             var aliases = ToolSelectionMetadata.GetNormalizedPackAliases("active_directory");
 
@@ -316,20 +418,28 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
-        public void GetFallbackHintKeys_ShouldResolveFromToolOwnedTags_ForTestimoTools() {
+        public void GetFallbackHintKeys_ShouldResolveFromStructuredRoutingMetadata_ForTestimoTools() {
             var listEnriched = ToolSelectionMetadata.Enrich(
                 new ToolDefinition(
                     name: "testimox_rules_list",
                     description: "Rules list",
                     parameters: null,
-                    tags: new[] { "fallback_hint_keys:search_text,rule_origin,categories,tags,source_types" }),
+                    routing: new ToolRoutingContract {
+                        IsRoutingAware = true,
+                        FallbackHintKeys = new[] { "search_text", "rule_origin", "categories", "tags", "source_types" }
+                    }),
                 toolType: null);
             var runEnriched = ToolSelectionMetadata.Enrich(
                 new ToolDefinition(
                     name: "testimox_rules_run",
                     description: "Rules run",
                     parameters: null,
-                    tags: new[] { "fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types" }),
+                    routing: new ToolRoutingContract {
+                        IsRoutingAware = true,
+                        RequiresSelectionForFallback = true,
+                        FallbackSelectionKeys = new[] { "search_text", "rule_names" },
+                        FallbackHintKeys = new[] { "search_text", "rule_origin", "rule_names", "rule_name_patterns", "categories", "tags", "source_types" }
+                    }),
                 toolType: null);
             var listKeys = ToolSelectionMetadata.GetFallbackHintKeys(listEnriched);
             var runKeys = ToolSelectionMetadata.GetFallbackHintKeys(runEnriched);
@@ -343,16 +453,18 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
-        public void GetFallbackHintKeys_ShouldPreferTagOverrides_AndDeduplicate() {
-            var keys = ToolSelectionMetadata.GetFallbackHintKeys(
+        public void GetFallbackHintKeys_ShouldReadStructuredRoutingMetadata() {
+            var enriched = ToolSelectionMetadata.Enrich(
                 new ToolDefinition(
                     name: "custom_tool",
                     description: "Custom tool",
                     parameters: null,
-                    tags: new[] {
-                        "fallback_hint_key: target",
-                        "fallback_hint_keys: name, target , domain"
-                    }));
+                    routing: new ToolRoutingContract {
+                        IsRoutingAware = true,
+                        FallbackHintKeys = new[] { "target", "name", "target", "domain" }
+                    }),
+                toolType: null);
+            var keys = ToolSelectionMetadata.GetFallbackHintKeys(enriched);
 
             Assert.Equal(3, keys.Count);
             Assert.Contains("target", keys, StringComparer.OrdinalIgnoreCase);
@@ -367,17 +479,21 @@ namespace IntelligenceX.UnitTests {
                     name: "testimox_rules_list",
                     description: "Rules list",
                     parameters: null,
-                    tags: new[] { "fallback_hint_keys:search_text,rule_origin,categories,tags,source_types" }),
+                    routing: new ToolRoutingContract {
+                        IsRoutingAware = true,
+                        FallbackHintKeys = new[] { "search_text", "rule_origin", "categories", "tags", "source_types" }
+                    }),
                 toolType: null);
             var runEnriched = ToolSelectionMetadata.Enrich(
                 new ToolDefinition(
                     name: "testimox_rules_run",
                     description: "Rules run",
                     parameters: null,
-                    tags: new[] {
-                        "fallback:requires_selection",
-                        "fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin",
-                        "fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types"
+                    routing: new ToolRoutingContract {
+                        IsRoutingAware = true,
+                        RequiresSelectionForFallback = true,
+                        FallbackSelectionKeys = new[] { "search_text", "rule_names", "rule_name_patterns", "categories", "tags", "source_types", "rule_origin" },
+                        FallbackHintKeys = new[] { "search_text", "rule_origin", "rule_names", "rule_name_patterns", "categories", "tags", "source_types" }
                     }),
                 toolType: null);
             var untaggedDefinition = ToolSelectionMetadata.Enrich(
@@ -396,7 +512,7 @@ namespace IntelligenceX.UnitTests {
         }
 
         [Fact]
-        public void Enrich_ShouldPopulateRoutingContract_FromMetadataTagsAndDefaults() {
+        public void Enrich_ShouldPreserveStructuredFallbackRouting_AlongsideMetadataDefaults() {
             var definition = new ToolDefinition(
                 name: "custom_domain_probe",
                 description: "Domain probe",
@@ -405,10 +521,17 @@ namespace IntelligenceX.UnitTests {
                 tags: new[] {
                     "pack:dnsclientx",
                     "domain_family:public_domain",
-                    "domain_signal: DMARC ",
-                    "fallback:requires_selection",
-                    "fallback_selection_keys:domain_name,target",
-                    "fallback_hint_keys:domain_name"
+                    "domain_signal: DMARC "
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "dnsclientx",
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyPublic,
+                    DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdPublic,
+                    RequiresSelectionForFallback = true,
+                    FallbackSelectionKeys = new[] { "domain_name", "target" },
+                    FallbackHintKeys = new[] { "domain_name" }
                 });
 
             var enriched = ToolSelectionMetadata.Enrich(definition, toolType: null);
@@ -416,7 +539,7 @@ namespace IntelligenceX.UnitTests {
             var routing = Assert.IsType<ToolRoutingContract>(enriched.Routing);
             Assert.True(routing.IsRoutingAware);
             Assert.Equal(ToolRoutingContract.DefaultContractId, routing.RoutingContractId);
-            Assert.Equal(ToolRoutingTaxonomy.SourceInferred, routing.RoutingSource, ignoreCase: true);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
             Assert.Equal("dnsclientx", routing.PackId, ignoreCase: true);
             Assert.Equal(ToolRoutingTaxonomy.RoleOperational, routing.Role, ignoreCase: true);
             Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyPublic, routing.DomainIntentFamily);

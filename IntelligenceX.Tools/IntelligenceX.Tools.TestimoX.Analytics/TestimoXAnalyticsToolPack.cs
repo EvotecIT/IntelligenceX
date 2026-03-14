@@ -27,7 +27,8 @@ public sealed class TestimoXAnalyticsToolPack : IToolPack, IToolPackCatalogProvi
         Description = "Persisted TestimoX analytics, report, and history artifact inspection.",
         SourceKind = "closed_source",
         EngineId = "testimox_analytics",
-        CapabilityTags = new[] { "analytics", "evidence", "posture", "reporting" }
+        CapabilityTags = new[] { "analytics", "evidence", "posture", "reporting" },
+        CapabilityParity = TestimoXAnalyticsToolPackParity.Slices
     };
 
     /// <inheritdoc />

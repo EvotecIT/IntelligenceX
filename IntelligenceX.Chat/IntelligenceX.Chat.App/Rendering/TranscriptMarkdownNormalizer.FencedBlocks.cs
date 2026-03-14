@@ -14,15 +14,197 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// </summary>
 internal static partial class TranscriptMarkdownNormalizer {
     private static string ApplyLegacyTranscriptTransportFallbacks(string input) {
-        if (string.IsNullOrEmpty(input)
-            || input.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) >= 0
-            || !ContainsLegacyJsonVisualFenceCandidate(input)) {
+        if (string.IsNullOrEmpty(input)) {
             return input ?? string.Empty;
         }
 
-        var upgraded = UpgradeLegacyVisualFences(input);
-        upgraded = UpgradeLegacyIndentedNetworkBlocks(upgraded);
+        var upgraded = RemoveCachedEvidenceTransportMarkers(input);
+        upgraded = PromoteLegacyToolHeadingBullets(upgraded);
+        upgraded = RemoveDuplicateLegacyToolSlugHeadings(upgraded);
+        upgraded = RemoveStandaloneHashSeparatorsBeforeHeadings(upgraded);
+        upgraded = RepairBrokenTwoLineStrongLeadIns(upgraded);
+
+        if (ContainsLegacyJsonVisualFenceCandidate(upgraded)) {
+            upgraded = UpgradeLegacyVisualFences(upgraded);
+            upgraded = UpgradeLegacyIndentedNetworkBlocks(upgraded);
+        }
+
         return upgraded;
+    }
+
+    private static string RemoveCachedEvidenceTransportMarkers(string input) {
+        if (string.IsNullOrEmpty(input)
+            || input.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) < 0) {
+            return input ?? string.Empty;
+        }
+
+        var hasCrLf = input.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var kept = new List<string>(lines.Length);
+        var changed = false;
+
+        foreach (var rawLine in lines) {
+            var line = rawLine ?? string.Empty;
+            if (line.Trim().Equals("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase)) {
+                changed = true;
+                continue;
+            }
+
+            kept.Add(line);
+        }
+
+        if (!changed) {
+            return input;
+        }
+
+        var rebuilt = string.Join("\n", kept);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
+    private static string PromoteLegacyToolHeadingBullets(string input) {
+        if (string.IsNullOrEmpty(input) || !LegacyToolHeadingBulletRegex.IsMatch(input)) {
+            return input ?? string.Empty;
+        }
+
+        return LegacyToolHeadingBulletRegex.Replace(
+            input,
+            static match => match.Groups["heading"].Value.TrimStart());
+    }
+
+    private static string RemoveDuplicateLegacyToolSlugHeadings(string input) {
+        if (string.IsNullOrEmpty(input) || !LegacyToolSlugHeadingRegex.IsMatch(input)) {
+            return input ?? string.Empty;
+        }
+
+        var hasCrLf = input.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var kept = new List<string>(lines.Length);
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            if (!LegacyToolSlugHeadingRegex.IsMatch(current)) {
+                kept.Add(current);
+                continue;
+            }
+
+            var nextHeading = FindNextNonBlankLine(lines, i + 1);
+            if (nextHeading != null
+                && nextHeading.TrimStart().StartsWith("###", StringComparison.Ordinal)
+                && !LegacyToolSlugHeadingRegex.IsMatch(nextHeading)) {
+                changed = true;
+                continue;
+            }
+
+            kept.Add(current);
+        }
+
+        if (!changed) {
+            return input;
+        }
+
+        var rebuilt = string.Join("\n", kept);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
+    private static string RemoveStandaloneHashSeparatorsBeforeHeadings(string input) {
+        if (string.IsNullOrEmpty(input) || !StandaloneHashSeparatorBeforeHeadingSignalRegex.IsMatch(input)) {
+            return input ?? string.Empty;
+        }
+
+        var hasCrLf = input.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var kept = new List<string>(lines.Length);
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            if (!string.Equals(current.Trim(), "#", StringComparison.Ordinal)) {
+                kept.Add(current);
+                continue;
+            }
+
+            var nextHeading = FindNextNonBlankLine(lines, i + 1);
+            if (nextHeading != null && nextHeading.TrimStart().StartsWith("###", StringComparison.Ordinal)) {
+                changed = true;
+                continue;
+            }
+
+            kept.Add(current);
+        }
+
+        if (!changed) {
+            return input;
+        }
+
+        var rebuilt = string.Join("\n", kept);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
+    private static string RepairBrokenTwoLineStrongLeadIns(string input) {
+        if (string.IsNullOrEmpty(input) || input.IndexOf("**Result", StringComparison.Ordinal) < 0) {
+            return input ?? string.Empty;
+        }
+
+        var hasCrLf = input.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var rewritten = new List<string>(lines.Length);
+        var changed = false;
+
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            if (!string.Equals(current.Trim(), "**Result", StringComparison.Ordinal)) {
+                rewritten.Add(current);
+                continue;
+            }
+
+            if (i + 1 >= lines.Length) {
+                rewritten.Add(current);
+                continue;
+            }
+
+            var next = lines[i + 1] ?? string.Empty;
+            var closeIndex = next.IndexOf("**", StringComparison.Ordinal);
+            if (closeIndex <= 0) {
+                rewritten.Add(current);
+                continue;
+            }
+
+            var body = next[..closeIndex].Trim();
+            if (body.Length == 0) {
+                rewritten.Add(current);
+                continue;
+            }
+
+            var suffix = next[(closeIndex + 2)..].TrimStart();
+            rewritten.Add(suffix.Length == 0
+                ? "**Result:** " + body
+                : "**Result:** " + body + " " + suffix);
+            changed = true;
+            i++;
+        }
+
+        if (!changed) {
+            return input;
+        }
+
+        var rebuilt = string.Join("\n", rewritten);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
+    }
+
+    private static string? FindNextNonBlankLine(string[] lines, int startIndex) {
+        for (var i = startIndex; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(line)) {
+                return line;
+            }
+        }
+
+        return null;
     }
 
     private static string UpgradeLegacyVisualFences(string input) {

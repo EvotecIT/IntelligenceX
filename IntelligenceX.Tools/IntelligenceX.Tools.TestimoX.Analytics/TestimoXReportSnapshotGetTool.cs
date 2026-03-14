@@ -33,10 +33,7 @@ public sealed class TestimoXReportSnapshotGetTool : TestimoXToolBase, ITool {
             "html",
             "monitoring",
             "reporting",
-            "snapshot",
-            "fallback:requires_selection",
-            "fallback_selection_keys:history_directory,report_key",
-            "fallback_hint_keys:history_directory,report_key,include_html,max_chars"
+            "snapshot"
         });
 
     /// <summary>

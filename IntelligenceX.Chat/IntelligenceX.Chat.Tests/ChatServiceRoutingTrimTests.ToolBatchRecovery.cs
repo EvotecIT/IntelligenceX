@@ -790,9 +790,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task ExecuteToolAsync_PrefersPersistedHealthyAlternateEngineAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-alt-engine-health-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-alt-engine-health", out var root);
         var firstRunEngines = new List<string>();
         var secondRunEngines = new List<string>();
 

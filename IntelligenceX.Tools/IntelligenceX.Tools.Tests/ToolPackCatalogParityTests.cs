@@ -5,8 +5,16 @@ using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
+using IntelligenceX.Tools.DnsClientX;
+using IntelligenceX.Tools.DomainDetective;
+using IntelligenceX.Tools.Email;
 using IntelligenceX.Tools.EventLog;
+using IntelligenceX.Tools.FileSystem;
+using IntelligenceX.Tools.OfficeIMO;
+using IntelligenceX.Tools.PowerShell;
+using IntelligenceX.Tools.ReviewerSetup;
 using IntelligenceX.Tools.System;
+using IntelligenceX.Tools.TestimoX;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
@@ -70,6 +78,65 @@ public sealed class ToolPackCatalogParityTests {
         }
     }
 
+    [Fact]
+    public void RepresentativeExamples_ShouldBePublishedForExpandedBuiltInPacks() {
+        var testimoXCatalog = ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(new TestimoXToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var testimoXAnalyticsCatalog = ToolRegistryTestimoXAnalyticsExtensions.GetRegisteredToolCatalog(new TestimoXToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var fileSystemCatalog = ToolRegistryFileSystemExtensions.GetRegisteredToolCatalog(new FileSystemToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var emailCatalog = ToolRegistryEmailExtensions.GetRegisteredToolCatalog(new EmailToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var powerShellCatalog = ToolRegistryPowerShellExtensions.GetRegisteredToolCatalog(new PowerShellToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var dnsClientXCatalog = ToolRegistryDnsClientXExtensions.GetRegisteredToolCatalog(new DnsClientXToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var domainDetectiveCatalog = ToolRegistryDomainDetectiveExtensions.GetRegisteredToolCatalog(new DomainDetectiveToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var officeImoCatalog = ToolRegistryOfficeImoExtensions.GetRegisteredToolCatalog(new OfficeImoToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var reviewerSetupCatalog = ToolRegistryReviewerSetupExtensions.GetRegisteredToolCatalog(new ReviewerSetupToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+
+        AssertRepresentativeExample(
+            testimoXCatalog,
+            "testimox_rules_run",
+            "run selected TestimoX rules against chosen domains or domain controllers");
+        AssertRepresentativeExample(
+            testimoXAnalyticsCatalog,
+            "testimox_history_query",
+            "query monitoring availability rollups");
+        AssertRepresentativeExample(
+            fileSystemCatalog,
+            "fs_search",
+            "search local text files under allowed roots");
+        AssertRepresentativeExample(
+            emailCatalog,
+            "email_imap_search",
+            "search an IMAP mailbox");
+        AssertRepresentativeExample(
+            powerShellCatalog,
+            "powershell_run",
+            "run a bounded local PowerShell or cmd check");
+        AssertRepresentativeExample(
+            dnsClientXCatalog,
+            "dnsclientx_query",
+            "query DNS records");
+        AssertRepresentativeExample(
+            domainDetectiveCatalog,
+            "domaindetective_domain_summary",
+            "run DomainDetective posture checks for a public domain");
+        AssertRepresentativeExample(
+            officeImoCatalog,
+            "officeimo_read",
+            "read a local Word, Excel, PowerPoint, Markdown, or PDF document");
+        AssertRepresentativeExample(
+            reviewerSetupCatalog,
+            "reviewer_setup_contract_verify",
+            "verify reviewer setup contract fingerprints");
+    }
+
     private static void AssertCatalogEntryMatchesDefinition(ToolPackToolCatalogEntryModel entry, ToolDefinition definition) {
         var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
         Assert.Equal(routing.PackId, entry.Routing.PackId);
@@ -105,6 +172,15 @@ public sealed class ToolPackCatalogParityTests {
         AssertSetupParity(entry, definition);
         AssertHandoffParity(entry, definition);
         AssertRecoveryParity(entry, definition);
+    }
+
+    private static void AssertRepresentativeExample(
+        IReadOnlyDictionary<string, ToolPackToolCatalogEntryModel> catalogByName,
+        string toolName,
+        string expectedFragment) {
+        var entry = Assert.IsType<ToolPackToolCatalogEntryModel>(catalogByName[toolName]);
+        var example = Assert.Single(entry.RepresentativeExamples);
+        Assert.Contains(expectedFragment, example, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AssertSetupParity(ToolPackToolCatalogEntryModel entry, ToolDefinition definition) {

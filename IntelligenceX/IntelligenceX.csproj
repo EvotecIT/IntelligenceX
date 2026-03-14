@@ -50,4 +50,8 @@
     <ItemGroup>
         <EmbeddedResource Include="Visualization\Heatmaps\Assets\**\*.*" />
     </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\IntelligenceX.Shared\IntelligenceX.Shared.csproj" />
+    </ItemGroup>
 </Project>

@@ -82,14 +82,24 @@ public sealed class HostRuntimeSelfReportTests {
         Assert.Contains("active_model: gpt-5.3-codex", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("transport: native", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_requested: true", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("ad_tooling: available", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("public_domain_tooling: available", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("eventlog_tooling: available", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("filesystem_tooling: available", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("available_pack_ids: active_directory, dnsclientx, eventlog, filesystem", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("available_domain_families: ad_domain, public_domain", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Mention the exact active model", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not use headings, bullet lists, inventories, or capability maps.", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("user_request_literal:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"What model/tools for DNS/AD?\"", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildCompactRuntimeSelfReportInput_UsesGenericEmptyAvailabilityWhenNoToolsRegistered() {
+        var prompt = RuntimeSelfReportSupport.BuildCompactRuntimeSelfReportInput(
+            "What model are you using?",
+            IntelligenceX.OpenAI.OpenAITransportKind.Native,
+            "gpt-5.3-codex",
+            []);
+
+        Assert.Contains("available_pack_ids: (none)", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("available_domain_families: (none)", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

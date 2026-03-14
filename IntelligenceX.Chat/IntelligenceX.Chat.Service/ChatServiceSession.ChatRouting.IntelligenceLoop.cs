@@ -308,7 +308,7 @@ internal sealed partial class ChatServiceSession {
         int reviewPassNumber,
         int maxReviewPasses,
         IReadOnlyList<string>? rememberedExecutionBackends = null) {
-        var requestText = TrimForPrompt(userRequest, 520);
+        var requestText = TrimForPrompt(SanitizeResponseQualityReviewRequest(userRequest), 520);
         var draftText = TrimForPrompt(ResolveReviewedAssistantDraft(assistantDraft).VisibleText, 1600);
         var toolActivityHint = hasToolActivity ? "present" : "none";
         var rememberedBackendHints = rememberedExecutionBackends is { Count: > 0 }
@@ -347,6 +347,38 @@ internal sealed partial class ChatServiceSession {
             If a blocker exists, state the exact blocker and the minimal missing input.
             After the answer-plan block, return only the revised assistant response text.
             """;
+    }
+
+    private static string SanitizeResponseQualityReviewRequest(string userRequest) {
+        var raw = (userRequest ?? string.Empty).Trim();
+        if (raw.Length == 0) {
+            return string.Empty;
+        }
+
+        if (raw.IndexOf("preferred_execution_backends", StringComparison.OrdinalIgnoreCase) < 0
+            && raw.IndexOf("recent_tool_execution_backends", StringComparison.OrdinalIgnoreCase) < 0) {
+            return raw;
+        }
+
+        var builder = new StringBuilder(raw.Length);
+        using var reader = new StringReader(raw);
+        var appendedAny = false;
+        while (reader.ReadLine() is { } line) {
+            var trimmed = line.Trim();
+            if (TryParseStructuredKeyValueLine(trimmed, "preferred_execution_backends", out _)
+                || TryParseStructuredKeyValueLine(trimmed, "recent_tool_execution_backends", out _)) {
+                continue;
+            }
+
+            if (appendedAny) {
+                builder.AppendLine();
+            }
+
+            builder.Append(line);
+            appendedAny = true;
+        }
+
+        return builder.ToString().Trim();
     }
 
     internal static bool ShouldAttemptProactiveFollowUpReview(

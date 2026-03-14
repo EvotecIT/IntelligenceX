@@ -161,9 +161,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryApplyDomainIntentAffinity_RehydratesPersistedAffinityAcrossSessionRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-domain-affinity-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = PendingActionsStorePathTestHelper.CreateAllowedPendingActionsStorePath("ix-chat-domain-affinity", out var root);
 
         try {
             var writerSession = new ChatServiceSession(
@@ -334,9 +332,7 @@ public sealed class ChatServiceDomainAffinityTests {
 
     [Fact]
     public void TryResolvePendingDomainIntentClarificationSelection_RehydratesPersistedClarificationContextAcrossSessionRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-domain-clarify-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = PendingActionsStorePathTestHelper.CreateAllowedPendingActionsStorePath("ix-chat-domain-clarify", out var root);
 
         try {
             var writerSession = new ChatServiceSession(

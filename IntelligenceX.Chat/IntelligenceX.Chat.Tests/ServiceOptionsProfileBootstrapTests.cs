@@ -112,7 +112,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
 
     [Fact]
     public void Parse_AllowsMissingProfile_WhenSaveProfileMatches() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service", ".db");
         try {
             var options = ServiceOptions.Parse(new[] {
                 "--pipe", "test.pipe",
@@ -126,17 +126,15 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.Equal("default", options.ProfileName);
             Assert.Equal("default", options.SaveProfileName);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public void Parse_RuntimePluginPath_IsAvailableForCurrentRun_ButNotPersistedToProfile() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service", ".db");
         var runtimePluginPath = Path.Combine(
-            Path.GetTempPath(),
-            "ix-chat-runtime-plugins",
-            Guid.NewGuid().ToString("N"),
+            TempPathTestHelper.CreateTempDirectoryPath("ix-chat-runtime-plugins"),
             "plugins");
         try {
             var options = ServiceOptions.Parse(new[] {
@@ -164,13 +162,13 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(loadError), loadError);
             Assert.Empty(((IToolPackRuntimeSettings)loaded!).PluginPaths);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public void Parse_RejectsMissingProfile_WhenNoMatchingSaveProfile() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service", ".db");
         try {
             _ = ServiceOptions.Parse(new[] {
                 "--pipe", "test.pipe",
@@ -180,13 +178,13 @@ public sealed class ServiceOptionsProfileBootstrapTests {
 
             Assert.Equal("Profile not found: default", error);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public void Parse_LoadsBuiltInPluginOnlyPreset_WhenNoStoredProfileExists() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service-preset", ".db");
         try {
             var options = ServiceOptions.Parse(new[] {
                 "--pipe", "test.pipe",
@@ -200,13 +198,13 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.False(options.EnableBuiltInPackLoading);
             Assert.True(options.EnableDefaultPluginPaths);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public void Parse_LoadsSavedProfileNamedPluginOnly_BeforeBuiltInPreset() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-collision-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service-preset-collision", ".db");
         try {
             SeedProfile(dbPath, "plugin-only", "saved-plugin-model", enableBuiltInPackLoading: true, enableDefaultPluginPaths: false);
 
@@ -223,13 +221,13 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(options.EnableBuiltInPackLoading);
             Assert.False(options.EnableDefaultPluginPaths);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public void Parse_LoadsSavedProfileNamedPluginOnlyAlias_BeforeBuiltInPresetAlias() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-alias-collision-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service-preset-alias-collision", ".db");
         try {
             SeedProfile(dbPath, "plugin_only", "saved-plugin-alias-model", enableBuiltInPackLoading: true, enableDefaultPluginPaths: false);
 
@@ -246,13 +244,13 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(options.EnableBuiltInPackLoading);
             Assert.False(options.EnableDefaultPluginPaths);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public void Parse_NormalizesBuiltInPluginOnlyPresetAlias() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-preset-alias-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service-preset-alias", ".db");
         try {
             var options = ServiceOptions.Parse(new[] {
                 "--pipe", "test.pipe",
@@ -265,7 +263,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.Equal("plugin-only", options.ProfileName);
             Assert.False(options.EnableBuiltInPackLoading);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -311,7 +309,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
 
     [Fact]
     public void Parse_LoadsLegacyProfileSchemaWithoutCompatibleHttpColumns() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-legacy-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service-legacy", ".db");
         try {
             SeedLegacyProfileRow(dbPath, profileName: "default", model: "legacy-model");
 
@@ -329,13 +327,13 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.Contains("officeimo", options.EnabledPackIds);
             Assert.Contains("powershell", options.EnabledPackIds);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public void Parse_LoadsLegacyProfileWithOversizedMaxToolRounds_ClampsToSafetyLimit() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-legacy-rounds-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service-legacy-rounds", ".db");
         try {
             SeedLegacyProfileRow(
                 dbPath,
@@ -353,7 +351,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(error), error);
             Assert.Equal(ChatRequestOptionLimits.MaxToolRounds, options.MaxToolRounds);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -611,7 +609,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
 
     [Fact]
     public void Parse_ProfileRoundTrip_PersistsRuntimePolicyWithCanonicalValues() {
-        var dbPath = Path.Combine(Path.GetTempPath(), "ix-chat-service-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TempPathTestHelper.CreateTempFilePath("ix-chat-service", ".db");
         try {
             var save = ServiceOptions.Parse(new[] {
                 "--state-db", dbPath,
@@ -663,17 +661,7 @@ public sealed class ServiceOptionsProfileBootstrapTests {
             Assert.Contains("IntelligenceX.Tools.System", loaded.BuiltInToolAssemblyNames);
             Assert.Contains("IntelligenceX.Tools.EventLog", loaded.BuiltInToolAssemblyNames);
         } finally {
-            TryDelete(dbPath);
-        }
-    }
-
-    private static void TryDelete(string path) {
-        try {
-            if (File.Exists(path)) {
-                File.Delete(path);
-            }
-        } catch {
-            // Best-effort cleanup only.
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 

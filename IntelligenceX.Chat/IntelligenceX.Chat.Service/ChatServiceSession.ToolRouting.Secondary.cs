@@ -521,7 +521,7 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var plannerPromptHintEntries = CollectPlannerPromptHintEntries(definitions, plannerContext);
+        var plannerPromptHintEntries = CollectPlannerPromptHintEntries(definitions, plannerContext, _toolOrchestrationCatalog);
         var representativeExamples = ToolContractPromptExamples.BuildRepresentativeExamples(plannerPromptHintEntries);
         var crossPackTargets = ToolContractPromptExamples.BuildCrossPackTargetPackDisplayNames(plannerPromptHintEntries);
         if (representativeExamples.Count > 0 || crossPackTargets.Count > 0) {
@@ -533,8 +533,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (crossPackTargets.Count > 0) {
-                sb.Append("Cross-pack follow-up pivots: ")
-                    .AppendLine(string.Join(", ", crossPackTargets));
+                sb.AppendLine(ToolRepresentativeExamples.BuildCrossPackSummary(crossPackTargets));
             }
         }
         sb.AppendLine();
@@ -676,12 +675,15 @@ internal sealed partial class ChatServiceSession {
 
     private static IReadOnlyList<ToolOrchestrationCatalogEntry> CollectPlannerPromptHintEntries(
         IReadOnlyList<ToolDefinition> definitions,
-        PlannerContextMetadata plannerContext) {
+        PlannerContextMetadata plannerContext,
+        ToolOrchestrationCatalog? orchestrationCatalog = null) {
         if (definitions.Count == 0) {
             return Array.Empty<ToolOrchestrationCatalogEntry>();
         }
 
-        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        if (orchestrationCatalog is null || orchestrationCatalog.Count == 0) {
+            orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        }
         var preferredPackIds = new HashSet<string>(
             plannerContext.PreferredPackIds
                 .Concat(plannerContext.HandoffTargetPackIds)

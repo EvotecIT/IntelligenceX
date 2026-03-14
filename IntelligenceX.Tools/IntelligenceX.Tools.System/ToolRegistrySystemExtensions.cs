@@ -24,7 +24,9 @@ public static class ToolRegistrySystemExtensions {
     /// <param name="options">Tool options.</param>
     /// <returns>Catalog entries derived from runtime definitions and input schemas.</returns>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(SystemToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            SystemToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -39,7 +41,7 @@ public static class ToolRegistrySystemExtensions {
 
     private static IEnumerable<ITool> CreateTools(SystemToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return SystemToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, SystemPackContractCatalog.Apply(tool.Definition));
         }
     }
 

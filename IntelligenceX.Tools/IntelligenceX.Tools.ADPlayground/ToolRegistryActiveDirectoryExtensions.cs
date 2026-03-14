@@ -23,7 +23,9 @@ public static class ToolRegistryActiveDirectoryExtensions {
     /// <param name="options">Tool options.</param>
     /// <returns>Catalog entries derived from runtime definitions and input schemas.</returns>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(ActiveDirectoryToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            ActiveDirectoryToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -38,7 +40,7 @@ public static class ToolRegistryActiveDirectoryExtensions {
 
     private static IEnumerable<ITool> CreateTools(ActiveDirectoryToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return ActiveDirectoryToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, ActiveDirectoryPackContractCatalog.Apply(tool.Definition));
         }
     }
 

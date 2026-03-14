@@ -47,10 +47,7 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
             "history",
             "index",
             "monitoring",
-            "status",
-            "fallback:requires_selection",
-            "fallback_selection_keys:history_directory",
-            "fallback_hint_keys:history_directory,probe_names,since_utc,probe_name_contains,statuses"
+            "status"
         });
 
     private static readonly TimeSpan DefaultLookback = TimeSpan.FromDays(2);

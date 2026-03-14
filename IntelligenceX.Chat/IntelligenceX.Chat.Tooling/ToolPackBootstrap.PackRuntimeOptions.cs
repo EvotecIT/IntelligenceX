@@ -66,32 +66,11 @@ public static partial class ToolPackBootstrap {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         AddPackOptionKey(keys, seen, PackOptionKeyGlobal);
-        AddPackOptionKey(keys, seen, packType.Assembly.GetName().Name);
         if (options is IToolPackRuntimeOptionTarget runtimeOptionTarget) {
             foreach (var runtimeOptionKey in runtimeOptionTarget.RuntimeOptionKeys ?? Array.Empty<string>()) {
                 AddPackOptionKey(keys, seen, runtimeOptionKey);
             }
         }
-
-        var namespaceValue = packType.Namespace ?? string.Empty;
-        const string toolsNamespacePrefix = "IntelligenceX.Tools.";
-        if (namespaceValue.StartsWith(toolsNamespacePrefix, StringComparison.OrdinalIgnoreCase)) {
-            var suffix = namespaceValue.Substring(toolsNamespacePrefix.Length);
-            var segments = suffix.Split('.', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length > 0) {
-                AddPackOptionKey(keys, seen, segments[0]);
-            }
-        } else {
-            AddPackOptionKey(keys, seen, namespaceValue);
-        }
-
-        var typeName = packType.Name;
-        if (typeName.EndsWith("ToolPack", StringComparison.OrdinalIgnoreCase)) {
-            typeName = typeName[..^"ToolPack".Length];
-        } else if (typeName.EndsWith("Pack", StringComparison.OrdinalIgnoreCase)) {
-            typeName = typeName[..^"Pack".Length];
-        }
-        AddPackOptionKey(keys, seen, typeName);
         AddPackOptionKey(keys, seen, explicitPackKey);
 
         return keys;

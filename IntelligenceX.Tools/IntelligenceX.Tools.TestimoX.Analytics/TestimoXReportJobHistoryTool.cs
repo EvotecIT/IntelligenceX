@@ -45,10 +45,7 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
             "history",
             "jobs",
             "monitoring",
-            "reporting",
-            "fallback:requires_selection",
-            "fallback_selection_keys:history_directory",
-            "fallback_hint_keys:history_directory,job_key,report_key,since_utc,statuses"
+            "reporting"
         });
 
     /// <summary>

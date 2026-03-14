@@ -11,9 +11,13 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed class PluginFolderLoaderLifecycleContractTests {
+    private static string CreatePluginLifecycleTempRoot() {
+        return TempPathTestHelper.CreateTempDirectoryPath("ix-chat-plugin-lifecycle-test");
+    }
+
     [Fact]
     public void CreateDefaultReadOnlyPacks_PluginLoadProgressIsDeterministicByFolderOrder() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-lifecycle-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginLifecycleTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         Directory.CreateDirectory(pluginRoot);
 
@@ -77,7 +81,7 @@ public sealed class PluginFolderLoaderLifecycleContractTests {
     public void CreateDefaultReadOnlyPacks_PluginOptionsReceiveHealthProbeContractSettings() {
         ProbeLifecyclePluginPack.ResetCapturedOptions();
 
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-lifecycle-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginLifecycleTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         Directory.CreateDirectory(pluginRoot);
 
@@ -114,7 +118,7 @@ public sealed class PluginFolderLoaderLifecycleContractTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_InvalidManifestEmitsFailureTelemetry() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-lifecycle-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginLifecycleTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         Directory.CreateDirectory(pluginRoot);
 

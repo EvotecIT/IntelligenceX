@@ -19,7 +19,9 @@ public static class ToolRegistryReviewerSetupExtensions {
     /// Returns tool catalog metadata for tools registered by <see cref="RegisterReviewerSetupPack"/>.
     /// </summary>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(ReviewerSetupToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            ReviewerSetupToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -30,6 +32,12 @@ public static class ToolRegistryReviewerSetupExtensions {
     }
 
     private static IEnumerable<ITool> CreateTools(ReviewerSetupToolOptions options) {
+        foreach (var tool in CreateCoreTools(options)) {
+            yield return ToolDefinitionOverlay.WithDefinition(tool, ReviewerSetupPackContractCatalog.Apply(tool.Definition));
+        }
+    }
+
+    private static IEnumerable<ITool> CreateCoreTools(ReviewerSetupToolOptions options) {
         yield return new ReviewerSetupPackInfoTool(options);
         yield return new ReviewerSetupContractVerifyTool(options);
     }

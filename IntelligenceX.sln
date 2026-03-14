@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -60,6 +60,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.DomainDetective", "IntelligenceX.Tools\IntelligenceX.Tools.DomainDetective\IntelligenceX.Tools.DomainDetective.csproj", "{1671D108-F595-4408-A6FF-4DC6DE6FCB1C}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.TestimoX.Analytics", "IntelligenceX.Tools\IntelligenceX.Tools.TestimoX.Analytics\IntelligenceX.Tools.TestimoX.Analytics.csproj", "{BDBEB6C2-AEA8-4819-98D1-62A8F1F0C0A1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Shared", "IntelligenceX.Shared\IntelligenceX.Shared.csproj", "{3552C200-02FE-4AF3-9200-F11F8D646804}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -395,6 +397,18 @@ Global
 		{BDBEB6C2-AEA8-4819-98D1-62A8F1F0C0A1}.Release|x64.Build.0 = Release|Any CPU
 		{BDBEB6C2-AEA8-4819-98D1-62A8F1F0C0A1}.Release|x86.ActiveCfg = Release|Any CPU
 		{BDBEB6C2-AEA8-4819-98D1-62A8F1F0C0A1}.Release|x86.Build.0 = Release|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Debug|x64.Build.0 = Debug|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Debug|x86.Build.0 = Debug|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|x64.ActiveCfg = Release|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|x64.Build.0 = Release|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|x86.ActiveCfg = Release|Any CPU
+		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

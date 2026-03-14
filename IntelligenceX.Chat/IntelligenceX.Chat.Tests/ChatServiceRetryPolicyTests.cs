@@ -605,9 +605,7 @@ public sealed class ChatServiceRetryPolicyTests {
 
     [Fact]
     public void OrderAlternateEngineIdsByHealthForTesting_IgnoresExpiredFailureTimestampsAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-alt-engine-health-expired-failure-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = PendingActionsStorePathTestHelper.CreateAllowedPendingActionsStorePath("ix-chat-alt-engine-health-expired-failure", out var root);
 
         try {
             var expiredTicks = DateTime.UtcNow.AddHours(-2).Ticks;

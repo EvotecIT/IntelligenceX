@@ -23,11 +23,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
         typeof(ChatServiceSession).GetMethod("RememberFailedPackPreflightCalls", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("RememberFailedPackPreflightCalls not found.");
 
+    private static string CreateAllowedPendingActionsStorePath(string namePrefix, out string root) {
+        return PendingActionsStorePathTestHelper.CreateAllowedPendingActionsStorePath(namePrefix, out root);
+    }
+
     [Fact]
     public void BuildHostPackPreflightCalls_SkipsPersistedPreflightAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-pack-preflight-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-pack-preflight", out var root);
         const string threadId = "thread-pack-preflight-persist";
 
         try {
@@ -70,9 +72,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void BuildHostPackPreflightCalls_DoesNotReuseExpiredPersistedPreflightAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-pack-preflight-expired-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-pack-preflight-expired", out var root);
         const string threadId = "thread-pack-preflight-expired";
 
         try {
@@ -118,9 +118,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void BuildHostPackPreflightCalls_SkipsPersistedFailedPreflightAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-pack-preflight-failed-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-pack-preflight-failed", out var root);
         const string threadId = "thread-pack-preflight-failed";
 
         try {
@@ -163,9 +161,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public async Task ExecuteToolAsync_SkipsPersistedFailedRecoveryHelperAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-recovery-helper-failed-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-recovery-helper-failed", out var root);
         const string threadId = "thread-recovery-helper-failed";
 
         try {
@@ -284,9 +280,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void RememberSuccessfulPackPreflightCalls_RemembersHostGeneratedRecoveryHelpersForLaterTurns() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-pack-helper-success-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-pack-helper-success", out var root);
         const string threadId = "thread-pack-helper-success";
 
         try {

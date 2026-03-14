@@ -28,7 +28,8 @@ public sealed class TestimoXToolPack : IToolPack, IToolPackCatalogProvider {
         Description = "TestimoX rule, profile, baseline, and stored-run diagnostics.",
         SourceKind = "closed_source",
         EngineId = "testimox",
-        CapabilityTags = new[] { "configuration", "evidence", "posture", "remote_analysis" }
+        CapabilityTags = new[] { "configuration", "evidence", "posture", "remote_analysis" },
+        CapabilityParity = TestimoXToolPackParity.Slices
     };
 
     /// <inheritdoc />

@@ -97,6 +97,71 @@ public readonly struct ToolCapabilityParityExpectationDescriptor {
     }
 
     /// <summary>
+    /// Creates a tool-presence parity expectation backed by an upstream public static method.
+    /// </summary>
+    public static ToolCapabilityParityExpectationDescriptor ForToolStaticMethod(
+        string capabilityId,
+        string toolName,
+        string typeName,
+        string methodName,
+        string assemblyName) {
+        return Create(
+            capabilityId,
+            toolName,
+            ToolCapabilityParitySurfaceContractKind.ToolPresent,
+            surfaceParameterName: null,
+            ToolCapabilityParitySourceContractKind.PublicStaticMethod,
+            assemblyName,
+            typeName,
+            propertyName: null,
+            methodNames: new[] { methodName ?? string.Empty });
+    }
+
+    /// <summary>
+    /// Creates a parameter-aware parity expectation backed by an upstream request property.
+    /// </summary>
+    public static ToolCapabilityParityExpectationDescriptor ForToolParameterProperty(
+        string capabilityId,
+        string toolName,
+        string surfaceParameterName,
+        string typeName,
+        string propertyName,
+        string assemblyName) {
+        return Create(
+            capabilityId,
+            toolName,
+            ToolCapabilityParitySurfaceContractKind.ToolParameterPresent,
+            surfaceParameterName: surfaceParameterName,
+            ToolCapabilityParitySourceContractKind.PublicInstanceProperty,
+            assemblyName,
+            typeName,
+            propertyName,
+            methodNames: null);
+    }
+
+    /// <summary>
+    /// Creates a parameter-aware parity expectation backed by a single upstream static method.
+    /// </summary>
+    public static ToolCapabilityParityExpectationDescriptor ForToolParameterStaticMethod(
+        string capabilityId,
+        string toolName,
+        string surfaceParameterName,
+        string typeName,
+        string methodName,
+        string assemblyName) {
+        return Create(
+            capabilityId,
+            toolName,
+            ToolCapabilityParitySurfaceContractKind.ToolParameterPresent,
+            surfaceParameterName: surfaceParameterName,
+            ToolCapabilityParitySourceContractKind.PublicStaticMethod,
+            assemblyName,
+            typeName,
+            propertyName: null,
+            methodNames: new[] { methodName ?? string.Empty });
+    }
+
+    /// <summary>
     /// Creates a remote-tool parity expectation backed by an upstream request property.
     /// </summary>
     public static ToolCapabilityParityExpectationDescriptor ForRemoteToolProperty(
@@ -105,16 +170,13 @@ public readonly struct ToolCapabilityParityExpectationDescriptor {
         string typeName,
         string propertyName,
         string assemblyName) {
-        return Create(
+        return ForToolParameterProperty(
             capabilityId,
             toolName,
-            ToolCapabilityParitySurfaceContractKind.ToolParameterPresent,
-            surfaceParameterName: ToolCapabilityParityCatalog.RemoteComputerNameParameterName,
-            ToolCapabilityParitySourceContractKind.PublicInstanceProperty,
-            assemblyName,
+            ToolCapabilityParityCatalog.RemoteComputerNameParameterName,
             typeName,
             propertyName,
-            methodNames: null);
+            assemblyName);
     }
 
     /// <summary>
@@ -126,16 +188,13 @@ public readonly struct ToolCapabilityParityExpectationDescriptor {
         string typeName,
         string methodName,
         string assemblyName) {
-        return Create(
+        return ForToolParameterStaticMethod(
             capabilityId,
             toolName,
-            ToolCapabilityParitySurfaceContractKind.ToolParameterPresent,
-            surfaceParameterName: ToolCapabilityParityCatalog.RemoteComputerNameParameterName,
-            ToolCapabilityParitySourceContractKind.PublicStaticMethod,
-            assemblyName,
+            ToolCapabilityParityCatalog.RemoteComputerNameParameterName,
             typeName,
-            propertyName: null,
-            methodNames: new[] { methodName ?? string.Empty });
+            methodName,
+            assemblyName);
     }
 
     /// <summary>
@@ -263,6 +322,11 @@ public static class ToolCapabilityParityCatalog {
     public const string ComputerXAssemblyName = "ComputerX";
 
     /// <summary>
+    /// Canonical EventViewerX assembly name.
+    /// </summary>
+    public const string EventViewerXAssemblyName = "EventViewerX";
+
+    /// <summary>
     /// Canonical ADPlayground.Monitoring assembly name.
     /// </summary>
     public const string AdMonitoringAssemblyName = "ADPlayground.Monitoring";
@@ -287,6 +351,11 @@ public static class ToolCapabilityParityCatalog {
     /// Canonical TestimoX PowerShell provider type.
     /// </summary>
     public const string TestimoXPowerShellProviderTypeName = "TestimoX.Providers.PowerShellRuleProvider";
+
+    /// <summary>
+    /// Canonical parameter name used by remote EventViewerX-backed surfaces.
+    /// </summary>
+    public const string RemoteMachineNameParameterName = "machine_name";
 
     /// <summary>
     /// Shared ComputerX read-only capability expectations.
@@ -341,6 +410,23 @@ public static class ToolCapabilityParityCatalog {
         ToolCapabilityParityExpectationDescriptor.ForRemoteToolProperty("remote_hardware_summary", "system_hardware_summary", "ComputerX.Hardware.HardwareSummaryQueryRequest", "ComputerName", ComputerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForRemoteToolStaticMethod("remote_metrics_summary", "system_metrics_summary", "ComputerX.Diagnostics.SystemMetrics", "QueryRemoteAsync", ComputerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForRemoteToolProperty("remote_feature_inventory", "system_features_list", "ComputerX.Features.FeatureInventoryQueryRequest", "ComputerName", ComputerXAssemblyName)
+    };
+
+    /// <summary>
+    /// Shared EventViewerX read-only capability expectations.
+    /// </summary>
+    public static IReadOnlyList<ToolCapabilityParityExpectationDescriptor> EventViewerXReadOnlyExpectations { get; } = new[] {
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_channel_catalog", "eventlog_channels_list", RemoteMachineNameParameterName, "EventViewerX.Reports.Inventory.EventCatalogQueryRequest", "MachineName", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_provider_catalog", "eventlog_providers_list", RemoteMachineNameParameterName, "EventViewerX.Reports.Inventory.EventCatalogQueryRequest", "MachineName", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_live_event_query", "eventlog_live_query", RemoteMachineNameParameterName, "EventViewerX.Reports.Live.LiveEventQueryRequest", "MachineName", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_live_event_stats", "eventlog_live_stats", RemoteMachineNameParameterName, "EventViewerX.Reports.Live.LiveStatsQueryRequest", "MachineName", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_top_events", "eventlog_top_events", RemoteMachineNameParameterName, "EventViewerX.Reports.Live.LiveEventQueryRequest", "MachineName", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod("named_event_catalog", "eventlog_named_events_catalog", "EventViewerX.EventObjectSlim", "GetEventInfoForNamedEvents", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterStaticMethod("remote_named_event_query", "eventlog_named_events_query", RemoteMachineNameParameterName, "EventViewerX.SearchEvents", "FindEventsByNamedEvents", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterStaticMethod("remote_timeline_correlation", "eventlog_timeline_query", RemoteMachineNameParameterName, "EventViewerX.Reports.Correlation.NamedEventsTimelineQueryExecutor", "TryBuildAsync", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolType("evtx_event_query", "eventlog_evtx_query", "EventViewerX.Reports.Evtx.EvtxEventReportResult", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolType("evtx_event_stats", "eventlog_evtx_stats", "EventViewerX.Reports.Stats.EvtxStatsReport", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolType("evtx_security_summary", "eventlog_evtx_security_summary", "EventViewerX.Reports.Security.SecurityEvtxQueryRequest", EventViewerXAssemblyName)
     };
 
     /// <summary>

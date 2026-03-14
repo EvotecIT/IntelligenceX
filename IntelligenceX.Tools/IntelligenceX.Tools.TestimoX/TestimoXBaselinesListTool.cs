@@ -48,8 +48,7 @@ public sealed class TestimoXBaselinesListTool : TestimoXToolBase, ITool {
         tags: new[] {
             "compliance",
             "baselines",
-            "catalog",
-            "fallback_hint_keys:search_text,vendor_ids,product_ids,version_wildcard,baseline_ids,id_patterns"
+            "catalog"
         });
 
     /// <summary>

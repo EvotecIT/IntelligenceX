@@ -28,7 +28,8 @@ public sealed class SystemToolPack : IToolPack, IToolPackCatalogProvider {
         Description = "ComputerX host inventory and diagnostics (read-only).",
         SourceKind = "closed_source",
         EngineId = "computerx",
-        CapabilityTags = new[] { "host_inventory", "local_analysis", "performance", "remote_analysis", "storage" }
+        CapabilityTags = new[] { "host_inventory", "local_analysis", "performance", "remote_analysis", "storage" },
+        CapabilityParity = SystemToolPackParity.Slices
     };
 
     /// <inheritdoc />

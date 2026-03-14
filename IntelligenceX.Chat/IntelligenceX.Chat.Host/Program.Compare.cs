@@ -116,7 +116,13 @@ internal static partial class Program {
             };
             ToolPackBootstrap.RegisterAll(registry, packs);
             _ = ToolRuntimePolicyBootstrap.ApplyToRegistry(registry, runtimePolicyContext);
-            var session = new ReplSession(client, registry, compareOptions, shaped, status: null);
+            var session = new ReplSession(
+                client,
+                registry,
+                compareOptions,
+                shaped,
+                status: null,
+                orchestrationCatalog: ToolOrchestrationCatalog.Build(registry.GetDefinitions()));
             var turn = await session.AskWithMetricsAsync(prompt, cancellationToken).ConfigureAwait(false);
 
             return new CompareProfileRun {

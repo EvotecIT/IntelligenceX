@@ -144,7 +144,7 @@ public sealed class ExportPreferencesContractTests {
     /// </summary>
     [Fact]
     public void NormalizeFromFilePath_ReturnsExistingDirectory() {
-        var root = Path.Combine(Path.GetTempPath(), "ixchat-tests", Guid.NewGuid().ToString("N"));
+        var root = TempPathTestHelper.CreateTempDirectoryPath("ixchat-tests");
         Directory.CreateDirectory(root);
         try {
             var filePath = Path.Combine(root, "export.xlsx");

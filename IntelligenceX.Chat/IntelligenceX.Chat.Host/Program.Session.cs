@@ -40,6 +40,7 @@ internal static partial class Program {
         private const string ScenarioExecutionContractDirectiveMarker = "ix:scenario-execution:v1";
         private readonly IntelligenceXClient _client;
         private readonly ToolRegistry _registry;
+        private readonly ToolOrchestrationCatalog? _orchestrationCatalog;
         private readonly ReplOptions _options;
         private readonly string? _instructions;
         private readonly Action<string>? _status;
@@ -47,12 +48,19 @@ internal static partial class Program {
         private readonly ConcurrentDictionary<string, string> _sessionToolOutputCache = new(StringComparer.Ordinal);
         private string? _previousResponseId;
 
-        public ReplSession(IntelligenceXClient client, ToolRegistry registry, ReplOptions options, string? instructions, Action<string>? status) {
+        public ReplSession(
+            IntelligenceXClient client,
+            ToolRegistry registry,
+            ReplOptions options,
+            string? instructions,
+            Action<string>? status,
+            ToolOrchestrationCatalog? orchestrationCatalog = null) {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _registry = registry ?? throw new ArgumentNullException(nameof(registry));
             _options = options ?? throw new ArgumentNullException(nameof(options));
             _instructions = string.IsNullOrWhiteSpace(instructions) ? null : instructions;
             _status = status;
+            _orchestrationCatalog = orchestrationCatalog;
         }
 
         public void ResetThread() {
@@ -62,6 +70,10 @@ internal static partial class Program {
 
         internal IReadOnlyList<ToolDefinition> GetToolDefinitionsSnapshot() {
             return _registry.GetDefinitions();
+        }
+
+        internal ToolOrchestrationCatalog? GetToolOrchestrationCatalogSnapshot() {
+            return _orchestrationCatalog;
         }
 
         public async Task<ReplTurnResult> AskAsync(string text, CancellationToken cancellationToken) {
@@ -191,7 +203,8 @@ internal static partial class Program {
                                 assistantDraft: rawFinalText,
                                 retryAttempt: noToolExecutionRetryCount,
                                 toolDefinitions: toolDefs,
-                                knownHostTargets: retryKnownHostTargets);
+                                knownHostTargets: retryKnownHostTargets,
+                                orchestrationCatalog: GetToolOrchestrationCatalogSnapshot());
                         chatOptions.NewThread = false;
                         chatOptions.PreviousResponseId = TryGetResponseId(turn);
                         chatOptions.ToolChoice = !string.IsNullOrWhiteSpace(forcedToolName)

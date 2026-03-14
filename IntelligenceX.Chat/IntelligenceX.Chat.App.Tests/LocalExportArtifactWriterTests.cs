@@ -49,7 +49,7 @@ public sealed class LocalExportArtifactWriterTests {
             new[] { "AD2", "Warning" }
         };
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var csvPath = Path.Combine(root, "table.csv");
             LocalExportArtifactWriter.ExportTable(ExportPreferencesContract.FormatCsv, "sample", rows, csvPath);
@@ -94,7 +94,7 @@ public sealed class LocalExportArtifactWriterTests {
             - item 2
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var markdownPath = Path.Combine(root, "transcript.md");
             var markdownResult = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
@@ -137,7 +137,7 @@ public sealed class LocalExportArtifactWriterTests {
             ### Active Directory: Environment Discovery
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var markdownPath = Path.Combine(root, "transcript.md");
             var result = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
@@ -170,7 +170,7 @@ public sealed class LocalExportArtifactWriterTests {
             """;
 
         string? capturedMarkdown = null;
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript.docx");
             var result = LocalExportArtifactWriter.ExportTranscript(
@@ -212,7 +212,7 @@ public sealed class LocalExportArtifactWriterTests {
             - Overall health ****healthy****
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var markdownPath = Path.Combine(root, "transcript.md");
             var result = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
@@ -255,7 +255,7 @@ public sealed class LocalExportArtifactWriterTests {
             hello
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var requestedDocxPath = Path.Combine(root, "transcript.docx");
             var result = LocalExportArtifactWriter.ExportTranscript(
@@ -292,7 +292,7 @@ public sealed class LocalExportArtifactWriterTests {
     /// </summary>
     [Fact]
     public void ExportTranscript_Docx_ReturnsFailedResult_WhenFallbackIsDisabled() {
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var requestedDocxPath = Path.Combine(root, "transcript.docx");
             var result = LocalExportArtifactWriter.ExportTranscript(
@@ -328,7 +328,7 @@ public sealed class LocalExportArtifactWriterTests {
             Short answer: **no — nothing is failed** ✅
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-definition-line.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -360,7 +360,7 @@ public sealed class LocalExportArtifactWriterTests {
             Short answer: **outside fence still bold** ✅
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-definition-fence.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -392,7 +392,7 @@ public sealed class LocalExportArtifactWriterTests {
             ````
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-outer-fence.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -420,7 +420,7 @@ public sealed class LocalExportArtifactWriterTests {
             Use `key: value` syntax when defining pairs.
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-inline-code.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -458,7 +458,7 @@ public sealed class LocalExportArtifactWriterTests {
         Assert.DoesNotContain("****359****", normalizedMarkdown, StringComparison.Ordinal);
         Assert.Contains("**359**", normalizedMarkdown, StringComparison.Ordinal);
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-typography-normalized.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -593,7 +593,7 @@ public sealed class LocalExportArtifactWriterTests {
             Interpretation line.
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-visuals.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -619,7 +619,7 @@ public sealed class LocalExportArtifactWriterTests {
     /// </summary>
     [Fact]
     public void WriteDocxTranscript_EmbedsAllowListedLocalImage() {
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var imagesDirectory = Path.Combine(root, "images");
             Directory.CreateDirectory(imagesDirectory);
@@ -646,7 +646,7 @@ public sealed class LocalExportArtifactWriterTests {
     /// </summary>
     [Fact]
     public void WriteDocxTranscript_DoesNotEmbedDisallowedLocalImage() {
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var disallowedDirectory = Path.Combine(root, "disallowed");
             Directory.CreateDirectory(disallowedDirectory);
@@ -685,7 +685,7 @@ public sealed class LocalExportArtifactWriterTests {
             Status: **healthy**
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-single-line-definition.docx");
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, additionalAllowedImageDirectories: null);
@@ -713,7 +713,7 @@ public sealed class LocalExportArtifactWriterTests {
             Impact: none
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-grouped-definition-lines.docx");
             OfficeImoArtifactWriter.WriteDocxTranscript("transcript", markdown, docxPath, additionalAllowedImageDirectories: null);
@@ -771,7 +771,7 @@ public sealed class LocalExportArtifactWriterTests {
             ```
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-invalid-visual.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -797,7 +797,7 @@ public sealed class LocalExportArtifactWriterTests {
             Interpretation: topology looks clean in this sample.
             """;
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
             var docxPath = Path.Combine(root, "transcript-plain-colon-line.docx");
             LocalExportArtifactWriter.ExportTranscript(ExportPreferencesContract.FormatDocx, "transcript", markdown, docxPath);
@@ -819,11 +819,4 @@ public sealed class LocalExportArtifactWriterTests {
         Assert.Equal(typeof(bool), property!.PropertyType);
         return Assert.IsType<bool>(property.GetValue(target));
     }
-
-    private static string CreateTempDirectory() {
-        var path = Path.Combine(Path.GetTempPath(), "ixchat-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
 }

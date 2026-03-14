@@ -9,9 +9,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ReadToolRoutingAdjustmentForTesting_RehydratesPersistedStatsAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-tool-routing-stats-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-tool-routing-stats", out var root);
 
         try {
             var session1 = new ChatServiceSession(

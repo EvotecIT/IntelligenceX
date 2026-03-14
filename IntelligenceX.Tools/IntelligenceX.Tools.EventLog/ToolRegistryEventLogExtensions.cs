@@ -23,7 +23,9 @@ public static class ToolRegistryEventLogExtensions {
     /// <param name="options">Tool options.</param>
     /// <returns>Catalog entries derived from runtime definitions and input schemas.</returns>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(EventLogToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            EventLogToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -38,7 +40,7 @@ public static class ToolRegistryEventLogExtensions {
 
     private static IEnumerable<ITool> CreateTools(EventLogToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return EventLogToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, EventLogPackContractCatalog.Apply(tool.Definition));
         }
     }
 

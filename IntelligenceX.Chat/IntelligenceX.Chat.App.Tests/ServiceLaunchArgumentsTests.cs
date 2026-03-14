@@ -262,8 +262,8 @@ public sealed class ServiceLaunchArgumentsTests {
     [Fact]
     public void Build_IncludesPluginPathFlags_WhenConfigured() {
         var unique = Guid.NewGuid().ToString("N");
-        var mainPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "ix-launch-main-" + unique));
-        var extraPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "ix-launch-extra-" + unique));
+        var mainPath = Path.GetFullPath(TempPathTestHelper.CreateTempDirectoryPath("ix-launch-main-" + unique));
+        var extraPath = Path.GetFullPath(TempPathTestHelper.CreateTempDirectoryPath("ix-launch-extra-" + unique));
         var relativeRoot = Path.Combine(Directory.GetCurrentDirectory(), "ix-launch-relative-" + unique);
         var relativePluginPath = Path.Combine(relativeRoot, "plugins", "relative");
         Directory.CreateDirectory(mainPath);

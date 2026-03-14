@@ -46,8 +46,7 @@ public sealed class TestimoXBaselineCompareTool : TestimoXToolBase, ITool {
         tags: new[] {
             "compliance",
             "baselines",
-            "compare",
-            "fallback_hint_keys:product_id,vendor_ids,version_wildcard,latest_only,only_diff,search_text"
+            "compare"
         });
 
     /// <summary>

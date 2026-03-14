@@ -48,7 +48,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
 
     [Fact]
     public void CreateContext_FileAuditSink_CreatesAppendOnlySink() {
-        var filePath = Path.Combine(Path.GetTempPath(), "ix-write-audit-" + Guid.NewGuid().ToString("N") + ".jsonl");
+        var filePath = TempPathTestHelper.CreateTempFilePath("ix-write-audit", ".jsonl");
         try {
             var context = ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions {
                 WriteAuditSinkMode = ToolWriteAuditSinkMode.FileAppendOnly,
@@ -58,7 +58,7 @@ public sealed class ToolRuntimePolicyBootstrapTests {
             Assert.NotNull(context.WriteAuditSink);
             Assert.IsType<AppendOnlyJsonlToolWriteAuditSink>(context.WriteAuditSink);
         } finally {
-            TryDelete(filePath);
+            TempPathTestHelper.TryDeleteFile(filePath);
         }
     }
 
@@ -386,16 +386,6 @@ public sealed class ToolRuntimePolicyBootstrapTests {
         Assert.False(requireAuthRuntime);
         Assert.Equal("after-runas", runAsProfilePath);
         Assert.Equal("after-auth", authProfilePath);
-    }
-
-    private static void TryDelete(string path) {
-        try {
-            if (File.Exists(path)) {
-                File.Delete(path);
-            }
-        } catch {
-            // Best-effort cleanup.
-        }
     }
 
     private sealed class TestRuntimePolicySettings : IToolRuntimePolicySettings {

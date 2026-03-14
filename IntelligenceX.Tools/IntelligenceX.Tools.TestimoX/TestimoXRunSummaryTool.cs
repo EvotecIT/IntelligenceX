@@ -42,10 +42,7 @@ public sealed class TestimoXRunSummaryTool : TestimoXToolBase, ITool {
         tags: new[] {
             "history",
             "store",
-            "summary",
-            "fallback:requires_selection",
-            "fallback_selection_keys:store_directory,run_id",
-            "fallback_hint_keys:store_directory,run_id,scope_group,rule_name_contains,scope_id_contains"
+            "summary"
         });
 
     /// <summary>

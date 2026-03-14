@@ -55,8 +55,12 @@ internal sealed partial class ChatServiceSession {
                 operationalPackIds.Add(packId);
             }
 
-            if (catalog.RecoveryToolNamesByToolName.TryGetValue(callName, out var helperToolNames)
-                && helperToolNames is { Length: > 0 }) {
+            var helperToolNames = catalog.RecoveryToolNamesByToolName.TryGetValue(callName, out var cachedHelperToolNames)
+                ? cachedHelperToolNames
+                : NormalizePackPreflightRecoveryToolNames(catalog.DefinitionsByToolName.TryGetValue(callName, out var callDefinition)
+                    ? callDefinition.Recovery?.RecoveryToolNames
+                    : null);
+            if (helperToolNames is { Length: > 0 }) {
                 for (var helperIndex = 0; helperIndex < helperToolNames.Length; helperIndex++) {
                     var helperToolName = (helperToolNames[helperIndex] ?? string.Empty).Trim();
                     if (helperToolName.Length > 0) {
@@ -143,6 +147,7 @@ internal sealed partial class ChatServiceSession {
             selectedPreflightToolNames.Add(helperToolName);
         }
 
+        RememberSelectedPackPreflightTools(normalizedThreadId, selectedPreflightToolNames);
         return preflightCalls.Count == 0 ? Array.Empty<ToolCall>() : preflightCalls;
     }
 
@@ -229,15 +234,16 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        var rememberedPreflightTools = SnapshotRememberedPackPreflightTools(normalizedThreadId);
         var successfulCallIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < outputs.Count; i++) {
             var output = outputs[i];
-            if (!IsSuccessfulToolOutput(output)) {
+            var outputCallId = (output.CallId ?? string.Empty).Trim();
+            if (outputCallId.Length == 0) {
                 continue;
             }
 
-            var outputCallId = (output.CallId ?? string.Empty).Trim();
-            if (outputCallId.Length > 0) {
+            if (IsSuccessfulToolOutput(output)) {
                 successfulCallIds.Add(outputCallId);
             }
         }
@@ -250,7 +256,7 @@ internal sealed partial class ChatServiceSession {
             var callName = (call.Name ?? string.Empty).Trim();
             if (callId.Length == 0
                 || callName.Length == 0
-                || ResolveHostBootstrapFailureKind(callId, callName).Length == 0) {
+                || !IsRememberablePackPreflightToolCall(callId, callName, rememberedPreflightTools)) {
                 continue;
             }
 
@@ -267,15 +273,9 @@ internal sealed partial class ChatServiceSession {
         string[] snapshotToolNames;
         long snapshotSeenUtcTicks;
         lock (_toolRoutingContextLock) {
-            var updated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (_packPreflightToolNamesByThreadId.TryGetValue(normalizedThreadId, out var existingNames)
-                && existingNames is { Length: > 0 }) {
-                for (var i = 0; i < existingNames.Length; i++) {
-                    var existingName = (existingNames[i] ?? string.Empty).Trim();
-                    if (existingName.Length > 0 && !executedBootstrapToolNames.Contains(existingName)) {
-                        updated.Add(existingName);
-                    }
-                }
+            var updated = new HashSet<string>(rememberedPreflightTools, StringComparer.OrdinalIgnoreCase);
+            foreach (var executedName in executedBootstrapToolNames) {
+                updated.Remove(executedName);
             }
 
             foreach (var successfulName in successfulBootstrapToolNames) {
@@ -301,6 +301,51 @@ internal sealed partial class ChatServiceSession {
         foreach (var successfulToolName in successfulBootstrapToolNames) {
             ClearHostBootstrapFailure(normalizedThreadId, successfulToolName);
         }
+    }
+
+    private void RememberSelectedPackPreflightTools(string normalizedThreadId, IReadOnlyCollection<string> selectedToolNames) {
+        if (normalizedThreadId.Length == 0 || selectedToolNames is not { Count: > 0 }) {
+            return;
+        }
+
+        var rememberedPreflightTools = SnapshotRememberedPackPreflightTools(normalizedThreadId);
+        foreach (var selectedToolName in selectedToolNames) {
+            rememberedPreflightTools.Add(selectedToolName);
+        }
+
+        var snapshotToolNames = rememberedPreflightTools
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxRememberedPackPreflightToolNames)
+            .ToArray();
+        if (snapshotToolNames.Length == 0) {
+            return;
+        }
+
+        var snapshotSeenUtcTicks = DateTime.UtcNow.Ticks;
+        lock (_toolRoutingContextLock) {
+            _packPreflightToolNamesByThreadId[normalizedThreadId] = snapshotToolNames;
+            _packPreflightSeenUtcTicks[normalizedThreadId] = snapshotSeenUtcTicks;
+            TrimWeightedRoutingContextsNoLock();
+        }
+
+        PersistPackPreflightSnapshot(normalizedThreadId, snapshotToolNames, snapshotSeenUtcTicks);
+    }
+
+    private bool IsRememberablePackPreflightToolCall(
+        string callId,
+        string toolName,
+        IReadOnlySet<string> rememberedPreflightTools) {
+        var normalizedCallId = (callId ?? string.Empty).Trim();
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return false;
+        }
+
+        if (ResolveHostBootstrapFailureKind(normalizedCallId, normalizedToolName).Length > 0) {
+            return true;
+        }
+
+        return rememberedPreflightTools.Contains(normalizedToolName);
     }
 
     private PackPreflightCatalog BuildPackPreflightCatalog(IReadOnlyList<ToolDefinition> definitions) {
@@ -352,8 +397,13 @@ internal sealed partial class ChatServiceSession {
                 operationalPackIdByToolName[name] = orchestrationEntry.PackId;
             }
 
-            if (orchestrationEntry.RecoveryToolNames.Count > 0 && !recoveryToolNamesByToolName.ContainsKey(name)) {
-                recoveryToolNamesByToolName[name] = orchestrationEntry.RecoveryToolNames.ToArray();
+            if (!recoveryToolNamesByToolName.ContainsKey(name)) {
+                var recoveryToolNames = orchestrationEntry.RecoveryToolNames.Count > 0
+                    ? orchestrationEntry.RecoveryToolNames.ToArray()
+                    : NormalizePackPreflightRecoveryToolNames(definition.Recovery?.RecoveryToolNames);
+                if (recoveryToolNames.Length > 0) {
+                    recoveryToolNamesByToolName[name] = recoveryToolNames;
+                }
             }
         }
 
@@ -456,5 +506,24 @@ internal sealed partial class ChatServiceSession {
         return output.Ok != false
                && string.IsNullOrWhiteSpace(output.ErrorCode)
                && string.IsNullOrWhiteSpace(output.Error);
+    }
+
+    private static string[] NormalizePackPreflightRecoveryToolNames(IReadOnlyList<string>? values) {
+        if (values is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var names = new List<string>(values.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var normalized = (values[i] ?? string.Empty).Trim();
+            if (normalized.Length == 0 || !seen.Add(normalized)) {
+                continue;
+            }
+
+            names.Add(normalized);
+        }
+
+        return names.ToArray();
     }
 }

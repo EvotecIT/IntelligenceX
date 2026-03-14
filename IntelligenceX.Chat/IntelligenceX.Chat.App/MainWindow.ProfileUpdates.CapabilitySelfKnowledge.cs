@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.App;
 
@@ -57,11 +58,7 @@ public sealed partial class MainWindow {
         }
 
         if (snapshot is not null) {
-            if (snapshot.ToolingAvailable) {
-                lines.Add("You can actively use live session tools when the user wants checks, investigation, or data gathering.");
-            } else {
-                lines.Add("Tooling is not currently available in this session, so answers should stay conversational and reasoning-based.");
-            }
+            lines.Add(ToolCapabilityGuidanceText.BuildToolingAvailabilityLine(snapshot.ToolingAvailable));
 
             if (!string.IsNullOrWhiteSpace(snapshot.RemoteReachabilityMode)) {
                 lines.Add("Remote reachability right now is " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
@@ -72,36 +69,34 @@ public sealed partial class MainWindow {
             if (snapshot.Autonomy is not null) {
                 var remoteCapablePackNames = BuildPackDisplayNamesForIds(effectivePacks, snapshot.Autonomy.RemoteCapablePackIds);
                 if (remoteCapablePackNames.Count > 0) {
-                    lines.Add("Remote-ready capability areas currently include " + string.Join(", ", remoteCapablePackNames) + ".");
+                    lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
                 }
 
                 var crossPackTargetNames = BuildPackDisplayNamesForIds(effectivePacks, snapshot.Autonomy.CrossPackTargetPackIds);
                 if (crossPackTargetNames.Count > 0) {
-                    lines.Add("Cross-pack follow-up pivots are live into " + string.Join(", ", crossPackTargetNames) + " when the workflow calls for it.");
+                    lines.Add(ToolRepresentativeExamples.BuildCrossPackAvailabilityLine(crossPackTargetNames, "live"));
                 }
 
                 if (snapshot.Autonomy.SetupAwareToolCount > 0
                     || snapshot.Autonomy.HandoffAwareToolCount > 0
                     || snapshot.Autonomy.RecoveryAwareToolCount > 0) {
-                    lines.Add(
-                        "Prefer live contract-guided setup, handoff, and recovery flows when available instead of narrating unsupported manual steps.");
+                    lines.Add(ToolCapabilityGuidanceText.BuildContractGuidedAutonomyLine());
                 }
             }
 
             if (snapshot.Autonomy is null && effectivePacks.Count > 0) {
                 var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
                 if (remoteCapablePackNames.Count > 0) {
-                    lines.Add("Remote-ready capability areas currently include " + string.Join(", ", remoteCapablePackNames) + ".");
+                    lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
                 }
 
                 var crossPackTargetNames = BuildCrossPackTargetDisplayNames(effectivePacks);
                 if (crossPackTargetNames.Count > 0) {
-                    lines.Add("Cross-pack follow-up pivots are live into " + string.Join(", ", crossPackTargetNames) + " when the workflow calls for it.");
+                    lines.Add(ToolRepresentativeExamples.BuildCrossPackAvailabilityLine(crossPackTargetNames, "live"));
                 }
 
                 if (HasContractGuidedPackAutonomy(effectivePacks)) {
-                    lines.Add(
-                        "Prefer live contract-guided setup, handoff, and recovery flows when available instead of narrating unsupported manual steps.");
+                    lines.Add(ToolCapabilityGuidanceText.BuildContractGuidedAutonomyLine());
                 }
             }
 
@@ -119,22 +114,21 @@ public sealed partial class MainWindow {
             if (enabledPackNames.Count == 0) {
                 lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
             } else {
-                lines.Add("You can actively use live session tools when the user wants checks, investigation, or data gathering.");
+                lines.Add(ToolCapabilityGuidanceText.BuildToolingAvailabilityLine(toolingAvailable: true));
                 AddExecutionLocalityGuidance(lines, effectivePacks, toolCatalogExecutionSummary);
 
                 var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
                 if (remoteCapablePackNames.Count > 0) {
-                    lines.Add("Remote-ready capability areas currently include " + string.Join(", ", remoteCapablePackNames) + ".");
+                    lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
                 }
 
                 var crossPackTargetNames = BuildCrossPackTargetDisplayNames(effectivePacks);
                 if (crossPackTargetNames.Count > 0) {
-                    lines.Add("Cross-pack follow-up pivots are live into " + string.Join(", ", crossPackTargetNames) + " when the workflow calls for it.");
+                    lines.Add(ToolRepresentativeExamples.BuildCrossPackAvailabilityLine(crossPackTargetNames, "live"));
                 }
 
                 if (HasContractGuidedPackAutonomy(effectivePacks)) {
-                    lines.Add(
-                        "Prefer live contract-guided setup, handoff, and recovery flows when available instead of narrating unsupported manual steps.");
+                    lines.Add(ToolCapabilityGuidanceText.BuildContractGuidedAutonomyLine());
                 }
             }
 
@@ -517,9 +511,8 @@ public sealed partial class MainWindow {
     private static List<string> BuildRepresentativeCapabilityExamples(
         IReadOnlyList<ToolPackInfoDto>? packs,
         IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools) {
-        var examples = new List<string>();
         if (toolCatalogTools is null || toolCatalogTools.Count == 0) {
-            return examples;
+            return new List<string>();
         }
 
         var enabledPackIds = BuildEnabledPackIdSet(packs);
@@ -539,44 +532,58 @@ public sealed partial class MainWindow {
         }
 
         if (tools.Count == 0) {
+            return new List<string>();
+        }
+
+        var examples = ToolRepresentativeExamples.CollectDeclaredExamples(
+            tools,
+            static tool => tool.RepresentativeExamples);
+        if (examples.Count > 0) {
             return examples;
         }
 
-        if (HasMatchingTool(tools, static tool =>
-                string.Equals(NormalizeRuntimePackId(tool.PackId), "active_directory", StringComparison.Ordinal)
-                && (tool.IsEnvironmentDiscoverTool
-                    || tool.SupportsTargetScoping
-                    || ContainsArgument(tool.TargetScopeArguments, "domain_controller")
-                    || ContainsArgument(tool.TargetScopeArguments, "search_base_dn")))) {
-            examples.Add("discover Active Directory environment scope, search users/groups/computers, and target a specific domain controller or base DN");
-        }
-
-        if (HasMatchingTool(tools, static tool =>
-                string.Equals(NormalizeRuntimePackId(tool.PackId), "eventlog", StringComparison.Ordinal)
-                && (tool.SupportsRemoteHostTargeting
-                    || string.Equals(tool.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)))) {
-            examples.Add("inspect Windows event logs and summarize recurring failures on this machine or a reachable host");
-        }
-
-        if (HasMatchingTool(tools, static tool =>
-                string.Equals(NormalizeRuntimePackId(tool.PackId), "system", StringComparison.Ordinal)
-                && (tool.SupportsRemoteHostTargeting
-                    || string.Equals(tool.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)))) {
-            examples.Add("collect system inventory plus CPU, memory, and disk health locally or on reachable machines");
-        }
+        ToolRepresentativeExamples.AppendFallbackExamples(
+            examples,
+            tools,
+            (static tool =>
+                    ToolRepresentativeExamples.IsDirectoryScopeFallbackCandidate(
+                        tool.IsEnvironmentDiscoverTool,
+                        scope: null,
+                        tool.SupportsTargetScoping,
+                        tool.TargetScopeArguments),
+                ToolRepresentativeExamples.DirectoryScopeFallbackExample),
+            (static tool =>
+                    (string.Equals(NormalizeRuntimePackId(tool.PackId), "eventlog", StringComparison.Ordinal)
+                     || HasCategoryToken(tool, "event"))
+                    && ToolRepresentativeExamples.IsEventEvidenceFallbackCandidate(
+                        entity: "event",
+                        tool.SupportsRemoteHostTargeting,
+                        tool.SupportsRemoteExecution,
+                        tool.ExecutionScope),
+                ToolRepresentativeExamples.EventEvidenceFallbackExample),
+            (static tool =>
+                    (string.Equals(NormalizeRuntimePackId(tool.PackId), "system", StringComparison.Ordinal)
+                     || HasCategoryToken(tool, "system", "host"))
+                    && ToolRepresentativeExamples.IsHostDiagnosticsFallbackCandidate(
+                        scope: "host",
+                        entity: "host",
+                        tool.SupportsRemoteHostTargeting,
+                        tool.SupportsRemoteExecution,
+                        tool.ExecutionScope),
+                ToolRepresentativeExamples.HostDiagnosticsFallbackExample));
 
         var crossPackTargets = BuildCrossPackTargetNamesFromTools(tools, packs);
         if (crossPackTargets.Count > 0) {
-            examples.Add("pivot findings into " + string.Join(", ", crossPackTargets) + " for follow-up checks when the workflow calls for it");
+            ToolRepresentativeExamples.TryAddExample(
+                examples,
+                ToolRepresentativeExamples.BuildCrossPackPivotExample(crossPackTargets));
         }
 
-        if (examples.Count < 4 && HasMatchingTool(tools, static tool => tool.IsSetupAware || tool.IsEnvironmentDiscoverTool)) {
-            examples.Add("use built-in setup or preflight helpers before deeper checks when a workflow needs environment context");
-        }
-
-        if (examples.Count < 4 && HasMatchingTool(tools, static tool => tool.IsPackInfoTool)) {
-            examples.Add("summarize the currently loaded tool areas before choosing the next check");
-        }
+        ToolRepresentativeExamples.AppendFallbackExamples(
+            examples,
+            tools,
+            (static tool => tool.IsSetupAware || tool.IsEnvironmentDiscoverTool, ToolRepresentativeExamples.SetupAwareFallbackExample),
+            (static tool => tool.IsPackInfoTool, ToolRepresentativeExamples.PackInfoFallbackExample));
 
         return examples;
     }
@@ -608,6 +615,29 @@ public sealed partial class MainWindow {
         return false;
     }
 
+    private static bool HasCategoryToken(ToolDefinitionDto tool, params string[] tokens) {
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        var category = (tool.Category ?? string.Empty).Trim();
+        if (category.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < tokens.Length; i++) {
+            var token = (tokens[i] ?? string.Empty).Trim();
+            if (token.Length == 0) {
+                continue;
+            }
+
+            if (category.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static HashSet<string> BuildEnabledPackIdSet(IReadOnlyList<ToolPackInfoDto>? packs) {
         var enabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (packs is not { Count: > 0 }) {
@@ -632,28 +662,11 @@ public sealed partial class MainWindow {
     private static List<string> BuildCrossPackTargetNamesFromTools(
         IReadOnlyList<ToolDefinitionDto> tools,
         IReadOnlyList<ToolPackInfoDto>? packs) {
-        var names = new List<string>();
-        for (var i = 0; i < tools.Count; i++) {
-            var targets = tools[i].HandoffTargetPackIds;
-            if (targets is not { Length: > 0 }) {
-                continue;
-            }
-
-            for (var j = 0; j < targets.Length; j++) {
-                var normalizedPackId = NormalizeRuntimePackId(targets[j]);
-                if (normalizedPackId.Length == 0) {
-                    continue;
-                }
-
-                var displayName = ResolvePackDisplayName(packs, normalizedPackId);
-                if (displayName.Length > 0 && !ContainsIgnoreCase(names, displayName)) {
-                    names.Add(displayName);
-                }
-            }
-        }
-
-        names.Sort(StringComparer.OrdinalIgnoreCase);
-        return names;
+        return ToolRepresentativeExamples.CollectTargetDisplayNames(
+            tools,
+            static tool => tool.HandoffTargetPackIds,
+            static packId => NormalizeRuntimePackId(packId),
+            normalizedPackId => ResolvePackDisplayName(packs, normalizedPackId));
     }
 
     private static bool ContainsIgnoreCase(IReadOnlyList<string> values, string candidate) {

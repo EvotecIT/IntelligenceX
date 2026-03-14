@@ -13,9 +13,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void TryBuildCarryoverStructuredNextActionToolCall_RehydratesPersistedSnapshotAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-structured-carryover-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-structured-carryover", out var root);
         const string threadId = "thread-carryover-persist";
 
         var schema = ToolSchema.Object(

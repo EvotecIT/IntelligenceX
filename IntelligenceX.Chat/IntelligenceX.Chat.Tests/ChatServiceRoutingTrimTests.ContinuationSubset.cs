@@ -223,9 +223,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryGetContinuationToolSubset_ReusesCapabilitySnapshotWhenWeightedSubsetMissing() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-capability-subset-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-capability-subset", out var root);
         const string threadId = "thread-continuation-capability-snapshot";
         var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
 
@@ -268,9 +266,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryGetContinuationToolSubset_DoesNotReuseStaleCapabilitySnapshot() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-capability-subset-stale-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-capability-subset-stale", out var root);
         const string threadId = "thread-continuation-capability-snapshot-stale";
         var allDefinitions = BuildContinuationSubsetTestToolDefinitions();
         var staleSeenUtcTicks = DateTime.UtcNow.Subtract(TimeSpan.FromDays(2)).Ticks;

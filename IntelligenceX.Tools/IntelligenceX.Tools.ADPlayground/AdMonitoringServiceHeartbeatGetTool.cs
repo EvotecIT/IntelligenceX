@@ -55,10 +55,7 @@ public sealed class AdMonitoringServiceHeartbeatGetTool : ActiveDirectoryToolBas
         tags: new[] {
             "monitoring",
             "heartbeat",
-            "snapshot",
-            "fallback:requires_selection",
-            "fallback_selection_keys:monitoring_directory",
-            "fallback_hint_keys:monitoring_directory"
+            "snapshot"
         });
 
     /// <summary>

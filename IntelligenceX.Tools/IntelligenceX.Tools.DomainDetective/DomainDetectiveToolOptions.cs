@@ -1,11 +1,17 @@
 using System;
+using System.Collections.Generic;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.DomainDetective;
 
 /// <summary>
 /// Safety and execution limits for DomainDetective tools.
 /// </summary>
-public sealed class DomainDetectiveToolOptions {
+public sealed class DomainDetectiveToolOptions : IToolPackRuntimeOptionTarget {
+    private static readonly IReadOnlyList<string> RuntimeOptionKeyValues = new[] {
+        "domaindetective"
+    };
+
     /// <summary>
     /// Default timeout for a single domain verification call.
     /// </summary>
@@ -25,6 +31,9 @@ public sealed class DomainDetectiveToolOptions {
     /// Maximum number of remediation hints returned in summary outputs.
     /// </summary>
     public int MaxHints { get; set; } = 20;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <summary>
     /// Validates option values.
@@ -47,4 +56,3 @@ public sealed class DomainDetectiveToolOptions {
         }
     }
 }
-

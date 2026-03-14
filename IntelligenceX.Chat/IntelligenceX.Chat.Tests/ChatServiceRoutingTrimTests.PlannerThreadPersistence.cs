@@ -8,9 +8,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void TryResolvePlannerThreadContextForTesting_RehydratesPersistedPlannerThreadAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-planner-thread-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-planner-thread", out var root);
 
         try {
             var session1 = new ChatServiceSession(
@@ -38,9 +36,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryResolvePlannerThreadContextForTesting_DoesNotRehydrateExpiredPlannerThreadSnapshot() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-planner-thread-expired-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-planner-thread-expired", out var root);
 
         try {
             var session1 = new ChatServiceSession(

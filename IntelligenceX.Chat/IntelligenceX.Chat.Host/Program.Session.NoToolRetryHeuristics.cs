@@ -443,6 +443,22 @@ internal static partial class Program {
             int retryAttempt,
             IReadOnlyList<ToolDefinition>? toolDefinitions,
             IReadOnlyList<string>? knownHostTargets = null) {
+            return BuildNoToolExecutionRetryPrompt(
+                userRequest,
+                assistantDraft,
+                retryAttempt,
+                toolDefinitions,
+                knownHostTargets,
+                orchestrationCatalog: null);
+        }
+
+        private static string BuildNoToolExecutionRetryPrompt(
+            string userRequest,
+            string assistantDraft,
+            int retryAttempt,
+            IReadOnlyList<ToolDefinition>? toolDefinitions,
+            IReadOnlyList<string>? knownHostTargets,
+            ToolOrchestrationCatalog? orchestrationCatalog) {
             var request = string.IsNullOrWhiteSpace(userRequest) ? "(empty)" : userRequest.Trim();
             var draft = string.IsNullOrWhiteSpace(assistantDraft) ? "(empty)" : assistantDraft.Trim();
             _ = retryAttempt;
@@ -450,7 +466,8 @@ internal static partial class Program {
             var contractHintLines = BuildToolContractPromptHintLines(
                 toolDefinitions: toolDefinitions,
                 toolPatterns: null,
-                includeRemoteHostFallbackHint: knownHostTargets is { Count: > 0 });
+                includeRemoteHostFallbackHint: knownHostTargets is { Count: > 0 },
+                orchestrationCatalog: orchestrationCatalog);
             var executionAvailabilityHintLines = BuildToolExecutionAvailabilityHintLines(
                 toolDefinitions: toolDefinitions,
                 toolPatterns: null,

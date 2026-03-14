@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Tooling;
@@ -99,40 +98,31 @@ internal sealed partial class ChatServiceSession {
     }
 
     private string ResolveHelloRemoteReachabilityMode() {
+        if (_toolOrchestrationCatalog is { Count: > 0 }) {
+            foreach (var entry in _toolOrchestrationCatalog.EntriesByToolName.Values) {
+                if (entry is not null && IsRemoteReachabilityCandidate(entry)) {
+                    return "remote_capable";
+                }
+            }
+
+            return "local_only";
+        }
+
+        if (_routingCatalogDiagnostics.RemoteCapableTools > 0) {
+            return "remote_capable";
+        }
+
         if (_routingCatalogDiagnostics.TotalTools <= 0) {
             return "none";
         }
 
-        var definitions = _registry.GetDefinitions();
-        if (definitions.Count == 0) {
-            return "none";
-        }
-
-        var hasRemoteCapableScope = definitions.Any(static definition =>
-            HasToolScopeTag(definition.Tags, "domain")
-            || HasToolScopeTag(definition.Tags, "network")
-            || HasToolScopeTag(definition.Tags, "external"));
-        return hasRemoteCapableScope
-            ? "remote_capable"
-            : "local_only";
+        return "local_only";
     }
 
-    private static bool HasToolScopeTag(IReadOnlyList<string>? tags, string scope) {
-        if (tags is null || tags.Count == 0) {
-            return false;
-        }
-
-        var expected = "scope:" + (scope ?? string.Empty).Trim();
-        if (expected.Length <= "scope:".Length) {
-            return false;
-        }
-
-        for (var i = 0; i < tags.Count; i++) {
-            if (string.Equals((tags[i] ?? string.Empty).Trim(), expected, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return false;
+    private static bool IsRemoteReachabilityCandidate(ToolOrchestrationCatalogEntry entry) {
+        ArgumentNullException.ThrowIfNull(entry);
+        return entry.SupportsRemoteExecution
+               || entry.SupportsRemoteHostTargeting
+               || ToolExecutionScopes.IsRemoteCapable(entry.ExecutionScope);
     }
 }

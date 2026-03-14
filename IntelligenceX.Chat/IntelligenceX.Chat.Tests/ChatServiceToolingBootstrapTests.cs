@@ -15,6 +15,10 @@ using Xunit;
 namespace IntelligenceX.Chat.Tests;
 
 public sealed class ChatServiceToolingBootstrapTests {
+    private static string CreateToolingBootstrapCachePath(string namePrefix) {
+        return TempPathTestHelper.CreateTempFilePath("ix-chat-" + namePrefix, ".json");
+    }
+
     [Fact]
     public void RebuildToolingFromOptions_RefreshesPackAvailabilitySnapshot() {
         var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -315,10 +319,7 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.NotNull(startupBootstrapField);
         Assert.NotNull(startupWarningsField);
 
-        var cachePath = Path.Combine(
-            Path.GetTempPath(),
-            "IntelligenceX.Chat.Tests",
-            "tooling-cache-" + Guid.NewGuid().ToString("N") + ".json");
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache");
         var cacheDirectory = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
             Directory.CreateDirectory(cacheDirectory);
@@ -359,10 +360,7 @@ public sealed class ChatServiceToolingBootstrapTests {
 
     [Fact]
     public void ToolingBootstrapCache_PersistsSnapshotToDisk_AndRestoresToolDefinitions() {
-        var cachePath = Path.Combine(
-            Path.GetTempPath(),
-            "IntelligenceX.Chat.Tests",
-            "tooling-cache-roundtrip-" + Guid.NewGuid().ToString("N") + ".json");
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-roundtrip");
         var cacheDirectory = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
             Directory.CreateDirectory(cacheDirectory);
@@ -444,10 +442,7 @@ public sealed class ChatServiceToolingBootstrapTests {
 
     [Fact]
     public void ToolingBootstrapCache_PersistedSnapshotJson_IncludesCapabilitySnapshot() {
-        var cachePath = Path.Combine(
-            Path.GetTempPath(),
-            "IntelligenceX.Chat.Tests",
-            "tooling-cache-capability-json-" + Guid.NewGuid().ToString("N") + ".json");
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-capability-json");
         var cacheDirectory = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
             Directory.CreateDirectory(cacheDirectory);
@@ -506,10 +501,7 @@ public sealed class ChatServiceToolingBootstrapTests {
 
     [Fact]
     public async Task HandleListToolsAsync_PersistedPreviewPreservesAutonomyRichToolAndPackMetadata() {
-        var cachePath = Path.Combine(
-            Path.GetTempPath(),
-            "IntelligenceX.Chat.Tests",
-            "tooling-cache-persisted-preview-autonomy-" + Guid.NewGuid().ToString("N") + ".json");
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-persisted-preview-autonomy");
         var cacheDirectory = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
             Directory.CreateDirectory(cacheDirectory);
@@ -696,10 +688,7 @@ public sealed class ChatServiceToolingBootstrapTests {
 
     [Fact]
     public async Task RebuildToolingFromOptions_ClearsPersistedPreviewPackAndCapabilityState_WhenLiveBootstrapApplies() {
-        var cachePath = Path.Combine(
-            Path.GetTempPath(),
-            "IntelligenceX.Chat.Tests",
-            "tooling-cache-clear-preview-state-" + Guid.NewGuid().ToString("N") + ".json");
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-clear-preview-state");
         var cacheDirectory = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
             Directory.CreateDirectory(cacheDirectory);
@@ -871,10 +860,7 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.NotNull(persistedPreviewPackSummariesField);
         Assert.NotNull(persistedPreviewCapabilitySnapshotField);
 
-        var cachePath = Path.Combine(
-            Path.GetTempPath(),
-            "IntelligenceX.Chat.Tests",
-            "tooling-cache-apply-cache-snapshot-" + Guid.NewGuid().ToString("N") + ".json");
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-apply-cache-snapshot");
         var cacheDirectory = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
             Directory.CreateDirectory(cacheDirectory);

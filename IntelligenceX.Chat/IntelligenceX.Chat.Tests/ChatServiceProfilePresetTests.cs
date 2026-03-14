@@ -37,7 +37,7 @@ public sealed class ChatServiceProfilePresetTests {
 
             Assert.Contains("plugin-only", profileList.Profiles);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -69,7 +69,7 @@ public sealed class ChatServiceProfilePresetTests {
             Assert.False(options.EnableBuiltInPackLoading);
             Assert.True(options.EnableDefaultPluginPaths);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -104,7 +104,7 @@ public sealed class ChatServiceProfilePresetTests {
             Assert.True(options.EnableBuiltInPackLoading);
             Assert.False(options.EnableDefaultPluginPaths);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -139,7 +139,7 @@ public sealed class ChatServiceProfilePresetTests {
             Assert.True(options.EnableBuiltInPackLoading);
             Assert.False(options.EnableDefaultPluginPaths);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -234,7 +234,7 @@ public sealed class ChatServiceProfilePresetTests {
     }
 
     private static string CreateTempProfileDbPath() {
-        return Path.Combine(Path.GetTempPath(), "ix-chat-service-profile-preset-tests-" + Guid.NewGuid().ToString("N") + ".db");
+        return TempPathTestHelper.CreateTempFilePath("ix-chat-service-profile-preset-tests", ".db");
     }
 
     private static void SeedProfile(string dbPath, string profileName, string model, bool enableBuiltInPackLoading, bool enableDefaultPluginPaths) {
@@ -247,13 +247,4 @@ public sealed class ChatServiceProfilePresetTests {
         store.UpsertAsync(profileName, profile, CancellationToken.None).GetAwaiter().GetResult();
     }
 
-    private static void TryDelete(string path) {
-        try {
-            if (File.Exists(path)) {
-                File.Delete(path);
-            }
-        } catch {
-            // Best-effort cleanup.
-        }
-    }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.PowerShell;
@@ -6,7 +7,12 @@ namespace IntelligenceX.Tools.PowerShell;
 /// <summary>
 /// Runtime options for IX.PowerShell tools.
 /// </summary>
-public sealed class PowerShellToolOptions : IToolPackRuntimeConfigurable {
+public sealed class PowerShellToolOptions : IToolPackRuntimeConfigurable, IToolPackRuntimeOptionTarget {
+    private static readonly string[] RuntimeOptionKeyValues = {
+        "powershell",
+        "powershell_runtime"
+    };
+
     /// <summary>
     /// Enables runtime command/script execution for this pack.
     /// </summary>
@@ -49,6 +55,9 @@ public sealed class PowerShellToolOptions : IToolPackRuntimeConfigurable {
     /// Enables heuristic detection for mutating commands/scripts.
     /// </summary>
     public bool EnableMutationHeuristic { get; set; } = true;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <inheritdoc />
     public void ApplyRuntimeContext(ToolPackRuntimeContext context) {

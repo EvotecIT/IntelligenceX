@@ -499,7 +499,7 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("Contract-backed capability hints:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Representative live tool examples:", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("domain controller or base DN", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Windows event logs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("event logs", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("CPU, memory, and disk", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Cross-pack follow-up pivots: Event Log, System", prompt, StringComparison.Ordinal);
     }
@@ -560,9 +560,38 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.True(sectionEnd > sectionStart);
         var hintSection = prompt[sectionStart..sectionEnd];
 
-        Assert.Contains("Windows event logs", hintSection, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("event logs", hintSection, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("domain controller or base DN", hintSection, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("CPU, memory, and disk", hintSection, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_UsesPackOwnedRepresentativeExamplesWithoutChatHardcoding() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "custom_probe",
+                "Probe custom runtime state.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticRepresentativeExamplePack() });
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
+
+        var prompt = session.BuildModelPlannerPromptForTesting(
+            "inspect the custom endpoint state",
+            definitions,
+            limit: 3);
+
+        Assert.Contains("Representative live tool examples:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("inspect the custom endpoint state through pack-owned metadata", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("event logs", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("CPU, memory, and disk", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -2162,5 +2191,30 @@ public sealed class ChatServicePlannerPromptTests {
         }
 
         return session.BuildModelPlannerPromptForTesting(requestText, definitions, limit);
+    }
+
+    private sealed class SyntheticRepresentativeExamplePack : IToolPack, IToolPackCatalogProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "customx",
+            Name = "CustomX",
+            Tier = ToolCapabilityTier.ReadOnly,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "custom_probe",
+                    Description = "Probe custom runtime state.",
+                    RepresentativeExamples = new[] {
+                        "inspect the custom endpoint state through pack-owned metadata"
+                    }
+                }
+            };
+        }
     }
 }

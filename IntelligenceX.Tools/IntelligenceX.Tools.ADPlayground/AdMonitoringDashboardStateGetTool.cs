@@ -58,10 +58,7 @@ public sealed class AdMonitoringDashboardStateGetTool : ActiveDirectoryToolBase,
         tags: new[] {
             "monitoring",
             "dashboard",
-            "snapshot",
-            "fallback:requires_selection",
-            "fallback_selection_keys:monitoring_directory",
-            "fallback_hint_keys:monitoring_directory"
+            "snapshot"
         });
 
     /// <summary>

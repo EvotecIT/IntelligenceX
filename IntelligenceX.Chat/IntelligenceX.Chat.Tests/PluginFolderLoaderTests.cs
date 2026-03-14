@@ -34,9 +34,13 @@ public sealed class PluginFolderLoaderTests {
         "email"
     };
 
+    private static string CreatePluginTempRoot() {
+        return TempPathTestHelper.CreateTempDirectoryPath("ix-chat-plugin-test");
+    }
+
     [Fact]
     public void CreateDefaultReadOnlyPacks_LoadsPackFromPluginFolderManifest() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -85,7 +89,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ResolvesPluginSkillIdsFromDeclaredDirectories() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         var skillRoot = Path.Combine(pluginFolder, "skills");
@@ -140,7 +144,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_DuplicateBuiltInPluginUsesFastpathSkip() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "duplicate-system-plugin");
         Directory.CreateDirectory(pluginFolder);
@@ -189,7 +193,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_DeduplicatesSamePluginIdentityAcrossSearchRoots() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRootA = Path.Combine(tempRoot, "plugins-a");
         var pluginRootB = Path.Combine(tempRoot, "plugins-b");
         var pluginFolderA = Path.Combine(pluginRootA, "plugin-loader-test-a");
@@ -244,7 +248,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_DuplicateIdentityFallsBackToLaterCandidateWhenFirstFails() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRootA = Path.Combine(tempRoot, "plugins-a");
         var pluginRootB = Path.Combine(tempRoot, "plugins-b");
         var pluginFolderA = Path.Combine(pluginRootA, "plugin-loader-test-a");
@@ -309,7 +313,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ReportsManifestDefaultDisabledPluginPack() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -359,7 +363,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_ManifestDefaultDisabledPackCanBeEnabledByPackId() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -404,7 +408,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDangerousPluginAsDisabledByDefault() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -455,7 +459,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_DangerousPluginCanBeEnabledByPackId() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -500,7 +504,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_PrefersDescriptorSourceKindOverManifestSourceKind() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -544,7 +548,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_SkipsManifestlessFolderWithMultipleDlls() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -584,7 +588,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_SkipsPlugin_WhenManifestMissingRequiredPluginId() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -630,7 +634,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_SkipsPlugin_WhenManifestMissingRequiredEntryType() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -673,7 +677,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void GetPluginSearchPaths_SkipsPluginArchiveCacheRoots() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var cacheRoot = Path.Combine(tempRoot, "plugin-cache");
         var cacheChild = Path.Combine(cacheRoot, "zip-v1-legacy");
@@ -690,7 +694,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_SkipsPlugin_WhenManifestEntryAssemblyIsAbsolutePath() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-test");
         Directory.CreateDirectory(pluginFolder);
@@ -739,7 +743,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_LoadsPackFromPluginArchive() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(tempRoot, "plugin-loader-archive-source");
         Directory.CreateDirectory(pluginFolder);
@@ -793,7 +797,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_InvalidPluginArchiveReportsWarningAndSkipsPack() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         Directory.CreateDirectory(pluginRoot);
 
@@ -823,7 +827,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_PathTraversalArchiveReportsWarningAndSkipsPack() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         Directory.CreateDirectory(pluginRoot);
 
@@ -858,7 +862,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public async Task CreateDefaultReadOnlyPacks_ConcurrentArchiveLoadsRemainStable() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(tempRoot, "plugin-loader-archive-source");
         Directory.CreateDirectory(pluginFolder);
@@ -917,7 +921,7 @@ public sealed class PluginFolderLoaderTests {
     public void CreateDefaultReadOnlyPacks_PassesDistinctRunAsAndAuthProfilePathsToPluginOptions() {
         PluginFolderLoaderOptionsPack.ResetCapturedOptions();
 
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-options-test");
         Directory.CreateDirectory(pluginFolder);
@@ -966,7 +970,7 @@ public sealed class PluginFolderLoaderTests {
     public void CreateDefaultReadOnlyPacks_AppliesPackRuntimeOptionBag_ByPluginId() {
         PluginFolderLoaderOptionsPack.ResetCapturedOptions();
 
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-options-test");
         Directory.CreateDirectory(pluginFolder);
@@ -1019,7 +1023,7 @@ public sealed class PluginFolderLoaderTests {
     public void CreateDefaultReadOnlyPacks_PackRuntimeOptionBag_PrefersPluginIdOverGlobalAndAlias() {
         PluginFolderLoaderOptionsPack.ResetCapturedOptions();
 
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-options-test");
         Directory.CreateDirectory(pluginFolder);
@@ -1077,7 +1081,7 @@ public sealed class PluginFolderLoaderTests {
 
     [Fact]
     public void CreateDefaultReadOnlyPacks_PluginSyntheticPackFlowsIntoCatalogWithoutChatCodeEdits() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-plugin-test-" + Guid.NewGuid().ToString("N"));
+        var tempRoot = CreatePluginTempRoot();
         var pluginRoot = Path.Combine(tempRoot, "plugins");
         var pluginFolder = Path.Combine(pluginRoot, "plugin-loader-synthetic-catalog");
         Directory.CreateDirectory(pluginFolder);
@@ -1252,3 +1256,4 @@ public sealed class PluginFolderLoaderTests {
         }
     }
 }
+

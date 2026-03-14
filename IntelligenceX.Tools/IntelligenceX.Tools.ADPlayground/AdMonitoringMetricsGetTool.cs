@@ -61,10 +61,7 @@ public sealed class AdMonitoringMetricsGetTool : ActiveDirectoryToolBase, ITool 
         tags: new[] {
             "monitoring",
             "metrics",
-            "snapshot",
-            "fallback:requires_selection",
-            "fallback_selection_keys:monitoring_directory",
-            "fallback_hint_keys:monitoring_directory"
+            "snapshot"
         });
 
     /// <summary>

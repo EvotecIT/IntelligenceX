@@ -5,6 +5,7 @@ using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
+using IntelligenceX.Tools.EventLog;
 using IntelligenceX.Tools.System;
 using IntelligenceX.Tools.TestimoX;
 using Xunit;
@@ -23,6 +24,7 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
         var registry = new ToolRegistry();
         registry.RegisterSystemPack(new SystemToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
         registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
 
@@ -31,17 +33,20 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
             new[] {
                 CreateEnabledPack("system", "System"),
                 CreateEnabledPack("active_directory", "Active Directory"),
+                CreateEnabledPack("eventlog", "Event Log"),
                 CreateEnabledPack("testimox", "TestimoX"),
                 CreateEnabledPack("testimox_analytics", "TestimoX Analytics")
             });
 
         var ad = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "adplayground_monitoring", StringComparison.OrdinalIgnoreCase));
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
         var system = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "computerx", StringComparison.OrdinalIgnoreCase));
         var testimox = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox", StringComparison.OrdinalIgnoreCase));
         var testimoxMonitoring = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_analytics", StringComparison.OrdinalIgnoreCase));
         var governed = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "testimox_powershell", StringComparison.OrdinalIgnoreCase));
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, ad.Status);
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, eventLog.Status);
         Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, system.Status);
         Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, testimox.Status);
         Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, testimoxMonitoring.Status);
@@ -1031,6 +1036,96 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     }
 
     /// <summary>
+    /// Ensures EventViewerX parity is emitted from the EventLog pack without Chat-side hardcoding.
+    /// </summary>
+    [Fact]
+    public void Build_WithLiveEventLogPack_ReportsEventViewerXHealthy() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            registry.GetDefinitions(),
+            new[] {
+                CreateEnabledPack("eventlog", "Event Log")
+            });
+
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, eventLog.Status);
+        Assert.Empty(eventLog.MissingCapabilities);
+    }
+
+    /// <summary>
+    /// Ensures EventViewerX parity reports a gap when the remote live-query wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenEventLogLiveQueryWrapperMissing_ReportsEventViewerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "eventlog_live_query", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("eventlog", "Event Log")
+            });
+
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, eventLog.Status);
+        Assert.Contains("remote_live_event_query", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures custom packs can publish their own parity slices without Chat-side engine hardcoding.
+    /// </summary>
+    [Fact]
+    public void Build_WithPackOwnedCustomParitySlice_DoesNotRequireChatHardcoding() {
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "custom_remote_inventory",
+                description: "Custom remote inventory wrapper.",
+                parameters: ToolSchema.Object(
+                        ("computer_name", ToolSchema.String("Remote computer name.")))
+                    .NoAdditionalProperties(),
+                tags: new[] { "pack:custom_remote" },
+                routing: new ToolRoutingContract {
+                    PackId = "custom_remote"
+                })
+        };
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            definitions,
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "custom_remote",
+                    Name = "Custom Remote",
+                    SourceKind = "builtin",
+                    Enabled = true,
+                    CapabilityParity = new[] {
+                        new ToolCapabilityParitySliceDescriptor {
+                            EngineId = "custom_remote_engine",
+                            PackId = "custom_remote",
+                            Evaluate = static _ => ToolCapabilityParityRuntime.CreateCapabilityEvaluation(
+                                expectedCapabilities: new[] { "remote_inventory" },
+                                surfacedCapabilities: new[] { "remote_inventory" },
+                                note: "Custom pack-owned parity slice.")
+                        }
+                    }
+                }
+            });
+
+        var entry = Assert.Single(entries);
+        Assert.Equal("custom_remote_engine", entry.EngineId);
+        Assert.Equal("custom_remote", entry.PackId);
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, entry.Status);
+        Assert.Equal(1, entry.RegisteredToolCount);
+    }
+
+    /// <summary>
     /// Ensures parity detail summaries expose surfaced-vs-expected counts and governed backlog notes.
     /// </summary>
     [Fact]
@@ -1059,11 +1154,26 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     }
 
     private static ToolPackAvailabilityInfo CreateEnabledPack(string id, string name) {
+        var descriptor = ResolveDescriptor(id);
         return new ToolPackAvailabilityInfo {
             Id = id,
             Name = name,
             SourceKind = "builtin",
+            EngineId = descriptor?.EngineId,
+            CapabilityTags = descriptor?.CapabilityTags ?? Array.Empty<string>(),
+            CapabilityParity = descriptor?.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>(),
             Enabled = true
+        };
+    }
+
+    private static ToolPackDescriptor? ResolveDescriptor(string id) {
+        return ToolPackBootstrap.NormalizePackId(id) switch {
+            "system" => new SystemToolPack(new SystemToolOptions()).Descriptor,
+            "active_directory" => new ActiveDirectoryToolPack(new ActiveDirectoryToolOptions()).Descriptor,
+            "eventlog" => new EventLogToolPack(new EventLogToolOptions()).Descriptor,
+            "testimox" => new TestimoXToolPack(new TestimoXToolOptions()).Descriptor,
+            "testimox_analytics" => new TestimoXAnalyticsToolPack(new TestimoXToolOptions()).Descriptor,
+            _ => null
         };
     }
 }

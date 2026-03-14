@@ -38,6 +38,26 @@ public sealed class ToolRoutingContract {
     public string Role { get; set; } = ToolRoutingTaxonomy.RoleOperational;
 
     /// <summary>
+    /// Optional primary scope where the tool operates.
+    /// </summary>
+    public string Scope { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional primary operation kind for the tool.
+    /// </summary>
+    public string Operation { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional primary entity class handled by the tool.
+    /// </summary>
+    public string Entity { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional relative risk profile for the tool.
+    /// </summary>
+    public string Risk { get; set; } = string.Empty;
+
+    /// <summary>
     /// Optional domain intent family token (for example ad_domain/public_domain).
     /// </summary>
     public string DomainIntentFamily { get; set; } = string.Empty;
@@ -91,6 +111,12 @@ public sealed class ToolRoutingContract {
                 $"Role must be one of: {string.Join(", ", ToolRoutingTaxonomy.AllowedRoles)}.");
         }
 
+        ValidateOptionalToken(
+            Risk,
+            ToolRoutingTaxonomy.IsAllowedRisk,
+            "Risk",
+            ToolRoutingTaxonomy.AllowedRisks);
+
         var normalizedFamily = (DomainIntentFamily ?? string.Empty).Trim();
         if (normalizedFamily.Length > 0
             && !ToolSelectionMetadata.TryNormalizeDomainIntentFamily(normalizedFamily, out _)) {
@@ -105,5 +131,23 @@ public sealed class ToolRoutingContract {
             throw new InvalidOperationException(
                 "FallbackSelectionKeys must include at least one argument when RequiresSelectionForFallback is enabled.");
         }
+    }
+
+    private static void ValidateOptionalToken(
+        string? value,
+        Func<string?, bool> validator,
+        string propertyName,
+        IReadOnlyList<string> allowedValues) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return;
+        }
+
+        if (validator(normalized)) {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"{propertyName} must be one of: {string.Join(", ", allowedValues)}.");
     }
 }

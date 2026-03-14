@@ -56,8 +56,7 @@ public sealed class TestimoXRuleInventoryTool : TestimoXToolBase, ITool {
         tags: new[] {
             "compliance",
             "rules",
-            "inventory",
-            "fallback_hint_keys:search_text,rule_origin,categories,tags,source_types,migration_states,profile"
+            "inventory"
         });
 
     /// <summary>

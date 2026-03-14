@@ -36,10 +36,7 @@ public sealed class DnsClientXPingTool : DnsClientXToolBase, ITool {
         category: "dns",
         tags: new[] {
             "reachability",
-            "dns",
-            "fallback:requires_selection",
-            "fallback_selection_keys:target,targets",
-            "fallback_hint_keys:target,targets,timeout_ms,max_targets,dont_fragment,buffer_size"
+            "dns"
         });
 
     /// <summary>

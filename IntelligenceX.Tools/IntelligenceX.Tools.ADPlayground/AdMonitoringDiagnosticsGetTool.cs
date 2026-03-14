@@ -70,10 +70,7 @@ public sealed class AdMonitoringDiagnosticsGetTool : ActiveDirectoryToolBase, IT
         tags: new[] {
             "monitoring",
             "diagnostics",
-            "snapshot",
-            "fallback:requires_selection",
-            "fallback_selection_keys:monitoring_directory",
-            "fallback_hint_keys:monitoring_directory,include_slow_probes,max_slow_probes"
+            "snapshot"
         });
 
     /// <summary>

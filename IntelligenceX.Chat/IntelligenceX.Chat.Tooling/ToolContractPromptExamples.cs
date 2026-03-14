@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Tooling;
 
@@ -12,37 +13,22 @@ public static class ToolContractPromptExamples {
     /// Builds compact representative examples that describe what the current tool set can do.
     /// </summary>
     public static IReadOnlyList<string> BuildRepresentativeExamples(IReadOnlyList<ToolOrchestrationCatalogEntry> entries) {
-        var examples = new List<string>();
-        if (entries is null || entries.Count == 0) {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        var examples = ToolRepresentativeExamples.CollectDeclaredExamples(
+            entries,
+            static entry => entry.RepresentativeExamples);
+        if (examples.Count > 0 || entries.Count == 0) {
             return examples;
         }
 
-        if (HasMatchingEntry(entries, static entry =>
-                string.Equals(ToolPackMetadataNormalizer.NormalizePackId(entry.PackId), "active_directory", StringComparison.Ordinal)
-                && (entry.IsEnvironmentDiscoverTool
-                    || entry.SupportsTargetScoping
-                    || ContainsArgument(entry.TargetScopeArguments, "domain_controller")
-                    || ContainsArgument(entry.TargetScopeArguments, "search_base_dn")))) {
-            examples.Add("discover Active Directory environment scope, search directory objects, and target a specific domain controller or base DN");
-        }
-
-        if (HasMatchingEntry(entries, static entry =>
-                string.Equals(ToolPackMetadataNormalizer.NormalizePackId(entry.PackId), "eventlog", StringComparison.Ordinal)
-                && (entry.SupportsRemoteHostTargeting
-                    || string.Equals(entry.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)))) {
-            examples.Add("inspect Windows event logs and summarize recurring failures on this machine or a reachable host");
-        }
-
-        if (HasMatchingEntry(entries, static entry =>
-                string.Equals(ToolPackMetadataNormalizer.NormalizePackId(entry.PackId), "system", StringComparison.Ordinal)
-                && (entry.SupportsRemoteHostTargeting
-                    || string.Equals(entry.ExecutionScope, "local_or_remote", StringComparison.OrdinalIgnoreCase)))) {
-            examples.Add("collect system inventory plus CPU, memory, and disk health locally or on reachable machines");
-        }
-
-        if (examples.Count < 4 && HasMatchingEntry(entries, static entry => entry.IsSetupAware || entry.IsEnvironmentDiscoverTool)) {
-            examples.Add("use built-in setup or environment-discovery helpers before deeper checks when target context is incomplete");
-        }
+        ToolRepresentativeExamples.AppendFallbackExamples(
+            examples,
+            entries,
+            (static entry => IsDirectoryScopeExampleCandidate(entry), ToolRepresentativeExamples.DirectoryScopeFallbackExample),
+            (static entry => IsEventEvidenceExampleCandidate(entry), ToolRepresentativeExamples.EventEvidenceFallbackExample),
+            (static entry => IsHostDiagnosticsExampleCandidate(entry), ToolRepresentativeExamples.HostDiagnosticsFallbackExample),
+            (static entry => entry.IsSetupAware || entry.IsEnvironmentDiscoverTool, ToolRepresentativeExamples.SetupAwareFallbackExample));
 
         return examples;
     }
@@ -51,58 +37,56 @@ public static class ToolContractPromptExamples {
     /// Builds human-friendly cross-pack target names from handoff edges.
     /// </summary>
     public static IReadOnlyList<string> BuildCrossPackTargetPackDisplayNames(IReadOnlyList<ToolOrchestrationCatalogEntry> entries) {
-        var names = new List<string>();
-        if (entries is null || entries.Count == 0) {
-            return names;
-        }
-
-        for (var i = 0; i < entries.Count; i++) {
-            var handoffEdges = entries[i].HandoffEdges;
-            if (handoffEdges.Count == 0) {
-                continue;
-            }
-
-            for (var j = 0; j < handoffEdges.Count; j++) {
-                var normalizedPackId = ToolPackMetadataNormalizer.NormalizePackId(handoffEdges[j].TargetPackId);
-                if (normalizedPackId.Length == 0) {
-                    continue;
-                }
-
-                var displayName = ToolPackMetadataNormalizer.ResolveDisplayName(normalizedPackId, fallbackName: null);
-                if (displayName.Length > 0 && !names.Contains(displayName, StringComparer.OrdinalIgnoreCase)) {
-                    names.Add(displayName);
-                }
-            }
-        }
-
-        names.Sort(StringComparer.OrdinalIgnoreCase);
-        return names;
-    }
-
-    private static bool HasMatchingEntry(IReadOnlyList<ToolOrchestrationCatalogEntry> entries, Func<ToolOrchestrationCatalogEntry, bool> predicate) {
         ArgumentNullException.ThrowIfNull(entries);
-        ArgumentNullException.ThrowIfNull(predicate);
 
-        for (var i = 0; i < entries.Count; i++) {
-            if (predicate(entries[i])) {
-                return true;
-            }
-        }
-
-        return false;
+        return ToolRepresentativeExamples.CollectTargetDisplayNames(
+            entries,
+            static entry => ExtractTargetPackIds(entry.HandoffEdges),
+            static packId => ToolPackMetadataNormalizer.NormalizePackId(packId),
+            static normalizedPackId => ToolPackMetadataNormalizer.ResolveDisplayName(normalizedPackId, fallbackName: null));
     }
 
-    private static bool ContainsArgument(IReadOnlyList<string>? values, string expected) {
-        if (values is not { Count: > 0 } || string.IsNullOrWhiteSpace(expected)) {
-            return false;
+    private static IReadOnlyList<string> ExtractTargetPackIds(IReadOnlyList<ToolOrchestrationHandoffEdge> handoffEdges) {
+        if (handoffEdges is not { Count: > 0 }) {
+            return Array.Empty<string>();
         }
 
-        for (var i = 0; i < values.Count; i++) {
-            if (string.Equals((values[i] ?? string.Empty).Trim(), expected, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
+        var packIds = new string[handoffEdges.Count];
+        for (var i = 0; i < handoffEdges.Count; i++) {
+            packIds[i] = handoffEdges[i].TargetPackId;
         }
 
-        return false;
+        return packIds;
+    }
+
+    private static bool IsDirectoryScopeExampleCandidate(ToolOrchestrationCatalogEntry entry) {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return ToolRepresentativeExamples.IsDirectoryScopeFallbackCandidate(
+            entry.IsEnvironmentDiscoverTool,
+            entry.Scope,
+            entry.SupportsTargetScoping,
+            entry.TargetScopeArguments);
+    }
+
+    private static bool IsEventEvidenceExampleCandidate(ToolOrchestrationCatalogEntry entry) {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return ToolRepresentativeExamples.IsEventEvidenceFallbackCandidate(
+            entry.Entity,
+            entry.SupportsRemoteHostTargeting,
+            entry.SupportsRemoteExecution,
+            entry.ExecutionScope);
+    }
+
+    private static bool IsHostDiagnosticsExampleCandidate(ToolOrchestrationCatalogEntry entry) {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return ToolRepresentativeExamples.IsHostDiagnosticsFallbackCandidate(
+            entry.Scope,
+            entry.Entity,
+            entry.SupportsRemoteHostTargeting,
+            entry.SupportsRemoteExecution,
+            entry.ExecutionScope);
     }
 }

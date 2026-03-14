@@ -13,6 +13,7 @@ using IntelligenceX.Json;
 using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.EventLog;
 using IntelligenceX.Tools.System;
+using IntelligenceX.Tools.TestimoX;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -94,10 +95,11 @@ public sealed class ToolPackBootstrapMetadataTests {
             AdMaxResults = 4096
         };
 
-        method!.Invoke(null, new object[] {
+        method!.Invoke(null, new object?[] {
             options,
             bootstrapOptions,
-            typeof(RuntimeConfigurablePack)
+            typeof(RuntimeConfigurablePack),
+            null
         });
 
         Assert.Equal(new[] { "C:/runtime-a", "C:/runtime-b" }, options.AppliedRoots);
@@ -127,10 +129,11 @@ public sealed class ToolPackBootstrapMetadataTests {
             }
         };
 
-        method!.Invoke(null, new object[] {
+        method!.Invoke(null, new object?[] {
             options,
             bootstrapOptions,
-            typeof(RuntimeConfigurablePack)
+            typeof(RuntimeConfigurablePack),
+            null
         });
 
         Assert.Equal(new[] { "C:/runtime-a", "C:/runtime-b" }, options.AppliedRoots);
@@ -401,8 +404,46 @@ public sealed class ToolPackBootstrapMetadataTests {
             null,
             new object?[] { new SyntheticRuntimeOptionTarget(), typeof(TestPack), null }));
 
-        Assert.Contains("*", keys, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("synthetic_runtime_target", keys, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(2, keys.Count);
+        Assert.Equal("*", keys[0]);
+        Assert.Equal("synthetic_runtime_target", keys[1]);
+    }
+
+    [Fact]
+    public void ResolvePackRuntimeOptionKeys_FallsBackToGlobalOnly_ForUndeclaredOptionTargets() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ResolvePackRuntimeOptionKeys",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(object), typeof(Type), typeof(string) },
+            modifiers: null);
+        Assert.NotNull(method);
+
+        var keys = Assert.IsAssignableFrom<IReadOnlyList<string>>(method!.Invoke(
+            null,
+            new object?[] { null, typeof(TestPack), null }));
+
+        Assert.Single(keys);
+        Assert.Equal("*", keys[0], ignoreCase: true);
+    }
+
+    [Fact]
+    public void ResolvePackRuntimeOptionKeys_UsesExplicitPackKey_WhenProvidedForUndeclaredOptionTargets() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ResolvePackRuntimeOptionKeys",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(object), typeof(Type), typeof(string) },
+            modifiers: null);
+        Assert.NotNull(method);
+
+        var keys = Assert.IsAssignableFrom<IReadOnlyList<string>>(method!.Invoke(
+            null,
+            new object?[] { null, typeof(TestPack), "custom_pack" }));
+
+        Assert.Equal(2, keys.Count);
+        Assert.Equal("*", keys[0], ignoreCase: true);
+        Assert.Equal("custom_pack", keys[1], ignoreCase: true);
     }
 
     [Fact]
@@ -436,6 +477,32 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Contains("active_directory", adKeys, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog", eventLogKeys, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", systemKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacks_AppliesSharedAndPackSpecificRuntimeOptionBagKeys_ForSharedTestimoXOptions() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            DisabledPackIds = DisableDefaultsExcept("testimox", "testimox_analytics"),
+            EnableDefaultPluginPaths = false,
+            PackRuntimeOptionBag = new Dictionary<string, IReadOnlyDictionary<string, object?>>(StringComparer.OrdinalIgnoreCase) {
+                ["testimox"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                    ["MaxRulesPerRun"] = 111
+                },
+                ["testimox_analytics"] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) {
+                    ["MaxRulesPerRun"] = 222
+                }
+            }
+        });
+
+        var corePack = Assert.IsType<TestimoXToolPack>(Assert.Single(
+            packs,
+            static pack => string.Equals(pack.Descriptor.Id, "testimox", StringComparison.OrdinalIgnoreCase)));
+        var analyticsPack = Assert.IsType<TestimoXAnalyticsToolPack>(Assert.Single(
+            packs,
+            static pack => string.Equals(pack.Descriptor.Id, "testimox_analytics", StringComparison.OrdinalIgnoreCase)));
+
+        Assert.Equal(111, GetPackOptions<TestimoXToolOptions>(corePack).MaxRulesPerRun);
+        Assert.Equal(222, GetPackOptions<TestimoXToolOptions>(analyticsPack).MaxRulesPerRun);
     }
 
     [Fact]
@@ -933,6 +1000,13 @@ public sealed class ToolPackBootstrapMetadataTests {
         }
     }
 
+    private static TOptions GetPackOptions<TOptions>(object pack)
+        where TOptions : class {
+        var field = pack.GetType().GetField("_options", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsType<TOptions>(field!.GetValue(pack));
+    }
+
     private static void AssertToolDtoMatchesOrchestration(
         ToolDefinitionDto dto,
         ToolOrchestrationCatalogEntry entry,
@@ -945,6 +1019,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(entry.TargetScopeArguments, dto.TargetScopeArguments);
         Assert.Equal(entry.SupportsRemoteHostTargeting, dto.SupportsRemoteHostTargeting);
         Assert.Equal(entry.RemoteHostArguments, dto.RemoteHostArguments);
+        Assert.Equal(entry.RepresentativeExamples, dto.RepresentativeExamples);
         Assert.Equal(entry.IsSetupAware, dto.IsSetupAware);
         Assert.Equal(string.IsNullOrWhiteSpace(entry.SetupToolName) ? null : entry.SetupToolName, dto.SetupToolName);
         Assert.Equal(entry.IsHandoffAware, dto.IsHandoffAware);

@@ -19,7 +19,9 @@ public static class ToolRegistryDomainDetectiveExtensions {
     /// Returns tool catalog metadata for tools registered by <see cref="RegisterDomainDetectivePack"/>.
     /// </summary>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(DomainDetectiveToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            DomainDetectiveToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -31,7 +33,7 @@ public static class ToolRegistryDomainDetectiveExtensions {
 
     private static IEnumerable<ITool> CreateTools(DomainDetectiveToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return DomainDetectiveToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, DomainDetectivePackContractCatalog.Apply(tool.Definition));
         }
     }
 
