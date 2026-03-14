@@ -55,6 +55,8 @@ internal static partial class Program {
             TestUsageSummaryBuilderCalculatesTotalsPeakAndRollingWindows);
         failed += Run("Usage summary builder builds top breakdowns",
             TestUsageSummaryBuilderBuildsTopBreakdowns);
+        failed += Run("Usage telemetry overview builder builds Copilot activity section without tokens",
+            TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
         failed += Run("GitHub wrapped html renderer builds shareable page",
@@ -63,6 +65,10 @@ internal static partial class Program {
             TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
         failed += Run("Usage breakdown html renderer uses shared assets",
             TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets);
+        failed += Run("Usage breakdown html renderer adds source family badges",
+            TestUsageTelemetryBreakdownHtmlRendererAddsSourceFamilyBadges);
+        failed += Run("Usage overview html renderer adds source family chips to supporting panel",
+            TestUsageTelemetryOverviewHtmlRendererAddsSourceFamilyChipsToSupportingPanel);
         failed += Run("Usage breakdown page model builder builds server summary",
             TestUsageTelemetryBreakdownPageModelBuilderBuildsServerSummary);
         failed += Run("Usage overview page model builder builds supporting breakdown summaries",
@@ -71,6 +77,16 @@ internal static partial class Program {
             TestUsageTelemetryOverviewHtmlRendererBuildsGitHubOwnerExplorer);
         failed += Run("Usage presentation helpers build source root labels",
             TestUsageTelemetryPresentationHelpersBuildSourceRootLabels);
+        failed += Run("Usage presentation helpers disambiguate duplicate source root labels",
+            TestUsageTelemetryPresentationHelpersDisambiguateDuplicateSourceRootLabels);
+        failed += Run("Usage provider catalog resolves aliases and sort order",
+            TestUsageTelemetryProviderCatalogResolvesAliasesAndSortOrder);
+        failed += Run("Usage provider catalog infers provider from path",
+            TestUsageTelemetryProviderCatalogInfersProviderFromPath);
+        failed += Run("Usage quick report scanner supports alias provider filters",
+            TestUsageTelemetryQuickReportScannerSupportsAliasProviderFilters);
+        failed += Run("Usage provider registry supports alias lookups",
+            TestUsageTelemetryProviderRegistrySupportsAliasLookups);
         failed += Run("Usage overview page model builder builds GitHub render model",
             TestUsageTelemetryOverviewPageModelBuilderBuildsGitHubRenderModel);
         failed += Run("Usage GitHub wrapped page model builder builds owner panels",
@@ -84,17 +100,27 @@ internal static partial class Program {
         failed += Run("EasySession forwards telemetry labels", TestEasySessionForwardsTelemetryLabels);
         failed += Run("Internal IX usage recorder writes successful turns to ledger",
             TestInternalIxUsageRecorderWritesSuccessfulTurnsToLedger);
+        failed += Run("Internal IX usage recorder classifies Copilot turns as Copilot provider",
+            TestInternalIxUsageRecorderClassifiesCopilotTurnsAsCopilotProvider);
         failed += Run("Usage telemetry path resolver honors environment overrides",
             TestUsageTelemetryPathResolverHonorsEnvironmentOverrides);
         failed += Run("Usage telemetry path resolver disables when flag off",
             TestUsageTelemetryPathResolverDisablesWhenFlagOff);
         failed += Run("Internal IX usage telemetry session persists turns to sqlite",
             TestInternalIxUsageTelemetrySessionPersistsTurnsToSqlite);
+        failed += Run("Internal IX usage telemetry session classifies native transport as ChatGPT",
+            TestInternalIxUsageTelemetrySessionClassifiesNativeTransportAsChatGpt);
+        failed += Run("Internal IX usage telemetry session classifies appserver transport as Codex",
+            TestInternalIxUsageTelemetrySessionClassifiesAppServerTransportAsCodex);
+        failed += Run("Internal IX usage telemetry session classifies compatible-http LM Studio transport",
+            TestInternalIxUsageTelemetrySessionClassifiesCompatibleHttpLmStudioTransport);
         failed += Run("Usage telemetry provider registry returns codex adapter", TestUsageTelemetryProviderRegistryReturnsCodexAdapter);
         failed += Run("Usage telemetry import coordinator registers and imports manual root",
             TestUsageTelemetryImportCoordinatorRegistersAndImportsManualRoot);
         failed += Run("Usage telemetry import coordinator imports codex direct file root",
             TestUsageTelemetryImportCoordinatorImportsCodexDirectFileRoot);
+        failed += Run("Usage telemetry import coordinator resolves codex account from direct file root",
+            TestUsageTelemetryImportCoordinatorResolvesCodexAccountFromDirectFileRoot);
         failed += Run("Usage telemetry import coordinator discovers codex root from environment",
             TestUsageTelemetryImportCoordinatorDiscoversCodexRootFromEnvironment);
         failed += Run("Usage telemetry import coordinator skips unchanged artifacts with raw artifact cache",
@@ -107,12 +133,46 @@ internal static partial class Program {
             TestUsageTelemetryImportCoordinatorRecentFirstBudgetPrefersNewestArtifact);
         failed += Run("Usage telemetry import coordinator defers artifact cache commit until adapter succeeds",
             TestUsageTelemetryImportCoordinatorDoesNotCommitArtifactCacheWhenAdapterFails);
+        failed += Run("LM Studio conversation usage adapter imports selected assistant generations",
+            TestLmStudioConversationUsageAdapterImportsSelectedAssistantGenerations);
+        failed += Run("LM Studio default source root discovery uses environment root",
+            TestLmStudioDefaultSourceRootDiscoveryUsesEnvironmentRoot);
+        failed += Run("LM Studio default source root discovery includes recovered and WSL profiles",
+            TestLmStudioDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles);
+        failed += Run("Usage telemetry import coordinator discovers LM Studio root from environment",
+            TestUsageTelemetryImportCoordinatorDiscoversLmStudioRootFromEnvironment);
+        failed += Run("Usage quick report scanner supports LM Studio alias provider filters",
+            TestUsageTelemetryQuickReportScannerSupportsLmStudioAliasProviderFilters);
+        failed += Run("Copilot session usage adapter imports CLI turn activity",
+            TestCopilotSessionUsageAdapterImportsCliTurnActivity);
+        failed += Run("Copilot session usage adapter imports session shutdown usage metrics",
+            TestCopilotSessionUsageAdapterImportsSessionShutdownUsageMetrics);
+#if !NET472
+        failed += Run("Copilot quota snapshot client parses direct quota snapshots",
+            TestCopilotQuotaSnapshotClientParsesDirectQuotaSnapshots);
+        failed += Run("Copilot quota snapshot client parses monthly quota fallback",
+            TestCopilotQuotaSnapshotClientParsesMonthlyQuotaFallback);
+        failed += Run("Usage telemetry CLI runner appends Copilot quota insight",
+            TestUsageTelemetryCliRunnerAppendsCopilotQuotaInsight);
+        failed += Run("Usage telemetry CLI runner propagates Copilot quota cancellation",
+            TestUsageTelemetryCliRunnerPropagatesCopilotQuotaCancellation);
+#endif
+        failed += Run("Copilot default source root discovery includes recovered and WSL profiles",
+            TestCopilotDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles);
+        failed += Run("Usage telemetry import coordinator discovers Copilot root from current profile",
+            TestUsageTelemetryImportCoordinatorDiscoversCopilotRootFromCurrentProfile);
         failed += Run("Claude session usage adapter deduplicates streaming chunks",
             TestClaudeSessionUsageAdapterDeduplicatesStreamingChunks);
+        failed += Run("Claude session usage adapter imports alias provider file root",
+            TestClaudeSessionUsageAdapterImportsAliasProviderFileRoot);
         failed += Run("Claude default source root discovery uses environment projects root",
             TestClaudeDefaultSourceRootDiscoveryUsesEnvironmentProjectsRoot);
+        failed += Run("Claude default source root discovery includes recovered and WSL profiles",
+            TestClaudeDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles);
         failed += Run("Usage telemetry import coordinator discovers claude root from environment",
             TestUsageTelemetryImportCoordinatorDiscoversClaudeRootFromEnvironment);
+        failed += Run("Codex default source root discovery includes recovered and WSL profiles",
+            TestCodexDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles);
         failed += Run("Codex session usage adapter imports exact usage and skips duplicate totals",
             TestCodexSessionUsageAdapterImportsExactUsageAndSkipsDuplicateTotals);
         failed += Run("Codex session usage adapter parses last token usage event",
@@ -121,8 +181,13 @@ internal static partial class Program {
             TestCodexSessionUsageAdapterFallsBackToTotalUsageDeltaWhenLastUsageMissing);
         failed += Run("Codex session usage adapter skips locked files",
             TestCodexSessionUsageAdapterSkipsLockedFiles);
+        failed += Run("Codex session usage adapter does not duplicate sessions-root artifacts",
+            TestCodexSessionUsageAdapterDoesNotDuplicateSessionsRootArtifacts);
 #if !NET472
+        failed += Run("GitHub owner scope resolver returns administered organizations with public repos", TestGitHubOwnerScopeResolverReturnsAdministeredOrganizationsWithPublicRepos);
+        failed += Run("GitHub overview collector appends correlated owners for user runs", TestGitHubOverviewDataCollectorAppendsCorrelatedOwnersForUserRuns);
         failed += Run("GitHub overview collector supports owner-only runs", TestGitHubOverviewDataCollectorSupportsOwnerOnlyRuns);
+        failed += Run("GitHub overview projector uses window end for current streak", TestGitHubOverviewSectionProjectorUsesWindowEndForCurrentStreak);
         failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);
         failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
         failed += Run("Usage options parse daily breakdown", TestUsageOptionsParseDailyBreakdown);
@@ -136,6 +201,7 @@ internal static partial class Program {
         failed += Run("Telemetry usage overview json and export", TestTelemetryUsageOverviewJsonAndExport);
         failed += Run("Telemetry usage report auto imports and exports", TestTelemetryUsageReportAutoImportsAndExports);
         failed += Run("Telemetry usage report supports ad hoc recovered path", TestTelemetryUsageReportSupportsAdHocRecoveredPath);
+        failed += Run("Telemetry usage report supports ad hoc LM Studio path", TestTelemetryUsageReportSupportsAdHocLmStudioPath);
         failed += Run("Telemetry usage GitHub request planner supports owner-only runs", TestTelemetryUsageBuildGitHubSectionRequestsSupportsOwnerOnlyRuns);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);

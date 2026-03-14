@@ -33,7 +33,8 @@ public sealed class UsageTelemetryProviderRegistry {
             }
 
             var adapters = descriptor.CreateAdapters() ?? Array.Empty<IUsageTelemetryAdapter>();
-            _adaptersByProvider[providerId!] = adapters
+            var canonicalProviderId = UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(providerId) ?? providerId!;
+            _adaptersByProvider[canonicalProviderId] = adapters
                 .Where(adapter => adapter is not null)
                 .GroupBy(adapter => adapter.AdapterId, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
@@ -56,7 +57,8 @@ public sealed class UsageTelemetryProviderRegistry {
             return Array.Empty<IUsageTelemetryAdapter>();
         }
 
-        if (_adaptersByProvider.TryGetValue(providerId.Trim(), out var adapters)) {
+        var canonicalProviderId = UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(providerId) ?? providerId.Trim();
+        if (_adaptersByProvider.TryGetValue(canonicalProviderId, out var adapters)) {
             return adapters;
         }
 
@@ -123,12 +125,12 @@ public sealed class UsageTelemetryImportCoordinator {
         CancellationToken cancellationToken = default(CancellationToken)) {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var providerFilter = NormalizeOptional(providerId);
+        var providerFilter = UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(providerId);
         var discovered = new List<SourceRootRecord>();
         foreach (var discovery in _rootDiscoveries) {
             cancellationToken.ThrowIfCancellationRequested();
             if (!string.IsNullOrWhiteSpace(providerFilter) &&
-                !string.Equals(providerFilter, discovery.ProviderId, StringComparison.OrdinalIgnoreCase)) {
+                !UsageTelemetryProviderCatalog.IsProvider(discovery.ProviderId, providerFilter!)) {
                 continue;
             }
 
@@ -155,11 +157,11 @@ public sealed class UsageTelemetryImportCoordinator {
         CancellationToken cancellationToken = default(CancellationToken)) {
         var result = new UsageImportBatchResult();
         var importContext = context ?? new UsageImportContext();
-        var providerFilter = NormalizeOptional(providerId);
+        var providerFilter = UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(providerId);
         var roots = _sourceRootStore.GetAll()
             .Where(root => root.Enabled)
             .Where(root => string.IsNullOrWhiteSpace(providerFilter) ||
-                           string.Equals(root.ProviderId, providerFilter, StringComparison.OrdinalIgnoreCase))
+                           UsageTelemetryProviderCatalog.IsProvider(root.ProviderId, providerFilter!))
             .ToArray();
 
         importContext.Progress?.Invoke(new UsageImportProgressUpdate {

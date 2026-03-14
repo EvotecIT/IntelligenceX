@@ -129,7 +129,7 @@ public sealed class UsageHeatmapDocumentBuilder {
                     var yearDays = group.OrderBy(static day => day.Date).ToArray();
                     var activeDays = yearDays.Count(static day => day.Value > 0d);
                     var peak = yearDays.Max(static day => day.Value);
-                    var subtitle = $"{activeDays} active day(s), peak {FormatMetric(peak, effectiveOptions.Metric)} {ResolveUnitsLabel(effectiveOptions.Units)}";
+                    var subtitle = $"{HeatmapDisplayText.FormatActiveDays(activeDays)}, peak {FormatMetric(peak, effectiveOptions.Metric)} {ResolveUnitsLabel(effectiveOptions.Units)}";
                     return new HeatmapSection(group.Key.ToString(CultureInfo.InvariantCulture), subtitle, yearDays);
                 })
                 .Cast<HeatmapSection>()
@@ -179,10 +179,10 @@ public sealed class UsageHeatmapDocumentBuilder {
         UsageHeatmapDocumentOptions options) {
         var activeDays = heatmapDays.Count(static day => day.Value > 0d);
         var peak = heatmapDays.Max(static day => day.Value);
-        var subtitle = $"{activeDays} active day(s), peak {FormatMetric(peak, options.Metric)} {ResolveUnitsLabel(options.Units)}";
+        var subtitle = $"{HeatmapDisplayText.FormatActiveDays(activeDays)}, peak {FormatMetric(peak, options.Metric)} {ResolveUnitsLabel(options.Units)}";
         var title = rangeStartUtc == rangeEndUtc
             ? rangeStartUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-            : $"{rangeStartUtc:yyyy-MM-dd} -> {rangeEndUtc:yyyy-MM-dd}";
+            : HeatmapDisplayText.FormatDateRange(rangeStartUtc, rangeEndUtc);
         return new HeatmapSection(title, subtitle, heatmapDays);
     }
 

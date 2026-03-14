@@ -1,18 +1,27 @@
+using System;
+using System.IO;
+using System.Linq;
 using IntelligenceX.Json;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Telemetry.Usage.Codex;
+using IntelligenceX.Telemetry.Usage.LmStudio;
 
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
     private static void TestUsageTelemetryProviderRegistryReturnsCodexAdapter() {
         var registry = new UsageTelemetryProviderRegistry(new IUsageTelemetryProviderDescriptor[] {
-            new CodexUsageTelemetryProviderDescriptor()
+            new CodexUsageTelemetryProviderDescriptor(),
+            new LmStudioUsageTelemetryProviderDescriptor()
         });
 
         var adapters = registry.GetAdapters("codex");
         AssertEqual(1, adapters.Count, "codex adapter count");
         AssertEqual(CodexSessionUsageAdapter.StableAdapterId, adapters[0].AdapterId, "codex adapter id");
+
+        var lmStudioAdapters = registry.GetAdapters("lmstudio");
+        AssertEqual(1, lmStudioAdapters.Count, "lmstudio adapter count");
+        AssertEqual(LmStudioConversationUsageAdapter.StableAdapterId, lmStudioAdapters[0].AdapterId, "lmstudio adapter id");
     }
 
     private static void TestUsageTelemetryImportCoordinatorRegistersAndImportsManualRoot() {
@@ -98,6 +107,42 @@ internal static partial class Program {
         }
     }
 
+    private static void TestUsageTelemetryImportCoordinatorResolvesCodexAccountFromDirectFileRoot() {
+        var tempDir = CreateUsageTelemetryImportTempDirectory();
+        try {
+            var rolloutPath = Path.Combine(tempDir, "rollout-2026-03-11T14-15-00-thread-direct-auth.jsonl");
+            WriteCodexRolloutFile(
+                rolloutPath,
+                "thread-direct-auth",
+                "resp-direct-auth",
+                includeAuth: true,
+                authRoot: tempDir);
+
+            var rootStore = new InMemorySourceRootStore();
+            var eventStore = new InMemoryUsageEventStore();
+            var coordinator = new UsageTelemetryImportCoordinator(
+                rootStore,
+                eventStore,
+                new UsageTelemetryProviderRegistry(new IUsageTelemetryProviderDescriptor[] {
+                    new CodexUsageTelemetryProviderDescriptor()
+                }));
+
+            var root = coordinator.RegisterRoot("chatgpt-codex", UsageSourceKind.RecoveredFolder, rolloutPath, accountHint: "direct-auth");
+            var result = coordinator.ImportRootAsync(root.Id, new UsageImportContext { MachineId = "machine-direct-auth" })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(true, result.Imported, "direct auth root imported");
+            AssertEqual(1, result.EventsInserted, "direct auth root events inserted");
+
+            var events = eventStore.GetAll();
+            AssertEqual(1, events.Count, "direct auth imported event count");
+            AssertEqual("acct_codex_import", events[0].ProviderAccountId, "direct auth imported account id");
+            AssertEqual("thread-direct-auth", events[0].SessionId, "direct auth imported session id");
+        } finally {
+            TryDeleteUsageTelemetryImportTempDirectory(tempDir);
+        }
+    }
+
     private static void TestUsageTelemetryImportCoordinatorDiscoversCodexRootFromEnvironment() {
         var tempDir = CreateUsageTelemetryImportTempDirectory();
         var originalCodexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
@@ -123,7 +168,8 @@ internal static partial class Program {
                     new CodexUsageTelemetryProviderDescriptor()
                 }),
                 new IUsageTelemetryRootDiscovery[] {
-                    new CodexDefaultSourceRootDiscovery()
+                    new CodexDefaultSourceRootDiscovery(
+                        new UsageTelemetryExternalProfileDiscovery(() => Array.Empty<UsageTelemetryExternalProfile>()))
                 });
 
             var discovered = coordinator.DiscoverRootsAsync("codex").GetAwaiter().GetResult();
@@ -141,6 +187,43 @@ internal static partial class Program {
             AssertEqual(1, events.Count, "env imported event count");
             AssertEqual("acct_codex_import", events[0].ProviderAccountId, "env imported account id");
             AssertEqual("machine-env", events[0].MachineId, "env imported machine id");
+        } finally {
+            Environment.SetEnvironmentVariable("CODEX_HOME", originalCodexHome);
+            TryDeleteUsageTelemetryImportTempDirectory(tempDir);
+        }
+    }
+
+    private static void TestCodexDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles() {
+        var tempDir = CreateUsageTelemetryImportTempDirectory();
+        var originalCodexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+        try {
+            var currentRoot = Path.Combine(tempDir, ".codex");
+            var recoveredProfile = Path.Combine(tempDir, "Windows.old", "Users", "backup-user");
+            var wslProfile = Path.Combine(tempDir, "wsl", "Ubuntu", "home", "dev");
+            var recoveredRoot = Path.Combine(recoveredProfile, ".codex");
+            var wslRoot = Path.Combine(wslProfile, ".codex");
+
+            Directory.CreateDirectory(currentRoot);
+            Directory.CreateDirectory(recoveredRoot);
+            Directory.CreateDirectory(wslRoot);
+            Environment.SetEnvironmentVariable("CODEX_HOME", currentRoot);
+
+            var discovery = new CodexDefaultSourceRootDiscovery(
+                new UsageTelemetryExternalProfileDiscovery(() => new[] {
+                    new UsageTelemetryExternalProfile(UsageSourceKind.RecoveredFolder, recoveredProfile, "windows-old"),
+                    new UsageTelemetryExternalProfile(UsageSourceKind.LocalLogs, wslProfile, "wsl", "Ubuntu")
+                }));
+
+            var roots = discovery.DiscoverRoots();
+
+            AssertEqual(3, roots.Count, "codex supplemental discovered root count");
+            AssertEqual(true, roots.Any(root => string.Equals(root.Path, UsageTelemetryIdentity.NormalizePath(currentRoot), StringComparison.OrdinalIgnoreCase) && root.SourceKind == UsageSourceKind.LocalLogs), "codex current root discovered");
+            AssertEqual(true, roots.Any(root => string.Equals(root.Path, UsageTelemetryIdentity.NormalizePath(recoveredRoot), StringComparison.OrdinalIgnoreCase) && root.SourceKind == UsageSourceKind.RecoveredFolder), "codex recovered root discovered");
+
+            var wslDiscovered = roots.Single(root => string.Equals(root.Path, UsageTelemetryIdentity.NormalizePath(wslRoot), StringComparison.OrdinalIgnoreCase));
+            AssertEqual(UsageSourceKind.LocalLogs, wslDiscovered.SourceKind, "codex wsl source kind");
+            AssertEqual("wsl", wslDiscovered.PlatformHint, "codex wsl platform hint");
+            AssertEqual("Ubuntu", wslDiscovered.MachineLabel, "codex wsl machine label");
         } finally {
             Environment.SetEnvironmentVariable("CODEX_HOME", originalCodexHome);
             TryDeleteUsageTelemetryImportTempDirectory(tempDir);

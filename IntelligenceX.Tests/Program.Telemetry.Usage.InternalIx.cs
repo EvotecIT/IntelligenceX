@@ -129,6 +129,44 @@ internal static partial class Program {
         AssertEqual(true, !string.IsNullOrWhiteSpace(events[0].RawHash), "internal ix raw hash");
     }
 
+    private static void TestInternalIxUsageRecorderClassifiesCopilotTurnsAsCopilotProvider() {
+        var turn = CreateTelemetryTurn(
+            "turn_ix_copilot_1",
+            "resp_ix_copilot_1",
+            inputTokens: 200,
+            cachedInputTokens: 12,
+            outputTokens: 75,
+            reasoningTokens: 0,
+            totalTokens: 275);
+        var rootStore = new InMemorySourceRootStore();
+        var eventStore = new InMemoryUsageEventStore();
+        using var client = CreateToolRunnerClient(turn, OpenAITransportKind.CopilotCli);
+        using var recorder = new InternalIxUsageRecorder(
+            client,
+            rootStore,
+            eventStore,
+            machineId: "devbox",
+            accountLabel: "workspace-a");
+
+        _ = client.ChatAsync(
+            ChatInput.FromText("help with tests"),
+            new ChatOptions {
+                TelemetrySurface = "cli"
+            }).GetAwaiter().GetResult();
+
+        var roots = rootStore.GetAll();
+        AssertEqual(1, roots.Count, "internal copilot root count");
+        AssertEqual("copilot", roots[0].ProviderId, "internal copilot root provider");
+        AssertEqual("copilot://internal/devbox", roots[0].Path, "internal copilot root path");
+
+        var events = eventStore.GetAll();
+        AssertEqual(1, events.Count, "internal copilot event count");
+        AssertEqual("copilot", events[0].ProviderId, "internal copilot event provider");
+        AssertEqual("ix.client-turn", events[0].AdapterId, "internal copilot adapter id");
+        AssertEqual("cli", events[0].Surface, "internal copilot surface");
+        AssertEqual(275L, events[0].TotalTokens, "internal copilot total tokens");
+    }
+
     private static TurnInfo CreateTelemetryTurn(
         string turnId,
         string responseId,

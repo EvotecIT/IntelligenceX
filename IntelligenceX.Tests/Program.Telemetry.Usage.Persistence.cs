@@ -233,6 +233,28 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCodexSessionUsageAdapterDoesNotDuplicateSessionsRootArtifacts() {
+        var tempDir = CreateUsageTelemetryTempDirectory();
+        try {
+            var sessionsDir = Path.Combine(tempDir, "sessions");
+            var partitionDir = Path.Combine(sessionsDir, "2026", "03", "11");
+            Directory.CreateDirectory(partitionDir);
+
+            var rolloutPath = Path.Combine(partitionDir, "rollout-2026-03-11T13-10-00-thread-dedupe.jsonl");
+            WriteCodexRolloutFile(rolloutPath, "thread-dedupe", "resp-dedupe", includeAuth: false, authRoot: tempDir);
+
+            var adapter = new CodexSessionUsageAdapter();
+            var root = new SourceRootRecord("src_sessions_dedupe", "chatgpt-codex", UsageSourceKind.RecoveredFolder, sessionsDir);
+            var records = adapter.ImportAsync(root, new UsageImportContext()).GetAwaiter().GetResult();
+
+            AssertEqual(1, records.Count, "codex sessions-root dedupe record count");
+            AssertEqual("thread-dedupe", records[0].SessionId, "codex sessions-root dedupe session id");
+            AssertEqual("resp-dedupe", records[0].ResponseId, "codex sessions-root dedupe response id");
+        } finally {
+            TryDeleteUsageTelemetryTempDirectory(tempDir);
+        }
+    }
+
     private static string CreateUsageTelemetryTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ix-usage-telemetry-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);

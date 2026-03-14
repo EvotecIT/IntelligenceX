@@ -62,7 +62,7 @@ internal static class UsageTelemetryProviderSectionHtmlFragments {
         sb.AppendLine("      <div class=\"provider-monthly\">");
         sb.AppendLine("        <div class=\"provider-monthly-header\">");
         sb.Append("          <div class=\"provider-monthly-title\">").Append(Html(section.MonthlyUsageTitle)).AppendLine("</div>");
-        sb.Append("          <div class=\"provider-monthly-copy\">").Append(Html(months.Count.ToString(CultureInfo.InvariantCulture))).AppendLine(" month window</div>");
+        sb.Append("          <div class=\"provider-monthly-copy\">").Append(Html(HeatmapDisplayText.FormatTrailingMonthWindow(months.Count))).AppendLine("</div>");
         sb.AppendLine("        </div>");
         sb.AppendLine("        <div class=\"provider-monthly-grid\">");
         foreach (var month in months) {
@@ -71,7 +71,7 @@ internal static class UsageTelemetryProviderSectionHtmlFragments {
             var monthColor = month.TotalValue <= 0L ? "#dfdfdf" : accentColor + alpha;
             var title = $"{month.Key}: {FormatCompact(month.TotalValue)} {section.MonthlyUsageUnitsLabel}";
             if (month.ActiveDays > 0) {
-                title += $" across {month.ActiveDays} active day(s)";
+                title += " across " + HeatmapDisplayText.FormatActiveDays(month.ActiveDays);
             }
 
             sb.Append("          <div class=\"provider-month\" title=\"").Append(Html(title)).AppendLine("\">");
@@ -103,7 +103,7 @@ internal static class UsageTelemetryProviderSectionHtmlFragments {
             sb.Append("              <div class=\"rank-index\">").Append(rank.ToString(CultureInfo.InvariantCulture)).AppendLine(".</div>");
             sb.Append("              <div class=\"rank-label\">").Append(Html(model.Model)).AppendLine("</div>");
             sb.Append("              <div class=\"rank-value\">")
-                .Append(Html(FormatCompact(model.TotalTokens)))
+                .Append(Html(model.ValueLabel ?? FormatCompact(model.TotalTokens)))
                 .Append(" (")
                 .Append(Html(model.SharePercent.ToString("0.#", CultureInfo.InvariantCulture)))
                 .AppendLine("%)</div>");
@@ -158,7 +158,7 @@ internal static class UsageTelemetryProviderSectionHtmlFragments {
         if (highlight is null) {
             sb.AppendLine("          <div class=\"mini-value\">n/a</div>");
         } else {
-            sb.Append("          <div class=\"mini-value\">").Append(Html(highlight.Model)).Append(" <span>(").Append(Html(FormatCompact(highlight.TotalTokens))).AppendLine(")</span></div>");
+            sb.Append("          <div class=\"mini-value\">").Append(Html(highlight.Model)).Append(" <span>(").Append(Html(highlight.ValueLabel ?? FormatCompact(highlight.TotalTokens))).AppendLine(")</span></div>");
         }
         sb.AppendLine("        </article>");
     }

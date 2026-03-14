@@ -15,7 +15,7 @@ internal static class UsageTelemetryBreakdownPageHtmlRenderer {
         sb.AppendLine("        </div>");
         sb.AppendLine("      </div>");
         sb.AppendLine("      <div class=\"preview\">");
-        sb.Append("        <img src=\"").Append(Html(page.BreakdownKey)).Append(".light.svg\" data-light-src=\"").Append(Html(page.BreakdownKey)).Append(".light.svg\" data-dark-src=\"").Append(Html(page.BreakdownKey)).Append(".dark.svg\" alt=\"").Append(Html(page.BreakdownLabel)).AppendLine(" heatmap\">");
+        sb.Append("        <img src=\"").Append(Html(page.FileStem)).Append(".light.svg\" data-light-src=\"").Append(Html(page.FileStem)).Append(".light.svg\" data-dark-src=\"").Append(Html(page.FileStem)).Append(".dark.svg\" alt=\"").Append(Html(page.BreakdownLabel)).AppendLine(" heatmap\">");
         sb.AppendLine("      </div>");
         UsageTelemetryBreakdownSummaryHtmlRenderer.AppendSummary(sb, page.Summary, baseIndentLevel: 3);
         sb.AppendLine("    </section>");

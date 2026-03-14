@@ -189,7 +189,7 @@ internal static class HeatmapRunner {
                 var values = group.OrderBy(static day => day.Date).ToArray();
                 var activeDays = values.Count(static day => day.Value > 0);
                 var peak = values.Max(static day => day.Value);
-                var subtitle = $"{activeDays} active day(s), peak {FormatNumber(peak)} {ResolveUnitsLabel(breakdown.Units)}";
+                var subtitle = $"{HeatmapDisplayText.FormatActiveDays(activeDays)}, peak {FormatNumber(peak)} {ResolveUnitsLabel(breakdown.Units)}";
                 return new HeatmapSection(group.Key.ToString(CultureInfo.InvariantCulture), subtitle, values);
             })
             .Cast<HeatmapSection>()
@@ -210,7 +210,7 @@ internal static class HeatmapRunner {
 
         return new HeatmapDocument(
             title: "ChatGPT usage",
-            subtitle: subtitleParts.Count == 0 ? "Daily token usage by dominant surface" : string.Join(" | ", subtitleParts),
+            subtitle: subtitleParts.Count == 0 ? "Daily token usage by dominant surface" : HeatmapDisplayText.JoinSummaryParts(subtitleParts.ToArray()),
             palette: HeatmapPalette.ChatGptDark(),
             sections: sections,
             units: breakdown.Units,
@@ -233,7 +233,7 @@ internal static class HeatmapRunner {
                 value: day.ContributionCount,
                 level: MapContributionLevel(day.ContributionLevel),
                 fillColor: day.Color,
-                tooltip: $"{day.Date:yyyy-MM-dd}\n{day.ContributionCount} contribution(s)",
+                tooltip: $"{day.Date:yyyy-MM-dd}\n{HeatmapDisplayText.FormatCount(day.ContributionCount, "contribution", "contributions")}",
                 breakdown: new Dictionary<string, double> { ["contributions"] = day.ContributionCount }))
             .ToArray();
 
@@ -244,7 +244,7 @@ internal static class HeatmapRunner {
                 var ordered = group.OrderBy(static day => day.Date).ToArray();
                 var yearTotal = ordered.Sum(static day => day.Value);
                 var activeDays = ordered.Count(static day => day.Value > 0);
-                var subtitle = $"{FormatInteger(yearTotal)} contribution(s), {activeDays} active day(s)";
+                var subtitle = $"{HeatmapDisplayText.FormatCount((long)Math.Round(yearTotal, MidpointRounding.AwayFromZero), "contribution", "contributions")}, {HeatmapDisplayText.FormatActiveDays(activeDays)}";
                 return new HeatmapSection(group.Key.ToString(CultureInfo.InvariantCulture), subtitle, ordered);
             })
             .Cast<HeatmapSection>()
@@ -252,7 +252,7 @@ internal static class HeatmapRunner {
 
         var subtitle = string.IsNullOrWhiteSpace(calendar.Name) || string.Equals(calendar.Name, calendar.Login, StringComparison.OrdinalIgnoreCase)
             ? $"github.com/{calendar.Login}"
-            : $"{calendar.Name} | github.com/{calendar.Login}";
+            : HeatmapDisplayText.JoinSummaryParts(calendar.Name, $"github.com/{calendar.Login}");
 
         return new HeatmapDocument(
             title: $"@{calendar.Login} on GitHub",
@@ -586,7 +586,7 @@ internal static class HeatmapRunner {
         if (!string.IsNullOrWhiteSpace(options.PersonFilter)) {
             parts.Add("person: " + options.PersonFilter!.Trim());
         }
-        return parts.Count == 0 ? null : string.Join(" | ", parts);
+        return parts.Count == 0 ? null : HeatmapDisplayText.JoinSummaryParts(parts.ToArray());
     }
 
     private sealed class UsageHeatmapCliOptions {

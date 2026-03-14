@@ -8,6 +8,8 @@
     h1 { margin-top:10px; font-size:52px; }
     .subtitle { margin-top:12px; color:var(--muted); font-size:15px; max-width:60ch; }
     .hero-copy { margin:18px 0 0; color:var(--muted); font-size:14px; line-height:1.5; }
+    .hero-facts { margin:18px 0 0; display:flex; flex-wrap:wrap; gap:8px; }
+    .hero-fact { display:inline-flex; align-items:center; min-height:28px; padding:7px 10px; border-radius:999px; background:rgba(255,255,255,.04); border:1px solid var(--line); max-width:100%; overflow-wrap:anywhere; }
     .hero-actions { margin-top:18px; display:flex; flex-wrap:wrap; gap:10px; }
     .hero-action { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:0 14px; border-radius:999px; background:rgba(139,124,255,.14); border:1px solid rgba(139,124,255,.32); color:var(--ink); text-decoration:none; font-size:13px; font-weight:700; }
     .owner-switcher { margin-top:18px; display:flex; flex-wrap:wrap; gap:10px; }
@@ -28,18 +30,18 @@
     .compare-arrow { width:48px; height:48px; display:flex; align-items:center; justify-content:center; border-radius:999px; border:1px solid var(--line); background:rgba(255,255,255,.03); color:var(--muted); font-size:22px; font-weight:800; }
     .compare-value { margin-top:10px; font-size:32px; font-weight:800; letter-spacing:-.05em; }
     .compare-subtitle { margin-top:8px; font-size:13px; }
-    .card-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
-    .mini-card { padding:18px; min-height:132px; background:linear-gradient(180deg, rgba(20,27,41,.96) 0%, rgba(14,19,29,.98) 100%); border:1px solid var(--line); border-radius:22px; }
+    .card-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:16px; }
+    .mini-card { min-width:0; padding:18px; min-height:132px; background:linear-gradient(180deg, rgba(20,27,41,.96) 0%, rgba(14,19,29,.98) 100%); border:1px solid var(--line); border-radius:22px; overflow:hidden; }
     .mini-card .mini-value { margin-top:10px; font-size:30px; font-weight:800; letter-spacing:-.04em; line-height:1.05; }
     .mini-card .mini-copy { margin-top:8px; font-size:13px; }
-    .split-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-    .panel { padding:22px; }
+    .split-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:18px; }
+    .panel { min-width:0; padding:22px; overflow:hidden; }
     .row-list { display:grid; gap:12px; }
     .row { display:grid; gap:6px; }
-    .row-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+    .row-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:baseline; }
     .row-label { min-width:0; font-size:15px; font-weight:700; letter-spacing:-.02em; }
     .row-label a { color:inherit; text-decoration:none; }
-    .row-value { color:var(--muted); font-size:14px; white-space:nowrap; }
+    .row-value { color:var(--muted); font-size:14px; text-align:right; }
     .row-copy { font-size:12px; }
     .row-bar { width:100%; height:8px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.06); }
     .row-fill { height:100%; border-radius:999px; background:linear-gradient(90deg, var(--accent-2) 0%, var(--accent) 100%); min-width:4px; }
@@ -55,11 +57,11 @@
     .owner-panel { display:none; }
     .owner-panel.active { display:block; }
     .month-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(52px,1fr)); gap:12px; align-items:end; min-height:170px; }
-    .month { display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .month { min-width:0; display:flex; flex-direction:column; align-items:center; gap:8px; }
     .month-bar-wrap { width:100%; height:92px; display:flex; align-items:flex-end; }
     .month-bar { width:100%; min-height:6px; border-radius:12px 12px 6px 6px; background:linear-gradient(180deg, rgba(67,223,148,.92) 0%, rgba(34,197,94,.86) 100%); box-shadow:0 12px 24px rgba(34,197,94,.18); }
     .month-label { color:var(--muted); font-size:12px; }
-    .month-value { color:var(--muted); font-size:11px; }
+    .month-value { width:100%; color:var(--muted); font-size:11px; text-align:center; overflow-wrap:anywhere; }
     .footer-note { margin-top:18px; color:var(--muted); font-size:13px; }
     @media (max-width: 1024px) { .hero, .split-grid, .compare-grid, .card-grid { grid-template-columns:1fr; } .hero-metrics { grid-template-columns:1fr 1fr; } .compare-arrow { margin:0 auto; } }
     @media (max-width: 720px) { .page { padding:22px 18px 32px; } h1 { font-size:42px; } .hero-metrics { grid-template-columns:1fr; } }

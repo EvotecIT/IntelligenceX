@@ -8,6 +8,13 @@
   const ixBreakdownModeButtons = document.querySelectorAll('.mode-button');
   const ixBreakdownPreview = document.querySelector('.preview');
   const ixBreakdownSummary = document.querySelector('.summary');
+  const ixBreakdownModeController = window.IntelligenceXReportRuntime
+    ? window.IntelligenceXReportRuntime.createStoredModeController({
+      storageKey: 'ix-usage-breakdown-mode',
+      defaultMode: 'preview',
+      compactMode: 'summary'
+    })
+    : null;
 
   function ixBreakdownApplyMode(mode) {
     ixBreakdownModeButtons.forEach((button) => {
@@ -24,7 +31,13 @@
   }
 
   ixBreakdownModeButtons.forEach((button) => {
-    button.addEventListener('click', () => ixBreakdownApplyMode(button.getAttribute('data-mode') || 'preview'));
+    button.addEventListener('click', () => {
+      const mode = button.getAttribute('data-mode') || 'preview';
+      ixBreakdownApplyMode(mode);
+      if (ixBreakdownModeController) {
+        ixBreakdownModeController.writeStoredMode(mode);
+      }
+    });
   });
 
   if (window.IntelligenceXReportRuntime) {
@@ -33,4 +46,6 @@
       defaultTheme: ixBreakdownDefaultTheme
     });
   }
+
+  ixBreakdownApplyMode(ixBreakdownModeController ? ixBreakdownModeController.resolveInitialMode() : 'preview');
 })();

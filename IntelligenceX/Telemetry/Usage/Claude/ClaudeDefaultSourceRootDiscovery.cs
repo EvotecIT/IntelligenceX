@@ -9,12 +9,25 @@ namespace IntelligenceX.Telemetry.Usage.Claude;
 /// Discovers the default local Claude source root from the current machine.
 /// </summary>
 public sealed class ClaudeDefaultSourceRootDiscovery : IUsageTelemetryRootDiscovery {
+    private readonly UsageTelemetryExternalProfileDiscovery _externalProfileDiscovery;
+
+    /// <summary>
+    /// Initializes a new discovery strategy for Claude local roots.
+    /// </summary>
+    public ClaudeDefaultSourceRootDiscovery()
+        : this(UsageTelemetryExternalProfileDiscovery.Default) {
+    }
+
+    internal ClaudeDefaultSourceRootDiscovery(UsageTelemetryExternalProfileDiscovery externalProfileDiscovery) {
+        _externalProfileDiscovery = externalProfileDiscovery ?? UsageTelemetryExternalProfileDiscovery.Default;
+    }
+
     /// <inheritdoc />
     public string ProviderId => "claude";
 
     /// <inheritdoc />
     public IReadOnlyList<SourceRootRecord> DiscoverRoots() {
-        var paths = new List<string>();
+        var candidates = new List<UsageTelemetryDiscoveredRootCandidate>();
         var configRoots = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
         if (!string.IsNullOrWhiteSpace(configRoots)) {
             foreach (var segment in configRoots.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)) {
@@ -23,26 +36,22 @@ public sealed class ClaudeDefaultSourceRootDiscovery : IUsageTelemetryRootDiscov
                     continue;
                 }
 
-                paths.Add(NormalizeProjectsPath(candidate));
+                candidates.Add(new UsageTelemetryDiscoveredRootCandidate(
+                    UsageSourceKind.LocalLogs,
+                    NormalizeProjectsPath(candidate)));
             }
         } else {
             var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             if (!string.IsNullOrWhiteSpace(userProfile)) {
-                paths.Add(Path.Combine(userProfile, ".config", "claude", "projects"));
-                paths.Add(Path.Combine(userProfile, ".claude", "projects"));
+                AddProfileCandidates(candidates, userProfile, UsageSourceKind.LocalLogs);
             }
         }
 
-        return paths
-            .Where(path => Directory.Exists(path))
-            .Select(path => UsageTelemetryIdentity.NormalizePath(path))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(path => new SourceRootRecord(
-                SourceRootRecord.CreateStableId(ProviderId, UsageSourceKind.LocalLogs, path),
-                ProviderId,
-                UsageSourceKind.LocalLogs,
-                path))
-            .ToArray();
+        foreach (var profile in _externalProfileDiscovery.DiscoverProfiles()) {
+            AddProfileCandidates(candidates, profile.ProfilePath, profile.SourceKind, profile.PlatformHint, profile.MachineLabel);
+        }
+
+        return UsageTelemetryRootDiscoverySupport.BuildRoots(ProviderId, candidates);
     }
 
     private static string NormalizeProjectsPath(string rootPath) {
@@ -53,5 +62,23 @@ public sealed class ClaudeDefaultSourceRootDiscovery : IUsageTelemetryRootDiscov
         }
 
         return Path.Combine(normalized, "projects");
+    }
+
+    private static void AddProfileCandidates(
+        ICollection<UsageTelemetryDiscoveredRootCandidate> candidates,
+        string profilePath,
+        UsageSourceKind sourceKind,
+        string? platformHint = null,
+        string? machineLabel = null) {
+        candidates.Add(new UsageTelemetryDiscoveredRootCandidate(
+            sourceKind,
+            Path.Combine(profilePath, ".config", "claude", "projects"),
+            platformHint,
+            machineLabel));
+        candidates.Add(new UsageTelemetryDiscoveredRootCandidate(
+            sourceKind,
+            Path.Combine(profilePath, ".claude", "projects"),
+            platformHint,
+            machineLabel));
     }
 }

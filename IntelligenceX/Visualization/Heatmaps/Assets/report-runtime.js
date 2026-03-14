@@ -156,9 +156,59 @@ window.IntelligenceXReportRuntime = (() => {
     return { apply };
   }
 
+  function createStoredModeController(options = {}) {
+    const storageKey = options.storageKey;
+    const defaultMode = options.defaultMode || 'preview';
+    const compactMode = options.compactMode || 'summary';
+    const compactMediaQuery = options.compactMediaQuery || '(max-width: 720px)';
+
+    function readStoredMode() {
+      if (!storageKey) {
+        return null;
+      }
+
+      try {
+        return localStorage.getItem(storageKey);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function writeStoredMode(mode) {
+      if (!storageKey) {
+        return;
+      }
+
+      try {
+        localStorage.setItem(storageKey, mode);
+      } catch (_) {
+      }
+    }
+
+    function resolveInitialMode() {
+      const stored = readStoredMode();
+      if (stored) {
+        return stored;
+      }
+
+      if (window.matchMedia && window.matchMedia(compactMediaQuery).matches) {
+        return compactMode;
+      }
+
+      return defaultMode;
+    }
+
+    return {
+      readStoredMode,
+      writeStoredMode,
+      resolveInitialMode
+    };
+  }
+
   return {
     readBootstrap,
     initThemeController,
-    initToggleGroup
+    initToggleGroup,
+    createStoredModeController
   };
 })();

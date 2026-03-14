@@ -40,6 +40,7 @@ internal sealed record UsageTelemetryOverviewSectionFlags(
 
 internal sealed record UsageTelemetrySupportingBreakdownModel(
     string Key,
+    string FileStem,
     string Label,
     string? Subtitle,
     bool IsDefault,
@@ -48,6 +49,7 @@ internal sealed record UsageTelemetrySupportingBreakdownModel(
 internal sealed record UsageTelemetryBreakdownPageModel(
     string ReportTitle,
     string BreakdownKey,
+    string FileStem,
     string BreakdownLabel,
     string SummaryHint,
     string BootstrapJson,

@@ -50,7 +50,8 @@
     "items": [
       { "title": "Install", "href": "/docs/cli/install/" },
       { "title": "Overview", "href": "/docs/cli/overview/" },
-      { "title": "Quick Start", "href": "/docs/cli/quickstart/" }
+      { "title": "Quick Start", "href": "/docs/cli/quickstart/" },
+      { "title": "Usage Reporting", "href": "/docs/cli/usage-reporting/" }
     ]
   },
   {

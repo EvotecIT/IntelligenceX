@@ -1,5 +1,6 @@
 using System;
 using IntelligenceX.OpenAI;
+using IntelligenceX.OpenAI.CompatibleHttp;
 
 namespace IntelligenceX.Telemetry.Usage;
 
@@ -59,6 +60,7 @@ public sealed class InternalIxUsageTelemetrySession : IDisposable {
                 client,
                 sourceRootStore,
                 usageEventStore,
+                providerId: ResolveTelemetryProviderId(client, options),
                 machineId: options.UsageTelemetryMachineId,
                 accountLabel: options.UsageTelemetryAccountLabel,
                 providerAccountId: ResolveProviderAccountId(options),
@@ -74,6 +76,22 @@ public sealed class InternalIxUsageTelemetrySession : IDisposable {
     }
 
 #if !NETSTANDARD2_0
+    private static string ResolveTelemetryProviderId(IntelligenceXClient client, IntelligenceXClientOptions options) {
+        switch (client.TransportKind) {
+            case OpenAITransportKind.Native:
+                return "chatgpt";
+            case OpenAITransportKind.AppServer:
+                return "codex";
+            case OpenAITransportKind.CopilotCli:
+                return "copilot";
+            case OpenAITransportKind.CompatibleHttp:
+                return OpenAICompatibleHttpProviderDetector.InferTelemetryProviderId(options.CompatibleHttpOptions.BaseUrl)
+                       ?? InternalIxUsageRecorder.StableProviderId;
+            default:
+                return InternalIxUsageRecorder.StableProviderId;
+        }
+    }
+
     private static string? ResolveProviderAccountId(IntelligenceXClientOptions options) {
         return NormalizeOptional(options.UsageTelemetryProviderAccountId) ??
                NormalizeOptional(options.NativeOptions.AuthAccountId);

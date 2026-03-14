@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using IntelligenceX.Json;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Telemetry.Usage.Claude;
@@ -89,6 +90,46 @@ internal static partial class Program {
         }
     }
 
+    private static void TestClaudeSessionUsageAdapterImportsAliasProviderFileRoot() {
+        var tempDir = CreateClaudeUsageTelemetryTempDirectory();
+        try {
+            var sessionPath = Path.Combine(tempDir, "session-alias.jsonl");
+            File.WriteAllText(
+                sessionPath,
+                SerializeClaudeUsageJsonLine(new JsonObject()
+                    .Add("type", "assistant")
+                    .Add("conversation_id", "claude-session-alias")
+                    .Add("request_id", "req-alias")
+                    .Add("timestamp", "2026-03-11T12:00:00Z")
+                    .Add("message", new JsonObject()
+                        .Add("id", "msg-alias")
+                        .Add("model", "claude-opus-4-6")
+                        .Add("usage", new JsonObject()
+                            .Add("input_tokens", 11L)
+                            .Add("cache_creation_input_tokens", 4L)
+                            .Add("cache_read_input_tokens", 3L)
+                            .Add("output_tokens", 9L)))) + Environment.NewLine);
+
+            var adapter = new ClaudeSessionUsageAdapter();
+            var root = new SourceRootRecord("src-claude-alias", "claude-code", UsageSourceKind.RecoveredFolder, sessionPath);
+
+            AssertEqual(true, adapter.CanImport(root), "claude alias root accepted");
+
+            var imported = adapter.ImportAsync(root, new UsageImportContext { MachineId = "machine-claude-alias" }).GetAwaiter().GetResult();
+            AssertEqual(1, imported.Count, "claude alias imported event count");
+            AssertEqual("claude-session-alias", imported[0].SessionId, "claude alias session id");
+            AssertEqual("msg-alias", imported[0].TurnId, "claude alias turn id");
+            AssertEqual("req-alias", imported[0].ResponseId, "claude alias response id");
+            AssertEqual("machine-claude-alias", imported[0].MachineId, "claude alias machine id");
+            AssertEqual(15L, imported[0].InputTokens, "claude alias input tokens");
+            AssertEqual(3L, imported[0].CachedInputTokens, "claude alias cached input tokens");
+            AssertEqual(9L, imported[0].OutputTokens, "claude alias output tokens");
+            AssertEqual(27L, imported[0].TotalTokens, "claude alias total tokens");
+        } finally {
+            TryDeleteClaudeUsageTelemetryTempDirectory(tempDir);
+        }
+    }
+
     private static void TestClaudeDefaultSourceRootDiscoveryUsesEnvironmentProjectsRoot() {
         var tempDir = CreateClaudeUsageTelemetryTempDirectory();
         var originalClaudeConfigDir = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
@@ -98,12 +139,49 @@ internal static partial class Program {
             Directory.CreateDirectory(projectsRoot);
             Environment.SetEnvironmentVariable("CLAUDE_CONFIG_DIR", configRoot);
 
-            var discovery = new ClaudeDefaultSourceRootDiscovery();
+            var discovery = new ClaudeDefaultSourceRootDiscovery(
+                new UsageTelemetryExternalProfileDiscovery(() => Array.Empty<UsageTelemetryExternalProfile>()));
             var roots = discovery.DiscoverRoots();
 
             AssertEqual(1, roots.Count, "claude discovered root count");
             AssertEqual("claude", roots[0].ProviderId, "claude discovered provider");
             AssertEqual(UsageTelemetryIdentity.NormalizePath(projectsRoot), roots[0].Path, "claude discovered path");
+        } finally {
+            Environment.SetEnvironmentVariable("CLAUDE_CONFIG_DIR", originalClaudeConfigDir);
+            TryDeleteClaudeUsageTelemetryTempDirectory(tempDir);
+        }
+    }
+
+    private static void TestClaudeDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles() {
+        var tempDir = CreateClaudeUsageTelemetryTempDirectory();
+        var originalClaudeConfigDir = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
+        try {
+            var recoveredProfile = Path.Combine(tempDir, "Windows.old", "Users", "backup-user");
+            var wslProfile = Path.Combine(tempDir, "wsl", "Ubuntu", "home", "dev");
+            var recoveredProjects = Path.Combine(recoveredProfile, ".claude", "projects");
+            var wslProjects = Path.Combine(wslProfile, ".config", "claude", "projects");
+            var overrideRoot = Path.Combine(tempDir, "claude-config-override");
+
+            Directory.CreateDirectory(recoveredProjects);
+            Directory.CreateDirectory(wslProjects);
+            Directory.CreateDirectory(overrideRoot);
+            Environment.SetEnvironmentVariable("CLAUDE_CONFIG_DIR", overrideRoot);
+
+            var discovery = new ClaudeDefaultSourceRootDiscovery(
+                new UsageTelemetryExternalProfileDiscovery(() => new[] {
+                    new UsageTelemetryExternalProfile(UsageSourceKind.RecoveredFolder, recoveredProfile, "windows-old"),
+                    new UsageTelemetryExternalProfile(UsageSourceKind.LocalLogs, wslProfile, "wsl", "Ubuntu")
+                }));
+
+            var roots = discovery.DiscoverRoots();
+
+            AssertEqual(2, roots.Count, "claude supplemental discovered root count");
+            AssertEqual(true, roots.Any(root => string.Equals(root.Path, UsageTelemetryIdentity.NormalizePath(recoveredProjects), StringComparison.OrdinalIgnoreCase) && root.SourceKind == UsageSourceKind.RecoveredFolder), "claude recovered root discovered");
+
+            var wslDiscovered = roots.Single(root => string.Equals(root.Path, UsageTelemetryIdentity.NormalizePath(wslProjects), StringComparison.OrdinalIgnoreCase));
+            AssertEqual(UsageSourceKind.LocalLogs, wslDiscovered.SourceKind, "claude wsl source kind");
+            AssertEqual("wsl", wslDiscovered.PlatformHint, "claude wsl platform hint");
+            AssertEqual("Ubuntu", wslDiscovered.MachineLabel, "claude wsl machine label");
         } finally {
             Environment.SetEnvironmentVariable("CLAUDE_CONFIG_DIR", originalClaudeConfigDir);
             TryDeleteClaudeUsageTelemetryTempDirectory(tempDir);
@@ -144,7 +222,8 @@ internal static partial class Program {
                     new ClaudeUsageTelemetryProviderDescriptor()
                 }),
                 new IUsageTelemetryRootDiscovery[] {
-                    new ClaudeDefaultSourceRootDiscovery()
+                    new ClaudeDefaultSourceRootDiscovery(
+                        new UsageTelemetryExternalProfileDiscovery(() => Array.Empty<UsageTelemetryExternalProfile>()))
                 });
 
             var discovered = coordinator.DiscoverRootsAsync("claude").GetAwaiter().GetResult();

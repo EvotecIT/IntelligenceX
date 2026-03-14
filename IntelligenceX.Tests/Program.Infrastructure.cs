@@ -12,15 +12,16 @@ internal static partial class Program {
         return (IntelligenceXClient)ctor.Invoke(new object?[] { transport, "gpt-5.4", null, null, null });
     }
 
-    private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn) {
-        var transport = new FakeToolTransport(new[] { turn }, onStartTurn: null);
+    private static IntelligenceXClient CreateToolRunnerClient(TurnInfo turn, OpenAITransportKind transportKind = OpenAITransportKind.Native) {
+        var transport = new FakeToolTransport(new[] { turn }, onStartTurn: null, transportKind);
         return CreateTestClient(transport);
     }
 
     private static IntelligenceXClient CreateToolRunnerClient(
         IReadOnlyList<TurnInfo> turns,
-        Action<ChatInput, ChatOptions?>? onStartTurn = null) {
-        var transport = new FakeToolTransport(turns, onStartTurn);
+        Action<ChatInput, ChatOptions?>? onStartTurn = null,
+        OpenAITransportKind transportKind = OpenAITransportKind.Native) {
+        var transport = new FakeToolTransport(turns, onStartTurn, transportKind);
         return CreateTestClient(transport);
     }
 
@@ -109,17 +110,22 @@ internal static partial class Program {
     private sealed class FakeToolTransport : IOpenAITransport {
         private readonly Queue<TurnInfo> _turns;
         private readonly Action<ChatInput, ChatOptions?>? _onStartTurn;
+        private readonly OpenAITransportKind _kind;
 
-        public FakeToolTransport(IReadOnlyList<TurnInfo> turns, Action<ChatInput, ChatOptions?>? onStartTurn) {
+        public FakeToolTransport(
+            IReadOnlyList<TurnInfo> turns,
+            Action<ChatInput, ChatOptions?>? onStartTurn,
+            OpenAITransportKind kind) {
             if (turns is null || turns.Count == 0) {
                 throw new InvalidOperationException("At least one turn is required.");
             }
 
             _turns = new Queue<TurnInfo>(turns);
             _onStartTurn = onStartTurn;
+            _kind = kind;
         }
 
-        public OpenAITransportKind Kind => OpenAITransportKind.Native;
+        public OpenAITransportKind Kind => _kind;
         public AppServerClient? RawAppServerClient => null;
 
 #pragma warning disable CS0067

@@ -59,6 +59,14 @@ intelligencex auth export --format store-base64
 intelligencex usage --events
 ```
 
+## Usage reporting
+
+```bash
+intelligencex telemetry usage report --out-dir artifacts/usage-report --github-user <login>
+```
+
+Use [Usage Reporting](/docs/cli/usage-reporting/) for the full guide to default discovery across current profiles, `Windows.old`, WSL, GitHub sections, and provider-specific notes such as Copilot CLI local activity.
+
 ## GitHub secret upload (optional)
 
 ```bash
