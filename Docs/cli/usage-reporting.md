@@ -33,6 +33,8 @@ That writes a browsable bundle with:
 - provider charts such as `provider-codex.light.svg`
 - supporting breakdown pages such as `source-root.html` and `telemetry-source.html`
 
+![Usage reporting overview bundle with Codex, Claude, and GitHub sections](/assets/screenshots/usage-report/usage-report-overview.png)
+
 ## What Gets Discovered By Default
 
 `telemetry usage report` runs the quick-scan path and auto-discovers provider roots before rendering.
@@ -137,8 +139,11 @@ That means IntelligenceX can include:
 - turn counts and session identifiers
 - the authenticated GitHub login from `.copilot/config.json`
 
+Treat that as a separate **Copilot activity** section, not a Claude-style token ledger.
+It is useful and worth surfacing on its own, but it is not yet the same as full model/token telemetry.
+
 It does **not** yet export Copilot premium-request quota snapshots from GitHub or VS Code.
-Treat the current Copilot section as local activity telemetry rather than billing-grade usage.
+That VS Code or GitHub-side allowance data should land as a separate Copilot quota/status section when it is wired in.
 
 ## When To Use Which Command
 

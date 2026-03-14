@@ -5,7 +5,7 @@ slug: usage-reporting-across-windows-old-wsl-and-github
 date: 2026-03-14
 categories: ["Walkthrough"]
 tags: ["usage", "reporting", "github", "wsl", "copilot"]
-image: /assets/screenshots/showcase-web-setup.svg
+image: /assets/screenshots/usage-report/usage-report-overview.png
 collection: blog
 layout: page
 ---
@@ -30,6 +30,8 @@ The report is meant to answer a practical question:
 > what did I actually use, where did that activity happen, and how much of my visible work lives outside the obvious personal profile?
 
 Instead of forcing you to hand-register every archive and alternate root, the CLI now discovers more of that automatically on Windows.
+
+![Provider-neutral usage overview with Codex, Claude, and GitHub sections rendered into one report bundle](/assets/screenshots/usage-report/usage-report-overview.png)
 
 ## What Is Now Covered By Default
 
@@ -72,7 +74,9 @@ The current scope is local Copilot CLI activity from `.copilot/session-state`, p
 That means the report can include Copilot sessions, turns, durations, and account identity.
 
 What it does **not** do yet is export the premium-request allowance snapshot you may see in VS Code or other GitHub Copilot UI surfaces.
-So today, Copilot should be read as activity telemetry, not a quota ledger.
+So today, Copilot should be read as a separate activity section, not as a quota ledger and not yet as a Claude-style token model view.
+
+![GitHub section of the usage report on a narrow mobile viewport](/assets/screenshots/usage-report/usage-report-github-mobile.png)
 
 ## Why The Windows.old + WSL Path Matters
 

@@ -40,7 +40,7 @@
       "title": "Usage Reporting",
       "summary": "Generate polished usage bundles from Codex, Claude, LM Studio, Copilot CLI, and GitHub, with automatic coverage for current profiles, Windows.old restores, and WSL homes.",
       "tags": ["CLI", "Reporting"],
-      "screenshot": "/assets/screenshots/showcase-web-setup.svg"
+      "screenshot": "/assets/screenshots/usage-report/usage-report-overview.png"
     },
     {
       "title": "Active Directory Tools",
