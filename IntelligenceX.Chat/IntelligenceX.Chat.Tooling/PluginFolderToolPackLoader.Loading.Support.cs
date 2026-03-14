@@ -147,9 +147,7 @@ internal static partial class PluginFolderToolPackLoader {
     private static Assembly? TryLoadAssembly(string assemblyPath, string pluginId, Action<string>? onWarning, bool warnOnFailure = true) {
         try {
             var name = AssemblyName.GetAssemblyName(assemblyPath);
-            var existing = AppDomain.CurrentDomain
-                .GetAssemblies()
-                .FirstOrDefault(a => string.Equals(a.GetName().Name, name.Name, StringComparison.OrdinalIgnoreCase));
+            var existing = FindReusableLoadedAssembly(assemblyPath, name);
             if (existing is not null) {
                 return existing;
             }
@@ -165,6 +163,86 @@ internal static partial class PluginFolderToolPackLoader {
 
             return null;
         }
+    }
+
+    internal static bool CanReuseLoadedAssembly(Assembly loadedAssembly, AssemblyName requestedName, string assemblyPath) {
+        ArgumentNullException.ThrowIfNull(loadedAssembly);
+        ArgumentNullException.ThrowIfNull(requestedName);
+
+        if (IsLoadedAssemblyPathMatch(loadedAssembly, assemblyPath)) {
+            return true;
+        }
+
+        return AssemblyIdentityMatches(loadedAssembly.GetName(), requestedName);
+    }
+
+    private static Assembly? FindReusableLoadedAssembly(string assemblyPath, AssemblyName requestedName) {
+        return AppDomain.CurrentDomain
+            .GetAssemblies()
+            .FirstOrDefault(loadedAssembly => CanReuseLoadedAssembly(loadedAssembly, requestedName, assemblyPath));
+    }
+
+    private static bool IsLoadedAssemblyPathMatch(Assembly loadedAssembly, string assemblyPath) {
+        var requestedPath = NormalizePath(assemblyPath);
+        if (string.IsNullOrWhiteSpace(requestedPath)) {
+            return false;
+        }
+
+        string? loadedLocation;
+        try {
+            loadedLocation = NormalizePath(loadedAssembly.Location);
+        } catch {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(loadedLocation)
+               && string.Equals(loadedLocation, requestedPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool AssemblyIdentityMatches(AssemblyName loadedName, AssemblyName requestedName) {
+        var loadedSimpleName = (loadedName.Name ?? string.Empty).Trim();
+        var requestedSimpleName = (requestedName.Name ?? string.Empty).Trim();
+        if (loadedSimpleName.Length == 0
+            || requestedSimpleName.Length == 0
+            || !string.Equals(loadedSimpleName, requestedSimpleName, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!Equals(loadedName.Version, requestedName.Version)) {
+            return false;
+        }
+
+        if (!string.Equals(
+                NormalizeCultureName(loadedName.CultureName),
+                NormalizeCultureName(requestedName.CultureName),
+                StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return PublicKeyTokensEqual(loadedName.GetPublicKeyToken(), requestedName.GetPublicKeyToken());
+    }
+
+    private static string NormalizeCultureName(string? cultureName) {
+        return string.IsNullOrWhiteSpace(cultureName)
+            ? string.Empty
+            : cultureName.Trim();
+    }
+
+    private static bool PublicKeyTokensEqual(byte[]? left, byte[]? right) {
+        left ??= [];
+        right ??= [];
+
+        if (left.Length != right.Length) {
+            return false;
+        }
+
+        for (var i = 0; i < left.Length; i++) {
+            if (left[i] != right[i]) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static IReadOnlyList<Type> ResolveCandidatePackTypes(

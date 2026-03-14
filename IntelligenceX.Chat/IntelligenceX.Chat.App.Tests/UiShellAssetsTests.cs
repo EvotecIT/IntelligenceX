@@ -301,6 +301,37 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures transcript rendering split stays in the expected load slot between
+    /// the core rendering helpers and the data table/runtime bindings that consume it.
+    /// </summary>
+    [Fact]
+    public void Load_EmitsTranscriptRenderingChunkBetweenRenderingAndDataTableChunks() {
+        var html = UiShellAssets.Load();
+        var renderingIndex = html.IndexOf("/* IXCHAT_PART:Shell.18.core.tools.rendering.js */", StringComparison.Ordinal);
+        var transcriptIndex = html.IndexOf("/* IXCHAT_PART:Shell.18a.transcript.rendering.js */", StringComparison.Ordinal);
+        var dataTablesIndex = html.IndexOf("/* IXCHAT_PART:Shell.16.core.datatables.js */", StringComparison.Ordinal);
+
+        Assert.True(renderingIndex >= 0, "Missing core rendering chunk marker.");
+        Assert.True(transcriptIndex >= 0, "Missing transcript rendering chunk marker.");
+        Assert.True(dataTablesIndex >= 0, "Missing data table chunk marker.");
+        Assert.True(renderingIndex < transcriptIndex, "Transcript chunk must load after core rendering.");
+        Assert.True(transcriptIndex < dataTablesIndex, "Transcript chunk must load before data table bindings.");
+    }
+
+    /// <summary>
+    /// Ensures the manifest itself keeps transcript rendering adjacent to the core rendering split.
+    /// </summary>
+    [Fact]
+    public void JavaScriptManifest_TracksTranscriptRenderingChunkImmediatelyAfterCoreRenderingChunk() {
+        var manifest = UiShellAssets.JavaScriptManifest.ToArray();
+        var renderingIndex = Array.IndexOf(manifest, "Shell.18.core.tools.rendering.js");
+        var transcriptIndex = Array.IndexOf(manifest, "Shell.18a.transcript.rendering.js");
+
+        Assert.True(renderingIndex >= 0, "Core rendering chunk must stay in the manifest.");
+        Assert.Equal(renderingIndex + 1, transcriptIndex);
+    }
+
+    /// <summary>
     /// Ensures autonomy review-loop controls propagate through the UI set_autonomy payload.
     /// </summary>
     [Fact]

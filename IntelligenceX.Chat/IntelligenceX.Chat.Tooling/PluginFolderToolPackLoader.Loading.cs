@@ -308,14 +308,14 @@ internal static partial class PluginFolderToolPackLoader {
 
         for (var i = 0; i < entryAssemblyPaths.Count; i++) {
             var assemblyPath = entryAssemblyPaths[i];
-            var assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
-            if (string.IsNullOrWhiteSpace(assemblyName)) {
+            AssemblyName requestedAssemblyName;
+            try {
+                requestedAssemblyName = AssemblyName.GetAssemblyName(assemblyPath);
+            } catch {
                 continue;
             }
 
-            var loadedAssembly = AppDomain.CurrentDomain
-                .GetAssemblies()
-                .FirstOrDefault(candidate => string.Equals(candidate.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase));
+            var loadedAssembly = FindReusableLoadedAssembly(assemblyPath, requestedAssemblyName);
             if (loadedAssembly is null) {
                 continue;
             }
