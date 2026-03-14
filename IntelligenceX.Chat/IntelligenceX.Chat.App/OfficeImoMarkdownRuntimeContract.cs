@@ -58,24 +58,20 @@ internal static class OfficeImoMarkdownRuntimeContract {
             return markdown;
         }
 
-        try {
-            var options = new MarkdownRendererOptions();
-            MarkdownRendererIntelligenceXAdapter.Apply(options);
-            var value = markdown;
-            var processors = options.MarkdownPreProcessors;
-            for (var i = 0; i < processors.Count; i++) {
-                var processor = processors[i];
-                if (processor == null) {
-                    continue;
-                }
-
-                value = processor(value, options) ?? value;
+        var options = new MarkdownRendererOptions();
+        MarkdownRendererIntelligenceXAdapter.Apply(options);
+        var value = markdown;
+        var processors = options.MarkdownPreProcessors;
+        for (var i = 0; i < processors.Count; i++) {
+            var processor = processors[i];
+            if (processor == null) {
+                continue;
             }
 
-            return value;
-        } catch {
-            return markdown;
+            value = processor(value, options) ?? value;
         }
+
+        return value;
     }
 
     /// <summary>
@@ -147,5 +143,4 @@ internal static class OfficeImoMarkdownRuntimeContract {
             return "(dynamic)";
         }
     }
-
 }

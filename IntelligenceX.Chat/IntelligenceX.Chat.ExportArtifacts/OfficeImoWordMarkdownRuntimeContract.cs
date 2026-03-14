@@ -91,7 +91,7 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
             }
 
             readerOptionsProperty.SetValue(options, readerOptions);
-        } catch {
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             // Package mode may load an older OfficeIMO.Word.Markdown build. Fall back to the baseline option set.
         }
     }
@@ -136,6 +136,28 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
         }
 
         property.SetValue(target, value);
+    }
+
+    private static bool IsCompatibilityFallbackException(Exception exception) {
+        var unwrapped = UnwrapInvocationException(exception);
+        return unwrapped is FileNotFoundException
+            or FileLoadException
+            or BadImageFormatException
+            or MissingMethodException
+            or MissingMemberException
+            or TypeLoadException
+            or NotSupportedException
+            or MemberAccessException
+            or InvalidCastException;
+    }
+
+    private static Exception UnwrapInvocationException(Exception exception) {
+        var current = exception;
+        while (current is TargetInvocationException { InnerException: not null } invocationException) {
+            current = invocationException.InnerException!;
+        }
+
+        return current;
     }
 
     private static bool DetectGroupedDefinitionLikeParagraphSupport() {

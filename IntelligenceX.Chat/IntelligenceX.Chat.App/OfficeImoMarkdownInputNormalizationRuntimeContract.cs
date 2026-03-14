@@ -75,7 +75,7 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
             }
 
             return new OfficeImoInputNormalizationBridge(optionsType, normalizeMethod, presetFactoryMethod, enabledProperties.ToArray());
-        } catch {
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             return null;
         }
     }
@@ -98,9 +98,31 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
             }
 
             return createChatTranscriptMethod;
-        } catch {
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             return null;
         }
+    }
+
+    private static bool IsCompatibilityFallbackException(Exception exception) {
+        var unwrapped = UnwrapInvocationException(exception);
+        return unwrapped is TypeLoadException
+            or FileNotFoundException
+            or FileLoadException
+            or BadImageFormatException
+            or MissingMethodException
+            or MissingMemberException
+            or MemberAccessException
+            or NotSupportedException
+            or InvalidCastException;
+    }
+
+    private static Exception UnwrapInvocationException(Exception exception) {
+        var current = exception;
+        while (current is TargetInvocationException { InnerException: not null } invocationException) {
+            current = invocationException.InnerException!;
+        }
+
+        return current;
     }
 
     private sealed class OfficeImoInputNormalizationBridge(Type optionsType, MethodInfo normalizeMethod, MethodInfo? presetFactoryMethod, PropertyInfo[] enabledProperties) {
@@ -117,7 +139,7 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
 
                 var normalized = normalizeMethod.Invoke(null, [text, options]) as string;
                 return string.IsNullOrEmpty(normalized) ? text : normalized;
-            } catch {
+            } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
                 return text;
             }
         }
@@ -130,7 +152,7 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
                         return presetOptions;
                     }
                 }
-            } catch {
+            } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
                 // Fall back to the legacy property-enabling path below.
             }
 

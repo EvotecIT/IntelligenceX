@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using IntelligenceX.Chat.ExportArtifacts;
 using System.Text.Json;
 using OfficeIMO.Excel;
@@ -741,14 +742,19 @@ public sealed class LocalExportArtifactWriterTests {
             2500);
 
         Assert.True(options.PreferNarrativeSingleLineDefinitions);
-        Assert.NotNull(options.ReaderOptions);
-        Assert.True(options.ReaderOptions!.PreferNarrativeSingleLineDefinitions);
-        Assert.True(options.ReaderOptions.Callouts);
-        Assert.True(options.ReaderOptions.DefinitionLists);
         Assert.Equal(100d, options.MaxImageWidthPercentOfContent);
         Assert.Equal(2000, options.MaxImageWidthPixels);
         Assert.Contains("C:\\allowed-a", options.AllowedImageDirectories);
         Assert.Contains("C:\\allowed-b", options.AllowedImageDirectories);
+
+        var readerOptionsProperty = options.GetType().GetProperty("ReaderOptions", BindingFlags.Instance | BindingFlags.Public);
+        if (readerOptionsProperty != null) {
+            var readerOptions = readerOptionsProperty.GetValue(options);
+            Assert.NotNull(readerOptions);
+            Assert.True(ReadBooleanProperty(readerOptions!, "PreferNarrativeSingleLineDefinitions"));
+            Assert.True(ReadBooleanProperty(readerOptions!, "Callouts"));
+            Assert.True(ReadBooleanProperty(readerOptions!, "DefinitionLists"));
+        }
     }
 
     /// <summary>
@@ -805,6 +811,13 @@ public sealed class LocalExportArtifactWriterTests {
         } finally {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private static bool ReadBooleanProperty(object target, string propertyName) {
+        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(property);
+        Assert.Equal(typeof(bool), property!.PropertyType);
+        return Assert.IsType<bool>(property.GetValue(target));
     }
 
     private static string CreateTempDirectory() {
