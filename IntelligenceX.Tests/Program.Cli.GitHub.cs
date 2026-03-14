@@ -8,6 +8,94 @@ using IntelligenceX.Cli.GitHub;
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+    private static void TestGitHubOwnerScopeResolverReturnsAdministeredOrganizationsWithPublicRepos() {
+        var resolver = new GitHubOwnerScopeResolver(login => Task.FromResult(ParseJson("""
+{
+  "data": {
+    "user": {
+      "organizations": {
+        "nodes": [
+          {
+            "login": "EvotecIT",
+            "viewerCanAdminister": true,
+            "repositories": { "totalCount": 114 }
+          },
+          {
+            "login": "PrivateEmptyOrg",
+            "viewerCanAdminister": true,
+            "repositories": { "totalCount": 0 }
+          },
+          {
+            "login": "CommunityOrg",
+            "viewerCanAdminister": false,
+            "repositories": { "totalCount": 25 }
+          },
+          {
+            "login": "evotecit",
+            "viewerCanAdminister": true,
+            "repositories": { "totalCount": 114 }
+          }
+        ]
+      }
+    }
+  }
+}
+""")));
+
+        var owners = resolver.ResolveAdministeredOwnersAsync("przemyslawklys")
+            .GetAwaiter()
+            .GetResult();
+
+        AssertEqual(1, owners.Count, "github owner scope resolver owner count");
+        AssertEqual("EvotecIT", owners[0], "github owner scope resolver owner");
+    }
+
+    private static void TestGitHubOverviewDataCollectorAppendsCorrelatedOwnersForUserRuns() {
+        var capturedOwners = Array.Empty<string>();
+        var collector = new GitHubOverviewDataCollector(
+            new GitHubContributionCalendarClient((login, from, to) => Task.FromResult(ParseJson("""
+{
+  "data": {
+    "user": {
+      "login": "przemyslawklys",
+      "name": "Przemyslaw Klys",
+      "url": "https://github.com/przemyslawklys",
+      "contributionsCollection": {
+        "contributionCalendar": {
+          "totalContributions": 5,
+          "weeks": [
+            {
+              "contributionDays": [
+                { "date": "2026-03-12", "contributionCount": 5, "weekday": 4, "color": "#111", "contributionLevel": "SECOND_QUARTILE" }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+"""))),
+            owners => {
+                capturedOwners = owners.ToArray();
+                return Task.FromResult(new GitHubRepositoryImpactSummary(Array.Empty<GitHubRepositoryOwnerImpact>(), Array.Empty<GitHubRepositoryImpactRepository>()));
+            },
+            login => Task.FromResult<IReadOnlyList<string>>(new[] { "EvotecIT", "AnotherOrg", "przemyslawklys" }));
+
+        var snapshot = collector.CollectAsync(" przemyslawklys ")
+            .GetAwaiter()
+            .GetResult();
+
+        AssertEqual(3, snapshot.RepositoryOwners.Count, "github overview collector correlated owner count");
+        AssertEqual("przemyslawklys", snapshot.RepositoryOwners[0], "github overview collector login owner");
+        AssertEqual("EvotecIT", snapshot.RepositoryOwners[1], "github overview collector first correlated owner");
+        AssertEqual("AnotherOrg", snapshot.RepositoryOwners[2], "github overview collector second correlated owner");
+        AssertEqual(2, snapshot.AutoCorrelatedOwners.Count, "github overview collector auto-correlated owner count");
+        AssertEqual("EvotecIT", snapshot.AutoCorrelatedOwners[0], "github overview collector auto-correlated owner first");
+        AssertEqual("AnotherOrg", snapshot.AutoCorrelatedOwners[1], "github overview collector auto-correlated owner second");
+        AssertEqual(3, capturedOwners.Length, "github overview collector repository impact owner count");
+    }
+
     private static void TestGitHubOverviewDataCollectorSupportsOwnerOnlyRuns() {
         var collector = new GitHubOverviewDataCollector(
             new GitHubContributionCalendarClient((login, from, to) => throw new InvalidOperationException("Calendar client should not be used for owner-only runs.")),
@@ -36,6 +124,38 @@ internal static partial class Program {
         AssertEqual(1, snapshot.RepositoryOwners.Count, "github overview collector owner-only distinct owner count");
         AssertEqual("EvotecIT", snapshot.RepositoryOwners[0], "github overview collector owner-only normalized owner");
         AssertEqual(42, snapshot.RepositoryImpact?.TotalStars ?? 0, "github overview collector owner-only repository impact");
+    }
+
+    private static void TestGitHubOverviewSectionProjectorUsesWindowEndForCurrentStreak() {
+        var snapshot = new GitHubOverviewDataSnapshot(
+            RequestedLogin: "przemyslawklys",
+            StartUtc: new DateTimeOffset(2025, 03, 13, 0, 0, 0, TimeSpan.Zero),
+            EndUtc: new DateTimeOffset(2026, 03, 12, 0, 0, 0, TimeSpan.Zero),
+            Calendar: new GitHubContributionCalendar(
+                login: "przemyslawklys",
+                name: "Przemyslaw Klys",
+                profileUrl: "https://github.com/przemyslawklys",
+                totalContributions: 12,
+                days: new[] {
+                    new GitHubContributionDay(new DateTime(2026, 03, 10, 0, 0, 0, DateTimeKind.Utc), 3, "#111", "SECOND_QUARTILE", 2),
+                    new GitHubContributionDay(new DateTime(2026, 03, 11, 0, 0, 0, DateTimeKind.Utc), 4, "#222", "THIRD_QUARTILE", 3),
+                    new GitHubContributionDay(new DateTime(2026, 03, 12, 0, 0, 0, DateTimeKind.Utc), 5, "#333", "FOURTH_QUARTILE", 4)
+                }),
+            PreviousYearCalendar: new GitHubContributionCalendar(
+                login: "przemyslawklys",
+                name: "Przemyslaw Klys",
+                profileUrl: "https://github.com/przemyslawklys",
+                totalContributions: 0,
+                days: Array.Empty<GitHubContributionDay>()),
+            RepositoryImpact: null,
+            RepositoryOwners: new[] { "przemyslawklys" },
+            AutoCorrelatedOwners: Array.Empty<string>(),
+            OwnerImpactOnly: false);
+
+        var section = GitHubOverviewSectionProjector.Project(snapshot);
+
+        AssertEqual(3, section.LongestStreakDays, "github overview projector longest streak");
+        AssertEqual(3, section.CurrentStreakDays, "github overview projector current streak honors window end");
     }
 
     private static void TestGitHubContributionCalendarClientStitchesNonOverlappingWindows() {

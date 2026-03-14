@@ -11,4 +11,5 @@ internal sealed record GitHubOverviewDataSnapshot(
     GitHubContributionCalendar? PreviousYearCalendar,
     GitHubRepositoryImpactSummary? RepositoryImpact,
     IReadOnlyList<string> RepositoryOwners,
+    IReadOnlyList<string> AutoCorrelatedOwners,
     bool OwnerImpactOnly);

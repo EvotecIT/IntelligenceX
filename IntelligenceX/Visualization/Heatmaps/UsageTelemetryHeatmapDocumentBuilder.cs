@@ -167,12 +167,12 @@ public sealed class UsageTelemetryHeatmapDocumentBuilder {
         }
 
         parts.Add($"{FormatMetricValue(summary.TotalValue, options.Metric)} {ResolveUnitsLabel(options.Metric)}");
-        parts.Add($"{summary.ActiveDays} active day(s)");
+        parts.Add(HeatmapDisplayText.FormatActiveDays(summary.ActiveDays));
         if (summary.PeakDayUtc.HasValue) {
             parts.Add($"peak {summary.PeakDayUtc.Value:yyyy-MM-dd} ({FormatMetricValue(summary.PeakValue, options.Metric)})");
         }
 
-        return string.Join(" | ", parts);
+        return HeatmapDisplayText.JoinSummaryParts(parts.ToArray());
     }
 
     private static IReadOnlyList<UsageHeatmapLegendEntry> ResolveLegendEntries(

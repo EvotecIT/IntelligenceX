@@ -3,19 +3,19 @@
     .top { display:grid; grid-template-columns:1.15fr .85fr; gap:20px; align-items:start; }
     .eyebrow { color:#c7bfff; }
     .meta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
-    .metric { padding:16px; border-radius:20px; }
+    .metric { min-width:0; padding:16px; border-radius:20px; overflow:hidden; }
     .metric-label { font-size:11px; }
     .metric-value { margin-top:10px; font-size:30px; font-weight:800; letter-spacing:-.04em; }
     .metric-copy { margin-top:8px; }
     .heatmap { margin-top:22px; padding:18px; border-radius:24px; background:rgba(255,255,255,.03); border:1px solid var(--wrapped-line); }
     .heatmap img { width:100%; height:auto; display:block; border-radius:18px; }
-    .stats { margin-top:18px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
-    .stat { padding:16px; border-radius:20px; }
+    .stats { margin-top:18px; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:14px; }
+    .stat { min-width:0; padding:16px; border-radius:20px; overflow:hidden; }
     .stat-label { font-size:11px; }
     .stat-value { margin-top:10px; font-size:28px; font-weight:800; letter-spacing:-.04em; }
     .stat-copy { margin-top:8px; }
     .footer { margin-top:18px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-    .footer-card { padding:18px; border-radius:22px; }
+    .footer-card { min-width:0; padding:18px; border-radius:22px; overflow:hidden; }
     .footer-value { margin-top:12px; font-size:26px; font-weight:800; letter-spacing:-.04em; }
     .footer-copy { margin-top:8px; }
     @media (max-width: 820px) { .top, .stats, .footer { grid-template-columns:1fr; } body { padding:14px; } h1 { font-size:40px; } }

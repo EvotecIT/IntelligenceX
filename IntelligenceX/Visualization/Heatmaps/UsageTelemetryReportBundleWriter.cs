@@ -30,26 +30,27 @@ internal static class UsageTelemetryReportBundleWriter {
         pages.Add("index.html");
 
         foreach (var heatmap in overview.Heatmaps) {
+            var fileStem = UsageTelemetryBreakdownFileNames.ResolveFileStem(heatmap.Key, heatmap.Label);
             var lightDocument = CreateThemeVariant(heatmap.Document, darkMode: false);
             var darkDocument = CreateThemeVariant(heatmap.Document, darkMode: true);
-            WriteTextFile(outputDirectory, heatmap.Key + ".json", JsonLite.Serialize(JsonValue.From(heatmap.Document.ToJson())));
-            dataFiles.Add(heatmap.Key + ".json");
-            WriteTextFile(outputDirectory, heatmap.Key + ".svg", HeatmapSvgRenderer.Render(lightDocument));
-            WriteTextFile(outputDirectory, heatmap.Key + ".light.svg", HeatmapSvgRenderer.Render(lightDocument));
-            lightSvgFiles.Add(heatmap.Key + ".svg");
-            lightSvgFiles.Add(heatmap.Key + ".light.svg");
-            WriteTextFile(outputDirectory, heatmap.Key + ".dark.svg", HeatmapSvgRenderer.Render(darkDocument));
-            darkSvgFiles.Add(heatmap.Key + ".dark.svg");
+            WriteTextFile(outputDirectory, fileStem + ".json", JsonLite.Serialize(JsonValue.From(heatmap.Document.ToJson())));
+            dataFiles.Add(fileStem + ".json");
+            WriteTextFile(outputDirectory, fileStem + ".svg", HeatmapSvgRenderer.Render(lightDocument));
+            WriteTextFile(outputDirectory, fileStem + ".light.svg", HeatmapSvgRenderer.Render(lightDocument));
+            lightSvgFiles.Add(fileStem + ".svg");
+            lightSvgFiles.Add(fileStem + ".light.svg");
+            WriteTextFile(outputDirectory, fileStem + ".dark.svg", HeatmapSvgRenderer.Render(darkDocument));
+            darkSvgFiles.Add(fileStem + ".dark.svg");
             WriteTextFile(
                 outputDirectory,
-                heatmap.Key + ".html",
+                fileStem + ".html",
                 UsageTelemetryBreakdownHtmlRenderer.Render(
                     overview.Title,
                     heatmap.Key,
                     heatmap.Label,
                     heatmap.Document.Subtitle,
                     heatmap.Document));
-            pages.Add(heatmap.Key + ".html");
+            pages.Add(fileStem + ".html");
         }
 
         foreach (var providerSection in overview.ProviderSections) {

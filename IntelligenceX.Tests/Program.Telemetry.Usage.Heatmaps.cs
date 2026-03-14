@@ -151,7 +151,7 @@ internal static partial class Program {
             });
 
         AssertEqual(1, document.Sections.Count, "single range heatmap section count");
-        AssertEqual("2025-12-30 -> 2026-01-02", document.Sections[0].Title, "single range heatmap section title");
+        AssertEqual("2025-12-30 to 2026-01-02", document.Sections[0].Title, "single range heatmap section title");
         AssertEqual(4, document.Sections[0].Days.Count, "single range heatmap padded day count");
         AssertEqual(new DateTime(2025, 12, 30), document.Sections[0].Days[0].Date, "single range heatmap first date");
         AssertEqual(new DateTime(2026, 01, 02), document.Sections[0].Days[3].Date, "single range heatmap last date");

@@ -69,7 +69,7 @@ internal static partial class Program {
 
             AssertEqual(0, exit, "heatmap usage json exit");
             AssertContainsText(stdout, "\"title\":\"ix usage\"", "heatmap usage json title");
-            AssertContainsText(stdout, "\"subtitle\":\"provider: ix | person: Przemek | 2000 tokens | 2 active day(s) | peak 2026-03-10 (1200)\"", "heatmap usage json subtitle");
+            AssertContainsText(stdout, "\"subtitle\":\"provider: ix · person: Przemek · 2000 tokens · 2 active days · peak 2026-03-10 (1200)\"", "heatmap usage json subtitle");
             AssertContainsText(stdout, "\"label\":\"Przemek\"", "heatmap usage json person legend");
             AssertEqual(string.Empty, stderr, "heatmap usage json stderr");
         } finally {
@@ -92,7 +92,7 @@ internal static partial class Program {
             sections: new[] {
                 new HeatmapSection(
                     "2026",
-                    "2 active day(s)",
+                    "2 active days",
                     new[] {
                         new HeatmapDay(
                             new DateTime(2026, 3, 10),

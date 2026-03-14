@@ -1043,11 +1043,11 @@ public sealed class UsageTelemetryOverviewBuilder {
             new UsageTelemetryOverviewCard(
                 "longest-streak",
                 "Longest Streak",
-                longestStreakDays.ToString(CultureInfo.InvariantCulture) + " days"),
+                HeatmapDisplayText.FormatDays(longestStreakDays)),
             new UsageTelemetryOverviewCard(
                 "current-streak",
                 "Current Streak",
-                currentStreakDays.ToString(CultureInfo.InvariantCulture) + " days")
+                HeatmapDisplayText.FormatDays(currentStreakDays))
         };
     }
 
@@ -1280,7 +1280,7 @@ public sealed class UsageTelemetryOverviewBuilder {
                     Metric = options.Metric,
                     Breakdown = breakdown,
                     Title = title + " - " + label,
-                    Subtitle = "by " + key,
+                    Subtitle = ResolveBreakdownSubtitlePrefix(breakdown),
                     LegendLimit = options.LegendLimit,
                     BreakdownLabels = breakdown == UsageHeatmapBreakdownDimension.SourceRoot
                         ? options.SourceRootLabels
@@ -1331,6 +1331,18 @@ public sealed class UsageTelemetryOverviewBuilder {
         };
     }
 
+    private static string ResolveBreakdownSubtitlePrefix(UsageHeatmapBreakdownDimension breakdown) {
+        return breakdown switch {
+            UsageHeatmapBreakdownDimension.Provider => "by telemetry source",
+            UsageHeatmapBreakdownDimension.Account => "by account",
+            UsageHeatmapBreakdownDimension.Person => "by person",
+            UsageHeatmapBreakdownDimension.Model => "by model",
+            UsageHeatmapBreakdownDimension.SourceRoot => "by source root",
+            UsageHeatmapBreakdownDimension.Surface => "by surface",
+            _ => "breakdown"
+        };
+    }
+
     private static string BuildOverviewSubtitle(UsageSummarySnapshot summary, UsageTelemetryOverviewOptions options) {
         var parts = new List<string>();
         var prefix = NormalizeOptional(options.Subtitle);
@@ -1339,23 +1351,17 @@ public sealed class UsageTelemetryOverviewBuilder {
         }
 
         parts.Add(FormatMetricValue(summary.TotalValue, options.Metric) + " " + ResolveUnitsLabel(options.Metric));
-        parts.Add(summary.ActiveDays.ToString(CultureInfo.InvariantCulture) + " active day(s)");
+        parts.Add(HeatmapDisplayText.FormatActiveDays(summary.ActiveDays));
         if (summary.PeakDayUtc.HasValue) {
             parts.Add("peak " + summary.PeakDayUtc.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
                       + " (" + FormatMetricValue(summary.PeakValue, options.Metric) + ")");
         }
 
-        return string.Join(" | ", parts);
+        return HeatmapDisplayText.JoinSummaryParts(parts.ToArray());
     }
 
     private static string BuildRangeLabel(DateTime? startDayUtc, DateTime? endDayUtc) {
-        if (!startDayUtc.HasValue || !endDayUtc.HasValue) {
-            return "No range";
-        }
-
-        return startDayUtc.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-               + " -> "
-               + endDayUtc.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return HeatmapDisplayText.FormatDateRange(startDayUtc, endDayUtc);
     }
 
     private static string ResolveUnitsLabel(UsageSummaryMetric metric) {
@@ -1382,45 +1388,27 @@ public sealed class UsageTelemetryOverviewBuilder {
     }
 
     private static string ResolveProviderTitle(string providerId) {
-        return providerId.Trim().ToLowerInvariant() switch {
-            "claude" => "Claude Code",
-            "codex" => "Codex",
-            "ix" => "IntelligenceX",
-            "chatgpt" => "ChatGPT",
-            "github" => "GitHub",
-            "lmstudio" => "LM Studio",
-            "ollama" => "Ollama",
-            _ => providerId
-        };
+        return UsageTelemetryProviderCatalog.ResolveSectionTitle(providerId);
     }
 
     private static HeatmapPalette ResolveProviderPalette(string providerId) {
-        return providerId.Trim().ToLowerInvariant() switch {
-            "claude" => new HeatmapPalette(
-                backgroundColor: "#f2f2f2",
-                panelColor: "#f2f2f2",
-                textColor: "#162033",
-                mutedTextColor: "#737373",
-                emptyColor: "#e8e8e8",
-                intensityColors: new[] { "#f5d8b0", "#f3ba73", "#fb8c1d", "#c65102" }),
-            "codex" => new HeatmapPalette(
-                backgroundColor: "#f2f2f2",
-                panelColor: "#f2f2f2",
-                textColor: "#162033",
-                mutedTextColor: "#737373",
-                emptyColor: "#e8e8e8",
-                intensityColors: new[] { "#cfd6ff", "#98a8ff", "#6268f1", "#2f2a93" }),
-            _ => HeatmapPalette.GitHubLight()
-        };
+        var appearance = UsageTelemetryProviderCatalog.ResolveAppearance(providerId);
+        if (appearance.IntensityColors.Count == 0) {
+            return HeatmapPalette.GitHubLight();
+        }
+
+        return new HeatmapPalette(
+            backgroundColor: "#f2f2f2",
+            panelColor: "#f2f2f2",
+            textColor: "#162033",
+            mutedTextColor: "#737373",
+            emptyColor: "#e8e8e8",
+            intensityColors: appearance.IntensityColors.ToArray());
     }
 
     private static ProviderAccentColors ResolveProviderAccentColors(string providerId) {
-        return providerId.Trim().ToLowerInvariant() switch {
-            "claude" => new ProviderAccentColors("#f3ba73", "#fb8c1d", "#c65102", "#e9c89e"),
-            "codex" => new ProviderAccentColors("#98a8ff", "#6268f1", "#2f2a93", "#bcc5ff"),
-            "github" => new ProviderAccentColors("#9be9a8", "#40c463", "#216e39", "#cfe8d2"),
-            _ => new ProviderAccentColors("#9be9a8", "#40c463", "#216e39", "#cfe8d2")
-        };
+        var appearance = UsageTelemetryProviderCatalog.ResolveAppearance(providerId);
+        return new ProviderAccentColors(appearance.Input, appearance.Output, appearance.Total, appearance.Other);
     }
 
     private static string FormatCompact(long value) {

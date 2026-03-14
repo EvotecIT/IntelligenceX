@@ -13,6 +13,7 @@
     .hero { display:flex; justify-content:space-between; gap:24px; align-items:flex-end; margin-bottom:20px; }
     .hero h1 { margin:0; font-size:34px; line-height:1; letter-spacing:-.03em; }
     .hero p { margin:10px 0 0; color:var(--muted); font-size:14px; max-width:72ch; }
+    .hero-guide { margin-top:8px; color:var(--ink); font-size:13px; max-width:72ch; }
     .panel { background:linear-gradient(180deg,var(--panel) 0%, var(--panel-soft) 100%); border:1px solid var(--line); border-radius:24px; padding:22px; box-shadow:var(--panel-shadow); }
     .panel-toolbar { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:16px; }
     .summary-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:18px; }
@@ -25,6 +26,21 @@
     .summary-list { display:grid; gap:10px; }
     .summary-row-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
     .summary-row-label { font-size:14px; font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .summary-row-label-stack { display:flex; flex-wrap:wrap; align-items:center; gap:8px; overflow:visible; white-space:normal; }
+    .summary-row-label-text { min-width:0; }
+    .summary-row-badge { display:inline-flex; align-items:center; justify-content:center; padding:4px 8px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; border:1px solid transparent; }
+    .summary-row-badge.tone-current { background:rgba(98,104,241,.12); border-color:rgba(98,104,241,.2); color:#4740d1; }
+    .summary-row-badge.tone-recovered { background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.22); color:#b45309; }
+    .summary-row-badge.tone-wsl { background:rgba(34,197,94,.14); border-color:rgba(34,197,94,.22); color:#166534; }
+    .summary-row-badge.tone-internal { background:rgba(14,165,233,.14); border-color:rgba(14,165,233,.22); color:#075985; }
+    .summary-row-badge.tone-macos { background:rgba(168,85,247,.14); border-color:rgba(168,85,247,.22); color:#7e22ce; }
+    .summary-row-badge.tone-imported { background:rgba(148,163,184,.16); border-color:rgba(148,163,184,.22); color:#475569; }
+    html[data-theme='dark'] .summary-row-badge.tone-current { background:rgba(129,140,248,.18); border-color:rgba(129,140,248,.28); color:#c7d2fe; }
+    html[data-theme='dark'] .summary-row-badge.tone-recovered { background:rgba(245,158,11,.18); border-color:rgba(245,158,11,.28); color:#fcd34d; }
+    html[data-theme='dark'] .summary-row-badge.tone-wsl { background:rgba(34,197,94,.18); border-color:rgba(34,197,94,.28); color:#bbf7d0; }
+    html[data-theme='dark'] .summary-row-badge.tone-internal { background:rgba(14,165,233,.18); border-color:rgba(14,165,233,.28); color:#bae6fd; }
+    html[data-theme='dark'] .summary-row-badge.tone-macos { background:rgba(168,85,247,.18); border-color:rgba(168,85,247,.28); color:#e9d5ff; }
+    html[data-theme='dark'] .summary-row-badge.tone-imported { background:rgba(148,163,184,.18); border-color:rgba(148,163,184,.26); color:#cbd5e1; }
     .summary-row-value, .summary-row-meta, .summary-empty, .note { color:var(--muted); font-size:13px; }
     .summary-row-bar { margin-top:8px; width:100%; height:8px; border-radius:999px; background:var(--row-bar-bg); overflow:hidden; }
     .summary-row-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#9da9ff 0%, #4740d1 100%); min-width:4px; }
@@ -33,4 +49,4 @@
     .legend-swatch { width:10px; height:10px; border-radius:999px; display:inline-block; }
     .footnote { margin-top:24px; color:var(--muted); font-size:13px; }
     @media (max-width: 1080px) { .page-toolbar, .hero, .panel-toolbar { flex-direction:column; align-items:flex-start; } .summary-columns { grid-template-columns:1fr; } }
-    @media (max-width: 680px) { .page { padding:22px 18px 32px; } .hero h1 { font-size:28px; } }
+    @media (max-width: 680px) { .page { padding:22px 18px 32px; } .hero h1 { font-size:28px; } .hero-guide { font-size:12px; max-width:none; } }

@@ -9,8 +9,6 @@ using System.Threading.Tasks;
 using IntelligenceX.Cli.GitHub;
 using IntelligenceX.Json;
 using IntelligenceX.Telemetry.Usage;
-using IntelligenceX.Telemetry.Usage.Claude;
-using IntelligenceX.Telemetry.Usage.Codex;
 using IntelligenceX.Visualization.Heatmaps;
 using Spectre.Console;
 
@@ -607,7 +605,7 @@ internal static class UsageTelemetryCliRunner {
                 Subtitle = BuildQuickReportSubtitle(options, dbPath, scanResult),
                 SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRootStore.GetAll())
             });
-        overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners).ConfigureAwait(false);
+        overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners, Console.WriteLine).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
             var outputDirectory = Path.GetFullPath(options.OutputDirectory!);
@@ -663,7 +661,7 @@ internal static class UsageTelemetryCliRunner {
                 Subtitle = BuildOverviewSubtitle(options),
                 SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRootStore.GetAll())
             });
-        overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners).ConfigureAwait(false);
+        overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners, Console.WriteLine).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
             var outputDirectory = Path.GetFullPath(options.OutputDirectory!);
@@ -704,7 +702,8 @@ internal static class UsageTelemetryCliRunner {
     private static async Task<UsageTelemetryOverviewDocument> AppendGitHubSectionsAsync(
         UsageTelemetryOverviewDocument overview,
         IReadOnlyList<string> githubUsers,
-        IReadOnlyList<string> githubOwners) {
+        IReadOnlyList<string> githubOwners,
+        Action<string>? progress = null) {
         if (overview is null) {
             throw new ArgumentNullException(nameof(overview));
         }
@@ -714,6 +713,9 @@ internal static class UsageTelemetryCliRunner {
         }
         var sections = overview.ProviderSections.ToList();
         foreach (var request in requests) {
+            progress?.Invoke(request.Login is null
+                ? "Building GitHub owner-impact section..."
+                : "Building GitHub section for @" + request.Login + "...");
             sections.Add(request.Login is null
                 ? await GitHubOverviewSectionBuilder.BuildOwnerImpactOnlyAsync(request.Owners).ConfigureAwait(false)
                 : await GitHubOverviewSectionBuilder.BuildAsync(request.Login, request.Owners).ConfigureAwait(false));
@@ -728,7 +730,7 @@ internal static class UsageTelemetryCliRunner {
             overview.Cards,
             overview.Heatmaps,
             sections
-                .OrderBy(static section => ResolveProviderSortOrder(section.ProviderId))
+                .OrderBy(static section => UsageTelemetryProviderCatalog.ResolveSortOrder(section.ProviderId))
                 .ThenBy(static section => section.Title, StringComparer.OrdinalIgnoreCase)
                 .ToArray());
     }
@@ -761,15 +763,6 @@ internal static class UsageTelemetryCliRunner {
     }
 
     internal sealed record GitHubSectionRequest(string? Login, IReadOnlyList<string> Owners);
-
-    private static int ResolveProviderSortOrder(string providerId) {
-        return NormalizeOptional(providerId)?.ToLowerInvariant() switch {
-            "codex" => 0,
-            "claude" => 1,
-            "github" => 2,
-            _ => 10
-        };
-    }
 
     private static async Task DiscoverAndImportForOverviewAsync(string dbPath, OverviewOptions options) {
         using var rootStore = new SqliteSourceRootStore(dbPath);
@@ -843,14 +836,8 @@ internal static class UsageTelemetryCliRunner {
         return new UsageTelemetryImportCoordinator(
             sourceRootStore,
             usageEventStore,
-            new UsageTelemetryProviderRegistry(new IUsageTelemetryProviderDescriptor[] {
-                new CodexUsageTelemetryProviderDescriptor(),
-                new ClaudeUsageTelemetryProviderDescriptor()
-            }),
-            new IUsageTelemetryRootDiscovery[] {
-                new CodexDefaultSourceRootDiscovery(),
-                new ClaudeDefaultSourceRootDiscovery()
-            });
+            UsageTelemetryProviderCatalog.CreateProviderRegistry(),
+            UsageTelemetryProviderCatalog.CreateRootDiscoveries());
     }
 
     private static string ResolveDatabasePath(string? explicitPath) {
@@ -1023,7 +1010,7 @@ internal static class UsageTelemetryCliRunner {
                 continue;
             }
 
-            var providerId = NormalizeOptional(options.ProviderId) ?? InferProviderIdFromPath(normalizedPath!);
+            var providerId = NormalizeOptional(options.ProviderId) ?? UsageTelemetryProviderCatalog.InferProviderIdFromPath(normalizedPath!);
             if (string.IsNullOrWhiteSpace(providerId)) {
                 throw new InvalidOperationException(
                     "Unable to infer the provider for '" + normalizedPath + "'. Use --provider <id> with --path.");
@@ -1049,23 +1036,6 @@ internal static class UsageTelemetryCliRunner {
         }
 
         return UsageSourceKind.LocalLogs;
-    }
-
-    private static string? InferProviderIdFromPath(string path) {
-        var normalized = UsageTelemetryIdentity.NormalizePath(path);
-        if (normalized.IndexOf(".codex", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            normalized.IndexOf(Path.DirectorySeparatorChar + "sessions", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            normalized.IndexOf(Path.AltDirectorySeparatorChar + "sessions", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "codex";
-        }
-
-        if (normalized.IndexOf(".claude", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            normalized.IndexOf(Path.DirectorySeparatorChar + "projects", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            normalized.IndexOf(Path.AltDirectorySeparatorChar + "projects", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "claude";
-        }
-
-        return null;
     }
 
     private static void AddIfValue(List<string> args, string optionName, string? value) {

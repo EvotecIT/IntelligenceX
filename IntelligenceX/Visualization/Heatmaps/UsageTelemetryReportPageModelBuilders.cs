@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Visualization.Heatmaps;
 
@@ -26,10 +27,14 @@ internal static class UsageTelemetryReportPageModelBuilders {
         var supportingBreakdowns = overview.Heatmaps
             .Select((heatmap, index) => new UsageTelemetrySupportingBreakdownModel(
                 heatmap.Key,
+                UsageTelemetryBreakdownFileNames.ResolveFileStem(heatmap.Key, heatmap.Label),
                 heatmap.Label,
-                heatmap.Document.Subtitle,
+                UsageTelemetryBreakdownDisplayText.FormatSummaryHint(heatmap.Label, heatmap.Document.Subtitle),
                 index == 0,
-                BuildBreakdownSummary(heatmap.Key, heatmap.Document.Subtitle ?? "Detailed breakdown view.", heatmap.Document)))
+                BuildBreakdownSummary(
+                    heatmap.Key,
+                    UsageTelemetryBreakdownDisplayText.FormatSummaryHint(heatmap.Label, heatmap.Document.Subtitle),
+                    heatmap.Document)))
             .ToArray();
 
         var bootstrap = new JsonObject()
@@ -62,7 +67,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
         var safeTitle = string.IsNullOrWhiteSpace(reportTitle) ? "Usage Overview" : reportTitle.Trim();
         var safeLabel = string.IsNullOrWhiteSpace(breakdownLabel) ? "Breakdown" : breakdownLabel.Trim();
         var safeKey = string.IsNullOrWhiteSpace(breakdownKey) ? "breakdown" : breakdownKey.Trim();
-        var summaryHint = string.IsNullOrWhiteSpace(subtitle) ? "Detailed breakdown view." : (subtitle ?? string.Empty).Trim();
+        var summaryHint = UsageTelemetryBreakdownDisplayText.FormatSummaryHint(safeLabel, subtitle);
 
         var bootstrap = new JsonObject()
             .Add("themeKey", "ix-usage-report-theme")
@@ -71,6 +76,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
         return new UsageTelemetryBreakdownPageModel(
             ReportTitle: safeTitle,
             BreakdownKey: safeKey,
+            FileStem: UsageTelemetryBreakdownFileNames.ResolveFileStem(safeKey, safeLabel),
             BreakdownLabel: safeLabel,
             SummaryHint: summaryHint,
             BootstrapJson: JsonLite.Serialize(JsonValue.From(bootstrap)),
@@ -111,11 +117,8 @@ internal static class UsageTelemetryReportPageModelBuilders {
     }
 
     private static UsageTelemetryProviderAccentColors ResolveProviderAccentColors(string providerId) {
-        return providerId.Trim().ToLowerInvariant() switch {
-            "claude" => new UsageTelemetryProviderAccentColors("#f3ba73", "#fb8c1d", "#c65102", "#e9c89e"),
-            "codex" => new UsageTelemetryProviderAccentColors("#98a8ff", "#6268f1", "#2f2a93", "#bcc5ff"),
-            _ => new UsageTelemetryProviderAccentColors("#9be9a8", "#40c463", "#216e39", "#cfe8d2")
-        };
+        var appearance = UsageTelemetryProviderCatalog.ResolveAppearance(providerId);
+        return new UsageTelemetryProviderAccentColors(appearance.Input, appearance.Output, appearance.Total, appearance.Other);
     }
 
     private static UsageTelemetryGitHubSectionPageModel BuildGitHubSection(UsageTelemetryOverviewProviderSection section) {
@@ -284,11 +287,11 @@ internal static class UsageTelemetryReportPageModelBuilders {
                     FindSpotlightCardSubtitle(section, "most-active-month")),
                 new UsageTelemetryGitHubWrappedMetricModel(
                     "Longest streak",
-                    section.LongestStreakDays.ToString(CultureInfo.InvariantCulture) + " days",
+                    HeatmapDisplayText.FormatDays(section.LongestStreakDays),
                     FindSpotlightCardSubtitle(section, "longest-streak")),
                 new UsageTelemetryGitHubWrappedMetricModel(
                     "Current streak",
-                    section.CurrentStreakDays.ToString(CultureInfo.InvariantCulture) + " days",
+                    HeatmapDisplayText.FormatDays(section.CurrentStreakDays),
                     FindSpotlightCardSubtitle(section, "current-streak"))
             },
             Stats: new[] {
@@ -461,7 +464,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
             .Select(row => new UsageTelemetryBreakdownRowModel(
                 row.Title,
                 FormatCompact(row.SectionTotal) + " (" + FormatPercentValue(row.SectionTotal, totalValue) + "%)",
-                row.ActiveDays.ToString(CultureInfo.InvariantCulture) + " active day(s)",
+                HeatmapDisplayText.FormatActiveDays(row.ActiveDays),
                 ComputePercentage(row.SectionTotal, totalValue)))
             .ToArray();
 
@@ -471,7 +474,8 @@ internal static class UsageTelemetryReportPageModelBuilders {
 
         var overviewNotes = new List<string> { summaryHint };
         if (isSourceRoot) {
-            overviewNotes.Add(totals.Count.ToString(CultureInfo.InvariantCulture) + " distinct source root(s), with labels derived from current roots, Windows.old, and future imported sources like WSL or macOS backups.");
+            overviewNotes.Add(HeatmapDisplayText.FormatCount(totals.Count, "distinct source root", "distinct source roots") + ", with labels derived from current roots, Windows.old, and future imported sources like WSL or macOS backups.");
+            overviewNotes.Add(HeatmapDisplayText.FormatCount(secondaryRows.Count, "source family", "source families") + " currently visible in this comparison.");
         }
 
         var legendItems = document.LegendItems
@@ -494,25 +498,37 @@ internal static class UsageTelemetryReportPageModelBuilders {
     private static IReadOnlyList<UsageTelemetryBreakdownRowModel> BuildSourceFamilyRows(
         IReadOnlyDictionary<string, double> totals,
         double totalValue) {
-        var families = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var families = new Dictionary<string, SourceFamilySummary>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in totals) {
             var bucket = ResolveSourceFamily(pair.Key);
-            families[bucket] = families.TryGetValue(bucket, out var existing)
-                ? existing + pair.Value
-                : pair.Value;
+            if (!families.TryGetValue(bucket, out var existing)) {
+                existing = new SourceFamilySummary();
+                families[bucket] = existing;
+            }
+
+            existing.TotalValue += pair.Value;
+            existing.RootLabels.Add(pair.Key);
+
+            var provider = ResolveSourceFamilyProvider(pair.Key);
+            if (!string.IsNullOrWhiteSpace(provider)) {
+                existing.Providers.Add(provider!);
+            }
         }
 
         return families
-            .OrderByDescending(static pair => pair.Value)
+            .OrderByDescending(static pair => pair.Value.TotalValue)
             .Select(pair => new UsageTelemetryBreakdownRowModel(
                 pair.Key,
-                FormatCompact(pair.Value) + " (" + FormatPercentValue(pair.Value, totalValue) + "%)",
-                FormatPercentValue(pair.Value, totalValue) + "% of visible total",
-                ComputePercentage(pair.Value, totalValue)))
+                FormatCompact(pair.Value.TotalValue) + " (" + FormatPercentValue(pair.Value.TotalValue, totalValue) + "%)",
+                BuildSourceFamilyMeta(pair.Value, totalValue),
+                ComputePercentage(pair.Value.TotalValue, totalValue)))
             .ToArray();
     }
 
     private static string ResolveSourceFamily(string label) {
+        if (label.IndexOf("internal", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Internal runtime";
+        }
         if (label.IndexOf("windows.old", StringComparison.OrdinalIgnoreCase) >= 0) {
             return "Windows.old";
         }
@@ -527,6 +543,33 @@ internal static class UsageTelemetryReportPageModelBuilders {
         }
 
         return "Imported / other";
+    }
+
+    private static string BuildSourceFamilyMeta(SourceFamilySummary summary, double totalValue) {
+        var parts = new List<string> {
+            HeatmapDisplayText.FormatCount(summary.RootLabels.Count, "root", "roots"),
+            FormatPercentValue(summary.TotalValue, totalValue) + "% of visible total"
+        };
+
+        if (summary.Providers.Count > 0) {
+            parts.Add(string.Join(", ", summary.Providers.OrderBy(static provider => provider, StringComparer.OrdinalIgnoreCase)));
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static string? ResolveSourceFamilyProvider(string label) {
+        if (string.IsNullOrWhiteSpace(label)) {
+            return null;
+        }
+
+        var separatorIndex = label.IndexOf('·');
+        var provider = separatorIndex >= 0
+            ? label.Substring(0, separatorIndex)
+            : label;
+
+        var trimmed = provider.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
 
     private static string ResolveLegendLabel(
@@ -547,5 +590,11 @@ internal static class UsageTelemetryReportPageModelBuilders {
         }
 
         return numerator / denominator * 100d;
+    }
+
+    private sealed class SourceFamilySummary {
+        public double TotalValue { get; set; }
+        public HashSet<string> RootLabels { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> Providers { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }

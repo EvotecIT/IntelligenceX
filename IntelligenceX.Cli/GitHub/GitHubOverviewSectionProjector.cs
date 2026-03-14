@@ -58,7 +58,7 @@ internal static class GitHubOverviewSectionProjector {
         var recentThirtyDays = days
             .Where(day => day.Date >= endUtc.Date.AddDays(-29))
             .Sum(static day => (long)day.ContributionCount);
-        var (longestStreakDays, currentStreakDays) = ComputeStreaks(days);
+        var (longestStreakDays, currentStreakDays) = ComputeStreaks(days, endUtc.Date);
         var currentYearDays = calendar.Days
             .Where(day => day.Date >= currentYearStartUtc.Date && day.Date <= endUtc.Date)
             .OrderBy(day => day.Date)
@@ -73,7 +73,7 @@ internal static class GitHubOverviewSectionProjector {
                 "contributions",
                 "Total contributions",
                 FormatCompact(totalContributions),
-                activeDays.ToString(CultureInfo.InvariantCulture) + " active day(s)",
+                HeatmapDisplayText.FormatActiveDays(activeDays),
                 totalContributions > 0 ? 1d : 0d,
                 "#216e39"),
             new UsageTelemetryOverviewSectionMetric(
@@ -90,7 +90,9 @@ internal static class GitHubOverviewSectionProjector {
                     ? FormatCompact(repositoryImpact.TotalStars)
                     : FormatCompact(Math.Max(0, calendar.Summary.RepositoryContributions)),
                 repositoryImpact is not null && repositoryImpact.TotalStars > 0
-                    ? FormatCompact(repositoryImpact.TotalRepositories) + " public repo(s) across " + repositoryImpact.Owners.Count.ToString(CultureInfo.InvariantCulture) + " owner(s)"
+                    ? HeatmapDisplayText.FormatCount(FormatCompact(repositoryImpact.TotalRepositories), repositoryImpact.TotalRepositories, "public repository", "public repositories")
+                      + " across "
+                      + HeatmapDisplayText.FormatCount(repositoryImpact.Owners.Count, "owner scope", "owner scopes")
                     : BuildRepositorySubtitle(calendar.Summary, activeWeeks, weekCount),
                 repositoryImpact is not null && repositoryImpact.TotalStars > 0
                     ? 1d
@@ -104,17 +106,17 @@ internal static class GitHubOverviewSectionProjector {
                 "most-active-month",
                 "Most Active Month",
                 mostActiveMonth?.MonthUtc.ToString("MMMM yyyy", CultureInfo.InvariantCulture) ?? "n/a",
-                mostActiveMonth is null ? null : FormatCompact(mostActiveMonth.TotalValue) + " contributions"),
+                mostActiveMonth is null ? null : FormatCompactContributions(mostActiveMonth.TotalValue)),
             new UsageTelemetryOverviewCard(
                 "peak-day",
                 "Peak Day",
                 peakDay is null ? "n/a" : peakDay.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                peakDay is null ? null : peakDay.ContributionCount.ToString(CultureInfo.InvariantCulture) + " contributions"),
+                peakDay is null ? null : HeatmapDisplayText.FormatCount(peakDay.ContributionCount, "contribution", "contributions")),
             new UsageTelemetryOverviewCard(
                 "recent-thirty-days",
                 "Recent Use (Last 30 Days)",
                 FormatCompact(recentThirtyDays),
-                "contributions"),
+                FormatCompactContributions(Math.Max(0L, recentThirtyDays))),
             new UsageTelemetryOverviewCard(
                 "repository-footprint",
                 "Repository Footprint",
@@ -122,17 +124,17 @@ internal static class GitHubOverviewSectionProjector {
                     ? FormatCompact(repositoryImpact.TotalRepositories)
                     : BuildRepositoryFootprintValue(calendar.Summary),
                 repositoryImpact is not null && repositoryImpact.TotalStars > 0
-                    ? FormatCompact(repositoryImpact.TotalStars) + " stars · " + FormatCompact(repositoryImpact.TotalForks) + " forks"
+                    ? FormatCompactStars(repositoryImpact.TotalStars) + " · " + FormatCompactForks(repositoryImpact.TotalForks)
                     : BuildRepositoryFootprintSubtitle(calendar.Summary)),
             new UsageTelemetryOverviewCard(
                 "longest-streak",
                 "Longest Streak",
-                longestStreakDays.ToString(CultureInfo.InvariantCulture) + " days",
-                currentStreakDays > 0 ? "Current: " + currentStreakDays.ToString(CultureInfo.InvariantCulture) + " days" : null),
+                HeatmapDisplayText.FormatDays(longestStreakDays),
+                currentStreakDays > 0 ? "Current: " + HeatmapDisplayText.FormatDays(currentStreakDays) : null),
             new UsageTelemetryOverviewCard(
                 "current-streak",
                 "Current Streak",
-                currentStreakDays.ToString(CultureInfo.InvariantCulture) + " days",
+                HeatmapDisplayText.FormatDays(currentStreakDays),
                 currentStreakDays > 0 ? "Live streak through " + endUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "No active streak today")
         };
         var additionalInsights = BuildAdditionalInsights(
@@ -143,7 +145,7 @@ internal static class GitHubOverviewSectionProjector {
             repositoryImpact);
 
         var heatmap = BuildHeatmap(calendar, startUtc.Date, endUtc.Date);
-        var subtitle = "@" + calendar.Login + " · " + startUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " -> " + endUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var subtitle = "@" + calendar.Login + " · " + HeatmapDisplayText.FormatDateRange(startUtc, endUtc);
 
         return new UsageTelemetryOverviewProviderSection(
             key: "provider-github",
@@ -167,7 +169,7 @@ internal static class GitHubOverviewSectionProjector {
             recentModel: null,
             longestStreakDays: longestStreakDays,
             currentStreakDays: currentStreakDays,
-            note: BuildGitHubNote(calendar, repositoryImpact));
+            note: BuildGitHubNote(calendar, repositoryImpact, snapshot.AutoCorrelatedOwners));
     }
 
     private static UsageTelemetryOverviewProviderSection ProjectOwnerImpactOnly(GitHubOverviewDataSnapshot snapshot) {
@@ -179,7 +181,9 @@ internal static class GitHubOverviewSectionProjector {
                 "owned-stars",
                 "Owned stars",
                 FormatCompact(repositoryImpact.TotalStars),
-                FormatCompact(repositoryImpact.TotalRepositories) + " public repo(s) across " + repositoryImpact.Owners.Count.ToString(CultureInfo.InvariantCulture) + " owner(s)",
+                HeatmapDisplayText.FormatCount(FormatCompact(repositoryImpact.TotalRepositories), repositoryImpact.TotalRepositories, "public repository", "public repositories")
+                + " across "
+                + HeatmapDisplayText.FormatCount(repositoryImpact.Owners.Count, "owner scope", "owner scopes"),
                 repositoryImpact.TotalStars > 0 ? 1d : 0d,
                 "#9be9a8"),
             new UsageTelemetryOverviewSectionMetric(
@@ -241,12 +245,12 @@ internal static class GitHubOverviewSectionProjector {
                 "top-repository",
                 "Top Repository",
                 topRepository?.NameWithOwner ?? "n/a",
-                topRepository is null ? null : FormatCompact(topRepository.Stars) + " stars · " + FormatCompact(topRepository.Forks) + " forks"),
+                topRepository is null ? null : FormatCompactStars(topRepository.Stars) + " · " + FormatCompactForks(topRepository.Forks)),
             new UsageTelemetryOverviewCard(
                 "top-language",
                 "Top Language",
                 topLanguage?.Language ?? "n/a",
-                topLanguage is null ? null : FormatCompact(topLanguage.Stars) + " stars across " + FormatCompact(topLanguage.RepositoryCount) + " repo(s)"),
+                topLanguage is null ? null : FormatCompactStars(topLanguage.Stars) + " across " + HeatmapDisplayText.FormatCount(FormatCompact(topLanguage.RepositoryCount), topLanguage.RepositoryCount, "repository", "repositories")),
             new UsageTelemetryOverviewCard(
                 "owners",
                 "Owner Scope",
@@ -294,7 +298,7 @@ internal static class GitHubOverviewSectionProjector {
                 value: day.ContributionCount,
                 level: MapContributionLevel(day.ContributionLevel),
                 fillColor: day.Color,
-                tooltip: $"{day.Date:yyyy-MM-dd}\n{day.ContributionCount} contribution(s)",
+                tooltip: $"{day.Date:yyyy-MM-dd}\n{HeatmapDisplayText.FormatCount(day.ContributionCount, "contribution", "contributions")}",
                 breakdown: new Dictionary<string, double> { ["contributions"] = day.ContributionCount }))
             .ToArray();
 
@@ -389,7 +393,7 @@ internal static class GitHubOverviewSectionProjector {
         int activeWeeks,
         int weekCount) {
         if (summary.RepositoryContributions > 0) {
-            return BuildRepositoryFootprintSubtitle(summary) ?? FormatCompact(summary.RepositoryContributions) + " touched repo(s)";
+            return BuildRepositoryFootprintSubtitle(summary) ?? HeatmapDisplayText.FormatCount(FormatCompact(summary.RepositoryContributions), summary.RepositoryContributions, "touched repository", "touched repositories");
         }
 
         return FormatPercent(activeWeeks, weekCount) + " of week columns";
@@ -413,16 +417,16 @@ internal static class GitHubOverviewSectionProjector {
     private static string? BuildRepositoryFootprintSubtitle(GitHubContributionCollectionSummary summary) {
         var parts = new List<string>();
         if (summary.RepositoriesWithCommits > 0) {
-            parts.Add(summary.RepositoriesWithCommits.ToString(CultureInfo.InvariantCulture) + " commit repo(s)");
+            parts.Add(HeatmapDisplayText.FormatCount(summary.RepositoriesWithCommits, "repository with commits", "repositories with commits"));
         }
         if (summary.RepositoriesWithPullRequests > 0) {
-            parts.Add(summary.RepositoriesWithPullRequests.ToString(CultureInfo.InvariantCulture) + " PR repo(s)");
+            parts.Add(HeatmapDisplayText.FormatCount(summary.RepositoriesWithPullRequests, "repository with PRs", "repositories with PRs"));
         }
         if (summary.RepositoriesWithPullRequestReviews > 0) {
-            parts.Add(summary.RepositoriesWithPullRequestReviews.ToString(CultureInfo.InvariantCulture) + " review repo(s)");
+            parts.Add(HeatmapDisplayText.FormatCount(summary.RepositoriesWithPullRequestReviews, "repository with reviews", "repositories with reviews"));
         }
         if (summary.RepositoriesWithIssues > 0) {
-            parts.Add(summary.RepositoriesWithIssues.ToString(CultureInfo.InvariantCulture) + " issue repo(s)");
+            parts.Add(HeatmapDisplayText.FormatCount(summary.RepositoriesWithIssues, "repository with issues", "repositories with issues"));
         }
 
         return parts.Count == 0
@@ -474,14 +478,14 @@ internal static class GitHubOverviewSectionProjector {
         var rows = new[] {
             new UsageTelemetryOverviewInsightRow(
                 label: currentSnapshot.Label,
-                value: FormatCompact(currentSnapshot.TotalContributions) + " contributions",
-                subtitle: currentSnapshot.ActiveDays.ToString(CultureInfo.InvariantCulture) + " active day(s) · longest streak " + currentSnapshot.LongestStreakDays.ToString(CultureInfo.InvariantCulture) + " day(s)"
+                value: FormatCompactContributions(currentSnapshot.TotalContributions),
+                subtitle: HeatmapDisplayText.FormatActiveDays(currentSnapshot.ActiveDays) + " · longest streak " + HeatmapDisplayText.FormatDays(currentSnapshot.LongestStreakDays)
                           + (currentSnapshot.PeakDate is null ? string.Empty : " · peak " + currentSnapshot.PeakDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 ratio: currentSnapshot.TotalContributions / (double)peakBase),
             new UsageTelemetryOverviewInsightRow(
                 label: previousSnapshot.Label,
-                value: FormatCompact(previousSnapshot.TotalContributions) + " contributions",
-                subtitle: previousSnapshot.ActiveDays.ToString(CultureInfo.InvariantCulture) + " active day(s) · longest streak " + previousSnapshot.LongestStreakDays.ToString(CultureInfo.InvariantCulture) + " day(s)"
+                value: FormatCompactContributions(previousSnapshot.TotalContributions),
+                subtitle: HeatmapDisplayText.FormatActiveDays(previousSnapshot.ActiveDays) + " · longest streak " + HeatmapDisplayText.FormatDays(previousSnapshot.LongestStreakDays)
                           + (previousSnapshot.PeakDate is null ? string.Empty : " · peak " + previousSnapshot.PeakDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 ratio: previousSnapshot.TotalContributions / (double)peakBase)
         };
@@ -517,8 +521,8 @@ internal static class GitHubOverviewSectionProjector {
             if (personalOwner is not null) {
                 splitRows.Add(new UsageTelemetryOverviewInsightRow(
                     label: "Personal scope",
-                    value: FormatCompact(personalOwner.TotalStars) + " stars",
-                    subtitle: personalOwner.Owner + " · " + FormatCompact(personalOwner.RepositoryCount) + " repo(s) · " + FormatCompact(personalOwner.TotalForks) + " forks",
+                    value: FormatCompactStars(personalOwner.TotalStars),
+                    subtitle: personalOwner.Owner + " · " + HeatmapDisplayText.FormatCount(FormatCompact(personalOwner.RepositoryCount), personalOwner.RepositoryCount, "repository", "repositories") + " · " + FormatCompactForks(personalOwner.TotalForks),
                     ratio: personalOwner.TotalStars / (double)totalStars));
             }
 
@@ -527,17 +531,17 @@ internal static class GitHubOverviewSectionProjector {
                 var orgRepos = orgOwners.Sum(static owner => owner.RepositoryCount);
                 var orgForks = orgOwners.Sum(static owner => owner.TotalForks);
                 splitRows.Add(new UsageTelemetryOverviewInsightRow(
-                    label: "Org / owner scope",
-                    value: FormatCompact(orgStars) + " stars",
-                    subtitle: string.Join(", ", orgOwners.Select(static owner => owner.Owner)) + " · " + FormatCompact(orgRepos) + " repo(s) · " + FormatCompact(orgForks) + " forks",
+                    label: "Correlated owner scope",
+                    value: FormatCompactStars(orgStars),
+                    subtitle: string.Join(", ", orgOwners.Select(static owner => owner.Owner)) + " · " + HeatmapDisplayText.FormatCount(FormatCompact(orgRepos), orgRepos, "repository", "repositories") + " · " + FormatCompactForks(orgForks),
                     ratio: orgStars / (double)totalStars));
             }
 
             sections.Add(new UsageTelemetryOverviewInsightSection(
                 key: "github-scope-split",
-                title: "Profile vs owner scope",
+                title: "Profile vs correlated scope",
                 headline: FormatCompact(repositoryImpact.TotalStars) + " stars across selected scope",
-                note: "Personal profile activity and owned-repository impact are tracked separately here.",
+                note: "Personal profile activity and correlated owner-repository impact are tracked separately here.",
                 rows: splitRows));
         }
 
@@ -547,8 +551,8 @@ internal static class GitHubOverviewSectionProjector {
             .ThenBy(static owner => owner.Owner, StringComparer.OrdinalIgnoreCase)
             .Select(owner => new UsageTelemetryOverviewInsightRow(
                 label: owner.Owner,
-                value: FormatCompact(owner.TotalStars) + " stars",
-                subtitle: FormatCompact(owner.RepositoryCount) + " repo(s) · " + FormatCompact(owner.TotalForks) + " forks" +
+                value: FormatCompactStars(owner.TotalStars),
+                subtitle: HeatmapDisplayText.FormatCount(FormatCompact(owner.RepositoryCount), owner.RepositoryCount, "repository", "repositories") + " · " + FormatCompactForks(owner.TotalForks) +
                           (owner.TopRepository is null ? string.Empty : " · Top: " + owner.TopRepository.NameWithOwner),
                 ratio: owner.TotalStars / (double)ownerTotal))
             .ToArray();
@@ -556,8 +560,10 @@ internal static class GitHubOverviewSectionProjector {
         sections.Add(new UsageTelemetryOverviewInsightSection(
             key: "github-owner-impact",
             title: "Owned repository impact",
-            headline: FormatCompact(repositoryImpact.TotalStars) + " stars · " + FormatCompact(repositoryImpact.TotalForks) + " forks",
-            note: FormatCompact(repositoryImpact.TotalRepositories) + " public repo(s) across " + repositoryImpact.Owners.Count.ToString(CultureInfo.InvariantCulture) + " owner scope(s)",
+            headline: FormatCompactStars(repositoryImpact.TotalStars) + " · " + FormatCompactForks(repositoryImpact.TotalForks),
+            note: HeatmapDisplayText.FormatCount(FormatCompact(repositoryImpact.TotalRepositories), repositoryImpact.TotalRepositories, "public repository", "public repositories")
+                  + " across "
+                  + HeatmapDisplayText.FormatCount(repositoryImpact.Owners.Count, "owner scope", "owner scopes"),
             rows: ownerRows));
 
         foreach (var owner in repositoryImpact.Owners
@@ -571,8 +577,8 @@ internal static class GitHubOverviewSectionProjector {
                 .Take(6)
                 .Select(repo => new UsageTelemetryOverviewInsightRow(
                     label: repo.NameWithOwner,
-                    value: FormatCompact(repo.Stars) + " stars",
-                    subtitle: FormatCompact(repo.Forks) + " forks" +
+                    value: FormatCompactStars(repo.Stars),
+                    subtitle: FormatCompactForks(repo.Forks) +
                               (string.IsNullOrWhiteSpace(repo.PrimaryLanguage) ? string.Empty : " · " + repo.PrimaryLanguage) +
                               (TryParseGitHubTimestamp(repo.PushedAt) is { } pushedAt
                                   ? " · pushed " + pushedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
@@ -584,8 +590,8 @@ internal static class GitHubOverviewSectionProjector {
             sections.Add(new UsageTelemetryOverviewInsightSection(
                 key: "github-owner-" + SanitizeKey(owner.Owner),
                 title: owner.Owner,
-                headline: FormatCompact(owner.TotalStars) + " stars · " + FormatCompact(owner.TotalForks) + " forks",
-                note: FormatCompact(owner.RepositoryCount) + " public repo(s) in this owner scope",
+                headline: FormatCompactStars(owner.TotalStars) + " · " + FormatCompactForks(owner.TotalForks),
+                note: HeatmapDisplayText.FormatCount(FormatCompact(owner.RepositoryCount), owner.RepositoryCount, "public repository", "public repositories") + " in this owner scope",
                 rows: ownerRepositoryRows));
         }
 
@@ -613,8 +619,8 @@ internal static class GitHubOverviewSectionProjector {
                 note: "Ranked by stars across the selected owner scope.",
                 rows: languageRows.Select(entry => new UsageTelemetryOverviewInsightRow(
                     label: entry.Language,
-                    value: FormatCompact(entry.Stars) + " stars",
-                    subtitle: FormatCompact(entry.RepositoryCount) + " repo(s) · " + FormatCompact(entry.Forks) + " forks",
+                    value: FormatCompactStars(entry.Stars),
+                    subtitle: HeatmapDisplayText.FormatCount(FormatCompact(entry.RepositoryCount), entry.RepositoryCount, "repository", "repositories") + " · " + FormatCompactForks(entry.Forks),
                     ratio: entry.Stars / (double)topLanguageTotal)).ToArray()));
         }
 
@@ -641,7 +647,7 @@ internal static class GitHubOverviewSectionProjector {
                     label: entry.Repository.NameWithOwner,
                     value: entry.ParsedPushedAt!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                     subtitle: BuildRecentRepositorySubtitle(entry.Repository, entry.ParsedPushedAt) +
-                              " · " + FormatCompact(entry.Repository.Stars) + " stars · " + FormatCompact(entry.Repository.Forks) + " forks" +
+                              " · " + FormatCompactStars(entry.Repository.Stars) + " · " + FormatCompactForks(entry.Repository.Forks) +
                               (string.IsNullOrWhiteSpace(entry.Repository.PrimaryLanguage) ? string.Empty : " · " + entry.Repository.PrimaryLanguage),
                     ratio: recentRepositories.Length <= 1 ? 1d : 1d - (Array.IndexOf(recentRepositories, entry) / (double)Math.Max(1, recentRepositories.Length - 1)),
                     href: entry.Repository.Url)).ToArray()));
@@ -651,8 +657,8 @@ internal static class GitHubOverviewSectionProjector {
         var topRepositoryRows = repositoryImpact.TopRepositories
             .Select(repo => new UsageTelemetryOverviewInsightRow(
                 label: repo.NameWithOwner,
-                value: FormatCompact(repo.Stars) + " stars",
-                subtitle: FormatCompact(repo.Forks) + " forks" +
+                value: FormatCompactStars(repo.Stars),
+                subtitle: FormatCompactForks(repo.Forks) +
                           (string.IsNullOrWhiteSpace(repo.PrimaryLanguage) ? string.Empty : " · " + repo.PrimaryLanguage),
                 ratio: repo.Stars / (double)topRepositoryTotal,
                 href: repo.Url))
@@ -682,8 +688,8 @@ internal static class GitHubOverviewSectionProjector {
                 note: "Ranked by forks across the selected owner scope",
                 rows: topRepositoriesByForks.Select(repo => new UsageTelemetryOverviewInsightRow(
                     label: repo.NameWithOwner,
-                    value: FormatCompact(repo.Forks) + " forks",
-                    subtitle: FormatCompact(repo.Stars) + " stars" +
+                    value: FormatCompactForks(repo.Forks),
+                    subtitle: FormatCompactStars(repo.Stars) +
                               (string.IsNullOrWhiteSpace(repo.PrimaryLanguage) ? string.Empty : " · " + repo.PrimaryLanguage) +
                               (TryParseGitHubTimestamp(repo.PushedAt) is { } pushedAt ? " · pushed " + pushedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : string.Empty),
                     ratio: repo.Forks / (double)maxForks,
@@ -713,7 +719,7 @@ internal static class GitHubOverviewSectionProjector {
                 rows: topRepositoriesByHealth.Select(entry => new UsageTelemetryOverviewInsightRow(
                     label: entry.Repository.NameWithOwner,
                     value: BuildRecentRepositorySubtitle(entry.Repository, entry.ParsedPushedAt),
-                    subtitle: FormatCompact(entry.Repository.Stars) + " stars · " + FormatCompact(entry.Repository.Forks) + " forks" +
+                    subtitle: FormatCompactStars(entry.Repository.Stars) + " · " + FormatCompactForks(entry.Repository.Forks) +
                               (entry.ParsedPushedAt.HasValue ? " · pushed " + entry.ParsedPushedAt.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : string.Empty),
                     ratio: entry.HealthScore / maxHealth,
                     href: entry.Repository.Url)).ToArray()));
@@ -803,7 +809,10 @@ internal static class GitHubOverviewSectionProjector {
             : null;
     }
 
-    private static string? BuildGitHubNote(GitHubContributionCalendar calendar, GitHubRepositoryImpactSummary? repositoryImpact) {
+    private static string? BuildGitHubNote(
+        GitHubContributionCalendar calendar,
+        GitHubRepositoryImpactSummary? repositoryImpact,
+        IReadOnlyList<string>? autoCorrelatedOwners) {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(calendar.ProfileUrl)) {
             parts.Add(calendar.ProfileUrl!);
@@ -811,7 +820,10 @@ internal static class GitHubOverviewSectionProjector {
 
         if (repositoryImpact is not null && repositoryImpact.Owners.Count > 0) {
             parts.Add("Owner scope: " + string.Join(", ", repositoryImpact.Owners.Select(static owner => owner.Owner)));
-            parts.Add(FormatCompact(repositoryImpact.TotalStars) + " stars across " + FormatCompact(repositoryImpact.TotalRepositories) + " public repo(s)");
+            parts.Add(FormatCompact(repositoryImpact.TotalStars) + " stars across " + HeatmapDisplayText.FormatCount(FormatCompact(repositoryImpact.TotalRepositories), repositoryImpact.TotalRepositories, "public repository", "public repositories"));
+        }
+        if (autoCorrelatedOwners is not null && autoCorrelatedOwners.Count > 0) {
+            parts.Add("Auto-correlated owners: " + string.Join(", ", autoCorrelatedOwners));
         }
 
         var repositoryFootprint = BuildRepositoryFootprintSubtitle(calendar.Summary);
@@ -820,7 +832,7 @@ internal static class GitHubOverviewSectionProjector {
         }
 
         if (calendar.Summary.RestrictedContributions > 0) {
-            parts.Add(FormatCompact(calendar.Summary.RestrictedContributions) + " restricted contribution(s)");
+            parts.Add(HeatmapDisplayText.FormatCount(FormatCompact(calendar.Summary.RestrictedContributions), calendar.Summary.RestrictedContributions, "restricted contribution", "restricted contributions"));
         }
 
         return parts.Count == 0 ? null : string.Join(" · ", parts);
@@ -861,7 +873,9 @@ internal static class GitHubOverviewSectionProjector {
         return values;
     }
 
-    private static (int LongestStreakDays, int CurrentStreakDays) ComputeStreaks(IReadOnlyList<GitHubContributionDay> days) {
+    private static (int LongestStreakDays, int CurrentStreakDays) ComputeStreaks(
+        IReadOnlyList<GitHubContributionDay> days,
+        DateTime? referenceDayUtc = null) {
         var activeDates = days
             .Where(static day => day.ContributionCount > 0)
             .Select(static day => day.Date.Date)
@@ -900,7 +914,8 @@ internal static class GitHubOverviewSectionProjector {
         }
 
         var latestActiveDay = activeDates[activeDates.Length - 1];
-        var currentStreak = latestActiveDay == DateTime.UtcNow.Date ? trailing : 0;
+        var streakBoundary = (referenceDayUtc ?? days.LastOrDefault()?.Date ?? latestActiveDay).Date;
+        var currentStreak = latestActiveDay == streakBoundary ? trailing : 0;
         return (longest, currentStreak);
     }
 
@@ -920,6 +935,18 @@ internal static class GitHubOverviewSectionProjector {
             return (value / 1_000d).ToString(value >= 10_000L ? "0.#" : "0.##", CultureInfo.InvariantCulture) + "K";
         }
         return value.ToString("0", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCompactStars(long value) {
+        return HeatmapDisplayText.FormatCount(FormatCompact(value), value, "star", "stars");
+    }
+
+    private static string FormatCompactForks(long value) {
+        return HeatmapDisplayText.FormatCount(FormatCompact(value), value, "fork", "forks");
+    }
+
+    private static string FormatCompactContributions(long value) {
+        return HeatmapDisplayText.FormatCount(FormatCompact(value), value, "contribution", "contributions");
     }
 
     private static string FormatPercent(int value, int total) {

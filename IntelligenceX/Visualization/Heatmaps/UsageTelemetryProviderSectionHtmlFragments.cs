@@ -62,7 +62,7 @@ internal static class UsageTelemetryProviderSectionHtmlFragments {
         sb.AppendLine("      <div class=\"provider-monthly\">");
         sb.AppendLine("        <div class=\"provider-monthly-header\">");
         sb.Append("          <div class=\"provider-monthly-title\">").Append(Html(section.MonthlyUsageTitle)).AppendLine("</div>");
-        sb.Append("          <div class=\"provider-monthly-copy\">").Append(Html(months.Count.ToString(CultureInfo.InvariantCulture))).AppendLine(" month window</div>");
+        sb.Append("          <div class=\"provider-monthly-copy\">").Append(Html(HeatmapDisplayText.FormatTrailingMonthWindow(months.Count))).AppendLine("</div>");
         sb.AppendLine("        </div>");
         sb.AppendLine("        <div class=\"provider-monthly-grid\">");
         foreach (var month in months) {
@@ -71,7 +71,7 @@ internal static class UsageTelemetryProviderSectionHtmlFragments {
             var monthColor = month.TotalValue <= 0L ? "#dfdfdf" : accentColor + alpha;
             var title = $"{month.Key}: {FormatCompact(month.TotalValue)} {section.MonthlyUsageUnitsLabel}";
             if (month.ActiveDays > 0) {
-                title += $" across {month.ActiveDays} active day(s)";
+                title += " across " + HeatmapDisplayText.FormatActiveDays(month.ActiveDays);
             }
 
             sb.Append("          <div class=\"provider-month\" title=\"").Append(Html(title)).AppendLine("\">");

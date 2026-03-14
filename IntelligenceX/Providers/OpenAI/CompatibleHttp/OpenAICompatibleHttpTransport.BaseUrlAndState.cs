@@ -54,16 +54,7 @@ internal sealed partial class OpenAICompatibleHttpTransport {
     }
 
     private static bool IsLikelyLmStudioEndpoint(Uri apiBase) {
-        if (apiBase is null) {
-            return false;
-        }
-
-        if (apiBase.Port == 1234) {
-            return true;
-        }
-
-        var host = apiBase.Host ?? string.Empty;
-        return host.IndexOf("lmstudio", StringComparison.OrdinalIgnoreCase) >= 0;
+        return OpenAICompatibleHttpProviderDetector.IsLikelyLmStudioEndpoint(apiBase);
     }
 
     private static Task<string> ReadAsStringAsync(HttpContent content, CancellationToken cancellationToken) {

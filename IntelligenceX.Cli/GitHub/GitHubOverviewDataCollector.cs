@@ -10,18 +10,22 @@ internal sealed class GitHubOverviewDataCollector {
     private const int TrailingDays = 365;
     private readonly GitHubContributionCalendarClient _calendarClient;
     private readonly Func<IReadOnlyList<string>, Task<GitHubRepositoryImpactSummary>> _queryRepositoryImpactAsync;
+    private readonly Func<string, Task<IReadOnlyList<string>>> _resolveCorrelatedOwnersAsync;
 
     public GitHubOverviewDataCollector()
         : this(
             new GitHubContributionCalendarClient(),
-            owners => new GitHubRepositoryImpactClient().GetRepositoryImpactAsync(owners)) {
+            owners => new GitHubRepositoryImpactClient().GetRepositoryImpactAsync(owners),
+            login => new GitHubOwnerScopeResolver().ResolveAdministeredOwnersAsync(login)) {
     }
 
     internal GitHubOverviewDataCollector(
         GitHubContributionCalendarClient calendarClient,
-        Func<IReadOnlyList<string>, Task<GitHubRepositoryImpactSummary>> queryRepositoryImpactAsync) {
+        Func<IReadOnlyList<string>, Task<GitHubRepositoryImpactSummary>> queryRepositoryImpactAsync,
+        Func<string, Task<IReadOnlyList<string>>>? resolveCorrelatedOwnersAsync = null) {
         _calendarClient = calendarClient ?? throw new ArgumentNullException(nameof(calendarClient));
         _queryRepositoryImpactAsync = queryRepositoryImpactAsync ?? throw new ArgumentNullException(nameof(queryRepositoryImpactAsync));
+        _resolveCorrelatedOwnersAsync = resolveCorrelatedOwnersAsync ?? (_ => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>()));
     }
 
     public async Task<GitHubOverviewDataSnapshot> CollectAsync(string login, IReadOnlyList<string>? repositoryOwners = null) {
@@ -43,7 +47,13 @@ internal sealed class GitHubOverviewDataCollector {
             .GetUserContributionCalendarAsync(trimmedLogin, previousYearStartUtc, previousYearEndUtc)
             .ConfigureAwait(false);
 
-        var owners = NormalizeOwners(trimmedLogin, repositoryOwners);
+        var explicitlyRequestedOwners = (repositoryOwners ?? Array.Empty<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var correlatedOwners = await ResolveCorrelatedOwnersAsync(trimmedLogin, explicitlyRequestedOwners).ConfigureAwait(false);
+        var owners = NormalizeOwners(trimmedLogin, explicitlyRequestedOwners, correlatedOwners);
         var repositoryImpact = owners.Count == 0
             ? null
             : await _queryRepositoryImpactAsync(owners).ConfigureAwait(false);
@@ -56,11 +66,19 @@ internal sealed class GitHubOverviewDataCollector {
             PreviousYearCalendar: previousYearCalendar,
             RepositoryImpact: repositoryImpact,
             RepositoryOwners: owners,
+            AutoCorrelatedOwners: correlatedOwners,
             OwnerImpactOnly: false);
     }
 
     public async Task<GitHubOverviewDataSnapshot> CollectOwnerImpactOnlyAsync(IReadOnlyList<string> repositoryOwners) {
-        var owners = NormalizeOwners(login: null, repositoryOwners);
+        var owners = NormalizeOwners(
+            login: null,
+            explicitlyRequestedOwners: (repositoryOwners ?? Array.Empty<string>())
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Select(static value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            correlatedOwners: Array.Empty<string>());
         if (owners.Count == 0) {
             throw new InvalidOperationException("At least one GitHub owner is required.");
         }
@@ -77,19 +95,43 @@ internal sealed class GitHubOverviewDataCollector {
             PreviousYearCalendar: null,
             RepositoryImpact: repositoryImpact,
             RepositoryOwners: owners,
+            AutoCorrelatedOwners: Array.Empty<string>(),
             OwnerImpactOnly: true);
     }
 
-    private static IReadOnlyList<string> NormalizeOwners(string? login, IReadOnlyList<string>? repositoryOwners) {
-        var values = (repositoryOwners ?? Array.Empty<string>())
+    private async Task<IReadOnlyList<string>> ResolveCorrelatedOwnersAsync(string login, IReadOnlyList<string> explicitlyRequestedOwners) {
+        var correlatedOwners = await _resolveCorrelatedOwnersAsync(login.Trim()).ConfigureAwait(false);
+        var excludedOwners = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+            login.Trim()
+        };
+
+        foreach (var owner in explicitlyRequestedOwners ?? Array.Empty<string>()) {
+            excludedOwners.Add(owner);
+        }
+
+        return correlatedOwners
             .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Select(static value => value.Trim());
+            .Select(static value => value.Trim())
+            .Where(value => !excludedOwners.Contains(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> NormalizeOwners(
+        string? login,
+        IReadOnlyList<string> explicitlyRequestedOwners,
+        IReadOnlyList<string> correlatedOwners) {
+        IEnumerable<string> values = explicitlyRequestedOwners ?? Array.Empty<string>();
 
         if (!string.IsNullOrWhiteSpace(login)) {
             values = values.Append(login.Trim());
         }
 
+        values = values.Concat(correlatedOwners ?? Array.Empty<string>());
+
         return values
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }

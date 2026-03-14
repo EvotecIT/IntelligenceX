@@ -44,8 +44,8 @@ internal static partial class UsageTelemetryProviderSectionHtmlRenderer {
         } else {
             AppendMiniCard(sb, "Most Used Model", section.MostUsedModel);
             AppendMiniCard(sb, "Recent Use (Last 30 Days)", section.RecentModel);
-            AppendMiniMetricCard(sb, "Longest Streak", section.LongestStreakDays + " days");
-            AppendMiniMetricCard(sb, "Current Streak", section.CurrentStreakDays + " days");
+            AppendMiniMetricCard(sb, "Longest Streak", HeatmapDisplayText.FormatDays(section.LongestStreakDays));
+            AppendMiniMetricCard(sb, "Current Streak", HeatmapDisplayText.FormatDays(section.CurrentStreakDays));
         }
         sb.AppendLine("            </div>");
 
@@ -135,7 +135,7 @@ internal static partial class UsageTelemetryProviderSectionHtmlRenderer {
         sb.Append("            <img src=\"").Append(Html(section.Key)).Append(".light.svg\" data-light-src=\"").Append(Html(section.Key)).Append(".light.svg\" data-dark-src=\"").Append(Html(section.Key)).Append(".dark.svg\" alt=\"").Append(Html(model.Title)).AppendLine(" usage heatmap\">");
         sb.AppendLine("          </figure>");
         if (!string.IsNullOrWhiteSpace(section.Note)) {
-            sb.Append("          <div class=\"provider-note\">").Append(Html(section.Note!)).AppendLine("</div>");
+            AppendProviderNote(sb, section.Note!);
         }
         AppendProviderLegend(sb, section.ProviderId);
         sb.AppendLine("        </div>");
@@ -178,5 +178,26 @@ internal static partial class UsageTelemetryProviderSectionHtmlRenderer {
             sb.AppendLine("          </div>");
         }
         sb.AppendLine("        </div>");
+    }
+
+    private static void AppendProviderNote(StringBuilder sb, string note) {
+        var segments = note
+            .Split(new[] { " · " }, System.StringSplitOptions.RemoveEmptyEntries)
+            .Select(static part => part.Trim())
+            .Where(static part => !string.IsNullOrWhiteSpace(part))
+            .ToArray();
+
+        if (segments.Length <= 1) {
+            sb.Append("          <div class=\"provider-note\">").Append(Html(note)).AppendLine("</div>");
+            return;
+        }
+
+        sb.AppendLine("          <div class=\"provider-note provider-note-chips\">");
+        foreach (var segment in segments) {
+            sb.Append("            <span class=\"provider-note-chip\">")
+                .Append(Html(segment))
+                .AppendLine("</span>");
+        }
+        sb.AppendLine("          </div>");
     }
 }

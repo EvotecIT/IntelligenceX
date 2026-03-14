@@ -26,6 +26,7 @@ public sealed class InternalIxUsageRecorder : IDisposable {
     private readonly IntelligenceXClient _client;
     private readonly IUsageEventStore _usageEventStore;
     private readonly SourceRootRecord _sourceRoot;
+    private readonly string _providerId;
     private readonly string? _providerAccountId;
     private readonly string? _accountLabel;
     private readonly string? _machineId;
@@ -37,6 +38,7 @@ public sealed class InternalIxUsageRecorder : IDisposable {
         IntelligenceXClient client,
         ISourceRootStore sourceRootStore,
         IUsageEventStore usageEventStore,
+        string? providerId = null,
         string? machineId = null,
         string? accountLabel = null,
         string? providerAccountId = null,
@@ -48,13 +50,14 @@ public sealed class InternalIxUsageRecorder : IDisposable {
         _usageEventStore = usageEventStore ?? throw new ArgumentNullException(nameof(usageEventStore));
 
         _machineId = NormalizeOptional(machineId) ?? ResolveMachineId();
+        _providerId = NormalizeOptional(providerId) ?? ResolveTelemetryProviderId(_client.TransportKind);
         _accountLabel = NormalizeOptional(accountLabel);
         _providerAccountId = NormalizeOptional(providerAccountId);
 
-        var path = NormalizeOptional(sourcePath) ?? BuildDefaultSourcePath(_machineId);
+        var path = NormalizeOptional(sourcePath) ?? BuildDefaultSourcePath(_providerId, _machineId);
         _sourceRoot = new SourceRootRecord(
-            SourceRootRecord.CreateStableId(StableProviderId, UsageSourceKind.InternalIx, path),
-            StableProviderId,
+            SourceRootRecord.CreateStableId(_providerId, UsageSourceKind.InternalIx, path),
+            _providerId,
             UsageSourceKind.InternalIx,
             path) {
             MachineLabel = _machineId,
@@ -86,12 +89,12 @@ public sealed class InternalIxUsageRecorder : IDisposable {
         var responseId = NormalizeOptional(turn.ResponseId);
         var turnId = NormalizeOptional(turn.Id) ?? responseId ?? "turn";
         var threadId = NormalizeOptional(args.ThreadId) ?? "thread";
-        var eventIdentity = StableProviderId + "|" + threadId + "|" + turnId + "|" + (responseId ?? string.Empty);
+        var eventIdentity = _providerId + "|" + threadId + "|" + turnId + "|" + (responseId ?? string.Empty);
         var rawIdentity = eventIdentity + "|" + args.CompletedAtUtc.ToUniversalTime().ToString("O") + "|" + surface + "|" + args.Model;
 
         var record = new UsageEventRecord(
             "ev_" + UsageTelemetryIdentity.ComputeStableHash(eventIdentity, 16),
-            StableProviderId,
+            _providerId,
             StableAdapterId,
             _sourceRoot.Id,
             args.CompletedAtUtc) {
@@ -133,9 +136,16 @@ public sealed class InternalIxUsageRecorder : IDisposable {
         return (long)Math.Round(milliseconds, MidpointRounding.AwayFromZero);
     }
 
-    private static string BuildDefaultSourcePath(string? machineId) {
+    private static string BuildDefaultSourcePath(string providerId, string? machineId) {
         var machineSegment = NormalizeOptional(machineId) ?? "local";
-        return "ix://internal/" + machineSegment;
+        return providerId + "://internal/" + machineSegment;
+    }
+
+    private static string ResolveTelemetryProviderId(OpenAITransportKind transportKind) {
+        return transportKind switch {
+            OpenAITransportKind.CopilotCli => "copilot",
+            _ => StableProviderId
+        };
     }
 
     private static string ResolveMachineId() {

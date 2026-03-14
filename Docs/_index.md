@@ -61,6 +61,7 @@ Build on top of IntelligenceX with the CLI, the .NET library, the PowerShell mod
 - [CLI Overview](/docs/cli/overview/)
 - [CLI Quick Start](/docs/cli/quickstart/)
 - [CLI Install](/docs/cli/install/)
+- [Usage Reporting](/docs/cli/usage-reporting/)
 
 ### .NET Library
 

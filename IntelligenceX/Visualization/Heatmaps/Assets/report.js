@@ -9,6 +9,13 @@
   const ixTabs = document.querySelectorAll('.supporting-tab');
   const ixPanels = document.querySelectorAll('.supporting-panel');
   const ixModes = document.querySelectorAll('.supporting-mode');
+  const ixSupportingModeController = window.IntelligenceXReportRuntime
+    ? window.IntelligenceXReportRuntime.createStoredModeController({
+      storageKey: 'ix-usage-report-supporting-mode',
+      defaultMode: 'preview',
+      compactMode: 'summary'
+    })
+    : null;
   if (window.IntelligenceXReportRuntime) {
     window.IntelligenceXReportRuntime.initThemeController({
       themeKey: ixBootstrap.themeKey || 'ix-usage-report-theme',
@@ -107,6 +114,13 @@
     });
   });
   ixModes.forEach(button => {
-    button.addEventListener('click', () => ixApplyMode(button.getAttribute('data-mode') || 'preview'));
+    button.addEventListener('click', () => {
+      const mode = button.getAttribute('data-mode') || 'preview';
+      ixApplyMode(mode);
+      if (ixSupportingModeController) {
+        ixSupportingModeController.writeStoredMode(mode);
+      }
+    });
   });
+  ixApplyMode(ixSupportingModeController ? ixSupportingModeController.resolveInitialMode() : 'preview');
 })();

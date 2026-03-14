@@ -239,7 +239,7 @@ internal static partial class Program {
 
             AssertEqual(0, jsonExit, "telemetry overview json exit");
             AssertContainsText(jsonStdout, "\"title\":\"Usage Overview\"", "telemetry overview json title");
-            AssertContainsText(jsonStdout, "\"subtitle\":\"person: Przemek | 2000 tokens | 2 active day(s) | peak 2026-03-10 (1200)\"", "telemetry overview json subtitle");
+            AssertContainsText(jsonStdout, "\"subtitle\":\"person: Przemek · 2000 tokens · 2 active days · peak 2026-03-10 (1200)\"", "telemetry overview json subtitle");
             AssertContainsText(jsonStdout, "\"key\":\"total\"", "telemetry overview json card");
             AssertContainsText(jsonStdout, "\"key\":\"surface\"", "telemetry overview json heatmap");
             AssertContainsText(jsonStdout, "\"providerSections\":[", "telemetry overview json provider sections");
@@ -349,6 +349,44 @@ internal static partial class Program {
             AssertEqual(string.Empty, stderr, "telemetry report recovered path stderr");
             AssertEqual(true, File.Exists(Path.Combine(exportDir, "index.html")), "telemetry report recovered path html");
             AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "index.html")), "Codex", "telemetry report recovered path codex section");
+        } finally {
+            TryDeleteUsageTelemetryImportTempDirectory(tempDir);
+        }
+    }
+
+    private static void TestTelemetryUsageReportSupportsAdHocLmStudioPath() {
+        var tempDir = CreateUsageTelemetryImportTempDirectory();
+        try {
+            var lmStudioRoot = Path.Combine(tempDir, ".lmstudio");
+            var conversationsDir = Path.Combine(lmStudioRoot, "conversations");
+            var dbPath = Path.Combine(tempDir, "usage-report-lmstudio.db");
+            Directory.CreateDirectory(conversationsDir);
+
+            File.WriteAllText(
+                Path.Combine(conversationsDir, "1772555052644.conversation.json"),
+                SerializeLmStudioConversation(
+                    createdAt: 1772555052644L,
+                    assistantLastMessagedAt: 1772608820717L));
+
+            var exportDir = Path.Combine(tempDir, "report-lmstudio");
+            var (exit, stdout, stderr) = RunCliDispatchWithCapturedOutput(
+                new[] {
+                    "telemetry", "usage", "report",
+                    "--db", dbPath,
+                    "--provider", "lmstudio",
+                    "--path", lmStudioRoot,
+                    "--max-artifacts", "10",
+                    "--out-dir", exportDir
+                },
+                () => false,
+                _ => Task.FromResult(0));
+
+            AssertEqual(0, exit, "telemetry report lmstudio path exit");
+            AssertContainsText(stdout, exportDir, "telemetry report lmstudio path output");
+            AssertEqual(string.Empty, stderr, "telemetry report lmstudio path stderr");
+            AssertEqual(true, File.Exists(Path.Combine(exportDir, "index.html")), "telemetry report lmstudio path html");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "overview.json")), "\"providerId\":\"lmstudio\"", "telemetry report lmstudio provider");
+            AssertContainsText(File.ReadAllText(Path.Combine(exportDir, "overview.json")), "\"title\":\"LM Studio\"", "telemetry report lmstudio title");
         } finally {
             TryDeleteUsageTelemetryImportTempDirectory(tempDir);
         }

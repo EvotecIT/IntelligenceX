@@ -37,6 +37,12 @@
       "screenshot": "/assets/screenshots/showcase-web-setup.svg"
     },
     {
+      "title": "Usage Reporting",
+      "summary": "Generate polished usage bundles from Codex, Claude, LM Studio, Copilot CLI, and GitHub, with automatic coverage for current profiles, Windows.old restores, and WSL homes.",
+      "tags": ["CLI", "Reporting"],
+      "screenshot": "/assets/screenshots/showcase-web-setup.svg"
+    },
+    {
       "title": "Active Directory Tools",
       "summary": "Query and manage Active Directory users, groups, and computers through AI-powered natural language commands.",
       "tags": ["Tools", "Active Directory"],

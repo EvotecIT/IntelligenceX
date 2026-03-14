@@ -32,9 +32,7 @@ internal static class GitHubWrappedHtmlRenderer {
         sb.AppendLine("        <div class=\"eyebrow wrapped-label\">GitHub Wrapped</div>");
         sb.Append("        <h1>").Append(Html(page.Title)).AppendLine("</h1>");
         sb.Append("        <div class=\"subtitle\">").Append(Html(page.Subtitle)).AppendLine("</div>");
-        if (!string.IsNullOrWhiteSpace(page.Note)) {
-            sb.Append("        <div class=\"hero-copy\">").Append(Html(page.Note!)).AppendLine("</div>");
-        }
+        AppendHeroNote(sb, page.Note);
         sb.AppendLine("        <div class=\"hero-actions\">");
         sb.AppendLine("          <a class=\"hero-action wrapped-action\" href=\"provider-github.dark.svg\" target=\"_blank\" rel=\"noopener\">Open heatmap</a>");
         sb.AppendLine("          <a class=\"hero-action wrapped-action\" href=\"overview.json\" target=\"_blank\" rel=\"noopener\">Open bundle JSON</a>");
@@ -56,8 +54,8 @@ internal static class GitHubWrappedHtmlRenderer {
         sb.AppendLine("      <div class=\"hero-metrics\">");
         AppendStatCard(sb, page.Metrics.ElementAtOrDefault(0)?.Label ?? "Contributions", page.Metrics.ElementAtOrDefault(0)?.Value ?? "n/a", page.Metrics.ElementAtOrDefault(0)?.Subtitle);
         AppendStatCard(sb, "Most active month", FindSpotlightValue(page, "most-active-month", "n/a"), FindSpotlightSubtitle(page, "most-active-month"));
-        AppendStatCard(sb, "Longest Streak", page.LongestStreakDays + " days", FindSpotlightSubtitle(page, "longest-streak"));
-        AppendStatCard(sb, "Current Streak", page.CurrentStreakDays + " days", FindSpotlightSubtitle(page, "current-streak"));
+        AppendStatCard(sb, "Longest Streak", HeatmapDisplayText.FormatDays(page.LongestStreakDays), FindSpotlightSubtitle(page, "longest-streak"));
+        AppendStatCard(sb, "Current Streak", HeatmapDisplayText.FormatDays(page.CurrentStreakDays), FindSpotlightSubtitle(page, "current-streak"));
         sb.AppendLine("      </div>");
         sb.AppendLine("    </section>");
     }
@@ -75,7 +73,7 @@ internal static class GitHubWrappedHtmlRenderer {
         sb.AppendLine("      </article>");
 
         sb.AppendLine("      <div class=\"card-grid\">");
-        AppendMiniCard(sb, "Profile vs Owner Scope", page.ScopeSplit?.Headline ?? "Scope split", page.ScopeSplit?.Note);
+        AppendMiniCard(sb, "Profile vs Correlated Scope", page.ScopeSplit?.Headline ?? "Scope split", page.ScopeSplit?.Note);
         AppendMiniCard(sb, "Owned Repository Impact", page.OwnerImpact?.Headline ?? "No owned repository data", page.OwnerImpact?.Note);
         AppendMiniCard(sb, "Top Language", page.TopLanguages?.Headline ?? "n/a", page.TopLanguages?.Rows.FirstOrDefault()?.Subtitle);
         AppendMiniCard(sb, "Top Repository", page.TopRepositories?.Headline ?? "n/a", page.TopRepositories?.Rows.FirstOrDefault()?.Value);
@@ -116,6 +114,29 @@ internal static class GitHubWrappedHtmlRenderer {
             AppendInsightPanel(sb, languages, "Top languages");
         }
         sb.AppendLine("          </div>");
+        sb.AppendLine("        </div>");
+    }
+
+    private static void AppendHeroNote(StringBuilder sb, string? note) {
+        if (string.IsNullOrWhiteSpace(note)) {
+            return;
+        }
+
+        var parts = note!
+            .Split(new[] { " · " }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(static part => part.Trim())
+            .Where(static part => part.Length > 0)
+            .ToArray();
+
+        if (parts.Length <= 1) {
+            sb.Append("        <div class=\"hero-copy\">").Append(Html(note!)).AppendLine("</div>");
+            return;
+        }
+
+        sb.AppendLine("        <div class=\"hero-facts\" aria-label=\"GitHub wrapped scope summary\">");
+        foreach (var part in parts) {
+            sb.Append("          <span class=\"hero-fact wrapped-copy\">").Append(Html(part)).AppendLine("</span>");
+        }
         sb.AppendLine("        </div>");
     }
 
