@@ -149,35 +149,51 @@ internal static partial class TranscriptMarkdownNormalizer {
             return input ?? string.Empty;
         }
 
-        var newline = input.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        var pattern = "**Result" + newline;
-        var current = input;
+        var hasCrLf = input.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = input.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+        var rewritten = new List<string>(lines.Length);
+        var changed = false;
 
-        while (true) {
-            var index = current.IndexOf(pattern, StringComparison.Ordinal);
-            if (index < 0) {
-                return current;
+        for (var i = 0; i < lines.Length; i++) {
+            var current = lines[i] ?? string.Empty;
+            if (!string.Equals(current.Trim(), "**Result", StringComparison.Ordinal)) {
+                rewritten.Add(current);
+                continue;
             }
 
-            var closeIndex = current.IndexOf("**", index + pattern.Length, StringComparison.Ordinal);
-            if (closeIndex < 0) {
-                return current;
+            if (i + 1 >= lines.Length) {
+                rewritten.Add(current);
+                continue;
             }
 
-            var bodyStart = index + pattern.Length;
-            var body = current.Substring(bodyStart, closeIndex - bodyStart).Trim();
+            var next = lines[i + 1] ?? string.Empty;
+            var closeIndex = next.IndexOf("**", StringComparison.Ordinal);
+            if (closeIndex <= 0) {
+                rewritten.Add(current);
+                continue;
+            }
+
+            var body = next[..closeIndex].Trim();
             if (body.Length == 0) {
-                return current;
+                rewritten.Add(current);
+                continue;
             }
 
-            var tail = current[(closeIndex + 2)..].TrimStart();
-            if (tail.Length == 0) {
-                return current;
-            }
-
-            var prefix = current[..index];
-            current = prefix + "**Result:** " + body + " " + tail;
+            var suffix = next[(closeIndex + 2)..].TrimStart();
+            rewritten.Add(suffix.Length == 0
+                ? "**Result:** " + body
+                : "**Result:** " + body + " " + suffix);
+            changed = true;
+            i++;
         }
+
+        if (!changed) {
+            return input;
+        }
+
+        var rebuilt = string.Join("\n", rewritten);
+        return hasCrLf ? rebuilt.Replace("\n", "\r\n", StringComparison.Ordinal) : rebuilt;
     }
 
     private static string? FindNextNonBlankLine(string[] lines, int startIndex) {

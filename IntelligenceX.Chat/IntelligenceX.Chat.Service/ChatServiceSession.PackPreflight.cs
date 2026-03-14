@@ -514,9 +514,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         var names = new List<string>(values.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < values.Count; i++) {
             var normalized = (values[i] ?? string.Empty).Trim();
-            if (normalized.Length == 0 || names.Contains(normalized, StringComparer.OrdinalIgnoreCase)) {
+            if (normalized.Length == 0 || !seen.Add(normalized)) {
                 continue;
             }
 

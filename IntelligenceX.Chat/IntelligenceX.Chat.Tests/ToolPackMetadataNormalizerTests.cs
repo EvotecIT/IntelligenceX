@@ -19,12 +19,20 @@ public sealed class ToolPackMetadataNormalizerTests {
         Assert.Equal(expected, normalized);
     }
 
-    [Fact]
-    public void ResolveDisplayName_PrefersExplicitName_AndFallsBackToHumanFriendlyCanonicalLabel() {
-        Assert.Equal("Active Directory", ToolPackMetadataNormalizer.ResolveDisplayName("ad", " Active Directory "));
-        Assert.Equal("Active Directory", ToolPackMetadataNormalizer.ResolveDisplayName("ad", null));
-        Assert.Equal("TestimoX Analytics", ToolPackMetadataNormalizer.ResolveDisplayName("testimox_analytics", null));
-        Assert.Equal("Custom Pack", ToolPackMetadataNormalizer.ResolveDisplayName("custom_pack", null));
+    [Theory]
+    [InlineData("ad", " Active Directory ", "Active Directory")]
+    [InlineData("ad", null, "Active Directory")]
+    [InlineData("eventviewerx", null, "Event Log")]
+    [InlineData("mailozaurr", null, "Email")]
+    [InlineData("testimox_analytics", null, "TestimoX Analytics")]
+    [InlineData("custom_pack", null, "Custom Pack")]
+    public void ResolveDisplayName_PrefersExplicitName_AndFallsBackToHumanFriendlyCanonicalLabel(
+        string descriptorId,
+        string? fallbackName,
+        string expected) {
+        var displayName = ToolPackMetadataNormalizer.ResolveDisplayName(descriptorId, fallbackName);
+
+        Assert.Equal(expected, displayName);
     }
 
     [Theory]

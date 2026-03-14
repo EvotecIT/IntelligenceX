@@ -171,6 +171,50 @@ public sealed partial class TranscriptMarkdownNormalizerTests {
     }
 
     /// <summary>
+    /// Ensures broken two-line strong labels preserve surrounding paragraph boundaries instead of flattening the remaining transcript.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_RepairsBrokenTwoLineStrongLabelWithoutCollapsingFollowingParagraphs() {
+        var malformed = """
+                        Intro paragraph.
+
+                        **Result
+                        all 5 are healthy for directory access** with recommended LDAPS endpoints.
+
+                        Follow-up paragraph remains separate.
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Equal(
+            """
+            Intro paragraph.
+
+            **Result:** all 5 are healthy for directory access with recommended LDAPS endpoints.
+
+            Follow-up paragraph remains separate.
+            """,
+            fixedText);
+    }
+
+    /// <summary>
+    /// Ensures a broken two-line strong label without trailing inline prose is still repaired cleanly.
+    /// </summary>
+    [Fact]
+    public void TryRepairLegacyTranscript_RepairsBrokenTwoLineStrongLabelWithoutInlineSuffix() {
+        var malformed = """
+                        **Result
+                        all 5 are healthy for directory access**
+                        """;
+
+        var repaired = TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(malformed, out var fixedText);
+
+        Assert.True(repaired);
+        Assert.Equal("**Result:** all 5 are healthy for directory access", fixedText);
+    }
+
+    /// <summary>
     /// Ensures legitimate multiline bold content is preserved instead of being rewritten as a label artifact.
     /// </summary>
     [Fact]
