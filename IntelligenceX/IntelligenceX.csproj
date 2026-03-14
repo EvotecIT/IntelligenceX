@@ -50,4 +50,8 @@
     <ItemGroup>
         <EmbeddedResource Include="Visualization\Heatmaps\Assets\**\*.*" />
     </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="..\Shared\ToolPackIdentityCatalog.cs" Link="Tools\ToolPackIdentityCatalog.cs" />
+    </ItemGroup>
 </Project>
