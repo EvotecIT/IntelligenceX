@@ -87,4 +87,24 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
         Assert.Contains("<strong>359</strong>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("****359****", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures cached-evidence outcome bodies use the same shared preparation seam as normal transcript content.
+    /// </summary>
+    [Fact]
+    public void OutcomeDetailPreparation_ReusesSharedTranscriptPreparationContract() {
+        const string detail = """
+            ix:cached-tool-evidence:v1
+
+            Recent evidence:
+            - eventlog_top_events: ### Top 30 recent events (preview)
+            """;
+
+        var prepared = TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(detail)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", prepared, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("- eventlog_top_events:", prepared, StringComparison.Ordinal);
+        Assert.Contains("### Top 30 recent events (preview)", prepared, StringComparison.Ordinal);
+    }
 }

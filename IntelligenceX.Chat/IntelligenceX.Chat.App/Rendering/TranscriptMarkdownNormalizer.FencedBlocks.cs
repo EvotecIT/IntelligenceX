@@ -13,6 +13,18 @@ namespace IntelligenceX.Chat.App.Rendering;
 /// Normalizes common LLM markdown artifacts before UI rendering.
 /// </summary>
 internal static partial class TranscriptMarkdownNormalizer {
+    private static string ApplyLegacyTranscriptTransportFallbacks(string input) {
+        if (string.IsNullOrEmpty(input)
+            || input.IndexOf("ix:cached-tool-evidence:v1", StringComparison.OrdinalIgnoreCase) >= 0
+            || !ContainsLegacyJsonVisualFenceCandidate(input)) {
+            return input ?? string.Empty;
+        }
+
+        var upgraded = UpgradeLegacyVisualFences(input);
+        upgraded = UpgradeLegacyIndentedNetworkBlocks(upgraded);
+        return upgraded;
+    }
+
     private static string UpgradeLegacyVisualFences(string input) {
         if (string.IsNullOrEmpty(input) || input.IndexOf("```", StringComparison.Ordinal) < 0) {
             return input ?? string.Empty;

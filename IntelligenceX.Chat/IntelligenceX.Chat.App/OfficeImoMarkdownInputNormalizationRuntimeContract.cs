@@ -20,7 +20,14 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
         "NormalizeTightParentheticalSpacing",
         "NormalizeNestedStrongDelimiters",
         "NormalizeTightArrowStrongBoundaries",
-        "NormalizeTightColonSpacing"
+        "NormalizeTightColonSpacing",
+        "NormalizeWrappedSignalFlowStrongRuns",
+        "NormalizeCollapsedMetricChains",
+        "NormalizeHostLabelBulletArtifacts",
+        "NormalizeStandaloneHashHeadingSeparators",
+        "NormalizeBrokenTwoLineStrongLeadIns",
+        "NormalizeDanglingTrailingStrongListClosers",
+        "NormalizeMetricValueStrongRuns"
     ];
 
     public static string NormalizeForTranscriptCleanup(string text) {
@@ -68,7 +75,7 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
             }
 
             return new OfficeImoInputNormalizationBridge(optionsType, normalizeMethod, presetFactoryMethod, enabledProperties.ToArray());
-        } catch {
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             return null;
         }
     }
@@ -91,43 +98,61 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
             }
 
             return createChatTranscriptMethod;
-        } catch {
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             return null;
         }
+    }
+
+    private static bool IsCompatibilityFallbackException(Exception exception) {
+        var unwrapped = UnwrapInvocationException(exception);
+        return unwrapped is TypeLoadException
+            or FileNotFoundException
+            or FileLoadException
+            or BadImageFormatException
+            or MissingMethodException
+            or MissingMemberException
+            or MemberAccessException
+            or NotSupportedException
+            or InvalidCastException;
+    }
+
+    private static Exception UnwrapInvocationException(Exception exception) {
+        var current = exception;
+        while (current is TargetInvocationException { InnerException: not null } invocationException) {
+            current = invocationException.InnerException!;
+        }
+
+        return current;
     }
 
     private sealed class OfficeImoInputNormalizationBridge(Type optionsType, MethodInfo normalizeMethod, MethodInfo? presetFactoryMethod, PropertyInfo[] enabledProperties) {
         public string Normalize(string text) {
             try {
-                var options = CreateOptionsInstance(out var usedPresetFactory);
+                var options = CreateOptionsInstance();
                 if (options == null) {
                     return text;
                 }
 
-                if (!usedPresetFactory) {
-                    for (var i = 0; i < enabledProperties.Length; i++) {
-                        enabledProperties[i].SetValue(options, true);
-                    }
+                for (var i = 0; i < enabledProperties.Length; i++) {
+                    enabledProperties[i].SetValue(options, true);
                 }
 
                 var normalized = normalizeMethod.Invoke(null, [text, options]) as string;
                 return string.IsNullOrEmpty(normalized) ? text : normalized;
-            } catch {
+            } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
                 return text;
             }
         }
 
-        private object? CreateOptionsInstance(out bool usedPresetFactory) {
-            usedPresetFactory = false;
+        private object? CreateOptionsInstance() {
             try {
                 if (presetFactoryMethod != null) {
                     var presetOptions = presetFactoryMethod.Invoke(null, null);
                     if (presetOptions != null && optionsType.IsInstanceOfType(presetOptions)) {
-                        usedPresetFactory = true;
                         return presetOptions;
                     }
                 }
-            } catch {
+            } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
                 // Fall back to the legacy property-enabling path below.
             }
 

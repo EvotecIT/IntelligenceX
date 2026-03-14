@@ -22,7 +22,7 @@ internal static class TranscriptMarkdownPreparation {
             return text;
         }
 
-        var fullyNormalized = TranscriptMarkdownNormalizer.NormalizeForRendering(text);
+        var fullyNormalized = NormalizeMessageBodyCore(text);
         if (!string.Equals(fullyNormalized, text, StringComparison.Ordinal)) {
             repaired = true;
             return fullyNormalized;
@@ -33,11 +33,21 @@ internal static class TranscriptMarkdownPreparation {
     }
 
     public static string PrepareMessageBody(string? text) =>
-        TranscriptMarkdownContract.PrepareMessageBody(TranscriptMarkdownNormalizer.NormalizeForRendering(text));
+        TranscriptMarkdownContract.PrepareMessageBody(NormalizeMessageBodyCore(text));
+
+    public static string PrepareOutcomeDetailBody(string? text) =>
+        PrepareMessageBody(text).Trim();
 
     public static string PrepareTranscriptMarkdownForExport(string? markdown) =>
-        TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(TranscriptMarkdownNormalizer.NormalizeForRendering(markdown));
+        TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(NormalizeMessageBodyCore(markdown));
 
     public static string PrepareStreamingPreview(string? text) =>
         TranscriptMarkdownNormalizer.NormalizeForStreamingPreview(text);
+
+    private static string NormalizeMessageBodyCore(string? text) {
+        var value = text ?? string.Empty;
+        return TranscriptMarkdownNormalizer.TryRepairLegacyTranscript(value, out var repaired)
+            ? repaired
+            : TranscriptMarkdownNormalizer.NormalizeForRendering(value);
+    }
 }

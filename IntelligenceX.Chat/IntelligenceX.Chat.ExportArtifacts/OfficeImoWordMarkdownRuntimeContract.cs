@@ -28,6 +28,7 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
             FitImagesToPageContentWidth = true,
             MaxImageWidthPixels = NormalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx)
         };
+        ApplyReaderOptionsIfSupported(options);
 
         if (allowedImageDirectories is { Count: > 0 }) {
             for (var i = 0; i < allowedImageDirectories.Count; i++) {
@@ -71,6 +72,92 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
         }
 
         return normalized;
+    }
+
+    private static void ApplyReaderOptionsIfSupported(MarkdownToWordOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        try {
+            var readerOptions = CreateReaderOptionsIfAvailable();
+            if (readerOptions == null) {
+                return;
+            }
+
+            var readerOptionsProperty = options.GetType().GetProperty(
+                "ReaderOptions",
+                BindingFlags.Instance | BindingFlags.Public);
+            if (readerOptionsProperty?.CanWrite != true || !readerOptionsProperty.PropertyType.IsInstanceOfType(readerOptions)) {
+                return;
+            }
+
+            readerOptionsProperty.SetValue(options, readerOptions);
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
+            // Package mode may load an older OfficeIMO.Word.Markdown build. Fall back to the baseline option set.
+        }
+    }
+
+    private static object? CreateReaderOptionsIfAvailable() {
+        var readerOptionsType = Type.GetType("OfficeIMO.Markdown.MarkdownReaderOptions, OfficeIMO.Markdown", throwOnError: false);
+        if (readerOptionsType == null) {
+            return null;
+        }
+
+        object? readerOptions = null;
+
+        var profileFactory = readerOptionsType.GetMethod(
+            "CreateOfficeIMOProfile",
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
+        if (profileFactory != null) {
+            readerOptions = profileFactory.Invoke(null, null);
+        }
+
+        readerOptions ??= Activator.CreateInstance(readerOptionsType);
+        if (readerOptions == null) {
+            return null;
+        }
+
+        TrySetBooleanProperty(readerOptions, "PreferNarrativeSingleLineDefinitions", true);
+        TrySetBooleanProperty(readerOptions, "Callouts", true);
+        TrySetBooleanProperty(readerOptions, "DefinitionLists", true);
+        return readerOptions;
+    }
+
+    private static void TrySetBooleanProperty(object target, string propertyName, bool value) {
+        if (target == null || string.IsNullOrWhiteSpace(propertyName)) {
+            return;
+        }
+
+        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property?.CanWrite != true || property.PropertyType != typeof(bool)) {
+            return;
+        }
+
+        property.SetValue(target, value);
+    }
+
+    private static bool IsCompatibilityFallbackException(Exception exception) {
+        var unwrapped = UnwrapInvocationException(exception);
+        return unwrapped is FileNotFoundException
+            or FileLoadException
+            or BadImageFormatException
+            or MissingMethodException
+            or MissingMemberException
+            or TypeLoadException
+            or NotSupportedException
+            or MemberAccessException
+            or InvalidCastException;
+    }
+
+    private static Exception UnwrapInvocationException(Exception exception) {
+        var current = exception;
+        while (current is TargetInvocationException { InnerException: not null } invocationException) {
+            current = invocationException.InnerException!;
+        }
+
+        return current;
     }
 
     private static bool DetectGroupedDefinitionLikeParagraphSupport() {

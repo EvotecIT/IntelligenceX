@@ -58,10 +58,6 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"(?:(?<=^)|(?<=[\s(\[{>]))\*\*[ \t]+(?=[^\s*\r\n])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex MissingSpaceBeforeBoldMetricRegex = new(
-        @"(?<=\s)-(?=\*\*)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
     private static readonly Regex LineStartMissingSpaceBeforeBoldBulletRegex = new(
         @"(?m)^(?<indent>\s*)-(?=\*\*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -72,10 +68,6 @@ internal static partial class TranscriptMarkdownNormalizer {
 
     private static readonly Regex LineStartHostLabelBulletRegex = new(
         @"(?m)^(?<indent>\s*)-(?=[A-Z]{2,}\d+\b)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex SingleStarMetricRegex = new(
-        @"(?<=\s)-\*(?=[A-Za-z])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex LabeledOuterStrongLineRegex = new(
@@ -130,10 +122,6 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"\*\*Status:\s|-\*\*|-\*[A-Za-z]|:\*\*\S|^\s*-[A-Z]{2,}\d+\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
 
-    private static readonly Regex CachedToolEvidenceMarkerLineRegex = new(
-        @"(?m)^[ \t]*ix:cached-tool-evidence:v1[ \t]*(?:\r?\n)?",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
-
     private static readonly Regex LegacyToolHeadingBulletRegex = new(
         @"^(?<indent>\s*)-\s+(?<tool>[a-z0-9_.-]+):\s*(?<heading>#{2,6}\s+[^\r\n]+)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Multiline);
@@ -142,16 +130,9 @@ internal static partial class TranscriptMarkdownNormalizer {
         @"^(?<indent>\s*)####\s+(?<tool>[a-z0-9_.-]+)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Multiline);
 
-    private static readonly Regex StandaloneSingleHashSeparatorRegex = new(
-        @"^\s*#\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex StandaloneHashSeparatorBeforeHeadingSignalRegex = new(
         @"(?ms)^\s*#\s*$\s*^(?:\s*#{2,6}\s+\S.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline);
-
-    private static readonly Regex BrokenTwoLineStrongLeadInRegex = new(
-        @"^(?<indent>\s*)\*\*(?<label>Result)\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex TrailingDanglingStrongMetricTokenRegex = new(
         @"(?<token>[\p{L}\p{N}_./:-]+)\*{4}(?<tail>\s*)$",
@@ -233,19 +214,13 @@ internal static partial class TranscriptMarkdownNormalizer {
             return string.Empty;
         }
 
-        normalized = StripInternalTransportMarkers(normalized);
-        normalized = UpgradeLegacyVisualFences(normalized);
-        normalized = UpgradeLegacyIndentedNetworkBlocks(normalized);
-        normalized = NormalizeLegacyToolHeadingArtifacts(normalized);
-        normalized = RemoveStandaloneHashSeparatorsBeforeHeadings(normalized);
+        normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(normalized);
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var protectedInlineCode = ProtectInlineCodeSpans(segment, out var codeSpans, out var tokenPrefix);
             var value = protectedInlineCode;
             value = ZeroWidthWhitespaceRegex.Replace(value, string.Empty);
-            value = RepairBrokenTwoLineStrongLeadIns(value);
             value = NormalizeWithOfficeImoInputNormalizer(value);
-            value = RemoveStandaloneHashSeparatorsBeforeHeadings(value);
             value = EmojiWordJoinRegex.Replace(value, "$1 ");
             value = NumberedChoiceJoinRegex.Replace(value, "$1 ");
             value = LetterToNumberedChoiceJoinRegex.Replace(value, " ");
@@ -260,11 +235,8 @@ internal static partial class TranscriptMarkdownNormalizer {
                 var trimmed = inner.Trim();
                 return trimmed.Length == 0 ? match.Value : "**" + trimmed + "**";
             });
-            value = MissingSpaceBeforeBoldMetricRegex.Replace(value, "- ");
             value = LineStartUnicodeDashBulletRegex.Replace(value, "${indent}-");
             value = LineStartMissingSpaceBeforeBoldBulletRegex.Replace(value, "${indent}- ");
-            value = LineStartHostLabelBulletRegex.Replace(value, "${indent}- ");
-            value = SingleStarMetricRegex.Replace(value, "- **");
             value = LabeledOuterStrongLineRegex.Replace(value, static match => {
                 var body = match.Groups["body"].Value;
                 if (!body.Contains("**", StringComparison.Ordinal)) {
@@ -306,10 +278,6 @@ internal static partial class TranscriptMarkdownNormalizer {
                 return lead + "**" + title + "** (" + detail + ")";
             });
             value = LeadingWhitespaceInsideStrongOpenRegex.Replace(value, "**");
-            value = MergeSplitHostLabelBullets(value);
-            value = ExpandCollapsedMetricLines(value);
-            value = ConvertLegacyMetricMarkdown(value);
-            value = RepairMalformedMetricValueStrongRuns(value);
             value = RepairDanglingTrailingStrongMetricClosers(value);
             return RestoreInlineCodeSpans(value, codeSpans, tokenPrefix);
         });
@@ -326,9 +294,7 @@ internal static partial class TranscriptMarkdownNormalizer {
             return string.Empty;
         }
 
-        normalized = StripInternalTransportMarkers(normalized);
-        normalized = UpgradeLegacyVisualFences(normalized);
-        normalized = NormalizeLegacyToolHeadingArtifacts(normalized);
+        normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(normalized);
 
         return ApplyTransformOutsideFencedCodeBlocks(normalized, static segment => {
             var value = ZeroWidthWhitespaceRegex.Replace(segment, string.Empty);
@@ -351,7 +317,8 @@ internal static partial class TranscriptMarkdownNormalizer {
             return false;
         }
 
-        var repaired = NormalizeForRendering(normalized);
+        var repaired = ApplyLegacyTranscriptTransportFallbacks(normalized);
+        repaired = NormalizeForRendering(repaired);
         if (repaired == normalized) {
             return false;
         }
