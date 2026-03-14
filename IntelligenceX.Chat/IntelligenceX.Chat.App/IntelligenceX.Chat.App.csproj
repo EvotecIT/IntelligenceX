@@ -46,6 +46,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\IntelligenceX\IntelligenceX.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Client\\IntelligenceX.Chat.Client.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.ExportArtifacts\\IntelligenceX.Chat.ExportArtifacts.csproj" />
