@@ -151,29 +151,33 @@ internal static partial class TranscriptMarkdownNormalizer {
 
         var newline = input.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         var pattern = "**Result" + newline;
-        var index = input.IndexOf(pattern, StringComparison.Ordinal);
-        if (index < 0) {
-            return input;
-        }
+        var current = input;
 
-        var closeIndex = input.IndexOf("**", index + pattern.Length, StringComparison.Ordinal);
-        if (closeIndex < 0) {
-            return input;
-        }
+        while (true) {
+            var index = current.IndexOf(pattern, StringComparison.Ordinal);
+            if (index < 0) {
+                return current;
+            }
 
-        var bodyStart = index + pattern.Length;
-        var body = input.Substring(bodyStart, closeIndex - bodyStart).Trim();
-        if (body.Length == 0) {
-            return input;
-        }
+            var closeIndex = current.IndexOf("**", index + pattern.Length, StringComparison.Ordinal);
+            if (closeIndex < 0) {
+                return current;
+            }
 
-        var tail = input[(closeIndex + 2)..].TrimStart();
-        if (tail.Length == 0) {
-            return input;
-        }
+            var bodyStart = index + pattern.Length;
+            var body = current.Substring(bodyStart, closeIndex - bodyStart).Trim();
+            if (body.Length == 0) {
+                return current;
+            }
 
-        var prefix = input[..index];
-        return prefix + "**Result:** " + body + " " + tail;
+            var tail = current[(closeIndex + 2)..].TrimStart();
+            if (tail.Length == 0) {
+                return current;
+            }
+
+            var prefix = current[..index];
+            current = prefix + "**Result:** " + body + " " + tail;
+        }
     }
 
     private static string? FindNextNonBlankLine(string[] lines, int startIndex) {

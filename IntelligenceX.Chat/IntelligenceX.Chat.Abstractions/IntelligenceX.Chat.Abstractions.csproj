@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\Shared\ToolPackIdentityCatalog.cs" Link="Tools\ToolPackIdentityCatalog.cs" />
+    <ProjectReference Include="..\..\IntelligenceX.Shared\IntelligenceX.Shared.csproj" />
   </ItemGroup>
 
 </Project>
