@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Diagnostics;
+using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -103,6 +105,7 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("  --person <value>      Filter by person label");
         Console.WriteLine("  --github-user <login> Add a GitHub contribution section for the specified login");
         Console.WriteLine("  --github-owner <id>   Add a GitHub owner/org scope for repository-impact stats");
+        Console.WriteLine("  --github-token <tok>  Token for GitHub enrichment (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN)");
         Console.WriteLine("  --metric <name>       tokens|cost|duration|events (default: tokens)");
         Console.WriteLine("  --title <text>        Override the report title");
         Console.WriteLine("  --recent-first        Prefer newer artifacts first during quick scans (default)");
@@ -116,6 +119,7 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("  --person <value>      Filter by person label");
         Console.WriteLine("  --github-user <login> Add a GitHub contribution section for the specified login");
         Console.WriteLine("  --github-owner <id>   Add a GitHub owner/org scope for repository-impact stats");
+        Console.WriteLine("  --github-token <tok>  Token for GitHub enrichment (or set INTELLIGENCEX_GITHUB_TOKEN/GITHUB_TOKEN/GH_TOKEN)");
         Console.WriteLine("  --metric <name>       tokens|cost|duration|events (default: tokens)");
         Console.WriteLine("  --title <text>        Override the overview title");
         Console.WriteLine("  --discover            Auto-discover provider roots before rendering");
@@ -520,6 +524,7 @@ internal static class UsageTelemetryCliRunner {
             foreach (var user in options.GitHubUsers) {
                 AddIfValue(overviewArgs, "--github-user", user);
             }
+            AddIfValue(overviewArgs, "--github-token", options.GitHubToken);
             if (options.RecentFirst) {
                 overviewArgs.Add("--recent-first");
             }
@@ -606,6 +611,7 @@ internal static class UsageTelemetryCliRunner {
                 SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRootStore.GetAll())
             });
         overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners, Console.WriteLine).ConfigureAwait(false);
+        overview = await AppendCopilotQuotaInsightsAsync(overview, ResolveGitHubToken(options.GitHubToken), Console.WriteLine).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
             var outputDirectory = Path.GetFullPath(options.OutputDirectory!);
@@ -662,6 +668,7 @@ internal static class UsageTelemetryCliRunner {
                 SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRootStore.GetAll())
             });
         overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners, Console.WriteLine).ConfigureAwait(false);
+        overview = await AppendCopilotQuotaInsightsAsync(overview, ResolveGitHubToken(options.GitHubToken), Console.WriteLine).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
             var outputDirectory = Path.GetFullPath(options.OutputDirectory!);
@@ -733,6 +740,68 @@ internal static class UsageTelemetryCliRunner {
                 .OrderBy(static section => UsageTelemetryProviderCatalog.ResolveSortOrder(section.ProviderId))
                 .ThenBy(static section => section.Title, StringComparer.OrdinalIgnoreCase)
                 .ToArray());
+    }
+
+    internal static async Task<UsageTelemetryOverviewDocument> AppendCopilotQuotaInsightsAsync(
+        UsageTelemetryOverviewDocument overview,
+        string? githubToken,
+        Action<string>? progress = null,
+        string? apiBaseUrl = null,
+        HttpClient? httpClient = null) {
+        if (overview is null) {
+            throw new ArgumentNullException(nameof(overview));
+        }
+
+        if (!overview.ProviderSections.Any(static section => string.Equals(section.ProviderId, "copilot", StringComparison.OrdinalIgnoreCase))) {
+            return overview;
+        }
+
+        if (string.IsNullOrWhiteSpace(githubToken)) {
+            progress?.Invoke("No GitHub token found; skipping Copilot quota snapshot.");
+            return overview;
+        }
+
+        try {
+            progress?.Invoke("Fetching Copilot plan and quota snapshot...");
+            using var client = new CopilotQuotaSnapshotClient(httpClient, apiBaseUrl);
+            var snapshot = await client.FetchAsync(githubToken!, CancellationToken.None).ConfigureAwait(false);
+            if (snapshot is null) {
+                progress?.Invoke("GitHub Copilot quota snapshot did not contain usable quota data.");
+                return overview;
+            }
+
+            return ApplyCopilotQuotaSnapshot(overview, snapshot);
+        } catch (Exception ex) {
+            progress?.Invoke("Skipping Copilot quota snapshot: " + ex.Message);
+            return overview;
+        }
+    }
+
+    internal static UsageTelemetryOverviewDocument ApplyCopilotQuotaSnapshot(
+        UsageTelemetryOverviewDocument overview,
+        CopilotQuotaSnapshot snapshot) {
+        if (overview is null) {
+            throw new ArgumentNullException(nameof(overview));
+        }
+        if (snapshot is null) {
+            throw new ArgumentNullException(nameof(snapshot));
+        }
+
+        var sections = overview.ProviderSections
+            .Select(section => string.Equals(section.ProviderId, "copilot", StringComparison.OrdinalIgnoreCase)
+                ? BuildSectionWithCopilotQuotaSnapshot(section, snapshot)
+                : section)
+            .ToArray();
+
+        return new UsageTelemetryOverviewDocument(
+            overview.Title,
+            overview.Subtitle,
+            overview.Metric,
+            overview.Units,
+            overview.Summary,
+            overview.Cards,
+            overview.Heatmaps,
+            sections);
     }
 
     internal static IReadOnlyList<GitHubSectionRequest> BuildGitHubSectionRequests(
@@ -1146,6 +1215,178 @@ internal static class UsageTelemetryCliRunner {
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
 
+    private static UsageTelemetryOverviewProviderSection BuildSectionWithCopilotQuotaSnapshot(
+        UsageTelemetryOverviewProviderSection section,
+        CopilotQuotaSnapshot snapshot) {
+        var additionalInsights = section.AdditionalInsights.ToList();
+        additionalInsights.RemoveAll(static insight => string.Equals(insight.Key, "copilot-github-quota", StringComparison.OrdinalIgnoreCase));
+        additionalInsights.Insert(0, BuildCopilotQuotaInsight(snapshot));
+
+        return new UsageTelemetryOverviewProviderSection(
+            section.Key,
+            section.ProviderId,
+            section.Title,
+            section.Subtitle,
+            section.Heatmap,
+            section.Metrics,
+            section.Composition,
+            section.SpotlightCards,
+            section.InputTokens,
+            section.OutputTokens,
+            section.TotalTokens,
+            section.MonthlyUsageTitle,
+            section.MonthlyUsageUnitsLabel,
+            section.MonthlyUsage,
+            additionalInsights,
+            section.TopModels,
+            section.ApiCostEstimate,
+            section.MostUsedModel,
+            section.RecentModel,
+            section.LongestStreakDays,
+            section.CurrentStreakDays,
+            HeatmapDisplayText.JoinSummaryParts(section.Note, BuildCopilotQuotaNote(snapshot)));
+    }
+
+    private static UsageTelemetryOverviewInsightSection BuildCopilotQuotaInsight(CopilotQuotaSnapshot snapshot) {
+        var rows = new List<UsageTelemetryOverviewInsightRow> {
+            new("Plan", FormatCopilotPlan(snapshot.Plan), BuildAssignedDateCopy(snapshot))
+        };
+
+        if (snapshot.PremiumInteractions is not null) {
+            rows.Add(BuildCopilotQuotaRow("Premium requests", snapshot.PremiumInteractions));
+        }
+        if (snapshot.Chat is not null) {
+            rows.Add(BuildCopilotQuotaRow("Chat allowance", snapshot.Chat));
+        }
+        if (!string.IsNullOrWhiteSpace(snapshot.QuotaResetDateRaw) || snapshot.QuotaResetDate.HasValue) {
+            rows.Add(new UsageTelemetryOverviewInsightRow(
+                "Allowance resets",
+                FormatQuotaResetValue(snapshot),
+                snapshot.QuotaResetDate.HasValue ? "GitHub Copilot monthly allowance reset" : snapshot.QuotaResetDateRaw));
+        }
+
+        return new UsageTelemetryOverviewInsightSection(
+            "copilot-github-quota",
+            "Plan and quota",
+            BuildCopilotQuotaHeadline(snapshot),
+            "Fetched from GitHub Copilot using the current GitHub token. Local .copilot activity is still shown separately in this section.",
+            rows);
+    }
+
+    private static UsageTelemetryOverviewInsightRow BuildCopilotQuotaRow(string label, CopilotQuotaWindow quota) {
+        var value = FormatCompactNumber(quota.Remaining) + " / " + FormatCompactNumber(quota.Entitlement);
+        var subtitle = quota.HasPercentRemaining
+            ? quota.PercentRemaining.ToString("0.#", CultureInfo.InvariantCulture) + "% remaining · "
+              + quota.UsedPercent.ToString("0.#", CultureInfo.InvariantCulture) + "% used"
+            : "Remaining quota from GitHub Copilot";
+        return new UsageTelemetryOverviewInsightRow(label, value, subtitle, quota.HasPercentRemaining ? quota.PercentRemaining / 100d : null);
+    }
+
+    private static string BuildCopilotQuotaHeadline(CopilotQuotaSnapshot snapshot) {
+        var plan = FormatCopilotPlan(snapshot.Plan);
+        if (snapshot.PremiumInteractions is not null && snapshot.PremiumInteractions.HasPercentRemaining) {
+            return plan + " · "
+                   + snapshot.PremiumInteractions.UsedPercent.ToString("0.#", CultureInfo.InvariantCulture)
+                   + "% of premium requests used";
+        }
+        if (snapshot.Chat is not null && snapshot.Chat.HasPercentRemaining) {
+            return plan + " · "
+                   + snapshot.Chat.PercentRemaining.ToString("0.#", CultureInfo.InvariantCulture)
+                   + "% of chat allowance remaining";
+        }
+        return plan;
+    }
+
+    private static string? BuildAssignedDateCopy(CopilotQuotaSnapshot snapshot) {
+        if (snapshot.AssignedDate.HasValue) {
+            return "Assigned " + snapshot.AssignedDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+        return NormalizeOptional(snapshot.AssignedDateRaw);
+    }
+
+    private static string BuildCopilotQuotaNote(CopilotQuotaSnapshot snapshot) {
+        var parts = new List<string> {
+            "GitHub quota snapshot"
+        };
+
+        if (snapshot.PremiumInteractions is not null) {
+            parts.Add("Premium remaining " + FormatCompactNumber(snapshot.PremiumInteractions.Remaining)
+                      + "/" + FormatCompactNumber(snapshot.PremiumInteractions.Entitlement));
+        }
+        if (snapshot.QuotaResetDate.HasValue || !string.IsNullOrWhiteSpace(snapshot.QuotaResetDateRaw)) {
+            parts.Add("Resets " + FormatQuotaResetValue(snapshot));
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static string FormatQuotaResetValue(CopilotQuotaSnapshot snapshot) {
+        if (snapshot.QuotaResetDate.HasValue) {
+            return snapshot.QuotaResetDate.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        }
+        return snapshot.QuotaResetDateRaw ?? "unknown";
+    }
+
+    private static string FormatCopilotPlan(string? plan) {
+        var normalized = NormalizeOptional(plan);
+        if (string.IsNullOrWhiteSpace(normalized)) {
+            return "GitHub Copilot";
+        }
+
+        return normalized!.Trim().ToLowerInvariant() switch {
+            "free" => "GitHub Copilot Free",
+            "pro" => "GitHub Copilot Pro",
+            "pro+" or "pro_plus" or "pro-plus" => "GitHub Copilot Pro+",
+            "business" => "GitHub Copilot Business",
+            "enterprise" => "GitHub Copilot Enterprise",
+            _ => "GitHub Copilot " + CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized.Replace('-', ' '))
+        };
+    }
+
+    private static string FormatCompactNumber(double value) {
+        if (Math.Abs(value % 1d) < 0.000001d) {
+            return UsageTelemetryOverviewHtmlFragments.FormatCompact((long)Math.Round(value, MidpointRounding.AwayFromZero));
+        }
+        return value.ToString("0.#", CultureInfo.InvariantCulture);
+    }
+
+    private static string? ResolveGitHubToken(string? direct) {
+        if (!string.IsNullOrWhiteSpace(direct)) {
+            return direct;
+        }
+        var token = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN")
+                   ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+                   ?? Environment.GetEnvironmentVariable("GH_TOKEN");
+        if (!string.IsNullOrWhiteSpace(token)) {
+            return token;
+        }
+        return TryReadGhToken();
+    }
+
+    private static string? TryReadGhToken() {
+        try {
+            var startInfo = new ProcessStartInfo {
+                FileName = "gh",
+                Arguments = "auth token",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var process = Process.Start(startInfo);
+            if (process is null) {
+                return null;
+            }
+            var output = process.StandardOutput.ReadToEnd();
+            if (!process.WaitForExit(3000) || process.ExitCode != 0) {
+                return null;
+            }
+            return NormalizeOptional(output);
+        } catch {
+            return null;
+        }
+    }
+
     private static int PrintHelpReturn() {
         PrintHelp();
         return 1;
@@ -1438,6 +1679,7 @@ internal static class UsageTelemetryCliRunner {
         public string? ProviderId { get; set; }
         public string? AccountFilter { get; set; }
         public string? PersonFilter { get; set; }
+        public string? GitHubToken { get; set; }
         public UsageSummaryMetric Metric { get; set; } = UsageSummaryMetric.TotalTokens;
         public string? Title { get; set; }
         public string? OutputPath { get; set; }
@@ -1475,6 +1717,9 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--github-owner":
                         options.GitHubOwners.Add(ReadValue(args, ref i));
+                        break;
+                    case "--github-token":
+                        options.GitHubToken = ReadValue(args, ref i);
                         break;
                     case "--metric":
                         options.Metric = ParseMetric(ReadValue(args, ref i));
@@ -1555,6 +1800,7 @@ internal static class UsageTelemetryCliRunner {
         public string? ProviderId { get; set; }
         public string? AccountFilter { get; set; }
         public string? PersonFilter { get; set; }
+        public string? GitHubToken { get; set; }
         public UsageSummaryMetric Metric { get; set; } = UsageSummaryMetric.TotalTokens;
         public string? Title { get; set; }
         public string? OutputPath { get; set; }
@@ -1589,6 +1835,9 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--github-owner":
                         options.GitHubOwners.Add(ReadValue(args, ref i));
+                        break;
+                    case "--github-token":
+                        options.GitHubToken = ReadValue(args, ref i);
                         break;
                     case "--metric":
                         options.Metric = ParseMetric(ReadValue(args, ref i));

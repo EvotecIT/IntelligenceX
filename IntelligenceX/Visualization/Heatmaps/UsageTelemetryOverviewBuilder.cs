@@ -116,18 +116,24 @@ public sealed class UsageTelemetryOverviewHeatmap {
 /// Represents one ranked model usage callout in a provider overview.
 /// </summary>
 public sealed class UsageTelemetryOverviewModelHighlight {
-    public UsageTelemetryOverviewModelHighlight(string model, long totalTokens) {
+    public UsageTelemetryOverviewModelHighlight(string model, long totalTokens, string? valueLabel = null) {
         Model = string.IsNullOrWhiteSpace(model) ? "unknown-model" : model.Trim();
         TotalTokens = Math.Max(0L, totalTokens);
+        ValueLabel = HeatmapText.NormalizeOptionalText(valueLabel);
     }
 
     public string Model { get; }
     public long TotalTokens { get; }
+    public string? ValueLabel { get; }
 
     public JsonObject ToJson() {
-        return new JsonObject()
+        var obj = new JsonObject()
             .Add("model", Model)
             .Add("totalTokens", TotalTokens);
+        if (!string.IsNullOrWhiteSpace(ValueLabel)) {
+            obj.Add("valueLabel", ValueLabel!);
+        }
+        return obj;
     }
 }
 
@@ -275,21 +281,27 @@ public sealed class UsageTelemetryOverviewComposition {
 /// Represents one ranked model entry in a provider overview.
 /// </summary>
 public sealed class UsageTelemetryOverviewTopModel {
-    public UsageTelemetryOverviewTopModel(string model, long totalTokens, double sharePercent) {
+    public UsageTelemetryOverviewTopModel(string model, long totalTokens, double sharePercent, string? valueLabel = null) {
         Model = string.IsNullOrWhiteSpace(model) ? "unknown-model" : model.Trim();
         TotalTokens = Math.Max(0L, totalTokens);
         SharePercent = Math.Max(0d, sharePercent);
+        ValueLabel = HeatmapText.NormalizeOptionalText(valueLabel);
     }
 
     public string Model { get; }
     public long TotalTokens { get; }
     public double SharePercent { get; }
+    public string? ValueLabel { get; }
 
     public JsonObject ToJson() {
-        return new JsonObject()
+        var obj = new JsonObject()
             .Add("model", Model)
             .Add("totalTokens", TotalTokens)
             .Add("sharePercent", SharePercent);
+        if (!string.IsNullOrWhiteSpace(ValueLabel)) {
+            obj.Add("valueLabel", ValueLabel!);
+        }
+        return obj;
     }
 }
 
@@ -779,18 +791,41 @@ public sealed class UsageTelemetryOverviewBuilder {
         var inputTokens = events.Sum(static record => record.InputTokens ?? 0L);
         var outputTokens = events.Sum(static record => record.OutputTokens ?? 0L);
         var totalTokens = events.Sum(static record => record.TotalTokens ?? 0L);
-        var metrics = BuildTokenMetrics(inputTokens, outputTokens, totalTokens, providerId);
-        var composition = BuildTokenComposition(inputTokens, outputTokens, totalTokens, providerId);
-        var monthlyUsage = BuildMonthlyUsage(events, rangeStartUtc, rangeEndUtc);
-        var topModels = BuildTopModels(events, 5);
-        var apiCostEstimate = BuildApiCostEstimate(events, 5);
-        var mostUsedModel = BuildModelHighlight(events);
-        var recentModel = BuildModelHighlight(FilterToRecentWindow(events, 30));
-        var (longestStreakDays, currentStreakDays) = ComputeStreaks(events);
-        var note = BuildCoverageNote(events);
+        var hasTokenTelemetry = HasProviderTokenTelemetry(events);
+        var activityEvents = BuildProviderActivityEvents(providerId, events);
+        var metrics = hasTokenTelemetry
+            ? BuildTokenMetrics(inputTokens, outputTokens, totalTokens, providerId)
+            : BuildActivityMetrics(activityEvents, providerId, rangeStartUtc, rangeEndUtc);
+        var composition = hasTokenTelemetry
+            ? BuildTokenComposition(inputTokens, outputTokens, totalTokens, providerId)
+            : null;
+        var monthlyUsage = hasTokenTelemetry
+            ? BuildMonthlyUsage(events, rangeStartUtc, rangeEndUtc)
+            : BuildActivityMonthlyUsage(activityEvents, rangeStartUtc, rangeEndUtc);
+        var topModels = hasTokenTelemetry
+            ? BuildTopModels(events, 5)
+            : BuildTopModelsByActivity(activityEvents, 5);
+        var apiCostEstimate = hasTokenTelemetry ? BuildApiCostEstimate(events, 5) : null;
+        var mostUsedModel = hasTokenTelemetry
+            ? BuildModelHighlight(events)
+            : BuildModelHighlightByActivity(activityEvents);
+        var recentModel = hasTokenTelemetry
+            ? BuildModelHighlight(FilterToRecentWindow(events, 30))
+            : BuildModelHighlightByActivity(FilterToRecentWindow(activityEvents, 30));
+        var (longestStreakDays, currentStreakDays) = hasTokenTelemetry
+            ? ComputeStreaks(events)
+            : ComputeActivityStreaks(activityEvents);
+        var note = BuildProviderNote(providerId, events, activityEvents, hasTokenTelemetry);
         var spotlightCards = BuildTelemetrySpotlightCards(mostUsedModel, recentModel, longestStreakDays, currentStreakDays);
+        var additionalInsights = BuildProviderAdditionalInsights(providerId, events, activityEvents, hasTokenTelemetry);
 
-        var heatmap = BuildProviderHeatmap(title, providerId, events, rangeStartUtc, rangeEndUtc);
+        var heatmap = BuildProviderHeatmap(
+            title,
+            providerId,
+            hasTokenTelemetry ? events : activityEvents,
+            rangeStartUtc,
+            rangeEndUtc,
+            hasTokenTelemetry ? UsageHeatmapMetric.TotalTokens : UsageHeatmapMetric.TotalDurationMs);
 
         return new UsageTelemetryOverviewProviderSection(
             key: "provider-" + NormalizeKey(providerId),
@@ -804,10 +839,10 @@ public sealed class UsageTelemetryOverviewBuilder {
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             totalTokens: totalTokens,
-            monthlyUsageTitle: "Monthly usage",
-            monthlyUsageUnitsLabel: "tokens",
+            monthlyUsageTitle: hasTokenTelemetry ? "Monthly usage" : "Monthly activity",
+            monthlyUsageUnitsLabel: hasTokenTelemetry ? "tokens" : "turns",
             monthlyUsage: monthlyUsage,
-            additionalInsights: Array.Empty<UsageTelemetryOverviewInsightSection>(),
+            additionalInsights: additionalInsights,
             topModels: topModels,
             apiCostEstimate: apiCostEstimate,
             mostUsedModel: mostUsedModel,
@@ -822,7 +857,8 @@ public sealed class UsageTelemetryOverviewBuilder {
         string providerId,
         IReadOnlyList<UsageEventRecord> events,
         DateTime rangeStartUtc,
-        DateTime rangeEndUtc) {
+        DateTime rangeEndUtc,
+        UsageHeatmapMetric metric) {
         var aggregates = new UsageDailyAggregateBuilder().Build(
             events,
             new UsageDailyAggregateOptions {
@@ -834,8 +870,8 @@ public sealed class UsageTelemetryOverviewBuilder {
             new UsageHeatmapDocumentOptions {
                 Title = title + " activity",
                 Subtitle = null,
-                Units = "tokens",
-                Metric = UsageHeatmapMetric.TotalTokens,
+                Units = metric == UsageHeatmapMetric.TotalDurationMs ? "ms" : "tokens",
+                Metric = metric,
                 BreakdownDimension = UsageHeatmapBreakdownDimension.None,
                 Palette = ResolveProviderPalette(providerId),
                 WeekStart = DayOfWeek.Monday,
@@ -888,6 +924,42 @@ public sealed class UsageTelemetryOverviewBuilder {
         return values;
     }
 
+    private static IReadOnlyList<UsageTelemetryOverviewMonthlyUsage> BuildActivityMonthlyUsage(
+        IReadOnlyList<UsageEventRecord> events,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc) {
+        var monthLookup = events
+            .GroupBy(record => new DateTime(
+                record.TimestampUtc.UtcDateTime.Year,
+                record.TimestampUtc.UtcDateTime.Month,
+                1,
+                0,
+                0,
+                0,
+                DateTimeKind.Utc))
+            .ToDictionary(
+                static group => group.Key,
+                group => new UsageTelemetryOverviewMonthlyUsage(
+                    group.Key,
+                    group.LongCount(),
+                    group.Select(static record => record.TimestampUtc.UtcDateTime.Date).Distinct().Count()));
+
+        var values = new List<UsageTelemetryOverviewMonthlyUsage>();
+        var cursor = new DateTime(rangeStartUtc.Year, rangeStartUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endMonth = new DateTime(rangeEndUtc.Year, rangeEndUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        while (cursor <= endMonth) {
+            if (monthLookup.TryGetValue(cursor, out var month)) {
+                values.Add(month);
+            } else {
+                values.Add(new UsageTelemetryOverviewMonthlyUsage(cursor, 0L, 0));
+            }
+
+            cursor = cursor.AddMonths(1);
+        }
+
+        return values;
+    }
+
     private static IReadOnlyList<UsageTelemetryOverviewTopModel> BuildTopModels(
         IReadOnlyList<UsageEventRecord> events,
         int limit) {
@@ -897,9 +969,31 @@ public sealed class UsageTelemetryOverviewBuilder {
             .Select(group => {
                 var modelTotal = group.Sum(static record => record.TotalTokens ?? 0L);
                 var share = totalTokens <= 0L ? 0d : modelTotal / (double)totalTokens * 100d;
-                return new UsageTelemetryOverviewTopModel(group.Key, modelTotal, share);
+                return new UsageTelemetryOverviewTopModel(group.Key, modelTotal, share, FormatCompact(modelTotal) + " tokens");
             })
             .Where(static entry => entry.TotalTokens > 0L)
+            .OrderByDescending(static entry => entry.TotalTokens)
+            .ThenBy(static entry => entry.Model, StringComparer.OrdinalIgnoreCase)
+            .Take(Math.Max(1, limit))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<UsageTelemetryOverviewTopModel> BuildTopModelsByActivity(
+        IReadOnlyList<UsageEventRecord> events,
+        int limit) {
+        var totalTurns = events.LongCount();
+        return events
+            .Where(static record => !string.IsNullOrWhiteSpace(record.Model))
+            .GroupBy(static record => NormalizeOptional(record.Model) ?? "unknown-model", StringComparer.OrdinalIgnoreCase)
+            .Select(group => {
+                var modelTurns = group.LongCount();
+                var share = totalTurns <= 0L ? 0d : modelTurns / (double)totalTurns * 100d;
+                return new UsageTelemetryOverviewTopModel(
+                    group.Key,
+                    modelTurns,
+                    share,
+                    HeatmapDisplayText.FormatCount(FormatCompact(modelTurns), modelTurns, "turn", "turns"));
+            })
             .OrderByDescending(static entry => entry.TotalTokens)
             .ThenBy(static entry => entry.Model, StringComparer.OrdinalIgnoreCase)
             .Take(Math.Max(1, limit))
@@ -1024,6 +1118,46 @@ public sealed class UsageTelemetryOverviewBuilder {
             items);
     }
 
+    private static IReadOnlyList<UsageTelemetryOverviewSectionMetric> BuildActivityMetrics(
+        IReadOnlyList<UsageEventRecord> activityEvents,
+        string providerId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc) {
+        var accent = ResolveProviderAccentColors(providerId);
+        var turnCount = activityEvents.LongCount();
+        var activeDays = activityEvents
+            .Select(static record => record.TimestampUtc.UtcDateTime.Date)
+            .Distinct()
+            .Count();
+        var totalDurationMs = activityEvents.Sum(static record => record.DurationMs ?? 0L);
+        var totalWindowDays = Math.Max(1, (rangeEndUtc - rangeStartUtc).Days + 1);
+        return new[] {
+            new UsageTelemetryOverviewSectionMetric(
+                "assistant-turns",
+                "Assistant turns",
+                FormatCompact(turnCount),
+                HeatmapDisplayText.FormatCount(turnCount, "turn", "turns") + " captured locally",
+                turnCount > 0 ? 1d : 0d,
+                accent.Input),
+            new UsageTelemetryOverviewSectionMetric(
+                "active-days",
+                "Active days",
+                activeDays.ToString(CultureInfo.InvariantCulture),
+                (activeDays / (double)totalWindowDays * 100d).ToString("0.#", CultureInfo.InvariantCulture) + "% of trailing year",
+                Math.Min(1d, activeDays / (double)totalWindowDays),
+                accent.Output),
+            new UsageTelemetryOverviewSectionMetric(
+                "cli-time",
+                "CLI time",
+                HeatmapDisplayText.FormatDuration(TimeSpan.FromMilliseconds(Math.Max(0L, totalDurationMs))),
+                turnCount <= 0L
+                    ? "No timed turns captured"
+                    : HeatmapDisplayText.FormatDuration(TimeSpan.FromMilliseconds(Math.Max(0L, totalDurationMs / Math.Max(1L, turnCount)))) + " avg per turn",
+                totalDurationMs > 0L ? 1d : 0d,
+                accent.Total)
+        };
+    }
+
     private static IReadOnlyList<UsageTelemetryOverviewCard> BuildTelemetrySpotlightCards(
         UsageTelemetryOverviewModelHighlight? mostUsedModel,
         UsageTelemetryOverviewModelHighlight? recentModel,
@@ -1034,12 +1168,12 @@ public sealed class UsageTelemetryOverviewBuilder {
                 "most-used-model",
                 "Most Used Model",
                 mostUsedModel is null ? "n/a" : mostUsedModel.Model,
-                mostUsedModel is null ? null : FormatCompact(mostUsedModel.TotalTokens)),
+                mostUsedModel?.ValueLabel ?? (mostUsedModel is null ? null : FormatCompact(mostUsedModel.TotalTokens))),
             new UsageTelemetryOverviewCard(
                 "recent-model",
                 "Recent Use (Last 30 Days)",
                 recentModel is null ? "n/a" : recentModel.Model,
-                recentModel is null ? null : FormatCompact(recentModel.TotalTokens)),
+                recentModel?.ValueLabel ?? (recentModel is null ? null : FormatCompact(recentModel.TotalTokens))),
             new UsageTelemetryOverviewCard(
                 "longest-streak",
                 "Longest Streak",
@@ -1078,6 +1212,31 @@ public sealed class UsageTelemetryOverviewBuilder {
             TotalTokens: totalTokens,
             EstimatedCostUsd: estimatedCostUsd,
             HasKnownPricing: true);
+    }
+
+    private static bool HasProviderTokenTelemetry(IReadOnlyList<UsageEventRecord> events) {
+        return events.Any(static record =>
+            (record.TotalTokens ?? 0L) > 0L ||
+            (record.InputTokens ?? 0L) > 0L ||
+            (record.OutputTokens ?? 0L) > 0L ||
+            (record.CachedInputTokens ?? 0L) > 0L ||
+            (record.ReasoningTokens ?? 0L) > 0L);
+    }
+
+    private static IReadOnlyList<UsageEventRecord> BuildProviderActivityEvents(
+        string providerId,
+        IReadOnlyList<UsageEventRecord> events) {
+        if (string.Equals(providerId, "copilot", StringComparison.OrdinalIgnoreCase)) {
+            return events
+                .Where(static record =>
+                    string.Equals(NormalizeOptional(record.Surface), "cli", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(record.TurnId))
+                .ToArray();
+        }
+
+        return events
+            .Where(static record => !string.IsNullOrWhiteSpace(record.TurnId))
+            .ToArray();
     }
 
     private static decimal ComputePerMillionCost(long tokens, decimal usdPerMillion) {
@@ -1125,8 +1284,25 @@ public sealed class UsageTelemetryOverviewBuilder {
             .GroupBy(static record => NormalizeOptional(record.Model) ?? "unknown-model", StringComparer.OrdinalIgnoreCase)
             .Select(group => new UsageTelemetryOverviewModelHighlight(
                 group.Key,
-                group.Sum(static record => record.TotalTokens ?? 0L)))
+                group.Sum(static record => record.TotalTokens ?? 0L),
+                FormatCompact(group.Sum(static record => record.TotalTokens ?? 0L)) + " tokens"))
             .Where(static model => model.TotalTokens > 0L)
+            .OrderByDescending(static model => model.TotalTokens)
+            .ThenBy(static model => model.Model, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+        return candidate;
+    }
+
+    private static UsageTelemetryOverviewModelHighlight? BuildModelHighlightByActivity(
+        IEnumerable<UsageEventRecord> events) {
+        var candidate = events
+            .Where(static record => !string.IsNullOrWhiteSpace(record.Model))
+            .GroupBy(static record => NormalizeOptional(record.Model) ?? "unknown-model", StringComparer.OrdinalIgnoreCase)
+            .Select(group => new UsageTelemetryOverviewModelHighlight(
+                group.Key,
+                group.LongCount(),
+                HeatmapDisplayText.FormatCount(FormatCompact(group.LongCount()), group.LongCount(), "turn", "turns")))
             .OrderByDescending(static model => model.TotalTokens)
             .ThenBy(static model => model.Model, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
@@ -1192,6 +1368,49 @@ public sealed class UsageTelemetryOverviewBuilder {
         return (longest, currentStreak);
     }
 
+    private static (int LongestStreakDays, int CurrentStreakDays) ComputeActivityStreaks(
+        IReadOnlyList<UsageEventRecord> events) {
+        var activeDays = events
+            .Select(static record => record.TimestampUtc.UtcDateTime.Date)
+            .Distinct()
+            .OrderBy(static day => day)
+            .ToArray();
+
+        if (activeDays.Length == 0) {
+            return (0, 0);
+        }
+
+        var longest = 1;
+        var current = 1;
+        for (var i = 1; i < activeDays.Length; i++) {
+            if ((activeDays[i] - activeDays[i - 1]).Days == 1) {
+                current++;
+            } else {
+                if (current > longest) {
+                    longest = current;
+                }
+                current = 1;
+            }
+        }
+
+        if (current > longest) {
+            longest = current;
+        }
+
+        var trailing = 1;
+        for (var i = activeDays.Length - 1; i > 0; i--) {
+            if ((activeDays[i] - activeDays[i - 1]).Days == 1) {
+                trailing++;
+            } else {
+                break;
+            }
+        }
+
+        var latestDayUtc = events[events.Count - 1].TimestampUtc.UtcDateTime.Date;
+        var currentStreak = activeDays[activeDays.Length - 1] == latestDayUtc ? trailing : 0;
+        return (longest, currentStreak);
+    }
+
     private static string? BuildCoverageNote(IReadOnlyList<UsageEventRecord> events) {
         if (events.Count == 0) {
             return null;
@@ -1211,6 +1430,84 @@ public sealed class UsageTelemetryOverviewBuilder {
         return "Full input/output token telemetry starts on "
                + firstSplitDayUtc.ToString("MMM d", CultureInfo.InvariantCulture)
                + "; earlier activity may be under-split.";
+    }
+
+    private static string? BuildProviderNote(
+        string providerId,
+        IReadOnlyList<UsageEventRecord> events,
+        IReadOnlyList<UsageEventRecord> activityEvents,
+        bool hasTokenTelemetry) {
+        var coverageNote = BuildCoverageNote(events);
+        if (!string.Equals(providerId, "copilot", StringComparison.OrdinalIgnoreCase)) {
+            return coverageNote;
+        }
+
+        var quotaFailures = events.Count(static record =>
+            string.Equals(NormalizeOptional(record.Surface), "cli-error", StringComparison.OrdinalIgnoreCase));
+        var note = hasTokenTelemetry
+            ? "Copilot CLI usage includes exact session usage where Copilot persisted it locally."
+            : "Copilot CLI activity comes from local .copilot sessions and logs; exact token totals were not persisted for this window.";
+        if (quotaFailures > 0) {
+            note = HeatmapDisplayText.JoinSummaryParts(
+                note,
+                HeatmapDisplayText.FormatCount(quotaFailures, "quota failure", "quota failures") + " captured locally");
+        }
+        if (!hasTokenTelemetry && activityEvents.Any(static record => !string.IsNullOrWhiteSpace(record.Model))) {
+            note = HeatmapDisplayText.JoinSummaryParts(
+                note,
+                "Model labels were recovered from Copilot session metadata or local logs");
+        }
+
+        return string.IsNullOrWhiteSpace(coverageNote)
+            ? note
+            : HeatmapDisplayText.JoinSummaryParts(note, coverageNote);
+    }
+
+    private static IReadOnlyList<UsageTelemetryOverviewInsightSection> BuildProviderAdditionalInsights(
+        string providerId,
+        IReadOnlyList<UsageEventRecord> events,
+        IReadOnlyList<UsageEventRecord> activityEvents,
+        bool hasTokenTelemetry) {
+        if (!string.Equals(providerId, "copilot", StringComparison.OrdinalIgnoreCase)) {
+            return Array.Empty<UsageTelemetryOverviewInsightSection>();
+        }
+
+        var sessions = activityEvents
+            .Select(static record => NormalizeOptional(record.SessionId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var quotaFailures = events.Count(static record =>
+            string.Equals(NormalizeOptional(record.Surface), "cli-error", StringComparison.OrdinalIgnoreCase));
+        var totalDurationMs = activityEvents.Sum(static record => record.DurationMs ?? 0L);
+        var activeAccounts = events
+            .Select(static record => NormalizeOptional(record.ProviderAccountId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var rows = new List<UsageTelemetryOverviewInsightRow> {
+            new("Sessions", sessions.ToString(CultureInfo.InvariantCulture), HeatmapDisplayText.FormatCount(sessions, "session", "sessions")),
+            new("Assistant turns", FormatCompact(activityEvents.LongCount()), HeatmapDisplayText.FormatCount(activityEvents.LongCount(), "turn", "turns")),
+            new("Quota failures", quotaFailures.ToString(CultureInfo.InvariantCulture), quotaFailures > 0 ? "402 quota responses captured in local session history" : "No local quota failures captured"),
+            new("CLI time", HeatmapDisplayText.FormatDuration(TimeSpan.FromMilliseconds(Math.Max(0L, totalDurationMs))), activityEvents.Count == 0 ? "No timed turns captured" : null)
+        };
+        if (activeAccounts > 0) {
+            rows.Add(new UsageTelemetryOverviewInsightRow(
+                "Authenticated accounts",
+                activeAccounts.ToString(CultureInfo.InvariantCulture),
+                HeatmapDisplayText.FormatCount(activeAccounts, "account", "accounts")));
+        }
+
+        return new[] {
+            new UsageTelemetryOverviewInsightSection(
+                "copilot-cli-activity",
+                "CLI activity",
+                hasTokenTelemetry
+                    ? "Local Copilot activity with persisted usage snapshots"
+                    : "Local Copilot activity without persisted token totals",
+                "Copilot’s local session history can still show sessions, turns, models, and quota exhaustion even before exact usage snapshots appear on disk.",
+                rows)
+        };
     }
 
     private static double? ComputeRatio(long value, long total) {

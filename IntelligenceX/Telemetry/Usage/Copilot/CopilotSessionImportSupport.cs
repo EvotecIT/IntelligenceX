@@ -82,6 +82,15 @@ internal static class CopilotSessionImportSupport {
         return UsageTelemetryQuickReportSupport.NormalizeOptional(data?.GetString("copilotVersion"));
     }
 
+    public static string? ExtractSelectedModel(JsonObject? data) {
+        return UsageTelemetryQuickReportSupport.NormalizeOptional(
+            data?.GetString("selectedModel")
+            ?? data?.GetString("selected_model")
+            ?? data?.GetString("currentModel")
+            ?? data?.GetString("current_model")
+            ?? data?.GetString("model"));
+    }
+
     public static string? ExtractAuthenticatedLogin(JsonObject? data) {
         if (!string.Equals(
                 UsageTelemetryQuickReportSupport.NormalizeOptional(data?.GetString("infoType")),
@@ -169,6 +178,56 @@ internal static class CopilotSessionImportSupport {
             : normalizedProducer + "/" + normalizedVersion;
     }
 
+    public static string BuildEffectiveModelLabel(
+        string? selectedModel,
+        string? producer,
+        string? copilotVersion) {
+        return UsageTelemetryQuickReportSupport.NormalizeOptional(selectedModel)
+               ?? BuildDefaultModelLabel(producer, copilotVersion);
+    }
+
+    public static string? ResolveDefaultModelFromLogs(
+        string filePath,
+        string rootPath,
+        string? sessionId) {
+        var logsDirectory = ResolveLogsDirectory(filePath, rootPath);
+        if (string.IsNullOrWhiteSpace(logsDirectory) || !Directory.Exists(logsDirectory)) {
+            return null;
+        }
+
+        string? fallbackModel = null;
+        foreach (var logFile in UsageTelemetryQuickReportSupport
+                     .EnumerateFilesSafe(logsDirectory!, "process-*.log", SearchOption.TopDirectoryOnly)
+                     .Select(Path.GetFullPath)
+                     .OrderByDescending(UsageTelemetryQuickReportSupport.GetLastWriteTimeUtcSafe)
+                     .ThenBy(static value => value, StringComparer.OrdinalIgnoreCase)) {
+            var sawSessionId = false;
+            string? lastModel = null;
+            foreach (var line in UsageTelemetryQuickReportSupport.ReadLinesShared(logFile)) {
+                if (!string.IsNullOrWhiteSpace(sessionId) &&
+                    line.IndexOf(sessionId, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    sawSessionId = true;
+                }
+
+                var parsedModel = TryExtractDefaultModelFromLogLine(line);
+                if (!string.IsNullOrWhiteSpace(parsedModel)) {
+                    lastModel = parsedModel;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(lastModel)) {
+                continue;
+            }
+
+            fallbackModel ??= lastModel;
+            if (sawSessionId) {
+                return lastModel;
+            }
+        }
+
+        return fallbackModel;
+    }
+
     public static bool TryComputeDurationMs(
         DateTimeOffset? startedAtUtc,
         DateTimeOffset completedAtUtc,
@@ -201,5 +260,52 @@ internal static class CopilotSessionImportSupport {
 
         var sessionState = Path.Combine(normalizedRoot, "session-state");
         yield return Directory.Exists(sessionState) ? sessionState : normalizedRoot;
+    }
+
+    private static string? ResolveLogsDirectory(string filePath, string rootPath) {
+        var copilotHome = ResolveCopilotHome(filePath, rootPath);
+        if (string.IsNullOrWhiteSpace(copilotHome)) {
+            return null;
+        }
+
+        var logsDirectory = Path.Combine(copilotHome!, "logs");
+        return Directory.Exists(logsDirectory) ? logsDirectory : null;
+    }
+
+    private static string? ResolveCopilotHome(string filePath, string rootPath) {
+        var normalizedRoot = UsageTelemetryIdentity.NormalizePath(rootPath);
+        if (File.Exists(normalizedRoot)) {
+            normalizedRoot = Path.GetDirectoryName(normalizedRoot) ?? normalizedRoot;
+        }
+
+        if (string.Equals(Path.GetFileName(normalizedRoot), ".copilot", StringComparison.OrdinalIgnoreCase)) {
+            return normalizedRoot;
+        }
+
+        var current = new DirectoryInfo(Path.GetDirectoryName(filePath) ?? rootPath);
+        while (current is not null) {
+            if (string.Equals(current.Name, ".copilot", StringComparison.OrdinalIgnoreCase)) {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
+
+    private static string? TryExtractDefaultModelFromLogLine(string line) {
+        if (string.IsNullOrWhiteSpace(line)) {
+            return null;
+        }
+
+        const string marker = "Using default model:";
+        var index = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) {
+            return null;
+        }
+
+        var model = line[(index + marker.Length)..].Trim();
+        return UsageTelemetryQuickReportSupport.NormalizeOptional(model);
     }
 }

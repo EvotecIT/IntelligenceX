@@ -8,6 +8,53 @@ using IntelligenceX.Visualization.Heatmaps;
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+    private static void TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens() {
+        var builder = new UsageTelemetryOverviewBuilder();
+        var events = new[] {
+            new UsageEventRecord("evt-1", "copilot", "copilot.session-state", "src-1", new DateTimeOffset(2026, 03, 13, 22, 29, 29, TimeSpan.Zero)) {
+                ProviderAccountId = "octocat",
+                Surface = "cli",
+                SessionId = "session-a",
+                ThreadId = "session-a",
+                TurnId = "0",
+                Model = "claude-sonnet-4.6",
+                DurationMs = 1010,
+                TruthLevel = UsageTruthLevel.Inferred
+            },
+            new UsageEventRecord("evt-2", "copilot", "copilot.session-state", "src-1", new DateTimeOffset(2026, 03, 13, 22, 29, 30, TimeSpan.Zero)) {
+                ProviderAccountId = "octocat",
+                Surface = "cli-error",
+                SessionId = "session-a",
+                ThreadId = "session-a",
+                Model = "claude-sonnet-4.6",
+                TruthLevel = UsageTruthLevel.Inferred
+            }
+        };
+
+        var overview = builder.Build(
+            events,
+            new UsageTelemetryOverviewOptions {
+                Title = "Copilot Usage",
+                Subtitle = "@octocat"
+            });
+
+        var section = overview.ProviderSections.Single();
+        AssertEqual("GitHub Copilot", section.Title, "copilot section title");
+        AssertEqual("Assistant turns", section.Metrics[0].Label, "copilot activity metric label");
+        AssertEqual("1", section.Metrics[1].Value, "copilot active days metric value");
+        AssertEqual("claude-sonnet-4.6", section.MostUsedModel?.Model, "copilot most used model");
+        AssertContainsText(section.MostUsedModel?.ValueLabel ?? string.Empty, "turn", "copilot most used model uses turn label");
+        AssertEqual(1, section.TopModels.Count, "copilot top model count");
+        AssertContainsText(section.TopModels[0].ValueLabel ?? string.Empty, "turn", "copilot top model uses turn label");
+        AssertEqual(null, section.Composition, "copilot token composition omitted without tokens");
+        AssertEqual(null, section.ApiCostEstimate, "copilot api estimate omitted without tokens");
+        AssertEqual("Monthly activity", section.MonthlyUsageTitle, "copilot monthly activity title");
+        AssertEqual("turns", section.MonthlyUsageUnitsLabel, "copilot monthly activity units");
+        AssertContainsText(section.Note ?? string.Empty, "quota failure", "copilot section note includes quota failures");
+        AssertEqual(1, section.AdditionalInsights.Count, "copilot activity insight count");
+        AssertEqual("copilot-cli-activity", section.AdditionalInsights[0].Key, "copilot activity insight key");
+    }
+
     private static void TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps() {
         var builder = new UsageTelemetryOverviewBuilder();
         var events = new[] {

@@ -53,6 +53,35 @@ public static class HeatmapDisplayText {
     }
 
     /// <summary>
+    /// Formats a compact elapsed-duration label using hour, minute, and second units.
+    /// </summary>
+    /// <param name="duration">Elapsed duration to render.</param>
+    /// <returns>A label such as <c>45s</c>, <c>12m 30s</c>, or <c>2h 15m</c>.</returns>
+    public static string FormatDuration(TimeSpan duration) {
+        if (duration < TimeSpan.Zero) {
+            duration = TimeSpan.Zero;
+        }
+
+        if (duration.TotalHours >= 1d) {
+            return ((int)duration.TotalHours).ToString(CultureInfo.InvariantCulture)
+                   + "h "
+                   + duration.Minutes.ToString(CultureInfo.InvariantCulture)
+                   + "m";
+        }
+
+        if (duration.TotalMinutes >= 1d) {
+            return ((int)duration.TotalMinutes).ToString(CultureInfo.InvariantCulture)
+                   + "m "
+                   + duration.Seconds.ToString(CultureInfo.InvariantCulture)
+                   + "s";
+        }
+
+        return Math.Max(0, (int)Math.Round(duration.TotalSeconds, MidpointRounding.AwayFromZero))
+               .ToString(CultureInfo.InvariantCulture)
+               + "s";
+    }
+
+    /// <summary>
     /// Formats a date range used in report subtitles and section headers.
     /// </summary>
     /// <param name="startDayUtc">Inclusive range start.</param>

@@ -55,6 +55,8 @@ internal static partial class Program {
             TestUsageSummaryBuilderCalculatesTotalsPeakAndRollingWindows);
         failed += Run("Usage summary builder builds top breakdowns",
             TestUsageSummaryBuilderBuildsTopBreakdowns);
+        failed += Run("Usage telemetry overview builder builds Copilot activity section without tokens",
+            TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
         failed += Run("GitHub wrapped html renderer builds shareable page",
@@ -143,6 +145,14 @@ internal static partial class Program {
             TestUsageTelemetryQuickReportScannerSupportsLmStudioAliasProviderFilters);
         failed += Run("Copilot session usage adapter imports CLI turn activity",
             TestCopilotSessionUsageAdapterImportsCliTurnActivity);
+        failed += Run("Copilot session usage adapter imports session shutdown usage metrics",
+            TestCopilotSessionUsageAdapterImportsSessionShutdownUsageMetrics);
+        failed += Run("Copilot quota snapshot client parses direct quota snapshots",
+            TestCopilotQuotaSnapshotClientParsesDirectQuotaSnapshots);
+        failed += Run("Copilot quota snapshot client parses monthly quota fallback",
+            TestCopilotQuotaSnapshotClientParsesMonthlyQuotaFallback);
+        failed += Run("Usage telemetry CLI runner appends Copilot quota insight",
+            TestUsageTelemetryCliRunnerAppendsCopilotQuotaInsight);
         failed += Run("Copilot default source root discovery includes recovered and WSL profiles",
             TestCopilotDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles);
         failed += Run("Usage telemetry import coordinator discovers Copilot root from current profile",
