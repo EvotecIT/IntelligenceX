@@ -2,6 +2,23 @@ namespace IntelligenceX.Tests;
 
 internal static partial class Program {
 #if !NET472
+    private static void TestWebSetupStaticAssetsServeCombinedWizardScript() {
+        var content = IntelligenceX.Cli.Setup.Web.WebStaticAssets.TryGet("/app.js", out var contentType);
+        AssertEqual(true, content != null && content.Length > 0, "web setup static assets app.js available");
+        AssertEqual("text/javascript; charset=utf-8", contentType, "web setup static assets app.js content type");
+
+        var script = System.Text.Encoding.UTF8.GetString(content!);
+        var shellIndex = script.IndexOf("function getPreferredTheme()", StringComparison.Ordinal);
+        var setupIndex = script.IndexOf("async function fetchJsonSafe(url, options)", StringComparison.Ordinal);
+        var formattingIndex = script.IndexOf("function formatResults(data)", StringComparison.Ordinal);
+        var flowsIndex = script.IndexOf("async function startDeviceFlow(clientIdValue, infoElement)", StringComparison.Ordinal);
+
+        AssertEqual(true, shellIndex >= 0, "web setup static assets shell segment present");
+        AssertEqual(true, setupIndex > shellIndex, "web setup static assets setup segment ordered after shell");
+        AssertEqual(true, formattingIndex > setupIndex, "web setup static assets formatting segment ordered after setup");
+        AssertEqual(true, flowsIndex > formattingIndex, "web setup static assets flows segment ordered after formatting");
+    }
+
     private static void TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload() {
         var contractCommands = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
         var contractPaths = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: true);

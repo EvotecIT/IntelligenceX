@@ -11,6 +11,8 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class UiShellAssetsTests {
     private static string UiDirectory => Path.Combine(AppContext.BaseDirectory, "Ui");
+    private const string RenderingScriptFile = "Shell.18.core.tools.rendering.js";
+    private const string TranscriptRenderingScriptFile = "Shell.18a.transcript.rendering.js";
     private static void AssertContainsAll(string content, params string[] anchors) {
         foreach (var anchor in anchors) {
             Assert.Contains(anchor, content, StringComparison.Ordinal);
@@ -98,7 +100,7 @@ public sealed class UiShellAssetsTests {
         var baseCss = File.ReadAllText(baseCssPath);
         var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
         var toolsScript = File.ReadAllText(toolsScriptPath);
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("statusTimeline: []", coreScript, StringComparison.Ordinal);
@@ -222,7 +224,7 @@ public sealed class UiShellAssetsTests {
     [Fact]
     public void Load_IncludesCapabilitySnapshotPolicyFallbackSurface() {
         var html = UiShellAssets.Load();
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
         var coreScript = File.ReadAllText(coreScriptPath);
@@ -364,7 +366,7 @@ public sealed class UiShellAssetsTests {
     [Fact]
     public void Load_DefaultsDraftBubbleVisibilityToOff() {
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
         var coreScript = File.ReadAllText(coreScriptPath);
         var renderingScript = File.ReadAllText(renderingScriptPath);
@@ -658,7 +660,7 @@ public sealed class UiShellAssetsTests {
     /// </summary>
     [Fact]
     public void TranscriptRendering_SkipsCodeCopyButtonsForVisualBlocks() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var scriptPath = Path.Combine(UiDirectory, TranscriptRenderingScriptFile);
         var script = File.ReadAllText(scriptPath);
 
         Assert.Contains("pre.classList && pre.classList.contains(\"mermaid\")", script, StringComparison.Ordinal);
@@ -685,7 +687,7 @@ public sealed class UiShellAssetsTests {
     /// </summary>
     [Fact]
     public void Load_IncludesRuntimeApplyRequestOrderingGuardForOptionsSync() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var scriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var script = File.ReadAllText(scriptPath);
 
         Assert.Contains("function resolveRuntimeApplyRequestId(localModel)", script, StringComparison.Ordinal);
@@ -700,8 +702,9 @@ public sealed class UiShellAssetsTests {
     /// </summary>
     [Fact]
     public void TranscriptRendering_UsesUserAwareFollowStateForAutoScroll() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
-        var script = File.ReadAllText(scriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var transcriptRenderingScriptPath = Path.Combine(UiDirectory, TranscriptRenderingScriptFile);
+        var script = File.ReadAllText(renderingScriptPath) + Environment.NewLine + File.ReadAllText(transcriptRenderingScriptPath);
 
         Assert.Contains("var transcriptFollowState = {", script, StringComparison.Ordinal);
         Assert.Contains("transcript.addEventListener(\"scroll\", function()", script, StringComparison.Ordinal);
@@ -772,7 +775,7 @@ public sealed class UiShellAssetsTests {
         var script = File.ReadAllText(scriptPath);
         var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
         var bindings = File.ReadAllText(bindingsPath);
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
         var coreScript = File.ReadAllText(coreScriptPath);
@@ -825,7 +828,7 @@ public sealed class UiShellAssetsTests {
         var html = UiShellAssets.Load();
         var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
         var script = File.ReadAllText(scriptPath);
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("id=\"optRuntimePanelView\"", html, StringComparison.Ordinal);

@@ -678,7 +678,6 @@ internal sealed partial class ChatServiceSession {
     private static bool TryParseFlexibleBoolean(string value, out bool parsed) {
         return TryParseProtocolBoolean((value ?? string.Empty).Trim(), out parsed);
     }
-
     private static bool TryParseJsonArrayString(string value, out JsonArray parsedArray) {
         parsedArray = null!;
         if (string.IsNullOrWhiteSpace(value)) {
@@ -698,5 +697,4 @@ internal sealed partial class ChatServiceSession {
 
         return parsedArray is not null;
     }
-
 }
