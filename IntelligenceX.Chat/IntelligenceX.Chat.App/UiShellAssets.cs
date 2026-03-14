@@ -27,6 +27,7 @@ internal static class UiShellAssets {
         "Shell.12.core.helpers.js",
         "Shell.15.core.tools.js",
         "Shell.18.core.tools.rendering.js",
+        "Shell.18a.transcript.rendering.js",
         "Shell.16.core.datatables.js",
         "Shell.21.core.visuals.js",
         "Shell.17.core.dataview.js",

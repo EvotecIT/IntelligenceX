@@ -54,6 +54,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Setup\Web\Assets\index.html" LogicalName="Setup.Web.index.html" />
     <EmbeddedResource Include="Setup\Web\Assets\wizard.js" LogicalName="Setup.Web.wizard.js" />
+    <EmbeddedResource Include="Setup\Web\Assets\wizard.setup.js" LogicalName="Setup.Web.wizard.setup.js" />
+    <EmbeddedResource Include="Setup\Web\Assets\wizard.formatting.js" LogicalName="Setup.Web.wizard.formatting.js" />
+    <EmbeddedResource Include="Setup\Web\Assets\wizard.flows.js" LogicalName="Setup.Web.wizard.flows.js" />
     <EmbeddedResource Include="Setup\Web\Assets\wizard.css" LogicalName="Setup.Web.wizard.css" />
   </ItemGroup>
 </Project>

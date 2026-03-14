@@ -420,6 +420,8 @@ internal static partial class Program {
         failed += Run("Manage external command captures help tail line", TestManageRunExternalCommandCapturesHelpTailLine);
         failed += Run("Manage external command start failure returns promptly", TestManageRunExternalCommandStartFailureReturnsPromptly);
         failed += Run("Manage external command non-timeout failure is not timeout", TestManageRunExternalCommandNonTimeoutFailureIsNotTimeout);
+        failed += Run("Web setup static assets serve combined wizard script",
+            TestWebSetupStaticAssetsServeCombinedWizardScript);
         failed += Run("Web setup autodetect response matches shared contract payload",
             TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload);
         failed += Run("Web setup autodetect response fallbacks for null payloads",

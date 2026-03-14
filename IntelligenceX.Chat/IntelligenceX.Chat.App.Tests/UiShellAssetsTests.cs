@@ -9,8 +9,10 @@ namespace IntelligenceX.Chat.App.Tests;
 /// <summary>
 /// Regression tests for shell asset composition.
 /// </summary>
-public sealed class UiShellAssetsTests {
+public sealed partial class UiShellAssetsTests {
     private static string UiDirectory => Path.Combine(AppContext.BaseDirectory, "Ui");
+    private const string RenderingScriptFile = "Shell.18.core.tools.rendering.js";
+    private const string TranscriptRenderingScriptFile = "Shell.18a.transcript.rendering.js";
     private static void AssertContainsAll(string content, params string[] anchors) {
         foreach (var anchor in anchors) {
             Assert.Contains(anchor, content, StringComparison.Ordinal);
@@ -98,7 +100,7 @@ public sealed class UiShellAssetsTests {
         var baseCss = File.ReadAllText(baseCssPath);
         var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
         var toolsScript = File.ReadAllText(toolsScriptPath);
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("statusTimeline: []", coreScript, StringComparison.Ordinal);
@@ -222,7 +224,7 @@ public sealed class UiShellAssetsTests {
     [Fact]
     public void Load_IncludesCapabilitySnapshotPolicyFallbackSurface() {
         var html = UiShellAssets.Load();
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
         var coreScript = File.ReadAllText(coreScriptPath);
@@ -299,6 +301,37 @@ public sealed class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures transcript rendering split stays in the expected load slot between
+    /// the core rendering helpers and the data table/runtime bindings that consume it.
+    /// </summary>
+    [Fact]
+    public void Load_EmitsTranscriptRenderingChunkBetweenRenderingAndDataTableChunks() {
+        var html = UiShellAssets.Load();
+        var renderingIndex = html.IndexOf("/* IXCHAT_PART:Shell.18.core.tools.rendering.js */", StringComparison.Ordinal);
+        var transcriptIndex = html.IndexOf("/* IXCHAT_PART:Shell.18a.transcript.rendering.js */", StringComparison.Ordinal);
+        var dataTablesIndex = html.IndexOf("/* IXCHAT_PART:Shell.16.core.datatables.js */", StringComparison.Ordinal);
+
+        Assert.True(renderingIndex >= 0, "Missing core rendering chunk marker.");
+        Assert.True(transcriptIndex >= 0, "Missing transcript rendering chunk marker.");
+        Assert.True(dataTablesIndex >= 0, "Missing data table chunk marker.");
+        Assert.True(renderingIndex < transcriptIndex, "Transcript chunk must load after core rendering.");
+        Assert.True(transcriptIndex < dataTablesIndex, "Transcript chunk must load before data table bindings.");
+    }
+
+    /// <summary>
+    /// Ensures the manifest itself keeps transcript rendering adjacent to the core rendering split.
+    /// </summary>
+    [Fact]
+    public void JavaScriptManifest_TracksTranscriptRenderingChunkImmediatelyAfterCoreRenderingChunk() {
+        var manifest = UiShellAssets.JavaScriptManifest.ToArray();
+        var renderingIndex = Array.IndexOf(manifest, "Shell.18.core.tools.rendering.js");
+        var transcriptIndex = Array.IndexOf(manifest, "Shell.18a.transcript.rendering.js");
+
+        Assert.True(renderingIndex >= 0, "Core rendering chunk must stay in the manifest.");
+        Assert.Equal(renderingIndex + 1, transcriptIndex);
+    }
+
+    /// <summary>
     /// Ensures autonomy review-loop controls propagate through the UI set_autonomy payload.
     /// </summary>
     [Fact]
@@ -364,7 +397,7 @@ public sealed class UiShellAssetsTests {
     [Fact]
     public void Load_DefaultsDraftBubbleVisibilityToOff() {
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
         var coreScript = File.ReadAllText(coreScriptPath);
         var renderingScript = File.ReadAllText(renderingScriptPath);
@@ -514,157 +547,6 @@ public sealed class UiShellAssetsTests {
         Assert.Contains("if (pending && pending.sessionId && pending.sessionId !== activeDataViewSessionId) {", script, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// Ensures visual runtime script is part of the shell composition and transcript hook.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesVisualRuntimeAndTranscriptHooks() {
-        var html = UiShellAssets.Load();
-
-        AssertContainsAll(
-            html,
-            "/* IXCHAT_PART:Shell.21.core.visuals.js */",
-            "window.ixDisposeTranscriptVisuals",
-            "window.ixRenderTranscriptVisuals",
-            "window.ixMaterializeVisualFencesForDocx",
-            "renderIxChartBlock",
-            "renderIxNetworkBlock",
-            "renderOfficeImoChartBlock",
-            "renderOfficeImoNetworkBlock",
-            "ixNativeVisualRegistry",
-            "getNativeVisualRegistryEntry",
-            "getOfficeImoVisualHash",
-            "getOfficeImoVisualSource",
-            "getOfficeImoVisualSourceByKind",
-            "getOfficeImoVisualKind",
-            "getOfficeImoVisualSelector",
-            "collectOfficeImoVisualBlocks",
-            "collectRegisteredOfficeImoVisualBlocks",
-            "renderTranscriptVisualKind",
-            "data-omd-visual-kind",
-            "data-omd-visual-contract",
-            "data-omd-config-encoding",
-            "data-omd-visual-rendered",
-            "data-omd-config-b64",
-            "ixRenderTranscriptVisuals(transcript)",
-            "ixDisposeTranscriptVisuals(transcript)");
-    }
-
-    /// <summary>
-    /// Ensures Mermaid runtime resolution survives the vendor bundle shape and later visual phases
-    /// still run when an earlier renderer throws.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesMermaidRuntimeFallbackAndSafeTranscriptPhaseChaining() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.21.core.visuals.js");
-        var script = File.ReadAllText(scriptPath);
-
-        AssertContainsAll(
-            script,
-            "function resolveMermaidRuntimeCandidate() {",
-            "function getMermaidRuntime() {",
-            "globalThis.__esbuild_esm_mermaid_nm",
-            "window.mermaid = runtime;",
-            "function runTranscriptVisualPhaseSafely(root, renderPhase) {",
-            "console.warn(\"transcript visual phase failed\", error);",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptCharts)",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptNetworks)",
-            "return runTranscriptVisualPhaseSafely(root, renderTranscriptMermaid)");
-    }
-
-    /// <summary>
-    /// Ensures visual popout panel and export callbacks are present for Mermaid/Chart/Network large-view workflows.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesVisualViewPanelAndExportCallbacks() {
-        var html = UiShellAssets.Load();
-
-        AssertContainsAll(
-            html,
-            "id=\"visualViewPanel\"",
-            "id=\"visualViewBody\"",
-            "id=\"btnVisualViewClose\"",
-            "id=\"btnVisualViewPopout\"",
-            "id=\"btnVisualViewToggleSize\"",
-            "aria-label=\"Close visual view\"",
-            "window.ixOpenVisualView",
-            "window.ixCloseVisualView",
-            "window.ixOnVisualExportPathSelected",
-            "window.ixOnVisualExportResult",
-            "window.ixOnVisualPopoutResult",
-            "function initializeVisualViewLifecycleGuards()",
-            "initializeVisualViewLifecycleGuards();",
-            "function ensureVisualViewClosedState()",
-            "visualViewBodyClassObserver.observe(document.body",
-            "attributeFilter: [\"class\"]",
-            "pick_visual_export_path",
-            "export_visual_artifact",
-            "visual_export_action",
-            "open_visual_popout");
-    }
-
-    /// <summary>
-    /// Ensures visual export and popout show actionable prep failures instead of generic pre-save errors.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesVisualExportPreparationDiagnosticsAndCanvasFallback() {
-        var html = UiShellAssets.Load();
-
-        AssertContainsAll(
-            html,
-            "function resolveVisualExportBuildFailureMessage(visualType, format)",
-            "function tryCaptureVisualViewCanvasPayload(visualType)",
-            "function resolveDocxRenderSize(visualType, docxVisualMaxWidthPx)",
-            "var renderSize = resolveDocxRenderSize(normalizedFenceLanguage, docxVisualMaxWidthPx);",
-            "convertSvgPayloadToPng(rendered, themeMode, renderSize)",
-            "SVG export is only available for Mermaid diagrams.",
-            "Visual export couldn't prepare the image payload before save.",
-            "Visual popout couldn't prepare the image payload.");
-    }
-
-    /// <summary>
-    /// Ensures visual renderers use theme-aware defaults while preserving payload-level customization paths.
-    /// </summary>
-    [Fact]
-    public void Load_IncludesThemeAwareVisualDefaultsAndNetworkEdgeAliases() {
-        var html = UiShellAssets.Load();
-
-        AssertContainsAll(
-            html,
-            "function compareVisualBlockDocumentOrder(left, right) {",
-            "function buildOrderedVisualEntries(fenceBlocks, nativeBlocks) {",
-            "ensureMermaidThemeInitialized",
-            "decodeBase64Utf8Value",
-            "normalizeMermaidExportSvg",
-            "htmlLabels: normalizedRenderProfile !== \"export\"",
-            "svg.replace(/<br\\s*\\/?\\s*>/gi, \"<br/>\")",
-            "themeVariables",
-            "applyChartThemeDefaults",
-            "host.style.width = String(exportWidth) + \"px\"",
-            "(!parsedData || !parsedData.dataBase64) && canvas && typeof canvas.toDataURL === \"function\"",
-            "window.requestAnimationFrame(function()",
-            "normalized === \"network\" || normalized === \"visnetwork\"",
-            "code.language-ix-network, code.language-visnetwork, code.language-network",
-            "canvas.omd-chart",
-            ".omd-network",
-            "data-chart-config-b64",
-            "data-network-config-b64",
-            "Object.prototype.hasOwnProperty.call(rawEdge, \"source\")",
-            "Object.prototype.hasOwnProperty.call(rawEdge, \"target\")");
-    }
-
-    /// <summary>
-    /// Ensures code-copy adorners skip Mermaid and chart blocks so rendered visuals do not expose large payload copies.
-    /// </summary>
-    [Fact]
-    public void TranscriptRendering_SkipsCodeCopyButtonsForVisualBlocks() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
-        var script = File.ReadAllText(scriptPath);
-
-        Assert.Contains("pre.classList && pre.classList.contains(\"mermaid\")", script, StringComparison.Ordinal);
-        Assert.Contains("pre.querySelector(\"code.language-ix-chart, code.language-chart\")", script, StringComparison.Ordinal);
-        Assert.Contains("pre.querySelector(\"code.language-ix-network, code.language-visnetwork, code.language-network\")", script, StringComparison.Ordinal);
-    }
 
     /// <summary>
     /// Ensures the live chat stylesheet gives OfficeIMO native network visuals the same visible sizing contract
@@ -685,7 +567,7 @@ public sealed class UiShellAssetsTests {
     /// </summary>
     [Fact]
     public void Load_IncludesRuntimeApplyRequestOrderingGuardForOptionsSync() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var scriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var script = File.ReadAllText(scriptPath);
 
         Assert.Contains("function resolveRuntimeApplyRequestId(localModel)", script, StringComparison.Ordinal);
@@ -700,8 +582,9 @@ public sealed class UiShellAssetsTests {
     /// </summary>
     [Fact]
     public void TranscriptRendering_UsesUserAwareFollowStateForAutoScroll() {
-        var scriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
-        var script = File.ReadAllText(scriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var transcriptRenderingScriptPath = Path.Combine(UiDirectory, TranscriptRenderingScriptFile);
+        var script = File.ReadAllText(renderingScriptPath) + Environment.NewLine + File.ReadAllText(transcriptRenderingScriptPath);
 
         Assert.Contains("var transcriptFollowState = {", script, StringComparison.Ordinal);
         Assert.Contains("transcript.addEventListener(\"scroll\", function()", script, StringComparison.Ordinal);
@@ -772,7 +655,7 @@ public sealed class UiShellAssetsTests {
         var script = File.ReadAllText(scriptPath);
         var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
         var bindings = File.ReadAllText(bindingsPath);
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
         var coreScript = File.ReadAllText(coreScriptPath);
@@ -825,7 +708,7 @@ public sealed class UiShellAssetsTests {
         var html = UiShellAssets.Load();
         var scriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
         var script = File.ReadAllText(scriptPath);
-        var renderingScriptPath = Path.Combine(UiDirectory, "Shell.18.core.tools.rendering.js");
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
         var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("id=\"optRuntimePanelView\"", html, StringComparison.Ordinal);
