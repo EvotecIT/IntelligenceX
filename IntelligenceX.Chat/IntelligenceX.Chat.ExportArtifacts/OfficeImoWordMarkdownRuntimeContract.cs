@@ -19,19 +19,16 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
     public static MarkdownToWordOptions CreateTranscriptMarkdownToWordOptions(
         IReadOnlyList<string>? allowedImageDirectories,
         int? docxVisualMaxWidthPx) {
-        var readerOptions = OfficeIMO.Markdown.MarkdownReaderOptions.CreateOfficeIMOProfile();
-        readerOptions.PreferNarrativeSingleLineDefinitions = true;
-
         var options = new MarkdownToWordOptions {
             FontFamily = "Calibri",
             AllowLocalImages = allowedImageDirectories is { Count: > 0 },
             PreferNarrativeSingleLineDefinitions = true,
-            ReaderOptions = readerOptions,
             FitImagesToContextWidth = true,
             MaxImageWidthPercentOfContent = 100d,
             FitImagesToPageContentWidth = true,
             MaxImageWidthPixels = NormalizeDocxVisualMaxWidthPx(docxVisualMaxWidthPx)
         };
+        ApplyReaderOptionsIfSupported(options);
 
         if (allowedImageDirectories is { Count: > 0 }) {
             for (var i = 0; i < allowedImageDirectories.Count; i++) {
@@ -75,6 +72,70 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
         }
 
         return normalized;
+    }
+
+    private static void ApplyReaderOptionsIfSupported(MarkdownToWordOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        try {
+            var readerOptions = CreateReaderOptionsIfAvailable();
+            if (readerOptions == null) {
+                return;
+            }
+
+            var readerOptionsProperty = options.GetType().GetProperty(
+                "ReaderOptions",
+                BindingFlags.Instance | BindingFlags.Public);
+            if (readerOptionsProperty?.CanWrite != true || !readerOptionsProperty.PropertyType.IsInstanceOfType(readerOptions)) {
+                return;
+            }
+
+            readerOptionsProperty.SetValue(options, readerOptions);
+        } catch {
+            // Package mode may load an older OfficeIMO.Word.Markdown build. Fall back to the baseline option set.
+        }
+    }
+
+    private static object? CreateReaderOptionsIfAvailable() {
+        var readerOptionsType = Type.GetType("OfficeIMO.Markdown.MarkdownReaderOptions, OfficeIMO.Markdown", throwOnError: false);
+        if (readerOptionsType == null) {
+            return null;
+        }
+
+        object? readerOptions = null;
+
+        var profileFactory = readerOptionsType.GetMethod(
+            "CreateOfficeIMOProfile",
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
+        if (profileFactory != null) {
+            readerOptions = profileFactory.Invoke(null, null);
+        }
+
+        readerOptions ??= Activator.CreateInstance(readerOptionsType);
+        if (readerOptions == null) {
+            return null;
+        }
+
+        TrySetBooleanProperty(readerOptions, "PreferNarrativeSingleLineDefinitions", true);
+        TrySetBooleanProperty(readerOptions, "Callouts", true);
+        TrySetBooleanProperty(readerOptions, "DefinitionLists", true);
+        return readerOptions;
+    }
+
+    private static void TrySetBooleanProperty(object target, string propertyName, bool value) {
+        if (target == null || string.IsNullOrWhiteSpace(propertyName)) {
+            return;
+        }
+
+        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+        if (property?.CanWrite != true || property.PropertyType != typeof(bool)) {
+            return;
+        }
+
+        property.SetValue(target, value);
     }
 
     private static bool DetectGroupedDefinitionLikeParagraphSupport() {
