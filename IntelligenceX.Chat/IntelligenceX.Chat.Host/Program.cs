@@ -214,7 +214,13 @@ internal static partial class Program {
                 nextBootstrapResult.PluginAvailability,
                 nextRoutingCatalogDiagnostics,
                 nextRegistryContext.OrchestrationCatalog);
-            var nextSession = new ReplSession(nextClient, nextRegistry, options, runtimeInstructions, statusWriter);
+            var nextSession = new ReplSession(
+                nextClient,
+                nextRegistry,
+                options,
+                runtimeInstructions,
+                statusWriter,
+                nextRegistryContext.OrchestrationCatalog);
 
             if (client is not null) {
                 try {

@@ -31,12 +31,6 @@ public static class ToolSelectionMetadata {
     private const string DomainSignalTagPrefix = "domain_signal:";
     private const string DomainSignalsTagPrefix = "domain_signals:";
     private const string PackTagPrefix = "pack:";
-    private const string FallbackRequiresSelectionTag = "fallback_requires_selection";
-    private const string FallbackRequiresSelectionTaxonomyTag = "fallback:requires_selection";
-    private const string FallbackSelectionKeyTagPrefix = "fallback_selection_key:";
-    private const string FallbackSelectionKeysTagPrefix = "fallback_selection_keys:";
-    private const string FallbackHintKeyTagPrefix = "fallback_hint_key:";
-    private const string FallbackHintKeysTagPrefix = "fallback_hint_keys:";
     private static readonly string[] DomainIntentAdDefaultSignalTokens = {
         "dc",
         "ldap",
@@ -73,17 +67,6 @@ public static class ToolSelectionMetadata {
         "public_domain",
         DomainIntentActionIdPublic
     };
-    private static readonly HashSet<string> KnownCompoundPackRoutingTokenCompacts = new(StringComparer.OrdinalIgnoreCase) {
-        "activedirectory",
-        "adplayground",
-        "computerx",
-        "domaindetective",
-        "dnsclientx",
-        "eventlog",
-        "eventviewerx",
-        "testimox"
-    };
-
     private sealed class ExplicitSelectionOverride {
         public ExplicitSelectionOverride(
             string? category,
@@ -151,88 +134,6 @@ public static class ToolSelectionMetadata {
         public bool IsExplicit { get; }
     }
 
-    private static readonly IReadOnlyDictionary<string, string> CategoryByPrefix =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
-            ["ad"] = "active_directory",
-            ["computerx"] = "system",
-            ["eventlog"] = "eventlog",
-            ["system"] = "system",
-            ["wsl"] = "system",
-            ["email"] = "email",
-            ["fs"] = "filesystem",
-            ["powershell"] = "powershell",
-            ["testimox"] = "testimox",
-            ["officeimo"] = "officeimo",
-            ["reviewer"] = "reviewer_setup",
-            ["dnsclientx"] = "dns",
-            ["domaindetective"] = "dns"
-        };
-
-    private static readonly IReadOnlyDictionary<string, ExplicitSelectionOverride> ExplicitOverrides =
-        new Dictionary<string, ExplicitSelectionOverride>(StringComparer.OrdinalIgnoreCase) {
-            ["system_info"] = new ExplicitSelectionOverride(
-                category: "system",
-                scope: "host",
-                operation: ToolRoutingTaxonomy.OperationRead,
-                entity: "host",
-                risk: ToolRoutingTaxonomy.RiskLow,
-                tags: new[] { "inventory", "baseline" },
-                isHighTraffic: true,
-                isHighRisk: false),
-            ["ad_search"] = new ExplicitSelectionOverride(
-                category: "active_directory",
-                scope: "domain",
-                operation: "search",
-                entity: "directory_object",
-                risk: "medium",
-                tags: new[] { "identity", "handoff_consumer" },
-                isHighTraffic: true,
-                isHighRisk: false),
-            ["ad_object_resolve"] = new ExplicitSelectionOverride(
-                category: "active_directory",
-                scope: "domain",
-                operation: "resolve",
-                entity: "directory_object",
-                risk: "medium",
-                tags: new[] { "identity", "handoff_consumer" },
-                isHighTraffic: true,
-                isHighRisk: false),
-            ["ad_handoff_prepare"] = new ExplicitSelectionOverride(
-                category: "active_directory",
-                scope: "domain",
-                operation: "transform",
-                entity: "identity",
-                risk: ToolRoutingTaxonomy.RiskLow,
-                tags: new[] { "handoff", "normalization" },
-                isHighTraffic: true,
-                isHighRisk: false),
-            ["powershell_run"] = new ExplicitSelectionOverride(
-                category: "powershell",
-                scope: "host",
-                operation: "execute_write",
-                entity: "command",
-                risk: "high",
-                tags: new[] { "execution", "mutating" },
-                isHighTraffic: false,
-                isHighRisk: true),
-            ["email_smtp_send"] = new ExplicitSelectionOverride(
-                category: "email",
-                scope: "message",
-                operation: "write",
-                entity: "message",
-                risk: "high",
-                tags: new[] { "smtp", "send" },
-                isHighTraffic: false,
-                isHighRisk: true)
-        };
-
-    private static readonly string[] RequiredExplicitOverrideToolNames =
-        ExplicitOverrides
-            .Where(static kv => kv.Value.IsHighRisk || kv.Value.IsHighTraffic)
-            .Select(static kv => kv.Key)
-            .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
     private static readonly string[] TimeRangeArgumentNames = {
         "start_time_utc",
         "end_time_utc",
@@ -263,7 +164,7 @@ public static class ToolSelectionMetadata {
 
         var explicitOverride = GetExplicitOverride(definition);
         var category = NormalizeCategory(string.IsNullOrWhiteSpace(definition.Category)
-            ? (explicitOverride?.Category ?? InferCategory(definition.Name, toolType))
+            ? (explicitOverride?.Category ?? InferCategory(definition, toolType))
             : definition.Category);
         var routing = ResolveRouting(definition, category, explicitOverride);
         var tags = BuildSelectionTags(definition, category, routing, explicitOverride);
@@ -303,28 +204,9 @@ public static class ToolSelectionMetadata {
 
         var explicitOverride = GetExplicitOverride(definition);
         var category = NormalizeCategory(string.IsNullOrWhiteSpace(definition.Category)
-            ? (explicitOverride?.Category ?? InferCategory(definition.Name, toolType))
+            ? (explicitOverride?.Category ?? InferCategory(definition, toolType))
             : definition.Category);
         return ResolveRouting(definition, category, explicitOverride);
-    }
-
-    /// <summary>
-    /// Indicates whether a tool has an explicit selection-metadata override.
-    /// </summary>
-    public static bool HasExplicitOverride(string? toolName) {
-        var normalized = (toolName ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        return ExplicitOverrides.ContainsKey(normalized);
-    }
-
-    /// <summary>
-    /// Returns high-priority tools that must keep explicit routing metadata overrides.
-    /// </summary>
-    public static IReadOnlyList<string> GetRequiredExplicitOverrideToolNames() {
-        return RequiredExplicitOverrideToolNames;
     }
 
     /// <summary>
@@ -494,139 +376,21 @@ public static class ToolSelectionMetadata {
     /// Returns normalized pack-id aliases used for pack matching.
     /// </summary>
     public static IReadOnlyList<string> GetNormalizedPackAliases(string? packId) {
-        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void AddAlias(string? value) {
-            var normalized = NormalizePackCompactId(value);
-            if (normalized.Length > 0) {
-                aliases.Add(normalized);
-            }
-        }
-
-        AddAlias(packId);
-        switch (NormalizePackCompactId(packId)) {
-            case "activedirectory":
-                AddAlias("ad");
-                AddAlias("adplayground");
-                break;
-            case "ad":
-                AddAlias("active_directory");
-                AddAlias("adplayground");
-                break;
-            case "adplayground":
-                AddAlias("active_directory");
-                AddAlias("ad");
-                break;
-            case "system":
-                AddAlias("computerx");
-                break;
-            case "computerx":
-                AddAlias("system");
-                break;
-            case "eventlog":
-                AddAlias("event_log");
-                AddAlias("eventviewerx");
-                break;
-            case "eventviewerx":
-                AddAlias("eventlog");
-                AddAlias("event_log");
-                break;
-            case "domaindetective":
-                AddAlias("domain_detective");
-                break;
-            case "dnsclientx":
-                AddAlias("dns_client_x");
-                break;
-            case "testimox":
-                AddAlias("testimo_x");
-                break;
-        }
-
-        if (aliases.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        var list = aliases.ToList();
-        list.Sort(StringComparer.OrdinalIgnoreCase);
-        return list;
+        return ToolPackIdentityCatalog.GetNormalizedPackAliases(packId);
     }
 
     /// <summary>
     /// Returns pack-oriented search tokens for planner/routing prompts.
     /// </summary>
     public static IReadOnlyList<string> GetPackSearchTokens(string? packId) {
-        var rawPackId = (packId ?? string.Empty).Trim();
-        if (rawPackId.Length == 0) {
-            return Array.Empty<string>();
-        }
-
-        var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void AddToken(string? value) {
-            var token = (value ?? string.Empty).Trim();
-            if (token.Length > 0) {
-                tokens.Add(token);
-            }
-        }
-
-        AddToken(rawPackId);
-        foreach (var alias in GetNormalizedPackAliases(rawPackId)) {
-            AddToken(alias);
-        }
-
-        switch (NormalizePackCompactId(rawPackId)) {
-            case "activedirectory":
-                AddToken("active_directory");
-                AddToken("ad_playground");
-                break;
-            case "ad":
-                AddToken("active_directory");
-                AddToken("ad_playground");
-                break;
-            case "adplayground":
-                AddToken("active_directory");
-                AddToken("ad_playground");
-                break;
-            case "system":
-                AddToken("computer_x");
-                break;
-            case "computerx":
-                AddToken("computer_x");
-                break;
-            case "eventlog":
-                AddToken("event_log");
-                AddToken("eventviewer_x");
-                break;
-            case "eventviewerx":
-                AddToken("eventlog");
-                AddToken("event_log");
-                AddToken("eventviewer_x");
-                break;
-            case "domaindetective":
-                AddToken("domain_detective");
-                break;
-            case "dnsclientx":
-                AddToken("dns_client_x");
-                break;
-            case "testimox":
-                AddToken("testimo_x");
-                break;
-        }
-
-        if (tokens.Count == 0) {
-            return Array.Empty<string>();
-        }
-
-        var list = tokens.ToList();
-        list.Sort(StringComparer.OrdinalIgnoreCase);
-        return list;
+        return ToolPackIdentityCatalog.GetPackSearchTokens(packId);
     }
 
     /// <summary>
     /// Indicates whether a compact token maps to a known compound pack identifier.
     /// </summary>
     public static bool IsKnownCompoundPackRoutingCompact(string? compactToken) {
-        var normalized = NormalizePackCompactId(compactToken);
-        return normalized.Length > 0
-               && KnownCompoundPackRoutingTokenCompacts.Contains(normalized);
+        return ToolPackIdentityCatalog.IsKnownCompoundPackRoutingCompact(compactToken);
     }
 
     /// <summary>
@@ -645,11 +409,7 @@ public static class ToolSelectionMetadata {
             return true;
         }
 
-        if (TryGetFallbackSelectionKeysFromTags(definition.Tags, out var taggedKeys) && taggedKeys.Count > 0) {
-            return true;
-        }
-
-        return HasFallbackRequiresSelectionTag(definition.Tags);
+        return false;
     }
 
     /// <summary>
@@ -662,10 +422,6 @@ public static class ToolSelectionMetadata {
 
         if (definition.Routing?.FallbackSelectionKeys is { Count: > 0 } routingKeys) {
             return routingKeys;
-        }
-
-        if (TryGetFallbackSelectionKeysFromTags(definition.Tags, out var taggedKeys) && taggedKeys.Count > 0) {
-            return taggedKeys;
         }
 
         return Array.Empty<string>();
@@ -683,10 +439,6 @@ public static class ToolSelectionMetadata {
             return routingKeys;
         }
 
-        if (TryGetFallbackHintKeysFromTags(definition.Tags, out var taggedKeys) && taggedKeys.Count > 0) {
-            return taggedKeys;
-        }
-
         return Array.Empty<string>();
     }
 
@@ -695,7 +447,7 @@ public static class ToolSelectionMetadata {
         string? category,
         ExplicitSelectionOverride? explicitOverride) {
         var operation = string.IsNullOrWhiteSpace(explicitOverride?.Operation)
-            ? InferOperation(definition.Name, definition.WriteGovernance?.IsWriteCapable == true)
+            ? ToolNameRoutingSemantics.InferOperation(definition.Name, definition.WriteGovernance?.IsWriteCapable == true)
             : explicitOverride!.Operation!;
 
         var scope = string.IsNullOrWhiteSpace(explicitOverride?.Scope)
@@ -703,7 +455,7 @@ public static class ToolSelectionMetadata {
             : explicitOverride!.Scope!;
 
         var entity = string.IsNullOrWhiteSpace(explicitOverride?.Entity)
-            ? InferEntity(definition.Name, category)
+            ? ToolNameRoutingSemantics.InferEntity(definition.Name, category)
             : explicitOverride!.Entity!;
 
         var risk = string.IsNullOrWhiteSpace(explicitOverride?.Risk)
@@ -723,67 +475,98 @@ public static class ToolSelectionMetadata {
             return null;
         }
 
-        var canonical = string.IsNullOrWhiteSpace(definition.CanonicalName)
-            ? definition.Name
-            : definition.CanonicalName;
-        if (!string.IsNullOrWhiteSpace(canonical) && ExplicitOverrides.TryGetValue(canonical.Trim(), out var hit)) {
-            return hit;
+        if (TryGetRoutingContractSelectionOverride(definition.Routing, out var routingOverride)) {
+            return routingOverride;
         }
 
-        var name = definition.Name;
-        if (!string.IsNullOrWhiteSpace(name) && ExplicitOverrides.TryGetValue(name.Trim(), out hit)) {
-            return hit;
+        if (TryGetToolOwnedSelectionOverride(definition.Tags, out var taggedOverride)) {
+            return taggedOverride;
         }
 
         return null;
     }
 
-    private static string? InferCategory(string? toolName, Type? toolType) {
-        var normalized = toolName?.Trim() ?? string.Empty;
-        if (normalized.Length > 0) {
-            var separator = normalized.IndexOf('_');
-            if (separator > 0) {
-                var prefix = normalized.Substring(0, separator);
-                if (CategoryByPrefix.TryGetValue(prefix, out var prefixedCategory)) {
-                    return prefixedCategory;
-                }
-            }
+    private static bool TryGetRoutingContractSelectionOverride(
+        ToolRoutingContract? routing,
+        out ExplicitSelectionOverride explicitOverride) {
+        explicitOverride = null!;
+        if (routing is null || !routing.IsRoutingAware) {
+            return false;
         }
 
-        var ns = toolType?.Namespace ?? string.Empty;
-        if (ns.IndexOf(".ADPlayground", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "active_directory";
+        if (!string.Equals(
+                NormalizeToken(routing.RoutingSource, fallback: string.Empty),
+                ToolRoutingTaxonomy.SourceExplicit,
+                StringComparison.OrdinalIgnoreCase)) {
+            return false;
         }
-        if (ns.IndexOf(".EventLog", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "eventlog";
+
+        var scope = NormalizeToken(routing.Scope, fallback: string.Empty);
+        var operation = NormalizeToken(routing.Operation, fallback: string.Empty);
+        var entity = NormalizeToken(routing.Entity, fallback: string.Empty);
+        var risk = NormalizeRoutingToken(routing.Risk, ToolRoutingTaxonomy.IsAllowedRisk);
+        if (scope.Length == 0 && operation.Length == 0 && entity.Length == 0 && risk.Length == 0) {
+            return false;
         }
-        if (ns.IndexOf(".System", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "system";
+
+        explicitOverride = new ExplicitSelectionOverride(
+            category: null,
+            scope: scope.Length > 0 ? scope : null,
+            operation: operation.Length > 0 ? operation : null,
+            entity: entity.Length > 0 ? entity : null,
+            risk: risk.Length > 0 ? risk : null,
+            tags: Array.Empty<string>(),
+            isHighTraffic: false,
+            isHighRisk: string.Equals(risk, ToolRoutingTaxonomy.RiskHigh, StringComparison.OrdinalIgnoreCase));
+        return true;
+    }
+
+    private static bool TryGetToolOwnedSelectionOverride(IReadOnlyList<string>? tags, out ExplicitSelectionOverride explicitOverride) {
+        explicitOverride = null!;
+
+        var hasScope = ToolSelectionHintTags.TryGetScope(tags, out var scope);
+        var hasOperation = ToolSelectionHintTags.TryGetOperation(tags, out var operation);
+        var hasEntity = ToolSelectionHintTags.TryGetEntity(tags, out var entity);
+        var hasRisk = ToolSelectionHintTags.TryGetRisk(tags, out var risk);
+
+        if (!hasScope && !hasOperation && !hasEntity && !hasRisk) {
+            return false;
         }
-        if (ns.IndexOf(".Email", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "email";
+
+        explicitOverride = new ExplicitSelectionOverride(
+            category: null,
+            scope: hasScope ? scope : null,
+            operation: hasOperation ? operation : null,
+            entity: hasEntity ? entity : null,
+            risk: hasRisk ? risk : null,
+            tags: Array.Empty<string>(),
+            isHighTraffic: false,
+            isHighRisk: false);
+        return true;
+    }
+
+    private static string? InferCategory(ToolDefinition definition, Type? toolType) {
+        if (definition is null) {
+            return null;
         }
-        if (ns.IndexOf(".FileSystem", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "filesystem";
+
+        if (TryResolvePackId(definition, out var packId) && TryMapPackIdToCategory(packId, out var packCategory)) {
+            return packCategory;
         }
-        if (ns.IndexOf(".PowerShell", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "powershell";
+
+        if (ToolPackIdentityCatalog.TryResolveCategoryFromToolName(definition.Name, out var toolNameCategory)) {
+            return toolNameCategory;
         }
-        if (ns.IndexOf(".TestimoX", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "testimox";
-        }
-        if (ns.IndexOf(".OfficeIMO", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "officeimo";
-        }
-        if (ns.IndexOf(".DnsClientX", StringComparison.OrdinalIgnoreCase) >= 0
-            || ns.IndexOf(".DomainDetective", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "dns";
-        }
-        if (ns.IndexOf(".ReviewerSetup", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "reviewer_setup";
+
+        if (ToolPackIdentityCatalog.TryResolveCategoryFromRuntimeNamespace(toolType?.Namespace, out var runtimeCategory)) {
+            return runtimeCategory;
         }
 
         return null;
+    }
+
+    private static bool TryMapPackIdToCategory(string? packId, out string category) {
+        return ToolPackIdentityCatalog.TryGetCategory(packId, out category);
     }
 
     private static string InferScope(ToolDefinition definition, string? category, string operation) {
@@ -791,33 +574,20 @@ public static class ToolSelectionMetadata {
             return "pack";
         }
 
-        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.DomainScopeArguments) ||
-            string.Equals(category, "active_directory", StringComparison.OrdinalIgnoreCase)) {
+        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.DomainScopeArguments)) {
             return "domain";
         }
 
-        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.FileScopeArguments) ||
-            string.Equals(category, "filesystem", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(category, "officeimo", StringComparison.OrdinalIgnoreCase)) {
+        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.FileScopeArguments)) {
             return "file";
         }
 
-        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.HostScopeArguments) ||
-            string.Equals(category, "system", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(category, "eventlog", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(category, "powershell", StringComparison.OrdinalIgnoreCase)) {
+        if (HasAnyProperty(definition.Parameters, ToolScopeArgumentNames.HostScopeArguments)) {
             return "host";
         }
 
-        if (string.Equals(category, "email", StringComparison.OrdinalIgnoreCase)) {
-            return "message";
-        }
-        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)) {
-            return "domain";
-        }
-
-        if (string.Equals(category, "reviewer_setup", StringComparison.OrdinalIgnoreCase)) {
-            return "repository";
+        if (ToolCategoryRoutingSemantics.TryGetDefaultScope(category, out var defaultScope)) {
+            return defaultScope;
         }
 
         return ToolRoutingTaxonomy.ScopeGeneral;
@@ -921,111 +691,6 @@ public static class ToolSelectionMetadata {
         return true;
     }
 
-    private static string InferOperation(string? toolName, bool isWriteCapable) {
-        var name = (toolName ?? string.Empty).Trim();
-        if (name.EndsWith("_pack_info", StringComparison.OrdinalIgnoreCase)) {
-            return "guide";
-        }
-
-        if (name.IndexOf("_discover", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "discover";
-        }
-        if (name.EndsWith("_list", StringComparison.OrdinalIgnoreCase) || name.IndexOf("_list_", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "list";
-        }
-        if (name.EndsWith("_search", StringComparison.OrdinalIgnoreCase) || name.IndexOf("_search_", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "search";
-        }
-        if (name.EndsWith("_query", StringComparison.OrdinalIgnoreCase) || name.IndexOf("_query_", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "query";
-        }
-        if (name.EndsWith("_resolve", StringComparison.OrdinalIgnoreCase) || name.IndexOf("_resolve_", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "resolve";
-        }
-        if (name.EndsWith("_stats", StringComparison.OrdinalIgnoreCase) ||
-            name.EndsWith("_summary", StringComparison.OrdinalIgnoreCase) ||
-            name.EndsWith("_health", StringComparison.OrdinalIgnoreCase)) {
-            return "summarize";
-        }
-        if (name.EndsWith("_probe", StringComparison.OrdinalIgnoreCase)) {
-            return "probe";
-        }
-        if (name.EndsWith("_ping", StringComparison.OrdinalIgnoreCase) || name.IndexOf("_ping_", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "probe";
-        }
-        if (name.EndsWith("_send", StringComparison.OrdinalIgnoreCase)) {
-            return "write";
-        }
-        if (name.EndsWith("_run", StringComparison.OrdinalIgnoreCase)) {
-            return isWriteCapable ? "execute_write" : "execute";
-        }
-        if (name.EndsWith("_get", StringComparison.OrdinalIgnoreCase)) {
-            return ToolRoutingTaxonomy.OperationRead;
-        }
-
-        return isWriteCapable ? "write" : ToolRoutingTaxonomy.OperationRead;
-    }
-
-    private static string InferEntity(string? toolName, string? category) {
-        var name = (toolName ?? string.Empty).Trim();
-        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)
-            && (name.IndexOf("ping", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("probe", StringComparison.OrdinalIgnoreCase) >= 0
-                || name.IndexOf("traceroute", StringComparison.OrdinalIgnoreCase) >= 0)) {
-            return "host";
-        }
-
-        if (name.IndexOf("user", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "user";
-        }
-        if (name.IndexOf("group", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "group";
-        }
-        if (name.IndexOf("gpo", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "gpo";
-        }
-        if (name.IndexOf("event", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            name.IndexOf("eventlog", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "event";
-        }
-        if (name.IndexOf("dns", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "dns";
-        }
-        if (name.IndexOf("ldap", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            name.IndexOf("object", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "directory_object";
-        }
-        if (name.IndexOf("mail", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            name.IndexOf("email", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "message";
-        }
-
-        if (string.Equals(category, "active_directory", StringComparison.OrdinalIgnoreCase)) {
-            return "directory_object";
-        }
-        if (string.Equals(category, "eventlog", StringComparison.OrdinalIgnoreCase)) {
-            return "event";
-        }
-        if (string.Equals(category, "system", StringComparison.OrdinalIgnoreCase)) {
-            return "host";
-        }
-        if (string.Equals(category, "powershell", StringComparison.OrdinalIgnoreCase)) {
-            return "command";
-        }
-        if (string.Equals(category, "filesystem", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(category, "officeimo", StringComparison.OrdinalIgnoreCase)) {
-            return "file";
-        }
-        if (string.Equals(category, "email", StringComparison.OrdinalIgnoreCase)) {
-            return "message";
-        }
-        if (string.Equals(category, "dns", StringComparison.OrdinalIgnoreCase)) {
-            return "dns";
-        }
-
-        return ToolRoutingTaxonomy.EntityResource;
-    }
-
     private static string InferRisk(ToolDefinition definition, string operation) {
         if (definition.WriteGovernance?.IsWriteCapable == true ||
             string.Equals(operation, "write", StringComparison.OrdinalIgnoreCase) ||
@@ -1066,7 +731,7 @@ public static class ToolSelectionMetadata {
 
         for (var i = 0; i < definition.Tags.Count; i++) {
             var tag = definition.Tags[i];
-            if (ToolRoutingTaxonomy.IsTaxonomyTag(tag)) {
+            if (ToolRoutingTaxonomy.IsTaxonomyTag(tag) || ToolSelectionHintTags.IsControlTag(tag)) {
                 continue;
             }
 
@@ -1185,22 +850,17 @@ public static class ToolSelectionMetadata {
             actionId = GetDefaultDomainIntentActionId(family);
         }
 
-        var requiresSelection = existing?.RequiresSelectionForFallback == true
-                                || HasFallbackRequiresSelectionTag(enrichedTags);
+        var requiresSelection = existing?.RequiresSelectionForFallback == true;
         var fallbackSelectionKeys = NormalizeTokenList(
             existing?.FallbackSelectionKeys,
-            fallbackWhenEmpty: TryGetFallbackSelectionKeysFromTags(enrichedTags, out var taggedSelectionKeys)
-                ? taggedSelectionKeys
-                : Array.Empty<string>());
+            fallbackWhenEmpty: Array.Empty<string>());
         if (fallbackSelectionKeys.Count > 0) {
             requiresSelection = true;
         }
 
         var fallbackHintKeys = NormalizeTokenList(
             existing?.FallbackHintKeys,
-            fallbackWhenEmpty: TryGetFallbackHintKeysFromTags(enrichedTags, out var taggedHintKeys)
-                ? taggedHintKeys
-                : Array.Empty<string>());
+            fallbackWhenEmpty: Array.Empty<string>());
 
         var domainSignals = NormalizeTokenList(
             existing?.DomainSignalTokens,
@@ -1219,6 +879,10 @@ public static class ToolSelectionMetadata {
             RoutingSource = source,
             PackId = packId,
             Role = role,
+            Scope = NormalizeToken(existing?.Scope, routing.Scope),
+            Operation = NormalizeToken(existing?.Operation, routing.Operation),
+            Entity = NormalizeToken(existing?.Entity, routing.Entity),
+            Risk = NormalizeRoutingToken(existing?.Risk, ToolRoutingTaxonomy.IsAllowedRisk, routing.Risk),
             DomainIntentFamily = family,
             DomainIntentActionId = actionId,
             DomainSignalTokens = domainSignals,
@@ -1242,6 +906,10 @@ public static class ToolSelectionMetadata {
                && string.Equals(left.RoutingSource, right.RoutingSource, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.PackId, right.PackId, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.Role, right.Role, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.Scope, right.Scope, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.Operation, right.Operation, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.Entity, right.Entity, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.Risk, right.Risk, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.DomainIntentFamily, right.DomainIntentFamily, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.DomainIntentActionId, right.DomainIntentActionId, StringComparison.OrdinalIgnoreCase)
                && SequenceEqual(left.DomainSignalTokens, right.DomainSignalTokens)
@@ -1319,30 +987,6 @@ public static class ToolSelectionMetadata {
         return normalized.Length == 0 ? DefaultCategory : normalized;
     }
 
-    private static string NormalizePackCompactId(string? value) {
-        return NormalizeCompactToken(value);
-    }
-
-    private static bool HasFallbackRequiresSelectionTag(IReadOnlyList<string>? tags) {
-        if (tags is null || tags.Count == 0) {
-            return false;
-        }
-
-        for (var i = 0; i < tags.Count; i++) {
-            var tag = (tags[i] ?? string.Empty).Trim();
-            if (tag.Length == 0) {
-                continue;
-            }
-
-            if (string.Equals(tag, FallbackRequiresSelectionTag, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(tag, FallbackRequiresSelectionTaxonomyTag, StringComparison.OrdinalIgnoreCase)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static bool TryGetDomainSignalTokensFromTags(IReadOnlyList<string>? tags, out IReadOnlyList<string> tokens) {
         tokens = Array.Empty<string>();
         if (tags is null || tags.Count == 0) {
@@ -1389,113 +1033,6 @@ public static class ToolSelectionMetadata {
         collected.Sort(StringComparer.OrdinalIgnoreCase);
         tokens = collected.ToArray();
         return true;
-    }
-
-    private static bool TryGetFallbackSelectionKeysFromTags(IReadOnlyList<string>? tags, out IReadOnlyList<string> keys) {
-        keys = Array.Empty<string>();
-        if (tags is null || tags.Count == 0) {
-            return false;
-        }
-
-        var collected = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < tags.Count; i++) {
-            var rawTag = (tags[i] ?? string.Empty).Trim();
-            if (rawTag.Length == 0) {
-                continue;
-            }
-
-            if (rawTag.StartsWith(FallbackSelectionKeyTagPrefix, StringComparison.OrdinalIgnoreCase)) {
-                var single = rawTag.Length > FallbackSelectionKeyTagPrefix.Length
-                    ? rawTag.Substring(FallbackSelectionKeyTagPrefix.Length).Trim()
-                    : string.Empty;
-                AddFallbackSelectionKey(single, collected, seen);
-                continue;
-            }
-
-            if (!rawTag.StartsWith(FallbackSelectionKeysTagPrefix, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var value = rawTag.Length > FallbackSelectionKeysTagPrefix.Length
-                ? rawTag.Substring(FallbackSelectionKeysTagPrefix.Length).Trim()
-                : string.Empty;
-            if (value.Length == 0) {
-                continue;
-            }
-
-            var split = value.Split(',');
-            for (var j = 0; j < split.Length; j++) {
-                AddFallbackSelectionKey(split[j], collected, seen);
-            }
-        }
-
-        if (collected.Count == 0) {
-            return false;
-        }
-
-        collected.Sort(StringComparer.OrdinalIgnoreCase);
-        keys = collected.ToArray();
-        return true;
-    }
-
-    private static bool TryGetFallbackHintKeysFromTags(IReadOnlyList<string>? tags, out IReadOnlyList<string> keys) {
-        keys = Array.Empty<string>();
-        if (tags is null || tags.Count == 0) {
-            return false;
-        }
-
-        var collected = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < tags.Count; i++) {
-            var rawTag = (tags[i] ?? string.Empty).Trim();
-            if (rawTag.Length == 0) {
-                continue;
-            }
-
-            if (rawTag.StartsWith(FallbackHintKeyTagPrefix, StringComparison.OrdinalIgnoreCase)) {
-                var single = rawTag.Length > FallbackHintKeyTagPrefix.Length
-                    ? rawTag.Substring(FallbackHintKeyTagPrefix.Length).Trim()
-                    : string.Empty;
-                AddFallbackSelectionKey(single, collected, seen);
-                continue;
-            }
-
-            if (!rawTag.StartsWith(FallbackHintKeysTagPrefix, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var value = rawTag.Length > FallbackHintKeysTagPrefix.Length
-                ? rawTag.Substring(FallbackHintKeysTagPrefix.Length).Trim()
-                : string.Empty;
-            if (value.Length == 0) {
-                continue;
-            }
-
-            var split = value.Split(',');
-            for (var j = 0; j < split.Length; j++) {
-                AddFallbackSelectionKey(split[j], collected, seen);
-            }
-        }
-
-        if (collected.Count == 0) {
-            return false;
-        }
-
-        collected.Sort(StringComparer.OrdinalIgnoreCase);
-        keys = collected.ToArray();
-        return true;
-    }
-
-    private static void AddFallbackSelectionKey(string? candidate, List<string> keys, HashSet<string> seen) {
-        var key = (candidate ?? string.Empty).Trim();
-        if (key.Length == 0) {
-            return;
-        }
-
-        if (seen.Add(key)) {
-            keys.Add(key);
-        }
     }
 
     private static void AddDomainSignalToken(string? candidate, List<string> tokens, HashSet<string> seen) {
@@ -1596,24 +1133,16 @@ public static class ToolSelectionMetadata {
         return normalized.ToLowerInvariant();
     }
 
-    private static string NormalizeCompactToken(string? value) {
-        if (string.IsNullOrEmpty(value)) {
-            return string.Empty;
+    private static string NormalizeRoutingToken(
+        string? value,
+        Func<string?, bool> validator,
+        string fallback = "") {
+        var normalized = NormalizeToken(value, fallback: string.Empty);
+        if (normalized.Length == 0) {
+            return fallback;
         }
 
-        var normalizedValue = value!;
-        var buffer = new char[normalizedValue.Length];
-        var length = 0;
-        for (var i = 0; i < normalizedValue.Length; i++) {
-            var ch = normalizedValue[i];
-            if (!char.IsLetterOrDigit(ch)) {
-                continue;
-            }
-
-            buffer[length++] = char.ToLowerInvariant(ch);
-        }
-
-        return length == 0 ? string.Empty : new string(buffer, 0, length);
+        return validator(normalized) ? normalized : fallback;
     }
 
     private static bool TryResolvePackIdFromTags(IReadOnlyList<string>? tags, out string packId) {
@@ -1640,73 +1169,8 @@ public static class ToolSelectionMetadata {
     }
 
     private static bool TryNormalizePackId(string? value, out string packId) {
-        packId = string.Empty;
-        var normalized = NormalizePackToken(value);
-        if (normalized.Length == 0) {
-            return false;
-        }
-
-        var compact = NormalizeCompactToken(normalized);
-        if (compact.Length == 0) {
-            return false;
-        }
-
-        packId = compact switch {
-            "ad" => "active_directory",
-            "activedirectory" => "active_directory",
-            "adplayground" => "active_directory",
-            "eventlog" => "eventlog",
-            "eventlogs" => "eventlog",
-            "eventviewerx" => "eventlog",
-            "system" => "system",
-            "computerx" => "system",
-            "wsl" => "system",
-            "filesystem" => "filesystem",
-            "fs" => "filesystem",
-            "email" => "email",
-            "powershell" => "powershell",
-            "testimox" => "testimox",
-            "testimoxpack" => "testimox",
-            "officeimo" => "officeimo",
-            "reviewersetup" => "reviewer_setup",
-            "dnsclientx" => "dnsclientx",
-            "domaindetective" => "domaindetective",
-            _ => normalized
-        };
-
-        return true;
-    }
-
-    private static string NormalizePackToken(string? value) {
-        var normalized = (value ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return string.Empty;
-        }
-
-        var buffer = new char[normalized.Length];
-        var length = 0;
-        var previousWasSeparator = false;
-        for (var i = 0; i < normalized.Length; i++) {
-            var ch = normalized[i];
-            if (char.IsLetterOrDigit(ch)) {
-                buffer[length++] = char.ToLowerInvariant(ch);
-                previousWasSeparator = false;
-                continue;
-            }
-
-            if (ch is '_' or '-' || char.IsWhiteSpace(ch)) {
-                if (length > 0 && !previousWasSeparator) {
-                    buffer[length++] = '_';
-                    previousWasSeparator = true;
-                }
-            }
-        }
-
-        while (length > 0 && buffer[length - 1] == '_') {
-            length--;
-        }
-
-        return length == 0 ? string.Empty : new string(buffer, 0, length);
+        packId = ToolPackIdentityCatalog.NormalizePackId(value);
+        return packId.Length > 0;
     }
 
     private static bool HasAnyProperty(JsonObject? schema, IReadOnlyList<string> propertyNames) {

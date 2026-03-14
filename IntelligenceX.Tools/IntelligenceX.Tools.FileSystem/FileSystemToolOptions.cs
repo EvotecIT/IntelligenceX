@@ -7,7 +7,12 @@ namespace IntelligenceX.Tools.FileSystem;
 /// <summary>
 /// Safety and output limits for file system tools.
 /// </summary>
-public sealed class FileSystemToolOptions : IToolPackRuntimeConfigurable {
+public sealed class FileSystemToolOptions : IToolPackRuntimeConfigurable, IToolPackRuntimeOptionTarget {
+    private static readonly IReadOnlyList<string> RuntimeOptionKeyValues = new[] {
+        "filesystem",
+        "fs"
+    };
+
     /// <summary>
     /// Allowed root directories for all operations. When empty, operations are denied.
     /// </summary>
@@ -27,6 +32,9 @@ public sealed class FileSystemToolOptions : IToolPackRuntimeConfigurable {
     /// Maximum file size that search will scan.
     /// </summary>
     public long MaxSearchFileBytes { get; set; } = 2 * 1024 * 1024;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <inheritdoc />
     public void ApplyRuntimeContext(ToolPackRuntimeContext context) {

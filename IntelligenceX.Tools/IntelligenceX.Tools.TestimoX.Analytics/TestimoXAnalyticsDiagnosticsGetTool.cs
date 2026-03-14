@@ -35,10 +35,7 @@ public sealed class TestimoXAnalyticsDiagnosticsGetTool : TestimoXToolBase, IToo
         tags: new[] {
             "diagnostics",
             "monitoring",
-            "snapshot",
-            "fallback:requires_selection",
-            "fallback_selection_keys:history_directory",
-            "fallback_hint_keys:history_directory,include_slow_probes,max_slow_probes"
+            "snapshot"
         });
 
     /// <summary>

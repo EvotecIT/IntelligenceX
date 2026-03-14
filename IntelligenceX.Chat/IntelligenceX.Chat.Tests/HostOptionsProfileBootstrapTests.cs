@@ -150,7 +150,7 @@ public sealed class HostOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(error), error);
             Assert.True(ReadBoolProperty(options!, "AllowMutatingParallelToolCalls"));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -167,7 +167,7 @@ public sealed class HostOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(error), error);
             Assert.False(ReadBoolProperty(options!, "AllowMutatingParallelToolCalls"));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -184,7 +184,7 @@ public sealed class HostOptionsProfileBootstrapTests {
             Assert.True(string.IsNullOrWhiteSpace(error), error);
             Assert.True(ReadBoolProperty(options!, "AllowMutatingParallelToolCalls"));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -236,7 +236,7 @@ public sealed class HostOptionsProfileBootstrapTests {
             Assert.False(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
             Assert.True(ReadBoolProperty(options!, "EnableDefaultPluginPaths"));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -260,7 +260,7 @@ public sealed class HostOptionsProfileBootstrapTests {
             Assert.True(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
             Assert.False(ReadBoolProperty(options!, "EnableDefaultPluginPaths"));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -284,7 +284,7 @@ public sealed class HostOptionsProfileBootstrapTests {
             Assert.True(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
             Assert.False(ReadBoolProperty(options!, "EnableDefaultPluginPaths"));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -299,7 +299,7 @@ public sealed class HostOptionsProfileBootstrapTests {
             Assert.Equal("plugin-only", ReadStringProperty(options!, "ProfileName"));
             Assert.False(ReadBoolProperty(options!, "EnableBuiltInPackLoading"));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -466,7 +466,7 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     private static string CreateTempProfileDbPath() {
-        return Path.Combine(Path.GetTempPath(), "ix-chat-host-profile-tests-" + Guid.NewGuid().ToString("N") + ".db");
+        return TempPathTestHelper.CreateTempFilePath("ix-chat-host-profile-tests", ".db");
     }
 
     private static string InvokeHostBuildMaxToolRoundsHelpLine() {
@@ -517,13 +517,4 @@ public sealed class HostOptionsProfileBootstrapTests {
         store.UpsertAsync(profileName, profile, CancellationToken.None).GetAwaiter().GetResult();
     }
 
-    private static void TryDelete(string path) {
-        try {
-            if (File.Exists(path)) {
-                File.Delete(path);
-            }
-        } catch {
-            // Best-effort cleanup for temp profile DB files.
-        }
-    }
 }

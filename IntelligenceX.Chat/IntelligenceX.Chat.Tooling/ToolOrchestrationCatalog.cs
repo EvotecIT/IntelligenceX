@@ -139,6 +139,11 @@ public sealed record ToolOrchestrationCatalogEntry {
     public IReadOnlyList<string> RemoteHostArguments { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Optional representative task examples published by the owning pack catalog.
+    /// </summary>
+    public IReadOnlyList<string> RepresentativeExamples { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Optional domain intent family token.
     /// </summary>
     public string DomainIntentFamily { get; init; } = string.Empty;
@@ -689,6 +694,7 @@ public sealed class ToolOrchestrationCatalog {
             overlayEntry.Traits?.ExecutionScope,
             entry.ExecutionScope,
             supportsRemoteHostTargeting);
+        var representativeExamples = FreezeRepresentativeExamples(overlayEntry.RepresentativeExamples);
 
         var setupToolName = NormalizeToken(overlayEntry.Setup?.SetupToolName);
         var setupRequirementIds = NormalizeDistinctTokens(overlayEntry.Setup?.RequirementIds);
@@ -728,6 +734,7 @@ public sealed class ToolOrchestrationCatalog {
             TargetScopeArguments = FreezeStringList(targetScopeArguments),
             SupportsRemoteHostTargeting = supportsRemoteHostTargeting,
             RemoteHostArguments = FreezeStringList(remoteHostArguments),
+            RepresentativeExamples = representativeExamples,
             DomainIntentFamily = normalizedDomainIntentFamily,
             DomainIntentActionId = normalizedDomainIntentActionId,
             IsSetupAware = isSetupAware,
@@ -918,6 +925,24 @@ public sealed class ToolOrchestrationCatalog {
         }
 
         return Array.AsReadOnly(copy);
+    }
+
+    private static IReadOnlyList<string> FreezeRepresentativeExamples(IReadOnlyList<string>? values) {
+        if (values is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(values.Count);
+        for (var i = 0; i < values.Count; i++) {
+            var value = (values[i] ?? string.Empty).Trim();
+            if (value.Length == 0 || normalized.Contains(value, StringComparer.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            normalized.Add(value);
+        }
+
+        return normalized.Count == 0 ? Array.Empty<string>() : Array.AsReadOnly(normalized.ToArray());
     }
 
     private static IReadOnlyList<ToolOrchestrationHandoffEdge> FreezeHandoffEdges(

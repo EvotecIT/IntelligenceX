@@ -20,9 +20,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryGetContinuationToolSubset_RehydratesPersistedWeightedSubsetAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-weighted-subset-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-weighted-subset", out var root);
         const string threadId = "thread-weighted-subset";
 
         var allTools = new List<ToolDefinition> {
@@ -64,9 +62,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void TryGetContinuationToolSubset_DoesNotRehydrateWhenFullToolSetClearedSubsetSnapshot() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-weighted-subset-clear-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-weighted-subset-clear", out var root);
         const string threadId = "thread-weighted-subset-clear";
 
         var allTools = new List<ToolDefinition> {

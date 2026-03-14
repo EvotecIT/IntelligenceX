@@ -65,8 +65,7 @@ public sealed class TestimoXBaselineCrosswalkTool : TestimoXToolBase, ITool {
         tags: new[] {
             "compliance",
             "crosswalk",
-            "baselines",
-            "fallback_hint_keys:search_text,rule_origin,categories,tags,source_types,profile,rule_names,rule_name_patterns"
+            "baselines"
         });
 
     /// <summary>

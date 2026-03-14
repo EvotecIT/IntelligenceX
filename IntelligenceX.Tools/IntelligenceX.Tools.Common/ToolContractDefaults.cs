@@ -5,51 +5,9 @@ using IntelligenceX.Tools;
 namespace IntelligenceX.Tools.Common;
 
 /// <summary>
-/// Shared helpers for pack-owned setup and recovery defaults.
+/// Shared helpers for pack-owned contract object construction.
 /// </summary>
 public static class ToolContractDefaults {
-    /// <summary>
-    /// Preserves explicit setup metadata and skips defaults for pack-info tools.
-    /// </summary>
-    public static ToolSetupContract? PreserveExplicitSetupOrCreateDefault(
-        ToolDefinition definition,
-        string? routingRole,
-        Func<ToolSetupContract?> createDefaultSetup) {
-        ArgumentNullException.ThrowIfNull(definition);
-        ArgumentNullException.ThrowIfNull(createDefaultSetup);
-
-        if (IsPackInfoRole(routingRole)) {
-            return definition.Setup;
-        }
-
-        if (definition.Setup is { IsSetupAware: true }) {
-            return definition.Setup;
-        }
-
-        return createDefaultSetup();
-    }
-
-    /// <summary>
-    /// Preserves explicit recovery metadata and skips defaults for pack-info tools.
-    /// </summary>
-    public static ToolRecoveryContract? PreserveExplicitRecoveryOrCreateDefault(
-        ToolDefinition definition,
-        string? routingRole,
-        Func<ToolRecoveryContract?> createDefaultRecovery) {
-        ArgumentNullException.ThrowIfNull(definition);
-        ArgumentNullException.ThrowIfNull(createDefaultRecovery);
-
-        if (definition.Recovery is { IsRecoveryAware: true }) {
-            return definition.Recovery;
-        }
-
-        if (IsPackInfoRole(routingRole)) {
-            return definition.Recovery;
-        }
-
-        return createDefaultRecovery();
-    }
-
     /// <summary>
     /// Creates a single setup requirement descriptor.
     /// </summary>
@@ -141,6 +99,110 @@ public static class ToolContractDefaults {
             supportsTransientRetry: false,
             maxRetryAttempts: 0,
             recoveryToolNames: recoveryToolNames);
+    }
+
+    /// <summary>
+    /// Creates a standard explicit routing contract while preserving reusable fields from an existing declaration.
+    /// </summary>
+    public static ToolRoutingContract CreateExplicitRoutingContract(
+        ToolRoutingContract? existing,
+        string packId,
+        string role,
+        string? domainIntentFamily,
+        string? domainIntentActionId,
+        IReadOnlyList<string>? defaultSignalTokens,
+        bool requiresSelectionForFallback = false,
+        IReadOnlyList<string>? fallbackSelectionKeys = null,
+        IReadOnlyList<string>? fallbackHintKeys = null) {
+        return new ToolRoutingContract {
+            IsRoutingAware = true,
+            RoutingContractId = string.IsNullOrWhiteSpace(existing?.RoutingContractId)
+                ? ToolRoutingContract.DefaultContractId
+                : existing!.RoutingContractId,
+            RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+            PackId = packId ?? string.Empty,
+            Role = role ?? string.Empty,
+            DomainIntentFamily = domainIntentFamily ?? string.Empty,
+            DomainIntentActionId = domainIntentActionId ?? string.Empty,
+            DomainSignalTokens = existing?.DomainSignalTokens.Count > 0
+                ? CloneOrEmpty(existing.DomainSignalTokens)
+                : CloneOrEmpty(defaultSignalTokens),
+            RequiresSelectionForFallback = requiresSelectionForFallback,
+            FallbackSelectionKeys = CloneOrEmpty(fallbackSelectionKeys),
+            FallbackHintKeys = CloneOrEmpty(fallbackHintKeys)
+        };
+    }
+
+    /// <summary>
+    /// Resolves an execution contract by preserving an explicit declaration or projecting standard execution traits.
+    /// </summary>
+    public static ToolExecutionContract? ResolveExecutionContractFromTraits(ToolDefinition definition, ToolRoutingContract routing) {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(routing);
+
+        if (definition.Execution is { IsExecutionAware: true }) {
+            return definition.Execution;
+        }
+
+        if (string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return definition.Execution;
+        }
+
+        var traits = ToolExecutionTraitProjection.Project(definition);
+        return new ToolExecutionContract {
+            IsExecutionAware = true,
+            ExecutionScope = traits.ExecutionScope,
+            TargetScopeArguments = traits.TargetScopeArguments,
+            RemoteHostArguments = traits.RemoteHostArguments
+        };
+    }
+
+    /// <summary>
+    /// Resolves a setup contract by preserving an explicit declaration or invoking a pack-owned factory.
+    /// </summary>
+    public static ToolSetupContract? ResolveSetupContract(
+        ToolDefinition definition,
+        Func<ToolDefinition, ToolSetupContract?> createSetup) {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(createSetup);
+
+        if (definition.Setup is { IsSetupAware: true }) {
+            return definition.Setup;
+        }
+
+        return createSetup(definition) ?? definition.Setup;
+    }
+
+    /// <summary>
+    /// Resolves a handoff contract by preserving an explicit declaration or invoking a pack-owned factory.
+    /// </summary>
+    public static ToolHandoffContract? ResolveHandoffContract(
+        ToolDefinition definition,
+        Func<ToolDefinition, ToolHandoffContract?> createHandoff) {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(createHandoff);
+
+        if (definition.Handoff is { IsHandoffAware: true }) {
+            return definition.Handoff;
+        }
+
+        return createHandoff(definition) ?? definition.Handoff;
+    }
+
+    /// <summary>
+    /// Resolves a recovery contract by preserving an explicit declaration or invoking a pack-owned factory.
+    /// </summary>
+    public static ToolRecoveryContract? ResolveRecoveryContract(
+        ToolDefinition definition,
+        Func<ToolDefinition, ToolRecoveryContract?> createRecovery) {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(createRecovery);
+
+        if (definition.Recovery is { IsRecoveryAware: true }) {
+            return definition.Recovery;
+        }
+
+        return createRecovery(definition) ?? definition.Recovery;
     }
 
     /// <summary>
@@ -242,60 +304,32 @@ public static class ToolContractDefaults {
     }
 
     /// <summary>
-    /// Creates the standard Active Directory entity handoff route pair.
+    /// Merges string groups into a trimmed, case-insensitive distinct array while preserving first-seen order.
     /// </summary>
-    public static ToolHandoffRoute[] CreateActiveDirectoryEntityHandoffRoutes(
-        string entityHandoffSourceField,
-        string entityHandoffReason,
-        string scopeDiscoverySourceField,
-        string scopeDiscoveryReason,
-        bool scopeDiscoveryIsRequired = false) {
-        return new[] {
-            CreateRoute(
-                targetPackId: "active_directory",
-                targetToolName: "ad_handoff_prepare",
-                reason: entityHandoffReason,
-                bindings: new[] {
-                    CreateBinding(entityHandoffSourceField, "entity_handoff")
-                }),
-            CreateRoute(
-                targetPackId: "active_directory",
-                targetToolName: "ad_scope_discovery",
-                reason: scopeDiscoveryReason,
-                bindings: new[] {
-                    CreateBinding(scopeDiscoverySourceField, "domain_controller", isRequired: scopeDiscoveryIsRequired)
-                })
-        };
-    }
+    public static string[] MergeDistinctStrings(params IReadOnlyList<string>[] groups) {
+        if (groups is null || groups.Length == 0) {
+            return Array.Empty<string>();
+        }
 
-    /// <summary>
-    /// Creates the standard remote host follow-up route pair for ComputerX and EventViewerX.
-    /// </summary>
-    public static ToolHandoffRoute[] CreateRemoteHostFollowUpRoutes(
-        string sourceField,
-        string systemReason,
-        string eventLogReason,
-        bool isRequired = false) {
-        return new[] {
-            CreateRoute(
-                targetPackId: "system",
-                targetToolName: "system_info",
-                reason: systemReason,
-                bindings: new[] {
-                    CreateBinding(sourceField, "computer_name", isRequired: isRequired)
-                }),
-            CreateRoute(
-                targetPackId: "eventlog",
-                targetToolName: "eventlog_live_stats",
-                reason: eventLogReason,
-                bindings: new[] {
-                    CreateBinding(sourceField, "machine_name", isRequired: isRequired)
-                })
-        };
-    }
+        var values = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < groups.Length; i++) {
+            var group = groups[i];
+            if (group is null || group.Count == 0) {
+                continue;
+            }
 
-    private static bool IsPackInfoRole(string? routingRole) {
-        return string.Equals(routingRole, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase);
+            for (var j = 0; j < group.Count; j++) {
+                var candidate = (group[j] ?? string.Empty).Trim();
+                if (candidate.Length == 0 || !seen.Add(candidate)) {
+                    continue;
+                }
+
+                values.Add(candidate);
+            }
+        }
+
+        return values.ToArray();
     }
 
     private static string[] CloneOrEmpty(IReadOnlyList<string>? values) {

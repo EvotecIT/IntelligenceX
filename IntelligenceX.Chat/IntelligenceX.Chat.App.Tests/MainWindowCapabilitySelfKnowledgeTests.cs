@@ -423,7 +423,7 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
             });
 
         Assert.Contains(lines, line => line.Contains("domain controller or base DN", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, line => line.Contains("Windows event logs", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("event logs", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("CPU, memory, and disk", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("pivot findings into Event Log, System", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("live tool contracts", StringComparison.OrdinalIgnoreCase));
@@ -464,6 +464,42 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
 
         Assert.DoesNotContain(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures capability self-knowledge uses pack-owned representative examples when tool metadata publishes them directly.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_PrefersPackOwnedRepresentativeExamples_WhenPresent() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto { Id = "customx", Name = "CustomX", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            toolCatalogTools: new[] {
+                new ToolDefinitionDto {
+                    Name = "custom_probe",
+                    Description = "Probe custom runtime state.",
+                    PackId = "customx",
+                    PackName = "CustomX",
+                    RepresentativeExamples = new[] {
+                        "inspect the custom endpoint state through pack-owned metadata"
+                    }
+                }
+            });
+
+        Assert.Contains(lines, line => line.Contains("inspect the custom endpoint state through pack-owned metadata", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("event logs", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("CPU, memory, and disk", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

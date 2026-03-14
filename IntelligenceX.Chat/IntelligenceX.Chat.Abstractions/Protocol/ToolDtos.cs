@@ -94,6 +94,10 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public string[] RemoteHostArguments { get; init; } = System.Array.Empty<string>();
     /// <summary>
+    /// Optional representative task examples projected from pack-owned catalog metadata.
+    /// </summary>
+    public string[] RepresentativeExamples { get; init; } = System.Array.Empty<string>();
+    /// <summary>
     /// Indicates whether the tool exposes a setup contract.
     /// </summary>
     public bool IsSetupAware { get; init; }

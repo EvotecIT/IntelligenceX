@@ -23,7 +23,9 @@ public static class ToolRegistryOfficeImoExtensions {
     /// <param name="options">Tool options.</param>
     /// <returns>Catalog entries derived from runtime definitions and input schemas.</returns>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(OfficeImoToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            OfficeImoToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -38,7 +40,7 @@ public static class ToolRegistryOfficeImoExtensions {
 
     private static IEnumerable<ITool> CreateTools(OfficeImoToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return OfficeImoToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, OfficeImoPackContractCatalog.Apply(tool.Definition));
         }
     }
 

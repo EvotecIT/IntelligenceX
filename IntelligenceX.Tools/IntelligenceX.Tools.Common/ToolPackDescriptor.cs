@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Tools;
 
 namespace IntelligenceX.Tools.Common;
 
@@ -52,4 +53,9 @@ public sealed record ToolPackDescriptor {
     /// Optional normalized capability tags advertised by the pack.
     /// </summary>
     public IReadOnlyList<string> CapabilityTags { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Optional pack-owned capability parity slices published for host/chat runtime inventories.
+    /// </summary>
+    public IReadOnlyList<ToolCapabilityParitySliceDescriptor> CapabilityParity { get; init; } = Array.Empty<ToolCapabilityParitySliceDescriptor>();
 }

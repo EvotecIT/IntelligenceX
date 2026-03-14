@@ -250,6 +250,10 @@ public sealed record ToolPackAvailabilityInfo {
     /// </summary>
     public IReadOnlyList<string> CapabilityTags { get; init; } = Array.Empty<string>();
     /// <summary>
+    /// Pack-owned capability parity slices published for runtime capability inventories.
+    /// </summary>
+    public IReadOnlyList<ToolCapabilityParitySliceDescriptor> CapabilityParity { get; init; } = Array.Empty<ToolCapabilityParitySliceDescriptor>();
+    /// <summary>
     /// Whether the pack is available and loaded in this runtime.
     /// </summary>
     public bool Enabled { get; init; }

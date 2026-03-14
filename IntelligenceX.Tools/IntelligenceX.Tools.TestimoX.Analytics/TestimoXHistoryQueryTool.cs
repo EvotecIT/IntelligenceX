@@ -50,10 +50,7 @@ public sealed class TestimoXHistoryQueryTool : TestimoXToolBase, ITool {
             "availability",
             "history",
             "monitoring",
-            "rollup",
-            "fallback:requires_selection",
-            "fallback_selection_keys:history_directory",
-            "fallback_hint_keys:history_directory,bucket_kind,start_utc,end_utc,root_probe_names,probe_name_contains"
+            "rollup"
         });
 
     /// <summary>

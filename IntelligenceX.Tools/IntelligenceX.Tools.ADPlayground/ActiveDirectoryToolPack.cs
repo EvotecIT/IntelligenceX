@@ -29,7 +29,8 @@ public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvide
         Description = "ADPlayground-backed Active Directory analysis tools (read-oriented).",
         SourceKind = "closed_source",
         EngineId = "adplayground",
-        CapabilityTags = new[] { "directory", "domain_scope", "gpo", "identity", "remote_analysis" }
+        CapabilityTags = new[] { "directory", "domain_scope", "gpo", "identity", "remote_analysis" },
+        CapabilityParity = ActiveDirectoryToolPackParity.Slices
     };
 
     /// <inheritdoc />

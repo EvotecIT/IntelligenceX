@@ -56,9 +56,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ClearToolRoutingCaches_RemovesPersistedRoutingSnapshots() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-clear-caches-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-clear-caches", out var root);
 
         var threadId = "thread-clear-" + Guid.NewGuid().ToString("N");
         var domainThreadId = "thread-clear-domain-" + Guid.NewGuid().ToString("N");

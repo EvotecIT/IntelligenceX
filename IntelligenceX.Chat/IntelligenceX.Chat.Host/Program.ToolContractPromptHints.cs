@@ -11,11 +11,23 @@ internal static partial class Program {
         IReadOnlyList<ToolDefinition>? toolDefinitions,
         IReadOnlyList<string>? toolPatterns,
         bool includeRemoteHostFallbackHint) {
+        return BuildToolContractPromptHintLines(
+            toolDefinitions,
+            toolPatterns,
+            includeRemoteHostFallbackHint,
+            orchestrationCatalog: null);
+    }
+
+    private static IReadOnlyList<string> BuildToolContractPromptHintLines(
+        IReadOnlyList<ToolDefinition>? toolDefinitions,
+        IReadOnlyList<string>? toolPatterns,
+        bool includeRemoteHostFallbackHint,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
         if (toolDefinitions is null || toolDefinitions.Count == 0) {
             return Array.Empty<string>();
         }
 
-        var orchestrationCatalog = ToolOrchestrationCatalog.Build(toolDefinitions);
+        orchestrationCatalog ??= ToolOrchestrationCatalog.Build(toolDefinitions);
         var matchedEntries = new List<ToolOrchestrationCatalogEntry>(toolDefinitions.Count);
         var seenToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolDefinitions.Count; i++) {
@@ -64,7 +76,7 @@ internal static partial class Program {
 
         var crossPackTargets = ToolContractPromptExamples.BuildCrossPackTargetPackDisplayNames(matchedEntries);
         if (crossPackTargets.Count > 0) {
-            lines.Add("- Cross-pack follow-up pivots are available into " + string.Join(", ", crossPackTargets) + " when the workflow calls for it.");
+            lines.Add("- " + ToolRepresentativeExamples.BuildCrossPackAvailabilityLine(crossPackTargets, "available"));
         }
 
         if (matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting && entry.SupportsRemoteExecution)) {

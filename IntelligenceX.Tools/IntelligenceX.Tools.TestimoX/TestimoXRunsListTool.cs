@@ -40,8 +40,7 @@ public sealed class TestimoXRunsListTool : TestimoXToolBase, ITool {
         tags: new[] {
             "catalog",
             "history",
-            "store",
-            "fallback_hint_keys:store_directory,run_id_contains,completed_only"
+            "store"
         });
 
     /// <summary>

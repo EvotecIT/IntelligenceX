@@ -177,6 +177,7 @@ public static class ToolCatalogExportBuilder {
             TargetScopeArguments = orchestrationEntry?.TargetScopeArguments?.ToArray() ?? Array.Empty<string>(),
             SupportsRemoteHostTargeting = orchestrationEntry?.SupportsRemoteHostTargeting == true,
             RemoteHostArguments = orchestrationEntry?.RemoteHostArguments?.ToArray() ?? Array.Empty<string>(),
+            RepresentativeExamples = orchestrationEntry?.RepresentativeExamples?.ToArray() ?? Array.Empty<string>(),
             IsSetupAware = orchestrationEntry?.IsSetupAware == true,
             SetupToolName = string.IsNullOrWhiteSpace(orchestrationEntry?.SetupToolName) ? null : orchestrationEntry!.SetupToolName,
             IsHandoffAware = orchestrationEntry?.IsHandoffAware == true,

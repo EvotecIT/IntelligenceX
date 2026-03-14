@@ -53,10 +53,7 @@ public sealed class TestimoXMaintenanceWindowHistoryTool : TestimoXToolBase, ITo
             "history",
             "maintenance",
             "monitoring",
-            "reporting",
-            "fallback:requires_selection",
-            "fallback_selection_keys:history_directory",
-            "fallback_hint_keys:history_directory,start_utc,end_utc,definition_key,name_contains,reason_contains,probe_name_pattern_contains,target_pattern_contains"
+            "reporting"
         });
 
     private static readonly TimeSpan DefaultLookback = TimeSpan.FromDays(14);

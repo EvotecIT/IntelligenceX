@@ -1,7 +1,7 @@
 using System;
 using IntelligenceX.Tools;
 
-namespace IntelligenceX.Tools.Common;
+namespace IntelligenceX.Tools.Common.CrossPack;
 
 /// <summary>
 /// Shared catalog of System pack follow-up routes that accept a remote computer target.
@@ -59,5 +59,47 @@ public static class SystemRemoteHostFollowUpCatalog {
             sourceFields: sourceFields,
             routeDescriptors: descriptors,
             isRequired: isRequired);
+    }
+
+    /// <summary>
+    /// Builds a focused subset of System pack remote-host follow-up routes by tool name.
+    /// </summary>
+    public static ToolHandoffRoute[] CreateSelectedComputerTargetRoutes(
+        IReadOnlyList<string> sourceFields,
+        IReadOnlyList<(string TargetToolName, string? ReasonOverride)> routeSelections,
+        bool isRequired = false) {
+        if (routeSelections is null || routeSelections.Count == 0) {
+            return Array.Empty<ToolHandoffRoute>();
+        }
+
+        var selectedDescriptors = new (string TargetToolName, string Reason)[routeSelections.Count];
+        for (var i = 0; i < routeSelections.Count; i++) {
+            var selection = routeSelections[i];
+            var descriptor = FindDescriptor(selection.TargetToolName);
+            selectedDescriptors[i] = (
+                descriptor.TargetToolName,
+                string.IsNullOrWhiteSpace(selection.ReasonOverride)
+                    ? descriptor.Reason
+                    : selection.ReasonOverride!);
+        }
+
+        return ToolContractDefaults.CreateSharedTargetRoutes(
+            targetPackId: "system",
+            targetArgument: "computer_name",
+            sourceFields: sourceFields,
+            routeDescriptors: selectedDescriptors,
+            isRequired: isRequired);
+    }
+
+    private static (string TargetToolName, string Reason) FindDescriptor(string targetToolName) {
+        for (var i = 0; i < ComputerTargetRouteDescriptors.Length; i++) {
+            var descriptor = ComputerTargetRouteDescriptors[i];
+            if (string.Equals(descriptor.TargetToolName, targetToolName, StringComparison.OrdinalIgnoreCase)) {
+                return descriptor;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"System remote-host follow-up route '{targetToolName}' is not declared in {nameof(SystemRemoteHostFollowUpCatalog)}.");
     }
 }

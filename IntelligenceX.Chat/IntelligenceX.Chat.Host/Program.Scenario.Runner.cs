@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
@@ -66,7 +67,10 @@ internal static partial class Program {
             ReplTurnMetricsResult? metricsResult = null;
             Exception? failure = null;
             try {
-                var prompt = BuildScenarioTurnPromptForExecution(turn, session.GetToolDefinitionsSnapshot());
+                var prompt = BuildScenarioTurnPromptForExecution(
+                    turn,
+                    session.GetToolDefinitionsSnapshot(),
+                    session.GetToolOrchestrationCatalogSnapshot());
                 metricsResult = await session.AskWithMetricsAsync(prompt, cancellationToken).ConfigureAwait(false);
                 WriteTurnResult(metricsResult.Result, options);
             } catch (Exception ex) {
@@ -137,14 +141,24 @@ internal static partial class Program {
     }
 
     private static string BuildScenarioTurnPrompt(ChatScenarioTurn turn) {
-        return BuildScenarioTurnPromptCore(turn, toolDefinitions: null);
+        return BuildScenarioTurnPromptCore(turn, toolDefinitions: null, orchestrationCatalog: null);
     }
 
     private static string BuildScenarioTurnPromptForExecution(ChatScenarioTurn turn, IReadOnlyList<ToolDefinition>? toolDefinitions) {
-        return BuildScenarioTurnPromptCore(turn, toolDefinitions);
+        return BuildScenarioTurnPromptForExecution(turn, toolDefinitions, orchestrationCatalog: null);
     }
 
-    private static string BuildScenarioTurnPromptCore(ChatScenarioTurn turn, IReadOnlyList<ToolDefinition>? toolDefinitions) {
+    private static string BuildScenarioTurnPromptForExecution(
+        ChatScenarioTurn turn,
+        IReadOnlyList<ToolDefinition>? toolDefinitions,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
+        return BuildScenarioTurnPromptCore(turn, toolDefinitions, orchestrationCatalog);
+    }
+
+    private static string BuildScenarioTurnPromptCore(
+        ChatScenarioTurn turn,
+        IReadOnlyList<ToolDefinition>? toolDefinitions,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
         if (turn is null) {
             return string.Empty;
         }
@@ -166,7 +180,8 @@ internal static partial class Program {
         var contractHintLines = BuildToolContractPromptHintLines(
             toolDefinitions: toolDefinitions,
             toolPatterns: requiredToolPatterns,
-            includeRemoteHostFallbackHint: true);
+            includeRemoteHostFallbackHint: true,
+            orchestrationCatalog: orchestrationCatalog);
         if (!requiresToolExecution && !requiresNoToolExecution) {
             return turn.User;
         }

@@ -416,7 +416,11 @@ public static partial class ToolPackBootstrap {
                     continue;
                 }
 
-                ConfigurePackOptions(options, bootstrapOptions, packType);
+                ConfigurePackOptions(
+                    options,
+                    bootstrapOptions,
+                    packType,
+                    explicitPackKey: TryResolveDeclaredPackId(constructor, options));
                 var created = constructor.Invoke(new[] { options });
                 if (created is IToolPack optionsPack) {
                     pack = optionsPack;
@@ -432,12 +436,30 @@ public static partial class ToolPackBootstrap {
         }
     }
 
-    private static void ConfigurePackOptions(object options, ToolPackBootstrapOptions bootstrapOptions, Type packType) {
+    private static void ConfigurePackOptions(
+        object options,
+        ToolPackBootstrapOptions bootstrapOptions,
+        Type packType,
+        string? explicitPackKey = null) {
         if (options is IToolPackRuntimeConfigurable configurableOptions) {
             configurableOptions.ApplyRuntimeContext(BuildRuntimeContext(bootstrapOptions));
         }
 
-        ConfigurePackOptionsFromRuntimeBag(options, bootstrapOptions, packType);
+        ConfigurePackOptionsFromRuntimeBag(options, bootstrapOptions, packType, explicitPackKey);
+    }
+
+    private static string? TryResolveDeclaredPackId(ConstructorInfo constructor, object options) {
+        try {
+            var created = constructor.Invoke(new[] { options });
+            if (created is not IToolPack pack) {
+                return null;
+            }
+
+            var descriptorId = pack.Descriptor.Id;
+            return string.IsNullOrWhiteSpace(descriptorId) ? null : descriptorId.Trim();
+        } catch {
+            return null;
+        }
     }
 
     /// <summary>
@@ -748,6 +770,7 @@ public static partial class ToolPackBootstrap {
             SourceKind = normalizedSourceKind,
             EngineId = normalizedEngineId.Length == 0 ? null : normalizedEngineId,
             CapabilityTags = normalizedCapabilityTags,
+            CapabilityParity = descriptor.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>(),
             Enabled = enabled,
             DisabledReason = enabled ? null : normalizedReason
         };
@@ -793,7 +816,8 @@ public static partial class ToolPackBootstrap {
             Id = normalizedPackId,
             Name = normalizedName,
             EngineId = normalizedEngineId.Length == 0 ? null : normalizedEngineId,
-            CapabilityTags = normalizedCapabilityTags
+            CapabilityTags = normalizedCapabilityTags,
+            CapabilityParity = availability.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>()
         };
     }
 

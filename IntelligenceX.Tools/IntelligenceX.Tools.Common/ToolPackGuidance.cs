@@ -416,6 +416,11 @@ public sealed class ToolPackToolCatalogEntryModel {
     public string Description { get; init; } = string.Empty;
 
     /// <summary>
+    /// Optional representative task examples that the model can cite when describing this tool's live capabilities.
+    /// </summary>
+    public IReadOnlyList<string> RepresentativeExamples { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Required input arguments from the tool input schema.
     /// </summary>
     public IReadOnlyList<string> RequiredArguments { get; init; } = Array.Empty<string>();
@@ -785,6 +790,63 @@ public static partial class ToolPackGuidance {
     internal static IReadOnlyList<ToolPackToolCatalogEntryModel> NormalizeToolCatalogContract(
         IEnumerable<ToolPackToolCatalogEntryModel>? entries) {
         return NormalizeToolCatalog(entries);
+    }
+
+    /// <summary>
+    /// Applies pack-owned representative examples to an existing tool catalog without changing tool registration order.
+    /// </summary>
+    public static IReadOnlyList<ToolPackToolCatalogEntryModel> ApplyRepresentativeExamples(
+        IReadOnlyList<ToolPackToolCatalogEntryModel> toolCatalog,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? representativeExamplesByToolName) {
+        if (toolCatalog is null) {
+            throw new ArgumentNullException(nameof(toolCatalog));
+        }
+
+        if (toolCatalog.Count == 0
+            || representativeExamplesByToolName is null
+            || representativeExamplesByToolName.Count == 0) {
+            return NormalizeToolCatalog(toolCatalog);
+        }
+
+        var cloned = new List<ToolPackToolCatalogEntryModel>(toolCatalog.Count);
+        for (var i = 0; i < toolCatalog.Count; i++) {
+            var entry = toolCatalog[i];
+            if (entry is null) {
+                continue;
+            }
+
+            representativeExamplesByToolName.TryGetValue(entry.Name, out var representativeExamples);
+            cloned.Add(new ToolPackToolCatalogEntryModel {
+                Name = entry.Name,
+                DisplayName = entry.DisplayName,
+                Category = entry.Category,
+                Tags = entry.Tags,
+                Routing = entry.Routing,
+                Description = entry.Description,
+                RepresentativeExamples = representativeExamples ?? entry.RepresentativeExamples,
+                RequiredArguments = entry.RequiredArguments,
+                Arguments = entry.Arguments,
+                SupportsTableViewProjection = entry.SupportsTableViewProjection,
+                IsPackInfoTool = entry.IsPackInfoTool,
+                IsEnvironmentDiscoverTool = entry.IsEnvironmentDiscoverTool,
+                Traits = entry.Traits,
+                Setup = entry.Setup,
+                Handoff = entry.Handoff,
+                Recovery = entry.Recovery,
+                IsWriteCapable = entry.IsWriteCapable,
+                RequiresWriteGovernance = entry.RequiresWriteGovernance,
+                WriteGovernanceContractId = entry.WriteGovernanceContractId,
+                IsAuthenticationAware = entry.IsAuthenticationAware,
+                RequiresAuthentication = entry.RequiresAuthentication,
+                AuthenticationContractId = entry.AuthenticationContractId,
+                AuthenticationMode = entry.AuthenticationMode,
+                AuthenticationArguments = entry.AuthenticationArguments,
+                SupportsConnectivityProbe = entry.SupportsConnectivityProbe,
+                ProbeToolName = entry.ProbeToolName
+            });
+        }
+
+        return NormalizeToolCatalog(cloned);
     }
 
     /// <summary>

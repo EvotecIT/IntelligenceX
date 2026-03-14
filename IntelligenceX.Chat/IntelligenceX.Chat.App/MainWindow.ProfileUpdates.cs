@@ -413,6 +413,7 @@ public sealed partial class MainWindow : Window {
             ExecutionScope = NormalizeExecutionScope(tool.ExecutionScope),
             TargetScopeArguments = NormalizeStringArray(tool.TargetScopeArguments),
             RemoteHostArguments = NormalizeStringArray(tool.RemoteHostArguments),
+            RepresentativeExamples = NormalizeStringArray(tool.RepresentativeExamples),
             SetupToolName = string.IsNullOrWhiteSpace(tool.SetupToolName) ? null : tool.SetupToolName.Trim(),
             HandoffTargetPackIds = NormalizePackIdArray(tool.HandoffTargetPackIds),
             HandoffTargetToolNames = NormalizeStringArray(tool.HandoffTargetToolNames),

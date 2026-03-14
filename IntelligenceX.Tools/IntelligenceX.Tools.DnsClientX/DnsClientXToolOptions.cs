@@ -1,11 +1,17 @@
 using System;
+using System.Collections.Generic;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.DnsClientX;
 
 /// <summary>
 /// Safety and execution limits for DnsClientX tools.
 /// </summary>
-public sealed class DnsClientXToolOptions {
+public sealed class DnsClientXToolOptions : IToolPackRuntimeOptionTarget {
+    private static readonly IReadOnlyList<string> RuntimeOptionKeyValues = new[] {
+        "dnsclientx"
+    };
+
     /// <summary>
     /// Maximum number of records returned for each DNS section (answers/authority/additional).
     /// </summary>
@@ -40,6 +46,9 @@ public sealed class DnsClientXToolOptions {
     /// Maximum ping timeout in milliseconds.
     /// </summary>
     public int MaxPingTimeoutMs { get; set; } = 10000;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <summary>
     /// Validates option values.

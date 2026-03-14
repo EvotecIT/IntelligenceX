@@ -144,7 +144,7 @@ public sealed class TranscriptForensicsExporterTests {
             },
             persistedMessages: null);
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("IntelligenceX.Chat.Tests");
         try {
             var outputPath = Path.Combine(root, "forensics.json");
             TranscriptForensicsExporter.Export(outputPath, bundle);
@@ -179,7 +179,7 @@ public sealed class TranscriptForensicsExporterTests {
             },
             persistedMessages: null);
 
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("IntelligenceX.Chat.Tests");
         try {
             var outputPath = Path.Combine(root, "forensics.json");
             TranscriptForensicsExporter.Export(outputPath, bundle);
@@ -295,7 +295,7 @@ public sealed class TranscriptForensicsExporterTests {
     /// </summary>
     [Fact]
     public void ResolveTranscriptForensicsOutputPath_NormalizesExtensionAndCreatesDirectory() {
-        var root = CreateTempDirectory();
+        var root = TempPathTestHelper.CreateTempDirectory("IntelligenceX.Chat.Tests");
         try {
             var selectedPath = Path.Combine(root, "nested", "bundle.trace");
 
@@ -308,10 +308,4 @@ public sealed class TranscriptForensicsExporterTests {
         }
     }
 
-    private static string CreateTempDirectory() {
-        var path = Path.Combine(Path.GetTempPath(), "IntelligenceX.Chat.Tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(path);
-        return path;
-    }
 }
-

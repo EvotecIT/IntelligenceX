@@ -390,6 +390,7 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Equal(entry.TargetScopeArguments, dto.TargetScopeArguments);
         Assert.Equal(entry.SupportsRemoteHostTargeting, dto.SupportsRemoteHostTargeting);
         Assert.Equal(entry.RemoteHostArguments, dto.RemoteHostArguments);
+        Assert.Equal(entry.RepresentativeExamples, dto.RepresentativeExamples);
         Assert.Equal(entry.IsSetupAware, dto.IsSetupAware);
         Assert.Equal(string.IsNullOrWhiteSpace(entry.SetupToolName) ? null : entry.SetupToolName, dto.SetupToolName);
         Assert.Equal(entry.IsHandoffAware, dto.IsHandoffAware);

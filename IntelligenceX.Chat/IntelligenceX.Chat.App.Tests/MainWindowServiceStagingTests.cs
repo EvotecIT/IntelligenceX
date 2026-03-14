@@ -15,11 +15,7 @@ public sealed class MainWindowServiceStagingTests : IDisposable {
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildServiceStageKey method was not found.");
 
-    private readonly string _tempRoot = Path.Combine(
-        Path.GetTempPath(),
-        "IntelligenceX.Chat.App.Tests",
-        nameof(MainWindowServiceStagingTests),
-        Guid.NewGuid().ToString("N"));
+    private readonly string _tempRoot = TempPathTestHelper.CreateTempDirectoryPath(nameof(MainWindowServiceStagingTests));
 
     /// <summary>
     /// Ensures the staging key is deterministic for an unchanged service payload.

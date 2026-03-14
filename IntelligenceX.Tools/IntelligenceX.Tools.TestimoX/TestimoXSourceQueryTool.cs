@@ -64,10 +64,7 @@ public sealed class TestimoXSourceQueryTool : TestimoXToolBase, ITool {
         tags: new[] {
             "compliance",
             "rules",
-            "provenance",
-            "fallback:requires_selection",
-            "fallback_selection_keys:search_text,rule_names,rule_name_patterns,categories,tags,source_types,rule_origin,migration_states",
-            "fallback_hint_keys:search_text,rule_origin,rule_names,rule_name_patterns,categories,tags,source_types,migration_states,profile"
+            "provenance"
         });
 
     /// <summary>

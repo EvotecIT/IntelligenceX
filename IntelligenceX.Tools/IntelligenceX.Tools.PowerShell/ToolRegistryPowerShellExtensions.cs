@@ -19,7 +19,9 @@ public static class ToolRegistryPowerShellExtensions {
     /// Returns tool catalog metadata for tools registered by <see cref="RegisterPowerShellPack"/>.
     /// </summary>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(PowerShellToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            PowerShellToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -31,7 +33,7 @@ public static class ToolRegistryPowerShellExtensions {
 
     private static IEnumerable<ITool> CreateTools(PowerShellToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return PowerShellToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, PowerShellPackContractCatalog.Apply(tool.Definition));
         }
     }
 

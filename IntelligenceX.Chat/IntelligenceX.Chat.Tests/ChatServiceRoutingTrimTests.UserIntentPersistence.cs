@@ -8,9 +8,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void ExpandContinuationUserRequest_RehydratesUserIntentAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-user-intent-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-user-intent", out var root);
         const string threadId = "thread-user-intent-restart";
         const string intent = "Please run forest-wide replication and LDAP diagnostics.";
 
@@ -41,9 +39,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void ExpandContinuationUserRequest_DoesNotRehydrateStructuredIntentPayloadAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-user-intent-structured-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-user-intent-structured", out var root);
         const string threadId = "thread-user-intent-structured-restart";
         const string structuredIntent =
             "{\"ix_action_selection\":{\"id\":\"act_domain_scope_public\",\"request\":{\"ix_domain_scope\":{\"family\":\"public_domain\"}},\"mutating\":false}}";

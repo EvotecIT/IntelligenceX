@@ -17,7 +17,7 @@ public sealed class ChatAppStateStoreQueuePersistenceTests {
     /// </summary>
     [Fact]
     public async Task UpsertAndGet_PreservesQueuedTurnState_WithBoundedRetention() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-state-tests", Guid.NewGuid().ToString("N"));
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-state-tests");
         Directory.CreateDirectory(tempRoot);
         var dbPath = Path.Combine(tempRoot, "state.db");
 
@@ -53,7 +53,7 @@ public sealed class ChatAppStateStoreQueuePersistenceTests {
     /// </summary>
     [Fact]
     public async Task UpsertAndGet_PreservesConversationPendingActions_WithBoundedRetention() {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-state-tests", Guid.NewGuid().ToString("N"));
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-state-tests");
         Directory.CreateDirectory(tempRoot);
         var dbPath = Path.Combine(tempRoot, "state.db");
 

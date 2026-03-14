@@ -102,6 +102,7 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < remove.Count; i++) {
             _recoveredThreadAliasesByThreadId.Remove(remove[i]);
             _recoveredThreadAliasSeenUtcTicksByThreadId.Remove(remove[i]);
+            RemoveRecoveredThreadAliasSnapshot(remove[i]);
         }
 
         var overflow = _recoveredThreadAliasesByThreadId.Count - MaxTrackedThreadRecoveryAliases;
@@ -119,6 +120,7 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < oldest.Length; i++) {
             _recoveredThreadAliasesByThreadId.Remove(oldest[i]);
             _recoveredThreadAliasSeenUtcTicksByThreadId.Remove(oldest[i]);
+            RemoveRecoveredThreadAliasSnapshot(oldest[i]);
         }
     }
 

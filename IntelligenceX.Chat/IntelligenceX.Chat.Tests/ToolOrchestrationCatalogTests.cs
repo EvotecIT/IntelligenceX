@@ -707,6 +707,12 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.True(overlayEntry.SupportsRemoteHostTargeting);
         Assert.Equal(new[] { "computer_name" }, overlayEntry.TargetScopeArguments);
         Assert.Equal(new[] { "computer_name" }, overlayEntry.RemoteHostArguments);
+        Assert.Equal(
+            new[] {
+                "collect a remote baseline for the current host",
+                "pivot the resolved host into event evidence when deeper triage is needed"
+            },
+            overlayEntry.RepresentativeExamples);
         Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, overlayEntry.DomainIntentFamily);
         Assert.Equal(ToolSelectionMetadata.DomainIntentActionIdAd, overlayEntry.DomainIntentActionId);
         Assert.True(overlayEntry.IsSetupAware);
@@ -778,6 +784,10 @@ public sealed class ToolOrchestrationCatalogTests {
                         TargetScopeArguments = new[] { "computer_name" },
                         SupportsRemoteHostTargeting = true,
                         RemoteHostArguments = new[] { "computer_name" }
+                    },
+                    RepresentativeExamples = new[] {
+                        "collect a remote baseline for the current host",
+                        "pivot the resolved host into event evidence when deeper triage is needed"
                     },
                     Setup = new ToolPackToolSetupModel {
                         IsSetupAware = true,

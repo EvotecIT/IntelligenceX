@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -397,6 +399,61 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains(
             warnings,
             static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_UsesExecutionContractsForRemoteReachabilityMode() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        IReadOnlyList<ToolDefinition> toolDefinitions = new List<ToolDefinition> {
+            new ToolDefinition(
+                name: "custom_remote_probe",
+                description: "Probe a remote host.",
+                parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                execution: new ToolExecutionContract {
+                    IsExecutionAware = true,
+                    ExecutionScope = ToolExecutionScopes.LocalOrRemote,
+                    RemoteHostArguments = new[] { "machine_name" }
+                })
+        };
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "eventlog",
+                    Name = "Event Log",
+                    SourceKind = "builtin",
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 1,
+                RoutingAwareTools = 1,
+                ExplicitRoutingTools = 1,
+                InferredRoutingTools = 0,
+                MissingRoutingContractTools = 0,
+                MissingPackIdTools = 0,
+                MissingRoleTools = 0,
+                RemoteCapableTools = 1,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            });
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(toolDefinitions));
+
+        var warnings = session.BuildHelloStartupWarningsForTesting(Task.CompletedTask);
+        var handshake = Assert.Single(
+            warnings,
+            static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains("remote_reachability_mode='remote_capable'", handshake, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? TryReadInstructionLine(string input, string prefix) {

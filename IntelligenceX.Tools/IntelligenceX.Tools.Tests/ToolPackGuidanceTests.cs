@@ -786,6 +786,33 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
+    public void Create_ShouldNormalizeRepresentativeExamples_InToolCatalog() {
+        var model = ToolPackGuidance.Create(
+            pack: "system",
+            engine: "ComputerX",
+            tools: new[] { "system_info" },
+            toolCatalog: new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "system_info",
+                    Description = "System info",
+                    RepresentativeExamples = new[] {
+                        " collect host inventory ",
+                        "collect host inventory",
+                        "summarize cpu and memory posture"
+                    }
+                }
+            });
+
+        var entry = Assert.Single(model.ToolCatalog);
+        Assert.Equal(
+            new[] {
+                "collect host inventory",
+                "summarize cpu and memory posture"
+            },
+            entry.RepresentativeExamples);
+    }
+
+    [Fact]
     public void Create_ShouldNormalizeAndSerializeDefaultRoutingValues_WhenCatalogRoutingIsBlank() {
         var model = ToolPackGuidance.Create(
             pack: "system",

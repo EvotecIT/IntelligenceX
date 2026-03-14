@@ -218,6 +218,9 @@ internal static partial class Program {
                 Tier = descriptor.Tier,
                 IsDangerous = descriptor.IsDangerous,
                 SourceKind = descriptor.SourceKind ?? string.Empty,
+                EngineId = descriptor.EngineId,
+                CapabilityTags = descriptor.CapabilityTags ?? Array.Empty<string>(),
+                CapabilityParity = descriptor.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>(),
                 Enabled = true
             })
             .ToArray();

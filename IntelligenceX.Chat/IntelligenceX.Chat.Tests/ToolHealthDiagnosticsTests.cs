@@ -365,11 +365,9 @@ public sealed class ToolHealthDiagnosticsTests {
                 IsRoutingAware = true,
                 RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
                 PackId = "system",
-                Role = ToolRoutingTaxonomy.RoleDiagnostic
-            },
-            tags: new[] {
-                "fallback:requires_selection",
-                "fallback_selection_keys:target"
+                Role = ToolRoutingTaxonomy.RoleDiagnostic,
+                RequiresSelectionForFallback = true,
+                FallbackSelectionKeys = new[] { "target" }
             }));
 
         var result = await ToolHealthDiagnostics.ProbeAsync(registry, "system_pack_info", timeoutSeconds: 2, CancellationToken.None);

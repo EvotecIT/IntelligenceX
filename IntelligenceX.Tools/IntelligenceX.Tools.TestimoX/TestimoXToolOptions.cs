@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Tools.TestimoX;
 
 /// <summary>
 /// Runtime options for IX.TestimoX tools.
 /// </summary>
-public sealed class TestimoXToolOptions {
+public sealed class TestimoXToolOptions : IToolPackRuntimeOptionTarget {
+    private static readonly IReadOnlyList<string> RuntimeOptionKeyValues = new[] {
+        "testimox"
+    };
+
     /// <summary>
     /// Enables or disables the entire TestimoX pack.
     /// </summary>
@@ -61,6 +66,9 @@ public sealed class TestimoXToolOptions {
     /// Allowed roots for read-only monitoring history/report inspection tools.
     /// </summary>
     public List<string> AllowedHistoryRoots { get; } = new();
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <summary>
     /// Validates option values.

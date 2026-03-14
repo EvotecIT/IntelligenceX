@@ -5,24 +5,8 @@ using IntelligenceX.Chat.Service;
 namespace IntelligenceX.Chat.Tests;
 
 internal static class ChatServiceTestSessionFactory {
-    private const string PendingActionsStoreFileName = "pending-actions.json";
-
     internal static ServiceOptions CreateIsolatedOptions() {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localAppData)) {
-            localAppData = ".";
-        }
-
-        var isolatedDirectory = Path.Combine(
-            localAppData,
-            "IntelligenceX.Chat",
-            "tests",
-            Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(isolatedDirectory);
-
-        return new ServiceOptions {
-            PendingActionsStorePath = Path.Combine(isolatedDirectory, PendingActionsStoreFileName)
-        };
+        return PendingActionsStorePathTestHelper.CreateIsolatedServiceOptions("ix-chat-session-factory", out _);
     }
 
     internal static (ServiceOptions Options, string PendingActionsStorePath, string PersistenceDirectory) CreateIsolatedPersistenceOptions() {

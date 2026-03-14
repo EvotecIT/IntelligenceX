@@ -23,7 +23,9 @@ public static class ToolRegistryEmailExtensions {
     /// <param name="options">Tool options.</param>
     /// <returns>Catalog entries derived from runtime definitions and input schemas.</returns>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(EmailToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            EmailToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -38,7 +40,7 @@ public static class ToolRegistryEmailExtensions {
 
     private static IEnumerable<ITool> CreateTools(EmailToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return EmailToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, EmailPackContractCatalog.Apply(tool.Definition));
         }
     }
 

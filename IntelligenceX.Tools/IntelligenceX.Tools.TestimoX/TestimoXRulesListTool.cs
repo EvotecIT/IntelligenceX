@@ -49,8 +49,7 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
         category: "testimox",
         tags: new[] {
             "compliance",
-            "rules",
-            "fallback_hint_keys:search_text,rule_origin,categories,tags,source_types"
+            "rules"
         });
 
     /// <summary>

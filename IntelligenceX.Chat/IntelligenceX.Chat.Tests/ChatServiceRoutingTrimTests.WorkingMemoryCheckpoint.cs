@@ -9,9 +9,7 @@ namespace IntelligenceX.Chat.Tests;
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void WorkingMemoryCheckpoint_AugmentsCompactFollowUpAfterRestart() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-working-memory-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-working-memory", out var root);
         const string threadId = "thread-working-memory";
 
         try {
@@ -81,9 +79,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void WorkingMemoryCheckpoint_AugmentsCompactFollowUpAfterRestart_WithRememberedExecutionBackend() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-working-memory-backend-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-working-memory-backend", out var root);
         const string threadId = "thread-working-memory-backend";
 
         try {
@@ -149,9 +145,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void WorkingMemoryCheckpoint_RoutingPreludeAfterRestart_CarriesLongQuestionIntoFocusedContinuationContext() {
-        var root = Path.Combine(Path.GetTempPath(), "ix-chat-working-memory-routing-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var pendingActionsStorePath = Path.Combine(root, "pending-actions.json");
+        var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-working-memory-routing", out var root);
         const string threadId = "thread-working-memory-routing";
         const string followUp = "Where is ADRODC in the full forest replication table above, and why are those rows still missing from it?";
 

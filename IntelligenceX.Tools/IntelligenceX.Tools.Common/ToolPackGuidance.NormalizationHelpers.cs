@@ -257,6 +257,7 @@ public static partial class ToolPackGuidance {
                 Tags = NormalizeTags(entry.Tags),
                 Routing = NormalizeRouting(entry.Routing),
                 Description = entry.Description?.Trim() ?? string.Empty,
+                RepresentativeExamples = NormalizeRepresentativeExamplesContract(entry.RepresentativeExamples),
                 RequiredArguments = NormalizeValues(entry.RequiredArguments),
                 Arguments = NormalizeArguments(entry.Arguments),
                 SupportsTableViewProjection = entry.SupportsTableViewProjection,

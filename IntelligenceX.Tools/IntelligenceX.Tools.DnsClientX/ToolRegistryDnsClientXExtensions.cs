@@ -19,7 +19,9 @@ public static class ToolRegistryDnsClientXExtensions {
     /// Returns tool catalog metadata for tools registered by <see cref="RegisterDnsClientXPack"/>.
     /// </summary>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(DnsClientXToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            DnsClientXToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -31,7 +33,7 @@ public static class ToolRegistryDnsClientXExtensions {
 
     private static IEnumerable<ITool> CreateTools(DnsClientXToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return DnsClientXToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, DnsClientXPackContractCatalog.Apply(tool.Definition));
         }
     }
 

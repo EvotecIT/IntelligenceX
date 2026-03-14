@@ -45,7 +45,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.Equal("C:/profiles/run-as.json", loaded.RunAsProfilePath);
             Assert.Equal("C:/profiles/auth.json", loaded.AuthenticationProfilePath);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -75,7 +75,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.Null(loaded.RunAsProfilePath);
             Assert.Null(loaded.AuthenticationProfilePath);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -96,7 +96,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.Equal(new[] { "powershell", "custom_pack" }, loaded!.DisabledPackIds);
             Assert.Equal(new[] { "dnsclientx", "custom_pack" }, loaded.EnabledPackIds);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -121,14 +121,14 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.False(loaded!.UseDefaultBuiltInToolAssemblyNames);
             Assert.Equal(new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" }, loaded.BuiltInToolAssemblyNames);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     [Fact]
     public async Task UpsertAndGet_PluginPaths_StripsAppManagedBundleLocations() {
         var dbPath = CreateTempDbPath();
-        var customPluginPath = Path.Combine(Path.GetTempPath(), "ix-custom-plugin-root-" + Guid.NewGuid().ToString("N"));
+        var customPluginPath = TempPathTestHelper.CreateTempDirectoryPath("ix-custom-plugin-root");
         Directory.CreateDirectory(customPluginPath);
         try {
             using var store = new SqliteServiceProfileStore(dbPath);
@@ -151,7 +151,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
                 Directory.Delete(customPluginPath, recursive: true);
             }
 
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -193,7 +193,7 @@ public sealed class SqliteServiceProfileStoreRuntimePolicyTests {
             Assert.Equal(@"C:\Custom\Plugins", persisted.Rows[0]["path"]?.ToString());
             Assert.Equal(@"D:\Shared\plugin-cache\plugins", persisted.Rows[1]["path"]?.ToString());
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -285,7 +285,7 @@ INSERT INTO ix_service_profile_plugin_paths (profile_name, ord, path) VALUES
             Assert.Single(persisted!.Rows.Cast<DataRow>());
             Assert.Equal(@"D:\PluginDrop", persisted.Rows[0]["path"]?.ToString());
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -303,7 +303,7 @@ INSERT INTO ix_service_profile_plugin_paths (profile_name, ord, path) VALUES
             Assert.Contains("officeimo", loaded.EnabledPackIds);
             Assert.Contains("powershell", loaded.EnabledPackIds);
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
@@ -330,12 +330,12 @@ INSERT INTO ix_service_profile_plugin_paths (profile_name, ord, path) VALUES
             Assert.Single(row!.Rows.Cast<DataRow>());
             Assert.Equal(0, Convert.ToInt32(row.Rows[0]["custom_required_non_pack"]));
         } finally {
-            TryDelete(dbPath);
+            TempPathTestHelper.TryDeleteFile(dbPath);
         }
     }
 
     private static string CreateTempDbPath() {
-        return Path.Combine(Path.GetTempPath(), $"ix-chat-profiles-{Guid.NewGuid():N}.db");
+        return TempPathTestHelper.CreateTempFilePath("ix-chat-profiles", ".db");
     }
 
     private static void SeedLegacyProfileRowWithPackToggles(string dbPath, string profileName) {
@@ -504,13 +504,4 @@ CREATE TABLE ix_service_profiles (
         return null;
     }
 
-    private static void TryDelete(string path) {
-        try {
-            if (File.Exists(path)) {
-                File.Delete(path);
-            }
-        } catch {
-            // Best-effort cleanup.
-        }
-    }
 }

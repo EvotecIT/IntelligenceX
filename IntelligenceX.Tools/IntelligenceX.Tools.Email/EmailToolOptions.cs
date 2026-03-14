@@ -7,7 +7,12 @@ namespace IntelligenceX.Tools.Email;
 /// <summary>
 /// Shared options for the <c>IntelligenceX.Tools.Email</c> tool pack.
 /// </summary>
-public sealed class EmailToolOptions : IToolPackRuntimeConfigurable {
+public sealed class EmailToolOptions : IToolPackRuntimeConfigurable, IToolPackRuntimeOptionTarget {
+    private static readonly string[] RuntimeOptionKeyValues = {
+        "email",
+        "mailozaurr"
+    };
+
     /// <summary>
     /// IMAP account configuration used by IMAP tools.
     /// </summary>
@@ -43,6 +48,9 @@ public sealed class EmailToolOptions : IToolPackRuntimeConfigurable {
     /// Maximum number of results returned by list/search operations. Tool calls may cap further.
     /// </summary>
     public int MaxListResults { get; set; } = 50;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> RuntimeOptionKeys => RuntimeOptionKeyValues;
 
     /// <inheritdoc />
     public void ApplyRuntimeContext(ToolPackRuntimeContext context) {

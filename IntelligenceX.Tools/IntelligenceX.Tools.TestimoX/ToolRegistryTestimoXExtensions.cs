@@ -19,7 +19,9 @@ public static class ToolRegistryTestimoXExtensions {
     /// Returns tool catalog metadata for tools registered by <see cref="RegisterTestimoXPack"/>.
     /// </summary>
     public static IReadOnlyList<ToolPackToolCatalogEntryModel> GetRegisteredToolCatalog(TestimoXToolOptions options) {
-        return ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools);
+        return ToolPackGuidance.ApplyRepresentativeExamples(
+            ToolPackRegistry.GetRegisteredToolCatalog(options, CreateTools),
+            TestimoXToolPackRepresentativeExamples.ByToolName);
     }
 
     /// <summary>
@@ -31,7 +33,7 @@ public static class ToolRegistryTestimoXExtensions {
 
     private static IEnumerable<ITool> CreateTools(TestimoXToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
-            yield return TestimoXToolContracts.Apply(tool);
+            yield return ToolDefinitionOverlay.WithDefinition(tool, TestimoXPackContractCatalog.Apply(tool.Definition));
         }
     }
 

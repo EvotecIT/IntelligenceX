@@ -78,7 +78,7 @@ public sealed class HostScenarioReportingTests {
                 })
         });
 
-        var reportPath = Path.Combine(Path.GetTempPath(), $"ix-chat-phase-rollups-{Guid.NewGuid():N}.json");
+        var reportPath = TempPathTestHelper.CreateTempFilePath("ix-chat-phase-rollups", ".json");
         try {
             InvokeWriteScenarioReportJson(reportPath, report);
             using var document = JsonDocument.Parse(File.ReadAllText(reportPath));
@@ -151,7 +151,7 @@ public sealed class HostScenarioReportingTests {
                 "Expected scenario rollup phase 'model_plan' p95 <= 500ms; observed 800ms across 1 sample(s)."
             });
 
-        var reportPath = Path.Combine(Path.GetTempPath(), $"ix-chat-rollup-assertions-{Guid.NewGuid():N}.json");
+        var reportPath = TempPathTestHelper.CreateTempFilePath("ix-chat-rollup-assertions", ".json");
         try {
             InvokeWriteScenarioReportJson(reportPath, report);
             using var document = JsonDocument.Parse(File.ReadAllText(reportPath));

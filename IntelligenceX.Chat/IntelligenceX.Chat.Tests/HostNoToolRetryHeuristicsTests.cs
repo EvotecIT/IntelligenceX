@@ -495,7 +495,7 @@ Continue recurring-error analysis across all remaining DCs in this turn.
             toolDefinitions: toolDefinitions);
 
         Assert.Contains("Representative live tool examples for this flow", prompt, StringComparison.Ordinal);
-        Assert.Contains("inspect Windows event logs", prompt, StringComparison.Ordinal);
+        Assert.Contains("inspect event logs", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_named_events_catalog -> eventlog_named_events_query", prompt, StringComparison.Ordinal);
         Assert.Contains("Cross-pack follow-up pivots are available into System", prompt, StringComparison.Ordinal);
         Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
