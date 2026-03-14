@@ -147,12 +147,16 @@ internal static partial class Program {
             TestCopilotSessionUsageAdapterImportsCliTurnActivity);
         failed += Run("Copilot session usage adapter imports session shutdown usage metrics",
             TestCopilotSessionUsageAdapterImportsSessionShutdownUsageMetrics);
+#if !NET472
         failed += Run("Copilot quota snapshot client parses direct quota snapshots",
             TestCopilotQuotaSnapshotClientParsesDirectQuotaSnapshots);
         failed += Run("Copilot quota snapshot client parses monthly quota fallback",
             TestCopilotQuotaSnapshotClientParsesMonthlyQuotaFallback);
         failed += Run("Usage telemetry CLI runner appends Copilot quota insight",
             TestUsageTelemetryCliRunnerAppendsCopilotQuotaInsight);
+        failed += Run("Usage telemetry CLI runner propagates Copilot quota cancellation",
+            TestUsageTelemetryCliRunnerPropagatesCopilotQuotaCancellation);
+#endif
         failed += Run("Copilot default source root discovery includes recovered and WSL profiles",
             TestCopilotDefaultSourceRootDiscoveryIncludesRecoveredAndWslProfiles);
         failed += Run("Usage telemetry import coordinator discovers Copilot root from current profile",

@@ -4,7 +4,7 @@ description: IntelligenceX can now build usage reports across current profiles, 
 slug: usage-reporting-across-windows-old-wsl-and-github
 date: 2026-03-14
 categories: ["Walkthrough"]
-tags: ["usage", "reporting", "github", "wsl", "copilot"]
+tags: ["usage", "reporting", "github-analytics", "wsl", "copilot"]
 image: /assets/screenshots/usage-report/usage-report-overview.png
 collection: blog
 layout: page
@@ -73,8 +73,8 @@ The current scope is local Copilot CLI activity from `.copilot/session-state`, p
 
 That means the report can include Copilot sessions, turns, durations, and account identity.
 
-What it does **not** do yet is export the premium-request allowance snapshot you may see in VS Code or other GitHub Copilot UI surfaces.
-So today, Copilot should be read as a separate activity section, not as a quota ledger and not yet as a Claude-style token model view.
+It can also append a GitHub-backed Copilot plan/quota snapshot when a GitHub token is available.
+So today, Copilot should be read as a combined activity-plus-status section, not yet as a Claude-style token model view.
 
 ![GitHub section of the usage report on a narrow mobile viewport](/assets/screenshots/usage-report/usage-report-github-mobile.png)
 

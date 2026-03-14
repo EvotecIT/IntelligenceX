@@ -80,6 +80,7 @@ intelligencex telemetry usage report `
 
 `--github-user` adds the profile activity section and will try to correlate owned organization scope automatically when possible.
 `--github-owner` lets you add explicit owner or organization scope for repository-impact reporting.
+If you need to pass credentials explicitly, use `--github-token`, or rely on `INTELLIGENCEX_GITHUB_TOKEN`, `GITHUB_TOKEN`, `GH_TOKEN`, or an existing `gh auth` session.
 
 ## Quick Scan vs Durable Import
 
@@ -142,8 +143,8 @@ That means IntelligenceX can include:
 Treat that as a separate **Copilot activity** section, not a Claude-style token ledger.
 It is useful and worth surfacing on its own, but it is not yet the same as full model/token telemetry.
 
-It does **not** yet export Copilot premium-request quota snapshots from GitHub or VS Code.
-That VS Code or GitHub-side allowance data should land as a separate Copilot quota/status section when it is wired in.
+It can also append a GitHub-backed Copilot plan/quota snapshot when a GitHub token is available.
+That quota view is separate from local CLI activity and should be read as a status snapshot, not as full historical token telemetry.
 
 ## When To Use Which Command
 

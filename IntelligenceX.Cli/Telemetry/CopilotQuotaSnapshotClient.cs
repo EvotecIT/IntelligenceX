@@ -9,6 +9,12 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Telemetry;
 
 internal sealed class CopilotQuotaSnapshotClient : IDisposable {
+    // These mirror the stable Copilot Chat request shape used by current GitHub Copilot clients.
+    private const string EditorVersionHeaderValue = "vscode/1.96.2";
+    private const string EditorPluginVersionHeaderValue = "copilot-chat/0.26.7";
+    private const string UserAgentHeaderValue = "GitHubCopilotChat/0.26.7";
+    private const string GitHubApiVersionHeaderValue = "2025-04-01";
+
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
     private readonly Uri _endpoint;
@@ -35,10 +41,10 @@ internal sealed class CopilotQuotaSnapshotClient : IDisposable {
         using var request = new HttpRequestMessage(HttpMethod.Get, _endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("token", token.Trim());
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.TryAddWithoutValidation("Editor-Version", "vscode/1.96.2");
-        request.Headers.TryAddWithoutValidation("Editor-Plugin-Version", "copilot-chat/0.26.7");
-        request.Headers.TryAddWithoutValidation("User-Agent", "GitHubCopilotChat/0.26.7");
-        request.Headers.TryAddWithoutValidation("X-Github-Api-Version", "2025-04-01");
+        request.Headers.TryAddWithoutValidation("Editor-Version", EditorVersionHeaderValue);
+        request.Headers.TryAddWithoutValidation("Editor-Plugin-Version", EditorPluginVersionHeaderValue);
+        request.Headers.TryAddWithoutValidation("User-Agent", UserAgentHeaderValue);
+        request.Headers.TryAddWithoutValidation("X-Github-Api-Version", GitHubApiVersionHeaderValue);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden) {

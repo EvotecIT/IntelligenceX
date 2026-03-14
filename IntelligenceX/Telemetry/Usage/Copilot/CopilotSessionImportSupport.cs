@@ -305,7 +305,7 @@ internal static class CopilotSessionImportSupport {
             return null;
         }
 
-        var model = line[(index + marker.Length)..].Trim();
+        var model = line.Substring(index + marker.Length).Trim();
         return UsageTelemetryQuickReportSupport.NormalizeOptional(model);
     }
 }

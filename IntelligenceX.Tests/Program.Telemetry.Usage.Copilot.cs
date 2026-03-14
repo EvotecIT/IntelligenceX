@@ -1,11 +1,14 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using IntelligenceX.Cli.Telemetry;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Telemetry.Usage.Copilot;
 using IntelligenceX.Visualization.Heatmaps;
+#if !NET472
+using System.Text.Json;
+using System.Threading;
+using IntelligenceX.Cli.Telemetry;
+#endif
 
 namespace IntelligenceX.Tests;
 
@@ -200,6 +203,7 @@ internal static partial class Program {
         }
     }
 
+#if !NET472
     private static void TestCopilotQuotaSnapshotClientParsesDirectQuotaSnapshots() {
         using var json = JsonDocument.Parse("""
             {
@@ -300,4 +304,35 @@ internal static partial class Program {
         AssertContainsText(section.Note ?? string.Empty, "Premium remaining 0/300", "copilot section note includes premium remaining");
         AssertContainsText(section.AdditionalInsights[0].Rows[1].Subtitle ?? string.Empty, "% used", "copilot premium row subtitle includes used percent");
     }
+
+    private static void TestUsageTelemetryCliRunnerPropagatesCopilotQuotaCancellation() {
+        var overview = new UsageTelemetryOverviewBuilder().Build(
+            new[] {
+                new UsageEventRecord("evt-1", "copilot", "copilot.session-state", "src-1",
+                    new DateTimeOffset(2026, 03, 13, 22, 29, 29, TimeSpan.Zero)) {
+                    ProviderAccountId = "octocat",
+                    Surface = "cli",
+                    SessionId = "session-a",
+                    ThreadId = "session-a",
+                    TurnId = "0",
+                    Model = "claude-sonnet-4.6",
+                    DurationMs = 1010,
+                    TruthLevel = UsageTruthLevel.Inferred
+                }
+            },
+            new UsageTelemetryOverviewOptions {
+                Title = "Copilot Usage"
+            });
+
+        AssertThrows<OperationCanceledException>(
+            () => UsageTelemetryCliRunner.AppendCopilotQuotaInsightsAsync(
+                    overview,
+                    "ghp_test",
+                    _ => { },
+                    cancellationToken: new CancellationToken(canceled: true))
+                .GetAwaiter()
+                .GetResult(),
+            "copilot quota cancellation propagates");
+    }
+#endif
 }

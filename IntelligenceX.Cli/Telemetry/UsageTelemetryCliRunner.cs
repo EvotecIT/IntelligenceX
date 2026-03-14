@@ -747,7 +747,8 @@ internal static class UsageTelemetryCliRunner {
         string? githubToken,
         Action<string>? progress = null,
         string? apiBaseUrl = null,
-        HttpClient? httpClient = null) {
+        HttpClient? httpClient = null,
+        CancellationToken cancellationToken = default) {
         if (overview is null) {
             throw new ArgumentNullException(nameof(overview));
         }
@@ -764,14 +765,14 @@ internal static class UsageTelemetryCliRunner {
         try {
             progress?.Invoke("Fetching Copilot plan and quota snapshot...");
             using var client = new CopilotQuotaSnapshotClient(httpClient, apiBaseUrl);
-            var snapshot = await client.FetchAsync(githubToken!, CancellationToken.None).ConfigureAwait(false);
+            var snapshot = await client.FetchAsync(githubToken!, cancellationToken).ConfigureAwait(false);
             if (snapshot is null) {
                 progress?.Invoke("GitHub Copilot quota snapshot did not contain usable quota data.");
                 return overview;
             }
 
             return ApplyCopilotQuotaSnapshot(overview, snapshot);
-        } catch (Exception ex) {
+        } catch (Exception ex) when (ex is not OperationCanceledException) {
             progress?.Invoke("Skipping Copilot quota snapshot: " + ex.Message);
             return overview;
         }
