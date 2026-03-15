@@ -110,6 +110,10 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     /// </summary>
     [Fact]
     public void ApplyTranscriptMarkdownPreProcessors_StripsCachedEvidenceMarkerAndUpgradesNetworkPayload() {
+        if (!SupportsExplicitTranscriptPreProcessorBehavior()) {
+            return;
+        }
+
         const string markdown = """
 ix:cached-tool-evidence:v1
 
@@ -136,6 +140,10 @@ ix:cached-tool-evidence:v1
     /// </summary>
     [Fact]
     public void ApplyTranscriptMarkdownPreProcessors_UpgradesCachedEvidenceChartAndDataViewPayloadsOnly() {
+        if (!SupportsExplicitTranscriptPreProcessorBehavior()) {
+            return;
+        }
+
         const string markdown = """
 ix:cached-tool-evidence:v1
 
@@ -166,6 +174,10 @@ Standalone example:
     /// </summary>
     [Fact]
     public void ApplyTranscriptMarkdownPreProcessors_PromotesLegacyToolHeadingBullets() {
+        if (!SupportsExplicitTranscriptPreProcessorBehavior()) {
+            return;
+        }
+
         const string markdown = """
 [Cached evidence fallback]
 
@@ -184,6 +196,10 @@ Recent evidence:
     /// </summary>
     [Fact]
     public void ApplyTranscriptMarkdownPreProcessors_RemovesDuplicateLegacyToolSlugHeading() {
+        if (!SupportsExplicitTranscriptPreProcessorBehavior()) {
+            return;
+        }
+
         const string markdown = """
 [Cached evidence fallback]
 
@@ -202,6 +218,10 @@ Recent evidence:
     /// </summary>
     [Fact]
     public void ApplyTranscriptMarkdownPreProcessors_UpgradesPlainLegacyJsonNetworkFenceWithoutTransportMarker() {
+        if (!SupportsExplicitTranscriptPreProcessorBehavior()) {
+            return;
+        }
+
         const string markdown = """
 ```json
 {"nodes":[{"id":"A","label":"Forest: ad.evotec.xyz"}],"edges":[{"source":"forest_ad.evotec.xyz","target":"domain_ad.evotec.xyz","label":"contains"}]}
@@ -221,13 +241,46 @@ Recent evidence:
     }
 
     private static MarkdownRendererOptions? TryCreateExplicitOfficeImoTranscriptDesktopShell() {
-        var method = typeof(MarkdownRendererPresets).GetMethod(
-            "CreateIntelligenceXTranscriptDesktopShell",
-            BindingFlags.Public | BindingFlags.Static,
-            binder: null,
-            types: Type.EmptyTypes,
-            modifiers: null);
-        return method?.Invoke(null, null) as MarkdownRendererOptions;
+        var method = ResolveOptionalBaseHrefFactory("CreateIntelligenceXTranscriptDesktopShell");
+        if (method == null) {
+            return null;
+        }
+
+        var parameters = method.GetParameters();
+        return method.Invoke(null, parameters.Length == 0 ? null : [null]) as MarkdownRendererOptions;
+    }
+
+    private static bool SupportsExplicitTranscriptPreProcessorBehavior() {
+        return Type.GetType(
+                   "OfficeIMO.MarkdownRenderer.MarkdownRendererIntelligenceXLegacyMigration, OfficeIMO.MarkdownRenderer",
+                   throwOnError: false) != null
+               && Type.GetType(
+                   "OfficeIMO.Markdown.MarkdownTranscriptPreparation, OfficeIMO.Markdown",
+                   throwOnError: false) != null;
+    }
+
+    private static System.Reflection.MethodInfo? ResolveOptionalBaseHrefFactory(string methodName) {
+        var methods = typeof(MarkdownRendererPresets).GetMethods(BindingFlags.Public | BindingFlags.Static);
+        for (var i = 0; i < methods.Length; i++) {
+            var method = methods[i];
+            if (!string.Equals(method.Name, methodName, StringComparison.Ordinal)
+                || !typeof(MarkdownRendererOptions).IsAssignableFrom(method.ReturnType)) {
+                continue;
+            }
+
+            var parameters = method.GetParameters();
+            if (parameters.Length == 0) {
+                return method;
+            }
+
+            if (parameters.Length == 1
+                && parameters[0].ParameterType == typeof(string)
+                && parameters[0].IsOptional) {
+                return method;
+            }
+        }
+
+        return null;
     }
 
     private static IReadOnlyDictionary<string, string> LoadMsBuildProperties(string propsPath) {

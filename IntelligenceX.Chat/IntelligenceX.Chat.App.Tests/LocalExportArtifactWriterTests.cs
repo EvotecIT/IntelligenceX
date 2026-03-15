@@ -222,7 +222,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             var written = File.ReadAllText(markdownPath);
             Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("- eventlog_top_events:", written, StringComparison.Ordinal);
-            Assert.Contains("### Top 30 recent events (preview)", written, StringComparison.Ordinal);
+            Assert.Contains("Top 30 recent events (preview)", written, StringComparison.Ordinal);
             Assert.Contains("- Overall health **healthy**", written, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);

@@ -107,6 +107,8 @@ internal static class OfficeImoMarkdownRuntimeContract {
         var options = MarkdownRendererPresets.CreateStrictMinimal();
         MarkdownRendererPresets.ApplyChatPresentation(options, enableCopyButtons: false);
         MarkdownRendererIntelligenceXAdapter.Apply(options);
+        TryApplyLegacyTranscriptMigration(options);
+        TryAddLegacyTranscriptVisualTransform(options.ReaderOptions);
         options.Mermaid.Enabled = true;
         options.Chart.Enabled = true;
         TryEnableOptionalRendererNetworkSupport(options);
@@ -116,23 +118,22 @@ internal static class OfficeImoMarkdownRuntimeContract {
     private static MarkdownRendererOptions CreateLegacyTranscriptPreProcessorOptions() {
         var options = new MarkdownRendererOptions();
         MarkdownRendererIntelligenceXAdapter.Apply(options);
+        TryApplyLegacyTranscriptMigration(options);
+        TryAddLegacyTranscriptVisualTransform(options.ReaderOptions);
         return options;
     }
 
     private static MarkdownRendererOptions? TryCreateExplicitTranscriptRendererOptions(string methodName) {
         try {
             var presetsType = typeof(MarkdownRendererPresets);
-            var method = presetsType.GetMethod(
-                methodName,
-                BindingFlags.Public | BindingFlags.Static,
-                binder: null,
-                types: Type.EmptyTypes,
-                modifiers: null);
+            var method = ResolveOptionalBaseHrefFactory(presetsType, methodName, typeof(MarkdownRendererOptions));
             if (method == null || !typeof(MarkdownRendererOptions).IsAssignableFrom(method.ReturnType)) {
                 return null;
             }
 
-            return method.Invoke(null, null) as MarkdownRendererOptions;
+            var parameters = method.GetParameters();
+            object?[]? args = parameters.Length == 0 ? null : [null];
+            return method.Invoke(null, args) as MarkdownRendererOptions;
         } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             return null;
         }
@@ -172,6 +173,99 @@ internal static class OfficeImoMarkdownRuntimeContract {
         }
 
         return value;
+    }
+
+    private static MethodInfo? ResolveOptionalBaseHrefFactory(Type presetsType, string methodName, Type expectedReturnType) {
+        if (presetsType == null || string.IsNullOrWhiteSpace(methodName)) {
+            return null;
+        }
+
+        var methods = presetsType.GetMethods(BindingFlags.Public | BindingFlags.Static);
+        for (var i = 0; i < methods.Length; i++) {
+            var method = methods[i];
+            if (!string.Equals(method.Name, methodName, StringComparison.Ordinal)
+                || !expectedReturnType.IsAssignableFrom(method.ReturnType)) {
+                continue;
+            }
+
+            var parameters = method.GetParameters();
+            if (parameters.Length == 0) {
+                return method;
+            }
+
+            if (parameters.Length == 1
+                && parameters[0].ParameterType == typeof(string)
+                && parameters[0].IsOptional) {
+                return method;
+            }
+        }
+
+        return null;
+    }
+
+    private static void TryApplyLegacyTranscriptMigration(MarkdownRendererOptions options) {
+        try {
+            var adapterType = Type.GetType(
+                "OfficeIMO.MarkdownRenderer.MarkdownRendererIntelligenceXLegacyMigration, OfficeIMO.MarkdownRenderer",
+                throwOnError: false);
+            var method = adapterType?.GetMethod(
+                "Apply",
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: [typeof(MarkdownRendererOptions)],
+                modifiers: null);
+            method?.Invoke(null, [options]);
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
+            // Older package lines do not expose the split legacy migration helper yet.
+        }
+    }
+
+    private static void TryAddLegacyTranscriptVisualTransform(object? readerOptions) {
+        if (readerOptions == null) {
+            return;
+        }
+
+        try {
+            var transformsProperty = readerOptions.GetType().GetProperty(
+                "DocumentTransforms",
+                BindingFlags.Instance | BindingFlags.Public);
+            if (transformsProperty?.GetValue(readerOptions) is not System.Collections.IList transforms) {
+                return;
+            }
+
+            var transformType = Type.GetType(
+                "OfficeIMO.Markdown.MarkdownJsonVisualCodeBlockTransform, OfficeIMO.Markdown",
+                throwOnError: false);
+            var modeType = Type.GetType(
+                "OfficeIMO.Markdown.MarkdownVisualFenceLanguageMode, OfficeIMO.Markdown",
+                throwOnError: false);
+            if (transformType == null || modeType == null) {
+                return;
+            }
+
+            var aliasMode = Enum.Parse(modeType, "IntelligenceXAliasFence", ignoreCase: false);
+            for (var i = 0; i < transforms.Count; i++) {
+                var existing = transforms[i];
+                if (existing == null || !transformType.IsInstanceOfType(existing)) {
+                    continue;
+                }
+
+                var modeProperty = transformType.GetProperty("LanguageMode", BindingFlags.Instance | BindingFlags.Public);
+                if (Equals(modeProperty?.GetValue(existing), aliasMode)) {
+                    return;
+                }
+            }
+
+            var ctor = transformType.GetConstructor([modeType]);
+            if (ctor == null) {
+                return;
+            }
+
+            var transform = ctor.Invoke([aliasMode]);
+            transforms.Add(transform);
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
+            // Older package lines do not expose the document transform surface yet.
+        }
     }
 
     private static bool IsCompatibilityFallbackException(Exception exception) {

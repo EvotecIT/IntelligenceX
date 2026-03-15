@@ -103,23 +103,11 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     }
 
     private static MarkdownRendererOptions? TryCreateExplicitOfficeImoTranscriptMinimal() {
-        var method = typeof(MarkdownRendererPresets).GetMethod(
-            "CreateIntelligenceXTranscriptMinimal",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-            binder: null,
-            types: Type.EmptyTypes,
-            modifiers: null);
-        return method?.Invoke(null, null) as MarkdownRendererOptions;
+        return InvokeOptionalBaseHrefFactory("CreateIntelligenceXTranscriptMinimal");
     }
 
     private static MarkdownRendererOptions? TryCreateExplicitOfficeImoTranscriptDesktopShell() {
-        var method = typeof(MarkdownRendererPresets).GetMethod(
-            "CreateIntelligenceXTranscriptDesktopShell",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-            binder: null,
-            types: Type.EmptyTypes,
-            modifiers: null);
-        return method?.Invoke(null, null) as MarkdownRendererOptions;
+        return InvokeOptionalBaseHrefFactory("CreateIntelligenceXTranscriptDesktopShell");
     }
 
     private static string LoadOfficeImoCompatibilityFixture(string name) {
@@ -159,5 +147,29 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
             .Replace("\r\n", "\n")
             .Replace('\r', '\n')
             .Trim();
+    }
+
+    private static MarkdownRendererOptions? InvokeOptionalBaseHrefFactory(string methodName) {
+        var methods = typeof(MarkdownRendererPresets).GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+        for (var i = 0; i < methods.Length; i++) {
+            var method = methods[i];
+            if (!string.Equals(method.Name, methodName, StringComparison.Ordinal)
+                || !typeof(MarkdownRendererOptions).IsAssignableFrom(method.ReturnType)) {
+                continue;
+            }
+
+            var parameters = method.GetParameters();
+            if (parameters.Length == 0) {
+                return method.Invoke(null, null) as MarkdownRendererOptions;
+            }
+
+            if (parameters.Length == 1
+                && parameters[0].ParameterType == typeof(string)
+                && parameters[0].IsOptional) {
+                return method.Invoke(null, [null]) as MarkdownRendererOptions;
+            }
+        }
+
+        return null;
     }
 }

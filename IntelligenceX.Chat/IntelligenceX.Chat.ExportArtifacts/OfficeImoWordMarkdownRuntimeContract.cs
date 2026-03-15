@@ -154,6 +154,7 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
         TrySetBooleanProperty(readerOptions, "PreferNarrativeSingleLineDefinitions", true);
         TrySetBooleanProperty(readerOptions, "Callouts", true);
         TrySetBooleanProperty(readerOptions, "DefinitionLists", true);
+        TryAddDocumentTransform(readerOptions);
         return readerOptions;
     }
 
@@ -168,6 +169,53 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
         }
 
         property.SetValue(target, value);
+    }
+
+    private static void TryAddDocumentTransform(object target) {
+        if (target == null) {
+            return;
+        }
+
+        try {
+            var property = target.GetType().GetProperty(
+                "DocumentTransforms",
+                BindingFlags.Instance | BindingFlags.Public);
+            if (property?.GetValue(target) is not System.Collections.IList transforms) {
+                return;
+            }
+
+            var transformType = Type.GetType(
+                "OfficeIMO.Markdown.MarkdownJsonVisualCodeBlockTransform, OfficeIMO.Markdown",
+                throwOnError: false);
+            var modeType = Type.GetType(
+                "OfficeIMO.Markdown.MarkdownVisualFenceLanguageMode, OfficeIMO.Markdown",
+                throwOnError: false);
+            if (transformType == null || modeType == null) {
+                return;
+            }
+
+            var aliasMode = Enum.Parse(modeType, "IntelligenceXAliasFence", ignoreCase: false);
+            for (var i = 0; i < transforms.Count; i++) {
+                var existing = transforms[i];
+                if (existing == null || !transformType.IsInstanceOfType(existing)) {
+                    continue;
+                }
+
+                var modeProperty = transformType.GetProperty("LanguageMode", BindingFlags.Instance | BindingFlags.Public);
+                if (Equals(modeProperty?.GetValue(existing), aliasMode)) {
+                    return;
+                }
+            }
+
+            var ctor = transformType.GetConstructor([modeType]);
+            if (ctor == null) {
+                return;
+            }
+
+            transforms.Add(ctor.Invoke([aliasMode]));
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
+            // Older package lines do not expose the document transform surface yet.
+        }
     }
 
     private static bool DetectGroupedDefinitionLikeParagraphSupport() {

@@ -13,6 +13,8 @@ The currently pinned package versions in [Directory.Build.props](../Directory.Bu
 
 Those pins represent the last published package adoption baseline. The explicit `IntelligenceXTranscript` OfficeIMO API line should be developed and validated against the local OfficeIMO checkout until the next matching package versions are published and the pins are updated in the same adoption PR.
 
+When a sibling OfficeIMO checkout is present, `IntelligenceX.Chat` now prefers it by default. Force package mode explicitly with `/p:UseLocalOfficeImoCheckout=false` when validating the current published package line.
+
 ## What Is Already Cleaned Up
 
 - App transcript normalization entrypoints are centralized in [TranscriptMarkdownPreparation.cs](../IntelligenceX.Chat.App/Markdown/TranscriptMarkdownPreparation.cs).
@@ -20,6 +22,7 @@ Those pins represent the last published package adoption baseline. The explicit 
 - OfficeIMO renderer/runtime probing is centralized in [OfficeImoMarkdownRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownRuntimeContract.cs).
 - OfficeIMO Word transcript preset/capability invocation is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](../IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
 - OfficeIMO input normalization is centralized in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
+- OfficeIMO now owns the generic post-parse markdown document-transform pipeline; IX should continue to consume that only via explicit OfficeIMO contracts/presets.
 
 ## Adoption Gate
 
@@ -30,6 +33,7 @@ Before updating the pinned package versions, all of the following should be true
 - The new package-adoption PR does not reintroduce mixed ownership between transcript cleanup, renderer probing, and DOCX adaptation.
 - Any intentional OfficeIMO-specific behavior used by `IntelligenceX` is documented in [markdown-contract.md](markdown-contract.md).
 - If the adoption moves IX to newer explicit OfficeIMO transcript APIs, including `OfficeIMO.Word.Markdown` transcript presets/capabilities, those package versions must be published first and the pinned package line updated in the same PR.
+- The package-adoption PR should delete the three temporary reflection/runtime bridges instead of carrying them forward.
 
 ## Validation Expectations
 
@@ -47,9 +51,10 @@ Use this sequence for the actual package update:
 
 1. publish the intended `OfficeIMO.Markdown` and `OfficeIMO.MarkdownRenderer` package versions
 2. update [Directory.Build.props](../Directory.Build.props) to those exact versions
-3. run package-mode validation against the published package line
-4. re-check UI render, markdown export, and DOCX export
-5. merge only after the package-mode gate and those user-visible checks are green
+3. delete the three temporary OfficeIMO compatibility bridges and switch existing seams to direct OfficeIMO APIs
+4. run package-mode validation against the published package line
+5. re-check UI render, markdown export, and DOCX export
+6. merge only after the package-mode gate and those user-visible checks are green
 
 ## Notes
 

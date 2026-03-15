@@ -14,6 +14,10 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
         new(CreateOfficeImoInputNormalizationBridge);
 
     private static readonly string[] OfficeImoInputNormalizationPropertyNames = [
+        "NormalizeZeroWidthSpacingArtifacts",
+        "NormalizeEmojiWordJoins",
+        "NormalizeCompactNumberedChoiceBoundaries",
+        "NormalizeSentenceCollapsedBullets",
         "NormalizeLooseStrongDelimiters",
         "NormalizeTightStrongBoundaries",
         "NormalizeOrderedListMarkerSpacing",
@@ -22,12 +26,21 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
         "NormalizeTightParentheticalSpacing",
         "NormalizeNestedStrongDelimiters",
         "NormalizeTightArrowStrongBoundaries",
+        "NormalizeBrokenStrongArrowLabels",
         "NormalizeTightColonSpacing",
         "NormalizeWrappedSignalFlowStrongRuns",
+        "NormalizeSignalFlowLabelSpacing",
         "NormalizeCollapsedMetricChains",
         "NormalizeHostLabelBulletArtifacts",
+        "NormalizeHeadingListBoundaries",
+        "NormalizeCompactStrongLabelListBoundaries",
+        "NormalizeCompactHeadingBoundaries",
         "NormalizeStandaloneHashHeadingSeparators",
         "NormalizeBrokenTwoLineStrongLeadIns",
+        "NormalizeColonListBoundaries",
+        "NormalizeCompactFenceBodyBoundaries",
+        "NormalizeCollapsedOrderedListBoundaries",
+        "NormalizeOrderedListStrongDetailClosures",
         "NormalizeDanglingTrailingStrongListClosers",
         "NormalizeMetricValueStrongRuns"
     ];
