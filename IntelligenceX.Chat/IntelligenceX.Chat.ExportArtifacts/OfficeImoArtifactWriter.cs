@@ -164,10 +164,6 @@ public static partial class OfficeImoArtifactWriter {
             OfficeImoWordMarkdownRuntimeContract.PreservesGroupedDefinitionLikeParagraphs());
     }
 
-    internal static string NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(string markdown) {
-        return TranscriptMarkdownContract.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown);
-    }
-
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {
         builder.Append('|');
         for (int i = 0; i < cells.Count; i++) {

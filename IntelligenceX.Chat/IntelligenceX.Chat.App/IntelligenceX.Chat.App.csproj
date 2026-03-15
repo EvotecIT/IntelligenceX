@@ -30,6 +30,12 @@
     <OfficeImoMarkdownRendererProject Condition="Exists('$(OfficeImoMarkdownRendererProjectOverride)')">$(OfficeImoMarkdownRendererProjectOverride)</OfficeImoMarkdownRendererProject>
     <OfficeImoMarkdownRendererProject Condition="'$(OfficeImoMarkdownRendererProject)' == '' and Exists('$(OfficeImoMarkdownRendererProjectCandidate1)')">$(OfficeImoMarkdownRendererProjectCandidate1)</OfficeImoMarkdownRendererProject>
     <OfficeImoMarkdownRendererProject Condition="'$(OfficeImoMarkdownRendererProject)' == '' and Exists('$(OfficeImoMarkdownRendererProjectCandidate2)')">$(OfficeImoMarkdownRendererProjectCandidate2)</OfficeImoMarkdownRendererProject>
+    <OfficeImoMarkdownProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectOverride>
+    <OfficeImoMarkdownProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectCandidate1>
+    <OfficeImoMarkdownProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectCandidate2>
+    <OfficeImoMarkdownProject Condition="Exists('$(OfficeImoMarkdownProjectOverride)')">$(OfficeImoMarkdownProjectOverride)</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownProject Condition="'$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate1)')">$(OfficeImoMarkdownProjectCandidate1)</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownProject Condition="'$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate2)')">$(OfficeImoMarkdownProjectCandidate2)</OfficeImoMarkdownProject>
 
     <OfficeImoMarkdownRendererDllOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDllOverride>
     <OfficeImoMarkdownRendererDllCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.MarkdownRenderer\bin\$(Configuration)\net8.0\OfficeIMO.MarkdownRenderer.dll</OfficeImoMarkdownRendererDllCandidate1>
@@ -64,24 +70,26 @@
     <!-- Use a stable WinAppSDK version. -->
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250907003" />
 
-    <!-- Local development: prefer an external OfficeIMO checkout for markdown rendering. -->
+    <!-- Local development: automatically prefer a sibling OfficeIMO checkout when present. -->
     <ProjectReference Include="$(OfficeImoMarkdownRendererProject)"
-                      Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoMarkdownRendererProject)')" />
+                      Condition="Exists('$(OfficeImoMarkdownRendererProject)')" />
+    <ProjectReference Include="$(OfficeImoMarkdownProject)"
+                      Condition="Exists('$(OfficeImoMarkdownProject)')" />
     <Reference Include="OfficeIMO.MarkdownRenderer"
-               Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and !Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownRendererDll)')">
+               Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownRendererDll)')">
       <HintPath>$(OfficeImoMarkdownRendererDll)</HintPath>
       <Private>true</Private>
     </Reference>
     <Reference Include="OfficeIMO.Markdown"
-               Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and !Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownDll)')">
+               Condition="!Exists('$(OfficeImoMarkdownProject)') and Exists('$(OfficeImoMarkdownDll)')">
       <HintPath>$(OfficeImoMarkdownDll)</HintPath>
       <Private>true</Private>
     </Reference>
 
     <PackageReference Include="OfficeIMO.MarkdownRenderer" Version="$(OfficeImoMarkdownRendererNuGetVersion)"
-                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or (!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)'))" />
+                      Condition="!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)')" />
     <PackageReference Include="OfficeIMO.Markdown" Version="$(OfficeImoMarkdownNuGetVersion)"
-                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or (!Exists('$(OfficeImoMarkdownRendererProject)') and !Exists('$(OfficeImoMarkdownRendererDll)'))" />
+                      Condition="!Exists('$(OfficeImoMarkdownProject)') and !Exists('$(OfficeImoMarkdownDll)')" />
   </ItemGroup>
 
   <ItemGroup>

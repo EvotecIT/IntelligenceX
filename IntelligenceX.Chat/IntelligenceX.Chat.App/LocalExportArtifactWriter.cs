@@ -147,7 +147,7 @@ internal static class LocalExportArtifactWriter {
         MarkdownTranscriptWriter markdownWriter,
         DocxTranscriptWriter docxWriter) {
         var normalizedFormat = (format ?? string.Empty).Trim().ToLowerInvariant();
-        var safeMarkdown = NormalizeTranscriptMarkdownForExport(markdown ?? string.Empty);
+        var safeMarkdown = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown ?? string.Empty);
         switch (normalizedFormat) {
             case ExportPreferencesContract.FormatMarkdown:
                 try {
@@ -199,11 +199,6 @@ internal static class LocalExportArtifactWriter {
                 throw new InvalidOperationException("Unsupported transcript export format: " + normalizedFormat);
         }
     }
-
-    internal static string NormalizeTranscriptMarkdownForExport(string markdown) {
-        return TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown);
-    }
-
     private static string ReadCellAsText(JsonElement cell) {
         return cell.ValueKind switch {
             JsonValueKind.String => cell.GetString() ?? string.Empty,

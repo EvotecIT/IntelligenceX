@@ -26,7 +26,7 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
 
         var preparedForRender = TranscriptMarkdownPreparation.PrepareMessageBody(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
-        var preparedForExport = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(markdown)
+        var preparedForExport = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Equal(preparedForRender, preparedForExport);
@@ -50,7 +50,7 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
             Impact: none
             """;
 
-        var preparedForExport = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(markdown)
+        var preparedForExport = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
         var preparedForDocx = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(preparedForExport)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
@@ -63,6 +63,31 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
         Assert.Contains("[Cached evidence fallback]", preparedForDocx, StringComparison.Ordinal);
         Assert.Contains("Status: healthy", preparedForDocx, StringComparison.Ordinal);
         Assert.Contains("Impact: none", preparedForDocx, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the App export-preparation seam stays aligned with the shared export-artifacts contract while using
+    /// the same explicit OfficeIMO helpers underneath.
+    /// </summary>
+    [Fact]
+    public void AppAndExportArtifactExportPreparation_StayInParity() {
+        const string markdown = """
+            # Transcript
+
+            [Cached evidence fallback]
+            ix:cached-tool-evidence:v1
+
+            1. First check2. Second check
+            """;
+
+        var appPrepared = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        var contractPrepared = TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Equal(contractPrepared, appPrepared);
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", appPrepared, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("[Cached evidence fallback]", appPrepared, StringComparison.Ordinal);
     }
 
     /// <summary>

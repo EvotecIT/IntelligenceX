@@ -1300,6 +1300,31 @@
     clearVisualMessageWideWhenEmpty(pre);
   }
 
+  function scheduleChartResize(instance) {
+    if (!instance || typeof instance.resize !== "function") {
+      return;
+    }
+
+    var resizeNow = function() {
+      try {
+        instance.resize();
+      } catch (_) {
+        // Ignore layout-time resize failures.
+      }
+    };
+
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(resizeNow);
+      requestAnimationFrame(function() {
+        setTimeout(resizeNow, 0);
+      });
+      return;
+    }
+
+    setTimeout(resizeNow, 0);
+    setTimeout(resizeNow, 120);
+  }
+
   function markChartInvalid(pre, reason) {
     if (!pre) {
       return;
@@ -1354,6 +1379,7 @@
     pre.setAttribute("data-ix-chart-pending", "1");
     try {
       disposeChartBlock(pre);
+      markVisualMessageWide(pre);
 
       var host = document.createElement("div");
       host.className = "ix-chart-host";
@@ -1376,6 +1402,7 @@
       pre.setAttribute("data-ix-chart-rendered", "1");
       clearVisualNotice(pre);
       ensureVisualActionBar(pre, "ix-chart");
+      scheduleChartResize(instance);
     } catch (_) {
       markChartInvalid(pre, "render failed");
     } finally {
@@ -1419,6 +1446,7 @@
     canvas.setAttribute("data-chart-pending", "1");
     try {
       disposeChartBlock(canvas);
+      markVisualMessageWide(canvas);
       var context = canvas.getContext && canvas.getContext("2d");
       if (!context) {
         throw new Error("canvas context unavailable");
@@ -1433,6 +1461,7 @@
       canvas.setAttribute("data-chart-rendered", "1");
       clearVisualNotice(canvas);
       ensureVisualActionBar(canvas, getOfficeImoVisualKind(canvas, "ix-chart"));
+      scheduleChartResize(instance);
     } catch (_) {
       markChartInvalid(canvas, "render failed");
     } finally {
@@ -1981,6 +2010,7 @@
     pre.setAttribute("data-ix-network-pending", "1");
     try {
       disposeNetworkBlock(pre);
+      markVisualMessageWide(pre);
 
       var host = document.createElement("div");
       host.className = "ix-network-host";
@@ -2062,6 +2092,7 @@
     host.setAttribute("data-network-pending", "1");
     try {
       disposeNetworkBlock(host);
+      markVisualMessageWide(host);
 
       var canvas = document.createElement("div");
       canvas.className = "omd-network-canvas";

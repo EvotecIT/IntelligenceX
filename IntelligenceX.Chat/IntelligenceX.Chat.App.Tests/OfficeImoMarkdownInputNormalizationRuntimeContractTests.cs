@@ -1,14 +1,15 @@
 using IntelligenceX.Chat.App;
+using OfficeIMO.Markdown;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
-/// Guards the optional OfficeIMO markdown input-normalizer runtime seam used during transcript cleanup.
+/// Guards the explicit OfficeIMO markdown input-normalization seam used during transcript cleanup.
 /// </summary>
 public sealed class OfficeImoMarkdownInputNormalizationRuntimeContractTests {
     /// <summary>
-    /// Ensures the runtime contract applies OfficeIMO ordered-list normalization when a compatible runtime is present.
+    /// Ensures the runtime contract applies OfficeIMO ordered-list normalization through the explicit transcript preset.
     /// </summary>
     [Fact]
     public void NormalizeForTranscriptCleanup_NormalizesOrderedListParenMarkers() {
@@ -61,5 +62,46 @@ all 5 are healthy for directory access** with recommended LDAPS endpoints.
         var normalized = OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup(markdown);
 
         Assert.Equal("**Result:** all 5 are healthy for directory access with recommended LDAPS endpoints.", normalized);
+    }
+
+    /// <summary>
+    /// Ensures the runtime contract picks up shared collapsed ordered-list repairs from the OfficeIMO transcript preset.
+    /// </summary>
+    [Fact]
+    public void NormalizeForTranscriptCleanup_RepairsCollapsedOrderedListTranscriptArtifacts() {
+        const string markdown = "1. **Privilege hygiene sweep**(Domain Admins + nested exposure)2.**Delegation risk audit**(unconstrained)";
+
+        var normalized = OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup(markdown);
+
+        Assert.Equal("1. **Privilege hygiene sweep** (Domain Admins + nested exposure)\n2. **Delegation risk audit** (unconstrained)", normalized);
+    }
+
+    /// <summary>
+    /// Ensures the runtime contract preserves empty normalization results instead of reviving stripped zero-width artifacts.
+    /// </summary>
+    [Fact]
+    public void NormalizeForTranscriptCleanup_ReturnsEmptyWhenTranscriptPresetStripsOnlyZeroWidthArtifacts() {
+        const string markdown = "\u200B";
+
+        var normalized = OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup(markdown);
+
+        Assert.Equal(string.Empty, normalized);
+    }
+
+    /// <summary>
+    /// Ensures IX uses the shared OfficeIMO transcript normalization preset rather than maintaining a separate property-level bridge.
+    /// </summary>
+    [Fact]
+    public void NormalizeForTranscriptCleanup_MatchesOfficeImoTranscriptPreset() {
+        const string markdown = """
+1)First check
+-AD1
+healthy for directory access
+""";
+
+        var normalized = OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup(markdown);
+        var expected = MarkdownInputNormalizer.Normalize(markdown, MarkdownInputNormalizationPresets.CreateIntelligenceXTranscript());
+
+        Assert.Equal(expected, normalized);
     }
 }

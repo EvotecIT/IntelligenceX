@@ -1,8 +1,8 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using IntelligenceX.Chat.ExportArtifacts;
+using OfficeIMO.Markdown;
 using OfficeIMO.Word;
 using Xunit;
 
@@ -138,20 +138,19 @@ public sealed partial class LocalExportArtifactWriterTests {
             ["C:\\allowed-a", "C:\\allowed-b"],
             2500);
 
+        Assert.Equal("Calibri", options.FontFamily);
+        Assert.True(options.AllowLocalImages);
         Assert.True(options.PreferNarrativeSingleLineDefinitions);
         Assert.Equal(100d, options.MaxImageWidthPercentOfContent);
         Assert.Equal(2000, options.MaxImageWidthPixels);
         Assert.Contains("C:\\allowed-a", options.AllowedImageDirectories);
         Assert.Contains("C:\\allowed-b", options.AllowedImageDirectories);
-
-        var readerOptionsProperty = options.GetType().GetProperty("ReaderOptions", BindingFlags.Instance | BindingFlags.Public);
-        if (readerOptionsProperty != null) {
-            var readerOptions = readerOptionsProperty.GetValue(options);
-            Assert.NotNull(readerOptions);
-            Assert.True(ReadBooleanProperty(readerOptions!, "PreferNarrativeSingleLineDefinitions"));
-            Assert.True(ReadBooleanProperty(readerOptions!, "Callouts"));
-            Assert.True(ReadBooleanProperty(readerOptions!, "DefinitionLists"));
-        }
+        Assert.NotNull(options.ReaderOptions);
+        Assert.IsType<MarkdownReaderOptions>(options.ReaderOptions);
+        Assert.True(options.ReaderOptions!.PreferNarrativeSingleLineDefinitions);
+        Assert.True(options.ReaderOptions.Callouts);
+        Assert.True(options.ReaderOptions.DefinitionLists);
+        Assert.NotNull(options.ReaderOptions.InputNormalization);
     }
 
     /// <summary>
@@ -208,12 +207,5 @@ public sealed partial class LocalExportArtifactWriterTests {
         } finally {
             Directory.Delete(root, recursive: true);
         }
-    }
-
-    private static bool ReadBooleanProperty(object target, string propertyName) {
-        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-        Assert.NotNull(property);
-        Assert.Equal(typeof(bool), property!.PropertyType);
-        return Assert.IsType<bool>(property.GetValue(target));
     }
 }

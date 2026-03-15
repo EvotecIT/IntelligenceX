@@ -67,16 +67,58 @@ internal static class TranscriptForensicsExporter {
         IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
         MarkdownRendererOptions markdownOptions) {
-        var includedMessages = new List<(string Role, string Text, DateTime Time, string? Model)>(messages.Count);
-        var projectedMessages = new List<TranscriptForensicsMessage>(messages.Count);
+        var sourceMessages = new List<TranscriptForensicsSourceMessage>(messages.Count);
         foreach (var message in messages) {
-            var rawText = message.Text;
+            sourceMessages.Add(new TranscriptForensicsSourceMessage {
+                Role = message.Role,
+                RawText = message.Text,
+                DisplayTime = message.Time,
+                TimeUtc = message.Time.Kind == DateTimeKind.Utc ? message.Time : message.Time.ToUniversalTime(),
+                Model = message.Model
+            });
+        }
+
+        return BuildConversationSnapshot(sourceMessages, timestampFormat, markdownOptions);
+    }
+
+    private static TranscriptForensicsConversationSnapshot BuildPersistedSnapshot(
+        IReadOnlyList<ChatMessageState> persistedMessages,
+        string timestampFormat,
+        MarkdownRendererOptions markdownOptions) {
+        var sourceMessages = new List<TranscriptForensicsSourceMessage>(persistedMessages.Count);
+
+        for (var i = 0; i < persistedMessages.Count; i++) {
+            var message = persistedMessages[i];
+            var timeUtc = NormalizePersistedTimestampUtc(message.TimeUtc);
+            sourceMessages.Add(new TranscriptForensicsSourceMessage {
+                Role = message.Role,
+                RawText = message.Text,
+                DisplayTime = timeUtc.ToLocalTime(),
+                TimeUtc = timeUtc,
+                Model = message.Model
+            });
+        }
+
+        return BuildConversationSnapshot(sourceMessages, timestampFormat, markdownOptions);
+    }
+
+    private static TranscriptForensicsConversationSnapshot BuildConversationSnapshot(
+        IReadOnlyList<TranscriptForensicsSourceMessage> sourceMessages,
+        string timestampFormat,
+        MarkdownRendererOptions markdownOptions) {
+        var transcriptMessages = new List<(string Role, string Text, DateTime Time, string? Model)>(sourceMessages.Count);
+        var projectedMessages = new List<TranscriptForensicsMessage>(sourceMessages.Count);
+
+        for (var i = 0; i < sourceMessages.Count; i++) {
+            var message = sourceMessages[i];
+            var rawText = message.RawText ?? string.Empty;
             var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(rawText);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }
 
-            includedMessages.Add((message.Role, rawText, message.Time, message.Model));
+            transcriptMessages.Add((message.Role, rawText, message.DisplayTime, message.Model));
+
             // Export snapshots keep per-message HTML, but we only need the message body here rather than
             // rebuilding full transcript-shell chrome for each entry.
             var renderedHtml = TranscriptHtmlFormatter.FormatSingleMessageForExport(
@@ -86,7 +128,7 @@ internal static class TranscriptForensicsExporter {
 
             projectedMessages.Add(new TranscriptForensicsMessage {
                 Role = message.Role,
-                TimeUtc = message.Time.Kind == DateTimeKind.Utc ? message.Time : message.Time.ToUniversalTime(),
+                TimeUtc = message.TimeUtc,
                 Model = NormalizeOptionalValue(message.Model),
                 RawText = rawText,
                 NormalizedText = normalizedText,
@@ -95,56 +137,9 @@ internal static class TranscriptForensicsExporter {
             });
         }
 
-        var rawTranscriptMarkdown = TranscriptMarkdownDocumentBuilder.Build(includedMessages, timestampFormat, prepareMessageBodies: false);
-        var normalizedTranscriptMarkdown = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(rawTranscriptMarkdown);
-        var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(includedMessages, timestampFormat, markdownOptions);
-
-        return new TranscriptForensicsConversationSnapshot {
-            MessageCount = projectedMessages.Count,
-            RawTranscriptMarkdown = rawTranscriptMarkdown,
-            NormalizedTranscriptMarkdown = normalizedTranscriptMarkdown,
-            RenderedTranscriptHtml = renderedTranscriptHtml,
-            Messages = projectedMessages
-        };
-    }
-
-    private static TranscriptForensicsConversationSnapshot BuildPersistedSnapshot(
-        IReadOnlyList<ChatMessageState> persistedMessages,
-        string timestampFormat,
-        MarkdownRendererOptions markdownOptions) {
-        var displayMessages = new List<(string Role, string Text, DateTime Time, string? Model)>(persistedMessages.Count);
-        var projectedMessages = new List<TranscriptForensicsMessage>(persistedMessages.Count);
-
-        for (var i = 0; i < persistedMessages.Count; i++) {
-            var message = persistedMessages[i];
-            var timeUtc = NormalizePersistedTimestampUtc(message.TimeUtc);
-            var displayTime = timeUtc.ToLocalTime();
-            var rawText = message.Text;
-            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(rawText);
-            if (string.IsNullOrWhiteSpace(normalizedText)) {
-                continue;
-            }
-
-            displayMessages.Add((message.Role, rawText, displayTime, message.Model));
-            var renderedHtml = TranscriptHtmlFormatter.FormatSingleMessageForExport(
-                message.Role,
-                rawText,
-                markdownOptions);
-
-            projectedMessages.Add(new TranscriptForensicsMessage {
-                Role = message.Role,
-                TimeUtc = timeUtc,
-                Model = NormalizeOptionalValue(message.Model),
-                RawText = rawText,
-                NormalizedText = normalizedText,
-                RenderedHtml = renderedHtml,
-                WasNormalized = !string.Equals(rawText, normalizedText, StringComparison.Ordinal)
-            });
-        }
-
-        var rawTranscriptMarkdown = TranscriptMarkdownDocumentBuilder.Build(displayMessages, timestampFormat, prepareMessageBodies: false);
-        var normalizedTranscriptMarkdown = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(rawTranscriptMarkdown);
-        var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(displayMessages, timestampFormat, markdownOptions);
+        var rawTranscriptMarkdown = TranscriptMarkdownDocumentBuilder.BuildRawTranscript(transcriptMessages, timestampFormat);
+        var normalizedTranscriptMarkdown = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(rawTranscriptMarkdown);
+        var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(transcriptMessages, timestampFormat, markdownOptions);
 
         return new TranscriptForensicsConversationSnapshot {
             MessageCount = projectedMessages.Count,
@@ -175,6 +170,14 @@ internal static class TranscriptForensicsExporter {
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length == 0 ? null : normalized;
     }
+}
+
+internal sealed class TranscriptForensicsSourceMessage {
+    public string Role { get; set; } = string.Empty;
+    public string RawText { get; set; } = string.Empty;
+    public DateTime DisplayTime { get; set; }
+    public DateTime TimeUtc { get; set; }
+    public string? Model { get; set; }
 }
 
 internal sealed class TranscriptForensicsBundle {

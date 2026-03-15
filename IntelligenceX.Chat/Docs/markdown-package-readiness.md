@@ -11,13 +11,15 @@ The currently pinned package versions in [Directory.Build.props](../Directory.Bu
 - `OfficeIMO.Word.Markdown` = `1.0.7`
 - `OfficeIMO.Excel` = `0.6.13`
 
+Those pins represent the last published package adoption baseline. The explicit `IntelligenceXTranscript` OfficeIMO API line should be developed and validated against the local OfficeIMO checkout until the next matching package versions are published and the pins are updated in the same adoption PR.
+
 ## What Is Already Cleaned Up
 
 - App transcript normalization entrypoints are centralized in [TranscriptMarkdownPreparation.cs](../IntelligenceX.Chat.App/Markdown/TranscriptMarkdownPreparation.cs).
-- Shared transcript content normalization is centralized in [TranscriptMarkdownContract.cs](../IntelligenceX.Chat.ExportArtifacts/TranscriptMarkdownContract.cs).
+- Shared transcript export and DOCX preparation is centralized in [TranscriptMarkdownContract.cs](../IntelligenceX.Chat.ExportArtifacts/TranscriptMarkdownContract.cs), which now composes the explicit OfficeIMO.Markdown helpers in `MarkdownTranscriptPreparation` and `MarkdownTranscriptTransportMarkers`.
 - OfficeIMO renderer/runtime probing is centralized in [OfficeImoMarkdownRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownRuntimeContract.cs).
-- OfficeIMO Word converter/runtime probing is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](../IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
-- OfficeIMO input-normalizer probing is isolated in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
+- OfficeIMO Word transcript preset/capability invocation is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](../IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
+- OfficeIMO input normalization is centralized in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
 
 ## Adoption Gate
 
@@ -27,6 +29,7 @@ Before updating the pinned package versions, all of the following should be true
 - Package-mode validation passes against the exact versions selected for adoption.
 - The new package-adoption PR does not reintroduce mixed ownership between transcript cleanup, renderer probing, and DOCX adaptation.
 - Any intentional OfficeIMO-specific behavior used by `IntelligenceX` is documented in [markdown-contract.md](markdown-contract.md).
+- If the adoption moves IX to newer explicit OfficeIMO transcript APIs, including `OfficeIMO.Word.Markdown` transcript presets/capabilities, those package versions must be published first and the pinned package line updated in the same PR.
 
 ## Validation Expectations
 

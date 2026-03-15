@@ -8,14 +8,22 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <OfficeImoExcelProjectOverride>$(OfficeImoRepoRoot)\OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProjectOverride>
+    <OfficeImoRepoRootForPaths Condition="'$(OfficeImoRepoRoot)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRoot)\\'))))</OfficeImoRepoRootForPaths>
+    <OfficeImoMarkdownProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectOverride>
+    <OfficeImoMarkdownProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectCandidate1>
+    <OfficeImoMarkdownProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectCandidate2>
+    <OfficeImoMarkdownProject Condition="Exists('$(OfficeImoMarkdownProjectOverride)')">$(OfficeImoMarkdownProjectOverride)</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownProject Condition="'$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate1)')">$(OfficeImoMarkdownProjectCandidate1)</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownProject Condition="'$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate2)')">$(OfficeImoMarkdownProjectCandidate2)</OfficeImoMarkdownProject>
+
+    <OfficeImoExcelProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProjectOverride>
     <OfficeImoExcelProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProjectCandidate1>
     <OfficeImoExcelProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProjectCandidate2>
     <OfficeImoExcelProject Condition="Exists('$(OfficeImoExcelProjectOverride)')">$(OfficeImoExcelProjectOverride)</OfficeImoExcelProject>
     <OfficeImoExcelProject Condition="'$(OfficeImoExcelProject)' == '' and Exists('$(OfficeImoExcelProjectCandidate1)')">$(OfficeImoExcelProjectCandidate1)</OfficeImoExcelProject>
     <OfficeImoExcelProject Condition="'$(OfficeImoExcelProject)' == '' and Exists('$(OfficeImoExcelProjectCandidate2)')">$(OfficeImoExcelProjectCandidate2)</OfficeImoExcelProject>
 
-    <OfficeImoWordMarkdownProjectOverride>$(OfficeImoRepoRoot)\OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProjectOverride>
+    <OfficeImoWordMarkdownProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProjectOverride>
     <OfficeImoWordMarkdownProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProjectCandidate1>
     <OfficeImoWordMarkdownProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProjectCandidate2>
     <OfficeImoWordMarkdownProject Condition="Exists('$(OfficeImoWordMarkdownProjectOverride)')">$(OfficeImoWordMarkdownProjectOverride)</OfficeImoWordMarkdownProject>
@@ -24,15 +32,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="$(OfficeImoMarkdownProject)"
+                      Condition="Exists('$(OfficeImoMarkdownProject)')" />
     <ProjectReference Include="$(OfficeImoExcelProject)"
-                      Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoExcelProject)')" />
+                      Condition="Exists('$(OfficeImoExcelProject)')" />
     <ProjectReference Include="$(OfficeImoWordMarkdownProject)"
-                      Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoWordMarkdownProject)')" />
+                      Condition="Exists('$(OfficeImoWordMarkdownProject)')" />
 
+    <PackageReference Include="OfficeIMO.Markdown" Version="$(OfficeImoMarkdownNuGetVersion)"
+                      Condition="!Exists('$(OfficeImoMarkdownProject)')" />
     <PackageReference Include="OfficeIMO.Excel" Version="$(OfficeImoExcelNuGetVersion)"
-                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or !Exists('$(OfficeImoExcelProject)')" />
+                      Condition="!Exists('$(OfficeImoExcelProject)')" />
     <PackageReference Include="OfficeIMO.Word.Markdown" Version="$(OfficeImoWordMarkdownNuGetVersion)"
-                      Condition="'$(UseLocalOfficeImoCheckout)' != 'true' or !Exists('$(OfficeImoWordMarkdownProject)')" />
+                      Condition="!Exists('$(OfficeImoWordMarkdownProject)')" />
   </ItemGroup>
 
 </Project>

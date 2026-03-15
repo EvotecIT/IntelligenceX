@@ -4,44 +4,55 @@ This document describes the intended markdown pipeline for `IntelligenceX.Chat`.
 
 ## Goals
 
-- keep one shared transcript markdown contract across render and export flows
-- isolate OfficeIMO runtime capability checks from transcript normalization
+- keep one explicit OfficeIMO-owned transcript markdown contract across render, export, and DOCX flows
+- isolate OfficeIMO host/runtime capability checks from transcript normalization
 - keep DOCX-only compatibility behavior explicit instead of mixing it into the general transcript path
 
 ## Pipeline
 
 ### 1. App history normalization
 
-Raw assistant/user message text is first repaired by `TranscriptMarkdownNormalizer` in the App project.
+Raw assistant/user message text first enters the App normalization entrypoints in `TranscriptMarkdownPreparation`.
 
-This stage is for LLM/history artifacts such as:
+The App-owned part of this stage is for host-level transcript shaping such as:
 
 - malformed strong delimiters
 - collapsed list markers
-- legacy cached-evidence heading wrappers
 - broken parenthetical spacing
 
-This stage is App-owned because it repairs transcript history before render/export formatting.
+The explicit IX transcript markdown contract now lives in OfficeIMO presets and renderer preprocessors. That OfficeIMO-owned layer covers IX transcript semantics such as:
+
+- legacy tool heading/slug cleanup
+- standalone separator cleanup before headings
+- legacy IX visual fence upgrades
+
+The App still owns when these entrypoints run during transcript load, preview, render, and export preparation.
 
 The App entrypoint for this stage is `TranscriptMarkdownPreparation`, which now also owns:
 
 - persisted transcript repair during conversation load
 - streaming preview normalization for in-progress assistant deltas
 
-`TranscriptMarkdownNormalizer` may also delegate to `OfficeImoMarkdownInputNormalizationRuntimeContract` when a compatible `OfficeIMO.Markdown` input normalizer is available at runtime.
+Streaming preview now delegates conservative delta cleanup through the explicit OfficeIMO utility:
 
-### 2. Shared transcript markdown contract
+- `MarkdownStreamingPreviewNormalizer.NormalizeIntelligenceXTranscript(...)`
 
-`TranscriptMarkdownContract` in `IntelligenceX.Chat.ExportArtifacts` is the shared normalization layer used by multiple consumers.
+`TranscriptMarkdownNormalizer` now delegates explicit transcript-contract cleanup through the OfficeIMO runtime seams:
+
+- `OfficeImoMarkdownInputNormalizationRuntimeContract`, which calls the explicit `OfficeIMO.Markdown` `IntelligenceXTranscript` normalization preset directly
+- `OfficeImoMarkdownRuntimeContract`, which now calls `OfficeIMO.MarkdownRenderer.MarkdownRendererPreProcessorPipeline.Apply(...)` with the explicit `CreateIntelligenceXTranscriptMinimal` preprocessor chain
+
+### 2. Shared export and DOCX contract
+
+`TranscriptMarkdownContract` in `IntelligenceX.Chat.ExportArtifacts` is the shared export/DOCX orchestration layer used by multiple consumers.
 
 It owns:
 
-- shared typography normalization outside fenced code blocks
-- adjacent ordered-list spacing repair
-- transcript-export cleanup like cached transport marker removal
-- DOCX-specific grouped-definition compatibility repair when required
+- invoking the explicit `OfficeIMO.Markdown` transcript-preparation helpers in `MarkdownTranscriptPreparation`
+- transcript-export cleanup like cached transport marker removal, now delegated to the explicit `OfficeIMO.Markdown` helper `MarkdownTranscriptTransportMarkers`
+- DOCX-specific grouped-definition compatibility repair when required, delegated to the shared `OfficeIMO.Markdown` helper `MarkdownDefinitionLines`
 
-This is the canonical cross-project transcript markdown contract.
+This keeps `ExportArtifacts` focused on orchestration while OfficeIMO remains the canonical markdown-shaping contract.
 
 ### 3. Renderer/runtime contract
 
@@ -49,21 +60,23 @@ This is the canonical cross-project transcript markdown contract.
 
 It owns:
 
-- transcript renderer option creation through the published generic-first OfficeIMO preset composition (`CreateStrictMinimal` + `ApplyChatPresentation` + `MarkdownRendererIntelligenceXAdapter`)
-- renderer option shaping for the published package line, including network visual enablement
+- transcript renderer option creation through the explicit OfficeIMO desktop-shell preset (`CreateIntelligenceXTranscriptDesktopShell`)
 - runtime/package diagnostics for loaded OfficeIMO assemblies
 
 ### 4. DOCX adaptation
 
 `OfficeImoArtifactWriter` owns DOCX writer concerns only.
 
-`OfficeImoWordMarkdownRuntimeContract` in `ExportArtifacts` owns OfficeIMO Word converter capability probing and baseline transcript converter options.
+`OfficeImoWordMarkdownRuntimeContract` in `ExportArtifacts` now delegates to explicit OfficeIMO.Word.Markdown contracts for transcript DOCX conversion:
+
+- `MarkdownToWordPresets.CreateIntelligenceXTranscript(...)`
+- `MarkdownToWordCapabilities.PreservesNarrativeSingleLineDefinitionsAsSeparateParagraphs()`
 
 It should be limited to:
 
-- Word converter options
+- invoking OfficeIMO Word-markdown transcript presets
 - image allow-listing and sizing
-- converter capability probes
+- converter capability probes exposed by OfficeIMO
 - runtime/package diagnostics for loaded OfficeIMO Word markdown assemblies
 - invoking the shared transcript markdown contract for DOCX preparation
 
@@ -78,9 +91,9 @@ The OfficeIMO markdown runtime diagnostics are currently surfaced through:
 
 Before adopting a new `OfficeIMO.Markdown` / `OfficeIMO.MarkdownRenderer` package line in `IntelligenceX`:
 
-- render, markdown export, and DOCX export should all use the intended shared contract
+- render, markdown export, and DOCX export should all use the intended explicit OfficeIMO transcript contract with IX only orchestrating host-specific entrypoints
 - package-mode validation should pass against the exact package versions chosen for adoption
 - any remaining OfficeIMO-specific behavior should be documented and intentional
-- renderer/runtime capability probing should stay isolated from transcript content normalization
+- host/runtime capability checks should stay isolated from transcript content normalization
 
 The detailed adoption checklist lives in [markdown-package-readiness.md](markdown-package-readiness.md).

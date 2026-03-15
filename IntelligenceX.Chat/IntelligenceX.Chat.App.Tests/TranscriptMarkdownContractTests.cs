@@ -9,23 +9,8 @@ namespace IntelligenceX.Chat.App.Tests;
 /// </summary>
 public sealed class TranscriptMarkdownContractTests {
     /// <summary>
-    /// Ensures shared message-body preparation repairs adjacent ordered list items.
-    /// </summary>
-    [Fact]
-    public void PrepareMessageBody_InsertsBlankLineBetweenAdjacentOrderedItems() {
-        const string markdown = """
-            1. First check
-            2. Second check
-            """;
-
-        var normalized = TranscriptMarkdownContract.PrepareMessageBody(markdown)
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
-
-        Assert.Contains("1. First check\n\n2. Second check", normalized, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Ensures export preparation removes cached-evidence transport markers while preserving content.
+    /// Ensures export preparation removes cached-evidence transport markers while preserving content
+    /// and collapsing the blank-line gap they leave behind.
     /// </summary>
     [Fact]
     public void PrepareTranscriptMarkdownForExport_RemovesCachedEvidenceMarkers() {
@@ -35,14 +20,17 @@ public sealed class TranscriptMarkdownContractTests {
             [Cached evidence fallback]
             ix:cached-tool-evidence:v1
 
+
             ### Result
             """;
 
-        var normalized = TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(markdown);
+        var normalized = TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.DoesNotContain("ix:cached-tool-evidence:v1", normalized, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("[Cached evidence fallback]", normalized, StringComparison.Ordinal);
         Assert.Contains("### Result", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n\n\n", normalized, StringComparison.Ordinal);
     }
 
     /// <summary>

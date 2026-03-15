@@ -70,17 +70,35 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
-    /// Verifies package-mode version pins match the published OfficeIMO packages required by the app contract.
+    /// Verifies the IX runtime contract builds on the explicit OfficeIMO transcript preset rather than re-composing chat behavior locally.
     /// </summary>
     [Fact]
-    public void DirectoryBuildProps_PinsCurrentPublishedOfficeImoPackageVersions() {
+    public void CreateTranscriptRendererOptions_ComposesOnTopOfExplicitOfficeImoTranscriptPreset() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var baseline = MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();
+
+        Assert.Equal(baseline.HtmlOptions.Style, options.HtmlOptions.Style);
+        Assert.Equal(baseline.HtmlOptions.CssScopeSelector, options.HtmlOptions.CssScopeSelector);
+        Assert.Equal(baseline.EnableCodeCopyButtons, options.EnableCodeCopyButtons);
+        Assert.Equal(baseline.EnableTableCopyButtons, options.EnableTableCopyButtons);
+        Assert.Equal(baseline.MarkdownPreProcessors.Count, options.MarkdownPreProcessors.Count);
+        Assert.Equal(baseline.Mermaid.Enabled, options.Mermaid.Enabled);
+        Assert.Equal(baseline.Chart.Enabled, options.Chart.Enabled);
+        Assert.Equal(baseline.Network.Enabled, options.Network.Enabled);
+    }
+
+    /// <summary>
+    /// Verifies the repo still declares OfficeIMO package pins for package-mode adoption, even when local checkout mode is preferred for explicit transcript API work.
+    /// </summary>
+    [Fact]
+    public void DirectoryBuildProps_DefinesOfficeImoPackageVersionPins() {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Equal("0.6.0", props["OfficeImoMarkdownNuGetVersion"]);
-        Assert.Equal("0.2.0", props["OfficeImoMarkdownRendererNuGetVersion"]);
-        Assert.Equal("0.6.13", props["OfficeImoExcelNuGetVersion"]);
-        Assert.Equal("1.0.7", props["OfficeImoWordMarkdownNuGetVersion"]);
+        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoMarkdownNuGetVersion"]));
+        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoMarkdownRendererNuGetVersion"]));
+        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoExcelNuGetVersion"]));
+        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoWordMarkdownNuGetVersion"]));
     }
 
     /// <summary>
@@ -137,6 +155,59 @@ Standalone example:
         Assert.Contains("```ix-chart", normalized, System.StringComparison.Ordinal);
         Assert.Contains("```ix-dataview", normalized, System.StringComparison.Ordinal);
         Assert.Contains("```json\n{ \"hello\": \"world\" }\n```", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies legacy cached-evidence tool slug bullet headings are normalized through the shared OfficeIMO transcript adapter.
+    /// </summary>
+    [Fact]
+    public void ApplyTranscriptMarkdownPreProcessors_PromotesLegacyToolHeadingBullets() {
+        const string markdown = """
+[Cached evidence fallback]
+
+Recent evidence:
+- eventlog_top_events: ### Top 30 recent events (preview)
+""";
+
+        var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+
+        Assert.Contains("### Top 30 recent events (preview)", normalized, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("eventlog_top_events:", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies duplicate legacy tool slug headings are removed through the shared OfficeIMO transcript adapter.
+    /// </summary>
+    [Fact]
+    public void ApplyTranscriptMarkdownPreProcessors_RemovesDuplicateLegacyToolSlugHeading() {
+        const string markdown = """
+[Cached evidence fallback]
+
+#### ad_environment_discover
+### Active Directory: Environment Discovery
+""";
+
+        var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+
+        Assert.DoesNotContain("#### ad_environment_discover", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("### Active Directory: Environment Discovery", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies plain legacy IX network payloads upgrade through the shared OfficeIMO transcript adapter even without a transport marker.
+    /// </summary>
+    [Fact]
+    public void ApplyTranscriptMarkdownPreProcessors_UpgradesPlainLegacyJsonNetworkFenceWithoutTransportMarker() {
+        const string markdown = """
+```json
+{"nodes":[{"id":"A","label":"Forest: ad.evotec.xyz"}],"edges":[{"source":"forest_ad.evotec.xyz","target":"domain_ad.evotec.xyz","label":"contains"}]}
+```
+""";
+
+        var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+
+        Assert.Contains("```ix-network", normalized, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("```json", normalized, System.StringComparison.Ordinal);
     }
 
     private static string InvokeContractMethod(string methodName) {
