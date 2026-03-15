@@ -8,19 +8,30 @@ namespace IntelligenceX.Chat.App.Markdown;
 /// Builds transcript markdown documents from timestamped role messages.
 /// </summary>
 internal static class TranscriptMarkdownDocumentBuilder {
-    public static string Build(
+    public static string BuildPreparedTranscript(
+        IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
+        string timestampFormat) {
+        return Build(messages, timestampFormat, static messageText => TranscriptMarkdownPreparation.PrepareMessageBody(messageText));
+    }
+
+    public static string BuildRawTranscript(
+        IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
+        string timestampFormat) {
+        return Build(messages, timestampFormat, static messageText => messageText ?? string.Empty);
+    }
+
+    private static string Build(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
-        bool prepareMessageBodies) {
+        Func<string?, string> bodySelector) {
         ArgumentNullException.ThrowIfNull(messages);
+        ArgumentNullException.ThrowIfNull(bodySelector);
 
         var format = string.IsNullOrWhiteSpace(timestampFormat) ? "HH:mm:ss" : timestampFormat.Trim();
         var markdown = new MarkdownComposer();
 
         foreach (var message in messages) {
-            var body = prepareMessageBodies
-                ? TranscriptMarkdownPreparation.PrepareMessageBody(message.Text)
-                : message.Text ?? string.Empty;
+            var body = bodySelector(message.Text);
             if (string.IsNullOrWhiteSpace(body)) {
                 continue;
             }

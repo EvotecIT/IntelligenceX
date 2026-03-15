@@ -6,31 +6,39 @@ This document is the contributor checklist for adopting a new `OfficeIMO.Markdow
 
 The currently pinned package versions in [Directory.Build.props](../Directory.Build.props) are:
 
-- `OfficeIMO.Markdown` = `0.6.0`
-- `OfficeIMO.MarkdownRenderer` = `0.2.0`
-- `OfficeIMO.Word.Markdown` = `1.0.7`
-- `OfficeIMO.Excel` = `0.6.13`
+- `OfficeIMO.Markdown` = `0.6.1`
+- `OfficeIMO.MarkdownRenderer` = `0.2.1`
+- `OfficeIMO.Word.Markdown` = `1.0.8`
+- `OfficeIMO.Excel` = `0.6.14`
+
+Those pins represent the last published package adoption baseline. The explicit `IntelligenceXTranscript` OfficeIMO API line should be developed and validated against the local OfficeIMO checkout until the next matching package versions are published and the pins are updated in the same adoption PR.
+
+When a sibling OfficeIMO checkout is present, `IntelligenceX.Chat` now prefers it by default. This end-state branch intentionally targets the new unpublished OfficeIMO API line directly, so package mode is expected to fail until those package versions are published.
 
 ## What Is Already Cleaned Up
 
 - App transcript normalization entrypoints are centralized in [TranscriptMarkdownPreparation.cs](../IntelligenceX.Chat.App/Markdown/TranscriptMarkdownPreparation.cs).
-- Shared transcript content normalization is centralized in [TranscriptMarkdownContract.cs](../IntelligenceX.Chat.ExportArtifacts/TranscriptMarkdownContract.cs).
-- OfficeIMO renderer/runtime probing is centralized in [OfficeImoMarkdownRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownRuntimeContract.cs).
-- OfficeIMO Word converter/runtime probing is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](../IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
-- OfficeIMO input-normalizer probing is isolated in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
+- Shared transcript export and DOCX preparation is centralized in [TranscriptMarkdownContract.cs](../IntelligenceX.Chat.ExportArtifacts/TranscriptMarkdownContract.cs), which now composes the explicit OfficeIMO.Markdown helpers in `MarkdownTranscriptPreparation` and `MarkdownTranscriptTransportMarkers`.
+- App transcript rendering now calls `MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell()` directly.
+- App transcript preprocessing now calls `MarkdownRendererPreProcessorPipeline.Apply(...)` and `MarkdownInputNormalizer.Normalize(...)` directly.
+- DOCX export now calls `MarkdownToWordPresets.CreateIntelligenceXTranscript(...)` and `MarkdownToWordCapabilities.PreservesNarrativeSingleLineDefinitionsAsSeparateParagraphs()` directly.
+- Runtime assembly diagnostics are centralized in [OfficeImoAssemblyContractDiagnostics.cs](../IntelligenceX.Chat.App/OfficeImoAssemblyContractDiagnostics.cs).
+- OfficeIMO now owns the generic post-parse markdown document-transform pipeline; IX should continue to consume that only via explicit OfficeIMO contracts/presets.
 
 ## Adoption Gate
 
 Before updating the pinned package versions, all of the following should be true:
 
 - App render, markdown export, and DOCX export still go through the intended shared markdown contract.
-- Package-mode validation passes against the exact versions selected for adoption.
+- Package-mode validation passes against the exact versions selected for adoption after those versions are published.
 - The new package-adoption PR does not reintroduce mixed ownership between transcript cleanup, renderer probing, and DOCX adaptation.
 - Any intentional OfficeIMO-specific behavior used by `IntelligenceX` is documented in [markdown-contract.md](markdown-contract.md).
+- If the adoption moves IX to newer explicit OfficeIMO transcript APIs, including `OfficeIMO.Word.Markdown` transcript presets/capabilities, those package versions must be published first and the pinned package line updated in the same PR.
+- The package-adoption PR should only need to bump the pinned package versions, because this branch already deletes the temporary reflection/runtime bridges.
 
 ## Validation Expectations
 
-The package line should be validated in package mode, not only against a local OfficeIMO checkout.
+Before publish, validate locally against the sibling OfficeIMO checkout. After publish, validate again in package mode against the exact package line.
 
 The final adoption PR should also be checked on the three user-visible paths:
 

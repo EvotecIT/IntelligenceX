@@ -86,7 +86,7 @@ public static partial class OfficeImoArtifactWriter {
         IReadOnlyList<string>? allowedImageDirectories = null,
         int? docxVisualMaxWidthPx = null) {
         var safeMarkdown = string.IsNullOrWhiteSpace(markdown) ? "# Transcript\n" : markdown;
-        var options = OfficeImoWordMarkdownRuntimeContract.CreateTranscriptMarkdownToWordOptions(
+        var options = MarkdownToWordPresets.CreateIntelligenceXTranscript(
             allowedImageDirectories,
             docxVisualMaxWidthPx);
 
@@ -161,11 +161,7 @@ public static partial class OfficeImoArtifactWriter {
     internal static string NormalizeTranscriptMarkdownForDocx(string markdown) {
         return TranscriptMarkdownContract.PrepareTranscriptMarkdownForDocx(
             markdown,
-            OfficeImoWordMarkdownRuntimeContract.PreservesGroupedDefinitionLikeParagraphs());
-    }
-
-    internal static string NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(string markdown) {
-        return TranscriptMarkdownContract.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown);
+            MarkdownToWordCapabilities.PreservesNarrativeSingleLineDefinitionsAsSeparateParagraphs());
     }
 
     private static void AppendMarkdownTableRow(StringBuilder builder, IReadOnlyList<string> cells) {

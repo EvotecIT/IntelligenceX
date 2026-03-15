@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using IntelligenceX.Chat.ExportArtifacts;
 using OfficeIMO.Word;
 using Xunit;
@@ -138,20 +137,25 @@ public sealed partial class LocalExportArtifactWriterTests {
             ["C:\\allowed-a", "C:\\allowed-b"],
             2500);
 
+        Assert.Equal("Calibri", options.FontFamily);
+        Assert.True(options.AllowLocalImages);
         Assert.True(options.PreferNarrativeSingleLineDefinitions);
         Assert.Equal(100d, options.MaxImageWidthPercentOfContent);
         Assert.Equal(2000, options.MaxImageWidthPixels);
         Assert.Contains("C:\\allowed-a", options.AllowedImageDirectories);
         Assert.Contains("C:\\allowed-b", options.AllowedImageDirectories);
 
-        var readerOptionsProperty = options.GetType().GetProperty("ReaderOptions", BindingFlags.Instance | BindingFlags.Public);
-        if (readerOptionsProperty != null) {
-            var readerOptions = readerOptionsProperty.GetValue(options);
-            Assert.NotNull(readerOptions);
-            Assert.True(ReadBooleanProperty(readerOptions!, "PreferNarrativeSingleLineDefinitions"));
-            Assert.True(ReadBooleanProperty(readerOptions!, "Callouts"));
-            Assert.True(ReadBooleanProperty(readerOptions!, "DefinitionLists"));
+        var readerOptionsProperty = options.GetType().GetProperty("ReaderOptions");
+        if (readerOptionsProperty == null) {
+            return;
         }
+
+        var readerOptions = readerOptionsProperty.GetValue(options);
+        Assert.NotNull(readerOptions);
+        Assert.True((bool?)readerOptions!.GetType().GetProperty("PreferNarrativeSingleLineDefinitions")?.GetValue(readerOptions) ?? false);
+        Assert.True((bool?)readerOptions.GetType().GetProperty("Callouts")?.GetValue(readerOptions) ?? false);
+        Assert.True((bool?)readerOptions.GetType().GetProperty("DefinitionLists")?.GetValue(readerOptions) ?? false);
+        Assert.NotNull(readerOptions.GetType().GetProperty("InputNormalization")?.GetValue(readerOptions));
     }
 
     /// <summary>
@@ -208,12 +212,5 @@ public sealed partial class LocalExportArtifactWriterTests {
         } finally {
             Directory.Delete(root, recursive: true);
         }
-    }
-
-    private static bool ReadBooleanProperty(object target, string propertyName) {
-        var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-        Assert.NotNull(property);
-        Assert.Equal(typeof(bool), property!.PropertyType);
-        return Assert.IsType<bool>(property.GetValue(target));
     }
 }

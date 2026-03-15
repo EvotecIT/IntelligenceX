@@ -536,6 +536,8 @@ pre:hover .code-copy-btn {
 .bubble .markdown-body {
   margin: 0;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
   overflow-wrap: break-word;
   word-break: normal;
 }
@@ -622,6 +624,19 @@ pre:hover .code-copy-btn {
   width: 100%;
   height: clamp(260px, 50vh, 1040px) !important;
   max-height: none;
+}
+
+.bubble .markdown-body canvas.omd-chart {
+  display: block;
+  width: 100% !important;
+  min-height: clamp(260px, 40vh, 860px);
+  height: clamp(260px, 50vh, 1040px) !important;
+  max-height: none;
+  margin: 8px 0;
+  border-radius: var(--ix-radius-md);
+  border: 1px solid var(--ix-code-border);
+  background: rgba(9, 30, 53, 0.48);
+  box-sizing: border-box;
 }
 
 .ix-network-host,
@@ -721,7 +736,10 @@ pre:hover .code-copy-btn {
 
 .bubble .markdown-body table {
   border-collapse: collapse;
-  width: 100%;
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
   margin: 8px 0;
 }
 

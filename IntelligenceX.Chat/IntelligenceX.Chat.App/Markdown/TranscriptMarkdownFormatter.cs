@@ -22,7 +22,7 @@ internal static class TranscriptMarkdownFormatter {
     /// <returns>Markdown transcript.</returns>
     public static string Format(IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages, string timestampFormat) {
         ArgumentNullException.ThrowIfNull(messages);
-        return TranscriptMarkdownDocumentBuilder.Build(messages, timestampFormat, prepareMessageBodies: true);
+        return TranscriptMarkdownDocumentBuilder.BuildPreparedTranscript(messages, timestampFormat);
     }
 
     private static IEnumerable<(string Role, string Text, DateTime Time, string? Model)> ProjectLegacyMessages(IEnumerable<(string Role, string Text, DateTime Time)> messages) {

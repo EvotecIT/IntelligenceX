@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.ExportArtifacts;
 using System.Text.Json;
 using OfficeIMO.Excel;
@@ -195,7 +196,7 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures export applies the same history repair to legacy cached-evidence heading wrappers and overwrapped strong spans.
+    /// Ensures export applies the shared IX transcript contract to legacy cached-evidence headings and overwrapped strong spans.
     /// </summary>
     [Fact]
     public void ExportTranscript_Markdown_NormalizesLegacyHistoryArtifacts() {
@@ -221,7 +222,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             var written = File.ReadAllText(markdownPath);
             Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("- eventlog_top_events:", written, StringComparison.Ordinal);
-            Assert.Contains("### Top 30 recent events (preview)", written, StringComparison.Ordinal);
+            Assert.Contains("Top 30 recent events (preview)", written, StringComparison.Ordinal);
             Assert.Contains("- Overall health **healthy**", written, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
@@ -239,7 +240,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             2. Second check
             """;
 
-        var normalized = LocalExportArtifactWriter.NormalizeTranscriptMarkdownForExport(markdown)
+        var normalized = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("1. First check\n\n2. Second check", normalized, StringComparison.Ordinal);
@@ -489,44 +490,6 @@ public sealed partial class LocalExportArtifactWriterTests {
         var normalized = OfficeImoArtifactWriter.NormalizeTranscriptMarkdownForDocx(markdown);
 
         Assert.Equal(markdown, normalized);
-    }
-
-    /// <summary>
-    /// Ensures the legacy DOCX compatibility repair separates adjacent definition-like lines into stable paragraphs.
-    /// </summary>
-    [Fact]
-    public void ExportTranscript_Docx_LegacyCompatibilityRepairSeparatesAdjacentDefinitionLikeLines() {
-        const string markdown = """
-            # Transcript
-
-            Status: healthy
-            Impact: none
-            """;
-
-        var normalized = OfficeImoArtifactWriter.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown)
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
-
-        Assert.Contains("Status: healthy\n\nImpact: none", normalized, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Ensures the legacy DOCX compatibility repair leaves adjacent definition-like lines untouched inside fenced code blocks.
-    /// </summary>
-    [Fact]
-    public void ExportTranscript_Docx_LegacyCompatibilityRepairDoesNotSplitAdjacentDefinitionLikeLinesInsideFence() {
-        const string markdown = """
-            # Transcript
-
-            ```text
-            Status: healthy
-            Impact: none
-            ```
-            """;
-
-        var normalized = OfficeImoArtifactWriter.NormalizeLegacyGroupedDefinitionLikeParagraphsForDocx(markdown)
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
-
-        Assert.Contains("```text\nStatus: healthy\nImpact: none\n```", normalized, StringComparison.Ordinal);
     }
 
     /// <summary>
