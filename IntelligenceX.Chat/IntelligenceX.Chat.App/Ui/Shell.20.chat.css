@@ -736,10 +736,10 @@ pre:hover .code-copy-btn {
 
 .bubble .markdown-body table {
   border-collapse: collapse;
-  display: block;
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
+  display: table;
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
   margin: 8px 0;
 }
 
@@ -749,10 +749,27 @@ pre:hover .code-copy-btn {
   padding: 6px 8px;
   text-align: left;
   vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bubble .markdown-body th {
   background: rgba(16, 46, 78, 0.74);
+}
+
+/* Inline transcript visuals should stay chat-sized.
+   Full-window visual view keeps the broader generic host sizing above. */
+.bubble .markdown-body .ix-chart-host {
+  min-height: clamp(220px, 26vw, 360px);
+  padding: 8px 10px 10px;
+}
+
+.bubble .markdown-body .ix-chart-host .ix-chart-canvas,
+.bubble .markdown-body canvas.omd-chart {
+  min-height: clamp(220px, 28vw, 380px);
+  height: clamp(220px, 30vw, 400px) !important;
+  max-height: 400px;
 }
 
 .activity-indicator {

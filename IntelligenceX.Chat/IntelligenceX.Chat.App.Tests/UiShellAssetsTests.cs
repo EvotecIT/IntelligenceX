@@ -563,6 +563,24 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures inline transcript tables wrap within the bubble and chart canvases stay message-sized
+    /// instead of inheriting the larger visual-view sizing contract.
+    /// </summary>
+    [Fact]
+    public void TranscriptRendering_IncludesInlineTableWrappingAndChartSizingOverrides() {
+        var cssPath = Path.Combine(UiDirectory, "Shell.20.chat.css");
+        var css = File.ReadAllText(cssPath);
+
+        Assert.Contains(".bubble .markdown-body table {", css, StringComparison.Ordinal);
+        Assert.Contains("table-layout: fixed;", css, StringComparison.Ordinal);
+        Assert.Contains(".bubble .markdown-body th,", css, StringComparison.Ordinal);
+        Assert.Contains("overflow-wrap: anywhere;", css, StringComparison.Ordinal);
+        Assert.Contains(".bubble .markdown-body .ix-chart-host {", css, StringComparison.Ordinal);
+        Assert.Contains(".bubble .markdown-body .ix-chart-host .ix-chart-canvas,", css, StringComparison.Ordinal);
+        Assert.Contains("height: clamp(220px, 30vw, 400px) !important;", css, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures runtime apply updates remain monotonic when options payloads arrive out of order.
     /// </summary>
     [Fact]
