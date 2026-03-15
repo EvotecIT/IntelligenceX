@@ -491,6 +491,42 @@ internal sealed partial class ChatServiceSession {
                 sb.Append("Confidence: ").AppendLine(plannerContext.ContinuationConfidence);
             }
         }
+        if (plannerContext.BackgroundPreparationAllowed
+            || plannerContext.BackgroundPendingReadOnlyActions > 0
+            || plannerContext.BackgroundPendingUnknownActions > 0
+            || plannerContext.BackgroundFollowUpClasses.Length > 0
+            || plannerContext.BackgroundPriorityFocus.Length > 0
+            || plannerContext.BackgroundFollowUpFocus.Length > 0
+            || plannerContext.BackgroundRecentEvidenceTools.Length > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Background preparation:");
+            sb.AppendLine(plannerContext.BackgroundPreparationAllowed
+                ? "Read-only follow-up preparation is allowed for this thread."
+                : "Background preparation is not currently marked safe for this thread.");
+            if (plannerContext.BackgroundPendingReadOnlyActions > 0) {
+                sb.Append("Pending read-only actions: ")
+                    .AppendLine(plannerContext.BackgroundPendingReadOnlyActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            if (plannerContext.BackgroundPendingUnknownActions > 0) {
+                sb.Append("Pending unknown-mutability actions: ")
+                    .AppendLine(plannerContext.BackgroundPendingUnknownActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            if (plannerContext.BackgroundFollowUpClasses.Length > 0) {
+                sb.Append("Follow-up classes: ")
+                    .AppendLine(string.Join(", ", plannerContext.BackgroundFollowUpClasses));
+            }
+            if (plannerContext.BackgroundPriorityFocus.Length > 0) {
+                sb.Append("Priority focus: ")
+                    .AppendLine(plannerContext.BackgroundPriorityFocus);
+            }
+            if (plannerContext.BackgroundFollowUpFocus.Length > 0) {
+                sb.Append("Preparation focus: ").AppendLine(plannerContext.BackgroundFollowUpFocus);
+            }
+            if (plannerContext.BackgroundRecentEvidenceTools.Length > 0) {
+                sb.Append("Recent evidence tools: ")
+                    .AppendLine(string.Join(", ", plannerContext.BackgroundRecentEvidenceTools));
+            }
+        }
         if (plannerContext.MatchingSkills.Length > 0) {
             sb.AppendLine();
             sb.AppendLine("Matching reusable skills:");
@@ -652,6 +688,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private string ResolvePlannerPackEngineId(string normalizedPackId) {
+        normalizedPackId = ResolveRuntimePackId(normalizedPackId);
         if (normalizedPackId.Length == 0 || !_packEngineIdsById.TryGetValue(normalizedPackId, out var engineId)) {
             return string.Empty;
         }
@@ -660,6 +697,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private string[] ResolvePlannerPackCapabilityTags(string normalizedPackId, int maxCount) {
+        normalizedPackId = ResolveRuntimePackId(normalizedPackId);
         if (maxCount <= 0
             || normalizedPackId.Length == 0
             || !_packCapabilityTagsById.TryGetValue(normalizedPackId, out var capabilityTags)

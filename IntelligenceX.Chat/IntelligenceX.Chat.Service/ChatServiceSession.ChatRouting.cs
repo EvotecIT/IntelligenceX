@@ -158,7 +158,8 @@ internal sealed partial class ChatServiceSession {
             var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, domainIntentFamilyAvailability, actionCatalog);
             if (clarificationText.Length > 0 && clarificationVisibleText.Length > 0) {
                 RememberPendingDomainIntentClarificationRequest(threadId);
-                RememberPendingActions(threadId, clarificationText);
+                await RememberPendingActionsAndEmitBackgroundWorkStatusAsync(writer, request.RequestId, threadId, clarificationText)
+                    .ConfigureAwait(false);
                 var clarificationResult = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,
@@ -432,7 +433,8 @@ internal sealed partial class ChatServiceSession {
             var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, domainIntentFamilyAvailability, actionCatalog);
             if (clarificationText.Length > 0 && clarificationVisibleText.Length > 0) {
                 RememberPendingDomainIntentClarificationRequest(threadId);
-                RememberPendingActions(threadId, clarificationText);
+                await RememberPendingActionsAndEmitBackgroundWorkStatusAsync(writer, request.RequestId, threadId, clarificationText)
+                    .ConfigureAwait(false);
                 var clarificationResult = new ChatResultMessage {
                     Kind = ChatServiceMessageKind.Response,
                     RequestId = request.RequestId,

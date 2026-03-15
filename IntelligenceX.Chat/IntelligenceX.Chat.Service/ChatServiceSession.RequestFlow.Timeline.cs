@@ -367,6 +367,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (string.Equals(status, ChatStatusCodes.PhaseReview, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, ChatStatusCodes.BackgroundWorkQueued, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, ChatStatusCodes.BackgroundWorkReady, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, ChatStatusCodes.BackgroundWorkRunning, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, ChatStatusCodes.BackgroundWorkCompleted, StringComparison.OrdinalIgnoreCase)
             || string.Equals(status, ChatStatusCodes.NoResultWatchdogTriggered, StringComparison.OrdinalIgnoreCase)) {
             return TurnPhaseReview;
         }

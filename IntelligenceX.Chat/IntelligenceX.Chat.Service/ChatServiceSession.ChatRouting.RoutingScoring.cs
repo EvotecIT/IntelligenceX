@@ -429,7 +429,7 @@ internal sealed partial class ChatServiceSession {
         return sb.ToString().Trim('_');
     }
 
-    private static string BuildToolRoutingSearchText(ToolDefinition definition) {
+    private string BuildToolRoutingSearchText(ToolDefinition definition) {
         if (definition is null) {
             return string.Empty;
         }
@@ -557,7 +557,7 @@ internal sealed partial class ChatServiceSession {
         return sb.ToString();
     }
 
-    private static void AppendRoutingPackTokens(StringBuilder sb, ToolDefinition definition) {
+    private void AppendRoutingPackTokens(StringBuilder sb, ToolDefinition definition) {
         var packHint = ResolveRoutingPackHint(definition);
         if (packHint.Length == 0) {
             return;
@@ -574,9 +574,21 @@ internal sealed partial class ChatServiceSession {
             sb.Append(" pack:").Append(token);
         }
 
-        foreach (var alias in ToolSelectionMetadata.GetPackSearchTokens(packHint)) {
+        var packSearchTokens = ResolvePackSearchTokens(packHint);
+        foreach (var alias in packSearchTokens) {
             AppendPackToken(alias);
         }
+    }
+
+    private IReadOnlyList<string> ResolvePackSearchTokens(string packHint) {
+        var normalizedPackId = ResolveRuntimePackId(packHint);
+        if (normalizedPackId.Length > 0
+            && _packSearchTokensById.TryGetValue(normalizedPackId, out var searchTokens)
+            && searchTokens is { Length: > 0 }) {
+            return searchTokens;
+        }
+
+        return ToolSelectionMetadata.GetPackSearchTokens(packHint);
     }
 
     private static void AppendRoutingRoleTokens(StringBuilder sb, ToolDefinition definition) {

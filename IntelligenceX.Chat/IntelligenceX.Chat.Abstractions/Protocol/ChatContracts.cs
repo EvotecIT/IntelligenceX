@@ -260,6 +260,26 @@ public static class ChatStatusCodes {
     public const string PhaseHeartbeat = "phase_heartbeat";
 
     /// <summary>
+    /// Indicates safe background follow-up work was queued for later preparation/reuse.
+    /// </summary>
+    public const string BackgroundWorkQueued = "background_work_queued";
+
+    /// <summary>
+    /// Indicates background follow-up preparation has enough evidence to be reused.
+    /// </summary>
+    public const string BackgroundWorkReady = "background_work_ready";
+
+    /// <summary>
+    /// Indicates a background follow-up item has entered active preparation/execution.
+    /// </summary>
+    public const string BackgroundWorkRunning = "background_work_running";
+
+    /// <summary>
+    /// Indicates a background follow-up item finished preparation/execution.
+    /// </summary>
+    public const string BackgroundWorkCompleted = "background_work_completed";
+
+    /// <summary>
     /// Indicates the turn finished successfully.
     /// </summary>
     public const string Done = "done";

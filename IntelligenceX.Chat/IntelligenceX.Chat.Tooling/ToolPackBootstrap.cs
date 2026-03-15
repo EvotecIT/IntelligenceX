@@ -246,9 +246,21 @@ public sealed record ToolPackAvailabilityInfo {
     /// </summary>
     public string? EngineId { get; init; }
     /// <summary>
+    /// Normalized runtime aliases advertised by the pack.
+    /// </summary>
+    public IReadOnlyList<string> Aliases { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Normalized pack category advertised by the pack.
+    /// </summary>
+    public string? Category { get; init; }
+    /// <summary>
     /// Normalized capability tags advertised by the pack.
     /// </summary>
     public IReadOnlyList<string> CapabilityTags { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Normalized pack-oriented search tokens used by routing/planner prompts.
+    /// </summary>
+    public IReadOnlyList<string> SearchTokens { get; init; } = Array.Empty<string>();
     /// <summary>
     /// Pack-owned capability parity slices published for runtime capability inventories.
     /// </summary>

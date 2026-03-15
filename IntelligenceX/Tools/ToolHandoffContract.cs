@@ -85,6 +85,17 @@ public sealed class ToolHandoffRoute {
     public string Reason { get; set; } = string.Empty;
 
     /// <summary>
+    /// Optional follow-up kind token describing the intent of this handoff.
+    /// </summary>
+    public string FollowUpKind { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional follow-up priority hint in the range 0-100.
+    /// Higher values indicate more important follow-up work.
+    /// </summary>
+    public int FollowUpPriority { get; set; }
+
+    /// <summary>
     /// Validates the route descriptor.
     /// </summary>
     public void Validate() {
@@ -104,6 +115,10 @@ public sealed class ToolHandoffRoute {
 
         if (Bindings is null || Bindings.Count == 0) {
             throw new InvalidOperationException("Handoff routes must include at least one binding.");
+        }
+
+        if (FollowUpPriority < 0 || FollowUpPriority > ToolHandoffFollowUpPriorities.Critical) {
+            throw new InvalidOperationException("FollowUpPriority must be between 0 and 100.");
         }
 
         for (var i = 0; i < Bindings.Count; i++) {

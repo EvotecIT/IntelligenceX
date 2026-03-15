@@ -28,7 +28,9 @@ public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider {
         Description = "Windows Event Log and EVTX analysis (restricted to AllowedRoots for EVTX file access).",
         SourceKind = "builtin",
         EngineId = "eventviewerx",
+        Category = "eventlog",
         CapabilityTags = new[] { "event_logs", "evtx", "forensics", "local_analysis", "remote_analysis" },
+        SearchTokens = new[] { "event", "eventlog", "eventviewerx", "evtx", "forensics", "remote_analysis", "windows_logs" },
         CapabilityParity = EventLogToolPackParity.Slices
     };
 

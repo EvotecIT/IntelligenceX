@@ -109,6 +109,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (shouldRemoveSnapshot) {
+            ClearRememberedThreadBackgroundWork(normalizedThreadId);
             RemovePendingActionsSnapshot(normalizedThreadId);
             return;
         }
@@ -130,6 +131,7 @@ internal sealed partial class ChatServiceSession {
             TrimWeightedRoutingContextsNoLock();
         }
 
+        ClearRememberedThreadBackgroundWork(normalizedThreadId);
         RemovePendingActionsSnapshot(normalizedThreadId);
     }
 
@@ -200,6 +202,7 @@ internal sealed partial class ChatServiceSession {
                     _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
+                ClearRememberedThreadBackgroundWork(normalizedThreadId);
                 RemovePendingActionsSnapshot(normalizedThreadId);
                 TracePendingActionDecision(
                     userText: normalized,
@@ -219,6 +222,7 @@ internal sealed partial class ChatServiceSession {
                     _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
+                ClearRememberedThreadBackgroundWork(normalizedThreadId);
                 RemovePendingActionsSnapshot(normalizedThreadId);
                 TracePendingActionDecision(
                     userText: normalized,
@@ -238,6 +242,7 @@ internal sealed partial class ChatServiceSession {
                     _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                     TrimWeightedRoutingContextsNoLock();
                 }
+                ClearRememberedThreadBackgroundWork(normalizedThreadId);
                 RemovePendingActionsSnapshot(normalizedThreadId);
                 TracePendingActionDecision(
                     userText: normalized,
@@ -275,6 +280,7 @@ internal sealed partial class ChatServiceSession {
                 _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                 TrimWeightedRoutingContextsNoLock();
             }
+            ClearRememberedThreadBackgroundWork(normalizedThreadId);
             RemovePendingActionsSnapshot(normalizedThreadId);
             TracePendingActionDecision(
                 userText: normalized,
@@ -324,6 +330,7 @@ internal sealed partial class ChatServiceSession {
             _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
             TrimWeightedRoutingContextsNoLock();
         }
+        ClearRememberedThreadBackgroundWork(normalizedThreadId);
         RemovePendingActionsSnapshot(normalizedThreadId);
 
         var request = string.IsNullOrWhiteSpace(selected.Value.Request) ? selected.Value.Title : selected.Value.Request;
@@ -397,6 +404,7 @@ internal sealed partial class ChatServiceSession {
                 _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                 TrimWeightedRoutingContextsNoLock();
             }
+            ClearRememberedThreadBackgroundWork(normalizedThreadId);
             RemovePendingActionsSnapshot(normalizedThreadId);
             return false;
         }
@@ -409,6 +417,7 @@ internal sealed partial class ChatServiceSession {
                 _pendingActionsCallToActionTokensByThreadId.Remove(normalizedThreadId);
                 TrimWeightedRoutingContextsNoLock();
             }
+            ClearRememberedThreadBackgroundWork(normalizedThreadId);
             RemovePendingActionsSnapshot(normalizedThreadId);
             return false;
         }

@@ -31,6 +31,7 @@ public class ToolDefinitionContractTests {
         registry.RegisterFileSystemPack(new FileSystemToolOptions());
         registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
         registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
@@ -65,6 +66,7 @@ public class ToolDefinitionContractTests {
         registry.RegisterFileSystemPack(new FileSystemToolOptions());
         registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterEmailPack(new EmailToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions { Enabled = true });
@@ -108,6 +110,9 @@ public class ToolDefinitionContractTests {
             "ad_search",
             "ad_object_resolve",
             "ad_handoff_prepare",
+            "ad_user_lifecycle",
+            "ad_computer_lifecycle",
+            "ad_group_lifecycle",
             "powershell_run",
             "email_smtp_send"
         };
@@ -118,6 +123,7 @@ public class ToolDefinitionContractTests {
         registry.RegisterFileSystemPack(new FileSystemToolOptions());
         registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterEmailPack(new EmailToolOptions());
 
@@ -1409,7 +1415,9 @@ public class ToolDefinitionContractTests {
                 bindings: new[] {
                     ToolContractDefaults.CreateBinding("files[].path", "path"),
                     ToolContractDefaults.CreateBinding("meta/source_hash", "expected_hash", isRequired: false, transformId: "trim")
-                })
+                },
+                followUpKind: ToolHandoffFollowUpKinds.Investigation,
+                followUpPriority: ToolHandoffFollowUpPriorities.High)
         });
 
         Assert.True(handoff.IsHandoffAware);
@@ -1417,6 +1425,8 @@ public class ToolDefinitionContractTests {
         Assert.Equal("filesystem", route.TargetPackId);
         Assert.Equal("fs_read", route.TargetToolName);
         Assert.Equal("Inspect the raw file.", route.Reason);
+        Assert.Equal(ToolHandoffFollowUpKinds.Investigation, route.FollowUpKind);
+        Assert.Equal(ToolHandoffFollowUpPriorities.High, route.FollowUpPriority);
         Assert.Equal(2, route.Bindings.Count);
         Assert.Equal("files[].path", route.Bindings[0].SourceField);
         Assert.Equal("path", route.Bindings[0].TargetArgument);
@@ -1731,6 +1741,19 @@ public class ToolDefinitionContractTests {
             eventLogQueryHandoff!.OutboundRoutes,
             static route => string.Equals(route.TargetToolName, "ad_handoff_prepare", StringComparison.OrdinalIgnoreCase));
         Assert.Null(EventLogContractCatalog.CreateHandoff("eventlog_pack_info"));
+
+        var lifecycleHandoff = ActiveDirectoryLifecycleContractCatalog.CreateHandoff("ad_user_lifecycle");
+        Assert.NotNull(lifecycleHandoff);
+        var verificationRoute = Assert.Single(
+            lifecycleHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "ad_object_get", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(ToolHandoffFollowUpKinds.Verification, verificationRoute.FollowUpKind);
+        Assert.Equal(ToolHandoffFollowUpPriorities.Critical, verificationRoute.FollowUpPriority);
+        var normalizationRoute = Assert.Single(
+            lifecycleHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "ad_object_resolve", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(ToolHandoffFollowUpKinds.Normalization, normalizationRoute.FollowUpKind);
+        Assert.Equal(ToolHandoffFollowUpPriorities.Normal, normalizationRoute.FollowUpPriority);
 
         var eventLogRecovery = EventLogContractCatalog.CreateRecovery("eventlog_timeline_query");
         Assert.True(eventLogRecovery!.SupportsTransientRetry);
@@ -2294,6 +2317,18 @@ public class ToolDefinitionContractTests {
     }
 
     [Fact]
+    public void ActiveDirectoryLifecyclePackContractCatalog_ShouldRejectUnclassifiedToolNamesWithoutExplicitRole() {
+        var definition = new ToolDefinition(
+            name: "ad_lifecycle_unclassified_probe",
+            description: "AD lifecycle unclassified probe",
+            parameters: ToolSchema.Object().NoAdditionalProperties());
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ActiveDirectoryLifecyclePackContractCatalog.Apply(definition));
+        Assert.Contains("must declare an explicit routing role", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad_lifecycle_unclassified_probe", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SystemRoutingCatalog_ShouldApplyExplicitSelectionMetadataForSystemInfo() {
         var definition = new ToolDefinition(
             name: "system_info",
@@ -2331,6 +2366,99 @@ public class ToolDefinitionContractTests {
         Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
         Assert.Contains("smtp", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("send", updated.Tags, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ActiveDirectoryLifecycleRoutingCatalog_ShouldApplyExplicitSelectionMetadataForUserLifecycle() {
+        var updated = ApplyInternalToolContract(
+            typeof(AdLifecyclePackInfoTool),
+            "IntelligenceX.Tools.ADPlayground.ActiveDirectoryLifecyclePackContractCatalog",
+            new ToolDefinition(
+                name: "ad_user_lifecycle",
+                description: "AD user lifecycle",
+                parameters: ToolSchema.Object(
+                        ("operation", ToolSchema.String().Enum("create", "disable")),
+                        ("identity", ToolSchema.String()),
+                        ("apply", ToolSchema.Boolean()))
+                    .NoAdditionalProperties(),
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }));
+        var routing = Assert.IsType<ToolRoutingContract>(updated.Routing);
+        var setup = Assert.IsType<ToolSetupContract>(updated.Setup);
+        var recovery = Assert.IsType<ToolRecoveryContract>(updated.Recovery);
+
+        Assert.Equal("identity", routing.Scope, ignoreCase: true);
+        Assert.Equal("write", routing.Operation, ignoreCase: true);
+        Assert.Equal("user", routing.Entity, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
+        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Contains("joiner", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("offboarding", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
+        Assert.False(recovery.SupportsTransientRetry);
+    }
+
+    [Fact]
+    public void ActiveDirectoryLifecycleRoutingCatalog_ShouldApplyExplicitSelectionMetadataForComputerLifecycle() {
+        var updated = ApplyInternalToolContract(
+            typeof(AdLifecyclePackInfoTool),
+            "IntelligenceX.Tools.ADPlayground.ActiveDirectoryLifecyclePackContractCatalog",
+            new ToolDefinition(
+                name: "ad_computer_lifecycle",
+                description: "AD computer lifecycle",
+                parameters: ToolSchema.Object(
+                        ("operation", ToolSchema.String().Enum("create", "disable")),
+                        ("identity", ToolSchema.String()),
+                        ("apply", ToolSchema.Boolean()))
+                    .NoAdditionalProperties(),
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }));
+        var routing = Assert.IsType<ToolRoutingContract>(updated.Routing);
+        var setup = Assert.IsType<ToolSetupContract>(updated.Setup);
+        var recovery = Assert.IsType<ToolRecoveryContract>(updated.Recovery);
+
+        Assert.Equal("host", routing.Scope, ignoreCase: true);
+        Assert.Equal("write", routing.Operation, ignoreCase: true);
+        Assert.Equal("computer", routing.Entity, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
+        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Contains("decommissioning", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("host_account", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
+        Assert.False(recovery.SupportsTransientRetry);
+    }
+
+    [Fact]
+    public void ActiveDirectoryLifecycleRoutingCatalog_ShouldApplyExplicitSelectionMetadataForGroupLifecycle() {
+        var updated = ApplyInternalToolContract(
+            typeof(AdLifecyclePackInfoTool),
+            "IntelligenceX.Tools.ADPlayground.ActiveDirectoryLifecyclePackContractCatalog",
+            new ToolDefinition(
+                name: "ad_group_lifecycle",
+                description: "AD group lifecycle",
+                parameters: ToolSchema.Object(
+                        ("operation", ToolSchema.String().Enum("create", "update")),
+                        ("identity", ToolSchema.String()),
+                        ("apply", ToolSchema.Boolean()))
+                    .NoAdditionalProperties(),
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }));
+        var routing = Assert.IsType<ToolRoutingContract>(updated.Routing);
+        var setup = Assert.IsType<ToolSetupContract>(updated.Setup);
+        var recovery = Assert.IsType<ToolRecoveryContract>(updated.Recovery);
+
+        Assert.Equal("identity", routing.Scope, ignoreCase: true);
+        Assert.Equal("write", routing.Operation, ignoreCase: true);
+        Assert.Equal("group", routing.Entity, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
+        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Contains("membership", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("group_account", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
+        Assert.False(recovery.SupportsTransientRetry);
     }
 
     [Fact]

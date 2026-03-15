@@ -36,6 +36,17 @@ public sealed record ToolOrchestrationHandoffEdge {
     /// Duplicate pairs are preserved to keep declared contract multiplicity.
     /// </summary>
     public IReadOnlyList<string> BindingPairs { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Optional normalized follow-up kind token for this handoff edge.
+    /// </summary>
+    public string FollowUpKind { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional follow-up priority hint for this handoff edge.
+    /// Higher values indicate more important follow-up work.
+    /// </summary>
+    public int FollowUpPriority { get; init; }
 }
 
 /// <summary>
@@ -395,7 +406,9 @@ public sealed class ToolOrchestrationCatalog {
                         TargetToolName = NormalizeToken(route?.TargetToolName),
                         TargetRole = NormalizeToken(route?.TargetRole),
                         BindingCount = normalizedBindingPairs.Count,
-                        BindingPairs = FreezeStringList(normalizedBindingPairs)
+                        BindingPairs = FreezeStringList(normalizedBindingPairs),
+                        FollowUpKind = ToolHandoffFollowUpKinds.Normalize(route?.FollowUpKind),
+                        FollowUpPriority = ToolHandoffFollowUpPriorities.Normalize(route?.FollowUpPriority ?? 0)
                     });
                 }
             }

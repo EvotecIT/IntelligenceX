@@ -599,6 +599,7 @@ public class ToolPackInfoContractTests {
 
     private static PackCase[] BuildPackCases() {
         var adOptions = new ActiveDirectoryToolOptions();
+        var adLifecycleOptions = new ActiveDirectoryToolOptions();
         var eventLogOptions = new EventLogToolOptions();
         var fileSystemOptions = new FileSystemToolOptions();
         var systemOptions = new SystemToolOptions();
@@ -616,6 +617,12 @@ public class ToolPackInfoContractTests {
                 Tool: new AdPackInfoTool(adOptions),
                 ExpectedTools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(adOptions),
                 ExpectedCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(adOptions)),
+            new PackCase(
+                Pack: "active_directory_lifecycle",
+                Engine: "ADPlayground",
+                Tool: new AdLifecyclePackInfoTool(adLifecycleOptions),
+                ExpectedTools: ToolRegistryActiveDirectoryLifecycleExtensions.GetRegisteredToolNames(adLifecycleOptions),
+                ExpectedCatalog: ToolRegistryActiveDirectoryLifecycleExtensions.GetRegisteredToolCatalog(adLifecycleOptions)),
             new PackCase(
                 Pack: "eventlog",
                 Engine: "EventViewerX",

@@ -108,6 +108,115 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_lifecycle_pack_info",
+            Array.Empty<string>(),
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "ad_user_lifecycle",
+            new[] {
+                "operation",
+                "identity",
+                "sam_account_name",
+                "organizational_unit",
+                "domain_name",
+                "common_name",
+                "user_principal_name",
+                "given_name",
+                "surname",
+                "display_name",
+                "mail",
+                "description",
+                "manager",
+                "initial_password",
+                "new_password",
+                "enabled",
+                "must_change_password_at_logon",
+                "groups_to_add",
+                "groups_to_remove",
+                "clear_attributes",
+                "extension_attributes",
+                "additional_attributes",
+                "apply",
+                "write_execution_id",
+                "write_actor_id",
+                "write_audit_correlation_id",
+                "write_change_reason",
+                "write_operation_id",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id"
+            },
+            new[] { "operation" }
+        };
+
+        yield return new object[] {
+            "ad_computer_lifecycle",
+            new[] {
+                "operation",
+                "identity",
+                "sam_account_name",
+                "organizational_unit",
+                "domain_name",
+                "common_name",
+                "dns_host_name",
+                "description",
+                "managed_by",
+                "location",
+                "office",
+                "operating_system",
+                "operating_system_version",
+                "operating_system_service_pack",
+                "new_password",
+                "enabled",
+                "service_principal_names",
+                "clear_attributes",
+                "additional_attributes",
+                "apply",
+                "write_execution_id",
+                "write_actor_id",
+                "write_audit_correlation_id",
+                "write_change_reason",
+                "write_operation_id",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id"
+            },
+            new[] { "operation" }
+        };
+
+        yield return new object[] {
+            "ad_group_lifecycle",
+            new[] {
+                "operation",
+                "identity",
+                "sam_account_name",
+                "organizational_unit",
+                "domain_name",
+                "common_name",
+                "display_name",
+                "description",
+                "mail",
+                "managed_by",
+                "notes",
+                "scope",
+                "security_enabled",
+                "members_to_add",
+                "members_to_remove",
+                "clear_attributes",
+                "additional_attributes",
+                "apply",
+                "write_execution_id",
+                "write_actor_id",
+                "write_audit_correlation_id",
+                "write_change_reason",
+                "write_operation_id",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id"
+            },
+            new[] { "operation" }
+        };
+
+        yield return new object[] {
             "ad_scope_discovery",
             new[] { "forest_name", "domain_name", "domain_controller", "include_domains", "exclude_domains", "include_domain_controllers", "exclude_domain_controllers", "skip_rodc", "include_trusts", "discovery_fallback", "max_domains", "max_domain_controllers_total", "max_domain_controllers_per_domain", "rootdse_timeout_ms", "domain_enumeration_timeout_ms", "dc_source_timeout_ms" },
             new[] { "discovery_fallback" }

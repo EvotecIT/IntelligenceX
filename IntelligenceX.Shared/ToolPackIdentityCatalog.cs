@@ -314,6 +314,13 @@ public static class ToolPackIdentityCatalog {
         return NormalizeCompactToken(value);
     }
 
+    /// <summary>
+    /// Indicates whether the value matches a known pack identity token or alias.
+    /// </summary>
+    public static bool IsKnownPackIdentityToken(string? value) {
+        return TryGetKnownPackIdentity(value, out _);
+    }
+
     private static bool TryGetKnownPackIdentity(string? value, out PackIdentityDescriptor identity) {
         var compact = NormalizePackCompactId(value);
         return TryGetKnownPackIdentityByCompact(compact, out identity);

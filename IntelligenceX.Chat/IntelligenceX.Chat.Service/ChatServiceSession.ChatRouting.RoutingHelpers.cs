@@ -146,14 +146,19 @@ internal sealed partial class ChatServiceSession {
         int noTextToolOutputRecoveryHitCount,
         int proactiveSkipMutatingCount,
         int proactiveSkipReadOnlyCount,
-        int proactiveSkipUnknownCount) {
-        var counters = new List<TurnCounterMetricDto>(capacity: 6);
+        int proactiveSkipUnknownCount,
+        ThreadBackgroundWorkSnapshot? backgroundWorkSnapshot = null) {
+        var counters = new List<TurnCounterMetricDto>(capacity: 12);
         Add("nudge_replan_unknown_pending_action_envelope", nudgeUnknownEnvelopeReplanCount);
         Add("no_text_recovery_hits", noTextRecoveryHitCount);
         Add("no_text_tool_output_recovery_hits", noTextToolOutputRecoveryHitCount);
         Add("proactive_skip_mutating", proactiveSkipMutatingCount);
         Add("proactive_skip_readonly", proactiveSkipReadOnlyCount);
         Add("proactive_skip_unknown", proactiveSkipUnknownCount);
+        if (backgroundWorkSnapshot is { } snapshot) {
+            AddBackgroundWorkCounters(snapshot);
+        }
+
         return counters.Count == 0 ? Array.Empty<TurnCounterMetricDto>() : counters;
 
         void Add(string name, int count) {
@@ -165,6 +170,45 @@ internal sealed partial class ChatServiceSession {
                 Name = name,
                 Count = count
             });
+        }
+
+        void AddBackgroundWorkCounters(ThreadBackgroundWorkSnapshot snapshot) {
+            var verification = 0;
+            var investigation = 0;
+            var normalization = 0;
+            var enrichment = 0;
+            var highPriority = 0;
+            for (var i = 0; i < snapshot.Items.Length; i++) {
+                var item = snapshot.Items[i];
+                if (string.Equals(item.State, BackgroundWorkStateCompleted, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                switch (ToolHandoffFollowUpKinds.Normalize(item.FollowUpKind)) {
+                    case ToolHandoffFollowUpKinds.Verification:
+                        verification++;
+                        break;
+                    case ToolHandoffFollowUpKinds.Investigation:
+                        investigation++;
+                        break;
+                    case ToolHandoffFollowUpKinds.Normalization:
+                        normalization++;
+                        break;
+                    case ToolHandoffFollowUpKinds.Enrichment:
+                        enrichment++;
+                        break;
+                }
+
+                if (ToolHandoffFollowUpPriorities.Normalize(item.FollowUpPriority) >= ToolHandoffFollowUpPriorities.High) {
+                    highPriority++;
+                }
+            }
+
+            Add("background_follow_up_verification_active", verification);
+            Add("background_follow_up_investigation_active", investigation);
+            Add("background_follow_up_normalization_active", normalization);
+            Add("background_follow_up_enrichment_active", enrichment);
+            Add("background_follow_up_high_priority_active", highPriority);
         }
     }
 
@@ -181,7 +225,9 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (autonomyCounters is { Count: > 0 }) {
-            recoveryEvents += autonomyCounters.Sum(static counter => Math.Max(0, counter.Count));
+            recoveryEvents += autonomyCounters
+                .Where(static counter => !IsBackgroundFollowUpAutonomyCounter(counter.Name))
+                .Sum(static counter => Math.Max(0, counter.Count));
         }
 
         return new AutonomyTelemetryDto {
@@ -189,6 +235,10 @@ internal sealed partial class ChatServiceSession {
             RecoveryEvents = recoveryEvents,
             CompletionRate = completed ? 1.0d : 0.0d
         };
+    }
+
+    private static bool IsBackgroundFollowUpAutonomyCounter(string? name) {
+        return (name ?? string.Empty).StartsWith("background_follow_up_", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<ToolErrorMetricDto> BuildToolErrorMetrics(
@@ -489,7 +539,7 @@ internal sealed partial class ChatServiceSession {
         return (fallback, fallbackInsights);
     }
 
-    private static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(
+    private IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(
         IReadOnlyList<ToolDefinition> definitions,
         string requestText,
         int limit,

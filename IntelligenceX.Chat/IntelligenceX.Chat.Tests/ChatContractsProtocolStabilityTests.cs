@@ -51,6 +51,10 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("phase_execute", ChatStatusCodes.PhaseExecute);
         Assert.Equal("phase_review", ChatStatusCodes.PhaseReview);
         Assert.Equal("phase_heartbeat", ChatStatusCodes.PhaseHeartbeat);
+        Assert.Equal("background_work_queued", ChatStatusCodes.BackgroundWorkQueued);
+        Assert.Equal("background_work_ready", ChatStatusCodes.BackgroundWorkReady);
+        Assert.Equal("background_work_running", ChatStatusCodes.BackgroundWorkRunning);
+        Assert.Equal("background_work_completed", ChatStatusCodes.BackgroundWorkCompleted);
         Assert.Equal("done", ChatStatusCodes.Done);
         Assert.Equal("error", ChatStatusCodes.Error);
         Assert.Equal("timeout", ChatStatusCodes.Timeout);
@@ -65,7 +69,7 @@ public sealed class ChatContractsProtocolStabilityTests {
             .Select(field => (string)field.GetRawConstantValue()!)
             .ToArray();
 
-        Assert.Equal(40, values.Length);
+        Assert.Equal(44, values.Length);
         Assert.Equal(values.Length, values.Distinct(StringComparer.Ordinal).Count());
     }
 
@@ -220,6 +224,14 @@ public sealed class ChatContractsProtocolStabilityTests {
                     Category = "eventlog",
                     Tags = new[] { "eventlog", "remote", "timeline" },
                     PackId = "eventlog",
+                    RoutingRole = "operational",
+                    RoutingScope = "host",
+                    RoutingOperation = "query",
+                    RoutingEntity = "event",
+                    RoutingRisk = "low",
+                    RoutingSource = "explicit",
+                    DomainIntentFamily = "host_operations",
+                    DomainIntentActionId = "query_event_timeline",
                     PackName = "Event Log",
                     PackDescription = "Event log investigation tools.",
                     PackSourceKind = ToolPackSourceKind.OpenSource,
@@ -269,6 +281,14 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("Event Timeline Query", tool.DisplayName);
         Assert.Equal("eventlog", tool.Category);
         Assert.Equal(ToolPackSourceKind.OpenSource, tool.PackSourceKind);
+        Assert.Equal("operational", tool.RoutingRole);
+        Assert.Equal("host", tool.RoutingScope);
+        Assert.Equal("query", tool.RoutingOperation);
+        Assert.Equal("event", tool.RoutingEntity);
+        Assert.Equal("low", tool.RoutingRisk);
+        Assert.Equal("explicit", tool.RoutingSource);
+        Assert.Equal("host_operations", tool.DomainIntentFamily);
+        Assert.Equal("query_event_timeline", tool.DomainIntentActionId);
         Assert.True(tool.IsExecutionAware);
         Assert.Equal("ix.tool-execution.v1", tool.ExecutionContractId);
         Assert.False(tool.IsPackInfoTool);

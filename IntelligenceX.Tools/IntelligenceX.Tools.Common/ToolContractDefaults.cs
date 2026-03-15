@@ -229,12 +229,16 @@ public static class ToolContractDefaults {
         string targetToolName,
         string reason,
         IReadOnlyList<ToolHandoffBinding> bindings,
-        string? targetRole = null) {
+        string? targetRole = null,
+        string? followUpKind = null,
+        int followUpPriority = 0) {
         return new ToolHandoffRoute {
             TargetPackId = targetPackId ?? string.Empty,
             TargetToolName = targetToolName ?? string.Empty,
             TargetRole = targetRole ?? string.Empty,
             Reason = reason ?? string.Empty,
+            FollowUpKind = ToolHandoffFollowUpKinds.Normalize(followUpKind),
+            FollowUpPriority = ToolHandoffFollowUpPriorities.Normalize(followUpPriority),
             Bindings = CloneBindingsOrEmpty(bindings)
         };
     }
@@ -249,7 +253,9 @@ public static class ToolContractDefaults {
         string targetArgument,
         IReadOnlyList<string> sourceFields,
         bool isRequired = false,
-        string? targetRole = null) {
+        string? targetRole = null,
+        string? followUpKind = null,
+        int followUpPriority = 0) {
         var bindings = new ToolHandoffBinding[sourceFields?.Count ?? 0];
         for (var i = 0; i < bindings.Length; i++) {
             bindings[i] = CreateBinding(sourceFields![i], targetArgument, isRequired: isRequired);
@@ -260,7 +266,9 @@ public static class ToolContractDefaults {
             targetToolName: targetToolName,
             reason: reason,
             bindings: bindings,
-            targetRole: targetRole);
+            targetRole: targetRole,
+            followUpKind: followUpKind,
+            followUpPriority: followUpPriority);
     }
 
     /// <summary>
@@ -272,7 +280,9 @@ public static class ToolContractDefaults {
         IReadOnlyList<string> sourceFields,
         IReadOnlyList<(string TargetToolName, string Reason)> routeDescriptors,
         bool isRequired = false,
-        string? targetRole = null) {
+        string? targetRole = null,
+        string? followUpKind = null,
+        int followUpPriority = 0) {
         if (routeDescriptors is null || routeDescriptors.Count == 0) {
             return Array.Empty<ToolHandoffRoute>();
         }
@@ -287,7 +297,9 @@ public static class ToolContractDefaults {
                 targetArgument: targetArgument,
                 sourceFields: sourceFields,
                 isRequired: isRequired,
-                targetRole: targetRole);
+                targetRole: targetRole,
+                followUpKind: followUpKind,
+                followUpPriority: followUpPriority);
         }
 
         return routes;
@@ -402,6 +414,8 @@ public static class ToolContractDefaults {
                     TargetToolName = route.TargetToolName,
                     TargetRole = route.TargetRole,
                     Reason = route.Reason,
+                    FollowUpKind = ToolHandoffFollowUpKinds.Normalize(route.FollowUpKind),
+                    FollowUpPriority = ToolHandoffFollowUpPriorities.Normalize(route.FollowUpPriority),
                     Bindings = CloneBindingsOrEmpty(route.Bindings)
                 };
         }

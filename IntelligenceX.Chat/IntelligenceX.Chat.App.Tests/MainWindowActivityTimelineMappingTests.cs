@@ -29,6 +29,10 @@ public sealed class MainWindowActivityTimelineMappingTests {
     [InlineData("tool_round_completed", "Tool round complete", "round complete")]
     [InlineData("tool_round_limit_reached", "Tool round limit reached for this turn", "round limit")]
     [InlineData("tool_round_cap_applied", "Applied safe tool-round cap for this turn", "round cap")]
+    [InlineData("background_work_queued", "Queued background follow-up work...", "background queued")]
+    [InlineData("background_work_ready", "Background follow-up work is ready...", "background ready")]
+    [InlineData("background_work_running", "Background follow-up work started...", "background running")]
+    [InlineData("background_work_completed", "Background follow-up work completed", "background completed")]
     public void ToolRoundStatuses_MapToExpectedActivityAndTimelineLabels(string status, string expectedActivity, string expectedTimeline) {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         var message = CreateStatus(status);
