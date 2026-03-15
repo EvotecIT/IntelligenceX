@@ -1,5 +1,5 @@
 using IntelligenceX.Chat.App.Rendering;
-using OfficeIMO.Markdown;
+using IntelligenceX.Chat.ExportArtifacts;
 
 namespace IntelligenceX.Chat.App.Markdown;
 
@@ -33,15 +33,13 @@ internal static class TranscriptMarkdownPreparation {
     }
 
     public static string PrepareMessageBody(string? text) =>
-        MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptBody(NormalizeMessageBodyCore(text));
+        TranscriptMarkdownContract.PrepareMessageBody(NormalizeMessageBodyCore(text));
 
     public static string PrepareOutcomeDetailBody(string? text) =>
         PrepareMessageBody(text).Trim();
 
     public static string PrepareTranscriptMarkdownForExport(string? markdown) {
-        var normalized = NormalizeMessageBodyCore(markdown);
-        var withoutMarkers = MarkdownTranscriptTransportMarkers.StripIntelligenceXCachedEvidenceTransportMarkers(normalized);
-        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(withoutMarkers);
+        return TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(NormalizeMessageBodyCore(markdown));
     }
 
     public static string PrepareStreamingPreview(string? text) =>

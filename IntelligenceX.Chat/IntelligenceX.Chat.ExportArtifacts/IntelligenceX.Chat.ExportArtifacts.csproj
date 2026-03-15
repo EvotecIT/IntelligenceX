@@ -12,23 +12,23 @@
     <OfficeImoMarkdownProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectOverride>
     <OfficeImoMarkdownProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectCandidate1>
     <OfficeImoMarkdownProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Markdown\OfficeIMO.Markdown.csproj</OfficeImoMarkdownProjectCandidate2>
-    <OfficeImoMarkdownProject Condition="Exists('$(OfficeImoMarkdownProjectOverride)')">$(OfficeImoMarkdownProjectOverride)</OfficeImoMarkdownProject>
-    <OfficeImoMarkdownProject Condition="'$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate1)')">$(OfficeImoMarkdownProjectCandidate1)</OfficeImoMarkdownProject>
-    <OfficeImoMarkdownProject Condition="'$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate2)')">$(OfficeImoMarkdownProjectCandidate2)</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoMarkdownProjectOverride)')">$(OfficeImoMarkdownProjectOverride)</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate1)')">$(OfficeImoMarkdownProjectCandidate1)</OfficeImoMarkdownProject>
+    <OfficeImoMarkdownProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoMarkdownProject)' == '' and Exists('$(OfficeImoMarkdownProjectCandidate2)')">$(OfficeImoMarkdownProjectCandidate2)</OfficeImoMarkdownProject>
 
     <OfficeImoExcelProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProjectOverride>
     <OfficeImoExcelProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProjectCandidate1>
     <OfficeImoExcelProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Excel\OfficeIMO.Excel.csproj</OfficeImoExcelProjectCandidate2>
-    <OfficeImoExcelProject Condition="Exists('$(OfficeImoExcelProjectOverride)')">$(OfficeImoExcelProjectOverride)</OfficeImoExcelProject>
-    <OfficeImoExcelProject Condition="'$(OfficeImoExcelProject)' == '' and Exists('$(OfficeImoExcelProjectCandidate1)')">$(OfficeImoExcelProjectCandidate1)</OfficeImoExcelProject>
-    <OfficeImoExcelProject Condition="'$(OfficeImoExcelProject)' == '' and Exists('$(OfficeImoExcelProjectCandidate2)')">$(OfficeImoExcelProjectCandidate2)</OfficeImoExcelProject>
+    <OfficeImoExcelProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoExcelProjectOverride)')">$(OfficeImoExcelProjectOverride)</OfficeImoExcelProject>
+    <OfficeImoExcelProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoExcelProject)' == '' and Exists('$(OfficeImoExcelProjectCandidate1)')">$(OfficeImoExcelProjectCandidate1)</OfficeImoExcelProject>
+    <OfficeImoExcelProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoExcelProject)' == '' and Exists('$(OfficeImoExcelProjectCandidate2)')">$(OfficeImoExcelProjectCandidate2)</OfficeImoExcelProject>
 
     <OfficeImoWordMarkdownProjectOverride>$(OfficeImoRepoRootForPaths)OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProjectOverride>
     <OfficeImoWordMarkdownProjectCandidate1>$(OfficeImoRepoRootCandidate1)OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProjectCandidate1>
     <OfficeImoWordMarkdownProjectCandidate2>$(OfficeImoRepoRootCandidate2)OfficeIMO.Word.Markdown\OfficeIMO.Word.Markdown.csproj</OfficeImoWordMarkdownProjectCandidate2>
-    <OfficeImoWordMarkdownProject Condition="Exists('$(OfficeImoWordMarkdownProjectOverride)')">$(OfficeImoWordMarkdownProjectOverride)</OfficeImoWordMarkdownProject>
-    <OfficeImoWordMarkdownProject Condition="'$(OfficeImoWordMarkdownProject)' == '' and Exists('$(OfficeImoWordMarkdownProjectCandidate1)')">$(OfficeImoWordMarkdownProjectCandidate1)</OfficeImoWordMarkdownProject>
-    <OfficeImoWordMarkdownProject Condition="'$(OfficeImoWordMarkdownProject)' == '' and Exists('$(OfficeImoWordMarkdownProjectCandidate2)')">$(OfficeImoWordMarkdownProjectCandidate2)</OfficeImoWordMarkdownProject>
+    <OfficeImoWordMarkdownProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and Exists('$(OfficeImoWordMarkdownProjectOverride)')">$(OfficeImoWordMarkdownProjectOverride)</OfficeImoWordMarkdownProject>
+    <OfficeImoWordMarkdownProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoWordMarkdownProject)' == '' and Exists('$(OfficeImoWordMarkdownProjectCandidate1)')">$(OfficeImoWordMarkdownProjectCandidate1)</OfficeImoWordMarkdownProject>
+    <OfficeImoWordMarkdownProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoWordMarkdownProject)' == '' and Exists('$(OfficeImoWordMarkdownProjectCandidate2)')">$(OfficeImoWordMarkdownProjectCandidate2)</OfficeImoWordMarkdownProject>
   </PropertyGroup>
 
   <ItemGroup>

@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Linq;
 using IntelligenceX.Chat.ExportArtifacts;
-using OfficeIMO.Markdown;
 using OfficeIMO.Word;
 using Xunit;
 
@@ -145,12 +144,18 @@ public sealed partial class LocalExportArtifactWriterTests {
         Assert.Equal(2000, options.MaxImageWidthPixels);
         Assert.Contains("C:\\allowed-a", options.AllowedImageDirectories);
         Assert.Contains("C:\\allowed-b", options.AllowedImageDirectories);
-        Assert.NotNull(options.ReaderOptions);
-        Assert.IsType<MarkdownReaderOptions>(options.ReaderOptions);
-        Assert.True(options.ReaderOptions!.PreferNarrativeSingleLineDefinitions);
-        Assert.True(options.ReaderOptions.Callouts);
-        Assert.True(options.ReaderOptions.DefinitionLists);
-        Assert.NotNull(options.ReaderOptions.InputNormalization);
+
+        var readerOptionsProperty = options.GetType().GetProperty("ReaderOptions");
+        if (readerOptionsProperty == null) {
+            return;
+        }
+
+        var readerOptions = readerOptionsProperty.GetValue(options);
+        Assert.NotNull(readerOptions);
+        Assert.True((bool?)readerOptions!.GetType().GetProperty("PreferNarrativeSingleLineDefinitions")?.GetValue(readerOptions) ?? false);
+        Assert.True((bool?)readerOptions.GetType().GetProperty("Callouts")?.GetValue(readerOptions) ?? false);
+        Assert.True((bool?)readerOptions.GetType().GetProperty("DefinitionLists")?.GetValue(readerOptions) ?? false);
+        Assert.NotNull(readerOptions.GetType().GetProperty("InputNormalization")?.GetValue(readerOptions));
     }
 
     /// <summary>

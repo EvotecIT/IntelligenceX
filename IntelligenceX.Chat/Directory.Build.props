@@ -6,7 +6,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <UseLocalOfficeImoCheckoutInput>$(UseLocalOfficeImoCheckout)</UseLocalOfficeImoCheckoutInput>
 
-    <!-- Chat local-dev dependency roots: prefer sibling repos during development. -->
+    <!-- Chat local-dev dependency roots: explicit opt-in to sibling repos during development. -->
     <!-- root1: repo-root sibling layout (..\..\OfficeIMO from IntelligenceX.Chat) -->
     <IxChatSiblingsRoot1>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\'))</IxChatSiblingsRoot1>
     <!-- root2: worktree layout (..\..\..\OfficeIMO from IntelligenceX.Chat) -->
@@ -25,7 +25,6 @@
     <!-- fallback base path for package mode when no local checkout is present -->
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == ''">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckoutInput)' != ''">$(UseLocalOfficeImoCheckoutInput)</UseLocalOfficeImoCheckout>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRootResolved)' != ''">true</UseLocalOfficeImoCheckout>
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
 
     <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>

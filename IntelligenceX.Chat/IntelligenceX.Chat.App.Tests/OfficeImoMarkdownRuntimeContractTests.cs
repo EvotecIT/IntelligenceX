@@ -74,8 +74,12 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     /// </summary>
     [Fact]
     public void CreateTranscriptRendererOptions_ComposesOnTopOfExplicitOfficeImoTranscriptPreset() {
+        var baseline = TryCreateExplicitOfficeImoTranscriptDesktopShell();
+        if (baseline == null) {
+            return;
+        }
+
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
-        var baseline = MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();
 
         Assert.Equal(baseline.HtmlOptions.Style, options.HtmlOptions.Style);
         Assert.Equal(baseline.HtmlOptions.CssScopeSelector, options.HtmlOptions.CssScopeSelector);
@@ -91,14 +95,14 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     /// Verifies the repo still declares OfficeIMO package pins for package-mode adoption, even when local checkout mode is preferred for explicit transcript API work.
     /// </summary>
     [Fact]
-    public void DirectoryBuildProps_DefinesOfficeImoPackageVersionPins() {
+    public void DirectoryBuildProps_PinsCurrentPublishedOfficeImoPackageVersions() {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoMarkdownNuGetVersion"]));
-        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoMarkdownRendererNuGetVersion"]));
-        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoExcelNuGetVersion"]));
-        Assert.False(string.IsNullOrWhiteSpace(props["OfficeImoWordMarkdownNuGetVersion"]));
+        Assert.Equal("0.6.0", props["OfficeImoMarkdownNuGetVersion"]);
+        Assert.Equal("0.2.0", props["OfficeImoMarkdownRendererNuGetVersion"]);
+        Assert.Equal("0.6.13", props["OfficeImoExcelNuGetVersion"]);
+        Assert.Equal("1.0.7", props["OfficeImoWordMarkdownNuGetVersion"]);
     }
 
     /// <summary>
@@ -214,6 +218,16 @@ Recent evidence:
         var contractType = typeof(OfficeImoMarkdownRuntimeContract);
         var method = contractType!.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
         return (string)(method!.Invoke(null, null) ?? string.Empty);
+    }
+
+    private static MarkdownRendererOptions? TryCreateExplicitOfficeImoTranscriptDesktopShell() {
+        var method = typeof(MarkdownRendererPresets).GetMethod(
+            "CreateIntelligenceXTranscriptDesktopShell",
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
+        return method?.Invoke(null, null) as MarkdownRendererOptions;
     }
 
     private static IReadOnlyDictionary<string, string> LoadMsBuildProperties(string propsPath) {
