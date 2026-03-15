@@ -4,6 +4,8 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using OfficeIMO.Markdown;
+using OfficeIMO.MarkdownRenderer;
 
 namespace IntelligenceX.Chat.App.Rendering;
 
@@ -35,13 +37,17 @@ internal static class TranscriptMarkdownNormalizer {
             return string.Empty;
         }
 
-        normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(normalized);
+        normalized = MarkdownRendererPreProcessorPipeline.Apply(
+            normalized,
+            MarkdownRendererPresets.CreateIntelligenceXTranscriptMinimal());
 
         return ApplyTransformOutsideFencedCodeBlocks(
             normalized,
             static segment => ApplyTransformPreservingInlineCodeSpans(
                 segment,
-                OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup));
+                static value => MarkdownInputNormalizer.Normalize(
+                    value,
+                    MarkdownInputNormalizationPresets.CreateIntelligenceXTranscript())));
     }
 
     /// <summary>
@@ -53,10 +59,12 @@ internal static class TranscriptMarkdownNormalizer {
             return string.Empty;
         }
 
-        normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(normalized);
+        normalized = MarkdownRendererPreProcessorPipeline.Apply(
+            normalized,
+            MarkdownRendererPresets.CreateIntelligenceXTranscriptMinimal());
 
-        var officeImoPreview = TryNormalizeWithOfficeImoStreamingPreview(normalized);
-        if (officeImoPreview != null) {
+        var officeImoPreview = MarkdownStreamingPreviewNormalizer.NormalizeIntelligenceXTranscript(normalized);
+        if (officeImoPreview.Length > 0 || normalized.Length == 0) {
             return officeImoPreview;
         }
 
@@ -64,7 +72,9 @@ internal static class TranscriptMarkdownNormalizer {
             normalized,
             static segment => ApplyTransformPreservingInlineCodeSpans(
                 ZeroWidthWhitespaceRegex.Replace(segment, string.Empty),
-                OfficeImoMarkdownInputNormalizationRuntimeContract.NormalizeForTranscriptCleanup));
+                static value => MarkdownInputNormalizer.Normalize(
+                    value,
+                    MarkdownInputNormalizationPresets.CreateIntelligenceXTranscript())));
     }
 
     public static bool TryRepairLegacyTranscript(string? text, out string normalized) {
@@ -80,27 +90,6 @@ internal static class TranscriptMarkdownNormalizer {
 
         normalized = repaired;
         return true;
-    }
-
-    private static string? TryNormalizeWithOfficeImoStreamingPreview(string text) {
-        try {
-            var previewType = Type.GetType(
-                "OfficeIMO.Markdown.MarkdownStreamingPreviewNormalizer, OfficeIMO.Markdown",
-                throwOnError: false);
-            var method = previewType?.GetMethod(
-                "NormalizeIntelligenceXTranscript",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                binder: null,
-                types: [typeof(string)],
-                modifiers: null);
-            if (method?.ReturnType != typeof(string)) {
-                return null;
-            }
-
-            return method.Invoke(null, [text]) as string;
-        } catch {
-            return null;
-        }
     }
 
     private static string ApplyTransformOutsideFencedCodeBlocks(string text, Func<string, string> transform) {

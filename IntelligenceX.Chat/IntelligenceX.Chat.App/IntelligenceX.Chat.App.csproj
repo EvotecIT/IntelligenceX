@@ -51,10 +51,6 @@
     <OfficeImoMarkdownDll Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoMarkdownDll)' == '' and Exists('$(OfficeImoMarkdownDllCandidate2)')">$(OfficeImoMarkdownDllCandidate2)</OfficeImoMarkdownDll>
   </PropertyGroup>
 
-  <PropertyGroup Condition="Exists('$(OfficeImoMarkdownRendererProject)') and Exists('$(OfficeImoMarkdownProject)')">
-    <DefineConstants>$(DefineConstants);IX_OFFICEIMO_DIRECT</DefineConstants>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\..\IntelligenceX\IntelligenceX.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />

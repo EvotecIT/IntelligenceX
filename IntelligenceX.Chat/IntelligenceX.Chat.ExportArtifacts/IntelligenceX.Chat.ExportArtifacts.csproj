@@ -31,10 +31,6 @@
     <OfficeImoWordMarkdownProject Condition="'$(UseLocalOfficeImoCheckout)' == 'true' and '$(OfficeImoWordMarkdownProject)' == '' and Exists('$(OfficeImoWordMarkdownProjectCandidate2)')">$(OfficeImoWordMarkdownProjectCandidate2)</OfficeImoWordMarkdownProject>
   </PropertyGroup>
 
-  <PropertyGroup Condition="Exists('$(OfficeImoMarkdownProject)') and Exists('$(OfficeImoWordMarkdownProject)')">
-    <DefineConstants>$(DefineConstants);IX_OFFICEIMO_DIRECT</DefineConstants>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="$(OfficeImoMarkdownProject)"
                       Condition="Exists('$(OfficeImoMarkdownProject)')" />

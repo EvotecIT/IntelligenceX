@@ -38,12 +38,13 @@ Streaming preview now delegates conservative delta cleanup through the explicit 
 
 - `MarkdownStreamingPreviewNormalizer.NormalizeIntelligenceXTranscript(...)`
 
-`TranscriptMarkdownNormalizer` now delegates explicit transcript-contract cleanup through the OfficeIMO runtime seams:
+`TranscriptMarkdownNormalizer` now delegates explicit transcript-contract cleanup directly through OfficeIMO:
 
-- `OfficeImoMarkdownInputNormalizationRuntimeContract`, which calls the explicit `OfficeIMO.Markdown` `IntelligenceXTranscript` normalization preset directly
-- `OfficeImoMarkdownRuntimeContract`, which now calls `OfficeIMO.MarkdownRenderer.MarkdownRendererPreProcessorPipeline.Apply(...)` with the explicit `CreateIntelligenceXTranscriptMinimal` preprocessor chain
+- `OfficeIMO.Markdown.MarkdownInputNormalizer.Normalize(...)` with `MarkdownInputNormalizationPresets.CreateIntelligenceXTranscript()`
+- `OfficeIMO.MarkdownRenderer.MarkdownRendererPreProcessorPipeline.Apply(...)` with `MarkdownRendererPresets.CreateIntelligenceXTranscriptMinimal()`
+- `OfficeIMO.Markdown.MarkdownStreamingPreviewNormalizer.NormalizeIntelligenceXTranscript(...)`
 
-For this PR line, IX should run against the sibling OfficeIMO checkout by default whenever it exists. In that source-mode path the OfficeIMO seams are now compile-time direct calls. Package mode remains an explicit validation path, not the default development mode, until the new OfficeIMO package line is published.
+For this PR line, IX should run against the sibling OfficeIMO checkout by default whenever it exists. Package mode will not compile until the new OfficeIMO package line is published, which is expected for this end-state cleanup branch.
 
 OfficeIMO now also exposes a generic post-parse document-transform pipeline. IX should treat that as OfficeIMO implementation detail and consume it only through explicit OfficeIMO presets/contracts instead of composing transcript-specific transforms in App code.
 
@@ -61,20 +62,18 @@ This keeps `ExportArtifacts` focused on orchestration while OfficeIMO remains th
 
 ### 3. Renderer/runtime contract
 
-`OfficeImoMarkdownRuntimeContract` in the App project owns OfficeIMO renderer capability handling.
+The App now calls OfficeIMO renderer APIs directly at the orchestration seam.
 
 It owns:
 
 - transcript renderer option creation through the explicit OfficeIMO desktop-shell preset (`CreateIntelligenceXTranscriptDesktopShell`)
-- runtime/package diagnostics for loaded OfficeIMO assemblies
-
-Until the new OfficeIMO package line is published, the runtime contract classes still contain a temporary package-mode compatibility path around newer explicit OfficeIMO APIs. In local source mode they now delegate directly to OfficeIMO without reflection. They are not the architectural owner of markdown semantics.
+- runtime diagnostics for loaded OfficeIMO assemblies via a small non-reflection helper
 
 ### 4. DOCX adaptation
 
 `OfficeImoArtifactWriter` owns DOCX writer concerns only.
 
-`OfficeImoWordMarkdownRuntimeContract` in `ExportArtifacts` now delegates to explicit OfficeIMO.Word.Markdown contracts for transcript DOCX conversion:
+`ExportArtifacts` now delegates directly to explicit OfficeIMO.Word.Markdown contracts for transcript DOCX conversion:
 
 - `MarkdownToWordPresets.CreateIntelligenceXTranscript(...)`
 - `MarkdownToWordCapabilities.PreservesNarrativeSingleLineDefinitionsAsSeparateParagraphs()`
@@ -89,13 +88,7 @@ It should be limited to:
 
 It should not become the main place where transcript markdown semantics are decided.
 
-After the OfficeIMO package bump, IX should delete:
-
-- `OfficeImoMarkdownRuntimeContract`
-- `OfficeImoMarkdownInputNormalizationRuntimeContract`
-- `OfficeImoWordMarkdownRuntimeContract`
-
-and switch the existing orchestration seams to direct OfficeIMO API calls.
+This branch already removes the temporary OfficeIMO runtime contract wrappers and switches the existing orchestration seams to direct OfficeIMO API calls.
 
 The OfficeIMO markdown runtime diagnostics are currently surfaced through:
 

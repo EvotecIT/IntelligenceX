@@ -160,9 +160,9 @@ internal static class TranscriptForensicsExporter {
 
     private static TranscriptForensicsRendererSnapshot BuildRendererSnapshot() {
         return new TranscriptForensicsRendererSnapshot {
-            MarkdownRendererAssembly = OfficeImoMarkdownRuntimeContract.DescribeMarkdownRendererContract(),
-            MarkdownAssembly = OfficeImoMarkdownRuntimeContract.DescribeMarkdownContract(),
-            WordMarkdownAssembly = OfficeImoMarkdownRuntimeContract.DescribeWordMarkdownContract()
+            MarkdownRendererAssembly = OfficeImoAssemblyContractDiagnostics.DescribeMarkdownRendererContract(),
+            MarkdownAssembly = OfficeImoAssemblyContractDiagnostics.DescribeMarkdownContract(),
+            WordMarkdownAssembly = OfficeImoAssemblyContractDiagnostics.DescribeWordMarkdownContract()
         };
     }
 

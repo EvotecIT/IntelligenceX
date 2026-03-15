@@ -720,7 +720,7 @@ public sealed partial class MainWindow : Window {
     /// </summary>
     public MainWindow() {
         StartupLog.Write("MainWindow.ctor enter");
-        _markdownOptions = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        _markdownOptions = MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();
         StartupLogRendererDiagnostics();
         Title = "IntelligenceX Chat";
         _debugMode = VerboseServiceLogs;
