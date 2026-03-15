@@ -91,7 +91,12 @@ internal sealed class GitHubRepositoryImpactClient {
                         ReadInt32(node, "forkCount"),
                         ReadStringFromNested(node, "primaryLanguage", "name"),
                         ReadStringFromNested(node, "primaryLanguage", "color"),
-                        GitHubGraphQlCli.ReadString(node, "pushedAt")));
+                        GitHubGraphQlCli.ReadString(node, "pushedAt"),
+                        ReadInt32FromNested(node, "watchers", "totalCount"),
+                        ReadInt32FromNested(node, "issues", "totalCount"),
+                        GitHubGraphQlCli.ReadString(node, "description"),
+                        ReadBoolean(node, "isArchived"),
+                        ReadBoolean(node, "isFork")));
                 }
             }
 
@@ -133,9 +138,18 @@ query($login: String!, $first: Int!, $after: String) {
       nodes {
         nameWithOwner
         url
+        description
         stargazerCount
         forkCount
+        isArchived
+        isFork
         pushedAt
+        watchers {
+          totalCount
+        }
+        issues(states: OPEN) {
+          totalCount
+        }
         primaryLanguage {
           name
           color
@@ -173,6 +187,19 @@ query($login: String!, $first: Int!, $after: String) {
                parent.ValueKind == JsonValueKind.Object
             ? GitHubGraphQlCli.ReadString(parent, name)
             : null;
+    }
+
+    private static int ReadInt32FromNested(JsonElement obj, string parentName, string name) {
+        if (!GitHubGraphQlCli.TryGetProperty(obj, parentName, out var parent) ||
+            parent.ValueKind != JsonValueKind.Object) {
+            return 0;
+        }
+
+        return ReadInt32(parent, name);
+    }
+
+    private static bool ReadBoolean(JsonElement obj, string name) {
+        return GitHubGraphQlCli.TryGetProperty(obj, name, out var value) && value.ValueKind == JsonValueKind.True;
     }
 }
 
@@ -223,7 +250,12 @@ internal sealed class GitHubRepositoryImpactRepository {
         int forks,
         string? primaryLanguage,
         string? primaryLanguageColor,
-        string? pushedAt) {
+        string? pushedAt,
+        int watchers = 0,
+        int openIssues = 0,
+        string? description = null,
+        bool isArchived = false,
+        bool isFork = false) {
         NameWithOwner = nameWithOwner;
         Url = url;
         Stars = Math.Max(0, stars);
@@ -231,6 +263,11 @@ internal sealed class GitHubRepositoryImpactRepository {
         PrimaryLanguage = primaryLanguage;
         PrimaryLanguageColor = primaryLanguageColor;
         PushedAt = pushedAt;
+        Watchers = Math.Max(0, watchers);
+        OpenIssues = Math.Max(0, openIssues);
+        Description = description;
+        IsArchived = isArchived;
+        IsFork = isFork;
     }
 
     public string NameWithOwner { get; }
@@ -240,4 +277,9 @@ internal sealed class GitHubRepositoryImpactRepository {
     public string? PrimaryLanguage { get; }
     public string? PrimaryLanguageColor { get; }
     public string? PushedAt { get; }
+    public int Watchers { get; }
+    public int OpenIssues { get; }
+    public string? Description { get; }
+    public bool IsArchived { get; }
+    public bool IsFork { get; }
 }

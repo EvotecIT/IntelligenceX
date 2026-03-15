@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Usage.Copilot;
 using IntelligenceX.Telemetry.Usage.Claude;
 using IntelligenceX.Telemetry.Usage.Codex;
 namespace IntelligenceX.Telemetry.Usage;
@@ -57,6 +58,55 @@ public sealed class UsageTelemetryQuickReportOptions {
 }
 
 /// <summary>
+/// Captures provider-specific quick-scan diagnostics before and after deduplication.
+/// </summary>
+public sealed class UsageTelemetryQuickReportProviderDiagnostics {
+    /// <summary>
+    /// Initializes provider-scoped quick-scan diagnostics.
+    /// </summary>
+    public UsageTelemetryQuickReportProviderDiagnostics(string providerId) {
+        ProviderId = string.IsNullOrWhiteSpace(providerId)
+            ? "unknown-provider"
+            : providerId.Trim();
+    }
+
+    /// <summary>
+    /// Gets the canonical provider identifier represented by this diagnostic row.
+    /// </summary>
+    public string ProviderId { get; }
+
+    /// <summary>
+    /// Gets or sets the number of enabled roots considered for this provider.
+    /// </summary>
+    public int RootsConsidered { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of provider artifacts parsed from disk.
+    /// </summary>
+    public int ArtifactsParsed { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of provider artifacts reused from the quick-scan cache.
+    /// </summary>
+    public int ArtifactsReused { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of provider raw records gathered before deduplication.
+    /// </summary>
+    public int RawEventsCollected { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of provider records retained after deduplication.
+    /// </summary>
+    public int UniqueEventsRetained { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of provider duplicate records collapsed before aggregation.
+    /// </summary>
+    public int DuplicateRecordsCollapsed { get; set; }
+}
+
+/// <summary>
 /// Captures the synthesized usage records and cache statistics produced by a quick scan.
 /// </summary>
 public sealed class UsageTelemetryQuickReportResult {
@@ -84,6 +134,21 @@ public sealed class UsageTelemetryQuickReportResult {
     /// Gets or sets a value indicating whether the artifact cap stopped the scan early.
     /// </summary>
     public bool ArtifactBudgetReached { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of raw event records gathered before quick-scan deduplication.
+    /// </summary>
+    public int RawEventsCollected { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of duplicate raw records collapsed before day-level merging.
+    /// </summary>
+    public int DuplicateRecordsCollapsed { get; set; }
+
+    /// <summary>
+    /// Gets provider-level quick-scan diagnostics captured during parsing and deduplication.
+    /// </summary>
+    public List<UsageTelemetryQuickReportProviderDiagnostics> ProviderDiagnostics { get; } = new();
 }
 
 /// <summary>
@@ -94,7 +159,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         new UsageTelemetryQuickReportProviderDefinition(
             "codex",
             "codex.quick-report",
-            "codex.quick-report/v1",
+            "codex.quick-report/v2",
             CodexQuickReportImport.EnumerateCandidateFiles,
             static (root, filePath, options, cancellationToken, definition) =>
                 CodexQuickReportImport.ParseFile(root, filePath, options, definition.AdapterId, definition.ProviderId, cancellationToken)),
@@ -105,6 +170,13 @@ public sealed class UsageTelemetryQuickReportScanner {
             ClaudeQuickReportImport.EnumerateCandidateFiles,
             static (root, filePath, options, cancellationToken, definition) =>
                 ClaudeQuickReportImport.ParseFile(root, filePath, options, definition.AdapterId, definition.ProviderId, cancellationToken)),
+        new UsageTelemetryQuickReportProviderDefinition(
+            "copilot",
+            CopilotSessionUsageAdapter.StableAdapterId,
+            "copilot.quick-report/v1",
+            CopilotSessionImportSupport.EnumerateCandidateFiles,
+            static (root, filePath, options, cancellationToken, definition) =>
+                CopilotSessionImport.ParseFile(filePath, root, definition.AdapterId, options.MachineId, cancellationToken)),
         new UsageTelemetryQuickReportProviderDefinition(
             "lmstudio",
             "lmstudio.quick-report",
@@ -128,6 +200,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         var effectiveOptions = options ?? new UsageTelemetryQuickReportOptions();
         var result = new UsageTelemetryQuickReportResult();
         var allRecords = new List<UsageEventRecord>();
+        var providerDiagnostics = new Dictionary<string, UsageTelemetryQuickReportProviderDiagnostics>(StringComparer.OrdinalIgnoreCase);
         var parsedArtifacts = 0;
 
         foreach (var root in roots.Where(static root => root is not null && root.Enabled)) {
@@ -137,6 +210,7 @@ public sealed class UsageTelemetryQuickReportScanner {
             }
 
             result.RootsConsidered++;
+            GetOrCreateProviderDiagnostics(providerDiagnostics, root.ProviderId).RootsConsidered++;
             effectiveOptions.Progress?.Invoke(new UsageImportProgressUpdate {
                 Phase = "root",
                 ProviderId = root.ProviderId,
@@ -146,7 +220,7 @@ public sealed class UsageTelemetryQuickReportScanner {
             });
 
             if (TryResolveQuickReportProvider(root.ProviderId, out var quickReportProvider)) {
-                ScanRoot(root, quickReportProvider, effectiveOptions, allRecords, ref parsedArtifacts, result, cancellationToken);
+                ScanRoot(root, quickReportProvider, effectiveOptions, allRecords, providerDiagnostics, ref parsedArtifacts, result, cancellationToken);
             }
 
             if (result.ArtifactBudgetReached) {
@@ -154,7 +228,14 @@ public sealed class UsageTelemetryQuickReportScanner {
             }
         }
 
-        result.Events.AddRange(MergeRecords(allRecords));
+        result.RawEventsCollected = allRecords.Count;
+        var deduped = DeduplicateRecords(allRecords);
+        result.DuplicateRecordsCollapsed = Math.Max(0, result.RawEventsCollected - deduped.Count);
+        PopulateProviderDiagnostics(providerDiagnostics, allRecords, deduped);
+        result.ProviderDiagnostics.AddRange(providerDiagnostics.Values
+            .OrderBy(static item => UsageTelemetryProviderCatalog.ResolveSortOrder(item.ProviderId))
+            .ThenBy(static item => item.ProviderId, StringComparer.OrdinalIgnoreCase));
+        result.Events.AddRange(MergeRecords(deduped));
         return Task.FromResult(result);
     }
 
@@ -163,14 +244,17 @@ public sealed class UsageTelemetryQuickReportScanner {
         UsageTelemetryQuickReportProviderDefinition provider,
         UsageTelemetryQuickReportOptions options,
         List<UsageEventRecord> allRecords,
+        IDictionary<string, UsageTelemetryQuickReportProviderDiagnostics> providerDiagnostics,
         ref int parsedArtifacts,
         UsageTelemetryQuickReportResult result,
         CancellationToken cancellationToken) {
+        var metrics = GetOrCreateProviderDiagnostics(providerDiagnostics, provider.ProviderId);
         foreach (var filePath in provider.EnumerateCandidateFiles(root.Path, options.PreferRecentArtifacts)) {
             cancellationToken.ThrowIfCancellationRequested();
             var artifact = RawArtifactDescriptor.CreateFile(root.Id, provider.AdapterId, filePath, provider.ParserVersion, options.UtcNow());
             if (TryReuseCachedQuickRecords(options, artifact, out var cachedRecords)) {
                 result.ArtifactsReused++;
+                metrics.ArtifactsReused++;
                 allRecords.AddRange(cachedRecords);
                 continue;
             }
@@ -183,8 +267,44 @@ public sealed class UsageTelemetryQuickReportScanner {
             artifact.StateJson = SerializeQuickRecords(records);
             options.RawArtifactStore?.Upsert(artifact);
             result.ArtifactsParsed++;
+            metrics.ArtifactsParsed++;
             allRecords.AddRange(records);
         }
+    }
+
+    private static UsageTelemetryQuickReportProviderDiagnostics GetOrCreateProviderDiagnostics(
+        IDictionary<string, UsageTelemetryQuickReportProviderDiagnostics> providerDiagnostics,
+        string providerId) {
+        var key = ResolveProviderMetricsKey(providerId);
+        if (!providerDiagnostics.TryGetValue(key, out var metrics)) {
+            metrics = new UsageTelemetryQuickReportProviderDiagnostics(key);
+            providerDiagnostics[key] = metrics;
+        }
+
+        return metrics;
+    }
+
+    private static void PopulateProviderDiagnostics(
+        IDictionary<string, UsageTelemetryQuickReportProviderDiagnostics> providerDiagnostics,
+        IReadOnlyList<UsageEventRecord> rawRecords,
+        IReadOnlyList<UsageEventRecord> deduplicatedRecords) {
+        foreach (var group in rawRecords.GroupBy(static record => ResolveProviderMetricsKey(record.ProviderId), StringComparer.OrdinalIgnoreCase)) {
+            GetOrCreateProviderDiagnostics(providerDiagnostics, group.Key).RawEventsCollected += group.Count();
+        }
+
+        foreach (var group in deduplicatedRecords.GroupBy(static record => ResolveProviderMetricsKey(record.ProviderId), StringComparer.OrdinalIgnoreCase)) {
+            GetOrCreateProviderDiagnostics(providerDiagnostics, group.Key).UniqueEventsRetained += group.Count();
+        }
+
+        foreach (var metrics in providerDiagnostics.Values) {
+            metrics.DuplicateRecordsCollapsed = Math.Max(0, metrics.RawEventsCollected - metrics.UniqueEventsRetained);
+        }
+    }
+
+    private static string ResolveProviderMetricsKey(string providerId) {
+        return UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(providerId)
+            ?? NormalizeOptional(providerId)
+            ?? "unknown-provider";
     }
 
     private static bool TryReuseCachedQuickRecords(
@@ -250,10 +370,17 @@ public sealed class UsageTelemetryQuickReportScanner {
                 .Add("adapterId", record.AdapterId)
                 .Add("sourceRootId", record.SourceRootId)
                 .Add("timestampUtc", record.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+                .Add("providerAccountId", record.ProviderAccountId)
                 .Add("accountLabel", record.AccountLabel)
+                .Add("personLabel", record.PersonLabel)
                 .Add("machineId", record.MachineId)
+                .Add("sessionId", record.SessionId)
+                .Add("threadId", record.ThreadId)
+                .Add("turnId", record.TurnId)
+                .Add("responseId", record.ResponseId)
                 .Add("model", record.Model)
-                .Add("surface", record.Surface);
+                .Add("surface", record.Surface)
+                .Add("rawHash", record.RawHash);
 
             AddOptionalInt64(obj, "inputTokens", record.InputTokens);
             AddOptionalInt64(obj, "cachedInputTokens", record.CachedInputTokens);
@@ -288,10 +415,17 @@ public sealed class UsageTelemetryQuickReportScanner {
                 obj.GetString("adapterId") ?? "quick-report",
                 obj.GetString("sourceRootId") ?? "unknown-root",
                 timestampUtc.ToUniversalTime()) {
+                ProviderAccountId = NormalizeOptional(obj.GetString("providerAccountId")),
                 AccountLabel = NormalizeOptional(obj.GetString("accountLabel")),
+                PersonLabel = NormalizeOptional(obj.GetString("personLabel")),
                 MachineId = NormalizeOptional(obj.GetString("machineId")),
+                SessionId = NormalizeOptional(obj.GetString("sessionId")),
+                ThreadId = NormalizeOptional(obj.GetString("threadId")),
+                TurnId = NormalizeOptional(obj.GetString("turnId")),
+                ResponseId = NormalizeOptional(obj.GetString("responseId")),
                 Model = NormalizeOptional(obj.GetString("model")),
                 Surface = NormalizeOptional(obj.GetString("surface")),
+                RawHash = NormalizeOptional(obj.GetString("rawHash")),
                 InputTokens = obj.GetInt64("inputTokens"),
                 CachedInputTokens = obj.GetInt64("cachedInputTokens"),
                 OutputTokens = obj.GetInt64("outputTokens"),
@@ -302,6 +436,121 @@ public sealed class UsageTelemetryQuickReportScanner {
         }
 
         return records;
+    }
+
+    private static IReadOnlyList<UsageEventRecord> DeduplicateRecords(IEnumerable<UsageEventRecord> records) {
+        var canonicalByKey = new Dictionary<string, UsageEventRecord>(StringComparer.OrdinalIgnoreCase);
+        var deduplicated = new List<UsageEventRecord>();
+
+        foreach (var record in records) {
+            var keys = record.GetDeduplicationKeys();
+            UsageEventRecord? canonical = null;
+            for (var i = 0; i < keys.Count; i++) {
+                var key = keys[i];
+                if (!string.IsNullOrWhiteSpace(key) && canonicalByKey.TryGetValue(key, out canonical)) {
+                    break;
+                }
+            }
+
+            if (canonical is null) {
+                canonical = CloneRecord(record);
+                deduplicated.Add(canonical);
+            } else {
+                MergeDuplicateRecord(canonical, record);
+            }
+
+            RegisterDedupeKeys(canonicalByKey, canonical, canonical.GetDeduplicationKeys());
+            RegisterDedupeKeys(canonicalByKey, canonical, keys);
+        }
+
+        return deduplicated;
+    }
+
+    private static UsageEventRecord CloneRecord(UsageEventRecord record) {
+        return new UsageEventRecord(
+            record.EventId,
+            record.ProviderId,
+            record.AdapterId,
+            record.SourceRootId,
+            record.TimestampUtc) {
+            ProviderAccountId = record.ProviderAccountId,
+            AccountLabel = record.AccountLabel,
+            PersonLabel = record.PersonLabel,
+            MachineId = record.MachineId,
+            SessionId = record.SessionId,
+            ThreadId = record.ThreadId,
+            TurnId = record.TurnId,
+            ResponseId = record.ResponseId,
+            Model = record.Model,
+            Surface = record.Surface,
+            InputTokens = record.InputTokens,
+            CachedInputTokens = record.CachedInputTokens,
+            OutputTokens = record.OutputTokens,
+            ReasoningTokens = record.ReasoningTokens,
+            TotalTokens = record.TotalTokens,
+            DurationMs = record.DurationMs,
+            CostUsd = record.CostUsd,
+            TruthLevel = record.TruthLevel,
+            RawHash = record.RawHash
+        };
+    }
+
+    private static void MergeDuplicateRecord(UsageEventRecord canonical, UsageEventRecord duplicate) {
+        canonical.ProviderAccountId = NormalizeOptional(canonical.ProviderAccountId) ?? NormalizeOptional(duplicate.ProviderAccountId);
+        canonical.AccountLabel = NormalizeOptional(canonical.AccountLabel) ?? NormalizeOptional(duplicate.AccountLabel);
+        canonical.PersonLabel = NormalizeOptional(canonical.PersonLabel) ?? NormalizeOptional(duplicate.PersonLabel);
+        canonical.MachineId = NormalizeOptional(canonical.MachineId) ?? NormalizeOptional(duplicate.MachineId);
+        canonical.SessionId = NormalizeOptional(canonical.SessionId) ?? NormalizeOptional(duplicate.SessionId);
+        canonical.ThreadId = NormalizeOptional(canonical.ThreadId) ?? NormalizeOptional(duplicate.ThreadId);
+        canonical.TurnId = NormalizeOptional(canonical.TurnId) ?? NormalizeOptional(duplicate.TurnId);
+        canonical.ResponseId = NormalizeOptional(canonical.ResponseId) ?? NormalizeOptional(duplicate.ResponseId);
+        canonical.Model = NormalizeOptional(canonical.Model) ?? NormalizeOptional(duplicate.Model);
+        canonical.Surface = NormalizeOptional(canonical.Surface) ?? NormalizeOptional(duplicate.Surface);
+        canonical.RawHash = NormalizeOptional(canonical.RawHash) ?? NormalizeOptional(duplicate.RawHash);
+        canonical.InputTokens = MergeMax(canonical.InputTokens, duplicate.InputTokens);
+        canonical.CachedInputTokens = MergeMax(canonical.CachedInputTokens, duplicate.CachedInputTokens);
+        canonical.OutputTokens = MergeMax(canonical.OutputTokens, duplicate.OutputTokens);
+        canonical.ReasoningTokens = MergeMax(canonical.ReasoningTokens, duplicate.ReasoningTokens);
+        canonical.TotalTokens = MergeMax(canonical.TotalTokens, duplicate.TotalTokens);
+        canonical.DurationMs = MergeMax(canonical.DurationMs, duplicate.DurationMs);
+        canonical.CostUsd = MergeMax(canonical.CostUsd, duplicate.CostUsd);
+        if (duplicate.TruthLevel > canonical.TruthLevel) {
+            canonical.TruthLevel = duplicate.TruthLevel;
+        }
+    }
+
+    private static void RegisterDedupeKeys(
+        IDictionary<string, UsageEventRecord> canonicalByKey,
+        UsageEventRecord canonical,
+        IReadOnlyList<string> keys) {
+        for (var i = 0; i < keys.Count; i++) {
+            var key = keys[i];
+            if (!string.IsNullOrWhiteSpace(key)) {
+                canonicalByKey[key] = canonical;
+            }
+        }
+    }
+
+    private static long? MergeMax(long? current, long? incoming) {
+        if (!current.HasValue) {
+            return incoming;
+        }
+        if (!incoming.HasValue) {
+            return current;
+        }
+
+        return Math.Max(current.Value, incoming.Value);
+    }
+
+    private static decimal? MergeMax(decimal? current, decimal? incoming) {
+        if (!current.HasValue) {
+            return incoming;
+        }
+        if (!incoming.HasValue) {
+            return current;
+        }
+
+        return Math.Max(current.Value, incoming.Value);
     }
 
     private static void AddOptionalInt64(JsonObject obj, string key, long? value) {

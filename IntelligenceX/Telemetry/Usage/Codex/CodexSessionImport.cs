@@ -109,8 +109,11 @@ internal static class CodexSessionImport {
             var model = CodexSessionImportSupport.ExtractModel(payload) ?? currentModel;
             sessionId ??= CodexSessionImportSupport.ExtractSessionId(payload) ?? sessionId;
 
-            var eventFingerprint = $"{StableProviderId}|{UsageTelemetryIdentity.NormalizePath(filePath)}|{lineNumber}|{turnId}|{responseId}|{timestampUtc:O}|{usage.TotalTokens}";
             var rawHash = UsageTelemetryIdentity.ComputeStableHash(rawLine);
+            var identityScope = UsageTelemetryQuickReportSupport.NormalizeOptional(sessionId)
+                                ?? UsageTelemetryQuickReportSupport.NormalizeOptional(responseId)
+                                ?? UsageTelemetryIdentity.NormalizePath(filePath);
+            var eventFingerprint = $"{StableProviderId}|{identityScope}|{turnId}|{responseId}|{timestampUtc:O}|{rawHash}";
             var record = new UsageEventRecord(
                 eventId: "uev_" + UsageTelemetryIdentity.ComputeStableHash(eventFingerprint),
                 providerId: StableProviderId,
