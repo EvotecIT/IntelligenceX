@@ -262,6 +262,74 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void ResolveThreadBackgroundWorkSnapshot_IgnoresNullPersistedItems() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        const string threadId = "thread-background-work-null-item";
+        var nowTicks = DateTime.UtcNow.Ticks;
+
+        var writerSession = new ChatServiceSession(options, Stream.Null);
+        var backgroundWorkStorePath = writerSession.ResolveBackgroundWorkStorePathForTesting();
+        Directory.CreateDirectory(Path.GetDirectoryName(backgroundWorkStorePath)!);
+        File.WriteAllText(
+            backgroundWorkStorePath,
+            $$"""
+            {
+              "Version": 4,
+              "Threads": {
+                "{{threadId}}": {
+                  "SeenUtcTicks": {{nowTicks}},
+                  "QueuedCount": 0,
+                  "ReadyCount": 1,
+                  "RunningCount": 0,
+                  "CompletedCount": 0,
+                  "PendingReadOnlyCount": 1,
+                  "PendingUnknownCount": 0,
+                  "RecentEvidenceTools": [ "ad_user_lifecycle" ],
+                  "Items": [
+                    null,
+                    {
+                      "Id": "tool_handoff:verify_alice",
+                      "Title": "Verify Alice",
+                      "Request": "verify alice after disable",
+                      "State": "ready",
+                      "EvidenceToolNames": [ "ad_user_lifecycle" ],
+                      "Kind": "tool_handoff",
+                      "Mutability": "read_only",
+                      "SourceToolName": "ad_user_lifecycle",
+                      "SourceCallId": "call-ad-write",
+                      "TargetPackId": "active_directory",
+                      "TargetToolName": "ad_object_get",
+                      "FollowUpKind": "verification",
+                      "FollowUpPriority": 100,
+                      "PreparedArgumentsJson": "{\"identity\":\"CN=alice,OU=Users,DC=contoso,DC=com\"}",
+                      "ResultReference": "",
+                      "ExecutionAttemptCount": 0,
+                      "LastExecutionCallId": "",
+                      "LastExecutionStartedUtcTicks": 0,
+                      "LastExecutionFinishedUtcTicks": 0,
+                      "LeaseExpiresUtcTicks": 0,
+                      "CreatedUtcTicks": {{nowTicks}},
+                      "UpdatedUtcTicks": {{nowTicks}}
+                    }
+                  ]
+                }
+              }
+            }
+            """);
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Equal(1, snapshot.ReadyCount);
+        Assert.Equal(1, snapshot.PendingReadOnlyCount);
+        Assert.Contains("ad_user_lifecycle", snapshot.RecentEvidenceTools, StringComparer.OrdinalIgnoreCase);
+        var item = Assert.Single(snapshot.Items);
+        Assert.Equal("tool_handoff:verify_alice", item.Id);
+        Assert.Equal("ready", item.State);
+        Assert.Equal(ToolHandoffFollowUpKinds.Verification, item.FollowUpKind);
+    }
+
+    [Fact]
     public void ClearPendingActions_RemovesPersistedBackgroundWorkLedger() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         const string threadId = "thread-background-work-clear";

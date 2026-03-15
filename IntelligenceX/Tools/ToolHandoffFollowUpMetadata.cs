@@ -70,6 +70,14 @@ public static class ToolHandoffFollowUpPriorities {
     /// Normalizes a follow-up priority into the supported 0-100 range.
     /// </summary>
     public static int Normalize(int value) {
-        return Math.Clamp(value, 0, Critical);
+        if (value <= 0) {
+            return 0;
+        }
+
+        if (value >= Critical) {
+            return Critical;
+        }
+
+        return value;
     }
 }

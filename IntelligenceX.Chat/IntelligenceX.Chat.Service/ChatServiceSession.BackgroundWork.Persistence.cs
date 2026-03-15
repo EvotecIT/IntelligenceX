@@ -31,7 +31,7 @@ internal sealed partial class ChatServiceSession {
         public int PendingReadOnlyCount { get; set; }
         public int PendingUnknownCount { get; set; }
         public string[] RecentEvidenceTools { get; set; } = Array.Empty<string>();
-        public BackgroundWorkStoreItemDto[] Items { get; set; } = Array.Empty<BackgroundWorkStoreItemDto>();
+        public BackgroundWorkStoreItemDto?[] Items { get; set; } = Array.Empty<BackgroundWorkStoreItemDto?>();
     }
 
     private sealed class BackgroundWorkStoreItemDto {
@@ -191,36 +191,41 @@ internal sealed partial class ChatServiceSession {
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaxBackgroundWorkEvidenceTools)
                 .ToArray();
-            var normalizedItems = (entry.Items ?? Array.Empty<BackgroundWorkStoreItemDto>())
-                .Where(static item => item is not null && !string.IsNullOrWhiteSpace(item.Id))
-                .Take(MaxBackgroundWorkItems)
-                .Select(item => new ThreadBackgroundWorkItem(
-                    Id: (item.Id ?? string.Empty).Trim(),
-                    Title: (item.Title ?? string.Empty).Trim(),
-                    Request: NormalizeWorkingMemoryAnswerPlanFocus(item.Request),
-                    State: NormalizeBackgroundWorkState(item.State),
-                    EvidenceToolNames: NormalizeBackgroundWorkToolNames(item.EvidenceToolNames),
-                    Kind: NormalizeBackgroundWorkKind(item.Kind),
-                    Mutability: NormalizeBackgroundWorkMutability(item.Mutability),
-                    SourceToolName: NormalizeToolNameForAnswerPlan(item.SourceToolName),
-                    SourceCallId: (item.SourceCallId ?? string.Empty).Trim(),
-                    TargetPackId: (item.TargetPackId ?? string.Empty).Trim(),
-                    TargetToolName: NormalizeToolNameForAnswerPlan(item.TargetToolName),
-                    FollowUpKind: ToolHandoffFollowUpKinds.Normalize(item.FollowUpKind),
-                    FollowUpPriority: ToolHandoffFollowUpPriorities.Normalize(item.FollowUpPriority),
-                    PreparedArgumentsJson: NormalizeBackgroundWorkArgumentsJson(item.PreparedArgumentsJson),
-                    ResultReference: (item.ResultReference ?? string.Empty).Trim(),
-                    ExecutionAttemptCount: Math.Max(0, item.ExecutionAttemptCount),
-                    LastExecutionCallId: (item.LastExecutionCallId ?? string.Empty).Trim(),
-                    LastExecutionStartedUtcTicks: Math.Max(0, item.LastExecutionStartedUtcTicks),
-                    LastExecutionFinishedUtcTicks: Math.Max(0, item.LastExecutionFinishedUtcTicks),
-                    LeaseExpiresUtcTicks: Math.Max(0, item.LeaseExpiresUtcTicks),
-                    CreatedUtcTicks: item.CreatedUtcTicks,
-                    UpdatedUtcTicks: item.UpdatedUtcTicks > 0 ? item.UpdatedUtcTicks : item.CreatedUtcTicks))
-                .Where(static item => item.Id.Length > 0)
-                .ToArray();
+            var normalizedItems = new List<ThreadBackgroundWorkItem>(Math.Min(MaxBackgroundWorkItems, (entry.Items ?? Array.Empty<BackgroundWorkStoreItemDto?>()).Length));
+            foreach (var persistedItem in entry.Items ?? Array.Empty<BackgroundWorkStoreItemDto?>()) {
+                if (persistedItem is null || string.IsNullOrWhiteSpace(persistedItem.Id)) {
+                    continue;
+                }
 
-            if (normalizedItems.Length == 0) {
+                normalizedItems.Add(new ThreadBackgroundWorkItem(
+                    Id: (persistedItem.Id ?? string.Empty).Trim(),
+                    Title: (persistedItem.Title ?? string.Empty).Trim(),
+                    Request: NormalizeWorkingMemoryAnswerPlanFocus(persistedItem.Request),
+                    State: NormalizeBackgroundWorkState(persistedItem.State),
+                    EvidenceToolNames: NormalizeBackgroundWorkToolNames(persistedItem.EvidenceToolNames),
+                    Kind: NormalizeBackgroundWorkKind(persistedItem.Kind),
+                    Mutability: NormalizeBackgroundWorkMutability(persistedItem.Mutability),
+                    SourceToolName: NormalizeToolNameForAnswerPlan(persistedItem.SourceToolName),
+                    SourceCallId: (persistedItem.SourceCallId ?? string.Empty).Trim(),
+                    TargetPackId: (persistedItem.TargetPackId ?? string.Empty).Trim(),
+                    TargetToolName: NormalizeToolNameForAnswerPlan(persistedItem.TargetToolName),
+                    FollowUpKind: ToolHandoffFollowUpKinds.Normalize(persistedItem.FollowUpKind),
+                    FollowUpPriority: ToolHandoffFollowUpPriorities.Normalize(persistedItem.FollowUpPriority),
+                    PreparedArgumentsJson: NormalizeBackgroundWorkArgumentsJson(persistedItem.PreparedArgumentsJson),
+                    ResultReference: (persistedItem.ResultReference ?? string.Empty).Trim(),
+                    ExecutionAttemptCount: Math.Max(0, persistedItem.ExecutionAttemptCount),
+                    LastExecutionCallId: (persistedItem.LastExecutionCallId ?? string.Empty).Trim(),
+                    LastExecutionStartedUtcTicks: Math.Max(0, persistedItem.LastExecutionStartedUtcTicks),
+                    LastExecutionFinishedUtcTicks: Math.Max(0, persistedItem.LastExecutionFinishedUtcTicks),
+                    LeaseExpiresUtcTicks: Math.Max(0, persistedItem.LeaseExpiresUtcTicks),
+                    CreatedUtcTicks: persistedItem.CreatedUtcTicks,
+                    UpdatedUtcTicks: persistedItem.UpdatedUtcTicks > 0 ? persistedItem.UpdatedUtcTicks : persistedItem.CreatedUtcTicks));
+                if (normalizedItems.Count >= MaxBackgroundWorkItems) {
+                    break;
+                }
+            }
+
+            if (normalizedItems.Count == 0) {
                 store.Threads.Remove(normalizedThreadId);
                 WriteBackgroundWorkStoreNoThrow(path, store);
                 return false;
@@ -234,7 +239,7 @@ internal sealed partial class ChatServiceSession {
                 PendingReadOnlyCount: Math.Max(0, entry.PendingReadOnlyCount),
                 PendingUnknownCount: Math.Max(0, entry.PendingUnknownCount),
                 RecentEvidenceTools: normalizedRecentEvidenceTools,
-                Items: normalizedItems);
+                Items: normalizedItems.ToArray());
             if (IsEmptyBackgroundWorkSnapshot(snapshot)) {
                 store.Threads.Remove(normalizedThreadId);
                 WriteBackgroundWorkStoreNoThrow(path, store);
