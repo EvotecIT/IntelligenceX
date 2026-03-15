@@ -206,6 +206,7 @@ internal static partial class Program {
         failed += Run("GitHub overview projector uses window end for current streak", TestGitHubOverviewSectionProjectorUsesWindowEndForCurrentStreak);
         failed += Run("GitHub repository observability mapper builds snapshot", TestGitHubRepositoryObservabilityMapperBuildsSnapshot);
         failed += Run("GitHub repository fork scoring ranks recent popular forks first", TestGitHubRepositoryForkScoringRanksRecentPopularForksFirst);
+        failed += Run("GitHub repository fork discovery handles partial pages with next page", TestGitHubRepositoryForkDiscoveryHandlesPartialPagesWithNextPage);
         failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);
         failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
         failed += Run("Usage options parse daily breakdown", TestUsageOptionsParseDailyBreakdown);

@@ -20,20 +20,38 @@ internal sealed class GitHubRepositoryForkDiscoveryClient {
         }
 
         var (owner, repository) = SplitRepositoryName(repositoryNameWithOwner);
-        var records = await GetForksAsync(owner, repository, Math.Max(limit, DefaultPageSize)).ConfigureAwait(false);
+        var records = await GetForksAsync(owner, repository, Math.Max(limit, DefaultPageSize), QueryForksAsync).ConfigureAwait(false);
         return GitHubRepositoryForkScoring.Score(records, repositoryNameWithOwner)
             .Take(limit)
             .ToArray();
     }
 
-    private static async Task<IReadOnlyList<GitHubRepositoryForkRecord>> GetForksAsync(string owner, string repository, int limit) {
+    internal static Task<IReadOnlyList<GitHubRepositoryForkRecord>> GetForksForTestAsync(
+        string repositoryNameWithOwner,
+        int limit,
+        Func<string, string, int, string?, Task<JsonElement>> queryForksAsync) {
+        if (string.IsNullOrWhiteSpace(repositoryNameWithOwner)) {
+            throw new ArgumentException("Repository name is required.", nameof(repositoryNameWithOwner));
+        }
+
+        ArgumentNullException.ThrowIfNull(queryForksAsync);
+
+        var (owner, repository) = SplitRepositoryName(repositoryNameWithOwner);
+        return GetForksAsync(owner, repository, Math.Max(limit, DefaultPageSize), queryForksAsync);
+    }
+
+    private static async Task<IReadOnlyList<GitHubRepositoryForkRecord>> GetForksAsync(
+        string owner,
+        string repository,
+        int limit,
+        Func<string, string, int, string?, Task<JsonElement>> queryForksAsync) {
         var forks = new List<GitHubRepositoryForkRecord>();
         string? cursor = null;
         var remaining = Math.Max(limit, DefaultPageSize);
 
         while (remaining > 0) {
             var batchSize = Math.Min(DefaultPageSize, remaining);
-            var root = await QueryForksAsync(owner, repository, batchSize, cursor).ConfigureAwait(false);
+            var root = await queryForksAsync(owner, repository, batchSize, cursor).ConfigureAwait(false);
             if (!GitHubGraphQlCli.TryGetProperty(root, "data", out var data) ||
                 !GitHubGraphQlCli.TryGetProperty(data, "repository", out var repositoryNode) ||
                 repositoryNode.ValueKind != JsonValueKind.Object) {
@@ -47,6 +65,7 @@ internal sealed class GitHubRepositoryForkDiscoveryClient {
 
             if (GitHubGraphQlCli.TryGetProperty(forksConnection, "nodes", out var nodes) &&
                 nodes.ValueKind == JsonValueKind.Array) {
+                var addedCount = 0;
                 foreach (var node in nodes.EnumerateArray()) {
                     if (node.ValueKind != JsonValueKind.Object) {
                         continue;
@@ -70,10 +89,17 @@ internal sealed class GitHubRepositoryForkDiscoveryClient {
                         updatedAt: GitHubGraphQlCli.ReadString(node, "updatedAt"),
                         createdAt: GitHubGraphQlCli.ReadString(node, "createdAt"),
                         isArchived: ReadBoolean(node, "isArchived")));
+                    addedCount++;
                 }
-            }
 
-            remaining -= batchSize;
+                if (addedCount <= 0) {
+                    break;
+                }
+
+                remaining -= addedCount;
+            } else {
+                break;
+            }
             if (!GitHubGraphQlCli.TryGetProperty(forksConnection, "pageInfo", out var pageInfo) ||
                 pageInfo.ValueKind != JsonValueKind.Object) {
                 break;

@@ -224,6 +224,90 @@ internal static partial class Program {
         AssertEqual("low", insights[1].Tier, "github fork scoring archived fork tier");
     }
 
+    private static void TestGitHubRepositoryForkDiscoveryHandlesPartialPagesWithNextPage() {
+        var calls = new List<(int First, string? After)>();
+        var forks = GitHubRepositoryForkDiscoveryClient.GetForksForTestAsync(
+                "EvotecIT/IntelligenceX",
+                55,
+                (owner, repository, first, after) => {
+                    calls.Add((first, after));
+                    if (calls.Count == 1) {
+                        return Task.FromResult(CreateForkDiscoveryResponse(
+                            CreateForkRepositoryBatch("batch1", 50, 100),
+                            hasNextPage: true,
+                            endCursor: "cursor-1"));
+                    }
+
+                    if (calls.Count == 2) {
+                        return Task.FromResult(CreateForkDiscoveryResponse(
+                            CreateForkRepositoryBatch("batch2", 1, 50),
+                            hasNextPage: true,
+                            endCursor: "cursor-2"));
+                    }
+
+                    return Task.FromResult(CreateForkDiscoveryResponse(
+                        CreateForkRepositoryBatch("batch3", 4, 49),
+                        hasNextPage: false,
+                        endCursor: null));
+                })
+            .GetAwaiter()
+            .GetResult();
+
+        AssertEqual(55, forks.Count, "github fork discovery partial-page total count");
+        AssertEqual(3, calls.Count, "github fork discovery partial-page call count");
+        AssertEqual(50, calls[0].First, "github fork discovery first page size");
+        AssertEqual(5, calls[1].First, "github fork discovery second page requested remaining count");
+        AssertEqual(4, calls[2].First, "github fork discovery third page requested actual remaining count");
+        AssertEqual("cursor-1", calls[1].After, "github fork discovery second page cursor");
+        AssertEqual("cursor-2", calls[2].After, "github fork discovery third page cursor");
+    }
+
+    private static JsonElement CreateForkDiscoveryResponse(
+        IReadOnlyList<string> repositories,
+        bool hasNextPage,
+        string? endCursor) {
+        var nodes = string.Join(",", repositories.Select(static repository => """
+{
+  "nameWithOwner": "__REPOSITORY__",
+  "url": "https://github.com/__REPOSITORY__",
+  "description": "fork",
+  "stargazerCount": 1,
+  "forkCount": 0,
+  "updatedAt": "2026-03-15T00:00:00Z",
+  "createdAt": "2026-03-01T00:00:00Z",
+  "pushedAt": "2026-03-15T00:00:00Z",
+  "isArchived": false,
+  "watchers": { "totalCount": 0 },
+  "issues": { "totalCount": 0 },
+  "primaryLanguage": { "name": "C#" }
+}
+""".Replace("__REPOSITORY__", repository)));
+        return ParseJson($$"""
+{
+  "data": {
+    "repository": {
+      "forks": {
+        "nodes": [{{nodes}}],
+        "pageInfo": {
+          "hasNextPage": {{hasNextPage.ToString().ToLowerInvariant()}},
+          "endCursor": {{(endCursor is null ? "null" : "\"" + endCursor + "\"")}}
+        }
+      }
+    }
+  }
+}
+""");
+    }
+
+    private static IReadOnlyList<string> CreateForkRepositoryBatch(string prefix, int count, int startIndex) {
+        var repositories = new List<string>(count);
+        for (var i = 0; i < count; i++) {
+            repositories.Add(prefix + (startIndex + i).ToString() + "/IntelligenceX");
+        }
+
+        return repositories;
+    }
+
     private static void TestGitHubContributionCalendarClientStitchesNonOverlappingWindows() {
         var calls = new List<(DateTimeOffset From, DateTimeOffset To)>();
         var client = new GitHubContributionCalendarClient((login, from, to) => {
