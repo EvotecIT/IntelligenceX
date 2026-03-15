@@ -60,10 +60,10 @@ public sealed class TranscriptForensicsExporterTests {
         Assert.Contains("**healthy**", bundle.Live.NormalizedTranscriptMarkdown, StringComparison.Ordinal);
         Assert.Contains("Forest Replication Status", bundle.Live.RenderedTranscriptHtml, StringComparison.Ordinal);
         Assert.Contains("OfficeIMO.MarkdownRenderer", bundle.Renderer.MarkdownRendererAssembly, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.2.0", bundle.Renderer.MarkdownRendererAssembly, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.6.0", bundle.Renderer.MarkdownAssembly, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.2.1", bundle.Renderer.MarkdownRendererAssembly, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.6.1", bundle.Renderer.MarkdownAssembly, StringComparison.Ordinal);
         Assert.Contains("OfficeIMO.Word.Markdown", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
-        Assert.Contains("expected>=1.0.7", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
+        Assert.Contains("expected>=1.0.8", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
     }
 
     /// <summary>

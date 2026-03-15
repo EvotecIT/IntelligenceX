@@ -18,6 +18,6 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
         var assembly = typeof(MarkdownToWordOptions).Assembly;
         var version = assembly.GetName().Version?.ToString() ?? "unknown";
         var path = string.IsNullOrWhiteSpace(assembly.Location) ? "(dynamic)" : System.IO.Path.GetFullPath(assembly.Location);
-        return $"OfficeIMO.Word.Markdown expected>=1.0.7 feature=transcript markdown-to-word conversion loaded={version} status=ok path={path}";
+        return $"OfficeIMO.Word.Markdown expected>=1.0.8 feature=transcript markdown-to-word conversion loaded={version} status=ok path={path}";
     }
 }
