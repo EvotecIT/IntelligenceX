@@ -47,7 +47,7 @@ internal static class UsageTelemetryImportSupport {
             }
         }
 
-        return records;
+        return DeduplicateImportedRecords(records);
     }
 
     public static bool ShouldSkipArtifact(UsageImportContext context, RawArtifactDescriptor artifact) {
@@ -117,5 +117,15 @@ internal static class UsageTelemetryImportSupport {
         record.DurationMs = durationMs ?? record.DurationMs;
         record.TruthLevel = truthLevel;
         record.RawHash = UsageTelemetryQuickReportSupport.NormalizeOptional(rawHash) ?? record.RawHash;
+    }
+
+    private static IReadOnlyList<UsageEventRecord> DeduplicateImportedRecords(IReadOnlyList<UsageEventRecord> records) {
+        if (records.Count <= 1) {
+            return records;
+        }
+
+        var store = new InMemoryUsageEventStore();
+        store.UpsertRange(records);
+        return store.GetAll();
     }
 }

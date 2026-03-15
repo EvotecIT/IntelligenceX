@@ -583,7 +583,8 @@ public sealed class UsageTelemetryOverviewDocument {
         UsageSummarySnapshot summary,
         IReadOnlyList<UsageTelemetryOverviewCard> cards,
         IReadOnlyList<UsageTelemetryOverviewHeatmap> heatmaps,
-        IReadOnlyList<UsageTelemetryOverviewProviderSection>? providerSections = null) {
+        IReadOnlyList<UsageTelemetryOverviewProviderSection>? providerSections = null,
+        JsonObject? metadata = null) {
         Title = string.IsNullOrWhiteSpace(title) ? "Usage Overview" : title.Trim();
         Subtitle = HeatmapText.NormalizeOptionalText(subtitle);
         Metric = metric;
@@ -592,6 +593,7 @@ public sealed class UsageTelemetryOverviewDocument {
         Cards = cards ?? Array.Empty<UsageTelemetryOverviewCard>();
         Heatmaps = heatmaps ?? Array.Empty<UsageTelemetryOverviewHeatmap>();
         ProviderSections = providerSections ?? Array.Empty<UsageTelemetryOverviewProviderSection>();
+        Metadata = metadata;
     }
 
     public string Title { get; }
@@ -602,6 +604,7 @@ public sealed class UsageTelemetryOverviewDocument {
     public IReadOnlyList<UsageTelemetryOverviewCard> Cards { get; }
     public IReadOnlyList<UsageTelemetryOverviewHeatmap> Heatmaps { get; }
     public IReadOnlyList<UsageTelemetryOverviewProviderSection> ProviderSections { get; }
+    public JsonObject? Metadata { get; }
 
     public JsonObject ToJson() {
         var obj = new JsonObject()
@@ -631,6 +634,9 @@ public sealed class UsageTelemetryOverviewDocument {
             providerSections.Add(JsonValue.From(providerSection.ToJson()));
         }
         obj.Add("providerSections", providerSections);
+        if (Metadata is not null) {
+            obj.Add("metadata", Metadata);
+        }
 
         return obj;
     }
