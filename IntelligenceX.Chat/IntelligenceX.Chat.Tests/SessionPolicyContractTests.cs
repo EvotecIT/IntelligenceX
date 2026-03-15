@@ -31,6 +31,11 @@ public sealed class SessionPolicyContractTests {
                         DisabledReason = "License expired on 2026-03-31.",
                         IsDangerous = false,
                         SourceKind = ToolPackSourceKind.ClosedSource,
+                        Category = "testimox",
+                        EngineId = "testimox",
+                        Aliases = new[] { "testimo", "testimoxpack" },
+                        CapabilityTags = new[] { "reporting", "remote_analysis" },
+                        SearchTokens = new[] { "testimox", "testimo_x", "reporting" },
                         AutonomySummary = new ToolPackAutonomySummaryDto {
                             TotalTools = 3,
                             RemoteCapableTools = 1,
@@ -213,6 +218,11 @@ public sealed class SessionPolicyContractTests {
         Assert.Single(policy.Packs);
         Assert.False(policy.Packs[0].Enabled);
         Assert.Equal("License expired on 2026-03-31.", policy.Packs[0].DisabledReason);
+        Assert.Equal("testimox", policy.Packs[0].Category);
+        Assert.Equal("testimox", policy.Packs[0].EngineId);
+        Assert.Equal(new[] { "testimo", "testimoxpack" }, policy.Packs[0].Aliases);
+        Assert.Equal(new[] { "reporting", "remote_analysis" }, policy.Packs[0].CapabilityTags);
+        Assert.Equal(new[] { "testimox", "testimo_x", "reporting" }, policy.Packs[0].SearchTokens);
         var autonomySummary = Assert.IsType<ToolPackAutonomySummaryDto>(policy.Packs[0].AutonomySummary);
         Assert.Equal(3, autonomySummary.TotalTools);
         Assert.Equal(1, autonomySummary.EnvironmentDiscoverTools);

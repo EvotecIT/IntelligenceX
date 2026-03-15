@@ -57,6 +57,40 @@ public sealed partial class MainWindow {
         return false;
     }
 
+    private static bool HasRoutingScope(ToolDefinitionDto tool, params string[] tokens) {
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        return HasNormalizedToken(tool.RoutingScope, tokens);
+    }
+
+    private static bool HasRoutingEntity(ToolDefinitionDto tool, params string[] tokens) {
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        return HasNormalizedToken(tool.RoutingEntity, tokens);
+    }
+
+    private static bool HasNormalizedToken(string? value, IReadOnlyList<string> tokens) {
+        var normalizedValue = (value ?? string.Empty).Trim();
+        if (normalizedValue.Length == 0 || tokens is not { Count: > 0 }) {
+            return false;
+        }
+
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = (tokens[i] ?? string.Empty).Trim();
+            if (token.Length == 0) {
+                continue;
+            }
+
+            if (string.Equals(normalizedValue, token, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static HashSet<string> BuildEnabledPackIdSet(IReadOnlyList<ToolPackInfoDto>? packs) {
         var enabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (packs is not { Count: > 0 }) {

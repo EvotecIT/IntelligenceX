@@ -52,6 +52,11 @@ public static class ToolCatalogExportBuilder {
                 DisabledReason = pack.Enabled || string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
                 IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
                 SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind),
+                Category = string.IsNullOrWhiteSpace(pack.Category) ? null : pack.Category.Trim(),
+                EngineId = string.IsNullOrWhiteSpace(pack.EngineId) ? null : pack.EngineId.Trim(),
+                Aliases = pack.Aliases?.Where(static alias => !string.IsNullOrWhiteSpace(alias)).ToArray() ?? Array.Empty<string>(),
+                CapabilityTags = pack.CapabilityTags?.Where(static tag => !string.IsNullOrWhiteSpace(tag)).ToArray() ?? Array.Empty<string>(),
+                SearchTokens = pack.SearchTokens?.Where(static token => !string.IsNullOrWhiteSpace(token)).ToArray() ?? Array.Empty<string>(),
                 AutonomySummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(pack.Id, orchestrationCatalog)
             });
         }
@@ -162,6 +167,14 @@ public static class ToolCatalogExportBuilder {
             Category = ResolveToolListCategory(definition.Category),
             Tags = definition.Tags.Count == 0 ? null : definition.Tags.ToArray(),
             PackId = string.IsNullOrWhiteSpace(packId) ? null : packId,
+            RoutingRole = string.IsNullOrWhiteSpace(orchestrationEntry?.Role) ? null : orchestrationEntry!.Role,
+            RoutingScope = string.IsNullOrWhiteSpace(orchestrationEntry?.Scope) ? null : orchestrationEntry!.Scope,
+            RoutingOperation = string.IsNullOrWhiteSpace(orchestrationEntry?.Operation) ? null : orchestrationEntry!.Operation,
+            RoutingEntity = string.IsNullOrWhiteSpace(orchestrationEntry?.Entity) ? null : orchestrationEntry!.Entity,
+            RoutingRisk = string.IsNullOrWhiteSpace(orchestrationEntry?.Risk) ? null : orchestrationEntry!.Risk,
+            RoutingSource = string.IsNullOrWhiteSpace(orchestrationEntry?.RoutingSource) ? null : orchestrationEntry!.RoutingSource,
+            DomainIntentFamily = string.IsNullOrWhiteSpace(orchestrationEntry?.DomainIntentFamily) ? null : orchestrationEntry!.DomainIntentFamily,
+            DomainIntentActionId = string.IsNullOrWhiteSpace(orchestrationEntry?.DomainIntentActionId) ? null : orchestrationEntry!.DomainIntentActionId,
             PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
             PackDescription = string.IsNullOrWhiteSpace(packDescription) ? null : packDescription,
             PackSourceKind = packSourceKind,

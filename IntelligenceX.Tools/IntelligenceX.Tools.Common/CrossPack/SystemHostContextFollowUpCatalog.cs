@@ -15,12 +15,16 @@ public static class SystemHostContextFollowUpCatalog {
                 targetPackId: "active_directory",
                 targetToolName: "ad_scope_discovery",
                 reason: "Reuse the same host as an AD scope or domain-controller hint when ComputerX evidence indicates directory follow-up.",
-                bindings: CreateBindings(sourceFields, "domain_controller")),
+                bindings: CreateBindings(sourceFields, "domain_controller"),
+                followUpKind: ToolHandoffFollowUpKinds.Investigation,
+                followUpPriority: ToolHandoffFollowUpPriorities.High),
             ToolContractDefaults.CreateRoute(
                 targetPackId: "eventlog",
                 targetToolName: "eventlog_channels_list",
                 reason: "Reuse the same host for remote Event Log channel discovery before live log triage.",
-                bindings: CreateBindings(sourceFields, "machine_name"))
+                bindings: CreateBindings(sourceFields, "machine_name"),
+                followUpKind: ToolHandoffFollowUpKinds.Investigation,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal)
         };
     }
 

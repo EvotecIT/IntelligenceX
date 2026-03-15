@@ -19,6 +19,7 @@ internal sealed partial class ChatServiceSession {
         None = 0,
         AutoPendingActionReplay,
         CarryoverStructuredNextActionReplay,
+        BackgroundWorkReadyReplay,
         HostDomainIntentBootstrapReplay
     }
 
@@ -28,6 +29,7 @@ internal sealed partial class ChatServiceSession {
         bool ExpandToFullToolAvailability,
         string ReplayPayload,
         string ActionId,
+        string BackgroundWorkItemId,
         ToolCall? ToolCall,
         string ExecutePhaseMessage,
         string ReviewPhaseMessage,
@@ -40,6 +42,7 @@ internal sealed partial class ChatServiceSession {
                 ExpandToFullToolAvailability: false,
                 ReplayPayload: string.Empty,
                 ActionId: string.Empty,
+                BackgroundWorkItemId: string.Empty,
                 ToolCall: null,
                 ExecutePhaseMessage: string.Empty,
                 ReviewPhaseMessage: string.Empty,
@@ -53,6 +56,7 @@ internal sealed partial class ChatServiceSession {
                 ExpandToFullToolAvailability: false,
                 ReplayPayload: replayPayload,
                 ActionId: actionId,
+                BackgroundWorkItemId: string.Empty,
                 ToolCall: null,
                 ExecutePhaseMessage: $"Executing follow-up action {actionId} directly.",
                 ReviewPhaseMessage: string.Empty,
@@ -66,10 +70,25 @@ internal sealed partial class ChatServiceSession {
                 ExpandToFullToolAvailability: true,
                 ReplayPayload: string.Empty,
                 ActionId: string.Empty,
+                BackgroundWorkItemId: string.Empty,
                 ToolCall: toolCall,
                 ExecutePhaseMessage: $"Executing queued read-only follow-up action ({toolCall.Name})...",
                 ReviewPhaseMessage: "Reviewing queued follow-up action results...",
                 ReviewHeartbeatLabel: "Reviewing queued action",
+                RememberSuccessfulPreflightCalls: false);
+
+        public static NoExtractedRecoveryExecutionDecision BackgroundWorkReadyReplay(string reason, string backgroundWorkItemId, ToolCall toolCall) =>
+            new(
+                NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay,
+                reason,
+                ExpandToFullToolAvailability: true,
+                ReplayPayload: string.Empty,
+                ActionId: string.Empty,
+                BackgroundWorkItemId: backgroundWorkItemId,
+                ToolCall: toolCall,
+                ExecutePhaseMessage: $"Executing prepared background follow-up ({toolCall.Name})...",
+                ReviewPhaseMessage: "Reviewing prepared background follow-up results...",
+                ReviewHeartbeatLabel: "Reviewing background follow-up",
                 RememberSuccessfulPreflightCalls: false);
 
         public static NoExtractedRecoveryExecutionDecision HostDomainIntentBootstrapReplay(string reason, ToolCall toolCall) =>
@@ -79,6 +98,7 @@ internal sealed partial class ChatServiceSession {
                 ExpandToFullToolAvailability: true,
                 ReplayPayload: string.Empty,
                 ActionId: string.Empty,
+                BackgroundWorkItemId: string.Empty,
                 ToolCall: toolCall,
                 ExecutePhaseMessage: $"Executing domain-scope bootstrap ({toolCall.Name})...",
                 ReviewPhaseMessage: "Reviewing domain-scope bootstrap results...",
@@ -129,13 +149,60 @@ internal sealed partial class ChatServiceSession {
                     mutatingToolHintsByName: mutatingToolHintsByName,
                     out var carryoverStructuredNextActionCall,
                     out var carryoverStructuredNextActionReason)) {
+                if (TryPreviewReadyBackgroundWorkReplayCandidate(
+                        threadId: threadId,
+                        userRequest: userRequest,
+                        toolDefinitions: toolDefinitions,
+                        mutatingToolHintsByName: mutatingToolHintsByName,
+                        out var backgroundReplayCandidate,
+                        out var backgroundReplayReason)
+                    && ShouldPreferBackgroundWorkReplayOverCarryover(backgroundReplayCandidate.Item)) {
+                    return NoExtractedRecoveryExecutionDecision.BackgroundWorkReadyReplay(
+                        backgroundReplayReason,
+                        backgroundReplayCandidate.ItemId,
+                        backgroundReplayCandidate.ToolCall);
+                }
+
                 return NoExtractedRecoveryExecutionDecision.CarryoverStructuredNextActionReplay(
                     carryoverStructuredNextActionReason,
                     carryoverStructuredNextActionCall);
             }
         }
 
+        if (!explicitToolReferenceInUserRequest
+            && ShouldAttemptCarryoverStructuredNextActionReplay(
+                continuationFollowUpTurn: continuationFollowUpTurn,
+                compactFollowUpTurn: compactFollowUpTurn,
+                userRequest: userRequest,
+                assistantDraft: assistantDraft)
+            && priorToolCalls == 0
+            && priorToolOutputs == 0
+            && TryBuildReadyBackgroundWorkToolCall(
+                threadId: threadId,
+                userRequest: userRequest,
+                toolDefinitions: toolDefinitions,
+                mutatingToolHintsByName: mutatingToolHintsByName,
+                toolCall: out var backgroundWorkToolCall,
+                itemId: out var backgroundWorkItemId,
+                reason: out var backgroundWorkReason)) {
+            return NoExtractedRecoveryExecutionDecision.BackgroundWorkReadyReplay(
+                backgroundWorkReason,
+                backgroundWorkItemId,
+                backgroundWorkToolCall);
+        }
+
         return NoExtractedRecoveryExecutionDecision.None("no_pre_prompt_execution_selected");
+    }
+
+    private static bool ShouldPreferBackgroundWorkReplayOverCarryover(ThreadBackgroundWorkItem item) {
+        var normalizedPriority = ToolHandoffFollowUpPriorities.Normalize(item.FollowUpPriority);
+        var normalizedKind = ToolHandoffFollowUpKinds.Normalize(item.FollowUpKind);
+        if (normalizedPriority >= ToolHandoffFollowUpPriorities.High) {
+            return true;
+        }
+
+        return string.Equals(normalizedKind, ToolHandoffFollowUpKinds.Verification, StringComparison.OrdinalIgnoreCase)
+               && normalizedPriority >= ToolHandoffFollowUpPriorities.Normal;
     }
 
     private NoExtractedRecoveryExecutionDecision ResolveNoExtractedRecoveryPostPromptExecutionDecision(
@@ -206,6 +273,7 @@ internal sealed partial class ChatServiceSession {
                     ToolRounds: toolRounds,
                     ProjectionFallbackCount: projectionFallbackCount);
             case NoExtractedRecoveryExecutionDecisionKind.CarryoverStructuredNextActionReplay:
+            case NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay:
             case NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentBootstrapReplay:
                 return await ExecuteSingleRecoveryHostToolReplayAsync(
                         client,
@@ -285,6 +353,23 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
+        var backgroundWorkItems = Array.Empty<ThreadBackgroundWorkItem>();
+        if (decision.Kind == NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay
+            && !string.IsNullOrWhiteSpace(decision.BackgroundWorkItemId)
+            && TryGetThreadBackgroundWorkItem(threadId, decision.BackgroundWorkItemId, out var backgroundWorkItem)) {
+            backgroundWorkItems = new[] { backgroundWorkItem };
+        }
+
+        if (decision.Kind == NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay) {
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.BackgroundWorkRunning,
+                    message: BuildBackgroundWorkRunningStatusMessage(runningCount: 1, backgroundWorkItems))
+                .ConfigureAwait(false);
+        }
+
         await TryWriteStatusAsync(
                 writer,
                 request.RequestId,
@@ -350,6 +435,24 @@ internal sealed partial class ChatServiceSession {
             });
         }
 
+        if (decision.Kind == NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay
+            && !string.IsNullOrWhiteSpace(decision.BackgroundWorkItemId)) {
+            RememberBackgroundWorkExecutionOutcome(threadId, decision.BackgroundWorkItemId, toolCall.CallId, outputs);
+            if (outputs.Count > 0 && outputs[0].Ok == true) {
+                if (TryGetThreadBackgroundWorkItem(threadId, decision.BackgroundWorkItemId, out var completedBackgroundWorkItem)) {
+                    backgroundWorkItems = new[] { completedBackgroundWorkItem };
+                }
+
+                await TryWriteStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        status: ChatStatusCodes.BackgroundWorkCompleted,
+                        message: BuildBackgroundWorkCompletedStatusMessage(completedCount: 1, backgroundWorkItems))
+                    .ConfigureAwait(false);
+            }
+        }
+
         var nextInput = BuildHostReplayReviewInput(
             toolCall,
             outputs,
@@ -374,6 +477,7 @@ internal sealed partial class ChatServiceSession {
     private static string ResolveRecoveryExecutionTraceLabel(NoExtractedRecoveryExecutionDecisionKind kind) {
         return kind switch {
             NoExtractedRecoveryExecutionDecisionKind.CarryoverStructuredNextActionReplay => "host-structured-next-action",
+            NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay => "background-work-replay",
             NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentBootstrapReplay => "host-domain-bootstrap",
             _ => "recovery-execution"
         };
@@ -407,7 +511,9 @@ internal sealed partial class ChatServiceSession {
         return (
             decision.Kind.ToString(),
             decision.Reason,
-            string.IsNullOrWhiteSpace(decision.ActionId) ? null : decision.ActionId,
+            string.IsNullOrWhiteSpace(decision.ActionId)
+                ? string.IsNullOrWhiteSpace(decision.BackgroundWorkItemId) ? null : decision.BackgroundWorkItemId
+                : decision.ActionId,
             decision.ToolCall?.Name,
             decision.ExpandToFullToolAvailability);
     }

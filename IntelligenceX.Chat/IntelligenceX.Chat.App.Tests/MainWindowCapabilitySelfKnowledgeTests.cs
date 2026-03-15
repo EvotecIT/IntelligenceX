@@ -373,9 +373,9 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
             sessionPolicy: null,
             toolCatalogPacks: new[] {
-                new ToolPackInfoDto { Id = "active_directory", Name = "Active Directory", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
-                new ToolPackInfoDto { Id = "eventlog", Name = "Event Log", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
-                new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                new ToolPackInfoDto { Id = "directory_ops", Name = "Directory Ops", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                new ToolPackInfoDto { Id = "ops_events", Name = "Ops Events", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                new ToolPackInfoDto { Id = "ops_inventory", Name = "Ops Inventory", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
             },
             toolCatalogRoutingCatalog: new SessionRoutingCatalogDiagnosticsDto {
                 AutonomyReadinessHighlights = new[] { "remote host-targeting is ready for representative tools." }
@@ -394,8 +394,8 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
                 new ToolDefinitionDto {
                     Name = "ad_environment_discover",
                     Description = "Discover Active Directory environment context.",
-                    PackId = "active_directory",
-                    PackName = "Active Directory",
+                    PackId = "directory_ops",
+                    PackName = "Directory Ops",
                     IsEnvironmentDiscoverTool = true,
                     SupportsTargetScoping = true,
                     TargetScopeArguments = new[] { "domain_controller", "search_base_dn" }
@@ -403,8 +403,9 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
                 new ToolDefinitionDto {
                     Name = "eventlog_live_query",
                     Description = "Query Windows event logs.",
-                    PackId = "eventlog",
-                    PackName = "Event Log",
+                    PackId = "ops_events",
+                    PackName = "Ops Events",
+                    RoutingEntity = "event",
                     ExecutionScope = "local_or_remote",
                     SupportsRemoteHostTargeting = true,
                     RemoteHostArguments = new[] { "machine_name" }
@@ -412,20 +413,22 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
                 new ToolDefinitionDto {
                     Name = "system_metrics_summary",
                     Description = "Collect system metrics.",
-                    PackId = "system",
-                    PackName = "System",
+                    PackId = "ops_inventory",
+                    PackName = "Ops Inventory",
+                    RoutingScope = "host",
+                    RoutingEntity = "host",
                     ExecutionScope = "local_or_remote",
                     SupportsRemoteHostTargeting = true,
                     RemoteHostArguments = new[] { "computer_name" },
                     IsHandoffAware = true,
-                    HandoffTargetPackIds = new[] { "eventlog", "system" }
+                    HandoffTargetPackIds = new[] { "ops_events", "ops_inventory" }
                 }
             });
 
         Assert.Contains(lines, line => line.Contains("domain controller or base DN", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("event logs", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("CPU, memory, and disk", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, line => line.Contains("pivot findings into Event Log, System", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("pivot findings into Ops Events, Ops Inventory", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("live tool contracts", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -537,6 +540,41 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.Contains(lines, line => line.Contains("currently local-only", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("local-only tools currently include System", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(lines, line => line.Contains("explicit remote-ready tools", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures alias-based pack identifiers still resolve to the live pack display name in capability self-knowledge.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_ResolvesRuntimePackAliasIds_ToPackDisplayName() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto {
+                    Id = "ops_inventory",
+                    Name = "Ops Inventory",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false,
+                    Aliases = new[] { "serverops" }
+                }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 2,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                Autonomy = new SessionCapabilityAutonomySummaryDto {
+                    RemoteCapableToolCount = 1,
+                    RemoteCapablePackIds = new[] { "serverops" }
+                }
+            });
+
+        Assert.Contains(lines, line => line.Contains("Ops Inventory", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("serverops", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int FindLineIndex(IReadOnlyList<string> lines, string expectedFragment) {

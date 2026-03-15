@@ -219,7 +219,10 @@ internal static partial class Program {
                 IsDangerous = descriptor.IsDangerous,
                 SourceKind = descriptor.SourceKind ?? string.Empty,
                 EngineId = descriptor.EngineId,
+                Aliases = descriptor.Aliases ?? Array.Empty<string>(),
+                Category = descriptor.Category,
                 CapabilityTags = descriptor.CapabilityTags ?? Array.Empty<string>(),
+                SearchTokens = descriptor.SearchTokens ?? Array.Empty<string>(),
                 CapabilityParity = descriptor.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>(),
                 Enabled = true
             })

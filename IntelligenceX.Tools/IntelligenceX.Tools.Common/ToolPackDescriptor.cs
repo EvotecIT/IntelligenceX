@@ -50,9 +50,19 @@ public sealed record ToolPackDescriptor {
     public string? EngineId { get; init; }
 
     /// <summary>
+    /// Optional normalized category advertised by the pack (for example: active_directory/system/eventlog).
+    /// </summary>
+    public string? Category { get; init; }
+
+    /// <summary>
     /// Optional normalized capability tags advertised by the pack.
     /// </summary>
     public IReadOnlyList<string> CapabilityTags { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Optional pack-oriented search tokens advertised by the pack for planner/routing prompts.
+    /// </summary>
+    public IReadOnlyList<string> SearchTokens { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Optional pack-owned capability parity slices published for host/chat runtime inventories.

@@ -286,6 +286,10 @@ public sealed partial class MainWindow : Window {
                || normalized.Equals(ChatStatusCodes.ToolRoundCompleted, StringComparison.OrdinalIgnoreCase)
                || normalized.Equals(ChatStatusCodes.ToolRoundLimitReached, StringComparison.OrdinalIgnoreCase)
                || normalized.Equals(ChatStatusCodes.ToolRoundCapApplied, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.BackgroundWorkQueued, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.BackgroundWorkReady, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.BackgroundWorkRunning, StringComparison.OrdinalIgnoreCase)
+               || normalized.Equals(ChatStatusCodes.BackgroundWorkCompleted, StringComparison.OrdinalIgnoreCase)
                || normalized.Equals(ChatStatusCodes.PhaseExecute, StringComparison.OrdinalIgnoreCase);
     }
 

@@ -34,6 +34,38 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public string? PackId { get; init; }
     /// <summary>
+    /// Optional routing role from the orchestration catalog.
+    /// </summary>
+    public string? RoutingRole { get; init; }
+    /// <summary>
+    /// Optional routing scope from the orchestration catalog.
+    /// </summary>
+    public string? RoutingScope { get; init; }
+    /// <summary>
+    /// Optional routing operation from the orchestration catalog.
+    /// </summary>
+    public string? RoutingOperation { get; init; }
+    /// <summary>
+    /// Optional routing entity from the orchestration catalog.
+    /// </summary>
+    public string? RoutingEntity { get; init; }
+    /// <summary>
+    /// Optional routing risk from the orchestration catalog.
+    /// </summary>
+    public string? RoutingRisk { get; init; }
+    /// <summary>
+    /// Optional routing source from the orchestration catalog.
+    /// </summary>
+    public string? RoutingSource { get; init; }
+    /// <summary>
+    /// Optional normalized domain-intent family token.
+    /// </summary>
+    public string? DomainIntentFamily { get; init; }
+    /// <summary>
+    /// Optional domain-intent action identifier.
+    /// </summary>
+    public string? DomainIntentActionId { get; init; }
+    /// <summary>
     /// Optional tool-pack display name.
     /// </summary>
     public string? PackName { get; init; }

@@ -25,6 +25,8 @@ internal static class EventLogArtifactFollowUpCatalog {
             reason: reason,
             bindings: new[] {
                 ToolContractDefaults.CreateBinding("files[].path", "path")
-            });
+            },
+            followUpKind: ToolHandoffFollowUpKinds.Investigation,
+            followUpPriority: ToolHandoffFollowUpPriorities.Normal);
     }
 }

@@ -683,24 +683,31 @@ public static partial class ToolPackBootstrap {
                 continue;
             }
 
-            var normalizedAliasPackId = NormalizePackId(alias);
-            if (normalizedAliasPackId.Length == 0) {
+            var normalizedAliasToken = NormalizePackAliasToken(alias);
+            if (normalizedAliasToken.Length == 0) {
                 continue;
             }
 
+            var knownAliasPackId = NormalizePackId(alias);
+            var aliasMapsKnownIdentity = ToolPackIdentityCatalog.IsKnownPackIdentityToken(alias);
             if (normalizedPrimaryPackId.Length > 0
-                && !string.Equals(normalizedAliasPackId, normalizedPrimaryPackId, StringComparison.OrdinalIgnoreCase)) {
+                && aliasMapsKnownIdentity
+                && !string.Equals(knownAliasPackId, normalizedPrimaryPackId, StringComparison.OrdinalIgnoreCase)) {
                 throw new InvalidOperationException(
-                    $"Tool pack alias '{alias}' for '{NormalizeCollisionDescriptorId(descriptorId)}' normalizes to '{normalizedAliasPackId}' instead of '{normalizedPrimaryPackId}'.");
+                    $"Tool pack alias '{alias}' for '{NormalizeCollisionDescriptorId(descriptorId)}' resolves to known pack '{knownAliasPackId}' instead of '{normalizedPrimaryPackId}'.");
             }
 
-            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedAliasPackId);
+            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedAliasToken);
         }
     }
 
     private static string NormalizeCollisionDescriptorId(string descriptorId) {
         var normalized = (descriptorId ?? string.Empty).Trim();
         return normalized.Length == 0 ? "<empty>" : normalized;
+    }
+
+    private static string NormalizePackAliasToken(string? value) {
+        return ToolPackMetadataNormalizer.NormalizeDescriptorToken(value);
     }
 
     private static void EmitPackRegistrationProgress(
@@ -758,7 +765,17 @@ public static partial class ToolPackBootstrap {
         var normalizedDescription = string.IsNullOrWhiteSpace(descriptor.Description) ? null : descriptor.Description.Trim();
         var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
         var normalizedEngineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(descriptor.EngineId);
+        var normalizedAliases = NormalizePackAliases(
+            packId: normalizedId.Length == 0 ? descriptor.Id : normalizedId,
+            aliases: descriptor.Aliases);
+        var normalizedCategory = NormalizePackCategory(descriptor.Category, descriptor.Id);
         var normalizedCapabilityTags = NormalizeDistinctDescriptorTokens(descriptor.CapabilityTags);
+        var normalizedSearchTokens = NormalizePackSearchTokens(
+            packId: normalizedId.Length == 0 ? descriptor.Id : normalizedId,
+            aliases: normalizedAliases,
+            category: normalizedCategory,
+            engineId: normalizedEngineId,
+            explicitSearchTokens: descriptor.SearchTokens);
         var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
 
         return new ToolPackAvailabilityInfo {
@@ -769,7 +786,10 @@ public static partial class ToolPackBootstrap {
             IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
             SourceKind = normalizedSourceKind,
             EngineId = normalizedEngineId.Length == 0 ? null : normalizedEngineId,
+            Aliases = normalizedAliases,
+            Category = normalizedCategory,
             CapabilityTags = normalizedCapabilityTags,
+            SearchTokens = normalizedSearchTokens,
             CapabilityParity = descriptor.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>(),
             Enabled = enabled,
             DisabledReason = enabled ? null : normalizedReason
@@ -811,12 +831,25 @@ public static partial class ToolPackBootstrap {
 
         var normalizedName = string.IsNullOrWhiteSpace(availability.Name) ? normalizedPackId : availability.Name.Trim();
         var normalizedEngineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(availability.EngineId);
+        var normalizedAliases = NormalizePackAliases(
+            packId: normalizedPackId,
+            aliases: availability.Aliases);
+        var normalizedCategory = NormalizePackCategory(availability.Category, normalizedPackId);
         var normalizedCapabilityTags = NormalizeDistinctDescriptorTokens(availability.CapabilityTags);
+        var normalizedSearchTokens = NormalizePackSearchTokens(
+            packId: normalizedPackId,
+            aliases: normalizedAliases,
+            category: normalizedCategory,
+            engineId: normalizedEngineId,
+            explicitSearchTokens: availability.SearchTokens);
         availabilityById[normalizedPackId] = availability with {
             Id = normalizedPackId,
             Name = normalizedName,
             EngineId = normalizedEngineId.Length == 0 ? null : normalizedEngineId,
+            Aliases = normalizedAliases,
+            Category = normalizedCategory,
             CapabilityTags = normalizedCapabilityTags,
+            SearchTokens = normalizedSearchTokens,
             CapabilityParity = availability.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>()
         };
     }
@@ -908,6 +941,106 @@ public static partial class ToolPackBootstrap {
 
         normalized.Sort(StringComparer.OrdinalIgnoreCase);
         return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
+    }
+
+    /// <summary>
+    /// Normalizes a pack category token, falling back to the known pack identity catalog when needed.
+    /// </summary>
+    /// <param name="category">Declared pack category.</param>
+    /// <param name="packId">Pack identifier used for fallback category resolution.</param>
+    /// <returns>Normalized category token, or <see langword="null"/> when no category can be resolved.</returns>
+    public static string? NormalizePackCategory(string? category, string? packId) {
+        var normalizedCategory = ToolPackMetadataNormalizer.NormalizeDescriptorToken(category);
+        if (normalizedCategory.Length > 0) {
+            return normalizedCategory;
+        }
+
+        return ToolPackIdentityCatalog.TryGetCategory(packId, out var fallbackCategory)
+            ? ToolPackMetadataNormalizer.NormalizeDescriptorToken(fallbackCategory)
+            : null;
+    }
+
+    /// <summary>
+    /// Normalizes runtime aliases advertised by a pack while preserving the canonical pack id as the source of truth.
+    /// </summary>
+    /// <param name="packId">Canonical pack identifier.</param>
+    /// <param name="aliases">Optional pack aliases.</param>
+    /// <returns>Normalized, deduplicated aliases that do not repeat the canonical pack id.</returns>
+    public static string[] NormalizePackAliases(string? packId, IReadOnlyList<string>? aliases) {
+        if (aliases is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var canonicalPackId = NormalizePackId(packId);
+        var normalizedAliases = new List<string>(aliases.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < aliases.Count; i++) {
+            var alias = NormalizePackAliasToken(aliases[i]);
+            if (alias.Length == 0
+                || string.Equals(alias, canonicalPackId, StringComparison.OrdinalIgnoreCase)
+                || !seen.Add(alias)) {
+                continue;
+            }
+
+            normalizedAliases.Add(alias);
+        }
+
+        normalizedAliases.Sort(StringComparer.OrdinalIgnoreCase);
+        return normalizedAliases.Count == 0 ? Array.Empty<string>() : normalizedAliases.ToArray();
+    }
+
+    /// <summary>
+    /// Normalizes the search-token surface advertised by a pack for planner/routing prompts.
+    /// </summary>
+    /// <param name="packId">Canonical pack identifier.</param>
+    /// <param name="aliases">Optional pack aliases.</param>
+    /// <param name="category">Optional normalized pack category.</param>
+    /// <param name="engineId">Optional normalized engine identifier.</param>
+    /// <param name="explicitSearchTokens">Optional pack-declared search tokens.</param>
+    /// <returns>Normalized, deduplicated search tokens.</returns>
+    public static string[] NormalizePackSearchTokens(
+        string? packId,
+        IReadOnlyList<string>? aliases,
+        string? category,
+        string? engineId,
+        IReadOnlyList<string>? explicitSearchTokens) {
+        var tokens = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddToken(string? value) {
+            var token = ToolPackMetadataNormalizer.NormalizeDescriptorToken(value);
+            if (token.Length == 0 || !seen.Add(token)) {
+                return;
+            }
+
+            tokens.Add(token);
+        }
+
+        AddToken(packId);
+        if (aliases is { Count: > 0 }) {
+            for (var i = 0; i < aliases.Count; i++) {
+                AddToken(aliases[i]);
+            }
+        }
+
+        AddToken(category);
+        AddToken(engineId);
+        if (explicitSearchTokens is { Count: > 0 }) {
+            for (var i = 0; i < explicitSearchTokens.Count; i++) {
+                AddToken(explicitSearchTokens[i]);
+            }
+        }
+
+        if ((explicitSearchTokens is not { Count: > 0 })
+            && (aliases is not { Count: > 0 })
+            && !string.IsNullOrWhiteSpace(packId)) {
+            foreach (var token in ToolPackIdentityCatalog.GetPackSearchTokens(packId)) {
+                AddToken(token);
+            }
+        }
+
+        tokens.Sort(StringComparer.OrdinalIgnoreCase);
+        return tokens.Count == 0 ? Array.Empty<string>() : tokens.ToArray();
     }
 
     private sealed class DescriptorOverrideToolPack : IToolPack {

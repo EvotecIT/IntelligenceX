@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Tooling;
@@ -403,6 +404,18 @@ internal static partial class PluginFolderToolPackLoader {
         var sourceKind = TryResolveAvailabilitySourceKind(manifest, descriptor, out var resolvedSourceKind)
             ? resolvedSourceKind
             : ToolPackBootstrap.PackSourceOpenSource;
+        var normalizedEngineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(descriptor.EngineId);
+        var normalizedAliases = ToolPackBootstrap.NormalizePackAliases(
+            packId: normalizedDescriptorId,
+            aliases: descriptor.Aliases);
+        var normalizedCategory = ToolPackBootstrap.NormalizePackCategory(descriptor.Category, normalizedDescriptorId);
+        var normalizedCapabilityTags = NormalizeDistinctDescriptorTokens(descriptor.CapabilityTags);
+        var normalizedSearchTokens = ToolPackBootstrap.NormalizePackSearchTokens(
+            packId: normalizedDescriptorId,
+            aliases: normalizedAliases,
+            category: normalizedCategory,
+            engineId: normalizedEngineId,
+            explicitSearchTokens: descriptor.SearchTokens);
 
         return new ToolPackAvailabilityInfo {
             Id = normalizedDescriptorId,
@@ -411,9 +424,34 @@ internal static partial class PluginFolderToolPackLoader {
             Tier = descriptor.Tier,
             IsDangerous = manifest?.IsDangerous ?? descriptor.IsDangerous,
             SourceKind = sourceKind,
+            EngineId = normalizedEngineId.Length == 0 ? null : normalizedEngineId,
+            Aliases = normalizedAliases,
+            Category = normalizedCategory,
+            CapabilityTags = normalizedCapabilityTags,
+            SearchTokens = normalizedSearchTokens,
             Enabled = enabled,
             DisabledReason = enabled ? null : disabledReason
         };
+    }
+
+    private static IReadOnlyList<string> NormalizeDistinctDescriptorTokens(IReadOnlyList<string>? values) {
+        if (values is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(values.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Count; i++) {
+            var token = ToolPackMetadataNormalizer.NormalizeDescriptorToken(values[i]);
+            if (token.Length == 0 || !seen.Add(token)) {
+                continue;
+            }
+
+            normalized.Add(token);
+        }
+
+        normalized.Sort(StringComparer.OrdinalIgnoreCase);
+        return normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
     }
 
     private static bool TryResolveAvailabilitySourceKind(

@@ -452,6 +452,7 @@ internal sealed partial class ChatServiceSession {
                 // with what the user actually sees (including contract fallback substitutions).
                 RememberPreferredDomainIntentFamily(threadId, toolCalls, toolOutputs, mutatingToolHints);
                 RememberThreadToolEvidence(threadId, toolCalls, toolOutputs, mutatingToolHints);
+                RememberToolHandoffBackgroundWork(threadId, finalizedStructuredNextActionToolDefs, toolCalls, toolOutputs);
                 RememberWorkingMemoryCheckpoint(threadId, userIntent, routedUserRequest, state.AnswerPlan, toolCalls, toolOutputs, mutatingToolHints);
 
                 var textBeforeNoTextFallback = text;
@@ -528,19 +529,22 @@ internal sealed partial class ChatServiceSession {
                 if (_options.Redact) {
                     text = RedactText(text);
                 }
-                RememberPendingActions(threadId, text);
+                await RememberPendingActionsAndEmitBackgroundWorkStatusAsync(writer, request.RequestId, threadId, text)
+                    .ConfigureAwait(false);
 
                 if (!string.IsNullOrWhiteSpace(text) && !LooksLikeRuntimeControlPayloadArtifact(text)) {
                     lastNonEmptyAssistantDraft = text.Trim();
                 }
 
+                var backgroundWorkSnapshot = ResolveThreadBackgroundWorkSnapshot(threadId);
                 var autonomyCounters = BuildAutonomyCounterMetrics(
                     nudgeUnknownEnvelopeReplanCount: nudgeUnknownEnvelopeReplanCount,
                     noTextRecoveryHitCount: noTextRecoveryHitCount,
                     noTextToolOutputRecoveryHitCount: noTextToolOutputRecoveryHitCount,
                     proactiveSkipMutatingCount: proactiveSkipMutatingCount,
                     proactiveSkipReadOnlyCount: proactiveSkipReadOnlyCount,
-                    proactiveSkipUnknownCount: proactiveSkipUnknownCount);
+                    proactiveSkipUnknownCount: proactiveSkipUnknownCount,
+                    backgroundWorkSnapshot: backgroundWorkSnapshot);
                 TraceAutonomyTelemetryCounters(
                     requestId: request.RequestId,
                     threadId: threadId,

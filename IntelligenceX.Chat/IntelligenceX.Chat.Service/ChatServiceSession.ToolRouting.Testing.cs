@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Json;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
 
@@ -72,12 +73,17 @@ internal sealed partial class ChatServiceSession {
         return selected;
     }
 
-    internal static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidatesForTesting(
+    internal IReadOnlyList<ToolDefinition> BuildModelPlannerCandidatesForTesting(
         IReadOnlyList<ToolDefinition> definitions,
         string requestText,
         int limit,
         ToolOrchestrationCatalog toolOrchestrationCatalog) {
         return BuildModelPlannerCandidates(definitions, requestText, limit, toolOrchestrationCatalog);
+    }
+
+    internal string BuildToolRoutingSearchTextForTesting(ToolDefinition definition) {
+        ArgumentNullException.ThrowIfNull(definition);
+        return BuildToolRoutingSearchText(definition);
     }
 
     internal string? BuildTurnInstructionsWithRuntimeIdentityForTesting(string resolvedModel, string? baseInstructions = null) {
@@ -147,6 +153,11 @@ internal sealed partial class ChatServiceSession {
         out string continuationSourceTool,
         out string continuationReason,
         out string continuationConfidence,
+        out bool backgroundPreparationAllowed,
+        out int backgroundPendingReadOnlyActions,
+        out int backgroundPendingUnknownActions,
+        out string backgroundFollowUpFocus,
+        out string[] backgroundRecentEvidenceTools,
         out string[] matchingSkills,
         out bool allowCachedEvidenceReuse) {
         var found = TryReadPlannerContextFromRequestText(requestText, out var context);
@@ -160,6 +171,11 @@ internal sealed partial class ChatServiceSession {
         continuationSourceTool = context.ContinuationSourceTool;
         continuationReason = context.ContinuationReason;
         continuationConfidence = context.ContinuationConfidence;
+        backgroundPreparationAllowed = context.BackgroundPreparationAllowed;
+        backgroundPendingReadOnlyActions = context.BackgroundPendingReadOnlyActions;
+        backgroundPendingUnknownActions = context.BackgroundPendingUnknownActions;
+        backgroundFollowUpFocus = context.BackgroundFollowUpFocus;
+        backgroundRecentEvidenceTools = context.BackgroundRecentEvidenceTools;
         matchingSkills = context.MatchingSkills;
         allowCachedEvidenceReuse = context.AllowCachedEvidenceReuse;
         return found;
@@ -219,6 +235,140 @@ internal sealed partial class ChatServiceSession {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(assistantReply);
         RememberPendingActions(threadId, assistantReply);
+    }
+
+    internal ThreadBackgroundWorkSnapshot ResolveThreadBackgroundWorkSnapshotForTesting(string threadId) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        return ResolveThreadBackgroundWorkSnapshot(threadId);
+    }
+
+    internal void RememberToolHandoffBackgroundWorkForTesting(
+        string threadId,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        ArgumentNullException.ThrowIfNull(toolCalls);
+        ArgumentNullException.ThrowIfNull(toolOutputs);
+        RememberToolHandoffBackgroundWork(threadId, toolDefinitions, toolCalls, toolOutputs);
+    }
+
+    internal bool TrySetThreadBackgroundWorkItemStateForTesting(
+        string threadId,
+        string itemId,
+        string state,
+        string? resultReference = null) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(itemId);
+        ArgumentNullException.ThrowIfNull(state);
+        return TrySetThreadBackgroundWorkItemState(threadId, itemId, state, resultReference);
+    }
+
+    internal bool TrySetThreadBackgroundWorkLeaseExpiryForTesting(
+        string threadId,
+        string itemId,
+        long leaseExpiresUtcTicks) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(itemId);
+        return TrySetThreadBackgroundWorkLeaseExpiry(threadId, itemId, leaseExpiresUtcTicks);
+    }
+
+    internal bool TryBuildReadyBackgroundWorkToolCallForTesting(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out string itemId,
+        out string toolName,
+        out string argumentsJson,
+        out string reason) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(userRequest);
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        var result = TryBuildReadyBackgroundWorkToolCall(
+            threadId,
+            userRequest,
+            toolDefinitions,
+            mutatingToolHintsByName,
+            out var toolCall,
+            out itemId,
+            out reason);
+        toolName = result ? toolCall.Name : string.Empty;
+        argumentsJson = result && toolCall.Arguments is not null ? JsonLite.Serialize(toolCall.Arguments) : string.Empty;
+        return result;
+    }
+
+    internal void RememberBackgroundWorkExecutionOutcomeForTesting(
+        string threadId,
+        string itemId,
+        string toolCallId,
+        IReadOnlyList<ToolOutputDto> outputs) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(itemId);
+        ArgumentNullException.ThrowIfNull(toolCallId);
+        ArgumentNullException.ThrowIfNull(outputs);
+        RememberBackgroundWorkExecutionOutcome(threadId, itemId, toolCallId, outputs);
+    }
+
+    internal string ResolveBackgroundWorkStorePathForTesting() {
+        return ResolveBackgroundWorkStorePath();
+    }
+
+    internal static string BuildBackgroundWorkQueuedStatusMessageForTesting(int queuedCount) {
+        return BuildBackgroundWorkQueuedStatusMessage(queuedCount);
+    }
+
+    internal static string BuildBackgroundWorkReadyStatusMessageForTesting(
+        int readyCount,
+        IReadOnlyList<string> recentEvidenceTools,
+        IReadOnlyList<ThreadBackgroundWorkItem>? items = null) {
+        ArgumentNullException.ThrowIfNull(recentEvidenceTools);
+        return BuildBackgroundWorkReadyStatusMessage(readyCount, recentEvidenceTools, items);
+    }
+
+    internal static string BuildBackgroundWorkRunningStatusMessageForTesting(
+        int runningCount,
+        IReadOnlyList<ThreadBackgroundWorkItem>? items = null) {
+        return BuildBackgroundWorkRunningStatusMessage(runningCount, items);
+    }
+
+    internal static string BuildBackgroundWorkCompletedStatusMessageForTesting(
+        int completedCount,
+        IReadOnlyList<ThreadBackgroundWorkItem>? items = null) {
+        return BuildBackgroundWorkCompletedStatusMessage(completedCount, items);
+    }
+
+    internal static IReadOnlyList<TurnCounterMetricDto> BuildAutonomyCounterMetricsForTesting(
+        int nudgeUnknownEnvelopeReplanCount,
+        int noTextRecoveryHitCount,
+        int noTextToolOutputRecoveryHitCount,
+        int proactiveSkipMutatingCount,
+        int proactiveSkipReadOnlyCount,
+        int proactiveSkipUnknownCount,
+        ThreadBackgroundWorkSnapshot? backgroundWorkSnapshot = null) {
+        return BuildAutonomyCounterMetrics(
+            nudgeUnknownEnvelopeReplanCount,
+            noTextRecoveryHitCount,
+            noTextToolOutputRecoveryHitCount,
+            proactiveSkipMutatingCount,
+            proactiveSkipReadOnlyCount,
+            proactiveSkipUnknownCount,
+            backgroundWorkSnapshot);
+    }
+
+    internal static AutonomyTelemetryDto BuildAutonomyTelemetrySummaryForTesting(
+        int toolRounds,
+        int projectionFallbackCount,
+        IReadOnlyList<ToolErrorMetricDto>? toolErrors,
+        IReadOnlyList<TurnCounterMetricDto>? autonomyCounters,
+        bool completed) {
+        return BuildAutonomyTelemetrySummary(
+            toolRounds,
+            projectionFallbackCount,
+            toolErrors,
+            autonomyCounters,
+            completed);
     }
 
     internal static string[] SelectCachedEvidenceAskCoverageTokensForTesting(params string[] requestTokens) {

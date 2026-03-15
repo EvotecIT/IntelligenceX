@@ -250,7 +250,7 @@ public sealed partial class MainWindow {
         if (packs is { Count: > 0 }) {
             for (var i = 0; i < packs.Count; i++) {
                 var pack = packs[i];
-                if (!string.Equals(ToolPackMetadataNormalizer.NormalizePackId(pack.Id), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                if (!PackMatchesRuntimeId(pack, normalizedPackId)) {
                     continue;
                 }
 
@@ -553,20 +553,20 @@ public sealed partial class MainWindow {
                         tool.TargetScopeArguments),
                 ToolRepresentativeExamples.DirectoryScopeFallbackExample),
             (static tool =>
-                    (string.Equals(NormalizeRuntimePackId(tool.PackId), "eventlog", StringComparison.Ordinal)
+                    (HasRoutingEntity(tool, "event")
                      || HasCategoryToken(tool, "event"))
                     && ToolRepresentativeExamples.IsEventEvidenceFallbackCandidate(
-                        entity: "event",
+                        entity: tool.RoutingEntity,
                         tool.SupportsRemoteHostTargeting,
                         tool.SupportsRemoteExecution,
                         tool.ExecutionScope),
                 ToolRepresentativeExamples.EventEvidenceFallbackExample),
             (static tool =>
-                    (string.Equals(NormalizeRuntimePackId(tool.PackId), "system", StringComparison.Ordinal)
+                    ((HasRoutingScope(tool, "host") && HasRoutingEntity(tool, "host"))
                      || HasCategoryToken(tool, "system", "host"))
                     && ToolRepresentativeExamples.IsHostDiagnosticsFallbackCandidate(
-                        scope: "host",
-                        entity: "host",
+                        scope: tool.RoutingScope,
+                        entity: tool.RoutingEntity,
                         tool.SupportsRemoteHostTargeting,
                         tool.SupportsRemoteExecution,
                         tool.ExecutionScope),

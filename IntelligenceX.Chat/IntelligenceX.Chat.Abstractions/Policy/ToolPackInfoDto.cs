@@ -1,3 +1,5 @@
+using System;
+
 namespace IntelligenceX.Chat.Abstractions.Policy;
 
 /// <summary>
@@ -36,6 +38,26 @@ public sealed record ToolPackInfoDto {
     /// Pack provenance classification.
     /// </summary>
     public ToolPackSourceKind SourceKind { get; init; } = ToolPackSourceKind.OpenSource;
+    /// <summary>
+    /// Normalized category advertised by the pack.
+    /// </summary>
+    public string? Category { get; init; }
+    /// <summary>
+    /// Stable engine identifier when the pack maps to a known upstream engine.
+    /// </summary>
+    public string? EngineId { get; init; }
+    /// <summary>
+    /// Normalized runtime aliases advertised by the pack.
+    /// </summary>
+    public string[] Aliases { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Normalized capability tags advertised by the pack.
+    /// </summary>
+    public string[] CapabilityTags { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Normalized search tokens advertised by the pack for planner/routing prompts.
+    /// </summary>
+    public string[] SearchTokens { get; init; } = Array.Empty<string>();
     /// <summary>
     /// Optional autonomy readiness summary derived from registered tools.
     /// </summary>

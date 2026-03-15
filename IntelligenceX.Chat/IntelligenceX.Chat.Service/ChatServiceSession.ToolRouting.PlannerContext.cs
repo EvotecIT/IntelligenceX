@@ -15,6 +15,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxPlannerContextSkills = 6;
     private const int MaxPlannerContextHandoffTargets = 8;
     private const int MaxPlannerContextSourceTools = 4;
+    private const int MaxPlannerContextBackgroundFocusChars = 320;
 
     private readonly record struct PlannerContextMetadata(
         bool RequiresLiveExecution,
@@ -30,8 +31,24 @@ internal sealed partial class ChatServiceSession {
         string ContinuationSourceTool,
         string ContinuationReason,
         string ContinuationConfidence,
+        bool BackgroundPreparationAllowed,
+        int BackgroundPendingReadOnlyActions,
+        int BackgroundPendingUnknownActions,
+        string[] BackgroundFollowUpClasses,
+        string BackgroundPriorityFocus,
+        string BackgroundFollowUpFocus,
+        string[] BackgroundRecentEvidenceTools,
         string[] MatchingSkills,
         bool AllowCachedEvidenceReuse);
+
+    private readonly record struct PlannerBackgroundPreparationHints(
+        bool PreparationAllowed,
+        int PendingReadOnlyActions,
+        int PendingUnknownActions,
+        string[] FollowUpClasses,
+        string PriorityFocus,
+        string FollowUpFocus,
+        string[] RecentEvidenceTools);
 
     private string BuildPlannerContextAugmentedRequest(string threadId, string requestText, IReadOnlyList<ToolDefinition> definitions) {
         var normalizedRequest = (requestText ?? string.Empty).Trim();
@@ -57,6 +74,7 @@ internal sealed partial class ChatServiceSession {
             continuationSourceTool,
             continuationReason,
             continuationConfidence) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, definitions);
+        var backgroundHints = ResolvePlannerBackgroundPreparationHints(normalizedThreadId);
         if (!hasCheckpoint
             && structuredPreferredPackIds.Length == 0
             && structuredPreferredToolNames.Length == 0
@@ -67,7 +85,14 @@ internal sealed partial class ChatServiceSession {
             && structuredHandoffTargetToolNames.Length == 0
             && continuationSourceTool.Length == 0
             && continuationReason.Length == 0
-            && continuationConfidence.Length == 0) {
+            && continuationConfidence.Length == 0
+            && !backgroundHints.PreparationAllowed
+            && backgroundHints.PendingReadOnlyActions <= 0
+            && backgroundHints.PendingUnknownActions <= 0
+            && backgroundHints.FollowUpClasses.Length == 0
+            && backgroundHints.PriorityFocus.Length == 0
+            && backgroundHints.FollowUpFocus.Length == 0
+            && backgroundHints.RecentEvidenceTools.Length == 0) {
             return normalizedRequest;
         }
 
@@ -108,6 +133,8 @@ internal sealed partial class ChatServiceSession {
             preferredToolNames,
             sourceToolNames,
             structuredNextActionReason,
+            backgroundHints.FollowUpClasses,
+            backgroundHints.PriorityFocus,
             handoffTargetPackIds,
             handoffTargetToolNames);
 
@@ -124,6 +151,13 @@ internal sealed partial class ChatServiceSession {
             && continuationSourceTool.Length == 0
             && continuationReason.Length == 0
             && continuationConfidence.Length == 0
+            && !backgroundHints.PreparationAllowed
+            && backgroundHints.PendingReadOnlyActions <= 0
+            && backgroundHints.PendingUnknownActions <= 0
+            && backgroundHints.FollowUpClasses.Length == 0
+            && backgroundHints.PriorityFocus.Length == 0
+            && backgroundHints.FollowUpFocus.Length == 0
+            && backgroundHints.RecentEvidenceTools.Length == 0
             && matchingSkills.Length == 0
             && (!hasCheckpoint || !checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse)) {
             return normalizedRequest;
@@ -196,6 +230,40 @@ internal sealed partial class ChatServiceSession {
                 .AppendLine(continuationConfidence);
         }
 
+        if (backgroundHints.PreparationAllowed) {
+            builder.AppendLine("background_preparation_allowed: true");
+        }
+
+        if (backgroundHints.PendingReadOnlyActions > 0) {
+            builder.Append("background_pending_read_only_actions: ")
+                .AppendLine(backgroundHints.PendingReadOnlyActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (backgroundHints.PendingUnknownActions > 0) {
+            builder.Append("background_pending_unknown_actions: ")
+                .AppendLine(backgroundHints.PendingUnknownActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (backgroundHints.FollowUpClasses.Length > 0) {
+            builder.Append("background_follow_up_classes: ")
+                .AppendLine(string.Join(", ", backgroundHints.FollowUpClasses));
+        }
+
+        if (backgroundHints.PriorityFocus.Length > 0) {
+            builder.Append("background_priority_focus: ")
+                .AppendLine(backgroundHints.PriorityFocus);
+        }
+
+        if (backgroundHints.FollowUpFocus.Length > 0) {
+            builder.Append("background_follow_up_focus: ")
+                .AppendLine(backgroundHints.FollowUpFocus);
+        }
+
+        if (backgroundHints.RecentEvidenceTools.Length > 0) {
+            builder.Append("background_recent_evidence_tools: ")
+                .AppendLine(string.Join(", ", backgroundHints.RecentEvidenceTools));
+        }
+
         if (matchingSkills.Length > 0) {
             builder.Append("matching_skills: ")
                 .AppendLine(string.Join(", ", matchingSkills));
@@ -249,6 +317,56 @@ internal sealed partial class ChatServiceSession {
             NormalizeContinuationConfidence(snapshot.Confidence));
     }
 
+    private PlannerBackgroundPreparationHints ResolvePlannerBackgroundPreparationHints(string normalizedThreadId) {
+        if (normalizedThreadId.Length == 0) {
+            return new PlannerBackgroundPreparationHints(
+                PreparationAllowed: false,
+                PendingReadOnlyActions: 0,
+                PendingUnknownActions: 0,
+                FollowUpClasses: Array.Empty<string>(),
+                PriorityFocus: string.Empty,
+                FollowUpFocus: string.Empty,
+                RecentEvidenceTools: Array.Empty<string>());
+        }
+
+        var backgroundWork = ResolveThreadBackgroundWorkSnapshot(normalizedThreadId);
+        if (backgroundWork.QueuedCount <= 0 && backgroundWork.ReadyCount <= 0) {
+            return new PlannerBackgroundPreparationHints(
+                PreparationAllowed: false,
+                PendingReadOnlyActions: 0,
+                PendingUnknownActions: 0,
+                FollowUpClasses: Array.Empty<string>(),
+                PriorityFocus: string.Empty,
+                FollowUpFocus: string.Empty,
+                RecentEvidenceTools: Array.Empty<string>());
+        }
+
+        var activeItems = backgroundWork.Items
+            .Where(static item => !string.Equals(item.State, BackgroundWorkStateCompleted, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var followUpSummary = BuildBackgroundWorkFollowUpSummary(activeItems);
+        var focusItems = activeItems
+            .Select(static item => NormalizeWorkingMemoryAnswerPlanFocus(item.Request))
+            .Where(static focus => focus.Length > 0)
+            .Take(3)
+            .ToArray();
+        var followUpFocus = focusItems.Length == 0
+            ? string.Empty
+            : string.Join("; ", focusItems);
+        if (followUpFocus.Length > MaxPlannerContextBackgroundFocusChars) {
+            followUpFocus = followUpFocus[..MaxPlannerContextBackgroundFocusChars].TrimEnd();
+        }
+
+        return new PlannerBackgroundPreparationHints(
+            PreparationAllowed: backgroundWork.ReadyCount > 0 || backgroundWork.QueuedCount > 0,
+            PendingReadOnlyActions: backgroundWork.PendingReadOnlyCount,
+            PendingUnknownActions: backgroundWork.PendingUnknownCount,
+            FollowUpClasses: followUpSummary.FollowUpKinds,
+            PriorityFocus: followUpSummary.PriorityFocus,
+            FollowUpFocus: followUpFocus,
+            RecentEvidenceTools: backgroundWork.RecentEvidenceTools);
+    }
+
     private (string[] TargetPackIds, string[] TargetToolNames) CollectPlannerHandoffTargets(IReadOnlyList<string> sourceToolNames) {
         if (sourceToolNames is null || sourceToolNames.Count == 0 || _toolOrchestrationCatalog is null) {
             return (Array.Empty<string>(), Array.Empty<string>());
@@ -288,6 +406,8 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<string> preferredToolNames,
         IReadOnlyList<string> sourceToolNames,
         string structuredNextActionReason,
+        IReadOnlyList<string> backgroundFollowUpClasses,
+        string backgroundPriorityFocus,
         IReadOnlyList<string> handoffTargetPackIds,
         IReadOnlyList<string> handoffTargetToolNames) {
         var skillInventory = NormalizeSkillInventoryValues(
@@ -304,9 +424,11 @@ internal sealed partial class ChatServiceSession {
         AddPlannerTokenSeeds(requestTokens, preferredPackIds);
         AddPlannerTokenSeeds(requestTokens, preferredToolNames);
         AddPlannerTokenSeeds(requestTokens, sourceToolNames);
+        AddPlannerTokenSeeds(requestTokens, backgroundFollowUpClasses);
         AddPlannerTokenSeeds(requestTokens, handoffTargetPackIds);
         AddPlannerTokenSeeds(requestTokens, handoffTargetToolNames);
         AddPlannerReasonTokens(requestTokens, structuredNextActionReason);
+        AddPlannerReasonTokens(requestTokens, backgroundPriorityFocus);
         if (checkpoint.DomainIntentFamily.Length > 0) {
             requestTokens.Add(checkpoint.DomainIntentFamily);
         }
@@ -420,6 +542,13 @@ internal sealed partial class ChatServiceSession {
             ContinuationSourceTool: string.Empty,
             ContinuationReason: string.Empty,
             ContinuationConfidence: string.Empty,
+            BackgroundPreparationAllowed: false,
+            BackgroundPendingReadOnlyActions: 0,
+            BackgroundPendingUnknownActions: 0,
+            BackgroundFollowUpClasses: Array.Empty<string>(),
+            BackgroundPriorityFocus: string.Empty,
+            BackgroundFollowUpFocus: string.Empty,
+            BackgroundRecentEvidenceTools: Array.Empty<string>(),
             MatchingSkills: Array.Empty<string>(),
             AllowCachedEvidenceReuse: false);
         var raw = requestText ?? string.Empty;
@@ -440,6 +569,13 @@ internal sealed partial class ChatServiceSession {
         var continuationSourceTool = string.Empty;
         var continuationReason = string.Empty;
         var continuationConfidence = string.Empty;
+        var backgroundPreparationAllowed = false;
+        var backgroundPendingReadOnlyActions = 0;
+        var backgroundPendingUnknownActions = 0;
+        var backgroundFollowUpClasses = Array.Empty<string>();
+        var backgroundPriorityFocus = string.Empty;
+        var backgroundFollowUpFocus = string.Empty;
+        var backgroundRecentEvidenceTools = Array.Empty<string>();
         var matchingSkills = Array.Empty<string>();
         var allowCachedEvidenceReuse = false;
         var sawMarker = false;
@@ -569,6 +705,64 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (TryParseStructuredBooleanLine(trimmed, "background_preparation_allowed", out var parsedBackgroundPreparationAllowed)) {
+                backgroundPreparationAllowed = parsedBackgroundPreparationAllowed;
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "background_pending_read_only_actions", out var backgroundPendingReadOnlyActionsValue)
+                && int.TryParse(
+                    backgroundPendingReadOnlyActionsValue.ToString(),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsedBackgroundPendingReadOnlyActions)) {
+                backgroundPendingReadOnlyActions = Math.Max(0, parsedBackgroundPendingReadOnlyActions);
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "background_pending_unknown_actions", out var backgroundPendingUnknownActionsValue)
+                && int.TryParse(
+                    backgroundPendingUnknownActionsValue.ToString(),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsedBackgroundPendingUnknownActions)) {
+                backgroundPendingUnknownActions = Math.Max(0, parsedBackgroundPendingUnknownActions);
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "background_follow_up_focus", out var backgroundFollowUpFocusValue)) {
+                backgroundFollowUpFocus = NormalizeWorkingMemoryAnswerPlanFocus(backgroundFollowUpFocusValue.ToString());
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "background_follow_up_classes", out var backgroundFollowUpClassesValue)) {
+                backgroundFollowUpClasses = NormalizeStructuredMetadataCsv(
+                    backgroundFollowUpClassesValue,
+                    static value => ToolHandoffFollowUpKinds.Normalize(value),
+                    maxItems: 4);
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "background_priority_focus", out var backgroundPriorityFocusValue)) {
+                backgroundPriorityFocus = NormalizeWorkingMemoryAnswerPlanFocus(backgroundPriorityFocusValue.ToString());
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "background_recent_evidence_tools", out var backgroundRecentEvidenceToolsValue)) {
+                backgroundRecentEvidenceTools = NormalizeStructuredMetadataCsv(
+                    backgroundRecentEvidenceToolsValue,
+                    static value => NormalizeToolNameForAnswerPlan(value),
+                    MaxPlannerContextSourceTools);
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
             if (TryParseStructuredKeyValueLine(trimmed, "matching_skills", out var matchingSkillsValue)) {
                 matchingSkills = NormalizeStructuredMetadataCsv(
                     matchingSkillsValue,
@@ -597,6 +791,13 @@ internal sealed partial class ChatServiceSession {
             ContinuationSourceTool: continuationSourceTool,
             ContinuationReason: continuationReason,
             ContinuationConfidence: continuationConfidence,
+            BackgroundPreparationAllowed: backgroundPreparationAllowed,
+            BackgroundPendingReadOnlyActions: backgroundPendingReadOnlyActions,
+            BackgroundPendingUnknownActions: backgroundPendingUnknownActions,
+            BackgroundFollowUpClasses: backgroundFollowUpClasses,
+            BackgroundPriorityFocus: backgroundPriorityFocus,
+            BackgroundFollowUpFocus: backgroundFollowUpFocus,
+            BackgroundRecentEvidenceTools: backgroundRecentEvidenceTools,
             MatchingSkills: matchingSkills,
             AllowCachedEvidenceReuse: allowCachedEvidenceReuse);
         return sawMarker && parsedAnyStructuredValue;

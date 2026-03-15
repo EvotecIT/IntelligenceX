@@ -19,9 +19,6 @@ namespace IntelligenceX.Chat.Tests;
 /// Validates planner and lexical-routing prompts include schema hints.
 /// </summary>
 public sealed class ChatServicePlannerPromptTests {
-    private static readonly MethodInfo BuildToolRoutingSearchTextMethod =
-        typeof(ChatServiceSession).GetMethod("BuildToolRoutingSearchText", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("BuildToolRoutingSearchText not found.");
     private static readonly MethodInfo TokenizeRoutingTokensMethod =
         typeof(ChatServiceSession).GetMethod("TokenizeRoutingTokens", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("TokenizeRoutingTokens not found.");
@@ -29,9 +26,6 @@ public sealed class ChatServicePlannerPromptTests {
     private static readonly MethodInfo SelectWeightedToolSubsetMethod =
         typeof(ChatServiceSession).GetMethod("SelectWeightedToolSubset", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("SelectWeightedToolSubset not found.");
-    private static readonly MethodInfo BuildModelPlannerCandidatesMethod =
-        typeof(ChatServiceSession).GetMethod("BuildModelPlannerCandidates", BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("BuildModelPlannerCandidates not found.");
     private static readonly MethodInfo EnsureMinimumToolSelectionMethod =
         typeof(ChatServiceSession).GetMethod("EnsureMinimumToolSelection", BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("EnsureMinimumToolSelection not found.");
@@ -394,6 +388,48 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesBackgroundPreparationHintsWhenPlannerContextPresent() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_ldap_diagnostics",
+                "Run LDAP diagnostics.",
+                ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties()),
+            new(
+                "system_certificate_posture",
+                "Inspect certificate posture.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties())
+        };
+
+        var prompt = BuildModelPlannerPrompt(
+            """
+            [Planner context]
+            ix:planner-context:v1
+            background_preparation_allowed: true
+            background_pending_read_only_actions: 1
+            background_pending_unknown_actions: 1
+            background_follow_up_classes: verification, normalization
+            background_priority_focus: critical verification
+            background_follow_up_focus: verify ldap certificate posture; prepare compact operator handoff
+            background_recent_evidence_tools: ad_ldap_diagnostics, system_certificate_posture
+
+            continue from the same domain controller
+            """,
+            definitions,
+            4);
+
+        Assert.Contains("Background preparation:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Read-only follow-up preparation is allowed for this thread.", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Pending read-only actions: 1", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Pending unknown-mutability actions: 1", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Follow-up classes: verification, normalization", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Priority focus: critical verification", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Preparation focus: verify ldap certificate posture; prepare compact operator handoff", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Recent evidence tools:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_diagnostics", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("system_certificate_posture", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildModelPlannerPrompt_IncludesLdapCertificateFollowthroughTargetsWhenProvided() {
         var definitions = new List<ToolDefinition> {
             new(
@@ -655,6 +691,196 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildPlannerContextAugmentedRequest_IncludesBackgroundPreparationHintsFromPendingActionsAndEvidence() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var threadId = "thread-planner-background";
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "ad_ldap_diagnostics",
+                "Run LDAP diagnostics.",
+                ToolSchema.Object(("domain_controller", ToolSchema.String("Domain controller."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "system_certificate_posture",
+                "Inspect certificate posture.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                })
+        };
+
+        session.RememberPendingActionsForTesting(
+            threadId,
+            """
+            [Action]
+            ix:action:v1
+            id: verify_ldaps
+            title: Verify LDAPS certificate posture
+            request: verify ldap certificate posture on the same domain controller
+            readonly: true
+            reply: /act verify_ldaps
+
+            [Action]
+            ix:action:v1
+            id: handoff_note
+            title: Prepare operator handoff
+            request: prepare compact operator handoff for the same incident scope
+            reply: /act handoff_note
+            """);
+        session.RememberThreadToolEvidenceForTesting(
+            threadId,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-ldap",
+                    Name = "ad_ldap_diagnostics",
+                    ArgumentsJson = "{\"domain_controller\":\"ad0.contoso.com\"}"
+                },
+                new() {
+                    CallId = "call-cert",
+                    Name = "system_certificate_posture",
+                    ArgumentsJson = "{\"computer_name\":\"ad0.contoso.com\"}"
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ldap",
+                    Ok = true,
+                    Output = "{\"ok\":true}",
+                    SummaryMarkdown = "LDAP diagnostics completed."
+                },
+                new() {
+                    CallId = "call-cert",
+                    Ok = true,
+                    Output = "{\"ok\":true}",
+                    SummaryMarkdown = "Certificate posture collected."
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            threadId,
+            "continue from the same DC",
+            toolDefinitions);
+
+        Assert.Contains("ix:planner-context:v1", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_preparation_allowed: true", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_pending_read_only_actions: 1", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_pending_unknown_actions: 1", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_follow_up_focus: verify ldap certificate posture on the same domain controller; prepare compact operator handoff for the same incident scope", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_recent_evidence_tools:", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_diagnostics", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("system_certificate_posture", augmented, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildPlannerContextAugmentedRequest_IncludesBackgroundClassificationHintsFromTaggedHandoffs() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-planner-background-classification";
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "ad_user_lifecycle",
+                "Manage AD user lifecycle.",
+                ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties(),
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_object_get",
+                            TargetRole = ToolRoutingTaxonomy.RoleResolver,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Critical,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        }
+                    }
+                },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }),
+            new(
+                "remote_disk_inventory",
+                "Inspect remote disk inventory.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Enrichment,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Low,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "ad_object_get",
+                "Get AD object.",
+                ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties()),
+            new(
+                "system_info",
+                "Inspect system info.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote host."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(toolDefinitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            toolDefinitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-ad-write",
+                    Name = "ad_user_lifecycle",
+                    ArgumentsJson = """{"identity":"dave","operation":"disable"}"""
+                },
+                new() {
+                    CallId = "call-disk",
+                    Name = "remote_disk_inventory",
+                    ArgumentsJson = """{"computer_name":"srv11.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ad-write",
+                    Ok = true,
+                    Output = """{"ok":true,"distinguished_name":"CN=dave,OU=Users,DC=contoso,DC=com"}""",
+                    MetaJson = """{"write_applied":true}"""
+                },
+                new() {
+                    CallId = "call-disk",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            threadId,
+            "continue with the prepared follow-up",
+            toolDefinitions);
+
+        Assert.Contains("background_follow_up_classes: verification, enrichment", augmented, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_priority_focus: critical verification", augmented, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void PlannerContextRoundTrip_ParsesAugmentedRequestEmittedByBuilder() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var threadId = "thread-planner-roundtrip";
@@ -736,6 +962,11 @@ public sealed class ChatServicePlannerPromptTests {
             out var continuationSourceTool,
             out var continuationReason,
             out var continuationConfidence,
+            out var backgroundPreparationAllowed,
+            out var backgroundPendingReadOnlyActions,
+            out var backgroundPendingUnknownActions,
+            out var backgroundFollowUpFocus,
+            out var backgroundRecentEvidenceTools,
             out var matchingSkills,
             out var allowCachedEvidenceReuse);
 
@@ -750,6 +981,11 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
         Assert.Equal("prefer ad_ldap_diagnostics after prior tool output", continuationReason);
         Assert.Equal("medium", continuationConfidence);
+        Assert.False(backgroundPreparationAllowed);
+        Assert.Equal(0, backgroundPendingReadOnlyActions);
+        Assert.Equal(0, backgroundPendingUnknownActions);
+        Assert.Equal(string.Empty, backgroundFollowUpFocus);
+        Assert.Empty(backgroundRecentEvidenceTools);
         Assert.Empty(matchingSkills);
         Assert.False(allowCachedEvidenceReuse);
     }
@@ -784,6 +1020,11 @@ public sealed class ChatServicePlannerPromptTests {
             out var continuationSourceTool,
             out var continuationReason,
             out var continuationConfidence,
+            out var backgroundPreparationAllowed,
+            out var backgroundPendingReadOnlyActions,
+            out var backgroundPendingUnknownActions,
+            out var backgroundFollowUpFocus,
+            out var backgroundRecentEvidenceTools,
             out var matchingSkills,
             out var allowCachedEvidenceReuse);
 
@@ -800,6 +1041,11 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Equal("ad_monitoring_probe_run", continuationSourceTool);
         Assert.Equal("prefer ad_ldap_diagnostics after prior tool output", continuationReason);
         Assert.Equal("high", continuationConfidence);
+        Assert.False(backgroundPreparationAllowed);
+        Assert.Equal(0, backgroundPendingReadOnlyActions);
+        Assert.Equal(0, backgroundPendingUnknownActions);
+        Assert.Equal(string.Empty, backgroundFollowUpFocus);
+        Assert.Empty(backgroundRecentEvidenceTools);
         Assert.Contains("ad_domain.scope_hosts", matchingSkills, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system.host_baseline", matchingSkills, StringComparer.OrdinalIgnoreCase);
         Assert.False(allowCachedEvidenceReuse);
@@ -817,7 +1063,7 @@ public sealed class ChatServicePlannerPromptTests {
                 .Required("log_name")
                 .NoAdditionalProperties());
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("log_name", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("required", searchText, StringComparison.OrdinalIgnoreCase);
@@ -835,7 +1081,7 @@ public sealed class ChatServicePlannerPromptTests {
                     ("search_base_dn", ToolSchema.String("Optional directory scope.")))
                 .NoAdditionalProperties());
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("remote_host_targeting", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("target_scope", searchText, StringComparison.OrdinalIgnoreCase);
@@ -857,7 +1103,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RolePackInfo
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("role pack_info", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("role:pack_info", searchText, StringComparison.OrdinalIgnoreCase);
@@ -902,7 +1148,7 @@ public sealed class ChatServicePlannerPromptTests {
                 RecoveryToolNames = new[] { "eventlog_channels_list" }
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("setup_tool eventlog_channels_list", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("recovery_tool eventlog_channels_list", searchText, StringComparison.OrdinalIgnoreCase);
@@ -937,7 +1183,7 @@ public sealed class ChatServicePlannerPromptTests {
                 }
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("environment_discover", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("environment_discovery", searchText, StringComparison.OrdinalIgnoreCase);
@@ -974,8 +1220,8 @@ public sealed class ChatServicePlannerPromptTests {
             },
             tags: new[] { "scope:host_certificate_store" });
 
-        var ldapSearchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { ldapDefinition }));
-        var systemSearchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { systemDefinition }));
+        var ldapSearchText = BuildToolRoutingSearchText(ldapDefinition);
+        var systemSearchText = BuildToolRoutingSearchText(systemDefinition);
 
         Assert.Contains("ldap", ldapSearchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ldaps", ldapSearchText, StringComparison.OrdinalIgnoreCase);
@@ -997,7 +1243,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("pack active_directory", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack adplayground", searchText, StringComparison.OrdinalIgnoreCase);
@@ -1018,7 +1264,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("pack ad", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack active_directory", searchText, StringComparison.OrdinalIgnoreCase);
@@ -1041,7 +1287,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("pack system", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack computerx", searchText, StringComparison.OrdinalIgnoreCase);
@@ -1062,7 +1308,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("pack dnsclientx", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:dnsclientx", searchText, StringComparison.OrdinalIgnoreCase);
@@ -1083,7 +1329,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("pack domaindetective", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:domaindetective", searchText, StringComparison.OrdinalIgnoreCase);
@@ -1105,7 +1351,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("pack testimox", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:testimox", searchText, StringComparison.OrdinalIgnoreCase);
@@ -1127,12 +1373,76 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             });
 
-        var searchText = Assert.IsType<string>(BuildToolRoutingSearchTextMethod.Invoke(null, new object?[] { definition }));
+        var searchText = BuildToolRoutingSearchText(definition);
 
         Assert.Contains("pack eventlog", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:eventlog", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack event_log", searchText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("pack:event_log", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_PrefersRuntimePackSearchTokens_WhenPackPublishesThem() {
+        var definition = new ToolDefinition(
+            "ops_inventory_query",
+            "Query remote host inventory.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "ops_inventory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+
+        var searchText = BuildToolRoutingSearchText(
+            definition,
+            packAvailability: new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "ops_inventory",
+                    Name = "Ops Inventory",
+                    SourceKind = "open_source",
+                    Category = "system",
+                    EngineId = "computerx",
+                    SearchTokens = new[] { "server_inventory", "cpu", "memory", "disk", "computerx" },
+                    Enabled = true
+                }
+            });
+
+        Assert.Contains("pack ops_inventory", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack server_inventory", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack computerx", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack cpu", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("pack adplayground", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IncludesRuntimePackAliases_WhenPackSelfRegistersThem() {
+        var definition = new ToolDefinition(
+            "ops_inventory_query",
+            "Query remote host inventory.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "serverops",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+
+        var searchText = BuildToolRoutingSearchText(
+            definition,
+            packAvailability: new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "ops_inventory",
+                    Name = "Ops Inventory",
+                    SourceKind = "open_source",
+                    Aliases = new[] { "serverops", "host_inventory" },
+                    Enabled = true
+                }
+            });
+
+        Assert.Contains("pack serverops", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack host_inventory", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack ops_inventory", searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1492,25 +1802,21 @@ public sealed class ChatServicePlannerPromptTests {
                 ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
         }
 
-        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
-            null,
-            new object?[] {
-                definitions,
-                """
-                [Continuation focus]
-                ix:continuation-focus:v1
-                last_user_goal: Summarize the forest replication state in a table.
-                last_unresolved_ask: Explain why ADRODC is absent from the forest replication rows.
-                last_primary_artifact: table
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Continuation focus]
+            ix:continuation-focus:v1
+            last_user_goal: Summarize the forest replication state in a table.
+            last_unresolved_ask: Explain why ADRODC is absent from the forest replication rows.
+            last_primary_artifact: table
 
-                [Working memory checkpoint]
-                ix:working-memory:v1
-                intent_anchor: Run forest-wide replication and LDAP diagnostics.
-                follow_up: where is ADRODC in the table?
-                """,
-                4,
-                ToolOrchestrationCatalog.Build(definitions)
-            }));
+            [Working memory checkpoint]
+            ix:working-memory:v1
+            intent_anchor: Run forest-wide replication and LDAP diagnostics.
+            follow_up: where is ADRODC in the table?
+            """,
+            4);
 
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => tool.Name.StartsWith("adrodc_gap_probe_", StringComparison.OrdinalIgnoreCase));
@@ -1553,25 +1859,21 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             }));
 
-        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
-            null,
-            new object?[] {
-                definitions,
-                """
-                [Planner context]
-                ix:planner-context:v1
-                requires_live_execution: true
-                preferred_pack_ids: system
-                preferred_tool_names: ad_ldap_diagnostics
-                handoff_target_pack_ids: system
-                handoff_target_tool_names: system_hardware_summary
-                allow_cached_evidence_reuse: false
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            preferred_pack_ids: system
+            preferred_tool_names: ad_ldap_diagnostics
+            handoff_target_pack_ids: system
+            handoff_target_tool_names: system_hardware_summary
+            allow_cached_evidence_reuse: false
 
-                continue from the same DC scope
-                """,
-                4,
-                ToolOrchestrationCatalog.Build(definitions)
-            }));
+            continue from the same DC scope
+            """,
+            4);
 
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
@@ -1640,14 +1942,7 @@ public sealed class ChatServicePlannerPromptTests {
             "can you check ldap certificates now?",
             definitions);
 
-        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
-            null,
-            new object?[] {
-                definitions,
-                augmented,
-                4,
-                ToolOrchestrationCatalog.Build(definitions)
-            }));
+        var selected = BuildModelPlannerCandidates(definitions, augmented, 4);
 
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
@@ -1681,23 +1976,19 @@ public sealed class ChatServicePlannerPromptTests {
             },
             tags: new[] { "intent:ldap_certificates", "protocol:ldaps" }));
 
-        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(BuildModelPlannerCandidatesMethod.Invoke(
-            null,
-            new object?[] {
-                definitions,
-                """
-                [Planner context]
-                ix:planner-context:v1
-                structured_next_action_source_tools: ad_monitoring_probe_run
-                structured_next_action_reason: inspect ldaps certificate details on the same domain controller
-                structured_next_action_confidence: 0.88
-                allow_cached_evidence_reuse: false
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            structured_next_action_source_tools: ad_monitoring_probe_run
+            structured_next_action_reason: inspect ldaps certificate details on the same domain controller
+            structured_next_action_confidence: 0.88
+            allow_cached_evidence_reuse: false
 
-                continue with the same hosts
-                """,
-                4,
-                ToolOrchestrationCatalog.Build(definitions)
-            }));
+            continue with the same hosts
+            """,
+            4);
 
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
@@ -1733,7 +2024,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             }));
 
-        var selected = ChatServiceSession.BuildModelPlannerCandidatesForTesting(
+        var selected = BuildModelPlannerCandidates(
             definitions,
             "continue the investigation on ad0.contoso.com and inspect the event timeline there",
             4,
@@ -1773,7 +2064,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
             }));
 
-        var selected = ChatServiceSession.BuildModelPlannerCandidatesForTesting(
+        var selected = BuildModelPlannerCandidates(
             definitions,
             """
             [Planner context]
@@ -1843,7 +2134,7 @@ public sealed class ChatServicePlannerPromptTests {
                 Role = ToolRoutingTaxonomy.RoleOperational
             }));
 
-        var selected = ChatServiceSession.BuildModelPlannerCandidatesForTesting(
+        var selected = BuildModelPlannerCandidates(
             definitions,
             """
             [Planner context]
@@ -2166,6 +2457,59 @@ public sealed class ChatServicePlannerPromptTests {
             maxContextLength: maxContextLength,
             loadedContextLength: loadedContextLength,
             capabilities: Array.Empty<string>());
+    }
+
+    private static IReadOnlyList<ToolDefinition> BuildModelPlannerCandidates(
+        IReadOnlyList<ToolDefinition> definitions,
+        string requestText,
+        int limit,
+        ToolOrchestrationCatalog? orchestrationCatalog = null,
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null) {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        if (packAvailability is { Count: > 0 }) {
+            session.SetCapabilitySnapshotContextForTesting(
+                packAvailability,
+                new ToolRoutingCatalogDiagnostics {
+                    TotalTools = definitions.Count,
+                    RoutingAwareTools = 0,
+                    MissingRoutingContractTools = 0,
+                    DomainFamilyTools = 0,
+                    ExpectedDomainFamilyMissingTools = 0,
+                    DomainFamilyMissingActionTools = 0,
+                    ActionWithoutFamilyTools = 0,
+                    FamilyActionConflictFamilies = 0,
+                    FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+                });
+        }
+
+        return session.BuildModelPlannerCandidatesForTesting(
+            definitions,
+            requestText,
+            limit,
+            orchestrationCatalog ?? ToolOrchestrationCatalog.Build(definitions));
+    }
+
+    private static string BuildToolRoutingSearchText(
+        ToolDefinition definition,
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null) {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        if (packAvailability is { Count: > 0 }) {
+            session.SetCapabilitySnapshotContextForTesting(
+                packAvailability,
+                new ToolRoutingCatalogDiagnostics {
+                    TotalTools = 1,
+                    RoutingAwareTools = 1,
+                    MissingRoutingContractTools = 0,
+                    DomainFamilyTools = 0,
+                    ExpectedDomainFamilyMissingTools = 0,
+                    DomainFamilyMissingActionTools = 0,
+                    ActionWithoutFamilyTools = 0,
+                    FamilyActionConflictFamilies = 0,
+                    FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+                });
+        }
+
+        return session.BuildToolRoutingSearchTextForTesting(definition);
     }
 
     private static string BuildModelPlannerPrompt(

@@ -35,6 +35,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxTrackedPackPreflightContexts = 256;
     private const int MaxTrackedThreadRecoveryAliases = 256;
     private const int MaxTrackedThreadToolEvidenceContexts = 128;
+    private const int MaxTrackedThreadBackgroundWorkContexts = 256;
     private const int MaxToolEvidenceEntriesPerThread = 48;
     private static readonly TimeSpan UserIntentContextMaxAge = TimeSpan.FromHours(6);
     private static readonly TimeSpan PendingActionContextMaxAge = TimeSpan.FromHours(8);
@@ -45,6 +46,7 @@ internal sealed partial class ChatServiceSession {
     private static readonly TimeSpan PackPreflightContextMaxAge = TimeSpan.FromHours(8);
     private static readonly TimeSpan ThreadRecoveryAliasContextMaxAge = TimeSpan.FromHours(12);
     private static readonly TimeSpan ThreadToolEvidenceContextMaxAge = TimeSpan.FromHours(8);
+    private static readonly TimeSpan ThreadBackgroundWorkContextMaxAge = TimeSpan.FromHours(8);
     private static readonly TimeSpan StartupToolHealthPrimeBudget = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan StartupToolHealthHelloWaitBudget = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan NativeUsageRefreshInterval = TimeSpan.FromMinutes(1);
@@ -68,7 +70,11 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packEngineIdsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string[]> _packAliasesById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _packIdsByAlias = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _packCategoriesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string[]> _packCapabilityTagsById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string[]> _packSearchTokensById = new(StringComparer.OrdinalIgnoreCase);
     private ToolRuntimePolicyDiagnostics _runtimePolicyDiagnostics;
     private ToolRoutingCatalogDiagnostics _routingCatalogDiagnostics;
     private ToolOrchestrationCatalog _toolOrchestrationCatalog;
@@ -96,6 +102,9 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, long> _recoveredThreadAliasSeenUtcTicksByThreadId = new(StringComparer.Ordinal);
     private readonly object _threadToolEvidenceLock = new();
     private readonly Dictionary<string, Dictionary<string, ThreadToolEvidenceEntry>> _threadToolEvidenceByThreadId = new(StringComparer.Ordinal);
+    private readonly object _threadBackgroundWorkLock = new();
+    private readonly Dictionary<string, ThreadBackgroundWorkSnapshot> _threadBackgroundWorkByThreadId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _threadBackgroundWorkSeenUtcTicksByThreadId = new(StringComparer.Ordinal);
 
     private readonly object _modelListCacheLock = new();
     private ModelListCacheEntry? _modelListCache;
@@ -154,7 +163,11 @@ internal sealed partial class ChatServiceSession {
         _packDescriptionsById.Clear();
         _packSourceKindsById.Clear();
         _packEngineIdsById.Clear();
+        _packAliasesById.Clear();
+        _packIdsByAlias.Clear();
+        _packCategoriesById.Clear();
         _packCapabilityTagsById.Clear();
+        _packSearchTokensById.Clear();
         var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < descriptors.Count; i++) {
@@ -176,10 +189,26 @@ internal sealed partial class ChatServiceSession {
             if (engineId.Length > 0) {
                 _packEngineIdsById[normalizedPackId] = engineId;
             }
+            RememberPackAliases(normalizedPackId, descriptor.Aliases);
+
+            var category = ToolPackBootstrap.NormalizePackCategory(descriptor.Category, descriptor.Id);
+            if (!string.IsNullOrWhiteSpace(category)) {
+                _packCategoriesById[normalizedPackId] = category;
+            }
 
             var capabilityTags = NormalizeDescriptorTokens(descriptor.CapabilityTags);
             if (capabilityTags.Length > 0) {
                 _packCapabilityTagsById[normalizedPackId] = capabilityTags;
+            }
+
+            var searchTokens = ToolPackBootstrap.NormalizePackSearchTokens(
+                packId: normalizedPackId,
+                aliases: _packAliasesById.TryGetValue(normalizedPackId, out var packAliases) ? packAliases : null,
+                category: category,
+                engineId: engineId,
+                explicitSearchTokens: descriptor.SearchTokens);
+            if (searchTokens.Length > 0) {
+                _packSearchTokensById[normalizedPackId] = searchTokens;
             }
         }
     }
@@ -189,7 +218,11 @@ internal sealed partial class ChatServiceSession {
         _packDescriptionsById.Clear();
         _packSourceKindsById.Clear();
         _packEngineIdsById.Clear();
+        _packAliasesById.Clear();
+        _packIdsByAlias.Clear();
+        _packCategoriesById.Clear();
         _packCapabilityTagsById.Clear();
+        _packSearchTokensById.Clear();
 
         for (var i = 0; i < packAvailability.Count; i++) {
             var pack = packAvailability[i];
@@ -210,12 +243,75 @@ internal sealed partial class ChatServiceSession {
             if (engineId.Length > 0) {
                 _packEngineIdsById[normalizedPackId] = engineId;
             }
+            RememberPackAliases(normalizedPackId, pack.Aliases);
+
+            var category = ToolPackBootstrap.NormalizePackCategory(pack.Category, normalizedPackId);
+            if (!string.IsNullOrWhiteSpace(category)) {
+                _packCategoriesById[normalizedPackId] = category;
+            }
 
             var capabilityTags = NormalizeDescriptorTokens(pack.CapabilityTags);
             if (capabilityTags.Length > 0) {
                 _packCapabilityTagsById[normalizedPackId] = capabilityTags;
             }
+
+            var searchTokens = ToolPackBootstrap.NormalizePackSearchTokens(
+                packId: normalizedPackId,
+                aliases: _packAliasesById.TryGetValue(normalizedPackId, out var packAliases) ? packAliases : null,
+                category: category,
+                engineId: engineId,
+                explicitSearchTokens: pack.SearchTokens);
+            if (searchTokens.Length > 0) {
+                _packSearchTokensById[normalizedPackId] = searchTokens;
+            }
         }
+    }
+
+    private void RememberPackAliases(string normalizedPackId, IReadOnlyList<string>? aliases) {
+        var canonicalPackId = NormalizePackId(normalizedPackId);
+        if (canonicalPackId.Length == 0) {
+            return;
+        }
+
+        RememberPackAliasToken(canonicalPackId, canonicalPackId);
+        var normalizedAliases = ToolPackBootstrap.NormalizePackAliases(canonicalPackId, aliases);
+        if (normalizedAliases.Length == 0) {
+            _packAliasesById.Remove(canonicalPackId);
+            return;
+        }
+
+        _packAliasesById[canonicalPackId] = normalizedAliases;
+        for (var i = 0; i < normalizedAliases.Length; i++) {
+            RememberPackAliasToken(canonicalPackId, normalizedAliases[i]);
+        }
+    }
+
+    private void RememberPackAliasToken(string normalizedPackId, string? alias) {
+        var normalizedAlias = ToolPackMetadataNormalizer.NormalizeDescriptorToken(alias);
+        if (normalizedPackId.Length == 0 || normalizedAlias.Length == 0) {
+            return;
+        }
+
+        _packIdsByAlias[normalizedAlias] = normalizedPackId;
+    }
+
+    private string ResolveRuntimePackId(string? packId) {
+        var normalizedPackId = NormalizePackId(packId);
+        if (normalizedPackId.Length > 0) {
+            var normalizedAlias = ToolPackMetadataNormalizer.NormalizeDescriptorToken(packId);
+            if (normalizedAlias.Length > 0
+                && _packIdsByAlias.TryGetValue(normalizedAlias, out var aliasPackId)
+                && aliasPackId.Length > 0) {
+                return aliasPackId;
+            }
+
+            return normalizedPackId;
+        }
+
+        var fallbackAlias = ToolPackMetadataNormalizer.NormalizeDescriptorToken(packId);
+        return fallbackAlias.Length > 0 && _packIdsByAlias.TryGetValue(fallbackAlias, out var resolvedPackId)
+            ? resolvedPackId
+            : string.Empty;
     }
 
     private static string[] NormalizeDescriptorTokens(IReadOnlyList<string>? values) {
@@ -256,18 +352,21 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            var normalizedAliasPackId = NormalizePackId(alias);
-            if (normalizedAliasPackId.Length == 0) {
+            var normalizedAliasToken = ToolPackMetadataNormalizer.NormalizeDescriptorToken(alias);
+            if (normalizedAliasToken.Length == 0) {
                 continue;
             }
 
+            var knownAliasPackId = NormalizePackId(alias);
+            var aliasMapsKnownIdentity = ToolPackIdentityCatalog.IsKnownPackIdentityToken(alias);
             if (normalizedPrimaryPackId.Length > 0
-                && !string.Equals(normalizedAliasPackId, normalizedPrimaryPackId, StringComparison.OrdinalIgnoreCase)) {
+                && aliasMapsKnownIdentity
+                && !string.Equals(knownAliasPackId, normalizedPrimaryPackId, StringComparison.OrdinalIgnoreCase)) {
                 throw new InvalidOperationException(
-                    $"Tool pack alias '{alias}' for '{NormalizeCollisionDescriptorId(descriptorId)}' normalizes to '{normalizedAliasPackId}' instead of '{normalizedPrimaryPackId}'.");
+                    $"Tool pack alias '{alias}' for '{NormalizeCollisionDescriptorId(descriptorId)}' resolves to known pack '{knownAliasPackId}' instead of '{normalizedPrimaryPackId}'.");
             }
 
-            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedAliasPackId);
+            EnsureNoPackIdNormalizationCollision(descriptorIdsByNormalizedPackId, descriptorId, normalizedAliasToken);
         }
     }
 

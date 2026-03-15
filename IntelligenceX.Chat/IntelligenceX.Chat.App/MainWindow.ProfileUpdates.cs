@@ -313,7 +313,7 @@ public sealed partial class MainWindow : Window {
 
         for (var i = 0; i < packs.Length; i++) {
             var pack = packs[i];
-            if (string.Equals(NormalizeRuntimePackId(pack.Id), normalizedPackId, StringComparison.Ordinal)) {
+            if (PackMatchesRuntimeId(pack, normalizedPackId)) {
                 return pack;
             }
         }
@@ -458,6 +458,28 @@ public sealed partial class MainWindow : Window {
 
     private static string NormalizeRuntimePackId(string? packId) {
         return ToolPackMetadataNormalizer.NormalizePackId(packId);
+    }
+
+    private static bool PackMatchesRuntimeId(ToolPackInfoDto pack, string normalizedPackId) {
+        ArgumentNullException.ThrowIfNull(pack);
+
+        var canonicalPackId = NormalizeRuntimePackId(pack.Id);
+        if (string.Equals(canonicalPackId, normalizedPackId, StringComparison.Ordinal)) {
+            return true;
+        }
+
+        if (pack.Aliases is not { Length: > 0 }) {
+            return false;
+        }
+
+        for (var i = 0; i < pack.Aliases.Length; i++) {
+            var alias = ToolPackMetadataNormalizer.NormalizeDescriptorToken(pack.Aliases[i]);
+            if (string.Equals(alias, normalizedPackId, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeUiPackId(string? packId) {
