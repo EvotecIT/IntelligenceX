@@ -10,6 +10,17 @@ namespace IntelligenceX.Chat.App;
 /// Centralizes the OfficeIMO transcript input-normalization contract used during transcript cleanup.
 /// </summary>
 internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
+#if IX_OFFICEIMO_DIRECT
+    public static string NormalizeForTranscriptCleanup(string text) {
+        if (string.IsNullOrEmpty(text)) {
+            return text;
+        }
+
+        return MarkdownInputNormalizer.Normalize(
+            text,
+            MarkdownInputNormalizationPresets.CreateIntelligenceXTranscript());
+    }
+#else
     private static readonly Lazy<OfficeImoInputNormalizationBridge?> OfficeImoInputNormalizationBridgeLazy =
         new(CreateOfficeImoInputNormalizationBridge);
 
@@ -180,4 +191,5 @@ internal static class OfficeImoMarkdownInputNormalizationRuntimeContract {
             return Activator.CreateInstance(optionsType);
         }
     }
+#endif
 }

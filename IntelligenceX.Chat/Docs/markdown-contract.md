@@ -43,7 +43,7 @@ Streaming preview now delegates conservative delta cleanup through the explicit 
 - `OfficeImoMarkdownInputNormalizationRuntimeContract`, which calls the explicit `OfficeIMO.Markdown` `IntelligenceXTranscript` normalization preset directly
 - `OfficeImoMarkdownRuntimeContract`, which now calls `OfficeIMO.MarkdownRenderer.MarkdownRendererPreProcessorPipeline.Apply(...)` with the explicit `CreateIntelligenceXTranscriptMinimal` preprocessor chain
 
-For this PR line, IX should run against the sibling OfficeIMO checkout by default whenever it exists. Package mode remains an explicit validation path, not the default development mode, until the new OfficeIMO package line is published.
+For this PR line, IX should run against the sibling OfficeIMO checkout by default whenever it exists. In that source-mode path the OfficeIMO seams are now compile-time direct calls. Package mode remains an explicit validation path, not the default development mode, until the new OfficeIMO package line is published.
 
 OfficeIMO now also exposes a generic post-parse document-transform pipeline. IX should treat that as OfficeIMO implementation detail and consume it only through explicit OfficeIMO presets/contracts instead of composing transcript-specific transforms in App code.
 
@@ -68,7 +68,7 @@ It owns:
 - transcript renderer option creation through the explicit OfficeIMO desktop-shell preset (`CreateIntelligenceXTranscriptDesktopShell`)
 - runtime/package diagnostics for loaded OfficeIMO assemblies
 
-Until the new OfficeIMO package line is published, the runtime contract classes remain temporary compatibility shims around newer explicit OfficeIMO APIs. They are not the architectural owner of markdown semantics.
+Until the new OfficeIMO package line is published, the runtime contract classes still contain a temporary package-mode compatibility path around newer explicit OfficeIMO APIs. In local source mode they now delegate directly to OfficeIMO without reflection. They are not the architectural owner of markdown semantics.
 
 ### 4. DOCX adaptation
 

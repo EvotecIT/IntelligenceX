@@ -22,6 +22,7 @@ When a sibling OfficeIMO checkout is present, `IntelligenceX.Chat` now prefers i
 - OfficeIMO renderer/runtime probing is centralized in [OfficeImoMarkdownRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownRuntimeContract.cs).
 - OfficeIMO Word transcript preset/capability invocation is centralized in [OfficeImoWordMarkdownRuntimeContract.cs](../IntelligenceX.Chat.ExportArtifacts/OfficeImoWordMarkdownRuntimeContract.cs).
 - OfficeIMO input normalization is centralized in [OfficeImoMarkdownInputNormalizationRuntimeContract.cs](../IntelligenceX.Chat.App/OfficeImoMarkdownInputNormalizationRuntimeContract.cs).
+- When a sibling OfficeIMO checkout is present, those seams now compile against OfficeIMO directly instead of using reflection. The compatibility fallback remains only for explicit package-mode validation until the new package line is published.
 - OfficeIMO now owns the generic post-parse markdown document-transform pipeline; IX should continue to consume that only via explicit OfficeIMO contracts/presets.
 
 ## Adoption Gate

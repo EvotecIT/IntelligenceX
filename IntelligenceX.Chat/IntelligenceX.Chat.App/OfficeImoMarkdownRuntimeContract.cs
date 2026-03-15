@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using System.Reflection;
+using OfficeIMO.Markdown;
 using OfficeIMO.MarkdownRenderer;
+using OfficeIMO.Word.Markdown;
 
 namespace IntelligenceX.Chat.App;
 
@@ -12,6 +14,70 @@ internal static class OfficeImoMarkdownRuntimeContract {
     private static readonly Version MinimumMarkdownRendererVersion = new(0, 2, 0);
     private static readonly Version MinimumMarkdownVersionForNormalizationPresets = new(0, 6, 0);
     private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 7);
+
+#if IX_OFFICEIMO_DIRECT
+    /// <summary>
+    /// Creates transcript renderer options using the explicit OfficeIMO transcript preset.
+    /// </summary>
+    public static MarkdownRendererOptions CreateTranscriptRendererOptions() {
+        return MarkdownRendererPresets.CreateIntelligenceXTranscriptDesktopShell();
+    }
+
+    /// <summary>
+    /// Applies the explicit OfficeIMO transcript pre-processor chain without rendering HTML.
+    /// </summary>
+    public static string ApplyTranscriptMarkdownPreProcessors(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return markdown;
+        }
+
+        return MarkdownRendererPreProcessorPipeline.Apply(
+            markdown,
+            MarkdownRendererPresets.CreateIntelligenceXTranscriptMinimal());
+    }
+
+    /// <summary>
+    /// Enables optional vis-network support when the renderer exposes it.
+    /// </summary>
+    public static bool TryEnableOptionalRendererNetworkSupport(MarkdownRendererOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+        options.Network.Enabled = true;
+        return true;
+    }
+
+    /// <summary>
+    /// Describes the loaded markdown renderer assembly against the minimum supported package contract.
+    /// </summary>
+    public static string DescribeMarkdownRendererContract() {
+        return DescribeAssemblyContract(
+            typeof(MarkdownRenderer).Assembly,
+            "OfficeIMO.MarkdownRenderer",
+            MinimumMarkdownRendererVersion,
+            "explicit transcript presets or legacy chat composition + network support");
+    }
+
+    /// <summary>
+    /// Describes the loaded markdown assembly against the minimum supported package contract.
+    /// </summary>
+    public static string DescribeMarkdownContract() {
+        return DescribeAssemblyContract(
+            typeof(MarkdownInputNormalizer).Assembly,
+            "OfficeIMO.Markdown",
+            MinimumMarkdownVersionForNormalizationPresets,
+            "input normalization presets");
+    }
+
+    /// <summary>
+    /// Describes the loaded markdown-to-word assembly against the minimum supported package contract.
+    /// </summary>
+    public static string DescribeWordMarkdownContract() {
+        return DescribeAssemblyContract(
+            typeof(MarkdownToWordOptions).Assembly,
+            "OfficeIMO.Word.Markdown",
+            MinimumWordMarkdownVersion,
+            "transcript markdown-to-word conversion");
+    }
+#else
     private static readonly Lazy<PropertyInfo?> NetworkPropertyLazy = new(
         () => typeof(MarkdownRendererOptions).GetProperty("Network", BindingFlags.Instance | BindingFlags.Public));
 
@@ -289,6 +355,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
 
         return current;
     }
+#endif
 
     private static string DescribeAssemblyContract(
         Assembly? assembly,

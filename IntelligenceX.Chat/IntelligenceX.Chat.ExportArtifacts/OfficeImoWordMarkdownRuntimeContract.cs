@@ -12,10 +12,30 @@ namespace IntelligenceX.Chat.ExportArtifacts;
 /// falls back to the published package baseline when that surface has not shipped yet.
 /// </summary>
 internal static class OfficeImoWordMarkdownRuntimeContract {
+    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 7);
+
+#if IX_OFFICEIMO_DIRECT
+    public static MarkdownToWordOptions CreateTranscriptMarkdownToWordOptions(
+        IReadOnlyList<string>? allowedImageDirectories,
+        int? docxVisualMaxWidthPx) {
+        return MarkdownToWordPresets.CreateIntelligenceXTranscript(allowedImageDirectories, docxVisualMaxWidthPx);
+    }
+
+    public static bool PreservesGroupedDefinitionLikeParagraphs() {
+        return MarkdownToWordCapabilities.PreservesNarrativeSingleLineDefinitionsAsSeparateParagraphs();
+    }
+
+    public static string DescribeWordMarkdownContract() {
+        return DescribeAssemblyContract(
+            typeof(MarkdownToWordOptions).Assembly,
+            "OfficeIMO.Word.Markdown",
+            MinimumWordMarkdownVersion,
+            "transcript markdown-to-word conversion");
+    }
+#else
     private const int MinDocxVisualMaxWidthPx = 320;
     private const int MaxDocxVisualMaxWidthPx = 2000;
     private const int DefaultDocxVisualMaxWidthPx = 760;
-    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 7);
     private static readonly Lazy<bool> PreservesGroupedDefinitionLikeParagraphsLazy = new(DetectGroupedDefinitionLikeParagraphSupport);
 
     public static MarkdownToWordOptions CreateTranscriptMarkdownToWordOptions(
@@ -237,12 +257,7 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
         }
 
         try {
-            const string sampleMarkdown = """
-                # Transcript
-
-                Status: healthy
-                Impact: none
-                """;
+            const string sampleMarkdown = "# Transcript\n\nStatus: healthy\nImpact: none\n";
 
             using var document = sampleMarkdown.LoadFromMarkdown(new MarkdownToWordOptions {
                 PreferNarrativeSingleLineDefinitions = true
@@ -286,6 +301,7 @@ internal static class OfficeImoWordMarkdownRuntimeContract {
 
         return current;
     }
+#endif
 
     private static string DescribeAssemblyContract(
         Assembly? assembly,
