@@ -166,6 +166,12 @@ public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
 /// Applies a runtime pause/resume action to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
+    private static int? NormalizePositiveDurationSeconds(int? value) {
+        return value is > 0 ? value : null;
+    }
+
+    private int? _pauseSeconds;
+
     /// <summary>
     /// When true, manually pauses the scheduler; when false, clears any active manual/auto pause state.
     /// </summary>
@@ -174,7 +180,10 @@ public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
     /// <summary>
     /// Optional manual pause duration in seconds. Null means pause until explicitly resumed.
     /// </summary>
-    public int? PauseSeconds { get; init; }
+    public int? PauseSeconds {
+        get => _pauseSeconds;
+        init => _pauseSeconds = NormalizePositiveDurationSeconds(value);
+    }
 
     /// <summary>
     /// Optional operator-facing reason to annotate the manual pause state.
@@ -201,6 +210,14 @@ public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServi
 /// Applies a runtime blocked-pack policy update to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequest {
+    private static int? NormalizePositiveDurationSeconds(int? value) {
+        return value is > 0 ? value : null;
+    }
+
+    private int? _durationSeconds;
+    private bool _untilNextMaintenanceWindow;
+    private bool _untilNextMaintenanceWindowStart;
+
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
@@ -215,23 +232,58 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// Optional temporary suppression duration in seconds for add operations.
     /// Null means a persistent policy update.
     /// </summary>
-    public int? DurationSeconds { get; init; }
+    public int? DurationSeconds {
+        get => _durationSeconds;
+        init {
+            _durationSeconds = NormalizePositiveDurationSeconds(value);
+            if (_durationSeconds is not null) {
+                _untilNextMaintenanceWindow = false;
+                _untilNextMaintenanceWindowStart = false;
+            }
+        }
+    }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
-    public bool UntilNextMaintenanceWindow { get; init; }
+    public bool UntilNextMaintenanceWindow {
+        get => _untilNextMaintenanceWindow;
+        init {
+            _untilNextMaintenanceWindow = value;
+            if (value) {
+                _durationSeconds = null;
+                _untilNextMaintenanceWindowStart = false;
+            }
+        }
+    }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
-    public bool UntilNextMaintenanceWindowStart { get; init; }
+    public bool UntilNextMaintenanceWindowStart {
+        get => _untilNextMaintenanceWindowStart;
+        init {
+            _untilNextMaintenanceWindowStart = value;
+            if (value) {
+                _durationSeconds = null;
+                _untilNextMaintenanceWindow = false;
+            }
+        }
+    }
 }
 
 /// <summary>
 /// Applies a runtime blocked-thread policy update to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRequest {
+    private static int? NormalizePositiveDurationSeconds(int? value) {
+        return value is > 0 ? value : null;
+    }
+
+    private int? _durationSeconds;
+    private bool _untilNextMaintenanceWindow;
+    private bool _untilNextMaintenanceWindowStart;
+
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
@@ -246,17 +298,44 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// Optional temporary suppression duration in seconds for add operations.
     /// Null means a persistent policy update.
     /// </summary>
-    public int? DurationSeconds { get; init; }
+    public int? DurationSeconds {
+        get => _durationSeconds;
+        init {
+            _durationSeconds = NormalizePositiveDurationSeconds(value);
+            if (_durationSeconds is not null) {
+                _untilNextMaintenanceWindow = false;
+                _untilNextMaintenanceWindowStart = false;
+            }
+        }
+    }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
-    public bool UntilNextMaintenanceWindow { get; init; }
+    public bool UntilNextMaintenanceWindow {
+        get => _untilNextMaintenanceWindow;
+        init {
+            _untilNextMaintenanceWindow = value;
+            if (value) {
+                _durationSeconds = null;
+                _untilNextMaintenanceWindowStart = false;
+            }
+        }
+    }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
-    public bool UntilNextMaintenanceWindowStart { get; init; }
+    public bool UntilNextMaintenanceWindowStart {
+        get => _untilNextMaintenanceWindowStart;
+        init {
+            _untilNextMaintenanceWindowStart = value;
+            if (value) {
+                _durationSeconds = null;
+                _untilNextMaintenanceWindow = false;
+            }
+        }
+    }
 }
 
 /// <summary>

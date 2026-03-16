@@ -120,6 +120,17 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void SetBackgroundSchedulerStateRequest_NormalizesNonPositivePauseSecondsToNull() {
+        var request = new SetBackgroundSchedulerStateRequest {
+            RequestId = "req_scheduler_control_invalid",
+            Paused = true,
+            PauseSeconds = 0
+        };
+
+        Assert.Null(request.PauseSeconds);
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerMaintenanceWindowsRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {
@@ -162,6 +173,22 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_NormalizesInvalidDurationAndConflictingFlags() {
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
+            RequestId = "req_scheduler_threads_invalid",
+            Operation = "add",
+            ThreadIds = new[] { "thread-a" },
+            DurationSeconds = -30,
+            UntilNextMaintenanceWindow = true,
+            UntilNextMaintenanceWindowStart = true
+        };
+
+        Assert.Null(request.DurationSeconds);
+        Assert.False(request.UntilNextMaintenanceWindow);
+        Assert.True(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {
@@ -182,6 +209,22 @@ public sealed class ToolHealthContractTests {
         Assert.Equal(120, request.DurationSeconds);
         Assert.False(request.UntilNextMaintenanceWindow);
         Assert.False(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_NormalizesZeroDurationAndConflictingFlags() {
+        var request = new SetBackgroundSchedulerBlockedPacksRequest {
+            RequestId = "req_scheduler_packs_invalid",
+            Operation = "add",
+            PackIds = new[] { "system" },
+            DurationSeconds = 0,
+            UntilNextMaintenanceWindow = true,
+            UntilNextMaintenanceWindowStart = true
+        };
+
+        Assert.Null(request.DurationSeconds);
+        Assert.False(request.UntilNextMaintenanceWindow);
+        Assert.True(request.UntilNextMaintenanceWindowStart);
     }
 
     [Fact]
