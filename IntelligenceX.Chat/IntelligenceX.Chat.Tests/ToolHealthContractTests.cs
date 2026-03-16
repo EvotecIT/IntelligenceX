@@ -60,42 +60,31 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void GetBackgroundSchedulerStatusRequest_ClampsNegativeSampleLimitsToZero() {
+    public void GetBackgroundSchedulerStatusRequest_RejectsNegativeSampleLimits() {
         const string json = """
             {
               "type":"get_background_scheduler_status",
               "requestId":"req_scheduler_limits_negative",
-              "maxReadyThreadIds":-1,
-              "maxRunningThreadIds":-2,
-              "maxRecentActivity":-3,
-              "maxThreadSummaries":-4
+              "maxReadyThreadIds":-1
             }
             """;
 
-        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
-        var request = Assert.IsType<GetBackgroundSchedulerStatusRequest>(parsed);
-
-        Assert.Equal(0, request.MaxReadyThreadIds);
-        Assert.Equal(0, request.MaxRunningThreadIds);
-        Assert.Equal(0, request.MaxRecentActivity);
-        Assert.Equal(0, request.MaxThreadSummaries);
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("MaxReadyThreadIds", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void GetBackgroundSchedulerStatusRequest_ClampsOversizedSampleLimitsToContractMaximum() {
+    public void GetBackgroundSchedulerStatusRequest_RejectsOversizedSampleLimits() {
         var oversized = ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems + 25;
-        var request = new GetBackgroundSchedulerStatusRequest {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new GetBackgroundSchedulerStatusRequest {
             RequestId = "req_scheduler_limits_max",
             MaxReadyThreadIds = oversized,
             MaxRunningThreadIds = oversized,
             MaxRecentActivity = oversized,
             MaxThreadSummaries = oversized
-        };
+        });
 
-        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxReadyThreadIds);
-        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxRunningThreadIds);
-        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxRecentActivity);
-        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxThreadSummaries);
+        Assert.Contains("MaxReadyThreadIds", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -120,14 +109,29 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerStateRequest_NormalizesNonPositivePauseSecondsToNull() {
-        var request = new SetBackgroundSchedulerStateRequest {
+    public void SetBackgroundSchedulerStateRequest_RejectsNonPositivePauseSeconds() {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerStateRequest {
             RequestId = "req_scheduler_control_invalid",
             Paused = true,
             PauseSeconds = 0
-        };
+        });
 
-        Assert.Null(request.PauseSeconds);
+        Assert.Contains("PauseSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerStateRequest_RejectsNonPositivePauseSecondsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_state",
+              "requestId":"req_scheduler_control_invalid_wire",
+              "paused":true,
+              "pauseSeconds":0
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("PauseSeconds", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -226,7 +230,7 @@ public sealed class ToolHealthContractTests {
             RequestId = "req_scheduler_threads_invalid",
             Operation = "add",
             ThreadIds = new[] { "thread-a" },
-            DurationSeconds = -30,
+            DurationSeconds = 60,
             UntilNextMaintenanceWindow = true,
             UntilNextMaintenanceWindowStart = true
         });
@@ -314,6 +318,34 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsNonPositiveDuration() {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
+            RequestId = "req_scheduler_threads_invalid_duration",
+            Operation = "add",
+            ThreadIds = new[] { "thread-a" },
+            DurationSeconds = 0
+        });
+
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsNonPositiveDurationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_invalid_duration_wire",
+              "operation":"add",
+              "threadIds":["thread-a"],
+              "durationSeconds":0
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {
@@ -342,7 +374,7 @@ public sealed class ToolHealthContractTests {
             RequestId = "req_scheduler_packs_invalid",
             Operation = "add",
             PackIds = new[] { "system" },
-            DurationSeconds = 0,
+            DurationSeconds = 60,
             UntilNextMaintenanceWindow = true,
             UntilNextMaintenanceWindowStart = true
         });
@@ -427,6 +459,34 @@ public sealed class ToolHealthContractTests {
 
         var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsNonPositiveDuration() {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
+            RequestId = "req_scheduler_packs_invalid_duration",
+            Operation = "add",
+            PackIds = new[] { "system" },
+            DurationSeconds = 0
+        });
+
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsNonPositiveDurationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_invalid_duration_wire",
+              "operation":"add",
+              "packIds":["system"],
+              "durationSeconds":0
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

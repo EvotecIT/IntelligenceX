@@ -112,10 +112,18 @@ public sealed record ListToolsRequest : ChatServiceRequest;
 /// Requests the current background scheduler status summary.
 /// </summary>
 public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
-    private static int? NormalizeBackgroundSchedulerStatusLimit(int? value) {
-        return value is null
-            ? null
-            : Math.Clamp(value.Value, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
+    private static int? ValidateBackgroundSchedulerStatusLimit(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < 0 || requested > ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between 0 and {ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems}.");
+        }
+
+        return requested;
     }
 
     private readonly int? _maxReadyThreadIds;
@@ -143,7 +151,7 @@ public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
     /// </summary>
     public int? MaxReadyThreadIds {
         get => _maxReadyThreadIds;
-        init => _maxReadyThreadIds = NormalizeBackgroundSchedulerStatusLimit(value);
+        init => _maxReadyThreadIds = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxReadyThreadIds));
     }
 
     /// <summary>
@@ -151,7 +159,7 @@ public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
     /// </summary>
     public int? MaxRunningThreadIds {
         get => _maxRunningThreadIds;
-        init => _maxRunningThreadIds = NormalizeBackgroundSchedulerStatusLimit(value);
+        init => _maxRunningThreadIds = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxRunningThreadIds));
     }
 
     /// <summary>
@@ -159,7 +167,7 @@ public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
     /// </summary>
     public int? MaxRecentActivity {
         get => _maxRecentActivity;
-        init => _maxRecentActivity = NormalizeBackgroundSchedulerStatusLimit(value);
+        init => _maxRecentActivity = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxRecentActivity));
     }
 
     /// <summary>
@@ -167,7 +175,7 @@ public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
     /// </summary>
     public int? MaxThreadSummaries {
         get => _maxThreadSummaries;
-        init => _maxThreadSummaries = NormalizeBackgroundSchedulerStatusLimit(value);
+        init => _maxThreadSummaries = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxThreadSummaries));
     }
 }
 
@@ -175,8 +183,19 @@ public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
 /// Applies a runtime pause/resume action to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
-    private static int? NormalizePositiveDurationSeconds(int? value) {
-        return value is > 0 ? value : null;
+    private static int? ValidatePositiveDurationSeconds(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
+            || requested > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        return requested;
     }
 
     private static string? NormalizeOptionalReason(string? value) {
@@ -196,7 +215,7 @@ public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
     /// </summary>
     public int? PauseSeconds {
         get => _pauseSeconds;
-        init => _pauseSeconds = NormalizePositiveDurationSeconds(value);
+        init => _pauseSeconds = ValidatePositiveDurationSeconds(value, nameof(PauseSeconds));
     }
 
     /// <summary>
@@ -232,8 +251,19 @@ public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServi
 /// Applies a runtime blocked-pack policy update to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequest {
-    private static int? NormalizePositiveDurationSeconds(int? value) {
-        return value is > 0 ? value : null;
+    private static int? ValidatePositiveDurationSeconds(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
+            || requested > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        return requested;
     }
 
     private int? _requestedDurationSeconds;
@@ -260,7 +290,7 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// </summary>
     public int? DurationSeconds {
         get => _requestedUntilNextMaintenanceWindow || _requestedUntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
-        init => _requestedDurationSeconds = NormalizePositiveDurationSeconds(value);
+        init => _requestedDurationSeconds = ValidatePositiveDurationSeconds(value, nameof(DurationSeconds));
     }
 
     /// <summary>
@@ -296,8 +326,19 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
 /// Applies a runtime blocked-thread policy update to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRequest {
-    private static int? NormalizePositiveDurationSeconds(int? value) {
-        return value is > 0 ? value : null;
+    private static int? ValidatePositiveDurationSeconds(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
+            || requested > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        return requested;
     }
 
     private int? _requestedDurationSeconds;
@@ -324,7 +365,7 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// </summary>
     public int? DurationSeconds {
         get => _requestedUntilNextMaintenanceWindow || _requestedUntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
-        init => _requestedDurationSeconds = NormalizePositiveDurationSeconds(value);
+        init => _requestedDurationSeconds = ValidatePositiveDurationSeconds(value, nameof(DurationSeconds));
     }
 
     /// <summary>

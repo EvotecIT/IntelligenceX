@@ -1367,30 +1367,13 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
-    public async Task HandleBackgroundSchedulerStatusAsync_InvalidStatusLimitIsClampedByRequestContract() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerStatusAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        var request = new GetBackgroundSchedulerStatusRequest {
+    public void HandleBackgroundSchedulerStatusAsync_InvalidStatusLimitIsRejectedByRequestContract() {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new GetBackgroundSchedulerStatusRequest {
             RequestId = "req_scheduler_status_invalid",
             MaxRecentActivity = ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems + 1
-        };
+        });
 
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<BackgroundSchedulerStatusMessage>(response);
-
-        Assert.Equal("req_scheduler_status_invalid", typed.RequestId);
-        Assert.NotNull(typed.Scheduler);
+        Assert.Contains("MaxRecentActivity", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1548,32 +1531,14 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
-    public async Task HandleBackgroundSchedulerMaintenanceWindowsAsync_InvalidOperationReturnsError() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerMaintenanceWindowsAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerMaintenanceWindowsRequest {
+    public void HandleBackgroundSchedulerMaintenanceWindowsAsync_InvalidOperationIsRejectedByRequestContract() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest {
             RequestId = "req_scheduler_windows_invalid",
             Operation = "merge",
             Windows = new[] { "mon@02:00/60" }
-        };
+        });
 
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<ErrorMessage>(response);
-
-        Assert.Equal("req_scheduler_windows_invalid", typed.RequestId);
-        Assert.Equal("invalid_argument", typed.Code);
-        Assert.Contains("operation must be one of", typed.Error, StringComparison.Ordinal);
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1624,32 +1589,14 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
-    public async Task HandleBackgroundSchedulerBlockedThreadsAsync_InvalidOperationReturnsError() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerBlockedThreadsAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
+    public void HandleBackgroundSchedulerBlockedThreadsAsync_InvalidOperationIsRejectedByRequestContract() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
             RequestId = "req_scheduler_threads_invalid",
             Operation = "merge",
             ThreadIds = new[] { "thread-a" }
-        };
+        });
 
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<ErrorMessage>(response);
-
-        Assert.Equal("req_scheduler_threads_invalid", typed.RequestId);
-        Assert.Equal("invalid_argument", typed.Code);
-        Assert.Contains("operation must be one of", typed.Error, StringComparison.Ordinal);
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1825,32 +1772,14 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
-    public async Task HandleBackgroundSchedulerBlockedPacksAsync_InvalidOperationReturnsError() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerBlockedPacksAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
+    public void HandleBackgroundSchedulerBlockedPacksAsync_InvalidOperationIsRejectedByRequestContract() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
             RequestId = "req_scheduler_packs_invalid",
             Operation = "merge",
             PackIds = new[] { "system" }
-        };
+        });
 
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<ErrorMessage>(response);
-
-        Assert.Equal("req_scheduler_packs_invalid", typed.RequestId);
-        Assert.Equal("invalid_argument", typed.Code);
-        Assert.Contains("operation must be one of", typed.Error, StringComparison.Ordinal);
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
