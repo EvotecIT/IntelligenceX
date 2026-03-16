@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using IntelligenceX.Json;
 using IntelligenceX.Tools.Common;
 using IntelligenceX.Tools.OfficeIMO;
@@ -13,6 +14,14 @@ using Xunit;
 namespace IntelligenceX.Tools.Tests;
 
 public class OfficeImoReadToolTests {
+    [Fact]
+    public void DirectoryBuildProps_PinsCurrentPublishedOfficeImoReaderPackageVersion() {
+        var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
+        var props = LoadMsBuildProperties(propsPath);
+
+        Assert.Equal("0.1.10", props["OfficeImoReaderNuGetVersion"]);
+    }
+
     [Fact]
     public void OfficeImoChunkTable_WhenColumnsAndRowsAssignedMutableLists_AreCopiedAndReadOnly() {
         var columns = new List<string> { "name", "value" };
@@ -104,6 +113,18 @@ public class OfficeImoReadToolTests {
 
         result.NextActions = Array.Empty<ToolNextActionModel>();
         Assert.Empty(result.NextActions);
+    }
+
+    private static IReadOnlyDictionary<string, string> LoadMsBuildProperties(string propsPath) {
+        var document = XDocument.Load(propsPath);
+        return document.Root?
+            .Elements()
+            .Where(static element => element.Name.LocalName == "PropertyGroup")
+            .Elements()
+            .Where(static element => !string.IsNullOrWhiteSpace(element.Name.LocalName))
+            .GroupBy(static element => element.Name.LocalName, StringComparer.Ordinal)
+            .ToDictionary(static group => group.Key, static group => group.Last().Value.Trim(), StringComparer.Ordinal)
+            ?? new Dictionary<string, string>(StringComparer.Ordinal);
     }
 
     [Fact]
