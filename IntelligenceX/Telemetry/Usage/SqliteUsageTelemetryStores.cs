@@ -529,14 +529,14 @@ public sealed class SqliteUsageEventStore : IUsageEventStore, IDisposable {
         }
 
         lock (_gate) {
-            _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
+            _db.BeginTransaction(_dbPath);
             try {
                 var result = UpsertCore(record);
-                _db.ExecuteNonQuery(_dbPath, "COMMIT;");
+                _db.Commit();
                 return result;
             } catch {
                 try {
-                    _db.ExecuteNonQuery(_dbPath, "ROLLBACK;");
+                    _db.Rollback();
                 } catch {
                     // Ignore rollback failures.
                 }
@@ -552,7 +552,7 @@ public sealed class SqliteUsageEventStore : IUsageEventStore, IDisposable {
         }
 
         lock (_gate) {
-            _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
+            _db.BeginTransaction(_dbPath);
             try {
                 var result = new UsageEventBatchUpsertResult();
                 for (var i = 0; i < records.Count; i++) {
@@ -565,11 +565,11 @@ public sealed class SqliteUsageEventStore : IUsageEventStore, IDisposable {
                     }
                 }
 
-                _db.ExecuteNonQuery(_dbPath, "COMMIT;");
+                _db.Commit();
                 return result;
             } catch {
                 try {
-                    _db.ExecuteNonQuery(_dbPath, "ROLLBACK;");
+                    _db.Rollback();
                 } catch {
                     // Ignore rollback failures.
                 }
@@ -956,6 +956,7 @@ ON CONFLICT(canonical_event_id) DO UPDATE SET
   cost_usd = excluded.cost_usd,
   truth_level = excluded.truth_level,
   raw_hash = excluded.raw_hash;",
+            useTransaction: _db.IsInTransaction,
             parameters: new Dictionary<string, object?> {
                 ["@canonical_event_id"] = record.EventId,
                 ["@event_id"] = record.EventId,
@@ -999,6 +1000,7 @@ INSERT INTO ix_usage_event_keys (dedupe_key, canonical_event_id)
 VALUES (@dedupe_key, @canonical_event_id)
 ON CONFLICT(dedupe_key) DO UPDATE SET
   canonical_event_id = excluded.canonical_event_id;",
+                useTransaction: _db.IsInTransaction,
                 parameters: new Dictionary<string, object?> {
                     ["@dedupe_key"] = key.Trim(),
                     ["@canonical_event_id"] = canonicalEventId

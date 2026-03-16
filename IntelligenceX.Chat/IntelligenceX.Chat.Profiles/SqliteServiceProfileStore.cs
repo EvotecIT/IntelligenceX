@@ -396,9 +396,9 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         const string currentColumnList = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_built_in_pack_loading, use_default_built_in_tool_assembly_names, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
         var legacyToggleColumns = ResolveDeprecatedPackToggleColumns(knownColumns ?? TryGetTableColumns(ProfileTable));
 
-        _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
+        _db.BeginTransaction(_dbPath);
         try {
-            _db.ExecuteNonQuery(_dbPath, $"DROP TABLE IF EXISTS {migratedTable};");
+            _db.ExecuteNonQuery(_dbPath, $"DROP TABLE IF EXISTS {migratedTable};", useTransaction: true);
             _db.ExecuteNonQuery(_dbPath, $@"
 CREATE TABLE {migratedTable} (
   name TEXT PRIMARY KEY,
@@ -444,20 +444,20 @@ CREATE TABLE {migratedTable} (
   run_as_profile_path TEXT NULL,
   authentication_profile_path TEXT NULL,
   updated_utc TEXT NOT NULL
-);");
+);", useTransaction: true);
             _db.ExecuteNonQuery(_dbPath, $@"
 INSERT INTO {migratedTable} ({currentColumnList})
 SELECT {currentColumnList}
-FROM {ProfileTable};");
-            MigrateLegacyPackToggleOverrides(legacyToggleColumns);
-            _db.ExecuteNonQuery(_dbPath, $"DROP TABLE {ProfileTable};");
-            _db.ExecuteNonQuery(_dbPath, $"ALTER TABLE {migratedTable} RENAME TO {ProfileTable};");
-            _db.ExecuteNonQuery(_dbPath, $"CREATE INDEX IF NOT EXISTS ix_service_profiles_updated_utc ON {ProfileTable}(updated_utc);");
-            _db.ExecuteNonQuery(_dbPath, $"CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(transport_kind);");
-            _db.ExecuteNonQuery(_dbPath, "COMMIT;");
+FROM {ProfileTable};", useTransaction: true);
+            MigrateLegacyPackToggleOverrides(legacyToggleColumns, useTransaction: true);
+            _db.ExecuteNonQuery(_dbPath, $"DROP TABLE {ProfileTable};", useTransaction: true);
+            _db.ExecuteNonQuery(_dbPath, $"ALTER TABLE {migratedTable} RENAME TO {ProfileTable};", useTransaction: true);
+            _db.ExecuteNonQuery(_dbPath, $"CREATE INDEX IF NOT EXISTS ix_service_profiles_updated_utc ON {ProfileTable}(updated_utc);", useTransaction: true);
+            _db.ExecuteNonQuery(_dbPath, $"CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(transport_kind);", useTransaction: true);
+            _db.Commit();
         } catch {
             try {
-                _db.ExecuteNonQuery(_dbPath, "ROLLBACK;");
+                _db.Rollback();
             } catch {
                 // Ignore rollback failures.
             }
@@ -466,7 +466,7 @@ FROM {ProfileTable};");
         }
     }
 
-    private void MigrateLegacyPackToggleOverrides(IReadOnlyList<string> legacyToggleColumns) {
+    private void MigrateLegacyPackToggleOverrides(IReadOnlyList<string> legacyToggleColumns, bool useTransaction = false) {
         if (legacyToggleColumns is null || legacyToggleColumns.Count == 0) {
             return;
         }
@@ -495,6 +495,7 @@ WHERE path = @pack_id
       FROM {ProfileTable}
       WHERE COALESCE(CAST({column} AS INTEGER), 0) <> 0
   );",
+                useTransaction: useTransaction,
                 parameters: parameters);
             _db.ExecuteNonQuery(
                 _dbPath,
@@ -505,6 +506,7 @@ SELECT p.name,
        @pack_id
 FROM {ProfileTable} p
 WHERE COALESCE(CAST(p.{column} AS INTEGER), 0) <> 0;",
+                useTransaction: useTransaction,
                 parameters: parameters);
 
             _db.ExecuteNonQuery(
@@ -517,6 +519,7 @@ WHERE path = @pack_id
       FROM {ProfileTable}
       WHERE COALESCE(CAST({column} AS INTEGER), 0) = 0
   );",
+                useTransaction: useTransaction,
                 parameters: parameters);
             _db.ExecuteNonQuery(
                 _dbPath,
@@ -527,6 +530,7 @@ SELECT p.name,
        @pack_id
 FROM {ProfileTable} p
 WHERE COALESCE(CAST(p.{column} AS INTEGER), 0) = 0;",
+                useTransaction: useTransaction,
                 parameters: parameters);
         }
     }
@@ -707,7 +711,7 @@ LIMIT 1;",
         }
 
         // Keep writes atomic and deterministic: overwrite the scalar row and replace list rows.
-        _db.ExecuteNonQuery(_dbPath, "BEGIN IMMEDIATE TRANSACTION;");
+        _db.BeginTransaction(_dbPath);
         try {
             _db.ExecuteNonQuery(
                 _dbPath,
@@ -789,6 +793,7 @@ ON CONFLICT(name) DO UPDATE SET
   run_as_profile_path = excluded.run_as_profile_path,
   authentication_profile_path = excluded.authentication_profile_path,
   updated_utc = excluded.updated_utc;",
+                useTransaction: true,
                 parameters: BuildUpsertParameters(
                     trimmed: trimmed,
                     profile: profile,
@@ -799,16 +804,16 @@ ON CONFLICT(name) DO UPDATE SET
                     now: now,
                     extraRequiredInsertColumns: extraRequiredInsertColumns));
 
-            ReplaceOrderedList(trimmed, AllowedRootsTable, profile.AllowedRoots);
-            ReplaceOrderedList(trimmed, BuiltInToolAssemblyNamesTable, profile.BuiltInToolAssemblyNames);
-            ReplaceOrderedList(trimmed, PluginPathsTable, normalizedPluginPaths);
-            ReplaceOrderedList(trimmed, DisabledPackIdsTable, profile.DisabledPackIds);
-            ReplaceOrderedList(trimmed, EnabledPackIdsTable, profile.EnabledPackIds);
+            ReplaceOrderedList(trimmed, AllowedRootsTable, profile.AllowedRoots, useTransaction: true);
+            ReplaceOrderedList(trimmed, BuiltInToolAssemblyNamesTable, profile.BuiltInToolAssemblyNames, useTransaction: true);
+            ReplaceOrderedList(trimmed, PluginPathsTable, normalizedPluginPaths, useTransaction: true);
+            ReplaceOrderedList(trimmed, DisabledPackIdsTable, profile.DisabledPackIds, useTransaction: true);
+            ReplaceOrderedList(trimmed, EnabledPackIdsTable, profile.EnabledPackIds, useTransaction: true);
 
-            _db.ExecuteNonQuery(_dbPath, "COMMIT;");
+            _db.Commit();
         } catch {
             try {
-                _db.ExecuteNonQuery(_dbPath, "ROLLBACK;");
+                _db.Rollback();
             } catch {
                 // Ignore.
             }
@@ -944,8 +949,9 @@ ON CONFLICT(name) DO UPDATE SET
         return list;
     }
 
-    private void ReplaceOrderedList(string profileName, string tableName, List<string>? values) {
+    private void ReplaceOrderedList(string profileName, string tableName, List<string>? values, bool useTransaction = false) {
         _db.ExecuteNonQuery(_dbPath, $"DELETE FROM {tableName} WHERE profile_name = @name",
+            useTransaction: useTransaction,
             parameters: new Dictionary<string, object?> { ["@name"] = profileName });
 
         if (values is null || values.Count == 0) {
@@ -963,6 +969,7 @@ ON CONFLICT(name) DO UPDATE SET
             _db.ExecuteNonQuery(
                 _dbPath,
                 $"INSERT INTO {tableName} (profile_name, ord, path) VALUES (@name, @ord, @path)",
+                useTransaction: useTransaction,
                 parameters: new Dictionary<string, object?> {
                     ["@name"] = profileName,
                     ["@ord"] = ord++,
