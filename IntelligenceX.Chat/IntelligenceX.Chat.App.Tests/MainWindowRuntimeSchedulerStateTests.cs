@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App;
@@ -20,6 +21,21 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         "BuildBackgroundSchedulerState",
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildBackgroundSchedulerState not found.");
+
+    private static readonly MethodInfo RestoreBackgroundSchedulerSnapshotAfterRefreshFailureMethod = typeof(MainWindow).GetMethod(
+        "RestoreBackgroundSchedulerSnapshotAfterRefreshFailure",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("RestoreBackgroundSchedulerSnapshotAfterRefreshFailure not found.");
+
+    private static readonly FieldInfo BackgroundSchedulerStatusSnapshotField = typeof(MainWindow).GetField(
+        "_backgroundSchedulerStatusSnapshot",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_backgroundSchedulerStatusSnapshot not found.");
+
+    private static readonly FieldInfo BackgroundSchedulerGlobalStatusSnapshotField = typeof(MainWindow).GetField(
+        "_backgroundSchedulerGlobalStatusSnapshot",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_backgroundSchedulerGlobalStatusSnapshot not found.");
 
     /// <summary>
     /// Ensures capability snapshot diagnostics retain background scheduler details for the UI bridge.
@@ -107,5 +123,32 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
 
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
         Assert.Equal("Paused: manual_pause:300s:maintenance", document.RootElement.GetProperty("statusSummary").GetString());
+    }
+
+    /// <summary>
+    /// Ensures a scoped scheduler refresh failure restores the preserved global snapshot
+    /// instead of blanking the active scheduler diagnostics view.
+    /// </summary>
+    [Fact]
+    public void RestoreBackgroundSchedulerSnapshotAfterRefreshFailure_ScopedRefreshFallsBackToGlobalSnapshot() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var globalSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            QueuedItemCount = 5
+        };
+        var scopedSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            ScopeThreadId = "thread-scoped",
+            QueuedItemCount = 1
+        };
+
+        BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, scopedSnapshot);
+
+        RestoreBackgroundSchedulerSnapshotAfterRefreshFailureMethod.Invoke(window, new object?[] { true });
+
+        var restored = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        var preservedGlobal = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
+        Assert.Same(globalSnapshot, restored);
+        Assert.Same(globalSnapshot, preservedGlobal);
     }
 }

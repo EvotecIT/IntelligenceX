@@ -363,4 +363,36 @@ public sealed class ToolHealthContractTests {
         Assert.Equal("remote_probe_failed", Assert.Single(typed.Scheduler.RecentActivity).FailureDetail);
         Assert.Equal("thread-ready", Assert.Single(typed.Scheduler.ThreadSummaries).ThreadId);
     }
+
+    [Fact]
+    public void SessionCapabilityBackgroundSchedulerDto_SourceGenRoundTripsSuppressionArrays() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            BlockedPackIds = new[] { "system" },
+            BlockedPackSuppressions = new[] {
+                new SessionCapabilityBackgroundSchedulerSuppressionDto {
+                    Id = "system",
+                    Mode = "persistent_runtime",
+                    Temporary = false
+                }
+            },
+            BlockedThreadIds = new[] { "thread-a" },
+            BlockedThreadSuppressions = new[] {
+                new SessionCapabilityBackgroundSchedulerSuppressionDto {
+                    Id = "thread-a",
+                    Mode = "temporary_runtime",
+                    Temporary = true,
+                    ExpiresUtcTicks = DateTime.UtcNow.AddMinutes(5).Ticks
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(scheduler, ChatServiceJsonContext.Default.SessionCapabilityBackgroundSchedulerDto);
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.SessionCapabilityBackgroundSchedulerDto);
+
+        Assert.NotNull(parsed);
+        Assert.Equal("system", Assert.Single(parsed.BlockedPackSuppressions).Id);
+        Assert.Equal("persistent_runtime", Assert.Single(parsed.BlockedPackSuppressions).Mode);
+        Assert.Equal("thread-a", Assert.Single(parsed.BlockedThreadSuppressions).Id);
+        Assert.True(Assert.Single(parsed.BlockedThreadSuppressions).Temporary);
+    }
 }

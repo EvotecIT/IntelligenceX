@@ -31,6 +31,17 @@ public sealed partial class MainWindow {
         _backgroundSchedulerGlobalStatusSnapshot = null;
     }
 
+    private void RestoreBackgroundSchedulerSnapshotAfterRefreshFailure(bool scopedRefresh) {
+        if (scopedRefresh && _backgroundSchedulerGlobalStatusSnapshot is not null) {
+            _backgroundSchedulerStatusSnapshot = _backgroundSchedulerGlobalStatusSnapshot;
+            return;
+        }
+
+        if (_backgroundSchedulerStatusSnapshot is null && _backgroundSchedulerGlobalStatusSnapshot is not null) {
+            _backgroundSchedulerStatusSnapshot = _backgroundSchedulerGlobalStatusSnapshot;
+        }
+    }
+
     private async Task RefreshBackgroundSchedulerFromUiAsync(string? threadId) {
         if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
             return;

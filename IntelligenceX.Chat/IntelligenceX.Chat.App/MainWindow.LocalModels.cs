@@ -99,7 +99,7 @@ public sealed partial class MainWindow : Window {
                 cancellationToken: cts.Token).ConfigureAwait(false);
             ApplyBackgroundSchedulerSnapshot(status.Scheduler, scopedRefresh);
         } catch (Exception ex) {
-            _backgroundSchedulerStatusSnapshot = null;
+            RestoreBackgroundSchedulerSnapshotAfterRefreshFailure(!string.IsNullOrWhiteSpace(threadId));
             if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
                 AppendSystem("Couldn't load background scheduler status: " + ex.Message);
             }
