@@ -23,6 +23,11 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("BuildBackgroundSchedulerState not found.");
 
+    private static readonly MethodInfo BuildPublishedBackgroundSchedulerStateMethod = typeof(MainWindow).GetMethod(
+        "BuildPublishedBackgroundSchedulerState",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("BuildPublishedBackgroundSchedulerState not found.");
+
     private static readonly MethodInfo RestoreBackgroundSchedulerSnapshotAfterRefreshFailureMethod = typeof(MainWindow).GetMethod(
         "RestoreBackgroundSchedulerSnapshotAfterRefreshFailure",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -374,6 +379,45 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         Assert.Same(globalSnapshot, effective);
         Assert.Same(scopedSnapshot, scoped);
         Assert.Same(globalSnapshot, global);
+    }
+
+    /// <summary>
+    /// Ensures published options keep runtimeScheduler global/effective after a scoped refresh
+    /// while exposing thread-specific data separately through runtimeSchedulerScoped.
+    /// </summary>
+    [Fact]
+    public void BuildPublishedBackgroundSchedulerState_PublishesGlobalEffectiveAndScopedSchedulerSeparately() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var globalSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            QueuedItemCount = 4,
+            ReadyThreadIds = new[] { "thread-global" }
+        };
+        var scopedSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            ScopeThreadId = "thread-scoped",
+            QueuedItemCount = 1,
+            ReadyThreadIds = new[] { "thread-scoped" }
+        };
+
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerScopedStatusSnapshotField.SetValue(window, scopedSnapshot);
+
+        var schedulerState = BuildPublishedBackgroundSchedulerStateMethod.Invoke(window, new object?[] { null });
+        Assert.NotNull(schedulerState);
+        var schedulerStateType = schedulerState.GetType();
+        var effective = schedulerStateType.GetField("Item1")?.GetValue(schedulerState);
+        var scoped = schedulerStateType.GetField("Item2")?.GetValue(schedulerState);
+        var global = schedulerStateType.GetField("Item3")?.GetValue(schedulerState);
+
+        using var effectiveDocument = JsonDocument.Parse(JsonSerializer.Serialize(effective));
+        using var scopedDocument = JsonDocument.Parse(JsonSerializer.Serialize(scoped));
+        using var globalDocument = JsonDocument.Parse(JsonSerializer.Serialize(global));
+
+        Assert.Equal(4, effectiveDocument.RootElement.GetProperty("queuedItemCount").GetInt32());
+        Assert.Equal("thread-global", effectiveDocument.RootElement.GetProperty("readyThreadIds")[0].GetString());
+        Assert.Equal(4, globalDocument.RootElement.GetProperty("queuedItemCount").GetInt32());
+        Assert.Equal("thread-scoped", scopedDocument.RootElement.GetProperty("scopeThreadId").GetString());
+        Assert.Equal(1, scopedDocument.RootElement.GetProperty("queuedItemCount").GetInt32());
     }
 
     /// <summary>
