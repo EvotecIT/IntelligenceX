@@ -206,7 +206,7 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedThreadsRequest_NormalizesInvalidDurationAndConflictingFlags() {
+    public void SetBackgroundSchedulerBlockedThreadsRequest_PreservesConflictingFlagsForValidation() {
         var request = new SetBackgroundSchedulerBlockedThreadsRequest {
             RequestId = "req_scheduler_threads_invalid",
             Operation = "add",
@@ -217,7 +217,7 @@ public sealed class ToolHealthContractTests {
         };
 
         Assert.Null(request.DurationSeconds);
-        Assert.False(request.UntilNextMaintenanceWindow);
+        Assert.True(request.UntilNextMaintenanceWindow);
         Assert.True(request.UntilNextMaintenanceWindowStart);
     }
 
@@ -269,7 +269,7 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedThreadsRequest_SerializesOnlyOneEffectiveMaintenanceFlag() {
+    public void SetBackgroundSchedulerBlockedThreadsRequest_SerializesConflictingMaintenanceFlagsVerbatim() {
         ChatServiceRequest request = new SetBackgroundSchedulerBlockedThreadsRequest {
             RequestId = "req_scheduler_threads_wire",
             Operation = "add",
@@ -279,7 +279,7 @@ public sealed class ToolHealthContractTests {
         };
 
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(request, ChatServiceJsonContext.Default.ChatServiceRequest));
-        Assert.False(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
+        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
         Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindowStart").GetBoolean());
         Assert.False(document.RootElement.TryGetProperty("durationSeconds", out _));
     }
@@ -308,7 +308,7 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedPacksRequest_NormalizesZeroDurationAndConflictingFlags() {
+    public void SetBackgroundSchedulerBlockedPacksRequest_PreservesConflictingFlagsForValidation() {
         var request = new SetBackgroundSchedulerBlockedPacksRequest {
             RequestId = "req_scheduler_packs_invalid",
             Operation = "add",
@@ -319,7 +319,7 @@ public sealed class ToolHealthContractTests {
         };
 
         Assert.Null(request.DurationSeconds);
-        Assert.False(request.UntilNextMaintenanceWindow);
+        Assert.True(request.UntilNextMaintenanceWindow);
         Assert.True(request.UntilNextMaintenanceWindowStart);
     }
 
@@ -371,7 +371,7 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedPacksRequest_SerializesOnlyOneEffectiveMaintenanceFlag() {
+    public void SetBackgroundSchedulerBlockedPacksRequest_SerializesConflictingMaintenanceFlagsVerbatim() {
         ChatServiceRequest request = new SetBackgroundSchedulerBlockedPacksRequest {
             RequestId = "req_scheduler_packs_wire",
             Operation = "add",
@@ -381,7 +381,7 @@ public sealed class ToolHealthContractTests {
         };
 
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(request, ChatServiceJsonContext.Default.ChatServiceRequest));
-        Assert.False(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
+        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
         Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindowStart").GetBoolean());
         Assert.False(document.RootElement.TryGetProperty("durationSeconds", out _));
     }
