@@ -199,13 +199,31 @@ public sealed partial class MainWindow {
     private static string BuildBackgroundSchedulerSummaryText(SessionCapabilityBackgroundSchedulerDto scheduler) {
         ArgumentNullException.ThrowIfNull(scheduler);
 
+        if (scheduler.Paused && scheduler.ScheduledPauseActive) {
+            var activeWindows = scheduler.ActiveMaintenanceWindows ?? Array.Empty<SessionCapabilityBackgroundSchedulerMaintenanceWindowDto>();
+            var globalCount = activeWindows.Count(static item => !item.Scoped);
+            if (globalCount <= 0) {
+                globalCount = scheduler.ActiveMaintenanceWindowSpecs?.Length ?? 0;
+            }
+
+            if (globalCount > 0) {
+                return $"Global maintenance active for {globalCount} window(s).";
+            }
+        }
+
         if (scheduler.Paused) {
             var reason = string.IsNullOrWhiteSpace(scheduler.PauseReason) ? "paused" : scheduler.PauseReason;
             return $"Paused: {reason}";
         }
 
         if (scheduler.ActiveMaintenanceWindowSpecs is { Length: > 0 }) {
-            return $"Scoped maintenance active for {scheduler.ActiveMaintenanceWindowSpecs.Length} window(s).";
+            var activeWindows = scheduler.ActiveMaintenanceWindows ?? Array.Empty<SessionCapabilityBackgroundSchedulerMaintenanceWindowDto>();
+            var scopedCount = activeWindows.Count(static item => item.Scoped);
+            if (scopedCount <= 0) {
+                scopedCount = scheduler.ActiveMaintenanceWindowSpecs.Length;
+            }
+
+            return $"Scoped maintenance active for {scopedCount} window(s).";
         }
 
         if (scheduler.ReadyItemCount > 0 || scheduler.RunningItemCount > 0) {

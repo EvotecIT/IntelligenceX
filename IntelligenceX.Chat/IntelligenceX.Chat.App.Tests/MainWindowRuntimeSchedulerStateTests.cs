@@ -126,6 +126,76 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     }
 
     /// <summary>
+    /// Ensures global scheduled maintenance pauses are summarized distinctly from scoped maintenance activity.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerState_SummarizesGlobalScheduledMaintenancePause() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            Paused = true,
+            ScheduledPauseActive = true,
+            ActiveMaintenanceWindowSpecs = new[] { "daily@23:30/120" },
+            ActiveMaintenanceWindows = new[] {
+                new SessionCapabilityBackgroundSchedulerMaintenanceWindowDto {
+                    Spec = "daily@23:30/120",
+                    Day = "daily",
+                    StartTimeLocal = "23:30",
+                    DurationMinutes = 120,
+                    Scoped = false
+                }
+            }
+        };
+
+        var state = BuildBackgroundSchedulerStateMethod.Invoke(null, new object?[] { scheduler });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        Assert.Equal("Global maintenance active for 1 window(s).", document.RootElement.GetProperty("statusSummary").GetString());
+    }
+
+    /// <summary>
+    /// Ensures scheduler state published for the UI keeps tracked-thread counts plus ready/running id samples
+    /// even when not every tracked thread has a detailed thread summary entry.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySnapshotState_EmbedsReadyThreadIdsWhenThreadSummariesAreSampled() {
+        var snapshot = new SessionCapabilitySnapshotDto {
+            RegisteredTools = 0,
+            EnabledPackCount = 0,
+            PluginCount = 0,
+            EnabledPluginCount = 0,
+            ToolingAvailable = true,
+            AllowedRootCount = 0,
+            BackgroundScheduler = new SessionCapabilityBackgroundSchedulerDto {
+                DaemonEnabled = true,
+                TrackedThreadCount = 8,
+                ReadyItemCount = 3,
+                ReadyThreadIds = new[] { "thread-missing" },
+                ThreadSummaries = new[] {
+                    new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                        ThreadId = "thread-visible",
+                        QueuedItemCount = 0,
+                        ReadyItemCount = 1,
+                        RunningItemCount = 0,
+                        CompletedItemCount = 0,
+                        PendingReadOnlyItemCount = 1,
+                        PendingUnknownItemCount = 0
+                    }
+                }
+            }
+        };
+
+        var state = BuildCapabilitySnapshotStateMethod.Invoke(null, new object?[] { snapshot });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        var scheduler = document.RootElement.GetProperty("backgroundScheduler");
+        Assert.Equal(8, scheduler.GetProperty("trackedThreadCount").GetInt32());
+        Assert.Equal("thread-missing", scheduler.GetProperty("readyThreadIds")[0].GetString());
+        Assert.Equal("thread-visible", scheduler.GetProperty("threadSummaries")[0].GetProperty("threadId").GetString());
+    }
+
+    /// <summary>
     /// Ensures a scoped scheduler refresh failure restores the preserved global snapshot
     /// instead of blanking the active scheduler diagnostics view.
     /// </summary>

@@ -269,6 +269,8 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("var schedulerSuppression = findConversationSchedulerSuppression(chat);", helpersScript, StringComparison.Ordinal);
         Assert.Contains("var schedulerBlocked = isConversationSchedulerBlocked(chat);", helpersScript, StringComparison.Ordinal);
         Assert.Contains("var schedulerHint = getConversationSchedulerHint(chat);", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("var runningThreadIds = Array.isArray(scheduler.runningThreadIds)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("var readyThreadIds = Array.isArray(scheduler.readyThreadIds)", helpersScript, StringComparison.Ordinal);
         Assert.Contains("chat-sidebar-item-pill chat-sidebar-item-pill-scheduler", helpersScript, StringComparison.Ordinal);
         Assert.Contains("BG muted", helpersScript, StringComparison.Ordinal);
         Assert.Contains("BG temp", helpersScript, StringComparison.Ordinal);
@@ -316,6 +318,8 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("refreshButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
         Assert.Contains("toggleMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
         Assert.Contains("toggleMuteButton.textContent = blocked ? \"Unmute Thread\" : \"Mute Thread\";", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("threadId: threadId,\n          queuedItemCount: 0,\n          readyItemCount: 0,\n          runningItemCount: 1", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("threadId: threadId,\n          queuedItemCount: 0,\n          readyItemCount: 1,\n          runningItemCount: 0", helpersScript, StringComparison.Ordinal);
         Assert.Contains("tempMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
         Assert.Contains("tempMuteLongButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
         Assert.Contains("muteUntilMaintenanceButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);

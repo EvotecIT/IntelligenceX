@@ -82,20 +82,25 @@ public sealed partial class MainWindow : Window {
         bool appendWarnings,
         string? threadId = null,
         bool includeRecentActivity = false,
-        bool includeThreadSummaries = false,
+        bool includeThreadSummaries = true,
         int maxRecentActivity = 6,
         int maxThreadSummaries = 6) {
         try {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             var scopedRefresh = !string.IsNullOrWhiteSpace(threadId);
+            var threadSampleLimit = includeThreadSummaries
+                ? ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems
+                : 8;
             var status = await client.GetBackgroundSchedulerStatusAsync(
                 threadId: string.IsNullOrWhiteSpace(threadId) ? null : threadId.Trim(),
                 includeRecentActivity: includeRecentActivity,
                 includeThreadSummaries: includeThreadSummaries,
-                maxReadyThreadIds: 4,
-                maxRunningThreadIds: 4,
+                maxReadyThreadIds: threadSampleLimit,
+                maxRunningThreadIds: threadSampleLimit,
                 maxRecentActivity: maxRecentActivity,
-                maxThreadSummaries: maxThreadSummaries,
+                maxThreadSummaries: includeThreadSummaries
+                    ? Math.Max(maxThreadSummaries, threadSampleLimit)
+                    : maxThreadSummaries,
                 cancellationToken: cts.Token).ConfigureAwait(false);
             ApplyBackgroundSchedulerSnapshot(status.Scheduler, scopedRefresh);
         } catch (Exception ex) {

@@ -105,6 +105,34 @@
       }
     }
 
+    var runningThreadIds = Array.isArray(scheduler.runningThreadIds)
+      ? scheduler.runningThreadIds
+      : [];
+    for (var runningIndex = 0; runningIndex < runningThreadIds.length; runningIndex++) {
+      if (String(runningThreadIds[runningIndex] || "").trim().toLowerCase() === lookupKey) {
+        return {
+          threadId: threadId,
+          queuedItemCount: 0,
+          readyItemCount: 0,
+          runningItemCount: 1
+        };
+      }
+    }
+
+    var readyThreadIds = Array.isArray(scheduler.readyThreadIds)
+      ? scheduler.readyThreadIds
+      : [];
+    for (var readyIndex = 0; readyIndex < readyThreadIds.length; readyIndex++) {
+      if (String(readyThreadIds[readyIndex] || "").trim().toLowerCase() === lookupKey) {
+        return {
+          threadId: threadId,
+          queuedItemCount: 0,
+          readyItemCount: 1,
+          runningItemCount: 0
+        };
+      }
+    }
+
     return null;
   }
 
