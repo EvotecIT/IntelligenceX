@@ -120,9 +120,8 @@ public sealed partial class MainWindow : Window {
     }
 
     internal static int ResolveBackgroundSchedulerThreadSummaryLimit(bool includeThreadSummaries, int maxThreadSummaries) {
-        return includeThreadSummaries
-            ? Math.Clamp(maxThreadSummaries, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems)
-            : maxThreadSummaries;
+        var normalizedLimit = Math.Clamp(maxThreadSummaries, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
+        return includeThreadSummaries ? normalizedLimit : normalizedLimit;
     }
 
     private async Task RefreshLocalRuntimeDetectionAsync(bool publishOptions) {
