@@ -131,6 +131,17 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void SetBackgroundSchedulerStateRequest_TrimsReason() {
+        var request = new SetBackgroundSchedulerStateRequest {
+            RequestId = "req_scheduler_control_reason",
+            Paused = true,
+            Reason = "  maintenance window  "
+        };
+
+        Assert.Equal("maintenance window", request.Reason);
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerMaintenanceWindowsRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {
@@ -189,6 +200,31 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_IgnoresInitializerOrder() {
+        var durationThenWindow = new SetBackgroundSchedulerBlockedThreadsRequest {
+            RequestId = "req_scheduler_threads_order_1",
+            Operation = "add",
+            ThreadIds = new[] { "thread-a" },
+            DurationSeconds = 60,
+            UntilNextMaintenanceWindow = true
+        };
+        var windowThenDuration = new SetBackgroundSchedulerBlockedThreadsRequest {
+            RequestId = "req_scheduler_threads_order_2",
+            Operation = "add",
+            ThreadIds = new[] { "thread-a" },
+            UntilNextMaintenanceWindow = true,
+            DurationSeconds = 60
+        };
+
+        Assert.Null(durationThenWindow.DurationSeconds);
+        Assert.Null(windowThenDuration.DurationSeconds);
+        Assert.True(durationThenWindow.UntilNextMaintenanceWindow);
+        Assert.True(windowThenDuration.UntilNextMaintenanceWindow);
+        Assert.False(durationThenWindow.UntilNextMaintenanceWindowStart);
+        Assert.False(windowThenDuration.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {
@@ -225,6 +261,31 @@ public sealed class ToolHealthContractTests {
         Assert.Null(request.DurationSeconds);
         Assert.False(request.UntilNextMaintenanceWindow);
         Assert.True(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_IgnoresInitializerOrder() {
+        var durationThenWindow = new SetBackgroundSchedulerBlockedPacksRequest {
+            RequestId = "req_scheduler_packs_order_1",
+            Operation = "add",
+            PackIds = new[] { "system" },
+            DurationSeconds = 60,
+            UntilNextMaintenanceWindowStart = true
+        };
+        var windowThenDuration = new SetBackgroundSchedulerBlockedPacksRequest {
+            RequestId = "req_scheduler_packs_order_2",
+            Operation = "add",
+            PackIds = new[] { "system" },
+            UntilNextMaintenanceWindowStart = true,
+            DurationSeconds = 60
+        };
+
+        Assert.Null(durationThenWindow.DurationSeconds);
+        Assert.Null(windowThenDuration.DurationSeconds);
+        Assert.False(durationThenWindow.UntilNextMaintenanceWindow);
+        Assert.False(windowThenDuration.UntilNextMaintenanceWindow);
+        Assert.True(durationThenWindow.UntilNextMaintenanceWindowStart);
+        Assert.True(windowThenDuration.UntilNextMaintenanceWindowStart);
     }
 
     [Fact]

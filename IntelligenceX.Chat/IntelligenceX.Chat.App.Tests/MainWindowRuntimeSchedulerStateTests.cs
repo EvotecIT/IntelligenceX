@@ -203,9 +203,7 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     [Fact]
     public void ResolveBackgroundSchedulerThreadSummaryLimit_RespectsRequestedCap() {
         var threadIdSampleLimit = MainWindow.ResolveBackgroundSchedulerThreadIdSampleLimit(includeThreadSummaries: true);
-        var threadSummaryLimit = MainWindow.ResolveBackgroundSchedulerThreadSummaryLimit(
-            includeThreadSummaries: true,
-            maxThreadSummaries: 8);
+        var threadSummaryLimit = MainWindow.ResolveBackgroundSchedulerThreadSummaryLimit(maxThreadSummaries: 8);
 
         Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, threadIdSampleLimit);
         Assert.Equal(8, threadSummaryLimit);
@@ -216,9 +214,7 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     /// </summary>
     [Fact]
     public void ResolveBackgroundSchedulerThreadSummaryLimit_ClampsNegativeValuesToZero() {
-        var threadSummaryLimit = MainWindow.ResolveBackgroundSchedulerThreadSummaryLimit(
-            includeThreadSummaries: true,
-            maxThreadSummaries: -5);
+        var threadSummaryLimit = MainWindow.ResolveBackgroundSchedulerThreadSummaryLimit(maxThreadSummaries: -5);
 
         Assert.Equal(0, threadSummaryLimit);
     }

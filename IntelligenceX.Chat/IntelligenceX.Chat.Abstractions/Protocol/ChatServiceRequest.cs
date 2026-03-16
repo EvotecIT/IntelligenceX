@@ -170,7 +170,12 @@ public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
         return value is > 0 ? value : null;
     }
 
+    private static string? NormalizeOptionalReason(string? value) {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
     private int? _pauseSeconds;
+    private string? _reason;
 
     /// <summary>
     /// When true, manually pauses the scheduler; when false, clears any active manual/auto pause state.
@@ -188,7 +193,10 @@ public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
     /// <summary>
     /// Optional operator-facing reason to annotate the manual pause state.
     /// </summary>
-    public string? Reason { get; init; }
+    public string? Reason {
+        get => _reason;
+        init => _reason = NormalizeOptionalReason(value);
+    }
 }
 
 /// <summary>
@@ -214,9 +222,9 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
         return value is > 0 ? value : null;
     }
 
-    private int? _durationSeconds;
-    private bool _untilNextMaintenanceWindow;
-    private bool _untilNextMaintenanceWindowStart;
+    private int? _requestedDurationSeconds;
+    private bool _requestedUntilNextMaintenanceWindow;
+    private bool _requestedUntilNextMaintenanceWindowStart;
 
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
@@ -233,42 +241,24 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// Null means a persistent policy update.
     /// </summary>
     public int? DurationSeconds {
-        get => _durationSeconds;
-        init {
-            _durationSeconds = NormalizePositiveDurationSeconds(value);
-            if (_durationSeconds is not null) {
-                _untilNextMaintenanceWindow = false;
-                _untilNextMaintenanceWindowStart = false;
-            }
-        }
+        get => UntilNextMaintenanceWindow || UntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
+        init => _requestedDurationSeconds = NormalizePositiveDurationSeconds(value);
     }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
     public bool UntilNextMaintenanceWindow {
-        get => _untilNextMaintenanceWindow;
-        init {
-            _untilNextMaintenanceWindow = value;
-            if (value) {
-                _durationSeconds = null;
-                _untilNextMaintenanceWindowStart = false;
-            }
-        }
+        get => !_requestedUntilNextMaintenanceWindowStart && _requestedUntilNextMaintenanceWindow;
+        init => _requestedUntilNextMaintenanceWindow = value;
     }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
     public bool UntilNextMaintenanceWindowStart {
-        get => _untilNextMaintenanceWindowStart;
-        init {
-            _untilNextMaintenanceWindowStart = value;
-            if (value) {
-                _durationSeconds = null;
-                _untilNextMaintenanceWindow = false;
-            }
-        }
+        get => _requestedUntilNextMaintenanceWindowStart;
+        init => _requestedUntilNextMaintenanceWindowStart = value;
     }
 }
 
@@ -280,9 +270,9 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
         return value is > 0 ? value : null;
     }
 
-    private int? _durationSeconds;
-    private bool _untilNextMaintenanceWindow;
-    private bool _untilNextMaintenanceWindowStart;
+    private int? _requestedDurationSeconds;
+    private bool _requestedUntilNextMaintenanceWindow;
+    private bool _requestedUntilNextMaintenanceWindowStart;
 
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
@@ -299,42 +289,24 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// Null means a persistent policy update.
     /// </summary>
     public int? DurationSeconds {
-        get => _durationSeconds;
-        init {
-            _durationSeconds = NormalizePositiveDurationSeconds(value);
-            if (_durationSeconds is not null) {
-                _untilNextMaintenanceWindow = false;
-                _untilNextMaintenanceWindowStart = false;
-            }
-        }
+        get => UntilNextMaintenanceWindow || UntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
+        init => _requestedDurationSeconds = NormalizePositiveDurationSeconds(value);
     }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
     public bool UntilNextMaintenanceWindow {
-        get => _untilNextMaintenanceWindow;
-        init {
-            _untilNextMaintenanceWindow = value;
-            if (value) {
-                _durationSeconds = null;
-                _untilNextMaintenanceWindowStart = false;
-            }
-        }
+        get => !_requestedUntilNextMaintenanceWindowStart && _requestedUntilNextMaintenanceWindow;
+        init => _requestedUntilNextMaintenanceWindow = value;
     }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
     public bool UntilNextMaintenanceWindowStart {
-        get => _untilNextMaintenanceWindowStart;
-        init {
-            _untilNextMaintenanceWindowStart = value;
-            if (value) {
-                _durationSeconds = null;
-                _untilNextMaintenanceWindow = false;
-            }
-        }
+        get => _requestedUntilNextMaintenanceWindowStart;
+        init => _requestedUntilNextMaintenanceWindowStart = value;
     }
 }
 

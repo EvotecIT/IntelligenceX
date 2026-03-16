@@ -96,9 +96,7 @@ public sealed partial class MainWindow : Window {
                 maxReadyThreadIds: threadSampleLimit,
                 maxRunningThreadIds: threadSampleLimit,
                 maxRecentActivity: maxRecentActivity,
-                maxThreadSummaries: ResolveBackgroundSchedulerThreadSummaryLimit(
-                    includeThreadSummaries,
-                    maxThreadSummaries),
+                maxThreadSummaries: ResolveBackgroundSchedulerThreadSummaryLimit(maxThreadSummaries),
                 cancellationToken: cts.Token).ConfigureAwait(false);
             ApplyBackgroundSchedulerSnapshot(status.Scheduler, scopedRefresh);
         } catch (Exception ex) {
@@ -119,9 +117,8 @@ public sealed partial class MainWindow : Window {
             : 8;
     }
 
-    internal static int ResolveBackgroundSchedulerThreadSummaryLimit(bool includeThreadSummaries, int maxThreadSummaries) {
-        var normalizedLimit = Math.Clamp(maxThreadSummaries, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
-        return includeThreadSummaries ? normalizedLimit : normalizedLimit;
+    internal static int ResolveBackgroundSchedulerThreadSummaryLimit(int maxThreadSummaries) {
+        return Math.Clamp(maxThreadSummaries, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
     }
 
     private async Task RefreshLocalRuntimeDetectionAsync(bool publishOptions) {
