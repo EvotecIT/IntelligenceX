@@ -284,11 +284,11 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     }
 
     /// <summary>
-    /// Ensures a scoped scheduler refresh failure restores the preserved global snapshot
-    /// instead of blanking the active scheduler diagnostics view.
+    /// Ensures a scoped scheduler refresh failure preserves the prior scoped snapshot
+    /// instead of overwriting thread-specific diagnostics with global scheduler state.
     /// </summary>
     [Fact]
-    public void RestoreBackgroundSchedulerSnapshotAfterRefreshFailure_ScopedRefreshFallsBackToGlobalSnapshot() {
+    public void RestoreBackgroundSchedulerSnapshotAfterRefreshFailure_ScopedRefreshPreservesScopedSnapshot() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         var globalSnapshot = new SessionCapabilityBackgroundSchedulerDto {
             DaemonEnabled = true,
@@ -306,7 +306,7 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
 
         var restored = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
         var preservedGlobal = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
-        Assert.Same(globalSnapshot, restored);
+        Assert.Same(scopedSnapshot, restored);
         Assert.Same(globalSnapshot, preservedGlobal);
     }
 

@@ -40,8 +40,7 @@ public sealed partial class MainWindow {
     }
 
     private void RestoreBackgroundSchedulerSnapshotAfterRefreshFailure(bool scopedRefresh) {
-        if (scopedRefresh && _backgroundSchedulerGlobalStatusSnapshot is not null) {
-            _backgroundSchedulerStatusSnapshot = _backgroundSchedulerGlobalStatusSnapshot;
+        if (scopedRefresh) {
             return;
         }
 
