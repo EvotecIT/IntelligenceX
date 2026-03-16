@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App;
 using Xunit;
 
@@ -193,6 +194,21 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         Assert.Equal(8, scheduler.GetProperty("trackedThreadCount").GetInt32());
         Assert.Equal("thread-missing", scheduler.GetProperty("readyThreadIds")[0].GetString());
         Assert.Equal("thread-visible", scheduler.GetProperty("threadSummaries")[0].GetProperty("threadId").GetString());
+    }
+
+    /// <summary>
+    /// Ensures app refresh keeps larger thread-id samples for sidebar fallback without inflating
+    /// the caller's requested thread summary cap.
+    /// </summary>
+    [Fact]
+    public void ResolveBackgroundSchedulerThreadSummaryLimit_RespectsRequestedCap() {
+        var threadIdSampleLimit = MainWindow.ResolveBackgroundSchedulerThreadIdSampleLimit(includeThreadSummaries: true);
+        var threadSummaryLimit = MainWindow.ResolveBackgroundSchedulerThreadSummaryLimit(
+            includeThreadSummaries: true,
+            maxThreadSummaries: 8);
+
+        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, threadIdSampleLimit);
+        Assert.Equal(8, threadSummaryLimit);
     }
 
     /// <summary>

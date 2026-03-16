@@ -88,9 +88,7 @@ public sealed partial class MainWindow : Window {
         try {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             var scopedRefresh = !string.IsNullOrWhiteSpace(threadId);
-            var threadSampleLimit = includeThreadSummaries
-                ? ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems
-                : 8;
+            var threadSampleLimit = ResolveBackgroundSchedulerThreadIdSampleLimit(includeThreadSummaries);
             var status = await client.GetBackgroundSchedulerStatusAsync(
                 threadId: string.IsNullOrWhiteSpace(threadId) ? null : threadId.Trim(),
                 includeRecentActivity: includeRecentActivity,
@@ -98,9 +96,9 @@ public sealed partial class MainWindow : Window {
                 maxReadyThreadIds: threadSampleLimit,
                 maxRunningThreadIds: threadSampleLimit,
                 maxRecentActivity: maxRecentActivity,
-                maxThreadSummaries: includeThreadSummaries
-                    ? Math.Max(maxThreadSummaries, threadSampleLimit)
-                    : maxThreadSummaries,
+                maxThreadSummaries: ResolveBackgroundSchedulerThreadSummaryLimit(
+                    includeThreadSummaries,
+                    maxThreadSummaries),
                 cancellationToken: cts.Token).ConfigureAwait(false);
             ApplyBackgroundSchedulerSnapshot(status.Scheduler, scopedRefresh);
         } catch (Exception ex) {
@@ -113,6 +111,18 @@ public sealed partial class MainWindow : Window {
         if (publishOptions) {
             await PublishOptionsStateAsync().ConfigureAwait(false);
         }
+    }
+
+    internal static int ResolveBackgroundSchedulerThreadIdSampleLimit(bool includeThreadSummaries) {
+        return includeThreadSummaries
+            ? ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems
+            : 8;
+    }
+
+    internal static int ResolveBackgroundSchedulerThreadSummaryLimit(bool includeThreadSummaries, int maxThreadSummaries) {
+        return includeThreadSummaries
+            ? Math.Min(maxThreadSummaries, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems)
+            : maxThreadSummaries;
     }
 
     private async Task RefreshLocalRuntimeDetectionAsync(bool publishOptions) {
