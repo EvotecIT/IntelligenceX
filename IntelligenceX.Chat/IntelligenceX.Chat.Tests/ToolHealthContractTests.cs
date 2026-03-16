@@ -184,6 +184,17 @@ public sealed class ToolHealthContractTests {
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsDuplicateWindowsAfterNormalization() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_duplicate_targets",
+            "add",
+            new[] { "mon@02:00/60", "  MON@02:00/60  " }));
+
+        Assert.Contains("windows", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("add")]
     [InlineData("remove")]
@@ -291,6 +302,17 @@ public sealed class ToolHealthContractTests {
             new[] { "thread-a" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsDuplicateThreadIdsAfterNormalization() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_duplicate_targets",
+            "add",
+            new[] { "thread-a", "  THREAD-A  " }));
+
+        Assert.Contains("threadIds", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -473,6 +495,17 @@ public sealed class ToolHealthContractTests {
             new[] { "system" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsDuplicatePackIdsAfterNormalization() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_duplicate_targets",
+            "add",
+            new[] { "system", "  SYSTEM  " }));
+
+        Assert.Contains("packIds", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
     }
 
     [Theory]

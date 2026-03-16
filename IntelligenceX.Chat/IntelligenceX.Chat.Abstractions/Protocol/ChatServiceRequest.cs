@@ -39,17 +39,29 @@ public abstract record ChatServiceRequest {
         throw new ArgumentException("Operation must be one of: add, remove, replace, clear, reset.", parameterName);
     }
 
-    private protected static string[]? NormalizeBackgroundSchedulerMutationTargets(string[]? values) {
+    private protected static string[]? NormalizeBackgroundSchedulerMutationTargets(string[]? values, string parameterName) {
         if (values is not { Length: > 0 }) {
             return null;
         }
 
-        var normalized = values
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Select(static value => value.Trim())
-            .ToArray();
+        var normalized = new List<string>(values.Length);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
 
-        return normalized.Length > 0 ? normalized : null;
+            var trimmed = value.Trim();
+            if (!seen.Add(trimmed)) {
+                throw new ArgumentException(
+                    $"{parameterName} contains duplicate targets after normalization.",
+                    parameterName);
+            }
+
+            normalized.Add(trimmed);
+        }
+
+        return normalized.Count > 0 ? normalized.ToArray() : null;
     }
 
     private protected static void ValidateBackgroundSchedulerTargetMutationState(
@@ -323,7 +335,7 @@ public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServi
         string[]? windows = null) {
         RequestId = requestId;
         Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
-        Windows = NormalizeBackgroundSchedulerMutationTargets(windows);
+        Windows = NormalizeBackgroundSchedulerMutationTargets(windows, nameof(windows));
         ValidateBackgroundSchedulerTargetMutationState(Operation, Windows, nameof(Windows));
     }
 
@@ -377,7 +389,7 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
         bool untilNextMaintenanceWindowStart = false) {
         RequestId = requestId;
         Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
-        PackIds = NormalizeBackgroundSchedulerMutationTargets(packIds);
+        PackIds = NormalizeBackgroundSchedulerMutationTargets(packIds, nameof(packIds));
         DurationSeconds = ValidatePositiveDurationSeconds(durationSeconds, nameof(DurationSeconds));
         UntilNextMaintenanceWindow = untilNextMaintenanceWindow;
         UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart;
@@ -459,7 +471,7 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
         bool untilNextMaintenanceWindowStart = false) {
         RequestId = requestId;
         Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
-        ThreadIds = NormalizeBackgroundSchedulerMutationTargets(threadIds);
+        ThreadIds = NormalizeBackgroundSchedulerMutationTargets(threadIds, nameof(threadIds));
         DurationSeconds = ValidatePositiveDurationSeconds(durationSeconds, nameof(DurationSeconds));
         UntilNextMaintenanceWindow = untilNextMaintenanceWindow;
         UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart;
