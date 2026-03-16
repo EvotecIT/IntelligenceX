@@ -8,9 +8,9 @@ using OfficeIMO.Word.Markdown;
 namespace IntelligenceX.Chat.App;
 
 internal static class OfficeImoAssemblyContractDiagnostics {
-    private static readonly Version MinimumMarkdownRendererVersion = new(0, 2, 1);
-    private static readonly Version MinimumMarkdownVersion = new(0, 6, 1);
-    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 8);
+    private static readonly Version MinimumMarkdownRendererVersion = new(0, 2, 2);
+    private static readonly Version MinimumMarkdownVersion = new(0, 6, 2);
+    private static readonly Version MinimumWordMarkdownVersion = new(1, 0, 9);
 
     public static string DescribeMarkdownRendererContract() {
         return DescribeAssemblyContract(
